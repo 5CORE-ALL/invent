@@ -207,7 +207,71 @@
         const label = escapeHtml(cfg().channelLabel || 'marketplace');
         return '<button type="button" class="listing-mp-publish-btn" data-sku="' + escapeHtml(sku) +
             '" title="Choose single listing or your own variation group for ' +
-            label + '"><i class="fas fa-cloud-upload-alt"></i> Publish</button>';
+            label + '"><i class="fas fa-cloud-upload-alt"></i> ' + escapeHtml(cfg().publishButtonLabel || 'Publish') + '</button>';
+    }
+
+    // Draft-based pages (listingPageConfig.createDraftUrl / publishDraftUrl): "Create draft" saves a draft only,
+    // "Publish" updates that draft and publishes it.
+    function publishDraftFormatter(cell) {
+        const data = cell.getRow().getData();
+        if (data.is_parent) return '';
+        const listed = String(data.listed || '');
+        const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || data.item_id || data.product_id || '').trim();
+        if (listed === 'Listed' || goodsId) {
+            return '<span class="text-muted" title="Already listed">—</span>';
+        }
+        const sku = String(data.sku || '').trim();
+        if (!sku) return '';
+        return '<button type="button" class="btn btn-sm btn-success listing-mp-draft-publish-btn" data-sku="' + escapeHtml(sku) +
+            '" title="Update the draft with the latest data and publish it to ' + escapeHtml(cfg().channelLabel || 'the marketplace') +
+            '"><i class="fas fa-rocket"></i> <span class="badge bg-light text-success">Publish</span></button>';
+    }
+
+    function postDraftAction(url, sku, loadingTitle, loadingMessage, doneTitle, failTitle, onDone) {
+        showPublishStatus('loading', loadingMessage, loadingTitle);
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrf(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ sku: sku })
+        }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (json) {
+                return { status: res.status, json: json || {} };
+            });
+        }).then(function (out) {
+            const json = out.json;
+            const message = String(json.message || (out.status === 419 ? 'Session expired. Refresh the page and try again.' : 'Request failed (HTTP ' + out.status + ').'));
+            if (json.success) {
+                showPublishStatus('success', message, doneTitle);
+                if (typeof onDone === 'function') onDone(json);
+            } else if (json.queued) {
+                showPublishStatus('success', message, 'Publishing in background');
+            } else {
+                showPublishStatus('error', message, failTitle);
+            }
+        }).catch(function (err) {
+            showPublishStatus('error', 'Request failed: ' + (err && err.message ? err.message : err), failTitle);
+        });
+    }
+
+    function createDraftFor(sku) {
+        postDraftAction(cfg().createDraftUrl, sku, 'Creating draft…', 'Creating a draft for ' + sku + '. Nothing is sent to ' + (cfg().channelLabel || 'the marketplace') + '.', 'Draft saved', 'Draft failed');
+    }
+
+    function publishDraftFor(sku) {
+        if (!window.confirm('Update the draft for ' + sku + ' with the latest data and publish it live to ' + (cfg().channelLabel || 'the marketplace') + '?')) return;
+        postDraftAction(cfg().publishDraftUrl, sku, 'Publishing…', 'Updating the draft for ' + sku + ' and publishing. This can take a minute.', 'Published', 'Publish failed', function () {
+            const table = findTable();
+            if (!table) return;
+            try {
+                const row = (table.getRows() || []).find(function (r) { return String((r.getData() || {}).sku || '').trim() === sku; });
+                if (row) row.update({ listed: 'Listed' });
+            } catch (err) {}
+        });
     }
 
     let previewSeedSkus = [];
@@ -2049,15 +2113,43 @@
         });
         if (!hasPublish && !ownPublishModalId()) {
             try {
-                table.addColumn({
-                    title: 'Publish to ' + (cfg().channelLabel || 'marketplace'),
+                const publishColumn = {
+                    title: cfg().publishColumnTitle || ('Publish to ' + (cfg().channelLabel || 'marketplace')),
                     field: 'publish_to_marketplace',
                     hozAlign: 'center',
                     headerHozAlign: 'center',
                     headerSort: false,
                     width: 150,
                     formatter: publishFormatter
-                });
+                };
+                // A page can ask for the column to sit before one of its own columns (listingPageConfig.publishColumnBefore).
+                const before = cfg().publishColumnBefore;
+                if (before && (table.getColumns() || []).some(function (col) { return col.getField && col.getField() === before; })) {
+                    table.addColumn(publishColumn, true, before); // true = before the target column
+                } else {
+                    table.addColumn(publishColumn);
+                }
+            } catch (err) {}
+        }
+
+        // Second column right after the "before" column: Publish (updates the draft, then publishes).
+        if (cfg().publishDraftUrl && !(table.getColumns() || []).some(function (col) { return col.getField && col.getField() === 'publish_draft'; })) {
+            try {
+                const anchor = cfg().publishDraftAfter || cfg().publishColumnBefore;
+                const draftPublishColumn = {
+                    title: 'Publish',
+                    field: 'publish_draft',
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    headerSort: false,
+                    width: 120,
+                    formatter: publishDraftFormatter
+                };
+                if (anchor && (table.getColumns() || []).some(function (col) { return col.getField && col.getField() === anchor; })) {
+                    table.addColumn(draftPublishColumn, false, anchor); // false = after the anchor column
+                } else {
+                    table.addColumn(draftPublishColumn);
+                }
             } catch (err) {}
         }
     }
@@ -2087,7 +2179,20 @@
                 e.preventDefault();
                 e.stopPropagation();
                 const sku = String($(this).data('sku') || $(this).attr('data-sku') || '').trim();
-                if (sku) openPreview([sku]);
+                if (!sku) return;
+                if (cfg().createDraftUrl && $(this).hasClass('listing-mp-publish-btn')) {
+                    createDraftFor(sku);
+                    return;
+                }
+                openPreview([sku]);
+            });
+
+        $(document).off('click.listingPageToolsDraft', '.listing-mp-draft-publish-btn')
+            .on('click.listingPageToolsDraft', '.listing-mp-draft-publish-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = String($(this).data('sku') || $(this).attr('data-sku') || '').trim();
+                if (sku) publishDraftFor(sku);
             });
 
         $('#bulk-publish-btn').off('click.listingPageTools').on('click.listingPageTools', function () {

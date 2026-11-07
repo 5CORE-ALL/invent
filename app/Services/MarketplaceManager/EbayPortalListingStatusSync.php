@@ -105,6 +105,26 @@ class EbayPortalListingStatusSync
 
         $this->persist($model, $table, $allListings);
 
+        // Listing Manager drafts still marked "listed" for SKUs that are no longer live block Create draft / Publish.
+        try {
+            $notLive = [];
+            foreach ($allListings as $key => $data) {
+                if (in_array($data['status'] ?? '', ['INACTIVE', 'MISSING'], true)) {
+                    $notLive[] = (string) ($data['sku'] ?? $key);
+                }
+            }
+            $released = \App\Support\Marketplace\EbayStaleDrafts::releaseForSkus(
+                [1 => 'ebay', 2 => 'ebay2', 3 => 'ebay3'][$store] ?? 'ebay',
+                $notLive,
+                'the listing is ended or deleted on eBay'
+            );
+            if ($released > 0) {
+                Log::info('EbayPortalListingStatusSync: drafts moved back to Drafts', ['store' => $store, 'drafts' => $released]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('EbayPortalListingStatusSync: draft release skipped', ['error' => $e->getMessage()]);
+        }
+
         $statuses = array_column($allListings, 'status');
         $counts = array_count_values($statuses);
 
@@ -164,6 +184,13 @@ class EbayPortalListingStatusSync
                         $statusOnly = ['listing_status' => $payload['listing_status']];
                         if ($hasReason) {
                             $statusOnly['inactive_reason'] = $payload['inactive_reason'];
+                        }
+                        // Deleted on eBay (neither Active nor Unsold returned it): the old item id is dead, drop it.
+                        if ($hasItemId && ($data['status'] ?? '') === 'MISSING') {
+                            $statusOnly['item_id'] = $table === 'ebay_2_metrics' ? '' : null; // ebay_2_metrics.item_id is NOT NULL
+                            if ($hasLink) {
+                                $statusOnly['ebay_link'] = null;
+                            }
                         }
                         $model::query()
                             ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])

@@ -89,10 +89,14 @@ class ListingEbayController extends Controller
                 $skipped = $hidden[(string) ($row['hide_scope'] ?? '')] ?? [];
                 $mandatory = $this->countFields((array) ($row['ebay_required_only'] ?? []), $row, $skipped, $sources);
                 $all = $this->countFields((array) ($row['ebay_required'] ?? []), $row, $skipped, $sources);
-                $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all];
+                $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all, 'cat' => trim((string) ($row['category_ebay'] ?? ''))];
             }
 
-            return response()->json(['status' => 200, 'data' => $out]);
+            return response()->json([
+                'status' => 200,
+                'data' => $out,
+                'groups' => array_values((array) ($json['column_groups'] ?? [])),
+            ]);
         } catch (\Throwable $e) {
             Log::error('ListingEbay: field counts failed', ['error' => $e->getMessage()]);
 
@@ -105,12 +109,13 @@ class ListingEbayController extends Controller
      * @param  array<string, mixed>  $row
      * @param  array<string, int>  $skipped
      * @param  array<string, string>  $sources
-     * @return array{0: int, 1: int}  [with data, total]
+     * @return array{0: int, 1: int, 2: list<string>}  [with data, total, names without data]
      */
     private function countFields(array $names, array $row, array $skipped, array $sources): array
     {
         $seen = [];
         $have = 0;
+        $missing = [];
         foreach ($names as $name) {
             $name = trim((string) $name);
             if ($name === '' || strlen($name) > 120 || preg_match('/[{};]|text-decoration/', $name)) {
@@ -123,10 +128,12 @@ class ListingEbayController extends Controller
             $seen[$identity] = true;
             if ($this->fieldHasData($row, $name, $sources)) {
                 $have++;
+            } else {
+                $missing[] = $name;
             }
         }
 
-        return [$have, count($seen)];
+        return [$have, count($seen), $missing];
     }
 
     /**
@@ -206,6 +213,166 @@ class ListingEbayController extends Controller
         ];
 
         return $canon[$key] ?? $key;
+    }
+
+    /**
+     * "Create draft": add this SKU to the Listing Manager channel drafts for eBay. Nothing is sent to eBay.
+     * An existing draft is left alone so edits made in Listing Manager are never overwritten.
+     */
+    public function createDraft(Request $request)
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+        $channelId = $this->ebayChannelId();
+        if ($channelId === null) {
+            return response()->json(['success' => false, 'message' => 'The eBay channel was not found in Channel Master.'], 422);
+        }
+
+        $draft = $this->findEbayDraft($channelId, $sku);
+        $wasReset = false;
+        if ($draft && $draft->status === 'listed') {
+            // The draft says listed, but the SKU is on the Missing L tab: the listing was ended or deleted on eBay.
+            if ($this->isLiveOnEbay($sku)) {
+                return response()->json(['success' => true, 'message' => $sku.' is already listed on eBay.', 'draft_id' => $draft->id, 'status' => 'listed']);
+            }
+            $this->resetStaleDraft($draft);
+            $draft->refresh();
+            $wasReset = true;
+        }
+        if ($draft) {
+            return response()->json([
+                'success' => true,
+                'message' => $wasReset
+                    ? 'The old eBay listing of '.$sku.' no longer exists, so its draft was moved back to Drafts and the old item id was cleared ('.$draft->status.'). Use Publish to update it and publish.'
+                    : 'A draft for '.$sku.' already exists ('.$draft->status.'). Use Publish to update it with the latest data and publish.',
+                'draft_id' => $draft->id,
+                'status' => (string) $draft->status,
+            ]);
+        }
+
+        $body = $this->addEbayDraft($channelId, $sku);
+        $draft = $this->findEbayDraft($channelId, $sku);
+        if (! $draft) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No draft was created for '.$sku.'. There is no title, image or price data to build it from.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Draft created for '.$sku.' ('.$draft->status.'). Nothing was sent to eBay yet; use Publish when it is ready.',
+            'draft_id' => $draft->id,
+            'status' => (string) $draft->status,
+            'detail' => $body['message'] ?? '',
+        ]);
+    }
+
+    /**
+     * "Publish": update the draft with the latest Product Master data (creating it when missing), then publish it.
+     */
+    public function publishDraft(Request $request)
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+        $sku = trim((string) $request->input('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+        $channelId = $this->ebayChannelId();
+        if ($channelId === null) {
+            return response()->json(['success' => false, 'message' => 'The eBay channel was not found in Channel Master.'], 422);
+        }
+
+        try {
+            $manager = app(\App\Http\Controllers\MarketPlace\ListingManagerController::class);
+            $draft = $this->findEbayDraft($channelId, $sku);
+            if ($draft && $draft->status === 'listed' && ! $this->isLiveOnEbay($sku)) {
+                // Ended or deleted on eBay: the stale "listed" draft would otherwise answer "already published".
+                $this->resetStaleDraft($draft);
+                $draft->refresh();
+            }
+            if (! $draft) {
+                $this->addEbayDraft($channelId, $sku);
+                $draft = $this->findEbayDraft($channelId, $sku);
+            } elseif ($draft->status !== 'listed') {
+                // Update the draft from the masters; category and item specifics already on the draft are kept.
+                foreach (['title', 'description', 'images', 'bullets', 'identifiers', 'pricing'] as $source) {
+                    try {
+                        $manager->loadDraftFromMaster(Request::create('/', 'POST', ['source' => $source]), (int) $draft->id);
+                    } catch (\Throwable $e) {
+                        Log::warning('listing_ebay draft update skipped a source', ['sku' => $sku, 'source' => $source, 'error' => $e->getMessage()]);
+                    }
+                }
+            }
+            if (! $draft) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No draft could be created for '.$sku.'. There is no title, image or price data to build it from.',
+                ], 422);
+            }
+
+            return $manager->publishDraft(Request::create('/', 'POST'), (int) $draft->id);
+        } catch (\Throwable $e) {
+            Log::error('listing_ebay publishDraft failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Publish failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    private function isLiveOnEbay(string $sku): bool
+    {
+        return (bool) (\App\Support\Marketplace\ListingManagerPublishStatus::check('ebay', $sku)['listed'] ?? false);
+    }
+
+    private function resetStaleDraft(\App\Models\ListingManagerChannelDraft $draft): void
+    {
+        $draft->loadMissing('channel:id,channel');
+        \App\Support\Marketplace\EbayStaleDrafts::reset(
+            $draft,
+            (string) ($draft->channel->channel ?? 'eBay'),
+            'eBay has no live listing for this SKU (ended or deleted)'
+        );
+    }
+
+    private function ebayChannelId(): ?int
+    {
+        $rows = \App\Models\ChannelMaster::query()
+            ->whereNotNull('channel')
+            ->get(['id', 'channel', 'status']);
+        $match = $rows
+            ->filter(fn ($c) => \App\Support\Marketplace\ListingChannelCounts::normalize((string) $c->channel) === 'ebay')
+            ->sortBy(fn ($c) => strtolower(trim((string) $c->status)) === 'active' ? 0 : 1)
+            ->first();
+
+        return $match ? (int) $match->id : null;
+    }
+
+    private function findEbayDraft(int $channelId, string $sku): ?\App\Models\ListingManagerChannelDraft
+    {
+        $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? trim($sku);
+
+        return \App\Models\ListingManagerChannelDraft::query()
+            ->where('channel_id', $channelId)
+            ->whereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper($sku)])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function addEbayDraft(int $channelId, string $sku): array
+    {
+        $response = app(\App\Http\Controllers\MarketPlace\ListingManagerController::class)->addToChannelDrafts(
+            Request::create('/', 'POST', ['skus' => [$sku], 'channel_ids' => [$channelId]])
+        );
+        $data = method_exists($response, 'getData') ? $response->getData(true) : [];
+
+        return is_array($data) ? $data : [];
     }
 
     public function updateStatus(Request $request)
