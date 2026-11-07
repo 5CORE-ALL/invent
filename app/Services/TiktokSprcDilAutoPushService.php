@@ -470,12 +470,26 @@ class TiktokSprcDilAutoPushService
                 $ctx['age_adj']
             );
         }
-        $diffPct = EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), (float) ($row['price'] ?? 0));
-        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
 
         $denom = $margin - $ads;
         if (! ($denom > 0)) {
             return null;
+        }
+
+        // Diff rule: judged against the rule price WITHOUT the Diff points, not the live TikTok Price (same as the page,
+        // ebayDilGroiStableDiffAdj, and as Shein / Amazon). Read against the live Price, the boosted price is pushed -> the
+        // Diff drops under the threshold -> the boost is removed (Target SNROI falls by the Diff points) -> the lower price is
+        // pushed -> the Diff rises -> the boost is back, so the Target SNROI kept flipping between two values and the saved
+        // S PRC never matched the page. A listed SKU (live Price > 0) and a reference price are still required.
+        $diffRef = EbayRuleSprice::diffRefPrice($std, $lmp);
+        if ($diffRef > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+            $diffBase = round(($lp * (1 + $target / 100) + $ship) / $denom, 2);
+            if (is_finite($diffBase) && $diffBase > 0) {
+                $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
+                    EbayRuleSprice::stdPriceDiffPct($diffRef, $diffBase),
+                    $ctx['diff_adj'] ?? null
+                ), 2));
+            }
         }
         $raw = round(($lp * (1 + $target / 100) + $ship) / $denom, 2);
         if (! is_finite($raw) || $raw < 0.01) {

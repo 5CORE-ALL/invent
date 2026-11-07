@@ -197,7 +197,8 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
     /** @return array<string, mixed> */
     private function dilRow(array $over = []): array
     {
-        return $this->row(array_merge(['price' => 100, 'cvr' => 8, 'tacos' => 0.0], $over));
+        // Std 52 is within the 20% Diff threshold of every rule price below, so the Diff boost stays off unless a test turns it on.
+        return $this->row(array_merge(['price' => 100, 'cvr' => 8, 'tacos' => 0.0, 'standard_price' => 52], $over));
     }
 
     private function dilTarget(array $row, string $channel = 'tiktok'): ?array
@@ -227,13 +228,34 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(46.25, $two['sprice'], 0.001);
     }
 
-    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_the_rule_price_by_more_than_the_threshold(): void
     {
-        // Std 100 vs TT Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
-        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+        // Std 100 vs the rule price without the boost, 46.25 -> Diff 116% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 70]));
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_boost_does_not_depend_on_the_live_price(): void
+    {
+        // The boost is judged against the rule price, not the live Price: pushing the boosted price must not remove the boost.
+        $before = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 40]));
+        $after = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 48.75]));
+        $high = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 100]));
+
+        $this->assertEqualsWithDelta(48.75, $before['sprice'], 0.001);
+        $this->assertEqualsWithDelta(48.75, $after['sprice'], 0.001);
+        $this->assertEqualsWithDelta(48.75, $high['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_needs_a_listed_price(): void
+    {
+        // No live Price (not listed): no Diff points, same as the page.
+        $out = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 0]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
     }
 
     public function test_sprc_dil_cvr_overlay_lowers_the_target_when_cvr_is_zero(): void
