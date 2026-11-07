@@ -118,6 +118,8 @@ class TechnicalSpecificationsController extends Controller
                     $fixedKey = $this->specKey($name);
                     if (in_array($fixedKey, ['brand', 'manufacturer'], true)) {
                         $values[$name] = '5 Core';
+                    } elseif ($fixedKey === 'durabilityguarantee') {
+                        $values[$name] = 'Yes';
                     } elseif (in_array($fixedKey, ['mpn', 'model'], true) && ! $rowIsParent) {
                         $values[$name] = (string) ($row['SKU'] ?? '');
                     }
@@ -228,7 +230,7 @@ class TechnicalSpecificationsController extends Controller
             $upcForSave = null;
             foreach ($specs as &$spec) {
                 $name = $this->specKey((string) ($spec['key'] ?? ''));
-                $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
+                $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => 'Yes'];
                 if (isset($fixed[$name])) {
                     $spec['value'] = $fixed[$name];
                 } elseif (($name === 'mpn' || $name === 'model') && ! $this->isParentSku($sku)) {
@@ -827,7 +829,7 @@ class TechnicalSpecificationsController extends Controller
         if ($sourceKey === $columnKey) {
             return response()->json(['success' => false, 'message' => 'A column cannot read from itself.'], 422);
         }
-        if (in_array($columnKey, ['brand', 'manufacturer', 'condition', 'countryoforigin', 'mpn', 'model', 'upc'], true)) {
+        if (in_array($columnKey, ['brand', 'manufacturer', 'condition', 'countryoforigin', 'durabilityguarantee', 'mpn', 'model', 'upc'], true)) {
             return response()->json(['success' => false, 'message' => $column.' is filled automatically and cannot read from another column.'], 422);
         }
 

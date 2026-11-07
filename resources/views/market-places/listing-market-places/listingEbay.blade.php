@@ -1082,6 +1082,22 @@
             document.body.appendChild(el);
         }
 
+        // Create draft column: SKUs that already have an eBay draft show a green tick instead of the button.
+        let draftStatuses = {};
+        let draftsRequested = false;
+
+        function loadDrafts() {
+            if (draftsRequested) return;
+            draftsRequested = true;
+            fetch('/listing_ebay/drafts', { headers: { Accept: 'application/json' } })
+                .then(function (res) { return res.json(); })
+                .then(function (json) {
+                    draftStatuses = (json && json.data) || {};
+                    if (ebayListingTable) ebayListingTable.redraw(true);
+                })
+                .catch(function () {});
+        }
+
         function loadFieldCounts() {
             if (fieldCountsRequested) return;
             fieldCountsRequested = true;
@@ -1285,6 +1301,7 @@
             ebayListingTable.on('dataProcessed', function () {
                 hideLoader();
                 loadFieldCounts();
+                loadDrafts();
                 updateFieldTotals();
                 // /listing-ebay?missing=1 (link from the Missing L counts) opens on the Missing L list.
                 if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__ebayMissingApplied) {
@@ -1417,6 +1434,11 @@
             publishDraftAfter: 'field_missing_data',
             createDraftUrl: '/listing_ebay/create-draft',
             publishDraftUrl: '/listing_ebay/publish-draft',
+            draftStatusFor: function (sku) { return draftStatuses[fieldCountKey(sku)] || ''; },
+            onDraftCreated: function (sku, state) {
+                draftStatuses[fieldCountKey(sku)] = state;
+                if (ebayListingTable) ebayListingTable.redraw(true);
+            },
             previewUrl: '/listing_ebay/save-status',
             publishUrl: '/listing_ebay/save-status'
         };
