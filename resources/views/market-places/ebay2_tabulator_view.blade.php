@@ -3260,7 +3260,10 @@
                         tooltip: "Double-click to add / edit links",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const buyerLink = rowData['B Link'] || '';
+                            const liveItemId = String(rowData.eBay_item_id || rowData.ebay_item_id || rowData.listing_id || rowData.item_id || '').trim();
+                            // Dynamic buyer link from item id when no saved B Link
+                            const buyerLink = rowData['B Link']
+                                || (/^\d{9,}$/.test(liveItemId) ? ('https://www.ebay.com/itm/' + liveItemId) : '');
                             const sellerLink = rowData['S Link'] || '';
 
                             let html = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1.1;">';
