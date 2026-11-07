@@ -7214,25 +7214,44 @@
          */
         async function chPromoPushAllPrmtAfterApply(targets) {
             if (!chPromoPushPrmtQueueEnabled) return;
-            const seen = new Set();
-            const rows = [];
-            let belowMin = 0;
+            // eBay allows ONE markdown sale per listing, and variation listings (eBay 2/3) hold many child SKUs.
+            // So push once per listing (item id, else parent name), using a seed child that has the item id.
+            const groups = {};
+            const order = [];
             (targets || []).forEach(function(t) {
                 const row = t && t.row;
                 if (!row || typeof row.getData !== 'function' || typeof row.update !== 'function') return;
                 const d = row.getData() || {};
                 if (!chPromoIsChildRow(d)) return;
                 const sku = chPromoSku(d);
-                const k = chPromoSkuKey(sku);
-                if (!sku || !k || seen.has(k)) return;
-                seen.add(k);
-                const prmt = chPromoPrmtInt(d);
+                if (!sku || !chPromoSkuKey(sku)) return;
+                const itemId = String(d.eBay_item_id || d.item_id || d.ebay_item_id || '').trim();
+                const parent = chPromoParentName(d).toUpperCase();
+                const gk = itemId ? ('i:' + itemId) : (parent ? ('p:' + parent) : ('s:' + chPromoSkuKey(sku)));
+                if (!groups[gk]) { groups[gk] = []; order.push(gk); }
+                groups[gk].push({ row: row, d: d });
+            });
+            const rows = [];
+            let belowMin = 0;
+            order.forEach(function(gk) {
+                const kids = groups[gk];
+                const seed = kids.find(function(t) {
+                    return String(t.d.eBay_item_id || t.d.item_id || t.d.ebay_item_id || '').trim();
+                }) || kids[0];
+                // Listing PRMT% = highest % among its children (they normally all match: listing-level Dil).
+                let prmt = 0;
+                kids.forEach(function(t) { prmt = Math.max(prmt, chPromoPrmtInt(t.d)); });
                 if (prmt > 0 && (prmt < 5 || prmt > 80)) { belowMin++; return; }
-                if (prmt === 0 && chPromoLastSalePct(d) < 5 && String(d.PUSH_SALE_STATUS || '') !== 'error') return;
-                rows.push({ row: row, d: d, prmt: prmt });
+                if (prmt === 0) {
+                    const onSale = kids.some(function(t) {
+                        return chPromoLastSalePct(t.d) >= 5 || String(t.d.PUSH_SALE_STATUS || '') === 'error';
+                    });
+                    if (!onSale) return;
+                }
+                rows.push({ row: seed.row, d: seed.d, prmt: prmt });
             });
             if (belowMin) {
-                chPromoToast('info', belowMin + ' SKU(s) have PRMT% 1–4 (eBay needs 5–80) — not pushed');
+                chPromoToast('info', belowMin + ' listing(s) have PRMT% 1–4 (eBay needs 5–80) — not pushed');
             }
             if (!rows.length) return;
             await queueChannelPushPrmtRows(rows);
