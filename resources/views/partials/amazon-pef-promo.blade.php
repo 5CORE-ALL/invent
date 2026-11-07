@@ -25,7 +25,6 @@
         .tabulator-row .tabulator-cell[tabulator-field="buss_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
-        .tabulator-row .tabulator-cell[tabulator-field="lmp_cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount_amt"],
@@ -3639,54 +3638,6 @@
                     },
                 },
                 {
-                    title: 'CVR Disc $',
-                    field: 'lmp_cvr_discount',
-                    width: 86,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: true,
-                    headerTooltip: 'CVR up / down extra discount in dollars: Std Prc × the rule discount %. Set the % in Sprc Dil (CVR up / down section). Read-only.',
-                    headerFilter: 'list',
-                    headerFilterParams: { values: { '': 'All', 'applied': 'Discounted', 'down': 'Arrow down', 'up': 'Arrow up' }, clearable: true },
-                    headerFilterFunc: function(headerValue, rowValue, rowData) {
-                        if (!headerValue) return true;
-                        const info = (typeof amzLmpCvrInfo === 'function') ? amzLmpCvrInfo(rowData) : null;
-                        if (!info) return false;
-                        if (headerValue === 'applied') return info.disc !== 0;
-                        return info.trend === headerValue;
-                    },
-                    sorter: function(a, b, aRow, bRow) {
-                        const amt = function(d) {
-                            const std = Number(d && d.STANDARD_PRICE) || 0;
-                            const fn = typeof computeAmzLmpCvrDiscountPct === 'function' ? computeAmzLmpCvrDiscountPct : function() { return 0; };
-                            return std * (Number(fn(d)) || 0) / 100;
-                        };
-                        return amt(aRow.getData()) - amt(bRow.getData());
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (typeof amzLmpCvrInfo !== 'function') return '';
-                        const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
-                        const ruleOn = !!(cfg && cfg.enabled);
-                        // Rule off: show what it WOULD give (grey), so the column is never just blank.
-                        const info = ruleOn ? amzLmpCvrInfo(d) : amzLmpCvrInfo(d, Object.assign({}, cfg || {}, { enabled: true }));
-                        if (!info) return '';
-                        const std = Number(d.STANDARD_PRICE) || 0;
-                        const pct = info.disc;
-                        if (!pct || !(std > 0)) {
-                            const why = !info.eligible ? 'No LMP (rule needs an LMP)' : (!info.band ? ('CVR ' + info.cvr.toFixed(1) + '% with ' + info.trend + ' arrow: no Down / Up row matches') : 'Matching row has Disc % 0');
-                            return '<span class="text-muted" title="' + amzPefEscAttr(why + (ruleOn ? '' : ' · rule is OFF')) + '">—</span>';
-                        }
-                        const amt = Math.round(std * pct) / 100;
-                        const tip = pct + '% of Std Prc $' + std.toFixed(2) + ' = $' + amt.toFixed(2)
-                            + ' · CVR ' + info.cvr.toFixed(2) + '% vs L45 ' + info.cvr45.toFixed(2) + '%'
-                            + (info.lmp > 0 ? (' · LMP $' + info.lmp.toFixed(2)) : ' · no LMP')
-                            + (ruleOn ? '' : ' · rule is OFF (turn it on in Sprc Dil → CVR up / down)');
-                        return '<span title="' + amzPefEscAttr(tip) + '" style="font-weight:600;white-space:nowrap;'
-                            + (ruleOn ? '' : 'color:#94a3b8;font-style:italic;') + '">$' + amt.toFixed(2) + '</span>';
-                    },
-                },
-                {
                     title: 'Rev Disc.',
                     field: 'review_discount',
                     width: 70,
@@ -4194,7 +4145,16 @@
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
                 if (!(raw > 0)) return 0;
-                return amzCapRuleSprice(d, raw);
+                const capped = amzCapRuleSprice(d, raw);
+                // CVR up / down rule: extra discount comes off Std Prc after the LMP cap and Std Prc maximum, so a falling
+                // CVR never lifts the price. Same step as AmazonSprcDilAutoPushService (Sprc Dil branch).
+                const cvrUdPct = (typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
+                const stdP = Number(d && d.STANDARD_PRICE) || 0;
+                if (capped > 0 && stdP > 0 && Math.abs(cvrUdPct) >= 0.01) {
+                    const afterDisc = amzPefRound2(capped - (stdP * cvrUdPct / 100));
+                    if (afterDisc >= 0.01) return afterDisc;
+                }
+                return capped;
             }
             const plan = computeAmzPushPrcPlan(d);
             if (!plan || !(plan.effective > 0)) return 0;

@@ -8,7 +8,7 @@
                     </div>
                     <div class="small text-muted mb-1">
                         <strong>If</strong> the CVR L30 arrow is Down or Up and CVR is inside a row,
-                        <strong>add that row's Disc % to the Sum Disc.</strong> (S PRC drops by it). A flat arrow is not changed.
+                        <strong>take that row's Disc % of Std Prc off S PRC.</strong> Std prc vs dil: added to the Sum Disc. Sprc Dil: taken off after the LMP and Std Prc steps. A flat arrow is not changed.
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-3 mb-1">
                         <div class="form-check form-switch mb-0">

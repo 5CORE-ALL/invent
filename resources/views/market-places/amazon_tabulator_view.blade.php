@@ -6873,7 +6873,6 @@
                 if (field === 'buss_discount') return 'B Disc';
                 if (field === 'zero_sold_discount') return '0 Sold';
                 if (field === 'cvr_discount') return 'CVR Disc.';
-                if (field === 'lmp_cvr_discount') return 'CVR Disc $';
                 if (field === 'review_discount') return 'Rev Disc.';
                 if (field === 'sum_discount') return 'Sum disc';
                 if (field === 'sum_discount_amt') return 'Sum Disc $';
@@ -6887,7 +6886,7 @@
             function classifyAmazonColumn(field, title) {
                 const f = String(field || '');
                 // Every discount column goes under one Discounts header.
-                if (/^(age|dil|lmp|lmp_cvr|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
+                if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
                 const t = String(title || field || '').toLowerCase();
                 const fl = f.toLowerCase();
 

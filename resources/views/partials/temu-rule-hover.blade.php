@@ -314,7 +314,7 @@
         }
 
         /** CVR up / down rule (Sprc Dil modal): one hover step. null when the rule is off or the SKU is not a stocked child row. */
-        function amzRuleCvrUpDownStep(d, num, usedInPrice) {
+        function amzRuleCvrUpDownStep(d, num, usedInPrice, final0) {
             const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
             if (!cfg || !cfg.enabled || typeof amzLmpCvrInfo !== 'function') return null;
             const info = amzLmpCvrInfo(d);
@@ -335,8 +335,10 @@
             }
             const amt = std > 0 ? (' = <b>' + temuRuleMoney(Math.round(std * pct) / 100) + '</b> off Std Prc') : '';
             if (!usedInPrice) {
-                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
-                    + '. Not used in this price: Sprc Dil prices from the Target NROI. It applies in Std prc vs dil.');
+                // Sprc Dil: the discount comes off Std Prc after the LMP cap and the Std Prc maximum.
+                const off = std > 0 ? Math.round(std * pct) / 100 : 0;
+                return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
+                    + '. Taken off after the LMP and Std Prc steps: ' + temuRuleMoney(Number(final0 || 0) + off) + ' − ' + temuRuleMoney(off) + ' = <b>' + temuRuleMoney(final0) + '</b>.');
             }
             return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt + ' (included in Sum disc).');
         }
@@ -387,16 +389,19 @@
                 after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
             });
             const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
-            const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;
+            // Sprc Dil: the CVR up / down discount comes off after the Std Prc maximum, so judge the cap on the price before it.
+            const udPct = (dilOn && typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
+            const finalPre = (final > 0 && std > 0 && Math.abs(udPct) >= 0.01) ? +(final + Math.round(std * udPct) / 100).toFixed(2) : final;
+            const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - finalPre) < 0.0001 && Math.abs(finalPre - std) < 0.0001;
             if (!(std > 0)) {
                 steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
-            } else if (capped || (final > 0 && Math.abs(final - std) < 0.0001)) {
+            } else if (capped || (finalPre > 0 && Math.abs(finalPre - std) < 0.0001)) {
                 steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
             } else {
                 steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
             }
             if (dilOn) {
-                const cvrUdStep = amzRuleCvrUpDownStep(d, String(n + 2), false);
+                const cvrUdStep = amzRuleCvrUpDownStep(d, String(n + 2), false, final);
                 if (cvrUdStep) steps.push(cvrUdStep);
             }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');

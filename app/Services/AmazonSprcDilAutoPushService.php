@@ -369,12 +369,22 @@ class AmazonSprcDilAutoPushService
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
             }
+            // CVR up / down rule: the extra discount comes off Std Prc after the LMP cap and the Std Prc maximum, so a
+            // falling CVR never lifts the price (same step as the page: amzLiveRuleSprice).
+            $dilLmpCvrDisc = $std > 0 ? $this->lmpCvrDiscPct($row, $lmp, $std) : 0.0;
+            if (abs($dilLmpCvrDisc) >= 0.01) {
+                $afterDisc = round($capped - ($std * $dilLmpCvrDisc / 100), 2);
+                if ($afterDisc >= 0.01) {
+                    $capped = $afterDisc;
+                }
+            }
 
             return [
                 'sprice' => round($capped, 2),
                 'dil' => round($dil, 2),
                 'groi' => $nroi,
                 'nroi' => $nroi,
+                'lmp_cvr_disc' => $dilLmpCvrDisc,
                 'cvr_disc' => 0.0,
                 'review_disc' => 0.0,
                 'buss_disc' => 0.0,
@@ -416,18 +426,8 @@ class AmazonSprcDilAutoPushService
         $zeroSoldDisc = (! self::stdRulePaused($stdPromo, 'zs') && ! ($aL30Sold > 0))
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        // Dynamic rule: extra discount by CVR trend (Down / Up / Equal), optionally only when LMP is available.
-        $sessA30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
-        $sessA60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
-        $unitsA60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
-        $lmpCvrDisc = StdPrcVsDilPricer::scaleRuleDisc(
-            \App\Support\AmazonLmpCvrDiscRule::discount(
-                $lmp,
-                AmazonDilGroiRule::cvrL30($aL30Sold, $sessA30),
-                AmazonDilGroiRule::cvrL45($aL30Sold, $sessA30, $unitsA60, $sessA60)
-            ),
-            $std
-        );
+        // CVR up / down rule (Sprc Dil modal): extra discount on the CVR arrow band, optionally only when LMP is available.
+        $lmpCvrDisc = $this->lmpCvrDiscPct($row, $lmp, $std);
         $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpCvrDisc)), 2);
 
         if (! ($std > 0)) {
@@ -524,6 +524,29 @@ class AmazonSprcDilAutoPushService
             'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
+    }
+
+    /**
+     * CVR up / down rule (Sprc Dil modal): extra discount % for this SKU from the CVR arrow band, scaled like the other
+     * rule discounts. 0 when the rule is off, the SKU has no LMP (and the rule needs one), or no band matches.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function lmpCvrDiscPct(array $row, float $lmp, float $std): float
+    {
+        $aL30 = (float) ($row['a_l30'] ?? 0);
+        $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
+        $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
+        $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
+
+        return StdPrcVsDilPricer::scaleRuleDisc(
+            \App\Support\AmazonLmpCvrDiscRule::discount(
+                $lmp,
+                AmazonDilGroiRule::cvrL30($aL30, $sess30),
+                AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60)
+            ),
+            $std
+        );
     }
 
     /** Why computeTarget() returned null for a row (diagnostics only). @param array<string, mixed> $row */
