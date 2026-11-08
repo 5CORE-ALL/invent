@@ -1359,6 +1359,73 @@ class Ebay1DataController extends Controller
         return response()->json(['success' => true, 'cells' => count($cells)]);
     }
 
+    // ---- Missing item specifics history: one figure per day, over every category. ----
+
+    /**
+     * GET /ebay1-data/missing-history
+     * The last 120 days, newest first.
+     */
+    public function missingHistory()
+    {
+        if (! Schema::hasTable('ebay1_missing_history')) {
+            return response()->json(['success' => true, 'days' => [], 'message' => 'Run php artisan migrate to start the history.']);
+        }
+        $days = DB::table('ebay1_missing_history')
+            ->orderByDesc('snapshot_date')
+            ->limit(120)
+            ->get(['snapshot_date', 'total_missing', 'total_cells', 'categories_count', 'categories', 'updated_at'])
+            ->map(static fn ($row) => [
+                'date' => (string) $row->snapshot_date,
+                'missing' => (int) $row->total_missing,
+                'cells' => (int) $row->total_cells,
+                'categories_count' => (int) $row->categories_count,
+                'categories' => json_decode((string) $row->categories, true) ?: [],
+                'updated_at' => (string) $row->updated_at,
+            ])
+            ->values();
+
+        return response()->json(['success' => true, 'days' => $days]);
+    }
+
+    /**
+     * POST /ebay1-data/missing-history
+     * Saves today's figure (the latest one sent today replaces the earlier one).
+     */
+    public function saveMissingHistory(Request $request)
+    {
+        $data = $request->validate([
+            'missing' => 'required|integer|min:0|max:100000000',
+            'cells' => 'required|integer|min:0|max:100000000',
+            'categories' => 'nullable|array|max:500',
+            'categories.*.name' => 'required|string|max:255',
+            'categories.*.missing' => 'required|integer|min:0',
+            'categories.*.cells' => 'nullable|integer|min:0',
+        ]);
+        if (! Schema::hasTable('ebay1_missing_history')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_missing_history is missing).'], 500);
+        }
+        $categories = array_values(array_map(static fn ($c) => [
+            'name' => (string) $c['name'],
+            'missing' => (int) $c['missing'],
+            'cells' => (int) ($c['cells'] ?? 0),
+        ], (array) ($data['categories'] ?? [])));
+        $today = now()->toDateString();
+        $payload = [
+            'total_missing' => (int) $data['missing'],
+            'total_cells' => (int) $data['cells'],
+            'categories_count' => count($categories),
+            'categories' => json_encode($categories),
+            'updated_at' => now(),
+        ];
+        if (DB::table('ebay1_missing_history')->where('snapshot_date', $today)->exists()) {
+            DB::table('ebay1_missing_history')->where('snapshot_date', $today)->update($payload);
+        } else {
+            DB::table('ebay1_missing_history')->insert($payload + ['snapshot_date' => $today, 'created_at' => now()]);
+        }
+
+        return response()->json(['success' => true, 'date' => $today]);
+    }
+
     // ---- Auto Push: the on/off switch and the item specifics edited by hand that are not on eBay yet. ----
 
     private function autoPushEnabled(): bool

@@ -19,6 +19,18 @@
         .e1d-badge.listed { background: #0284c7; }
         .e1d-badge.missing { background: #be123c; }
         .e1d-badge.rows { background: #334155; }
+        .e1d-badge.specmiss { background: #dc2626; display: inline-flex; align-items: center; gap: 6px; }
+        .e1d-hist-dot {
+            display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid #fecaca;
+            cursor: pointer; box-shadow: 0 0 0 0 rgba(255,255,255,.7);
+        }
+        .e1d-hist-dot:hover, .e1d-hist-dot:focus { background: #fde68a; border-color: #fff; outline: none; }
+        .e1d-misslive { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: .5rem .7rem; font-size: .85rem; margin-bottom: .6rem; color: #7f1d1d; }
+        .e1d-misstable { font-size: .85rem; }
+        .e1d-misstable th { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; }
+        .e1d-misstable summary { cursor: pointer; color: #2563eb; font-size: .78rem; }
+        .e1d-misscat { display: flex; justify-content: space-between; gap: 1rem; font-size: .78rem; padding: 1px 0; text-align: left; }
+        .e1d-misscat b { color: #dc2626; }
         .e1d-tabs {
             display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overflow-y: hidden;
             border-bottom: 2px solid #e2e8f0; margin-bottom: .75rem; padding-bottom: 0;
@@ -34,6 +46,10 @@
         .e1d-tab .e1d-tab-count {
             background: #e2e8f0; color: #334155; border-radius: 10px; padding: 0 .45rem; font-size: .72rem;
         }
+        .e1d-tab .e1d-tab-miss {
+            background: #dc2626; color: #fff; border-radius: 10px; padding: 0 .45rem; font-size: .72rem; font-weight: 700;
+        }
+        .e1d-tab.active .e1d-tab-miss { border: 1px solid #fff; }
         .e1d-tab:hover { background: #eff6ff; color: #1d4ed8; }
         .e1d-tab.active { background: #2c6ed5; border-color: #2c6ed5; color: #fff; }
         .e1d-tab.active .e1d-tab-count { background: rgba(255,255,255,.25); color: #fff; }
@@ -379,6 +395,17 @@
         </div>
     </div>
 
+    <div class="e1d-modal" id="e1dMissModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dMissTitle">
+            <h5 id="e1dMissTitle" class="mb-2"><i class="fas fa-history text-danger"></i> Missing specifics history</h5>
+            <p class="small text-muted mb-2">Item specific cells with no data, over every category. One figure per day.</p>
+            <div id="e1dMissBody"></div>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-sm btn-light" id="e1dMissCancel">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="e1d-modal" id="e1dDelModal" hidden>
         <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dDelTitle">
             <h5 id="e1dDelTitle" class="mb-2"><i class="fas fa-trash-alt text-danger"></i> Delete Column</h5>
@@ -479,6 +506,8 @@
                     return catLabel(a).localeCompare(catLabel(b));
                 });
                 if (activeTab !== ALL && !counts.has(activeTab)) activeTab = ALL;
+                const missingTotals = tabMissingTotals();
+                scheduleMissingSnapshot();
 
                 const holder = document.getElementById('e1dTabs');
                 holder.innerHTML = '';
@@ -488,7 +517,9 @@
                     tab.className = 'e1d-tab' + (key === activeTab ? ' active' : '');
                     tab.setAttribute('role', 'tab');
                     tab.title = title;
-                    tab.innerHTML = '<span class="e1d-tab-name">' + esc(label) + '</span><span class="e1d-tab-count">' + count + '</span>';
+                    const miss = missingTotals.get(key) || 0;
+                    tab.innerHTML = '<span class="e1d-tab-name">' + esc(label) + '</span><span class="e1d-tab-count">' + count + '</span>'
+                        + (miss ? '<span class="e1d-tab-miss" title="' + miss.toLocaleString() + ' missing values, all columns of this tab added up (the red numbers on its column headers)">' + miss.toLocaleString() + '</span>' : '');
                     tab.addEventListener('click', function () {
                         activeTab = key;
                         renderTabs();
@@ -496,11 +527,129 @@
                         applyFilters();
                         updateDelButton();
                         updatePushButton();
+                        updateMissingBadges();
                     });
                     holder.appendChild(tab);
                 }
                 addTab(ALL, 'All', 'All categories', total);
                 keys.forEach(function (key) { addTab(key, catLabel(key), key, counts.get(key)); });
+            }
+
+            // Missing values of every column of each tab added up (the same rule as the red number on a column header:
+            // every row of the tab counts, columns hidden with Hide Columns do not). The All tab has the page columns only.
+            function tabMissingTotals() {
+                const baseFields = [];
+                baseColumns().forEach(function (c) {
+                    if (c.field && !E1_NO_MISS.has(c.field) && !hiddenFields.has(c.field)) baseFields.push(c.field);
+                });
+                const byTab = new Map();
+                byTab.set(ALL, { rows: rows, fields: new Set(baseFields) });
+                rows.forEach(function (row) {
+                    const key = catKey(row);
+                    if (!byTab.has(key)) byTab.set(key, { rows: [], fields: new Set(baseFields) });
+                    const tab = byTab.get(key);
+                    tab.rows.push(row);
+                    if (row.specifics && !Array.isArray(row.specifics)) {
+                        Object.keys(row.specifics).forEach(function (name) {
+                            const field = specKey(name);
+                            if (!hiddenFields.has(field)) tab.fields.add(field);
+                        });
+                    }
+                });
+                const totals = new Map();
+                const specBase = new Set(baseFields);
+                const spec = { missing: 0, cells: 0, categories: [] };
+                byTab.forEach(function (tab, key) {
+                    let sum = 0, specSum = 0, specCells = 0;
+                    tab.fields.forEach(function (field) {
+                        const isSpec = !specBase.has(field);
+                        for (let i = 0; i < tab.rows.length; i++) {
+                            const miss = isMissingValue(tab.rows[i][field]);
+                            if (miss) sum++;
+                            if (isSpec) {
+                                specCells++;
+                                if (miss) specSum++;
+                            }
+                        }
+                    });
+                    totals.set(key, sum);
+                    if (key !== ALL) {
+                        spec.missing += specSum;
+                        spec.cells += specCells;
+                        spec.categories.push({ name: key, missing: specSum, cells: specCells });
+                    }
+                });
+                spec.categories.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
+                specMissing = spec;
+                return totals;
+            }
+
+            // ---- Badge: missing item specifics over every category, with a history dot (one saved figure per day). ----
+            let specMissing = { missing: 0, cells: 0, categories: [] };
+            let missPosted = null;
+            let missTimerSave = null;
+
+            function scheduleMissingSnapshot() {
+                clearTimeout(missTimerSave);
+                missTimerSave = setTimeout(function () {
+                    if (!rows.length || missPosted === specMissing.missing) return;
+                    const sent = specMissing.missing;
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                    fetch('/ebay1-data/missing-history', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ missing: specMissing.missing, cells: specMissing.cells, categories: specMissing.categories }),
+                    }).then(function (res) { if (res.ok) missPosted = sent; }).catch(function () {});
+                }, 4000);
+            }
+
+            function missingBadgeHtml() {
+                if (!rows.length) return '';
+                return '<span class="e1d-badge specmiss" title="Item specific cells with no data, all categories added up (' + specMissing.cells.toLocaleString() + ' cells in '
+                    + specMissing.categories.length + ' categories)">Missing specifics ' + specMissing.missing.toLocaleString()
+                    + ' <span class="e1d-hist-dot" role="button" tabindex="0" title="History of this count, day by day"></span></span>';
+            }
+
+            async function openMissingHistory() {
+                const modal = document.getElementById('e1dMissModal');
+                const body = document.getElementById('e1dMissBody');
+                modal.hidden = false;
+                body.innerHTML = '<div class="small text-muted p-2">Loading…</div>';
+                let days = [];
+                let note = '';
+                try {
+                    const res = await fetch('/ebay1-data/missing-history', { headers: { Accept: 'application/json' } });
+                    const json = await res.json();
+                    days = Array.isArray(json.days) ? json.days : [];
+                    note = json.message || '';
+                } catch (e) {
+                    body.innerHTML = '<div class="alert alert-danger small">Could not load the history.</div>';
+                    return;
+                }
+                const live = '<div class="e1d-misslive"><b>Now:</b> ' + specMissing.missing.toLocaleString() + ' of ' + specMissing.cells.toLocaleString()
+                    + ' item specific cells have no data, over ' + specMissing.categories.length + ' categories.</div>';
+                if (!days.length) {
+                    body.innerHTML = live + '<div class="small text-muted p-2">' + esc(note || 'No history yet. Today\u2019s figure is saved a few seconds after the page loads, and a new row is added every day the page is opened.') + '</div>';
+                    return;
+                }
+                let html = live + '<table class="table table-sm e1d-misstable"><thead><tr><th>Date</th><th class="text-end">Missing</th><th class="text-end">Change</th><th></th></tr></thead><tbody>';
+                days.forEach(function (day, i) {
+                    const prev = days[i + 1];
+                    let change = '<span class="text-muted">—</span>';
+                    if (prev) {
+                        const diff = day.missing - prev.missing;
+                        change = diff === 0 ? '<span class="text-muted">0</span>'
+                            : diff < 0 ? '<span style="color:#16a34a;font-weight:700;">▼ ' + Math.abs(diff).toLocaleString() + '</span>'
+                            : '<span style="color:#dc2626;font-weight:700;">▲ ' + diff.toLocaleString() + '</span>';
+                    }
+                    const cats = (day.categories || []).filter(function (c) { return c.missing > 0; }).slice(0, 40)
+                        .map(function (c) { return '<div class="e1d-misscat"><span>' + esc(catLabel(c.name)) + '</span><b>' + Number(c.missing).toLocaleString() + '</b></div>'; }).join('');
+                    html += '<tr><td>' + esc(day.date) + '</td><td class="text-end" style="color:#dc2626;font-weight:700;">' + Number(day.missing).toLocaleString()
+                        + '</td><td class="text-end">' + change + '</td><td class="text-end">'
+                        + (cats ? '<details><summary>Categories</summary>' + cats + '</details>' : '') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                body.innerHTML = html;
             }
 
             function renderBadges() {
@@ -521,6 +670,7 @@
                     '<span class="e1d-badge listed">Listed ' + listed + '</span>' +
                     '<span class="e1d-badge missing">Missing L ' + missing + '</span>' +
                     '<span class="e1d-badge rows">Rows ' + shown + '</span>' +
+                    missingBadgeHtml() +
                     (selected ? '<span class="e1d-badge listed" title="Rows ticked in the first column">Selected ' + selected + '</span>' : '');
             }
 
@@ -2039,6 +2189,8 @@
                 });
                 table.setColumns(baseColumns().concat(specColumns, [copyColumn(), editColumn()]));
                 applyColumnGroupVisibility();
+                // New column elements: put the red missing counts on their headers (a tab switch builds them all again).
+                updateMissingBadges();
             }
 
             // One line per word in the header. A trailing link icon (Source Data columns) stays on the last line.
@@ -3060,6 +3212,12 @@
                     updateMissingBadges();
                 });
                 table.on('dataFiltered', function () { /* badges are computed from the same rules */ });
+                // A redraw (column show / hide, resize, horizontal scroll) can rebuild header elements: put the counts back.
+                let missTimer = null;
+                table.on('renderComplete', function () {
+                    clearTimeout(missTimer);
+                    missTimer = setTimeout(updateMissingBadges, 150);
+                });
             }
 
             async function loadData() {
@@ -3152,6 +3310,16 @@
                 document.getElementById('e1dHdrBtn').addEventListener('click', openHdrModal);
                 document.getElementById('e1dHdrCancel').addEventListener('click', closeHdrModal);
                 document.getElementById('e1dHdrGo').addEventListener('click', saveHdrNames);
+                document.getElementById('e1dBadges').addEventListener('click', function (e) {
+                    if (e.target.closest && e.target.closest('.e1d-hist-dot')) openMissingHistory();
+                });
+                document.getElementById('e1dBadges').addEventListener('keydown', function (e) {
+                    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.e1d-hist-dot')) {
+                        e.preventDefault();
+                        openMissingHistory();
+                    }
+                });
+                document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
                 document.getElementById('e1dHdrReset').addEventListener('click', resetHdrNames);
                 document.getElementById('e1dHdrSearch').addEventListener('input', renderHdrList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
