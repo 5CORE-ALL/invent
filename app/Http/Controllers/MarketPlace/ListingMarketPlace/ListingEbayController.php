@@ -166,7 +166,7 @@ class ListingEbayController extends Controller
     private function fixedFieldValue(array $row, string $name): ?string
     {
         $key = $this->specKey($name);
-        $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => 'Yes'];
+        $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => '30'];
         if (isset($fixed[$key])) {
             return $fixed[$key];
         }

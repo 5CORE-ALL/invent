@@ -107,13 +107,13 @@ class Ebay1DataController extends Controller
                 $pendingPrice = is_numeric($specifics['__ebay_price'] ?? null) ? round((float) $specifics['__ebay_price'], 2) : null;
                 unset($specifics['__ebay_title'], $specifics['__ebay_price']);
 
-                // Brand is always 5 Core, and Durability Guarantee is always Yes, as on Technical Specifications.
+                // Brand is always 5 Core, and Durability Guarantee is always 30, as on Technical Specifications.
                 foreach (array_keys($specifics) as $specName) {
                     $aspect = $this->aspectKey((string) $specName);
                     if ($aspect === 'brand') {
                         $specifics[$specName] = '5 Core';
                     } elseif ($aspect === 'durabilityguarantee') {
-                        $specifics[$specName] = 'Yes';
+                        $specifics[$specName] = '30';
                     }
                 }
 
@@ -184,11 +184,11 @@ class Ebay1DataController extends Controller
             // Autofill rules, applied to every SKU of a category that has the column, missing listings included
             // (a missing listing has no pulled copy, so it would otherwise show these cells blank):
             //  - MPN and Model always carry the exact SKU of their own row, whatever eBay or an edit had there.
-            //  - Brand is always 5 Core and Durability Guarantee is always Yes.
+            //  - Brand is always 5 Core and Durability Guarantee is always 30.
             //  - Manufacturer (5 Core), Condition (New) and Country of Origin (China) are always applied to a
             //    missing listing. A listed row keeps what it has and only gets them when the cell is blank.
             $skuColumns = ['mpn' => 'MPN', 'model' => 'Model'];
-            $alwaysColumns = ['brand' => '5 Core', 'durabilityguarantee' => 'Yes'];
+            $alwaysColumns = ['brand' => '5 Core', 'durabilityguarantee' => '30'];
             $missingColumns = ['manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
             $present = [];
             foreach ($data as $entry) {
