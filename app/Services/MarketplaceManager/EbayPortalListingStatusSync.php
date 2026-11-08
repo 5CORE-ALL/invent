@@ -141,6 +141,46 @@ class EbayPortalListingStatusSync
      * @param  class-string<Model>  $model
      * @param  array<string, array{status: string, title: ?string, item_id: ?string, ebay_link: ?string, reason: ?string}>  $allListings
      */
+    /**
+     * Before the dead item id of a deleted listing is cleared, write its SKU on the Promoted Listings ad rows that
+     * point at that id. Those rows join to the SKU through the item id, so without this the campaign ads page
+     * shows the listing id where the SKU name belongs.
+     */
+    protected function keepSkuOnCampaignAds(string $model, string $table, string $sku): void
+    {
+        try {
+            $adsTable = [
+                'ebay_metrics' => 'ebay_campaign_ads',
+                'ebay_2_metrics' => 'ebay2_campaign_ads',
+                'ebay_3_metrics' => 'ebay3_campaign_ads',
+            ][$table] ?? null;
+            if ($adsTable === null || ! Schema::hasTable($adsTable) || ! Schema::hasColumn($adsTable, 'sku') || ! Schema::hasColumn($adsTable, 'listing_id')) {
+                return;
+            }
+            $ids = $model::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
+                ->pluck('item_id')
+                ->map(fn ($id) => (string) $id)
+                ->filter(fn ($id) => ! str_starts_with($id, 'UNSOLD-') && strcasecmp($id, $sku) !== 0)
+                ->unique()
+                ->values()
+                ->all();
+            if ($ids === []) {
+                return;
+            }
+            \Illuminate\Support\Facades\DB::table($adsTable)
+                ->whereIn('listing_id', $ids)
+                ->where(function ($q) {
+                    $q->whereNull('sku')->orWhere('sku', '');
+                })
+                ->update(['sku' => $sku]);
+        } catch (\Throwable $e) {
+            Log::warning('EbayPortalListingStatusSync: could not keep the SKU on campaign ads', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+    }
+
     protected function persist(string $model, string $table, array $allListings): void
     {
         $hasReason = Schema::hasColumn($table, 'inactive_reason');
@@ -187,6 +227,7 @@ class EbayPortalListingStatusSync
                         }
                         // Deleted on eBay (neither Active nor Unsold returned it): the old item id is dead, drop it.
                         if ($hasItemId && ($data['status'] ?? '') === 'MISSING') {
+                            $this->keepSkuOnCampaignAds($model, $table, $sku);
                             $statusOnly['item_id'] = $table === 'ebay_2_metrics' ? '' : null; // ebay_2_metrics.item_id is NOT NULL
                             if ($hasLink) {
                                 $statusOnly['ebay_link'] = null;
