@@ -851,10 +851,7 @@ class Ebay1DataController extends Controller
         if (Schema::hasTable('ebay1_item_specifics')) {
             foreach ($skus as $sku) {
                 $stored = DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->first();
-                if (! $stored) {
-                    continue;
-                }
-                $decoded = json_decode((string) $stored->specifics, true);
+                $decoded = $stored ? json_decode((string) $stored->specifics, true) : [];
                 $decoded = is_array($decoded) ? $decoded : [];
                 $changed = false;
                 foreach (array_keys($decoded) as $name) {
@@ -869,10 +866,21 @@ class Ebay1DataController extends Controller
                     $changed = true;
                 }
                 if ($changed) {
-                    DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->update([
+                    $payload = [
                         'specifics' => json_encode($decoded, JSON_UNESCAPED_UNICODE),
                         'updated_at' => now(),
-                    ]);
+                    ];
+                    if ($stored) {
+                        DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->update($payload);
+                    } else {
+                        // A SKU never pulled from eBay (for example a Missing L row) has no stored copy yet. Without one
+                        // the pasted value only reached Technical Specifications and this page showed it blank again
+                        // after a refresh, so the copy is created here.
+                        DB::table('ebay1_item_specifics')->insert($payload + [
+                            'sku' => $this->skuKey($sku),
+                            'created_at' => now(),
+                        ]);
+                    }
                     $copiesUpdated++;
                     // An edited cell waits for Auto Push (or the Push button) until it is on eBay.
                     $this->markPendingSpecific($sku, $column);
