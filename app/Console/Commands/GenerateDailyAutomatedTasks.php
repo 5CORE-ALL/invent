@@ -7,6 +7,7 @@ use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSchedule;
 use App\Support\AutomatedTaskSubtaskFirer;
+use App\Support\Ebay1RedTextReviewAutomatedTask;
 use App\Support\LmpMissingDailyAutomatedTask;
 use App\Support\MissingListingDailyAutomatedTask;
 use App\Support\TaskBusinessTime;
@@ -47,6 +48,7 @@ class GenerateDailyAutomatedTasks extends Command
             TaskBusinessTime::applyDatabaseSession();
             MissingListingDailyAutomatedTask::ensureTemplate();
             LmpMissingDailyAutomatedTask::ensureTemplate();
+            Ebay1RedTextReviewAutomatedTask::ensureTemplate();
             $now = TaskBusinessTime::now();
             $today = $now->toDateString();
             $generateAt = TaskBusinessTime::dailyGenerateAt($now);

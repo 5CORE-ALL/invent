@@ -51,6 +51,11 @@ class Ebay1DataController extends Controller
             // UPC column: the code held in CP Master (product_master), as on Technical Specifications.
             $cpUpc = ProductUpc::forSkus($listing->map(static fn ($item) => trim((string) ($item->sku ?? '')))->filter()->values()->all());
 
+            // Item specifics edited by hand and not pushed yet, and the stored value of every SKU before autofill:
+            // the cells of both kinds are what Auto Push sends.
+            $pendingByKey = $this->pendingSpecificsBySku();
+            $origByIndex = [];
+
             $data = [];
             foreach ($listing as $item) {
                 $sku = trim((string) ($item->sku ?? ''));
@@ -132,6 +137,20 @@ class Ebay1DataController extends Controller
                     $itemId = trim((string) $metric['item_id']);
                 }
 
+                // The stored copy follows eBay, so it is what autofill is compared with. A SKU with no stored copy
+                // (null) is never auto pushed from autofill.
+                $origKeys = null;
+                if ($live !== null) {
+                    $origKeys = [];
+                    foreach (($live['specifics'] ?? []) as $origName => $origValue) {
+                        if (str_starts_with((string) $origName, '__')) {
+                            continue;
+                        }
+                        $origKeys[$this->aspectKey((string) $origName)] = is_scalar($origValue) ? trim((string) $origValue) : '';
+                    }
+                }
+                $origByIndex[count($data)] = $origKeys;
+
                 $data[] = [
                     'parent' => (string) ($item->parent ?? ''),
                     'sku' => $sku,
@@ -204,9 +223,33 @@ class Ebay1DataController extends Controller
                 }
             }
 
+            // push_cols: the item specifics Auto Push sends for the SKU. Those edited by hand and not pushed yet,
+            // plus those autofill changed (UPC is not an item specific, it is pushed from Technical Specifications).
+            $autofillKeys = array_merge(array_keys($skuColumns), array_keys($alwaysColumns), array_keys($missingColumns));
+            foreach ($data as $i => $entry) {
+                $pendingKeys = $pendingByKey[$this->skuKey((string) $entry['sku'])] ?? [];
+                $orig = $origByIndex[$i] ?? null;
+                $cols = [];
+                foreach ($entry['specifics'] as $specName => $specValue) {
+                    $k = $this->aspectKey((string) $specName);
+                    $val = is_scalar($specValue) ? trim((string) $specValue) : '';
+                    if ($val === '' || $k === 'upc' || str_starts_with((string) $specName, '__')) {
+                        continue;
+                    }
+                    $edited = isset($pendingKeys[$k]);
+                    $autofilled = $orig !== null && in_array($k, $autofillKeys, true) && ($orig[$k] ?? '') !== $val;
+                    if ($edited || $autofilled) {
+                        $cols[] = (string) $specName;
+                    }
+                }
+                $data[$i]['push_cols'] = $cols;
+            }
+
             return response()->json([
                 'status' => 200,
                 'data' => $data,
+                'auto_push' => $this->autoPushEnabled(),
+                'cell_styles' => (object) $this->cellStylesMap(),
                 'sources' => $this->columnSourceList(),
                 'column_groups' => $this->columnGroups(),
             ]);
@@ -269,6 +312,9 @@ class Ebay1DataController extends Controller
 
         // The app's own copy of the item specifics of a SKU loses the columns.
         $dropStored = function (string $key) use ($wantedKeys): void {
+            if (Schema::hasTable('ebay1_pending_specifics')) {
+                DB::table('ebay1_pending_specifics')->where('sku', $key)->whereIn('name_key', $wantedKeys)->delete();
+            }
             $stored = DB::table('ebay1_item_specifics')->where('sku', $key)->first();
             if (! $stored) {
                 return;
@@ -575,6 +621,9 @@ class Ebay1DataController extends Controller
                 continue;
             }
 
+            // These cells are on eBay now, so they are no longer waiting for Auto Push.
+            $this->clearPendingSpecifics($sku, array_column($overrides, 'name'));
+
             // The stored copy follows eBay once eBay accepted the values.
             if ($overrides !== [] && Schema::hasTable('ebay1_item_specifics')) {
                 $stored = DB::table('ebay1_item_specifics')->where('sku', $this->skuKey($sku))->first();
@@ -825,6 +874,8 @@ class Ebay1DataController extends Controller
                         'updated_at' => now(),
                     ]);
                     $copiesUpdated++;
+                    // An edited cell waits for Auto Push (or the Push button) until it is on eBay.
+                    $this->markPendingSpecific($sku, $column);
                 }
             }
         }
@@ -1201,6 +1252,178 @@ class Ebay1DataController extends Controller
         }
 
         return response()->json(['success' => true, 'skus' => count($skus), 'specs_updated' => 0, 'copies_updated' => $copiesUpdated]);
+    }
+
+    // ---- Cell colours (text colour and background, like Excel), shared by every user. ----
+
+    /**
+     * @return array<string, array<string, array{0: ?string, 1: ?string}>> SKU key => field => [text colour, background]
+     */
+    private function cellStylesMap(): array
+    {
+        if (! Schema::hasTable('ebay1_cell_styles')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('ebay1_cell_styles')->select(['sku', 'field', 'color', 'bg'])->get() as $row) {
+            $out[$this->skuKey((string) $row->sku)][(string) $row->field] = [$row->color, $row->bg];
+        }
+
+        return $out;
+    }
+
+    /**
+     * POST /ebay1-data/cell-styles
+     * Sets the text colour and/or background of the given cells. A key that is sent as null/blank clears it
+     * (default colour); a key that is not sent stays as it is.
+     */
+    public function saveCellStyles(Request $request)
+    {
+        $data = $request->validate([
+            'cells' => 'required|array|min:1|max:2000',
+            'cells.*.sku' => 'required|string|max:191',
+            'cells.*.field' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9_]+$/'],
+            'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'bg' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ]);
+        if (! Schema::hasTable('ebay1_cell_styles')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_cell_styles is missing).'], 500);
+        }
+        $setColor = $request->exists('color');
+        $setBg = $request->exists('bg');
+        if (! $setColor && ! $setBg) {
+            return response()->json(['success' => false, 'message' => 'Nothing to change.'], 422);
+        }
+        $newColor = $setColor && ! empty($data['color']) ? strtolower((string) $data['color']) : null;
+        $newBg = $setBg && ! empty($data['bg']) ? strtolower((string) $data['bg']) : null;
+
+        $cells = [];
+        foreach ($data['cells'] as $cell) {
+            $cells[$this->skuKey((string) $cell['sku']).'|'.$cell['field']] = ['sku' => $this->skuKey((string) $cell['sku']), 'field' => (string) $cell['field']];
+        }
+        $existing = [];
+        foreach (array_chunk(array_values(array_unique(array_column($cells, 'sku'))), 500) as $skuChunk) {
+            foreach (DB::table('ebay1_cell_styles')->whereIn('sku', $skuChunk)->get() as $row) {
+                $existing[$this->skuKey((string) $row->sku).'|'.$row->field] = $row;
+            }
+        }
+
+        $now = now();
+        $userId = $request->user()?->id;
+        $inserts = [];
+        $deletes = [];
+        $updates = []; // "color|bg" => [ids]
+        foreach ($cells as $key => $cell) {
+            $row = $existing[$key] ?? null;
+            $color = $setColor ? $newColor : ($row->color ?? null);
+            $bg = $setBg ? $newBg : ($row->bg ?? null);
+            if ($row) {
+                if ($color === null && $bg === null) {
+                    $deletes[] = $row->id;
+                } elseif ($color !== ($row->color ?? null) || $bg !== ($row->bg ?? null)) {
+                    $updates[($color ?? '').'|'.($bg ?? '')][] = $row->id;
+                }
+            } elseif ($color !== null || $bg !== null) {
+                $inserts[] = $cell + ['color' => $color, 'bg' => $bg, 'updated_by' => $userId, 'created_at' => $now, 'updated_at' => $now];
+            }
+        }
+
+        DB::transaction(function () use ($inserts, $deletes, $updates, $userId, $now) {
+            foreach (array_chunk($deletes, 500) as $ids) {
+                DB::table('ebay1_cell_styles')->whereIn('id', $ids)->delete();
+            }
+            foreach ($updates as $pair => $ids) {
+                [$color, $bg] = explode('|', (string) $pair, 2);
+                foreach (array_chunk($ids, 500) as $chunk) {
+                    DB::table('ebay1_cell_styles')->whereIn('id', $chunk)->update([
+                        'color' => $color !== '' ? $color : null,
+                        'bg' => $bg !== '' ? $bg : null,
+                        'updated_by' => $userId,
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
+            foreach (array_chunk($inserts, 300) as $chunk) {
+                DB::table('ebay1_cell_styles')->insert($chunk);
+            }
+        });
+
+        return response()->json(['success' => true, 'cells' => count($cells)]);
+    }
+
+    // ---- Auto Push: the on/off switch and the item specifics edited by hand that are not on eBay yet. ----
+
+    private function autoPushEnabled(): bool
+    {
+        if (! Schema::hasTable('ebay1_settings')) {
+            return false;
+        }
+
+        return (string) DB::table('ebay1_settings')->where('key', 'auto_push')->value('value') === '1';
+    }
+
+    /**
+     * POST /ebay1-data/auto-push
+     */
+    public function setAutoPush(Request $request)
+    {
+        $data = $request->validate(['enabled' => 'required|boolean']);
+        if (! Schema::hasTable('ebay1_settings')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (table ebay1_settings is missing).'], 500);
+        }
+        $enabled = (bool) $data['enabled'];
+        $exists = DB::table('ebay1_settings')->where('key', 'auto_push')->exists();
+        if ($exists) {
+            DB::table('ebay1_settings')->where('key', 'auto_push')->update(['value' => $enabled ? '1' : '0', 'updated_at' => now()]);
+        } else {
+            DB::table('ebay1_settings')->insert(['key' => 'auto_push', 'value' => $enabled ? '1' : '0', 'created_at' => now(), 'updated_at' => now()]);
+        }
+
+        return response()->json(['success' => true, 'enabled' => $enabled]);
+    }
+
+    /**
+     * @return array<string, array<string, string>> SKU key => [aspect key => column name]
+     */
+    private function pendingSpecificsBySku(): array
+    {
+        if (! Schema::hasTable('ebay1_pending_specifics')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('ebay1_pending_specifics')->select(['sku', 'name_key', 'name'])->get() as $row) {
+            $out[$this->skuKey((string) $row->sku)][(string) $row->name_key] = (string) $row->name;
+        }
+
+        return $out;
+    }
+
+    private function markPendingSpecific(string $sku, string $name): void
+    {
+        $key = $this->aspectKey($name);
+        if ($key === '' || ! Schema::hasTable('ebay1_pending_specifics')) {
+            return;
+        }
+        $where = ['sku' => $this->skuKey($sku), 'name_key' => $key];
+        if (DB::table('ebay1_pending_specifics')->where($where)->exists()) {
+            DB::table('ebay1_pending_specifics')->where($where)->update(['name' => $name, 'updated_at' => now()]);
+        } else {
+            DB::table('ebay1_pending_specifics')->insert($where + ['name' => $name, 'created_at' => now(), 'updated_at' => now()]);
+        }
+    }
+
+    /**
+     * @param  list<string>  $names
+     */
+    private function clearPendingSpecifics(string $sku, array $names): void
+    {
+        if ($names === [] || ! Schema::hasTable('ebay1_pending_specifics')) {
+            return;
+        }
+        $keys = array_values(array_filter(array_map(fn ($n) => $this->aspectKey((string) $n), $names)));
+        if ($keys !== []) {
+            DB::table('ebay1_pending_specifics')->where('sku', $this->skuKey($sku))->whereIn('name_key', $keys)->delete();
+        }
     }
 
     private function clearPending(string $sku, string $field): void

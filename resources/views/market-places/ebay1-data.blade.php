@@ -75,6 +75,20 @@
         #ebay1-data-table .tabulator-frozen.tabulator-frozen-right { box-shadow: -3px 0 6px rgba(15,23,42,.15); z-index: 14; }
         #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title,
         #ebay1-data-table .tabulator-col[tabulator-field="_copy"] .tabulator-col-title { writing-mode: horizontal-tb; transform: none; }
+        /* Cell colours (text colour / fill), like Excel. They sit before the selection rules, so a selected cell still shows as selected. */
+        #ebay1-data-table .tabulator-row .tabulator-cell.e1d-bg.e1d-bg.e1d-bg { background-color: var(--e1d-bg) !important; }
+        #ebay1-data-table .tabulator-row .tabulator-cell.e1d-fg, #ebay1-data-table .tabulator-row .tabulator-cell.e1d-fg * { color: var(--e1d-fg) !important; }
+        .e1d-fmt .e1d-fmt-main { position: relative; padding: 2px 8px 7px; }
+        .e1d-fmt .e1d-fmt-caret { padding: 2px 5px; }
+        .e1d-fmt .e1d-swatch { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 3px; border-radius: 1px; background: #ff0000; }
+        #e1dPal { position: fixed; z-index: 2500; display: none; width: 236px; padding: 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 30px rgba(15,23,42,.25); }
+        #e1dPal .e1d-pal-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 6px; }
+        #e1dPal .e1d-pal-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-bottom: 4px; }
+        #e1dPal .e1d-sw { width: 20px; height: 20px; padding: 0; border: 1px solid #cbd5e1; border-radius: 3px; cursor: pointer; }
+        #e1dPal .e1d-sw:hover { outline: 2px solid #1a56b7; outline-offset: 1px; }
+        #e1dPal .e1d-pal-btn { display: block; width: 100%; text-align: left; padding: 4px 6px; margin-bottom: 6px; font-size: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; cursor: pointer; }
+        #e1dPal .e1d-pal-btn:hover { background: #e8f0fe; }
+        #e1dPal .e1d-pal-foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 12px; display: flex; align-items: center; gap: 6px; }
         /* Excel-like cell selection: click a cell, Shift+click or drag for a block, Ctrl+C / Ctrl+V. */
         #ebay1-data-table .tabulator-cell { -webkit-user-select: none; user-select: none; }
         #ebay1-data-table .tabulator-row .tabulator-cell.e1d-cell-sel.e1d-cell-sel.e1d-cell-sel { background: #cfe0ff !important; box-shadow: inset 0 0 0 1px #8fb0f0; }
@@ -204,6 +218,21 @@
             <div class="card e1d-card">
                 <div class="card-body">
                     <div class="e1d-toolbar">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="e1dAuto" aria-pressed="false" title="Auto Push: when ON, the cells you edit and the cells autofill changes are pushed to the live eBay 1 listings by themselves (only those cells)">
+                            <i class="fas fa-bolt"></i> Auto Push: <b id="e1dAutoState">OFF</b>
+                        </button>
+                        <div class="btn-group btn-group-sm e1d-fmt" role="group" aria-label="Cell text colour">
+                            <button type="button" class="btn btn-outline-secondary e1d-fmt-main" id="e1dTxtApply" title="Text colour: colour the text of the selected cells (the bar shows the colour used)" aria-label="Text colour">
+                                <i class="fas fa-font"></i><span class="e1d-swatch" id="e1dTxtSwatch"></span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary e1d-fmt-caret" id="e1dTxtMenu" title="Pick a text colour" aria-label="Pick a text colour"><i class="fas fa-caret-down"></i></button>
+                        </div>
+                        <div class="btn-group btn-group-sm e1d-fmt" role="group" aria-label="Cell background colour">
+                            <button type="button" class="btn btn-outline-secondary e1d-fmt-main" id="e1dBgApply" title="Fill colour: colour the background of the selected cells (the bar shows the colour used)" aria-label="Fill colour">
+                                <i class="fas fa-fill-drip"></i><span class="e1d-swatch" id="e1dBgSwatch"></span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary e1d-fmt-caret" id="e1dBgMenu" title="Pick a fill colour" aria-label="Pick a fill colour"><i class="fas fa-caret-down"></i></button>
+                        </div>
                         <input type="search" id="e1dSearch" placeholder="Search SKU, parent, title or item ID…" autocomplete="off">
                         <select id="e1dListed" title="Listing state">
                             <option value="all">All listing states</option>
@@ -502,13 +531,47 @@
                 renderBadges();
             }
 
-            function refreshAll() {
+            // The place the user is working in: page, vertical and horizontal scroll. A save that refreshes the table
+            // puts the view back (refreshAll(true)), instead of jumping to the first page and the top left.
+            function viewState() {
+                if (!table || !tableReady) return null;
+                const holder = table.element.querySelector('.tabulator-tableholder');
+                let page = false;
+                try { page = table.getPage(); } catch (e) {}
+                return { top: holder ? holder.scrollTop : 0, left: holder ? holder.scrollLeft : 0, page: page };
+            }
+
+            function restoreView(state) {
+                if (!state || !table || !tableReady) return;
+                const apply = function () {
+                    const holder = table.element.querySelector('.tabulator-tableholder');
+                    if (holder) {
+                        holder.scrollTop = state.top;
+                        holder.scrollLeft = state.left;
+                    }
+                    csPaint();
+                };
+                cellHold = Date.now() + 800;
+                let go = Promise.resolve();
+                try {
+                    if (state.page && table.getPage() !== state.page) go = Promise.resolve(table.setPage(state.page)).catch(function () {});
+                } catch (e) {}
+                go.then(function () {
+                    apply();
+                    requestAnimationFrame(apply);
+                    setTimeout(apply, 120);
+                });
+            }
+
+            function refreshAll(keepView) {
+                const view = keepView === true ? viewState() : null;
                 renderTabs();
                 syncSpecColumns();
                 applyFilters();
                 updateDelButton();
                 updatePushButton();
                 updateMissingBadges();
+                if (view) restoreView(view);
             }
 
             // Red count on every header: how many rows of the open tab have no data in that column, missing listings included.
@@ -727,7 +790,7 @@
                     if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
                     row.nr_req = json.nr_req;
                     status.textContent = row.sku + ' set to ' + (json.nr_req === 'NR' ? 'NRL' : 'REQ') + '.';
-                    refreshAll();
+                    refreshAll(true);
                 } catch (e) {
                     cell.restoreOldValue();
                     status.textContent = 'Could not save ' + row.sku + ': ' + (e.message || 'failed');
@@ -813,6 +876,132 @@
                 status.textContent = 'Pushed ' + pushed + ', unchanged ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
                 if (problems.length) window.alert(problems.slice(0, 15).join('\n') + (problems.length > 15 ? '\n…' : ''));
                 await loadData();
+            }
+
+            // ---- Auto Push: when ON, only the cells that were edited (by hand) or changed by autofill are pushed. ----
+            let autoPushOn = false;
+            let autoPushBusy = false;
+            let autoPushTimer = null;
+            const autoSeen = new Set(); // SKUs tried in this page session, so nothing is pushed twice in a loop
+
+            // Remembers on the row that these item specifics were edited and still wait for a push.
+            function addPushCol(row, name) {
+                const list = Array.isArray(row.push_cols) ? row.push_cols.slice() : [];
+                if (!list.some(function (n) { return gKey(n) === gKey(name); })) list.push(name);
+                return list;
+            }
+
+            function autoItem(row) {
+                if (!/^\d{9,15}$/.test(String(row.item_id || '').trim())) return null;
+                const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
+                const specifics = {};
+                (row.push_cols || []).forEach(function (name) {
+                    const v = String(spec[name] == null ? '' : spec[name]).trim();
+                    if (v !== '' && gKey(name) !== 'upc') specifics[name] = v;
+                });
+                const item = { sku: row.sku, item_id: String(row.item_id).trim(), specifics: specifics };
+                if (row.title_pending && String(row.ebay_title || '').trim() !== '') item.title = String(row.ebay_title).trim();
+                if (row.price_pending && Number(row.ebay_price) > 0) item.price = Number(row.ebay_price);
+                return Object.keys(specifics).length || item.title || item.price ? item : null;
+            }
+
+            function autoItems(includeSeen) {
+                const out = [];
+                rows.forEach(function (row) {
+                    if (!includeSeen && autoSeen.has(String(row.sku))) return;
+                    const item = autoItem(row);
+                    if (item) out.push(item);
+                });
+                return out;
+            }
+
+            function renderAutoButton() {
+                const btn = document.getElementById('e1dAuto');
+                if (!btn) return;
+                btn.classList.toggle('btn-success', autoPushOn);
+                btn.classList.toggle('btn-outline-secondary', !autoPushOn);
+                btn.setAttribute('aria-pressed', autoPushOn ? 'true' : 'false');
+                document.getElementById('e1dAutoState').textContent = autoPushOn ? 'ON' : 'OFF';
+            }
+
+            function autoPushSoon() {
+                if (!autoPushOn) return;
+                clearTimeout(autoPushTimer);
+                autoPushTimer = setTimeout(runAutoPush, 1200);
+            }
+
+            async function runAutoPush() {
+                if (!autoPushOn || autoPushBusy) return;
+                const items = autoItems(false);
+                if (!items.length) return;
+                const status = document.getElementById('e1dPullStatus');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                autoPushBusy = true;
+                let pushed = 0, unchanged = 0, skipped = 0, failed = 0;
+                const problems = [];
+                const size = 5;
+                for (let i = 0; i < items.length && autoPushOn; i += size) {
+                    const chunk = items.slice(i, i + size);
+                    chunk.forEach(function (item) { autoSeen.add(String(item.sku)); });
+                    status.textContent = 'Auto push ' + Math.min(i + size, items.length) + ' / ' + items.length + '…';
+                    try {
+                        const res = await fetch('/ebay1-data/push', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ items: chunk }),
+                        });
+                        const json = await res.json();
+                        if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'failed') { failed++; problems.push(r.sku + ': ' + r.message); }
+                            else if (r.status === 'pushed') pushed++;
+                            else if (r.status === 'unchanged') unchanged++;
+                            else skipped++;
+                        });
+                    } catch (e) {
+                        failed += chunk.length;
+                        problems.push(e.message || 'Request failed');
+                    }
+                }
+                autoPushBusy = false;
+                status.textContent = 'Auto push: pushed ' + pushed + ', unchanged ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
+                if (failed) rowToast('Auto push: ' + failed + ' failed. ' + problems.slice(0, 3).join(' | '), false);
+                else if (pushed) rowToast('Auto push: ' + pushed + ' SKU' + (pushed === 1 ? '' : 's') + ' pushed to eBay 1.', true);
+                // Reload so the pushed cells are no longer marked as waiting.
+                if (pushed || unchanged) await loadData();
+            }
+
+            async function toggleAutoPush() {
+                const turnOn = !autoPushOn;
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                if (turnOn) {
+                    const waiting = autoItems(true).length;
+                    if (!window.confirm('Turn Auto Push ON?\n' + (waiting
+                        ? waiting + ' SKU' + (waiting === 1 ? ' has' : 's have') + ' edited or autofilled cells that are not on eBay 1 yet. Only those cells are pushed to the live listings now, and every later edit is pushed by itself.'
+                        : 'Nothing is waiting now. From now on, every cell you edit or autofill changes is pushed to the live eBay 1 listings by itself.'))) return;
+                }
+                const btn = document.getElementById('e1dAuto');
+                btn.disabled = true;
+                try {
+                    const res = await fetch('/ebay1-data/auto-push', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({ enabled: turnOn }),
+                    });
+                    let json = {};
+                    try { json = await res.json(); } catch (e) {}
+                    if (!res.ok || !json.success) throw new Error(json.message || 'Could not save');
+                    autoPushOn = !!json.enabled;
+                    autoSeen.clear();
+                    clearTimeout(autoPushTimer);
+                    renderAutoButton();
+                    document.getElementById('e1dPullStatus').textContent = autoPushOn ? 'Auto Push is ON.' : 'Auto Push is OFF.';
+                    if (autoPushOn) autoPushSoon();
+                } catch (e) {
+                    rowToast('Auto Push: ' + (e.message || 'could not change'), false);
+                } finally {
+                    btn.disabled = false;
+                }
             }
 
             // ---- Source Data: a column of this tab always reads from a Technical Specifications column. ----
@@ -1510,27 +1699,30 @@
                                 const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(edit.column); });
                                 spec[existing || edit.column] = edit.value;
                                 patch[specKey(edit.column)] = edit.value;
+                                patch.push_cols = addPushCol({ push_cols: patch.push_cols || data.push_cols }, existing || edit.column);
                             });
                             patch.specifics = spec;
                             const source = rows.find(function (r) { return String(r.sku) === String(row.sku); });
                             if (source) Object.assign(source, patch);
                             if (tRow) tRow.update(patch);
                             else Object.assign(row, patch);
+                            autoSeen.delete(String(row.sku));
                         });
                     } finally {
                         table.restoreRedraw();
                     }
+                    autoPushSoon();
                 }
                 editBusy = false;
                 go.textContent = 'Apply';
                 if (saved.length === edits.length) {
                     document.getElementById('e1dEditModal').hidden = true;
-                    refreshAll();
+                    refreshAll(true);
                 } else {
                     saved.forEach(function (edit) { editPicked.delete(edit.column); });
                     renderEditList();
                     renderEditFields();
-                    if (saved.length) refreshAll();
+                    if (saved.length) refreshAll(true);
                 }
             }
 
@@ -2242,6 +2434,7 @@
             let cellDrag = false;
             let cellBusy = false;
             let cellKeep = false;
+            let cellHold = 0; // until this time, a refresh does not clear the selection
 
             function csColumns() {
                 if (!table || !tableReady) return [];
@@ -2290,7 +2483,7 @@
             }
 
             function csClear() {
-                if (cellKeep) return;
+                if (cellKeep || Date.now() < cellHold) return;
                 if (!cellSel) return;
                 cellSel = null;
                 csPaint();
@@ -2542,8 +2735,10 @@
                                         spec[existing || job.column] = job.value;
                                         patch = { specifics: spec };
                                         patch[specKey(job.column)] = job.value;
+                                        patch.push_cols = addPushCol(data, existing || job.column);
                                     }
                                 }
+                                autoSeen.delete(sku);
                                 if (source) Object.assign(source, patch);
                                 if (tRow) tRow.update(patch);
                             });
@@ -2557,8 +2752,9 @@
                         cellSel = { a: { sku: String(ix.rowList[b.r1].getData().sku), field: ix.cols[b.c1].getField() }, f: { sku: String(last), field: ix.cols[region.c2].getField() } };
                     }
                     cellKeep = true;
-                    try { refreshAll(); } finally { cellKeep = false; }
+                    try { refreshAll(true); } finally { cellKeep = false; }
                     csPaint();
+                    autoPushSoon();
                 }
                 if (failure) {
                     rowToast('Pasted ' + done.length + ' of ' + jobs.length + ' changes, then it stopped: ' + failure, false);
@@ -2601,7 +2797,7 @@
                 document.addEventListener('mouseup', function () { cellDrag = false; });
                 document.addEventListener('mousedown', function (e) {
                     if (!cellSel || !table) return;
-                    if (e.target.closest && e.target.closest('#ebay1-data-table, .tabulator-menu, .e1d-modal')) return;
+                    if (e.target.closest && e.target.closest('#ebay1-data-table, .tabulator-menu, .e1d-modal, .e1d-fmt')) return;
                     csClear();
                 });
                 document.addEventListener('keydown', function (e) {
@@ -2637,8 +2833,160 @@
                 });
             }
 
+            // ---- Cell colours: text colour and fill of the selected cells (one or many), like Excel. Saved for everyone. ----
+            let cellStyles = {}; // SKU key -> field -> [text colour, fill]
+            const E1_PAL = [
+                ['#c00000', '#ff0000', '#ffc000', '#ffff00', '#92d050', '#00b050', '#00b0f0', '#0070c0', '#002060', '#7030a0'],
+                ['#000000', '#262626', '#404040', '#595959', '#7f7f7f', '#a6a6a6', '#bfbfbf', '#d9d9d9', '#f2f2f2', '#ffffff'],
+                ['#ffc7ce', '#ffeb9c', '#c6efce', '#ddebf7', '#e4dfec', '#fce4d6', '#fff2cc', '#e2efda', '#d9e1f2', '#ededed'],
+            ];
+            const fmtLast = { color: '#ff0000', bg: '#ffff00' };
+            try {
+                fmtLast.color = localStorage.getItem('ebay1_fmt_color') || fmtLast.color;
+                fmtLast.bg = localStorage.getItem('ebay1_fmt_bg') || fmtLast.bg;
+            } catch (e) {}
+            let palMode = 'color';
+
+            function styleKey(sku) {
+                return String(sku === null || sku === undefined ? '' : sku).replace(/\u00a0/g, ' ').trim().toUpperCase();
+            }
+
+            // Puts the saved colours of one row on its cells (CSS variables, so selection and hover keep working).
+            function styleRow(row) {
+                const st = cellStyles[styleKey(row.getData().sku)] || null;
+                row.getCells().forEach(function (cell) {
+                    const f = cell.getField();
+                    const el = cell.getElement();
+                    if (!el) return;
+                    const s = st && f ? st[f] : null;
+                    if (s && s[0]) { el.style.setProperty('--e1d-fg', s[0]); el.classList.add('e1d-fg'); }
+                    else { el.style.removeProperty('--e1d-fg'); el.classList.remove('e1d-fg'); }
+                    if (s && s[1]) { el.style.setProperty('--e1d-bg', s[1]); el.classList.add('e1d-bg'); }
+                    else { el.style.removeProperty('--e1d-bg'); el.classList.remove('e1d-bg'); }
+                });
+            }
+
+            function restyleVisible() {
+                if (!table || !tableReady) return;
+                table.getRows('visible').forEach(styleRow);
+            }
+
+            // patch: { color: '#rrggbb' | null } and/or { bg: '#rrggbb' | null }. null = back to the default colour.
+            async function applyCellStyle(patch) {
+                if (!table || !tableReady) return;
+                const ix = csIndex();
+                const b = csBounds(ix);
+                if (!b) { rowToast('Select the cells first, then pick a colour.', false); return; }
+                const cells = [];
+                for (let r = b.r1; r <= b.r2; r++) {
+                    const sku = String(ix.rowList[r].getData().sku);
+                    for (let c = b.c1; c <= b.c2; c++) cells.push({ sku: sku, field: ix.cols[c].getField() });
+                }
+                cells.forEach(function (cell) {
+                    const k = styleKey(cell.sku);
+                    const cur = (cellStyles[k] && cellStyles[k][cell.field]) || [null, null];
+                    const next = [
+                        Object.prototype.hasOwnProperty.call(patch, 'color') ? patch.color : cur[0],
+                        Object.prototype.hasOwnProperty.call(patch, 'bg') ? patch.bg : cur[1],
+                    ];
+                    if (!next[0] && !next[1]) {
+                        if (cellStyles[k]) {
+                            delete cellStyles[k][cell.field];
+                            if (!Object.keys(cellStyles[k]).length) delete cellStyles[k];
+                        }
+                    } else {
+                        (cellStyles[k] = cellStyles[k] || {})[cell.field] = next;
+                    }
+                });
+                restyleVisible();
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                try {
+                    for (let i = 0; i < cells.length; i += 1500) {
+                        const res = await fetch('/ebay1-data/cell-styles', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify(Object.assign({ cells: cells.slice(i, i + 1500) }, patch)),
+                        });
+                        let json = {};
+                        try { json = await res.json(); } catch (e) {}
+                        if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save');
+                    }
+                    rowToast('Colour applied to ' + cells.length + ' cell' + (cells.length === 1 ? '' : 's') + '.', true);
+                } catch (e) {
+                    rowToast('Could not save the colour: ' + (e.message || 'failed'), false);
+                    loadData();
+                }
+            }
+
+            function renderFmtSwatches() {
+                document.getElementById('e1dTxtSwatch').style.background = fmtLast.color;
+                document.getElementById('e1dBgSwatch').style.background = fmtLast.bg;
+            }
+
+            function closePalette() {
+                const pal = document.getElementById('e1dPal');
+                if (pal) pal.style.display = 'none';
+            }
+
+            function pickColour(mode, value) {
+                if (value) {
+                    fmtLast[mode] = value;
+                    try { localStorage.setItem(mode === 'color' ? 'ebay1_fmt_color' : 'ebay1_fmt_bg', value); } catch (e) {}
+                    renderFmtSwatches();
+                }
+                closePalette();
+                applyCellStyle(mode === 'color' ? { color: value || null } : { bg: value || null });
+            }
+
+            function openPalette(mode, anchor) {
+                let pal = document.getElementById('e1dPal');
+                if (pal && pal.style.display === 'block' && palMode === mode) { closePalette(); return; }
+                palMode = mode;
+                if (!pal) {
+                    pal = document.createElement('div');
+                    pal.id = 'e1dPal';
+                    pal.className = 'e1d-fmt';
+                    document.body.appendChild(pal);
+                    pal.addEventListener('click', function (e) {
+                        const sw = e.target.closest('[data-c]');
+                        if (sw) { pickColour(palMode, sw.getAttribute('data-c')); return; }
+                        if (e.target.closest('[data-none]')) { pickColour(palMode, null); return; }
+                        if (e.target.closest('[data-clear]')) { closePalette(); applyCellStyle({ color: null, bg: null }); }
+                    });
+                    pal.addEventListener('change', function (e) {
+                        if (e.target.matches('input[type="color"]')) pickColour(palMode, e.target.value);
+                    });
+                }
+                const isText = mode === 'color';
+                pal.innerHTML = '<div class="e1d-pal-title">' + (isText ? 'Text colour' : 'Cell fill') + ' · selected cells</div>'
+                    + '<button type="button" class="e1d-pal-btn" data-none="1">' + (isText ? 'Automatic (default text colour)' : 'No Fill (default background)') + '</button>'
+                    + E1_PAL.map(function (line) {
+                        return '<div class="e1d-pal-grid">' + line.map(function (c) { return '<button type="button" class="e1d-sw" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>'; }).join('') + '</div>';
+                    }).join('')
+                    + '<div class="e1d-pal-foot"><label class="mb-0">More colours <input type="color" value="' + (isText ? fmtLast.color : fmtLast.bg) + '"></label>'
+                    + '<button type="button" class="e1d-pal-btn mb-0" style="width:auto;margin-left:auto" data-clear="1">Clear formatting</button></div>';
+                const rect = anchor.getBoundingClientRect();
+                pal.style.display = 'block';
+                pal.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 244)) + 'px';
+                pal.style.top = (rect.bottom + 4) + 'px';
+            }
+
+            function fmtBind() {
+                renderFmtSwatches();
+                document.getElementById('e1dTxtApply').addEventListener('click', function () { closePalette(); pickColour('color', fmtLast.color); });
+                document.getElementById('e1dBgApply').addEventListener('click', function () { closePalette(); pickColour('bg', fmtLast.bg); });
+                document.getElementById('e1dTxtMenu').addEventListener('click', function () { openPalette('color', this); });
+                document.getElementById('e1dBgMenu').addEventListener('click', function () { openPalette('bg', this); });
+                document.addEventListener('mousedown', function (e) {
+                    if (e.target.closest && e.target.closest('#e1dPal, .e1d-fmt')) return;
+                    closePalette();
+                });
+                document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePalette(); });
+            }
+
             function buildTable() {
                 table = new Tabulator('#ebay1-data-table', {
+                    rowFormatter: styleRow,
                     data: rows,
                     layout: 'fitDataFill',
                     height: 'calc(100vh - 330px)',
@@ -2677,8 +3025,12 @@
                     }
                     rows = (json.data || []).filter(function (row) { return !isParentRow(row); });
                     columnSources = Array.isArray(json.sources) ? json.sources : [];
+                    autoPushOn = !!json.auto_push;
+                    renderAutoButton();
+                    cellStyles = json.cell_styles && !Array.isArray(json.cell_styles) ? json.cell_styles : {};
                     initColumnGroups(json.column_groups);
                     flattenSpecifics(rows);
+                    const view = viewState();
                     if (table && tableReady) {
                         table.replaceData(rows);
                         renderTabs();
@@ -2687,6 +3039,10 @@
                         buildTable();
                     }
                     refreshAll();
+                    // A reload (Refresh button, after a push) keeps the page and scroll position the user was at.
+                    restoreView(view);
+                    restyleVisible();
+                    autoPushSoon();
                 } catch (e) {
                     placeholder.innerHTML = '<span class="e1d-badge nrl">' + esc(e.message || 'Failed to load') + '</span>';
                 }
@@ -2702,6 +3058,7 @@
                 });
                 bindColumnGroups();
                 csBindDocument();
+                fmtBind();
                 document.getElementById('e1dEditCol').addEventListener('click', function () { openEditModal(null); });
                 document.getElementById('e1dEditCancel').addEventListener('click', closeEditModal);
                 document.getElementById('e1dEditGo').addEventListener('click', runEditColumn);
@@ -2717,6 +3074,7 @@
                 });
                 document.getElementById('e1dRefresh').addEventListener('click', loadData);
                 document.getElementById('e1dPush').addEventListener('click', pushToEbay);
+                document.getElementById('e1dAuto').addEventListener('click', toggleAutoPush);
                 document.getElementById('e1dAddCol').addEventListener('click', openAddModal);
                 document.getElementById('e1dAddCancel').addEventListener('click', closeAddModal);
                 document.getElementById('e1dAddGo').addEventListener('click', runAddColumn);
