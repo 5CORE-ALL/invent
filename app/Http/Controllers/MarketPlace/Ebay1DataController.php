@@ -162,20 +162,30 @@ class Ebay1DataController extends Controller
                 ];
             }
 
-            // MPN and Model always carry the exact SKU of their own row. A category that has either column gets
-            // it on every SKU of that category, whatever eBay or an edit had there.
+            // Autofill rules, applied to every SKU of a category that has the column, missing listings included
+            // (a missing listing has no pulled copy, so it would otherwise show these cells blank):
+            //  - MPN and Model always carry the exact SKU of their own row, whatever eBay or an edit had there.
+            //  - Brand is always 5 Core and Durability Guarantee is always Yes.
+            //  - Manufacturer (5 Core), Condition (New) and Country of Origin (China) are always applied to a
+            //    missing listing. A listed row keeps what it has and only gets them when the cell is blank.
             $skuColumns = ['mpn' => 'MPN', 'model' => 'Model'];
+            $alwaysColumns = ['brand' => '5 Core', 'durabilityguarantee' => 'Yes'];
+            $missingColumns = ['manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
             $present = [];
             foreach ($data as $entry) {
                 foreach (array_keys($entry['specifics']) as $specName) {
                     $k = $this->aspectKey((string) $specName);
-                    if (isset($skuColumns[$k])) {
+                    if (isset($skuColumns[$k]) || isset($alwaysColumns[$k]) || isset($missingColumns[$k])) {
                         $present[$this->categoryHash((string) $entry['category'])][$k] = (string) $specName;
                     }
                 }
             }
+            $isBlank = static function (string $value): bool {
+                return in_array(strtolower(trim($value)), ['', 'does not apply', 'not applicable'], true);
+            };
             foreach ($data as $i => $entry) {
                 $hash = $this->categoryHash((string) $entry['category']);
+                $isMissingListing = ! in_array((string) $entry['listed'], ['Listed', 'Created'], true);
                 foreach ($present[$hash] ?? [] as $k => $columnName) {
                     $target = $columnName;
                     foreach (array_keys($entry['specifics']) as $specName) {
@@ -184,7 +194,13 @@ class Ebay1DataController extends Controller
                             break;
                         }
                     }
-                    $data[$i]['specifics'][$target] = (string) $entry['sku'];
+                    if (isset($skuColumns[$k])) {
+                        $data[$i]['specifics'][$target] = (string) $entry['sku'];
+                    } elseif (isset($alwaysColumns[$k])) {
+                        $data[$i]['specifics'][$target] = $alwaysColumns[$k];
+                    } elseif ($isMissingListing || $isBlank((string) ($entry['specifics'][$target] ?? ''))) {
+                        $data[$i]['specifics'][$target] = $missingColumns[$k];
+                    }
                 }
             }
 

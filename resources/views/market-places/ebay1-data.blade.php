@@ -75,6 +75,10 @@
         #ebay1-data-table .tabulator-frozen.tabulator-frozen-right { box-shadow: -3px 0 6px rgba(15,23,42,.15); z-index: 14; }
         #ebay1-data-table .tabulator-col[tabulator-field="_edit"] .tabulator-col-title,
         #ebay1-data-table .tabulator-col[tabulator-field="_copy"] .tabulator-col-title { writing-mode: horizontal-tb; transform: none; }
+        /* Excel-like cell selection: click a cell, Shift+click or drag for a block, Ctrl+C / Ctrl+V. */
+        #ebay1-data-table .tabulator-cell { -webkit-user-select: none; user-select: none; }
+        #ebay1-data-table .tabulator-row .tabulator-cell.e1d-cell-sel.e1d-cell-sel.e1d-cell-sel { background: #cfe0ff !important; box-shadow: inset 0 0 0 1px #8fb0f0; }
+        #ebay1-data-table .tabulator-row .tabulator-cell.e1d-cell-sel.e1d-cell-sel.e1d-cell-sel.e1d-cell-act { background: #fff !important; box-shadow: inset 0 0 0 2px #1a56b7; }
         /* Small pen button to save space. */
         #ebay1-data-table .tabulator-cell.e1d-edit-col { padding: 2px !important; }
         #ebay1-data-table .e1d-edit-btn { padding: 0 !important; width: 22px; height: 20px; line-height: 18px; font-size: 10px; border-radius: 4px; }
@@ -1836,6 +1840,7 @@
                     return {
                         title: src ? esc(name) + ' <i class="fas fa-link" style="font-size:10px;opacity:.8"></i>' : esc(name),
                         field: specKey(name),
+                        specName: name,
                         headerTooltip: src ? 'Synced from Technical Specifications: ' + src : name,
                         formatter: textFormatter,
                     };
@@ -2229,6 +2234,409 @@
                 ];
             }
 
+            // ---- Excel-like cells: click selects a cell, Shift+click / Shift+arrows / drag select a block,
+            // Ctrl+C copies it (tab separated, so it pastes into Excel), Ctrl+V pastes into the selected cell(s). ----
+            const CS_LOCKED_ALWAYS = new Set(['brand', 'durabilityguarantee', 'mpn', 'model', 'upc']);
+            const CS_LOCKED_MISSING = new Set(['manufacturer', 'condition', 'countryoforigin']);
+            let cellSel = null; // { a: {sku, field} anchor, f: {sku, field} moving end }
+            let cellDrag = false;
+            let cellBusy = false;
+            let cellKeep = false;
+
+            function csColumns() {
+                if (!table || !tableReady) return [];
+                return table.getColumns().filter(function (col) {
+                    const f = col.getField();
+                    return f && f.charAt(0) !== '_' && col.isVisible();
+                });
+            }
+
+            function csIndex() {
+                const rowList = table.getRows('display').filter(function (r) { return r.getData && r.getData() && r.getData().sku !== undefined; });
+                const cols = csColumns();
+                const rIdx = new Map();
+                rowList.forEach(function (r, i) { rIdx.set(String(r.getData().sku), i); });
+                const cIdx = new Map();
+                cols.forEach(function (c, i) { cIdx.set(c.getField(), i); });
+                return { rowList: rowList, cols: cols, rIdx: rIdx, cIdx: cIdx };
+            }
+
+            function csBounds(ix) {
+                if (!cellSel) return null;
+                const ar = ix.rIdx.get(cellSel.a.sku), fr = ix.rIdx.get(cellSel.f.sku);
+                const ac = ix.cIdx.get(cellSel.a.field), fc = ix.cIdx.get(cellSel.f.field);
+                if (ar === undefined || fr === undefined || ac === undefined || fc === undefined) return null;
+                return { r1: Math.min(ar, fr), r2: Math.max(ar, fr), c1: Math.min(ac, fc), c2: Math.max(ac, fc), ar: ar, ac: ac, fr: fr, fc: fc };
+            }
+
+            function csPaint() {
+                if (!table || !tableReady) return;
+                table.element.querySelectorAll('.e1d-cell-sel').forEach(function (el) { el.classList.remove('e1d-cell-sel', 'e1d-cell-act'); });
+                if (!cellSel) return;
+                const ix = csIndex();
+                const b = csBounds(ix);
+                if (!b) { cellSel = null; return; }
+                table.getRows('visible').forEach(function (row) {
+                    const i = ix.rIdx.get(String(row.getData().sku));
+                    if (i === undefined || i < b.r1 || i > b.r2) return;
+                    for (let c = b.c1; c <= b.c2; c++) {
+                        const cell = row.getCell(ix.cols[c].getField());
+                        if (!cell) continue;
+                        const el = cell.getElement();
+                        el.classList.add('e1d-cell-sel');
+                        if (i === b.ar && c === b.ac) el.classList.add('e1d-cell-act');
+                    }
+                });
+            }
+
+            function csClear() {
+                if (cellKeep) return;
+                if (!cellSel) return;
+                cellSel = null;
+                csPaint();
+            }
+
+            function csCellPoint(cell) {
+                const field = cell.getField();
+                const sku = cell.getRow().getData().sku;
+                if (!field || field.charAt(0) === '_' || sku === undefined || sku === null || sku === '') return null;
+                return { sku: String(sku), field: field };
+            }
+
+            function csDown(e, cell) {
+                if (e.button !== 0) return;
+                const pt = csCellPoint(cell);
+                if (!pt) return;
+                if (e.shiftKey && cellSel) {
+                    cellSel.f = pt;
+                    e.preventDefault();
+                } else {
+                    cellSel = { a: pt, f: pt };
+                }
+                cellDrag = true;
+                csPaint();
+            }
+
+            function csEnter(e, cell) {
+                if (!cellDrag || !cellSel) return;
+                if (!(e.buttons & 1)) { cellDrag = false; return; }
+                const pt = csCellPoint(cell);
+                if (!pt || (pt.sku === cellSel.f.sku && pt.field === cellSel.f.field)) return;
+                cellSel.f = pt;
+                csPaint();
+            }
+
+            // Keys and paste are left to inputs, the list editor and open side panels.
+            function csBlocked(e) {
+                const t = e.target;
+                if (document.querySelector('.e1d-modal:not([hidden])')) return true;
+                if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"], .tabulator-edit-list, .tabulator-editing')) return true;
+                return false;
+            }
+
+            function csCellText(data, col) {
+                const f = col.getField();
+                let v = data[f];
+                if (v === null || v === undefined || typeof v === 'object') return '';
+                if (f === 'nr_req') return v === 'NR' ? 'NRL' : String(v);
+                v = String(v);
+                if (/[\t\r\n"]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+                return v;
+            }
+
+            function csWriteClipboard(text) {
+                const fallback = function () {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch (e) {}
+                    ta.remove();
+                };
+                if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).catch(fallback);
+                else fallback();
+            }
+
+            function csCopy() {
+                if (!table || !tableReady) return;
+                const ix = csIndex();
+                const b = csBounds(ix);
+                if (!b) return;
+                const lines = [];
+                for (let r = b.r1; r <= b.r2; r++) {
+                    const data = ix.rowList[r].getData();
+                    const vals = [];
+                    for (let c = b.c1; c <= b.c2; c++) vals.push(csCellText(data, ix.cols[c]));
+                    lines.push(vals.join('\t'));
+                }
+                csWriteClipboard(lines.join('\n'));
+                const count = (b.r2 - b.r1 + 1) * (b.c2 - b.c1 + 1);
+                rowToast('Copied ' + count + ' cell' + (count === 1 ? '' : 's') + '.', true);
+            }
+
+            function csParse(text) {
+                const out = [];
+                let row = [], cur = '', q = false;
+                text = String(text).replace(/\r\n?/g, '\n');
+                for (let i = 0; i < text.length; i++) {
+                    const ch = text.charAt(i);
+                    if (q) {
+                        if (ch === '"') {
+                            if (text.charAt(i + 1) === '"') { cur += '"'; i++; } else q = false;
+                        } else cur += ch;
+                    } else if (ch === '"' && cur === '') q = true;
+                    else if (ch === '\t') { row.push(cur); cur = ''; }
+                    else if (ch === '\n') { row.push(cur); out.push(row); row = []; cur = ''; }
+                    else cur += ch;
+                }
+                row.push(cur);
+                out.push(row);
+                // Excel ends what it copies with a line break: that is not an extra row.
+                if (out.length > 1 && out[out.length - 1].length === 1 && out[out.length - 1][0] === '') out.pop();
+                return out;
+            }
+
+            // What one pasted value does to one cell: an edit, or why it is skipped.
+            function csEditFor(data, col, raw) {
+                const field = col.getField();
+                const def = col.getDefinition ? col.getDefinition() : {};
+                const value = String(raw === null || raw === undefined ? '' : raw).trim();
+                if (field === 'nr_req') {
+                    const v = value.toUpperCase();
+                    if (v === 'NR' || v === 'NRL') return { kind: 'nr', value: 'NR' };
+                    if (v === 'REQ') return { kind: 'nr', value: 'REQ' };
+                    return { skip: 'blank' };
+                }
+                if (field === 'ebay_title') {
+                    if (!value) return { skip: 'blank' };
+                    if (value.length > 80) return { skip: 'long' };
+                    return { kind: 'col', column: 'eBay title', value: value };
+                }
+                if (field === 'ebay_price') {
+                    const n = parseFloat(value.replace(/[,$\s]/g, ''));
+                    if (isNaN(n) || n < 0.01 || n > 100000) return { skip: 'blank' };
+                    return { kind: 'col', column: 'Price', value: n.toFixed(2) };
+                }
+                if (def && def.specName) {
+                    if (!value) return { skip: 'blank' };
+                    const key = gKey(def.specName);
+                    const missing = ['Listed', 'Created'].indexOf(String(data.listed)) === -1;
+                    if (CS_LOCKED_ALWAYS.has(key) || (missing && CS_LOCKED_MISSING.has(key))) return { skip: 'locked' };
+                    return { kind: 'col', column: def.specName, value: value };
+                }
+                return { skip: 'readonly' };
+            }
+
+            async function csPaste(text) {
+                if (cellBusy || !table || !tableReady) return;
+                const grid = csParse(text);
+                const ix = csIndex();
+                const b = csBounds(ix);
+                if (!b || !grid.length) return;
+                const single = grid.length === 1 && grid[0].length === 1;
+                const targets = [];
+                let region = null;
+                if (single && (b.r1 !== b.r2 || b.c1 !== b.c2)) {
+                    for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) targets.push({ r: r, c: c, v: grid[0][0] });
+                } else {
+                    let r2 = b.r1, c2 = b.c1;
+                    grid.forEach(function (line, i) {
+                        line.forEach(function (v, j) {
+                            const r = b.r1 + i, c = b.c1 + j;
+                            if (r >= ix.rowList.length || c >= ix.cols.length) return;
+                            targets.push({ r: r, c: c, v: v });
+                            r2 = Math.max(r2, r);
+                            c2 = Math.max(c2, c);
+                        });
+                    });
+                    region = { r2: r2, c2: c2 };
+                }
+
+                const skipped = { blank: 0, locked: 0, readonly: 0, long: 0 };
+                const groups = new Map(); // column|value -> { kind, column, value, skus }
+                const nrBySku = new Map();
+                let cells = 0;
+                targets.forEach(function (t) {
+                    const data = ix.rowList[t.r].getData();
+                    const edit = csEditFor(data, ix.cols[t.c], t.v);
+                    if (edit.skip) { skipped[edit.skip]++; return; }
+                    cells++;
+                    const sku = String(data.sku);
+                    if (edit.kind === 'nr') { nrBySku.set(sku, edit.value); return; }
+                    const key = edit.column + '\u0001' + edit.value;
+                    if (!groups.has(key)) groups.set(key, { column: edit.column, value: edit.value, skus: [] });
+                    groups.get(key).skus.push(sku);
+                });
+                const skippedTotal = skipped.blank + skipped.locked + skipped.readonly + skipped.long;
+                const skippedText = function () {
+                    const parts = [];
+                    if (skipped.readonly) parts.push(skipped.readonly + ' read-only');
+                    if (skipped.locked) parts.push(skipped.locked + ' fixed (autofill) value');
+                    if (skipped.long) parts.push(skipped.long + ' title over 80 characters');
+                    if (skipped.blank) parts.push(skipped.blank + ' blank / not valid');
+                    return parts.join(', ');
+                };
+                if (!cells) {
+                    rowToast('Nothing pasted' + (skippedTotal ? ' (' + skippedText() + ').' : '.'), false);
+                    return;
+                }
+                if (cells > 100 && !window.confirm('Paste into ' + cells + ' cells?')) return;
+
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const post = async function (url, body) {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify(body),
+                    });
+                    let json = {};
+                    try { json = await res.json(); } catch (e) {}
+                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not save');
+                    return json;
+                };
+                const jobs = [];
+                groups.forEach(function (g) {
+                    for (let i = 0; i < g.skus.length; i += 300) jobs.push({ kind: 'col', column: g.column, value: g.value, skus: g.skus.slice(i, i + 300) });
+                });
+                nrBySku.forEach(function (value, sku) { jobs.push({ kind: 'nr', value: value, skus: [sku] }); });
+
+                const status = document.getElementById('e1dPullStatus');
+                const done = [];
+                let failure = '';
+                cellBusy = true;
+                try {
+                    for (let i = 0; i < jobs.length; i++) {
+                        const job = jobs[i];
+                        if (jobs.length > 1) status.textContent = 'Pasting ' + (i + 1) + ' / ' + jobs.length + '…';
+                        if (job.kind === 'nr') await post('/ebay1-data/nr-req', { sku: job.skus[0], nr_req: job.value });
+                        else await post('/ebay1-data/edit-column', { column: job.column, value: job.value, skus: job.skus });
+                        done.push(job);
+                    }
+                } catch (e) {
+                    failure = e.message || 'Could not save';
+                }
+                cellBusy = false;
+
+                if (done.length) {
+                    const rowBySku = new Map();
+                    rows.forEach(function (r) { rowBySku.set(String(r.sku), r); });
+                    const tableBySku = new Map();
+                    table.getRows().forEach(function (tRow) { tableBySku.set(String(tRow.getData().sku), tRow); });
+                    table.blockRedraw();
+                    try {
+                        done.forEach(function (job) {
+                            job.skus.forEach(function (sku) {
+                                const source = rowBySku.get(sku);
+                                const tRow = tableBySku.get(sku);
+                                const data = tRow ? tRow.getData() : source;
+                                if (!data) return;
+                                let patch;
+                                if (job.kind === 'nr') {
+                                    patch = { nr_req: job.value };
+                                } else {
+                                    patch = pagePatch(job.column, job.value);
+                                    if (!patch) {
+                                        const spec = data.specifics && !Array.isArray(data.specifics) ? data.specifics : {};
+                                        const existing = Object.keys(spec).find(function (k) { return gKey(k) === gKey(job.column); });
+                                        spec[existing || job.column] = job.value;
+                                        patch = { specifics: spec };
+                                        patch[specKey(job.column)] = job.value;
+                                    }
+                                }
+                                if (source) Object.assign(source, patch);
+                                if (tRow) tRow.update(patch);
+                            });
+                        });
+                    } finally {
+                        table.restoreRedraw();
+                    }
+                    // Keep the selection through the refresh, like Excel. A pasted block stays selected.
+                    if (region) {
+                        const last = ix.rowList[region.r2].getData().sku;
+                        cellSel = { a: { sku: String(ix.rowList[b.r1].getData().sku), field: ix.cols[b.c1].getField() }, f: { sku: String(last), field: ix.cols[region.c2].getField() } };
+                    }
+                    cellKeep = true;
+                    try { refreshAll(); } finally { cellKeep = false; }
+                    csPaint();
+                }
+                if (failure) {
+                    rowToast('Pasted ' + done.length + ' of ' + jobs.length + ' changes, then it stopped: ' + failure, false);
+                } else {
+                    status.textContent = 'Pasted ' + cells + ' cell' + (cells === 1 ? '' : 's') + '.';
+                    rowToast('Pasted ' + cells + ' cell' + (cells === 1 ? '' : 's') + (skippedTotal ? ' · skipped ' + skippedText() : '') + '.', true);
+                }
+            }
+
+            function csMove(e) {
+                const ix = csIndex();
+                const b = csBounds(ix);
+                if (!b) return;
+                let r = b.fr, c = b.fc;
+                if (e.key === 'ArrowUp') r--;
+                else if (e.key === 'ArrowDown') r++;
+                else if (e.key === 'ArrowLeft') c--;
+                else if (e.key === 'ArrowRight') c++;
+                r = Math.max(0, Math.min(ix.rowList.length - 1, r));
+                c = Math.max(0, Math.min(ix.cols.length - 1, c));
+                const pt = { sku: String(ix.rowList[r].getData().sku), field: ix.cols[c].getField() };
+                if (e.shiftKey) cellSel.f = pt;
+                else cellSel = { a: pt, f: pt };
+                csPaint();
+                try { table.scrollToRow(ix.rowList[r], 'nearest', false).catch(function () {}); } catch (err) {}
+                try { table.scrollToColumn(pt.field, 'nearest', false).catch(function () {}); } catch (err) {}
+            }
+
+            function csBind() {
+                table.on('cellMouseDown', csDown);
+                table.on('cellMouseEnter', csEnter);
+                table.on('renderComplete', csPaint);
+                table.on('scrollVertical', csPaint);
+                table.on('pageLoaded', csClear);
+                table.on('dataSorted', csClear);
+                table.on('dataFiltered', csClear);
+            }
+
+            function csBindDocument() {
+                document.addEventListener('mouseup', function () { cellDrag = false; });
+                document.addEventListener('mousedown', function (e) {
+                    if (!cellSel || !table) return;
+                    if (e.target.closest && e.target.closest('#ebay1-data-table, .tabulator-menu, .e1d-modal')) return;
+                    csClear();
+                });
+                document.addEventListener('keydown', function (e) {
+                    if (!cellSel || cellBusy || csBlocked(e)) return;
+                    const mod = e.ctrlKey || e.metaKey;
+                    const key = String(e.key || '');
+                    if (mod && key.toLowerCase() === 'c') {
+                        if (window.getSelection && String(window.getSelection()).trim() !== '') return;
+                        e.preventDefault();
+                        csCopy();
+                    } else if (mod && key.toLowerCase() === 'a') {
+                        const ix = csIndex();
+                        if (!ix.rowList.length || !ix.cols.length) return;
+                        e.preventDefault();
+                        cellSel = {
+                            a: { sku: String(ix.rowList[0].getData().sku), field: ix.cols[0].getField() },
+                            f: { sku: String(ix.rowList[ix.rowList.length - 1].getData().sku), field: ix.cols[ix.cols.length - 1].getField() },
+                        };
+                        csPaint();
+                    } else if (!mod && key === 'Escape') {
+                        csClear();
+                    } else if (!mod && /^Arrow(Up|Down|Left|Right)$/.test(key)) {
+                        e.preventDefault();
+                        csMove(e);
+                    }
+                });
+                document.addEventListener('paste', function (e) {
+                    if (!cellSel || cellBusy || csBlocked(e)) return;
+                    const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+                    if (text === '' || text === null || text === undefined) return;
+                    e.preventDefault();
+                    csPaste(text);
+                });
+            }
+
             function buildTable() {
                 table = new Tabulator('#ebay1-data-table', {
                     data: rows,
@@ -2247,6 +2655,7 @@
                     columns: baseColumns().concat([copyColumn(), editColumn()]),
                     rowContextMenu: rowMenu,
                 });
+                csBind();
                 table.on('rowSelectionChanged', function () { renderBadges(); updatePushButton(); });
                 table.on('tableBuilt', function () {
                     tableReady = true;
@@ -2292,6 +2701,7 @@
                     document.getElementById(id).addEventListener('change', refreshAll);
                 });
                 bindColumnGroups();
+                csBindDocument();
                 document.getElementById('e1dEditCol').addEventListener('click', function () { openEditModal(null); });
                 document.getElementById('e1dEditCancel').addEventListener('click', closeEditModal);
                 document.getElementById('e1dEditGo').addEventListener('click', runEditColumn);
