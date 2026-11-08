@@ -1434,6 +1434,7 @@
             publishDraftAfter: 'field_missing_data',
             createDraftUrl: '/listing_ebay/create-draft',
             publishDraftUrl: '/listing_ebay/publish-draft',
+            publishDraftUsesModal: true,
             draftStatusFor: function (sku) { return draftStatuses[fieldCountKey(sku)] || ''; },
             onDraftCreated: function (sku, state) {
                 draftStatuses[fieldCountKey(sku)] = state;
