@@ -2783,7 +2783,55 @@
                 try { table.scrollToColumn(pt.field, 'nearest', false).catch(function () {}); } catch (err) {}
             }
 
+            // Double click a cell to type into it. Enter / Tab / click away saves, Escape cancels. The value goes through
+            // the same save path as a paste, so fixed (autofill) cells, the 80 character title limit and the price range apply.
+            function csStartEdit(e, cell) {
+                if (cellBusy || !table || !tableReady) return;
+                const pt = csCellPoint(cell);
+                if (!pt) return;
+                const field = cell.getField();
+                if (field === 'nr_req') return; // has its own dropdown editor
+                const el = cell.getElement();
+                if (!el || el.querySelector('.e1d-inline-edit')) return;
+                const data = cell.getRow().getData();
+                const probe = csEditFor(data, cell.getColumn(), '1');
+                if (probe.skip === 'locked') { rowToast('This value is filled in automatically and cannot be edited.', false); return; }
+                if (probe.skip === 'readonly') { rowToast('This column is read-only.', false); return; }
+                const raw = data[field];
+                const current = raw === null || raw === undefined || typeof raw === 'object' ? '' : String(raw);
+                const saved = el.innerHTML;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'e1d-inline-edit';
+                input.value = current;
+                input.style.cssText = 'width:100%;height:100%;min-height:24px;box-sizing:border-box;border:2px solid #2563eb;border-radius:2px;padding:0 4px;font:inherit;background:#fff;color:#111;outline:none;';
+                el.innerHTML = '';
+                el.appendChild(input);
+                let finished = false;
+                const finish = function (commit) {
+                    if (finished) return;
+                    finished = true;
+                    const value = input.value.trim();
+                    input.remove();
+                    el.innerHTML = saved;
+                    if (!commit || value === current.trim()) return;
+                    cellSel = { a: pt, f: pt };
+                    csPaint();
+                    csPaste(value);
+                };
+                input.addEventListener('keydown', function (ev) {
+                    ev.stopPropagation();
+                    if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); finish(true); }
+                    else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+                });
+                input.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
+                input.addEventListener('dblclick', function (ev) { ev.stopPropagation(); });
+                input.addEventListener('blur', function () { finish(true); });
+                setTimeout(function () { input.focus(); input.select(); }, 0);
+            }
+
             function csBind() {
+                table.on('cellDblClick', csStartEdit);
                 table.on('cellMouseDown', csDown);
                 table.on('cellMouseEnter', csEnter);
                 table.on('renderComplete', csPaint);
