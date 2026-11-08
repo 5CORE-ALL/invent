@@ -472,9 +472,39 @@
         #amzDilGroiModal .amz-dg-panel-rules { flex: 0 0 auto; }
         #amzDilGroiModal.amz-dg-hide-rules .amz-dg-panel-rules { display: none; }
         #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-head { padding: 3px 10px; font-size: 11px; }
-        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-body { max-height: 165px; overflow-y: auto; padding: 4px 10px; }
-        #amzDilGroiModal .amz-dg-rules { column-count: 3; column-gap: 22px; padding-left: 10px; margin: 0; }
-        #amzDilGroiModal .amz-dg-rules li { break-inside: avoid; font-size: 10.5px; line-height: 1.28; margin-bottom: 3px; }
+        /* Rules list: numbered, one rule per line, each editable; × deletes, + adds */
+        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        #amzDilGroiModal .amz-dg-rule-add {
+            border: 0; background: #6f42c1; color: #fff; width: 20px; height: 20px; border-radius: 6px;
+            padding: 0; line-height: 1; font-size: 15px; font-weight: 700; cursor: pointer;
+        }
+        #amzDilGroiModal .amz-dg-rule-add:hover { background: #5a32a3; }
+        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-body.amz-dg-rules-wrap { max-height: 150px; overflow-x: hidden; overflow-y: auto; padding: 4px 10px; }
+        #amzDilGroiModal .amz-dg-rules-list { display: flex; flex-direction: column; gap: 2px; }
+        #amzDilGroiModal .amz-dg-rule-row { display: flex; align-items: flex-start; gap: 6px; padding: 1px 0; border-bottom: 1px dashed #e2e8f0; }
+        #amzDilGroiModal .amz-dg-rule-row:last-child { border-bottom: 0; }
+        #amzDilGroiModal .amz-dg-rule-no { flex: 0 0 22px; text-align: right; font-size: 11px; font-weight: 700; color: #6f42c1; line-height: 20px; }
+        #amzDilGroiModal .amz-dg-rule-text {
+            flex: 1 1 auto; min-width: 0; font-size: 11px; line-height: 20px; color: #475569; cursor: text; outline: none;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 4px; padding: 0 4px;
+        }
+        #amzDilGroiModal .amz-dg-rule-text:hover { background: #f1f5f9; }
+        /* editing a rule shows all of it */
+        #amzDilGroiModal .amz-dg-rule-text:focus { white-space: normal; overflow: visible; background: #fff; box-shadow: 0 0 0 1px #8b5cf6; line-height: 1.35; }
+        #amzDilGroiModal .amz-dg-rule-del {
+            flex: 0 0 18px; border: 0; background: none; color: #dc3545; font-size: 15px; line-height: 20px; padding: 0; cursor: pointer; opacity: .75;
+        }
+        #amzDilGroiModal .amz-dg-rule-del:hover { opacity: 1; }
+        #amzDilGroiModal .amz-dg-rules-empty { font-size: 11px; color: #94a3b8; padding: 2px 4px; }
+        /* rules run horizontally: one compact card per rule in a single row (scrolls sideways) */
+        #amzDilGroiModal .amz-dg-panel-rules .amz-dg-panel-body { max-height: none; overflow-y: hidden; overflow-x: auto; padding: 6px 10px; }
+        #amzDilGroiModal .amz-dg-rules { display: flex; flex-wrap: nowrap; gap: 8px; align-items: stretch; padding-left: 0; margin: 0; }
+        #amzDilGroiModal .amz-dg-rules li {
+            flex: 1 0 250px; max-width: 340px; margin: 0; padding: 6px 8px 6px 20px;
+            font-size: 10.5px; line-height: 1.28;
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+        }
+        #amzDilGroiModal .amz-dg-rules li::before { left: 8px; top: 11px; }
         #amzDilGroiModal .amz-dg-panel-tables { flex: 1 1 auto; min-height: 0; background: transparent; box-shadow: none; overflow: visible; }
         #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { padding: 0; overflow-y: auto; }
         #amzDilGroiModal .amz-dg-grid {
@@ -551,7 +581,7 @@
             #amzDilGroiModal .modal-dialog { height: calc(100vh - 1rem); margin: .5rem auto; }
         }
         @media (max-width: 991.98px) {
-            #amzDilGroiModal .amz-dg-rules { column-count: 1; }
+            #amzDilGroiModal .amz-dg-rules li { flex-basis: 230px; }
             #amzDilGroiModal .amz-dg-panel-tables .amz-dg-panel-body { overflow: visible; }
         }
         #amz-dil-groi-btn {
@@ -969,48 +999,13 @@
                     </div>
                     <div class="amz-dg-cols">
                     <div class="amz-dg-panel amz-dg-panel-rules">
-                    <div class="amz-dg-panel-head"><i class="fas fa-list-ul me-1"></i> Rules — when each condition applies</div>
-                    <ul class="small text-muted amz-dg-rules amz-dg-panel-body">
-                        <li class="d-none">
-                            <strong>When</strong> Dil = 0 (Shopify INV &gt; 0 and OV L30 = 0):
-                            use the <strong>0–0</strong> slab’s Target NROI.
-                            This is not Amazon 0 Sold. A L30 = 0 still uses the Dil from OV L30.
-                        </li>
-                        <li>
-                            <strong>When</strong> Dil sits in a From–To range (INV &gt; 0):
-                            use that slab’s Target NROI (first match; last slab includes the To value).
-                            S PRC is set so <strong>SNROI = Target NROI</strong>
-                            using Channel Master Ads%: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).
-                        </li>
-                        <li>
-                            <strong>When</strong> a SKU matches a row in the <strong>CVR overlay</strong> table
-                            (Down = down-arrow CVR and CVR &lt; threshold; Up = up-arrow CVR and CVR &gt; threshold;
-                            horizontal / opposite arrows are excluded):
-                            apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).
-                        </li>
-                        <li>
-                            <strong>When</strong> a price is calculated from a Dil slab match:
-                            it auto-applies to <strong>S PRC</strong> and Push Prc Sale.
-                        </li>
-                        <li>
-                            <strong>When</strong> LMP is not there:
-                            <strong>Std Prc</strong> is the maximum S PRC on every marketplace blade.
-                            If the rule price is above Std Prc, S PRC = Std Prc.
-                            A blank Std Prc leaves the calculated price.
-                        </li>
-                        <li>
-                            <strong>When</strong> LMP is above Std Prc:
-                            every calculated price is capped at <strong>Std Prc</strong>.
-                            An orange triangle on Std Prc means review that Std price.
-                        </li>
-                        <li>
-                            <strong>When</strong> you change the first Target NROI%:
-                            later rows fill as first +5, +10, … (increasing down the table).
-                        </li>
-                        <li>
-                            <strong>When</strong> INV ≤ 0: Count and pies skip that SKU.
-                        </li>
-                    </ul>
+                    <div class="amz-dg-panel-head">
+                        <span><i class="fas fa-list-ul me-1"></i> Rules — when each condition applies</span>
+                        <button type="button" class="amz-dg-rule-add" id="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button>
+                    </div>
+                    <div class="amz-dg-panel-body amz-dg-rules-wrap">
+                        <div class="amz-dg-rules-list" id="amz-dg-rules-list"></div>
+                    </div>
                     </div>
                     <div class="amz-dg-panel amz-dg-panel-tables">
                     <div class="amz-dg-panel-body amz-dg-grid">
@@ -1258,6 +1253,107 @@
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
         @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'script'])
+        // Sprc Dil modal: numbered, editable rules list (text notes, saved in this browser). × deletes, + adds.
+        const AMZ_DG_RULES_KEY = 'amz_dil_groi_rules_list_v1';
+        const AMZ_DG_RULES_DEFAULT = [
+            'When Dil sits in a From–To range (INV > 0): use that slab\u2019s Target NROI (first match; last slab includes the To value). S PRC is set so SNROI = Target NROI using Channel Master Ads%: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).',
+            'When a SKU matches a row in the CVR overlay table (Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold; horizontal / opposite arrows are excluded): apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).',
+            'When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.',
+            'When LMP is not there: Std Prc is the maximum S PRC on every marketplace blade. If the rule price is above Std Prc, S PRC = Std Prc. A blank Std Prc leaves the calculated price.',
+            'When LMP is above Std Prc: every calculated price is capped at Std Prc. An orange triangle on Std Prc means review that Std price.',
+            'When you change the first Target NROI%: later rows fill as first +5, +10, \u2026 (increasing down the table).',
+            'When INV \u2264 0: Count and pies skip that SKU.',
+        ];
+        function amzDgRulesLoad() {
+            try {
+                const raw = localStorage.getItem(AMZ_DG_RULES_KEY);
+                if (raw !== null) {
+                    const list = JSON.parse(raw);
+                    if (Array.isArray(list)) return list.map(function(t) { return String(t); });
+                }
+            } catch (e) { /* ignore */ }
+            return AMZ_DG_RULES_DEFAULT.slice();
+        }
+        function amzDgRulesRead() {
+            const list = [];
+            $('#amz-dg-rules-list .amz-dg-rule-text').each(function() {
+                const t = $(this).text().replace(/\s+/g, ' ').trim();
+                if (t) list.push(t);
+            });
+            return list;
+        }
+        function amzDgRulesSave() {
+            try { localStorage.setItem(AMZ_DG_RULES_KEY, JSON.stringify(amzDgRulesRead())); } catch (e) { /* ignore */ }
+        }
+        function amzDgRulesRenumber() {
+            const $rows = $('#amz-dg-rules-list .amz-dg-rule-row');
+            $rows.each(function(i) { $(this).find('.amz-dg-rule-no').text((i + 1) + '.'); });
+            $('#amz-dg-rules-list .amz-dg-rules-empty').remove();
+            if (!$rows.length) $('#amz-dg-rules-list').append('<div class="amz-dg-rules-empty">No rules. Click + to add one.</div>');
+        }
+        function amzDgRuleRowHtml(text) {
+            return '<div class="amz-dg-rule-row">'
+                + '<span class="amz-dg-rule-no"></span>'
+                + '<span class="amz-dg-rule-text" contenteditable="true" spellcheck="false"></span>'
+                + '<button type="button" class="amz-dg-rule-del" title="Delete this rule" aria-label="Delete this rule">&times;</button>'
+                + '</div>';
+        }
+        function amzDgRulesRender() {
+            const $list = $('#amz-dg-rules-list');
+            if (!$list.length) return;
+            $list.empty();
+            amzDgRulesLoad().forEach(function(t) {
+                const $row = $(amzDgRuleRowHtml());
+                $row.find('.amz-dg-rule-text').text(t).attr('title', t);
+                $list.append($row);
+            });
+            amzDgRulesRenumber();
+        }
+        $(document).off('click.amzdgruleadd').on('click.amzdgruleadd', '#amz-dg-rule-add', function(e) {
+            e.preventDefault();
+            const $row = $(amzDgRuleRowHtml());
+            $row.find('.amz-dg-rule-text').text('New rule');
+            $('#amz-dg-rules-list').append($row);
+            amzDgRulesRenumber();
+            const el = $row.find('.amz-dg-rule-text').get(0);
+            const wrap = $('#amz-dg-rules-list').closest('.amz-dg-rules-wrap').get(0);
+            if (wrap) wrap.scrollTop = wrap.scrollHeight;
+            el.focus();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            amzDgRulesSave();
+        });
+        $(document).off('click.amzdgruledel').on('click.amzdgruledel', '#amz-dg-rules-list .amz-dg-rule-del', function(e) {
+            e.preventDefault();
+            $(this).closest('.amz-dg-rule-row').remove();
+            amzDgRulesRenumber();
+            amzDgRulesSave();
+        });
+        $(document).off('keydown.amzdgruleedit').on('keydown.amzdgruleedit', '#amz-dg-rules-list .amz-dg-rule-text', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+        });
+        $(document).off('paste.amzdgruleedit').on('paste.amzdgruleedit', '#amz-dg-rules-list .amz-dg-rule-text', function(e) {
+            e.preventDefault();
+            const txt = ((e.originalEvent || e).clipboardData || window.clipboardData).getData('text') || '';
+            document.execCommand('insertText', false, txt.replace(/\s+/g, ' '));
+        });
+        $(document).off('blur.amzdgruleedit').on('blur.amzdgruleedit', '#amz-dg-rules-list .amz-dg-rule-text', function() {
+            const t = $(this).text().replace(/\s+/g, ' ').trim();
+            if (!t) {
+                $(this).closest('.amz-dg-rule-row').remove();
+            } else {
+                $(this).text(t).attr('title', t);
+            }
+            amzDgRulesRenumber();
+            amzDgRulesSave();
+        });
+        amzDgRulesRender();
+        $(document).off('show.bs.modal.amzdgrules').on('show.bs.modal.amzdgrules', '#amzDilGroiModal', function() {
+            if (!$('#amz-dg-rules-list .amz-dg-rule-row, #amz-dg-rules-list .amz-dg-rules-empty').length) amzDgRulesRender();
+        });
         // Sprc Dil modal: minimize / restore a rule card
         function amzDgSetCardMin(card, on) {
             card.classList.toggle('is-min', on);
