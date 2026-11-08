@@ -5018,6 +5018,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay1-data/column-options', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'columnOptions'])->name('ebay1.data.column.options');
     Route::post('/ebay1-data/add-column', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'addColumn'])->name('ebay1.data.add.column');
     Route::post('/ebay1-data/push', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'pushSpecifics'])->name('ebay1.data.push');
+    Route::post('/ebay1-data/cell-styles', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveCellStyles'])->name('ebay1.data.cell.styles');
+    Route::post('/ebay1-data/auto-push', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'setAutoPush'])->name('ebay1.data.auto.push');
     Route::post('/ebay1-data/nr-req', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveNrReq'])->name('ebay1.data.nr.req');
     Route::post('/ebay1-data/save-source', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveSource'])->name('ebay1.data.save.source');
     Route::post('/ebay1-data/edit-column', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'editColumn'])->name('ebay1.data.edit.column');
