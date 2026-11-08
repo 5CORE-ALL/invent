@@ -92,6 +92,28 @@ class ListingEbayController extends Controller
                 $out[strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)))] = ['m' => $mandatory, 'a' => $all, 'cat' => trim((string) ($row['category_ebay'] ?? ''))];
             }
 
+            // i = images saved in Product Master (Image Master counts the same way: image1..image20, else main_image).
+            try {
+                $imageCols = array_merge(['sku', 'main_image'], array_map(static fn ($n) => 'image'.$n, range(1, 20)));
+                ProductMaster::query()->select($imageCols)->whereIn('sku', $out === [] ? [''] : array_map('strval', array_keys($out)))->get()->each(function ($pm) use (&$out) {
+                    $count = 0;
+                    for ($n = 1; $n <= 20; $n++) {
+                        if (trim((string) ($pm->{'image'.$n} ?? '')) !== '') {
+                            $count++;
+                        }
+                    }
+                    if ($count === 0 && trim((string) $pm->main_image) !== '') {
+                        $count = 1;
+                    }
+                    $key = strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $pm->sku)));
+                    if (isset($out[$key])) {
+                        $out[$key]['i'] = $count;
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::warning('ListingEbay: image counts failed', ['error' => $e->getMessage()]);
+            }
+
             return response()->json([
                 'status' => 200,
                 'data' => $out,
