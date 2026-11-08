@@ -111,6 +111,10 @@ final class DilRuleModels
         if (is_array($targetStored) && is_array($targetStored['rule_on'] ?? null)) {
             $out['rule_on'] = $existing['rule_on'];
         }
+        // Same for the sequence numbers (apply order of the Target NROI rules): they stay with the page that saved them.
+        if (is_array($targetStored) && is_array($targetStored['rule_seq'] ?? null)) {
+            $out['rule_seq'] = $existing['rule_seq'];
+        }
 
         return $out;
     }

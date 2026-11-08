@@ -285,41 +285,52 @@
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             steps.push(temuRuleStep('info', '1 · Dil slab',
                 'Dil <b>' + Number(dil || 0).toFixed(1) + '%</b> → slab <b>' + temuRuleEsc(rule.label) + '</b> → Target NROI <b>' + slabNroi + '%</b>'));
-            const cvrAdj = amzDilGroiCvrAdj(d);
-            const cvrTxt = Number(amzPefCvrL30Live(d)).toFixed(1) + '%';
-            const trend = amzPefCvrTrend(d);
-            if (cvrAdj) {
-                steps.push(temuRuleStep('ok', '2 · CVR overlay',
-                    'CVR ' + cvrTxt + ' with ' + trend + ' arrow → <b>' + (cvrAdj > 0 ? '+' : '') + cvrAdj + '</b> to Target NROI'));
-            } else {
-                steps.push(temuRuleStep('skip', '2 · CVR overlay',
-                    'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
-            }
-            if (typeof amzDilGroiAgeInfo === 'function') {
-                const age = amzDilGroiAgeInfo(d);
-                if (age.points) {
-                    steps.push(temuRuleStep('ok', '3 · Ageing rule',
-                        'Age <b>' + age.days + '</b> days → slab ' + age.label + ' → <b>' + (age.points > 0 ? '+' : '') + age.points + '</b> to Target NROI'));
-                } else {
-                    steps.push(temuRuleStep('skip', '3 · Ageing rule',
-                        age.days === null ? 'No age for this SKU. Not applied.' : ('Age ' + age.days + ' days: ' + (age.label ? 'slab ' + age.label + ' adds 0.' : 'no Ageing slab matches.'))));
+            // Steps 2-4 are the CVR overlay, Ageing Rule and Diff rule in the order of their sequence numbers (Sprc Dil modal).
+            const makers = {
+                cvr: function(no) {
+                    const cvrAdj = amzDilGroiCvrAdj(d);
+                    const cvrTxt = Number(amzPefCvrL30Live(d)).toFixed(1) + '%';
+                    const trend = amzPefCvrTrend(d);
+                    if (cvrAdj) {
+                        steps.push(temuRuleStep('ok', no + ' · CVR overlay',
+                            'CVR ' + cvrTxt + ' with ' + trend + ' arrow → <b>' + (cvrAdj > 0 ? '+' : '') + cvrAdj + '</b> to Target NROI'));
+                    } else {
+                        steps.push(temuRuleStep('skip', no + ' · CVR overlay',
+                            'CVR ' + cvrTxt + (trend ? ' (' + trend + ' arrow)' : '') + ' is inside the thresholds, so no adjustment'));
+                    }
+                },
+                age: function(no) {
+                    if (typeof amzDilGroiAgeInfo !== 'function') return;
+                    const age = amzDilGroiAgeInfo(d);
+                    if (age.points) {
+                        steps.push(temuRuleStep('ok', no + ' · Ageing rule',
+                            'Age <b>' + age.days + '</b> days → slab ' + age.label + ' → <b>' + (age.points > 0 ? '+' : '') + age.points + '</b> to Target NROI'));
+                    } else {
+                        steps.push(temuRuleStep('skip', no + ' · Ageing rule',
+                            age.days === null ? 'No age for this SKU. Not applied.' : ('Age ' + age.days + ' days: ' + (age.label ? 'slab ' + age.label + ' adds 0.' : 'no Ageing slab matches.'))));
+                    }
+                },
+                diff: function(no) {
+                    const diffAdj = amzDilGroiDiffAdj(d);
+                    const diffPct = amzStdPrcDiffPct(d);
+                    if (diffAdj) {
+                        steps.push(temuRuleStep('ok', no + ' · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
+                    } else {
+                        steps.push(temuRuleStep('skip', no + ' · Diff rule',
+                            diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
+                    }
                 }
-            }
-            const diffAdj = amzDilGroiDiffAdj(d);
-            const diffPct = amzStdPrcDiffPct(d);
-            if (diffAdj) {
-                steps.push(temuRuleStep('ok', '4 · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
-            } else {
-                steps.push(temuRuleStep('skip', '4 · Diff rule',
-                    diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
-            }
+            };
+            ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age', 'diff']).forEach(function(k, idx) {
+                makers[k](String(idx + 2));
+            });
             const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
             steps.push(temuRuleStep('info', '5 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
             return isFinite(target) ? target : null;
         }
 
         /** CVR up / down rule (Sprc Dil modal): one hover step. null when the rule is off or the SKU is not a stocked child row. */
-        function amzRuleCvrUpDownStep(d, num, usedInPrice, final0) {
+        function amzRuleCvrUpDownStep(d, num, usedInPrice, final0, beforeCap) {
             const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
             if (!cfg || !cfg.enabled || typeof amzLmpCvrInfo !== 'function') return null;
             const info = amzLmpCvrInfo(d);
@@ -342,6 +353,11 @@
             if (!usedInPrice) {
                 // Sprc Dil: the discount comes off Std Prc after the LMP cap and the Std Prc maximum.
                 const off = std > 0 ? Math.round(std * pct) / 100 : 0;
+                if (beforeCap) {
+                    // Sequence: the CVR up / down discount runs before the LMP cap and the Std Prc maximum.
+                    return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
+                        + '. Taken off before the LMP and Std Prc steps (Seq order): ' + temuRuleMoney(final0) + ' − ' + temuRuleMoney(off) + ' = <b>' + temuRuleMoney(Number(final0 || 0) - off) + '</b>.');
+                }
                 return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
                     + '. Taken off after the LMP and Std Prc steps: ' + temuRuleMoney(Number(final0 || 0) + off) + ' − ' + temuRuleMoney(off) + ' = <b>' + temuRuleMoney(final0) + '</b>.');
             }
@@ -358,6 +374,18 @@
             const lmp = lmpWithShipping(d);
             let base = 0;
             let n = 1;
+            // Dil slabs switched OFF: no slab, CVR, Ageing, Diff, LMP or Std step runs, so the rule sets no price.
+            if (dilOn && typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('dil')
+                && !(typeof amzClearanceDilActive === 'function' && amzClearanceDilActive(d))) {
+                steps.push(temuRuleStep('skip', '1 · Dil slab',
+                    'The Dil slabs switch is <b>OFF</b>. No slab sets a Target NROI, so Sprc Dil calculates no price for this SKU.'));
+                if (final > 0) notes.push('S PRC ' + temuRuleMoney(final) + ' is the last saved price. It stays until you switch the Dil slabs ON or set a price by hand.');
+                return {
+                    title: 'S PRC ' + (final > 0 ? temuRuleMoney(final) : '—'),
+                    sub: (d['(Child) sku'] || '') + ' · Sprc Dil rule (Dil slabs OFF)',
+                    steps: steps, notes: notes, finalNote: ''
+                };
+            }
             if (dilOn) {
                 const target = amzRuleDilTargetSteps(d, steps);
                 const meta = (target != null) ? amzDilGroiMetaForRow(d) : null;
@@ -380,6 +408,18 @@
                 const cvrUdStep = amzRuleCvrUpDownStep(d, '2', true);
                 if (cvrUdStep) { steps.push(cvrUdStep); n = 3; }
             }
+            // Sprc Dil, Seq order: when the CVR up / down discount has a lower Seq than the LMP rule it comes off the price first.
+            const cvrFirst = dilOn && base > 0 && typeof window.amzPriceOrder === 'function' && window.amzPriceOrder()[0] === 'cvrud';
+            if (cvrFirst) {
+                const udFirst = (typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
+                const cvrUdFirstStep = amzRuleCvrUpDownStep(d, String(n), false, base, true);
+                if (cvrUdFirstStep) steps.push(cvrUdFirstStep);
+                if (cvrUdFirstStep) n++;
+                if (std > 0 && Math.abs(udFirst) >= 0.01) {
+                    const afterD = +(base - Math.round(std * udFirst) / 100).toFixed(2);
+                    if (afterD >= 0.01) base = afterD;
+                }
+            }
             const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
             const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
             let pct = 2;
@@ -395,7 +435,7 @@
             });
             const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
             // Sprc Dil: the CVR up / down discount comes off after the Std Prc maximum, so judge the cap on the price before it.
-            const udPct = (dilOn && typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
+            const udPct = (dilOn && !cvrFirst && typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
             const finalPre = (final > 0 && std > 0 && Math.abs(udPct) >= 0.01) ? +(final + Math.round(std * udPct) / 100).toFixed(2) : final;
             const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - finalPre) < 0.0001 && Math.abs(finalPre - std) < 0.0001;
             if (!(std > 0)) {
@@ -405,7 +445,7 @@
             } else {
                 steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
             }
-            if (dilOn) {
+            if (dilOn && !cvrFirst) {
                 const cvrUdStep = amzRuleCvrUpDownStep(d, String(n + 2), false, final);
                 if (cvrUdStep) steps.push(cvrUdStep);
             }

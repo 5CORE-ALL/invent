@@ -2,13 +2,10 @@
 @php $amzLmpCvrPart = $amzLmpCvrPart ?? 'all'; @endphp
 
 @if($amzLmpCvrPart === 'section' || $amzLmpCvrPart === 'all')
+                    <div class="amz-dg-side">
                     <div class="amz-dg-rules-title mt-3"
                         title="Extra discount on S PRC for SKUs whose CVR L30 arrow is Down or Up. Saved with Save Only / Save All. Count = SKUs (INV &gt; 0) in that row.">
-                        CVR up / down — extra discount on S PRC
-                    </div>
-                    <div class="small text-muted mb-1">
-                        <strong>If</strong> the CVR L30 arrow is Down or Up and CVR is inside a row,
-                        <strong>take that row's Disc % of Std Prc off S PRC.</strong> Std prc vs dil: added to the Sum Disc. Sprc Dil: taken off after the LMP and Std Prc steps. A flat arrow is not changed.
+                        <span class="amz-dg-seq" title="Sequence number: the order of the price rules (the LMP cap with the Std Prc maximum, and this CVR up / down discount). The price rules always run after the Target NROI rules. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="cvrud" value="6"></span>CVR up / down — extra discount on S PRC
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-3 mb-1">
                         <div class="form-check form-switch mb-0">
@@ -20,6 +17,7 @@
                             <label class="form-check-label small" for="amz-lmp-cvr-needlmp">Only when LMP is available</label>
                         </div>
                         <span class="small text-muted ms-auto"><b id="amz-lmp-cvr-s-hit">0</b> SKU(s) get a discount · <b id="amz-lmp-cvr-s-total">0</b> in stock</span>
+                    </div>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cvr-table">
@@ -58,6 +56,10 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="amz-dg-card-rules" data-card="cvrud">
+                        <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
+                        <div class="amz-dg-rules-list"></div>
                     </div>
 @endif
 

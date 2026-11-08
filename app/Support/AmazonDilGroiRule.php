@@ -1089,6 +1089,72 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Every rule card of the Sprc Dil modal has a sequence number (editable). Defaults 1..7 = the order the rules have always run in.
+     * Dil slab picks the base Target NROI; CVR overlay, Ageing and Diff change it (the Target NROI rules); then the LMP cap (with
+     * the Std Prc maximum) and the CVR up / down discount change the price (the price rules); Clearance is a separate way of
+     * pricing clearance SKUs. A rule cannot run before what it depends on, so the numbers decide the order inside each group
+     * (see ruleOrder and priceOrder): the Target NROI rules always run before the price rules.
+     */
+    public const RULE_SEQ_DEFAULT = ['dil' => 1.0, 'cvr' => 2.0, 'age' => 3.0, 'diff' => 4.0, 'lmp' => 5.0, 'cvrud' => 6.0, 'clearance' => 7.0];
+
+    /**
+     * Sequence numbers. A missing / invalid number keeps its default; numbers are clamped to 1..99.
+     *
+     * @param  mixed  $raw
+     * @return array{dil:float,cvr:float,age:float,diff:float,lmp:float,cvrud:float,clearance:float}
+     */
+    public static function normalizeRuleSeq($raw): array
+    {
+        $out = self::RULE_SEQ_DEFAULT;
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (array_keys(self::RULE_SEQ_DEFAULT) as $key) {
+            if (isset($raw[$key]) && is_numeric($raw[$key])) {
+                $out[$key] = round(min(99.0, max(1.0, (float) $raw[$key])), 2);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  mixed  $seq
+     * @param  list<string>  $keys
+     * @return list<string> the keys, lowest sequence number first; a tie keeps the order of $keys
+     */
+    private static function orderAmong($seq, array $keys): array
+    {
+        $seq = self::normalizeRuleSeq($seq);
+        $pos = array_flip($keys);
+        usort($keys, static fn (string $a, string $b): int => ($seq[$a] <=> $seq[$b]) ?: ($pos[$a] <=> $pos[$b]));
+
+        return $keys;
+    }
+
+    /**
+     * The Target NROI rules (CVR overlay, Ageing, Diff) in the order they are applied to the Dil slab's Target NROI.
+     *
+     * @param  mixed  $seq
+     * @return list<string>
+     */
+    public static function ruleOrder($seq): array
+    {
+        return self::orderAmong($seq, ['cvr', 'age', 'diff']);
+    }
+
+    /**
+     * The price rules (LMP cap with the Std Prc maximum, CVR up / down discount) in the order they change the price.
+     *
+     * @param  mixed  $seq
+     * @return list<string>
+     */
+    public static function priceOrder($seq): array
+    {
+        return self::orderAmong($seq, ['lmp', 'cvrud']);
+    }
+
+    /**
      * @param  array<string, mixed>|null  $saved
      * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rule_on:array{dil:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
      */
@@ -1100,9 +1166,11 @@ class AmazonDilGroiRule
         $diffAdjRaw = null;
         $ageAdjRaw = null;
         $ruleOnRaw = null;
+        $ruleSeqRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $ruleOnRaw = is_array($saved['rule_on'] ?? null) ? $saved['rule_on'] : null;
+            $ruleSeqRaw = is_array($saved['rule_seq'] ?? null) ? $saved['rule_seq'] : null;
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
@@ -1123,6 +1191,7 @@ class AmazonDilGroiRule
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
             'rule_on' => self::normalizeRuleOn($ruleOnRaw),
+            'rule_seq' => self::normalizeRuleSeq($ruleSeqRaw),
         ];
     }
 

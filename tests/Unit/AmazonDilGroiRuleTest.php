@@ -588,6 +588,32 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(['dil' => false, 'cvr' => false, 'age' => false, 'diff' => false, 'lmp' => false, 'clearance' => true], $saved['rule_on']);
     }
 
+    public function test_rule_sequence_orders_the_target_nroi_rules_and_the_price_rules(): void
+    {
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(null));
+        $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(null));
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder('nope'));
+        // Lowest number first, inside each group.
+        $this->assertSame(['diff', 'cvr', 'age'], AmazonDilGroiRule::ruleOrder(['cvr' => 3, 'age' => 4, 'diff' => 2]));
+        $this->assertSame(['cvrud', 'lmp'], AmazonDilGroiRule::priceOrder(['lmp' => 8, 'cvrud' => 2]));
+        // The Dil slab and Clearance numbers never reorder the other groups.
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['dil' => 9, 'clearance' => 1]));
+        // A tie keeps the default order.
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['cvr' => 5, 'age' => 5, 'diff' => 5]));
+        $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(['lmp' => 5, 'cvrud' => 5]));
+        // Garbage keeps the default number; numbers are clamped to 1..99.
+        $seq = AmazonDilGroiRule::normalizeRuleSeq(['cvr' => -4, 'age' => 'x', 'diff' => 500, 'dil' => 12]);
+        $this->assertSame(1.0, $seq['cvr']);
+        $this->assertSame(3.0, $seq['age']);
+        $this->assertSame(99.0, $seq['diff']);
+        $this->assertSame(12.0, $seq['dil']);
+        $this->assertSame(7.0, $seq['clearance']);
+
+        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'rule_seq' => ['age' => 2, 'cvr' => 3]]);
+        $this->assertSame(['dil' => 1.0, 'cvr' => 3.0, 'age' => 2.0, 'diff' => 4.0, 'lmp' => 5.0, 'cvrud' => 6.0, 'clearance' => 7.0], $saved['rule_seq']);
+        $this->assertSame(AmazonDilGroiRule::RULE_SEQ_DEFAULT, AmazonDilGroiRule::unpackStored(null)['rule_seq']);
+    }
+
     public function test_clearance_snroi_slabs_are_up_to_25_then_up_to_50_then_above(): void
     {
         $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules(null);
