@@ -1435,6 +1435,20 @@
             createDraftUrl: '/listing_ebay/create-draft',
             publishDraftUrl: '/listing_ebay/publish-draft',
             publishDraftUsesModal: true,
+            // Publish dialog Status column: eBay specifics with data / specifics required (red until all are filled).
+            publishStatusHtml: function (sku) {
+                if (fieldCountsState !== 'ready') return '';
+                const pair = fieldCountPair({ sku: sku }, 'm') || fieldCountPair({ sku: sku }, 'a');
+                if (!pair) return '';
+                const entry = fieldCounts[fieldCountKey(sku)] || {};
+                const names = (fieldCountPair({ sku: sku }, 'm') ? entry.m[2] : entry.a[2]) || [];
+                const full = pair[0] >= pair[1];
+                const title = full
+                    ? 'All ' + pair[1] + ' specifics have data'
+                    : (pair[1] - pair[0]) + ' specifics missing: ' + names.join(', ');
+                return '<span style="color:' + (full ? '#16a34a' : '#dc2626') + ';font-weight:700;white-space:nowrap;" title="' +
+                    escapeHtml(title) + '">' + pair[0] + '/' + pair[1] + '</span>';
+            },
             draftStatusFor: function (sku) { return draftStatuses[fieldCountKey(sku)] || ''; },
             onDraftCreated: function (sku, state) {
                 draftStatuses[fieldCountKey(sku)] = state;

@@ -1200,8 +1200,13 @@
         else if (window.$) $(el).modal('hide');
     }
 
-    function statusLabel(status, reason) {
+    function statusLabel(status, reason, sku) {
         if (status === 'will_publish') {
+            // A page can show its own readiness instead (e.g. eBay: specifics with data / specifics required).
+            if (typeof cfg().publishStatusHtml === 'function') {
+                const custom = cfg().publishStatusHtml(String(sku || ''));
+                if (custom) return custom;
+            }
             return '<span class="listing-publish-status is-publish">Will publish</span>';
         }
         return '<span class="listing-publish-status is-skip">' + escapeHtml(reason || 'Skipped') + '</span>';
@@ -1579,7 +1584,7 @@
                 html += '<td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
                 html += '<td>' + role + '</td>';
                 if (perSku) html += skuCategoryCell(sku);
-                html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
+                html += '<td>' + statusLabel(child.status, child.reason, sku) + '</td></tr>';
             });
             html += '</tbody></table></div>';
         });
