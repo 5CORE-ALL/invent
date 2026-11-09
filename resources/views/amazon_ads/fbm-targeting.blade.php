@@ -703,8 +703,8 @@
             const c = response.lt_coverage || {};
             const days = Number(c.days || 0);
             ltCoverageEl.textContent = days
-                ? 'LT data: ' + c.from + ' → ' + c.to + ' (' + days.toLocaleString() + ' days)' + (c.syncing ? ' · pulling from Amazon…' : '')
-                : 'LT data: none stored yet' + (c.syncing ? ' · pulling from Amazon…' : '');
+                ? 'LT: ' + c.from + ' → ' + c.to + ' (' + days.toLocaleString() + 'd)' + (c.syncing ? ' · pulling…' : '')
+                : 'LT: none yet' + (c.syncing ? ' · pulling…' : '');
             ltCoverageEl.classList.toggle('text-danger', days === 0);
             ltCoverageEl.classList.toggle('text-muted', days > 0);
         }
