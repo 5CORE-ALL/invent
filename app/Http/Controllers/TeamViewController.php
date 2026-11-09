@@ -231,14 +231,14 @@ class TeamViewController extends Controller
         abort_unless($meId > 0, 403);
 
         $factorRows = [];
-        $overall = ['avg' => null, 'reviewers' => 0];
+        $overall = ['avg' => null, 'reviewers' => 0, 'ratings' => 0];
         $sectionStats = [];
 
         if (Schema::hasTable('team_reviews')) {
             $all = DB::table('team_reviews')->where('reviewee_id', $meId)
-                ->selectRaw('AVG(rating) as avg_rating, COUNT(DISTINCT reviewer_id) as reviewers')->first();
+                ->selectRaw('AVG(rating) as avg_rating, COUNT(DISTINCT reviewer_id) as reviewers, COUNT(*) as ratings')->first();
             if ($all && (int) $all->reviewers > 0) {
-                $overall = ['avg' => round((float) $all->avg_rating, 1), 'reviewers' => (int) $all->reviewers];
+                $overall = ['avg' => round((float) $all->avg_rating, 1), 'reviewers' => (int) $all->reviewers, 'ratings' => (int) $all->ratings];
             }
 
             DB::table('team_reviews')->where('reviewee_id', $meId)
@@ -282,6 +282,7 @@ class TeamViewController extends Controller
             'name' => (string) (auth()->user()->name ?? ''),
             'avg' => $overall['avg'],
             'reviewers' => $overall['reviewers'],
+            'ratings' => $overall['ratings'],
             'sections' => $sections,
         ]);
     }

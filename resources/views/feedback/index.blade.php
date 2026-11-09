@@ -240,7 +240,7 @@
                 <span class="dfb-status {{ $statusClass }}">{{ $status }}</span>
                 <div class="dfb-meta">
                     @if($stat)
-                        {{ number_format((float) $stat->avg_rating, 1) }} avg · {{ (int) $stat->total }} this week
+                        {{ number_format((float) $stat->avg_rating, 1) }} avg · {{ (int) $stat->total }} {{ (int) $stat->total === 1 ? 'rating' : 'ratings' }} · {{ (int) $stat->reviews }} {{ (int) $stat->reviews === 1 ? 'review' : 'reviews' }}
                     @else
                         No team ratings yet
                     @endif
@@ -299,9 +299,9 @@
                 <h5>Recent feedback</h5>
                 <p class="dfb-hint">Notes people have already sent. Skipped weeks stay private.</p>
                 <div class="dfb-filters">
-                    <a href="{{ route('feedback.index') }}" class="{{ $filter ? '' : 'is-active' }}">All</a>
+                    <a href="{{ route('feedback.index') }}" class="{{ $filter ? '' : 'is-active' }}">All ({{ (int) ($feedCounts ?? collect())->sum() }})</a>
                     @foreach($departments as $key => $meta)
-                        <a href="{{ route('feedback.index', ['department' => $key]) }}" class="{{ $filter === $key ? 'is-active' : '' }}">{{ $meta['label'] }}</a>
+                        <a href="{{ route('feedback.index', ['department' => $key]) }}" class="{{ $filter === $key ? 'is-active' : '' }}">{{ $meta['label'] }} ({{ (int) (($feedCounts ?? collect())[$key] ?? 0) }})</a>
                     @endforeach
                 </div>
                 @if(!$feed || $feed->isEmpty())

@@ -25,19 +25,28 @@ class DepartmentFeedbackController extends Controller
         $responses = collect();
         $stats = collect();
         $feed = null;
+        $feedCounts = collect();
 
         if (DepartmentFeedback::tableReady()) {
+            // Total feedback per department (same rules as the "Recent feedback" list).
+            $feedCounts = DepartmentFeedback::query()
+                ->where('skipped', false)
+                ->whereNotNull('rating')
+                ->selectRaw('department, COUNT(*) as total')
+                ->groupBy('department')
+                ->pluck('total', 'department');
+
             $responses = DepartmentFeedback::query()
                 ->where('user_id', $request->user()->id)
                 ->where('week_start', $weekDate)
                 ->get()
                 ->keyBy('department');
 
+            // Cumulative (all weeks): average, number of ratings and number of written reviews.
             $stats = DepartmentFeedback::query()
-                ->where('week_start', $weekDate)
                 ->where('skipped', false)
                 ->whereNotNull('rating')
-                ->selectRaw('department, COUNT(*) as total, AVG(rating) as avg_rating')
+                ->selectRaw("department, COUNT(*) as total, AVG(rating) as avg_rating, SUM(CASE WHEN comment IS NOT NULL AND TRIM(comment) <> '' THEN 1 ELSE 0 END) as reviews")
                 ->groupBy('department')
                 ->get()
                 ->keyBy('department');
@@ -83,6 +92,7 @@ class DepartmentFeedbackController extends Controller
             'responses' => $responses,
             'stats' => $stats,
             'feed' => $feed,
+            'feedCounts' => $feedCounts,
             'filter' => $filter,
             'selected' => $selected,
             'ratingValue' => (int) old('rating', $existingRating),

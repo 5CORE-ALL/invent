@@ -218,6 +218,13 @@
             .topbar-review-btn.is-review-low { background: #fee2e2; color: #991b1b; box-shadow: 0 2px 6px rgba(153, 27, 27, 0.18); }
             .topbar-review-btn.is-review-low:hover { background: #fecaca; color: #991b1b; }
             .topbar-review-btn i { color: #f59e0b; }
+            .topbar-review-badge {
+                display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 1px 8px;
+                background: rgba(255, 255, 255, 0.75); border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.6;
+            }
+            .topbar-review-badge[hidden] { display: none; }
+            .topbar-review-badge > span { display: inline-flex; align-items: center; gap: 2px; }
+            .topbar-review-badge i { font-size: 12px; }
 
             .topbar-incentive-dollar-btn {
                 display: inline-flex;
@@ -643,8 +650,11 @@
             <button type="button" id="myReviewTopbarBtn" class="topbar-dar-btn topbar-review-btn is-review-none"
                 title="My Review — average of reviews received" aria-label="My Review">
                 <i class="ri-star-fill"></i>
-                <span class="topbar-dar-btn__label">REVIEW</span>
                 <span class="topbar-dar-btn__pct" id="myReviewTopbarAvg">&hellip;</span>
+                <span class="topbar-review-badge" id="myReviewTopbarBadge" hidden>
+                    <span title="Reviews received"><i class="ri-user-line"></i><b id="myReviewTopbarReviews">0</b></span>
+                    <span title="Ratings received"><i class="ri-star-line"></i><b id="myReviewTopbarRatings">0</b></span>
+                </span>
             </button>
         @endauth
 

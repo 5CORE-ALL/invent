@@ -71,14 +71,21 @@
         if (d.avg != null) cls = d.avg >= 4 ? 'is-review-high' : (d.avg >= 3 ? 'is-review-mid' : 'is-review-low');
         btn.classList.add(cls);
         avgEl.textContent = d.avg == null ? '—' : Number(d.avg).toFixed(1);
+        var badge = document.getElementById('myReviewTopbarBadge');
+        if (badge) {
+            badge.hidden = !(d.reviewers || d.ratings);
+            document.getElementById('myReviewTopbarReviews').textContent = d.reviewers || 0;
+            document.getElementById('myReviewTopbarRatings').textContent = d.ratings || 0;
+        }
         btn.title = d.avg == null ? 'My Review — no reviews yet'
-            : 'My Review — ' + fmt(d.avg) + '/5 from ' + d.reviewers + ' reviewer' + (d.reviewers === 1 ? '' : 's');
+            : 'My Review — ' + fmt(d.avg) + '/5 from ' + d.reviewers + ' review' + (d.reviewers === 1 ? '' : 's') +
+              ' · ' + (d.ratings || 0) + ' rating' + (d.ratings === 1 ? '' : 's');
     }
 
     function render(d) {
         var html = '<div class="mr-hero"><div class="mr-big">' + (d.avg == null ? '—' : fmt(d.avg)) + '<span style="font-size:1.1rem;color:#94a3b8"> / 5</span></div>' +
             stars(d.avg) +
-            '<div class="mr-sub">' + (d.reviewers ? 'Average across ' + d.reviewers + ' reviewer' + (d.reviewers === 1 ? '' : 's') : 'No one has reviewed you yet') + '</div></div>';
+            '<div class="mr-sub">' + (d.reviewers ? 'Average across ' + d.reviewers + ' reviewer' + (d.reviewers === 1 ? '' : 's') + ' · ' + (d.ratings || 0) + ' rating' + (d.ratings === 1 ? '' : 's') : 'No one has reviewed you yet') + '</div></div>';
         d.sections.forEach(function (sec) {
             html += '<div class="mr-section"><div class="mr-sec-head"><span class="mr-sec-title">' + esc(sec.label) + '</span>' +
                 '<span class="mr-sec-avg">' + stars(sec.avg) + ' ' + fmt(sec.avg) +
