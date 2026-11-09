@@ -1453,6 +1453,19 @@
         pullMsg.textContent = text;
     }
 
+    // Pulling works on the ticked campaigns only: the buttons are off until something is ticked.
+    let pullBusy = false;
+    function pullSyncButtons() {
+        if (pullBusy) return;
+        const n = pickedIdsFn().length;
+        pullDefs.forEach(function (d) {
+            if (!d.btn || !d.label) return;
+            d.btn.innerHTML = d.label();
+            d.btn.disabled = n === 0;
+            d.btn.title = n ? d.baseTitle : 'Tick campaigns in the grid first: pulling works on the selected campaigns only.';
+        });
+    }
+
     const pullStatusUrl = @json(route('amazon.ads.fbm-targeting.pull-status'));
     pullDefs.forEach(function (def) {
         if (!def.btn) return;
@@ -1463,11 +1476,11 @@
             const n = pickedIdsFn().length;
             return n ? baseHtml + ' (' + n.toLocaleString() + ' selected)' : baseHtml;
         };
-        def.btn.innerHTML = def.label();
+        def.baseTitle = def.btn.title || '';
 
         function finish() {
-            pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = false; });
-            def.btn.innerHTML = def.label();
+            pullBusy = false;
+            pullSyncButtons();
         }
 
         function applyStatus(b) {
@@ -1495,10 +1508,10 @@
 
         def.btn.addEventListener('click', function () {
             const sel = pickedIdsFn();
-            const scopeText = sel.length
-                ? 'ONLY the ' + sel.length.toLocaleString() + ' selected campaign' + (sel.length === 1 ? '' : 's') + ' (HL / PT campaigns among them are skipped)'
-                : 'all Amazon KW campaigns';
+            if (!sel.length) { showPullMsg('Tick the campaigns to pull first: pulling works on the selected campaigns only.', false); return; }
+            const scopeText = 'ONLY the ' + sel.length.toLocaleString() + ' selected campaign' + (sel.length === 1 ? '' : 's') + ' (HL / PT campaigns among them are skipped)';
             if (!confirm('Pull ' + def.what + ' from ' + scopeText + '? Only ones missing in the app will be added; existing ones are kept.')) return;
+            pullBusy = true;
             pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = true; });
             def.btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pulling…';
             showPullMsg('Starting the pull of ' + def.what + ' from Amazon…', true);
@@ -1527,6 +1540,8 @@
             });
         });
     });
+
+    pullSyncButtons();
 
     // Sync with Amazon: pull + push in chunks on the server; the page only polls a tiny status endpoint.
     const syncStartUrl = @json(route('amazon.ads.fbm-targeting.sync-start'));
@@ -2566,7 +2581,7 @@
         pickedIdsFn = ids;
         const paint = function () {
             const n = ids().length;
-            pullDefs.forEach(function (d) { if (d.btn && !d.btn.disabled && d.label) d.btn.innerHTML = d.label(); });
+            pullSyncButtons();
             if (pkBtn) {
                 pkBtn.innerHTML = '<i class="fas fa-upload"></i> Push KW to KW + HL Campaigns' + (n ? ' (' + n.toLocaleString() + ' selected)' : '');
                 pkBtn.title = n

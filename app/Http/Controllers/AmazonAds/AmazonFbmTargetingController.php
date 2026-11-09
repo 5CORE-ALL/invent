@@ -1247,6 +1247,9 @@ class AmazonFbmTargetingController extends Controller
             }
             // Bulk push from the grid: only these KW campaigns (and the HL campaigns of their parents) are looked at.
             $campaignIds = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
+            if ($campaignIds === null && $selected === null) {
+                return response()->json(['success' => false, 'message' => 'Tick the campaigns to push first: pushing works on the selected campaigns only.'], 422);
+            }
 
             return $this->startBackgroundPush($selected, $campaignIds);
         }
@@ -1258,6 +1261,9 @@ class AmazonFbmTargetingController extends Controller
             'campaign_ids.*' => ['string', 'regex:/^\d{1,32}$/'],
         ]);
         $campaignIds = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
+        if ($campaignIds === null) {
+            return response()->json(['success' => false, 'message' => 'Tick the campaigns to check first: the check works on the selected campaigns only.', 'dry_run' => true], 422);
+        }
 
         // The check lists the live keywords of every campaign on Amazon (about a minute for hundreds of campaigns),
         // so it runs in the background too and the page polls checkStatus(); the modal can never hang on a request.
@@ -1608,6 +1614,9 @@ class AmazonFbmTargetingController extends Controller
         ]);
         $ids = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
         $selected = ! empty($v['selected']) ? array_values(array_unique($v['selected'])) : null;
+        if ($ids === null) {
+            return response()->json(['success' => false, 'message' => 'Tick the campaigns to sync first: syncing works on the selected campaigns only.'], 422);
+        }
 
         $push = Cache::get(self::PUSH_STATE);
         $pushAlive = is_array($push) && ($push['status'] ?? '') === 'running'
@@ -2768,6 +2777,9 @@ class AmazonFbmTargetingController extends Controller
             ]);
             $ids = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
         }
+        if ($request !== null && $ids === null) {
+            return response()->json(['success' => false, 'message' => 'Tick the campaigns to pull first: pulling works on the selected campaigns only.'], 422);
+        }
         if ($ids !== null && $this->kwCampaignsForPush($ids) === []) {
             return response()->json(['success' => false, 'message' => 'None of the selected campaigns is an active KW campaign (HL, PT and archived campaigns cannot be pulled here).'], 422);
         }
@@ -2837,6 +2849,7 @@ class AmazonFbmTargetingController extends Controller
 
         // Campaigns ticked in the grid: only those are read from Amazon; nothing else is touched.
         $onlyIds = $this->pullCampaignIds($kind);
+        Cache::forget(self::PULL_IDS.'_'.$kind); // a later command-line run must not reuse these ids
         $names = [];
         foreach ($this->kwCampaignsForPush($onlyIds) as $c) {
             $names[$c['campaign_id']] = $c['campaign_name'];
