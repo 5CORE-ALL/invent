@@ -5982,6 +5982,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Movement Analysis
     Route::get('/movement.analysis', action: [MovementAnalysisController::class, 'movementAnalysis'])->name('movement.analysis');
     Route::get('/movement-analysis', [MovementAnalysisController::class, 'movementAnalysisTable'])->name('movement.analysis.table');
+    Route::get('/sales-by-dil-slab', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'index'])->name('sales.by.dil.slab');
+    Route::get('/sales-by-dil-slab-data', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'data'])->name('sales.by.dil.slab.data');
     Route::post('/update-smsl', [MovementAnalysisController::class, 'updateSmsl'])->name('update-smsl');
 
     // Update Forecast Sheet

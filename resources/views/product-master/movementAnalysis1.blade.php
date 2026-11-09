@@ -521,8 +521,8 @@
     function maMoneyCompact(n) {
         const v = Math.round(Number(n) || 0);
         const abs = Math.abs(v);
-        if (abs >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-        if (abs >= 1000) return '$' + Math.round(v / 1000) + 'K';
+        // Always in K (e.g. 2.1M shows as $2,100K).
+        if (abs >= 1000) return '$' + Math.round(v / 1000).toLocaleString('en-US') + 'K';
         return '$' + v.toLocaleString('en-US');
     }
     function maRowDil(row) {

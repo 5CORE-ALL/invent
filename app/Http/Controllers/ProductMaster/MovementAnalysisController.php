@@ -196,6 +196,7 @@ class MovementAnalysisController extends Controller
                 ? $rawValues
                 : (json_decode((string) $rawValues, true) ?: []);
             $item->lp = (isset($valuesJson['lp']) && is_numeric($valuesJson['lp'])) ? (float) $valuesJson['lp'] : 0;
+            $item->ship = (isset($valuesJson['ship']) && is_numeric($valuesJson['ship'])) ? (float) $valuesJson['ship'] : 0;
             $item->moq = (isset($valuesJson['moq']) && is_numeric($valuesJson['moq'])) ? (int) round((float) $valuesJson['moq']) : 0;
 
             $inv = (float) ($item->INV ?? 0);

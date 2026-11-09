@@ -221,6 +221,9 @@
                                 <a href="{{ route('movement.analysis.table') }}">Movement Analysis</a>
                             </li>
                             <li>
+                                <a href="{{ route('sales.by.dil.slab') }}">Sales by Dil Slab</a>
+                            </li>
+                            <li>
                                 <a href="{{ route('tobedc.list') }}">2BDC</a>
                             </li>
                             <li>
