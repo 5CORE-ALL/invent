@@ -220,7 +220,7 @@ class EbayCategoryAspects
      * Application token (client credentials) — Taxonomy API needs the public api_scope,
      * which seller user tokens often lack.
      */
-    private static function appToken(string $appId, string $certId): string
+    public static function appToken(string $appId, string $certId): string
     {
         $appId = trim($appId);
         $certId = trim($certId);

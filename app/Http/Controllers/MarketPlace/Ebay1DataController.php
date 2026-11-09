@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\EbayCategoryTree;
 use App\Support\Marketplace\EbaySpricePush;
 use App\Support\Marketplace\ProductUpc;
 use Illuminate\Http\Request;
@@ -1357,6 +1358,124 @@ class Ebay1DataController extends Controller
         });
 
         return response()->json(['success' => true, 'cells' => count($cells)]);
+    }
+
+    // ---- Change category: every leaf category of the eBay US tree, and a multi-SKU category change. ----
+
+    /**
+     * GET /ebay1-data/ebay-categories?q=&refresh=1
+     * Searches the eBay category tree (fetched from eBay on first use, then kept in a file).
+     */
+    public function ebayCategories(Request $request)
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
+        $result = EbayCategoryTree::search((string) $request->query('q', ''), 200, $request->boolean('refresh'));
+        if ($result['total'] === 0 && $result['fetched_at'] === '') {
+            return response()->json([
+                'success' => false,
+                'message' => EbayCategoryTree::$error !== '' ? EbayCategoryTree::$error : 'The eBay categories could not be loaded.',
+                'results' => [],
+                'total' => 0,
+            ], 502);
+        }
+
+        return response()->json(['success' => true] + $result);
+    }
+
+    /**
+     * POST /ebay1-data/change-category
+     * Moves the given SKUs to one eBay category in this app: Category Master (so Technical Specifications follows)
+     * and the stored eBay 1 pull of each SKU, which is what puts a SKU under a category tab here.
+     * Nothing is sent to eBay.
+     */
+    public function changeCategory(Request $request)
+    {
+        $data = $request->validate([
+            'skus' => 'required|array|min:1|max:5000',
+            'skus.*' => 'required|string|max:191',
+            'category_id' => 'required|string|max:64',
+            'category_path' => 'nullable|string|max:500',
+        ]);
+        $categoryId = trim((string) $data['category_id']);
+        $path = trim((string) ($data['category_path'] ?? ''));
+        $known = EbayCategoryTree::byId($categoryId);
+        if ($known === null && $path === '') {
+            return response()->json(['success' => false, 'message' => 'That eBay category is not in the eBay category tree.'], 422);
+        }
+        if ($known !== null) {
+            $path = $known['path']; // the path eBay has, whatever the browser sent
+        }
+        if (mb_strlen($path) > 255) {
+            return response()->json(['success' => false, 'message' => 'The category path is longer than 255 characters.'], 422);
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map('trim', $data['skus']))));
+        $now = now();
+        $userId = $request->user()?->id;
+        $masters = 0;
+        $pulls = 0;
+
+        DB::transaction(function () use ($skus, $categoryId, $path, $now, $userId, &$masters, &$pulls) {
+            if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay')) {
+                $hasId = Schema::hasColumn('category_masters', 'category_ebay_id');
+                $parents = [];
+                if (Schema::hasTable('product_master')) {
+                    foreach (array_chunk($skus, 500) as $chunk) {
+                        foreach (DB::table('product_master')->whereIn('sku', $chunk)->get(['sku', 'parent']) as $pm) {
+                            $parents[$this->skuKey((string) $pm->sku)] = trim((string) ($pm->parent ?? ''));
+                        }
+                    }
+                }
+                $existing = [];
+                foreach (array_chunk($skus, 500) as $chunk) {
+                    foreach (DB::table('category_masters')->whereIn('sku', $chunk)->get() as $row) {
+                        $existing[$this->skuKey((string) $row->sku)] = $row;
+                    }
+                }
+                foreach ($skus as $sku) {
+                    $key = $this->skuKey($sku);
+                    $payload = ['category_ebay' => $path, 'updated_at' => $now];
+                    if ($hasId) {
+                        $payload['category_ebay_id'] = $categoryId;
+                    }
+                    if (Schema::hasColumn('category_masters', 'updated_by')) {
+                        $payload['updated_by'] = $userId;
+                    }
+                    if (isset($existing[$key])) {
+                        DB::table('category_masters')->where('id', $existing[$key]->id)->update($payload);
+                    } else {
+                        $parent = $parents[$key] ?? '';
+                        DB::table('category_masters')->insert($payload + [
+                            'sku' => $sku,
+                            'parent' => $parent !== '' ? $parent : null,
+                            'created_at' => $now,
+                        ]);
+                    }
+                    $masters++;
+                }
+            }
+
+            if (Schema::hasTable('ebay1_item_specifics')) {
+                $hasId = Schema::hasColumn('ebay1_item_specifics', 'category_id');
+                foreach (array_chunk($skus, 500) as $chunk) {
+                    $payload = ['category_path' => $path, 'updated_at' => $now];
+                    if ($hasId) {
+                        $payload['category_id'] = $categoryId;
+                    }
+                    $pulls += DB::table('ebay1_item_specifics')->whereIn('sku', $chunk)->update($payload);
+                }
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'skus' => count($skus),
+            'category_master_rows' => $masters,
+            'pull_rows' => $pulls,
+            'category_id' => $categoryId,
+            'category_path' => $path,
+        ]);
     }
 
     // ---- Missing item specifics history: one figure per day, over every category. ----
