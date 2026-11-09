@@ -446,8 +446,10 @@ class AmazonFbmTargetingController extends Controller
                 // Same function as /amazon-ads/all (L30 report + keywords pulled from / pushed to Amazon), so both pages match.
                 'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
                 'target_pending' => $pending[$id] ?? 0,
-                // Keywords waiting to be pushed to Amazon (not on Amazon yet; deleted / ignored ones left out).
-                'app_target_count' => $toPush[$id] ?? 0,
+                // Keywords the app holds for this campaign (what the targets modal lists: deleted ones are gone, edits applied).
+                // It stays the same after a push; app_target_pending is the part still waiting to be pushed to Amazon.
+                'app_target_count' => count($targets),
+                'app_target_pending' => $toPush[$id] ?? 0,
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
@@ -1812,6 +1814,8 @@ class AmazonFbmTargetingController extends Controller
                 'message' => $label.' · '.number_format($tot['added']).' keyword(s) pushed'.($tot['failed'] ? ', '.number_format($tot['failed']).' rejected' : ''),
             ]);
         }
+        // Every KW cousin of the synced campaigns now holds the same app keywords (local copy, nothing is sent to Amazon).
+        $this->syncCousinsOfCampaigns(array_map(static fn (array $c) => (string) $c['campaign_id'], $camps), ['kw']);
         $this->forgetBadges();
 
         return [
@@ -2875,10 +2879,12 @@ class AmazonFbmTargetingController extends Controller
         $this->recordPullState($kind, ['message' => 'Reading '.$label.'s of '.count($names).' KW campaign'.(count($names) === 1 ? '' : 's').' from Amazon…']);
         $r = $this->ingestKeywords($names, $kind);
 
-        // A pull of ticked campaigns stays on those campaigns: no cousin copying, no HL refresh.
+        // Amazon is read for the ticked campaigns only (no HL refresh); the keywords the app now holds are then copied
+        // locally (no Amazon call) to the KW cousins of those campaigns, so every cousin has the same App Target keywords.
         $cousinAdded = 0;
-        if ($onlyIds === null) {
-            $this->recordPullState($kind, ['message' => 'Syncing KW cousins…']);
+        $this->recordPullState($kind, ['message' => 'Syncing KW cousins…']);
+        if ($onlyIds !== null) {
+            $cousinAdded = $this->syncCousinsOfCampaigns($onlyIds, [$kind]);
         }
         if ($onlyIds === null && $this->hasTable(self::COUSIN_TABLE)) {
             $done = [];
@@ -3145,6 +3151,51 @@ class AmazonFbmTargetingController extends Controller
         }
         if ($added > 0) {
             $this->forgetBadges();
+        }
+
+        return $added;
+    }
+
+    /**
+     * Copy the app keywords of the given campaigns to their KW cousins right away (local data, no Amazon call), so all
+     * members of a cousin group hold the same keywords after a pull / push / edit instead of after the next page load.
+     *
+     * @param  list<string>  $campaignIds
+     * @param  list<string>  $kinds  'kw' and / or 'neg'
+     * @return int keyword rows added across the groups
+     */
+    public function syncCousinsOfCampaigns(array $campaignIds, array $kinds = ['kw', 'neg']): int
+    {
+        if ($campaignIds === [] || ! $this->hasTable(self::COUSIN_TABLE) || ! $this->hasTable(self::STORE_TABLE)) {
+            return 0;
+        }
+        $added = 0;
+        try {
+            $want = array_flip(array_map('strval', $campaignIds));
+            $groupsMap = $this->cousins->groupsMap();
+            $groups = [];
+            foreach ($this->campaignsGroupedByParent() as $c) {
+                if (! isset($want[(string) $c['campaign_id']])) {
+                    continue;
+                }
+                $group = $this->effectiveGroup($c['campaign_name'], $groupsMap);
+                if ($this->cousinCampaignNames($group, $c['campaign_name']) === []) {
+                    continue;
+                }
+                $norms = array_map(fn ($n) => $this->cousins->normalize((string) $n), $group);
+                sort($norms);
+                $groups[md5(implode('|', $norms))] = $group;
+            }
+            foreach ($groups as $group) {
+                foreach ($kinds as $kind) {
+                    if ($kind === 'neg' && ! $this->hasTable(self::NEG_TABLE)) {
+                        continue;
+                    }
+                    $added += $this->syncCousinKeywords($group, false, $kind);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: cousin sync after pull / push failed', ['error' => $e->getMessage()]);
         }
 
         return $added;

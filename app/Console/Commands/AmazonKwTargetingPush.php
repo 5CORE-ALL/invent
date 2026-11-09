@@ -40,6 +40,13 @@ class AmazonKwTargetingPush extends Command
                 $campaignIds === null ? null : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps) // picked together = evened out
             );
 
+            // KW cousins of the pushed campaigns get the same app keywords right away (local copy, nothing is sent to Amazon).
+            $ticked = $page->pushSelection();
+            $syncIds = $ticked !== null
+                ? array_values(array_map(static fn (string $k) => substr($k, 3), array_filter($ticked, static fn (string $k) => str_starts_with($k, 'KW|'))))
+                : array_map(static fn (array $c) => (string) $c['campaign_id'], $camps);
+            $page->syncCousinsOfCampaigns($syncIds, ['kw']);
+
             $payload = $page->pushPayload($r, false);
             if ($r['errors'] !== [] && $r['rows'] === []) {
                 $page->recordPushState(['status' => 'error', 'message' => implode(' ', $r['errors']), 'errors' => $r['errors']], true);

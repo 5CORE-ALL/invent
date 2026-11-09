@@ -30,7 +30,7 @@
     .amz-fbm-targeting .aft-status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.06); vertical-align: middle; }
     .amz-fbm-targeting .aft-mag { cursor: pointer; color: #1d4ed8; font-size: 13px; padding: 3px; border-radius: 4px; vertical-align: middle; }
     .amz-fbm-targeting .aft-mag:hover { background: #dbeafe; color: #1e40af; }
-    .amz-fbm-targeting .aft-low-badge { font-size: .78rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
+    .amz-fbm-targeting .aft-low-badge { font-size: .72rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
     .amz-fbm-targeting .aft-low-badge.is-active { border-color: #111827; box-shadow: 0 0 0 2px #fde68a; }
     .amz-fbm-targeting .aft-count-badge {
         display: inline-block; padding: 2px 10px; border-radius: 999px;
@@ -171,57 +171,57 @@
                     <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
                 </div>
                 <div class="card-body">
-                    <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
-                        <div class="btn-group btn-group-sm" role="group" id="aft-type-group" aria-label="Campaign type">
+                    <div class="mb-3 d-flex gap-1 flex-nowrap align-items-center aft-oneline" style="overflow-x:auto;">
+                        <div class="btn-group btn-group-sm flex-shrink-0" role="group" id="aft-type-group" aria-label="Campaign type">
                             <button type="button" class="btn btn-primary active" data-type="" title="Show every campaign type (clears the KW / PT / HL selection)">All</button>
                             <button type="button" class="btn btn-outline-primary" data-type="kw" title="KW campaigns (Sponsored Products keyword campaigns)">KW</button>
                             <button type="button" class="btn btn-outline-primary" data-type="pt" title="PT campaigns (Sponsored Products product targeting)">PT</button>
                             <button type="button" class="btn btn-outline-primary" data-type="hl" title="HL / HEAD campaigns (Sponsored Brands headline)">HL / Head</button>
                         </div>
                         <input type="text" id="aft-cousin-search" class="form-control form-control-sm"
-                               style="max-width: 260px;" placeholder="Search KW cousins..." autocomplete="off"
+                               style="flex:1 1 90px;min-width:70px;max-width:200px;" placeholder="Search KW cousins..." autocomplete="off"
                                title="Filter by cousin name, cousin parent or cousin campaign">
-                        <select id="aft-status" class="form-select form-select-sm" style="max-width: 150px;" title="Campaign status (same values as Ads All)">
+                        <select id="aft-status" class="form-select form-select-sm flex-shrink-0" style="width:auto;max-width:125px;" title="Campaign status (same values as Ads All)">
                             <option value="" selected>All statuses</option>
                             <option value="ENABLED">Enabled</option>
                             <option value="PAUSED">Paused</option>
                             <option value="ARCHIVED">Archived</option>
                         </select>
-                        <select id="aft-scope" class="form-select form-select-sm" style="max-width: 190px;" title="Show parent campaigns or single-SKU campaigns">
+                        <select id="aft-scope" class="form-select form-select-sm flex-shrink-0" style="width:auto;max-width:125px;" title="Show parent campaigns or single-SKU campaigns">
                             <option value="all">Parent + SKU</option>
                             <option value="parent">Parent</option>
                             <option value="sku">SKU</option>
                         </select>
                         <input type="text" id="aft-parent-search" class="form-control form-control-sm"
-                               style="max-width: 170px;" placeholder="Search parents..." autocomplete="off">
+                               style="flex:1 1 80px;min-width:60px;max-width:170px;" placeholder="Search parents..." autocomplete="off">
                         <input type="text" id="aft-title-search" class="form-control form-control-sm"
-                               style="max-width: 240px;" placeholder="Search title..." autocomplete="off">
+                               style="flex:1 1 80px;min-width:60px;max-width:200px;" placeholder="Search title..." autocomplete="off">
                         <input type="text" id="aft-search" class="form-control form-control-sm"
-                               style="max-width: 240px;" placeholder="Search campaigns..." autocomplete="off">
-                        <span class="text-muted small" id="aft-count"></span>
-                        <span class="badge bg-danger" id="aft-missing-titles" style="font-size:.78rem;"
-                              title="Parents with no title in Product Master">Missing Titles: 0</span>
-                        <span class="badge bg-danger" id="aft-missing-cousins" style="font-size:.78rem;"
-                              title="Parents with no KW cousins">Missing KW cousins: 0</span>
-                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="kw" id="aft-low-kw"
+                               style="flex:1 1 90px;min-width:70px;max-width:200px;" placeholder="Search campaigns..." autocomplete="off">
+                        <span class="text-muted small text-nowrap flex-shrink-0" id="aft-count"></span>
+                        <span class="badge bg-danger text-nowrap flex-shrink-0" id="aft-missing-titles" style="font-size:.72rem;"
+                              title="M = Missing: parents with no title in Product Master">M Titles: 0</span>
+                        <span class="badge bg-danger text-nowrap flex-shrink-0" id="aft-missing-cousins" style="font-size:.72rem;"
+                              title="M = Missing: parents with no KW cousins">M KW cousins: 0</span>
+                        <span class="badge bg-primary aft-low-badge text-nowrap flex-shrink-0" role="button" tabindex="0" data-low="kw" id="aft-low-kw"
                               title="Campaigns with fewer than 50 keywords. Click to filter.">KW &lt; 50: 0</span>
-                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="neg" id="aft-low-neg"
+                        <span class="badge bg-primary aft-low-badge text-nowrap flex-shrink-0" role="button" tabindex="0" data-low="neg" id="aft-low-neg"
                               title="Campaigns with fewer than 50 negative keywords. Click to filter.">Neg KW &lt; 50: 0</span>
-                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="spec" id="aft-low-spec"
+                        <span class="badge bg-primary aft-low-badge text-nowrap flex-shrink-0" role="button" tabindex="0" data-low="spec" id="aft-low-spec"
                               title="Campaigns with fewer than 10 specific keywords. Click to filter.">Specific KW &lt; 10: 0</span>
-                        <span class="badge bg-primary aft-low-badge" role="button" tabindex="0" data-low="sneg" id="aft-low-sneg"
+                        <span class="badge bg-primary aft-low-badge text-nowrap flex-shrink-0" role="button" tabindex="0" data-low="sneg" id="aft-low-sneg"
                               title="Campaigns with fewer than 10 specific negative keywords. Click to filter.">Specific neg KW &lt; 10: 0</span>
-                        <span class="small text-muted" id="aft-lt-coverage"
+                        <span class="text-muted text-nowrap flex-shrink-0" style="font-size:.7rem;" id="aft-lt-coverage"
                               title="Clicks LT / Sold LT add up the stored daily Amazon Ads campaign reports. Amazon only serves about the last 95 days."></span>
-                        <button type="button" id="aft-pull-lt" class="btn btn-sm btn-info ms-auto"
+                        <button type="button" id="aft-pull-lt" class="btn btn-sm btn-info ms-auto flex-shrink-0 text-nowrap"
                                 title="Fetch missing daily campaign reports (clicks / sold) from the Amazon Ads API for the Clicks LT / Sold LT columns. Runs in the background.">
                             <i class="fas fa-chart-line"></i> Pull LT
                         </button>
-                        <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success"
+                        <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success flex-shrink-0 text-nowrap"
                                 title="Add keywords that exist in Amazon KW campaigns but not in the app. Existing keywords are kept.">
                             <i class="fas fa-cloud-download-alt"></i> Pull KW
                         </button>
-                        <button type="button" id="aft-pull-neg" class="btn btn-sm btn-danger"
+                        <button type="button" id="aft-pull-neg" class="btn btn-sm btn-danger flex-shrink-0 text-nowrap"
                                 title="Add negative keywords that exist in Amazon KW campaigns but not in the app. Existing negative keywords are kept.">
                             <i class="fas fa-ban"></i> Pull Neg KW
                         </button>
@@ -681,7 +681,7 @@
     function applyBadges(response) {
         if (missingTitlesEl) {
             const mt = Number(response.missing_titles || 0);
-            missingTitlesEl.textContent = 'Missing Titles: ' + mt.toLocaleString();
+            missingTitlesEl.textContent = 'M Titles: ' + mt.toLocaleString();
             missingTitlesEl.classList.toggle('bg-danger', mt > 0);
             missingTitlesEl.classList.toggle('bg-success', mt === 0);
             const names = Array.isArray(response.missing_title_parents) ? response.missing_title_parents : [];
@@ -691,7 +691,7 @@
         }
         if (missingCousinsEl) {
             const mc = Number(response.missing_cousins || 0);
-            missingCousinsEl.textContent = 'Missing KW cousins: ' + mc.toLocaleString();
+            missingCousinsEl.textContent = 'M KW cousins: ' + mc.toLocaleString();
             missingCousinsEl.classList.toggle('bg-danger', mc > 0);
             missingCousinsEl.classList.toggle('bg-success', mc === 0);
             const cn = Array.isArray(response.missing_cousin_parents) ? response.missing_cousin_parents : [];
@@ -996,14 +996,15 @@
                 width: 92,
                 hozAlign: 'center',
                 headerSort: false,
-                headerTooltip: 'Keywords still to be pushed to Amazon: in the app (copied from KW cousins or added / edited by hand) but not on Amazon yet. Deleted and ignored keywords are not counted. Drops to 0 after a push.',
+                headerTooltip: 'Keywords the app holds for this campaign (after edits and deletes). Amber = some of them are not on Amazon yet and wait for a push. The same keywords are kept on all KW cousins.',
                 formatter: function (cell) {
+                    const d = cell.getRow().getData() || {};
                     const n = Number(cell.getValue() || 0);
-                    const tip = n
-                        ? n.toLocaleString() + ' keyword(s) wait to be pushed to Amazon (Broad / Phrase / Exact; deleted and ignored ones are not counted).'
-                        : 'Nothing waiting to be pushed to Amazon.';
-                    // amber while something is waiting, plain when everything is on Amazon; cursor stays normal: only the magnifier is clickable
-                    const style = ' style="cursor:default;' + (n ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : '') + '"';
+                    const wait = Number(d.app_target_pending || 0);
+                    const tip = n.toLocaleString() + ' keyword(s) in the app' +
+                        (wait ? ' · ' + wait.toLocaleString() + ' not on Amazon yet (waiting for a push)' : ' · nothing waiting to be pushed');
+                    // amber while some of them still wait for a push; cursor stays normal: only the magnifier is clickable
+                    const style = ' style="cursor:default;' + (wait ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : '') + '"';
                     return '<span class="aft-count-badge" title="' + tip + '"' + style + '>' + n.toLocaleString() + '</span>' +
                         ' <i class="fas fa-search aft-mag" role="button" tabindex="0" title="View the targets of this campaign" aria-label="View targets"></i>';
                 },
