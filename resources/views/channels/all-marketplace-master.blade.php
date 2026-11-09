@@ -1252,6 +1252,10 @@
                                     <div id="amm-inv-block-sp"><div class="text-muted" style="font-size:11px;">Loading…</div></div>
                                 </div>
                             </div>
+                            <div class="amm-inv-sp-tabulator-wrap" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
+                                <div class="amm-inv-block-subtitle">Inv@SP</div>
+                                <div id="amm-inv-sp-tabulator"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -8476,6 +8480,72 @@
                 }
                 $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
+                ammInvRenderSpTabulator(slices);
+            }
+
+            // Inv@SP Tabulator: one row per DIL band, same badge colours / numbers as the cards above.
+            var ammInvSpTable = null;
+            function ammInvRenderSpTabulator(slices) {
+                const el = document.getElementById('amm-inv-sp-tabulator');
+                if (!el || typeof Tabulator === 'undefined') return;
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s.inv_at_sp) || 0); }, 0);
+                const tones = {
+                    zero: { bg: '#e5e7eb', fg: '#374151' },
+                    red1: { bg: '#fecaca', fg: '#7f1d1d' },
+                    red2: { bg: '#fee2e2', fg: '#991b1b' },
+                    green: { bg: '#dcfce7', fg: '#14532d' },
+                    pink: { bg: '#fce7f3', fg: '#9d174d' },
+                };
+                const rows = slices.map(function(s) {
+                    const val = Number(s.inv_at_sp) || 0;
+                    return {
+                        key: s.key,
+                        band: s.label,
+                        color: s.color,
+                        count: Number(s.count) || 0,
+                        inv_at_sp: val,
+                        pct: total > 0 ? Math.round((val / total) * 100) : 0,
+                    };
+                });
+                if (ammInvSpTable) {
+                    ammInvSpTable.setData(rows);
+                    return;
+                }
+                ammInvSpTable = new Tabulator(el, {
+                    layout: 'fitColumns',
+                    data: rows,
+                    height: false,
+                    columns: [
+                        {
+                            title: 'Band', field: 'band', headerSort: false, widthGrow: 2,
+                            formatter: function(cell) {
+                                const d = cell.getData();
+                                const t = tones[d.key] || tones.red1;
+                                return '<span style="display:inline-block;padding:2px 10px;border-radius:6px;font-weight:800;background:'
+                                    + t.bg + ';color:' + t.fg + ';">'
+                                    + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:' + d.color + ';"></span>'
+                                    + d.band + '</span>';
+                            },
+                            bottomCalc: function() { return 'Total'; },
+                        },
+                        {
+                            title: 'SKUs', field: 'count', hozAlign: 'right', sorter: 'number',
+                            bottomCalc: 'sum',
+                        },
+                        {
+                            title: 'Inv@SP $', field: 'inv_at_sp', hozAlign: 'right', sorter: 'number',
+                            formatter: function(cell) { return ammInvMoneyCompact(cell.getValue()); },
+                            bottomCalc: 'sum',
+                            bottomCalcFormatter: function(cell) { return ammInvMoneyCompact(cell.getValue()); },
+                        },
+                        {
+                            title: '% of total', field: 'pct', hozAlign: 'right', sorter: 'number',
+                            formatter: function(cell) { return cell.getValue() + '%'; },
+                            bottomCalc: function(values) { return values.some(function(v) { return v > 0; }) ? 100 : 0; },
+                            bottomCalcFormatter: function(cell) { return cell.getValue() + '%'; },
+                        },
+                    ],
+                });
             }
             function ammInvDrawColumn(canvasId, slices, valueKey) {
                 const canvas = document.getElementById(canvasId);

@@ -13,6 +13,47 @@ use Illuminate\View\View;
 
 class DepartmentFeedbackController extends Controller
 {
+    /** Every review (rating + note) given for one department, newest first, with who gave it. */
+    public function departmentReviews(string $department): JsonResponse
+    {
+        abort_unless(DepartmentFeedback::isKnown($department), 404);
+        $meta = DepartmentFeedback::DEPARTMENTS[$department];
+
+        $rows = collect();
+        if (DepartmentFeedback::tableReady()) {
+            $rows = DepartmentFeedback::query()
+                ->with('user:id,name,avatar')
+                ->where('department', $department)
+                ->where('skipped', false)
+                ->whereNotNull('rating')
+                ->orderByDesc('created_at')
+                ->limit(500)
+                ->get()
+                ->map(function (DepartmentFeedback $r) {
+                    $avatar = $r->user?->avatar;
+
+                    return [
+                        'user' => (string) ($r->user->name ?? 'Unknown'),
+                        'avatar' => $avatar
+                            ? (preg_match('#^(https?:)?//|^/#', (string) $avatar) ? (string) $avatar : asset('storage/'.$avatar))
+                            : asset('images/users/avatar-2.jpg'),
+                        'rating' => (int) $r->rating,
+                        'comment' => (string) $r->comment,
+                        'week' => optional($r->week_start)->format('M j, Y'),
+                        'given_at' => optional($r->created_at)->format('M j, Y g:i A'),
+                    ];
+                })->values();
+        }
+
+        return response()->json([
+            'label' => $meta['label'],
+            'accent' => $meta['accent'],
+            'count' => $rows->count(),
+            'avg' => $rows->isEmpty() ? null : round($rows->avg('rating'), 1),
+            'data' => $rows,
+        ]);
+    }
+
     /** Every review (rating + note) one person has given, optionally for a single department. */
     public function userReviews(Request $request, int $user): JsonResponse
     {

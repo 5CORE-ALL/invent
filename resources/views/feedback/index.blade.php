@@ -14,7 +14,13 @@
         gap: 10px;
         margin-bottom: 16px;
     }
+    .dfb-card-zoom {
+        position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 8px;
+        display: grid; place-items: center; font-size: 15px; color: #64748b; background: #f1f5f9; cursor: pointer;
+    }
+    .dfb-card-zoom:hover { background: var(--dfb-accent, #4338ca); color: #fff; }
     .dfb-card {
+        position: relative;
         text-align: left;
         background: #fff;
         border: 1px solid #e2e8f0;
@@ -377,6 +383,7 @@
                     class="dfb-card {{ $isToday ? 'is-today' : '' }} {{ $selected === $key ? 'is-selected' : '' }}"
                     style="--dfb-accent: {{ $meta['accent'] }}"
                     data-dept="{{ $key }}">
+                <span class="dfb-card-zoom" role="button" tabindex="0" data-dept-reviews="{{ $key }}" title="View {{ $meta['label'] }} reviews" aria-label="View {{ $meta['label'] }} reviews"><i class="ri-search-line"></i></span>
                 <div class="dfb-day">{{ $weekdays[$meta['weekday']] }}</div>
                 <div class="dfb-name"><i class="{{ $meta['icon'] }}"></i>{{ $meta['label'] }}</div>
                 <span class="dfb-status {{ $statusClass }}">{{ $status }}</span>
@@ -390,6 +397,22 @@
             </button>
         @endforeach
     </div>
+
+    <div class="modal fade" id="dfbReviewsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-0" id="dfbReviewsTitle">Reviews</h5>
+                        <small class="text-muted" id="dfbReviewsSub"></small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="dfbReviewsBody"></div>
+            </div>
+        </div>
+    </div>
+
 
     @php
         $uc = $userCards ?? collect();
@@ -429,21 +452,6 @@
             <button type="button" role="tab" data-tab="none">Not given yet <span>{{ $uc->count() - $uGiven }}</span></button>
         </div>
         <div class="dfb-users-table"><div id="dfbUsersTable"></div></div>
-
-        <div class="modal fade" id="dfbReviewsModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <div>
-                            <h5 class="modal-title mb-0" id="dfbReviewsTitle">Reviews</h5>
-                            <small class="text-muted" id="dfbReviewsSub"></small>
-                        </div>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body" id="dfbReviewsBody"></div>
-                </div>
-            </div>
-        </div>
 
         @if($canAgMsg ?? false)
             <div class="modal fade" id="dfbAgRulesModal" tabindex="-1" aria-hidden="true">
@@ -605,6 +613,48 @@
         if (el && window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(el).show();
     }
     function starsText(n) { return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n); }
+
+    // Magnifying glass on each department card: every review given for that department.
+    function openDeptReviews(key) {
+        var body = document.getElementById('dfbReviewsBody');
+        document.getElementById('dfbReviewsTitle').textContent = 'Reviews';
+        document.getElementById('dfbReviewsSub').textContent = 'Loading…';
+        body.innerHTML = '<div class="text-center text-muted py-4">Loading…</div>';
+        showModal('dfbReviewsModal');
+        api(@json(url('/feedback/department')) + '/' + encodeURIComponent(key) + '/reviews').then(function (j) {
+            document.getElementById('dfbReviewsTitle').textContent = j.label + ' · user reviews';
+            document.getElementById('dfbReviewsSub').textContent = j.count + ' review' + (j.count === 1 ? '' : 's') + (j.avg != null ? ' · ' + Number(j.avg).toFixed(1) + ' avg' : '') + ' · lifetime';
+            if (!j.data.length) { body.innerHTML = '<p class="text-muted mb-0">No reviews yet for this department.</p>'; return; }
+            body.innerHTML = j.data.map(function (r) {
+                return '<div class="dfb-rv"><div class="dfb-rv-top">' +
+                    '<span class="dfb-ut-user"><img src="' + escHtml(r.avatar) + '" alt="" loading="lazy"><b>' + escHtml(r.user) + '</b></span>' +
+                    '<span style="color:#d97706;letter-spacing:1px">' + starsText(r.rating) + '</span></div>' +
+                    '<div class="dfb-rv-note">' + (r.comment ? escHtml(r.comment) : '<span class="text-muted">No note</span>') + '</div>' +
+                    '<div class="dfb-rv-meta">Week of ' + escHtml(r.week || '') + ' · ' + escHtml(r.given_at || '') + '</div></div>';
+            }).join('');
+        }).catch(function (e) {
+            document.getElementById('dfbReviewsSub').textContent = '';
+            body.innerHTML = '<div class="alert alert-danger mb-0">' + escHtml(e.message) + '</div>';
+        });
+    }
+    var weekEl = document.querySelector('.dfb-week');
+    if (weekEl) {
+        // Capture phase so the card's own "select department" click does not also fire.
+        weekEl.addEventListener('click', function (e) {
+            var z = e.target.closest('[data-dept-reviews]');
+            if (!z) return;
+            e.stopPropagation();
+            e.preventDefault();
+            openDeptReviews(z.getAttribute('data-dept-reviews'));
+        }, true);
+        weekEl.addEventListener('keydown', function (e) {
+            var z = e.target.closest('[data-dept-reviews]');
+            if (!z || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.stopPropagation();
+            e.preventDefault();
+            openDeptReviews(z.getAttribute('data-dept-reviews'));
+        }, true);
+    }
 
     var usersEl = document.getElementById('dfbUsersTable');
     if (usersEl && window.Tabulator) {

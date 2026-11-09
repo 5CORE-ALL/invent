@@ -3789,6 +3789,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/feedback', 'store')->name('feedback.store');
         Route::post('/feedback/skip', 'skip')->name('feedback.skip');
         Route::get('/feedback/user/{user}/reviews', 'userReviews')->whereNumber('user')->name('feedback.user-reviews');
+        Route::get('/feedback/department/{department}/reviews', 'departmentReviews')->name('feedback.department-reviews');
     });
 
     // AG-MSG: rules + generate messages (from president@5core.com) from the Feedback team table.
