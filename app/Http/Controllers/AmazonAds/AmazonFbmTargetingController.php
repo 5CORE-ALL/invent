@@ -2714,20 +2714,31 @@ class AmazonFbmTargetingController extends Controller
      * ones the app does not have yet. Keywords already stored are left untouched and never duplicated.
      * Afterwards every KW-cousin group is synced so cousins share the same keywords.
      */
-    public function pullKeywords(): JsonResponse
+    public function pullKeywords(Request $request): JsonResponse
     {
-        return $this->pullKind('kw');
+        return $this->pullKind('kw', $request);
     }
 
     /**
      * Same as pullKeywords() but for negative keywords.
      */
-    public function pullNegatives(): JsonResponse
+    public function pullNegatives(Request $request): JsonResponse
     {
-        return $this->pullKind('neg');
+        return $this->pullKind('neg', $request);
     }
 
-    private function pullKind(string $kind): JsonResponse
+    /** Campaign ids ticked in the grid for the running pull (empty / missing = every KW campaign). */
+    private const PULL_IDS = 'amz_fbm_pull_ids';
+
+    /** Background worker side: the campaign ids the pull was limited to (null = every KW campaign). */
+    public function pullCampaignIds(string $kind): ?array
+    {
+        $ids = Cache::get(self::PULL_IDS.'_'.$kind);
+
+        return is_array($ids) && $ids !== [] ? array_values($ids) : null;
+    }
+
+    private function pullKind(string $kind, ?Request $request = null): JsonResponse
     {
         $table = $this->storeTable($kind);
 
@@ -2747,6 +2758,20 @@ class AmazonFbmTargetingController extends Controller
         if ($alive) {
             return response()->json(['success' => true, 'started' => true, 'already' => true] + $this->pullStatusBody($kind));
         }
+
+        // Campaigns ticked in the grid: pull just those (HL / PT / archived ones among them are skipped).
+        $ids = null;
+        if ($request !== null) {
+            $v = $request->validate([
+                'campaign_ids' => ['nullable', 'array', 'max:5000'],
+                'campaign_ids.*' => ['string', 'regex:/^\d{1,32}$/'],
+            ]);
+            $ids = ! empty($v['campaign_ids']) ? array_values(array_unique($v['campaign_ids'])) : null;
+        }
+        if ($ids !== null && $this->kwCampaignsForPush($ids) === []) {
+            return response()->json(['success' => false, 'message' => 'None of the selected campaigns is an active KW campaign (HL, PT and archived campaigns cannot be pulled here).'], 422);
+        }
+        Cache::put(self::PULL_IDS.'_'.$kind, $ids ?? [], now()->addHours(2));
 
         Cache::put($key, [
             'status' => 'running', 'started_at' => now()->toDateTimeString(), 'heartbeat' => time(),
@@ -2810,22 +2835,25 @@ class AmazonFbmTargetingController extends Controller
     {
         $label = $kind === 'neg' ? 'negative keyword' : 'keyword';
 
+        // Campaigns ticked in the grid: only those are read from Amazon; nothing else is touched.
+        $onlyIds = $this->pullCampaignIds($kind);
         $names = [];
-        foreach ($this->withoutArchived($this->campaignsGroupedByParent()) as $c) {
-            if ($c['campaign_id'] !== '' && ! $this->isProductTargetingCampaign($c['campaign_name'])) {
-                $names[$c['campaign_id']] = $c['campaign_name'];
-            }
+        foreach ($this->kwCampaignsForPush($onlyIds) as $c) {
+            $names[$c['campaign_id']] = $c['campaign_name'];
         }
         if ($names === []) {
             return ['message' => 'No KW campaigns found.', 'campaigns' => 0, 'fetched' => 0, 'added' => 0, 'skipped' => 0];
         }
 
-        $this->recordPullState($kind, ['message' => 'Reading '.$label.'s of '.count($names).' KW campaigns from Amazon…']);
+        $this->recordPullState($kind, ['message' => 'Reading '.$label.'s of '.count($names).' KW campaign'.(count($names) === 1 ? '' : 's').' from Amazon…']);
         $r = $this->ingestKeywords($names, $kind);
 
-        $this->recordPullState($kind, ['message' => 'Syncing KW cousins…']);
+        // A pull of ticked campaigns stays on those campaigns: no cousin copying, no HL refresh.
         $cousinAdded = 0;
-        if ($this->hasTable(self::COUSIN_TABLE)) {
+        if ($onlyIds === null) {
+            $this->recordPullState($kind, ['message' => 'Syncing KW cousins…']);
+        }
+        if ($onlyIds === null && $this->hasTable(self::COUSIN_TABLE)) {
             $done = [];
             foreach ($this->cousins->groupsMap() as $group) {
                 $key = implode('|', $group);
@@ -2844,7 +2872,7 @@ class AmazonFbmTargetingController extends Controller
 
         // HL (SB HEAD) campaigns: refresh their Targets counts too, so a push to them shows up without any other job.
         $hlRefreshed = 0;
-        if ($kind === 'kw') {
+        if ($kind === 'kw' && $onlyIds === null) {
             $this->recordPullState($kind, ['message' => 'Refreshing the Targets of the HL (HEAD) campaigns…']);
             $hlRefreshed = $this->refreshHlTargetCounts();
             if ($hlRefreshed > 0) {

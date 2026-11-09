@@ -1443,6 +1443,8 @@
 
     const pullMsg = document.getElementById('aft-pull-msg');
     const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    // Campaign ids ticked in the grid (set by the bulk-push wiring below); used by the Pull buttons.
+    let pickedIdsFn = function () { return []; };
     const pullDefs = [
         {
             btn: document.getElementById('aft-pull-kw'),
@@ -1467,16 +1469,22 @@
     pullDefs.forEach(function (def) {
         if (!def.btn) return;
         const kind = def.what === 'keywords' ? 'kw' : 'neg';
-        const original = def.btn.innerHTML;
+        const baseHtml = def.btn.innerHTML;
+        // With campaigns ticked in the grid, the pull covers only those (button shows the count).
+        def.label = function () {
+            const n = pickedIdsFn().length;
+            return n ? baseHtml + ' (' + n.toLocaleString() + ' selected)' : baseHtml;
+        };
+        def.btn.innerHTML = def.label();
 
         function finish() {
             pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = false; });
-            def.btn.innerHTML = original;
+            def.btn.innerHTML = def.label();
         }
 
         function applyStatus(b) {
             if (b.status === 'done') {
-                showPullMsg((b.message || 'Done.') + ' (' + (b.campaigns || 0) + ' KW campaigns, ' + (b.fetched || 0) + ' ' + def.what + ' fetched)', true);
+                showPullMsg((b.message || 'Done.') + ' (' + (b.campaigns || 0) + ' KW campaign' + (Number(b.campaigns) === 1 ? '' : 's') + ', ' + (b.fetched || 0) + ' ' + def.what + ' fetched)', true);
                 refreshVisibleRows(); // update the rows in place, no page reload
                 finish();
                 return true;
@@ -1498,7 +1506,11 @@
         }
 
         def.btn.addEventListener('click', function () {
-            if (!confirm('Pull ' + def.what + ' from all Amazon KW campaigns? Only ones missing in the app will be added; existing ones are kept.')) return;
+            const sel = pickedIdsFn();
+            const scopeText = sel.length
+                ? 'ONLY the ' + sel.length.toLocaleString() + ' selected campaign' + (sel.length === 1 ? '' : 's') + ' (HL / PT campaigns among them are skipped)'
+                : 'all Amazon KW campaigns';
+            if (!confirm('Pull ' + def.what + ' from ' + scopeText + '? Only ones missing in the app will be added; existing ones are kept.')) return;
             pullDefs.forEach(function (d) { if (d.btn) d.btn.disabled = true; });
             def.btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pulling…';
             showPullMsg('Starting the pull of ' + def.what + ' from Amazon…', true);
@@ -1506,9 +1518,11 @@
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
+                    'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': csrf,
                 },
+                body: JSON.stringify(sel.length ? { campaign_ids: sel } : {}),
             }).then(function (res) {
                 return res.json().then(function (body) { return { ok: res.ok && body.success !== false, body: body }; },
                     function () { return { ok: false, body: { message: 'Pull failed to start (HTTP ' + res.status + ').' } }; });
@@ -2555,8 +2569,10 @@
             picked.forEach(function (cid) { if (cid) set.add(String(cid)); });
             return Array.from(set);
         };
+        pickedIdsFn = ids;
         const paint = function () {
             const n = ids().length;
+            pullDefs.forEach(function (d) { if (d.btn && !d.btn.disabled && d.label) d.btn.innerHTML = d.label(); });
             selBtn.innerHTML = '<i class="fas fa-check-square"></i> Pull + Push selected (' + n.toLocaleString() + ')';
             selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
