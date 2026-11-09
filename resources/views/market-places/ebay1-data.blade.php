@@ -1562,10 +1562,11 @@
             // Item specifics of the tab, plus every page column, so L7 and the rest can be found.
             function allDeleteNames() {
                 const names = pageColumns().map(function (col) { return col.name; });
-                const seen = new Set(names.map(gKey));
-                specNamesForTab().forEach(function (name) {
-                    if (!seen.has(gKey(name))) {
-                        seen.add(gKey(name));
+                const pageKeys = new Set(names.map(gKey));
+                const seen = new Set();
+                specNamesAllForTab().forEach(function (name) {
+                    if (!pageKeys.has(gKey(name)) && !seen.has(name)) {
+                        seen.add(name);
                         names.push(name);
                     }
                 });
@@ -1787,6 +1788,21 @@
                 });
             }
 
+            // Every spelling of every item specific in the open tab (the table merges spellings into one column;
+            // the Edit and Delete windows list them all, so each stored name can be found, edited and deleted).
+            function specNamesAllForTab() {
+                if (activeTab === ALL) return [];
+                const counts = new Map();
+                rows.forEach(function (row) {
+                    if (!passesTab(row) || !row.specifics || Array.isArray(row.specifics)) return;
+                    Object.keys(row.specifics).forEach(function (name) { counts.set(name, (counts.get(name) || 0) + 1); });
+                });
+                const names = Array.from(counts.keys());
+                // A column the table shows but no SKU stores yet (added by hand) is listed too.
+                specNamesForTab().forEach(function (name) { if (!counts.has(name)) names.push(name); });
+                return names.sort(function (a, b) { return (counts.get(b) || 0) - (counts.get(a) || 0) || a.localeCompare(b); });
+            }
+
             function specNamesForTab() {
                 if (activeTab === ALL) return [];
                 const counts = new Map();
@@ -1832,7 +1848,7 @@
 
             // Every item-specific column of the open tab, including Brand, Country of Origin, UPC and sourced columns.
             function editableColumnNames() {
-                return specNamesForTab();
+                return specNamesAllForTab();
             }
 
             // eBay title and Price are page columns, not item specifics, so they are added beside the specifics.
@@ -1842,6 +1858,13 @@
                     if (gKey(name) !== 'ebaytitle' && gKey(name) !== 'price') names.push(name);
                 });
                 return names;
+            }
+
+            // The other page columns (INV, L30, Views, ...) are listed too so every column can be found, but
+            // they come from eBay and the sheets, so they cannot be edited here.
+            function readOnlyEditNames() {
+                const taken = new Set(editNames().map(gKey));
+                return pageColumns().map(function (col) { return col.name; }).filter(function (name) { return !taken.has(gKey(name)); });
             }
 
             // What a saved title or price changes on a row. Item specifics return null.
@@ -1980,8 +2003,12 @@
             function renderEditList() {
                 const list = document.getElementById('e1dEditList');
                 const names = visibleEditNames();
+                const q = String(document.getElementById('e1dEditSearch').value || '').trim().toLowerCase();
+                const locked = readOnlyEditNames()
+                    .filter(function (n) { return !q || n.toLowerCase().indexOf(q) !== -1; })
+                    .sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
                 list.innerHTML = '';
-                if (!names.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
+                if (!names.length && !locked.length) list.innerHTML = '<div class="small text-muted p-2">No matching column.</div>';
                 names.forEach(function (name) {
                     const row = document.createElement('label');
                     row.className = 'e1d-addopt';
@@ -1992,6 +2019,22 @@
                     cb.addEventListener('change', function () { toggleEditColumn(name, cb.checked); });
                     row.appendChild(cb);
                     row.appendChild(document.createTextNode(' ' + name));
+                    list.appendChild(row);
+                });
+                locked.forEach(function (name) {
+                    const row = document.createElement('label');
+                    row.className = 'e1d-addopt';
+                    row.style.opacity = '.55';
+                    row.title = 'A page column from eBay or the sheets. It cannot be edited here.';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.disabled = true;
+                    row.appendChild(cb);
+                    row.appendChild(document.createTextNode(' ' + name + ' '));
+                    const tag = document.createElement('span');
+                    tag.className = 'e1d-cnt';
+                    tag.textContent = 'page · read only';
+                    row.appendChild(tag);
                     list.appendChild(row);
                 });
                 refreshEditState();
@@ -2458,7 +2501,13 @@
             const hdrDraft = new Map(); // column key -> { orig, text }
 
             function hdrNames() {
-                return allDeleteNames().slice().sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+                const seenKeys = new Set();
+                return allDeleteNames().filter(function (name) {
+                    const k = gKey(name);
+                    if (seenKeys.has(k)) return false;
+                    seenKeys.add(k);
+                    return true;
+                }).sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
             }
 
             function hdrVisible() {
