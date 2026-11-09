@@ -28,6 +28,8 @@
     .amz-fbm-targeting .aft-sku-btn { border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; border-radius: 6px; padding: 1px 8px; font-size: 12px; cursor: pointer; }
     .amz-fbm-targeting .aft-sku-btn.is-open { background: #1d4ed8; color: #fff; }
     .amz-fbm-targeting .aft-status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.06); vertical-align: middle; }
+    .amz-fbm-targeting .aft-mag { cursor: pointer; color: #1d4ed8; font-size: 13px; padding: 3px; border-radius: 4px; vertical-align: middle; }
+    .amz-fbm-targeting .aft-mag:hover { background: #dbeafe; color: #1e40af; }
     .amz-fbm-targeting .aft-low-badge { font-size: .78rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
     .amz-fbm-targeting .aft-low-badge.is-active { border-color: #111827; box-shadow: 0 0 0 2px #fde68a; }
     .amz-fbm-targeting .aft-count-badge {
@@ -334,7 +336,7 @@
             </div>
             <div class="modal-body">
                 <p class="text-muted small mb-2">
-                    Each ticked KW campaign gets its own keywords plus the real keywords of all the OTHER ticked campaigns that it is still missing - whatever their parent or KW cousin group (up to 40 ticked campaigns; un-ticked campaigns are never touched, and keywords copied from KW cousins are not pushed), and each parent's keywords (all of its KW campaigns together)
+                    Each ticked KW campaign gets its own keywords plus the real keywords of all the OTHER ticked campaigns that it is still missing - whatever their parent or KW cousin group (up to 40 ticked campaigns; un-ticked campaigns are never touched; keywords copied from KW cousins are pushed to the campaign that holds them), and each parent's keywords (all of its KW campaigns together)
                     are added to its HL campaign. Keywords already live on a campaign (same text + match type) are skipped.
                     Only Broad / Phrase / Exact keywords are sent. Negative keywords are not touched.
                 </p>
@@ -879,8 +881,8 @@
                     const d = cell.getRow().getData() || {};
                     const t = String(d.title || '').trim();
                     if (!t) return '<span class="aft-empty">-</span>';
-                    // Narrow column: every row is clamped to 2 lines; hovering shows the full title.
-                    return '<div style="white-space:normal;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' + escapeHtml(t) + '</div>';
+                    // Narrow column: one line cut with "…"; hovering shows the full title.
+                    return '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t) + '</div>';
                 },
                 cellMouseEnter: function (e, cell) {
                     const t = String(((cell.getRow().getData() || {}).title) || '').trim();
@@ -991,19 +993,23 @@
             {
                 title: 'App Target',
                 field: 'app_target_count',
-                width: 76,
+                width: 92,
                 hozAlign: 'center',
                 headerSort: false,
-                headerTooltip: 'Keywords the app holds for this campaign (Amazon reports + the app\'s own keyword store, including ones copied from KW cousins that are not on Amazon yet).',
+                headerTooltip: 'Keywords still to be pushed to Amazon: in the app (copied from KW cousins or added / edited by hand) but not on Amazon yet. Deleted and ignored keywords are not counted. Drops to 0 after a push.',
                 formatter: function (cell) {
-                    const d = cell.getRow().getData() || {};
                     const n = Number(cell.getValue() || 0);
-                    const amz = Number(d.target_count || 0);
-                    const diff = n - amz;
-                    const tip = 'View targets in the app' + (diff > 0 ? ' (' + diff.toLocaleString() + ' more than Target Amz)' : (diff < 0 ? ' (' + Math.abs(diff).toLocaleString() + ' fewer than Target Amz)' : ''));
-                    return '<span class="aft-count-badge" title="' + tip + '">' + n.toLocaleString() + '</span>';
+                    const tip = n
+                        ? n.toLocaleString() + ' keyword(s) wait to be pushed to Amazon (Broad / Phrase / Exact; deleted and ignored ones are not counted).'
+                        : 'Nothing waiting to be pushed to Amazon.';
+                    // amber while something is waiting, plain when everything is on Amazon; cursor stays normal: only the magnifier is clickable
+                    const style = ' style="cursor:default;' + (n ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : '') + '"';
+                    return '<span class="aft-count-badge" title="' + tip + '"' + style + '>' + n.toLocaleString() + '</span>' +
+                        ' <i class="fas fa-search aft-mag" role="button" tabindex="0" title="View the targets of this campaign" aria-label="View targets"></i>';
                 },
-                cellClick: function (_e, cell) {
+                cellClick: function (e, cell) {
+                    // only the magnifying glass opens the targets
+                    if (!e.target || !e.target.closest || !e.target.closest('.aft-mag')) return;
                     openTargetsModal(cell.getRow().getData() || {}, 'kw');
                 },
             },

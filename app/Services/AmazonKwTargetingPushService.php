@@ -74,8 +74,8 @@ class AmazonKwTargetingPushService
         // App keywords per KW campaign, unique by text + match type. A campaign gets its OWN keywords. When the user picked
         // campaigns by hand ($shareAcrossPicked) it also gets the real keywords of the OTHER PICKED campaigns - whatever their
         // parent or KW cousin group - because picking them together is the instruction to even them out. A whole-account run
-        // (nothing picked) never shares between campaigns. Keywords the app merely copied in from KW cousins ("cousin"
-        // source) are never pushed.
+        // (nothing picked) never shares between campaigns. Keywords the app copied in from KW cousins ("cousin" source) are
+        // pushed to the campaign that holds them like any other keyword of its own (once live they count as Amazon keywords).
         // $sharePool = ids of every campaign picked by hand (null = whole-account run, no sharing). It may be larger than
         // $kwCampaigns because the sync pushes in chunks.
         $shareAcrossPicked = $sharePool !== null;
@@ -95,7 +95,6 @@ class AmazonKwTargetingPushService
         $ownByCampaign = [];
         foreach (array_chunk($storeIds, 1000) as $chunk) {
             $q = DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->whereIn('match_type', self::MATCH_TYPES)
-                ->where('source', '!=', 'cousin')
                 ->get(['campaign_id', 'keyword', 'keyword_key', 'match_type']);
             foreach ($q as $r) {
                 $ownByCampaign[(string) $r->campaign_id][$r->keyword_key.'|'.$r->match_type] = [
@@ -423,7 +422,7 @@ class AmazonKwTargetingPushService
         try {
             foreach (array_chunk($keys, 500) as $chunk) {
                 DB::table(self::STORE_TABLE)->where('campaign_id', $campaignId)->where('match_type', $match)
-                    ->whereIn('keyword_key', $chunk)->where('source', 'cousin')->update(['source' => 'amazon']);
+                    ->whereIn('keyword_key', $chunk)->whereIn('source', ['cousin', 'manual'])->update(['source' => 'amazon']);
             }
         } catch (\Throwable $e) {
             Log::info('KW targeting push: could not mark pushed keywords', ['error' => $e->getMessage()]);

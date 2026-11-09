@@ -366,6 +366,9 @@ class AmazonFbmTargetingController extends Controller
 
         // Keywords copied from KW cousins that are not on Amazon yet (waiting for a push): shown as "+N" next to Targets.
         $pending = [];
+        // App Target: what the next push would send = keywords in the app that are not on Amazon yet (copied from KW
+        // cousins or added / edited by hand), Broad / Phrase / Exact only, minus the ones deleted or ignored in the modal.
+        $toPush = [];
         try {
             $spIds = [];
             foreach ($rows as $r) {
@@ -374,10 +377,21 @@ class AmazonFbmTargetingController extends Controller
                 }
             }
             if ($spIds !== [] && $this->hasTable(self::STORE_TABLE)) {
-                foreach (array_chunk(array_values(array_unique($spIds)), 1000) as $chunk) {
+                $spIds = array_values(array_unique($spIds));
+                $flags = $this->flagMap('kw', $spIds);
+                foreach (array_chunk($spIds, 1000) as $chunk) {
                     foreach (DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)->where('source', 'cousin')
                         ->selectRaw('campaign_id, COUNT(*) AS c')->groupBy('campaign_id')->get() as $o) {
                         $pending[(string) $o->campaign_id] = (int) $o->c;
+                    }
+                    foreach (DB::table(self::STORE_TABLE)->whereIn('campaign_id', $chunk)
+                        ->whereIn('source', ['cousin', 'manual'])->whereIn('match_type', ['BROAD', 'PHRASE', 'EXACT'])
+                        ->get(['campaign_id', 'keyword_key', 'match_type']) as $o) {
+                        $cid = (string) $o->campaign_id;
+                        if (isset($flags[$cid][$o->keyword_key.'|'.strtoupper((string) $o->match_type)])) {
+                            continue; // deleted or ignored: never pushed
+                        }
+                        $toPush[$cid] = ($toPush[$cid] ?? 0) + 1;
                     }
                 }
             }
@@ -432,8 +446,8 @@ class AmazonFbmTargetingController extends Controller
                 // Same function as /amazon-ads/all (L30 report + keywords pulled from / pushed to Amazon), so both pages match.
                 'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
                 'target_pending' => $pending[$id] ?? 0,
-                // Keywords the app holds for this campaign (Amazon reports + the app's keyword store, deleted ones left out).
-                'app_target_count' => count($targets),
+                // Keywords waiting to be pushed to Amazon (not on Amazon yet; deleted / ignored ones left out).
+                'app_target_count' => $toPush[$id] ?? 0,
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
@@ -3033,7 +3047,7 @@ class AmazonFbmTargetingController extends Controller
                 foreach ($byMatch as $match => $keys) {
                     foreach (array_chunk(array_keys($keys), 500) as $keyChunk) {
                         $promoted += DB::table($table)->where('campaign_id', $cid)->where('match_type', $match)
-                            ->whereIn('keyword_key', $keyChunk)->where('source', 'cousin')->update(['source' => 'amazon']);
+                            ->whereIn('keyword_key', $keyChunk)->whereIn('source', ['cousin', 'manual'])->update(['source' => 'amazon']);
                     }
                 }
             }
