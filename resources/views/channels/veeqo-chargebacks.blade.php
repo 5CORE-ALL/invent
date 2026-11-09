@@ -1,7 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Shipping Chargebacks'])
 
 @section('css')
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('vendor/fontawesome/css/all.min.css') }}?v=6.4.0">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         .vc-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
@@ -47,6 +47,15 @@
         #veeqo-chargebacks-table .tabulator-cell { font-size:12.5px; color:#334155; }
         #veeqo-chargebacks-table .tabulator-row:nth-child(even) { background:#f8fafc; }
         #veeqo-chargebacks-table .tabulator-row:hover { background:#e8f0fe !important; }
+        /* Frozen columns stay opaque so the columns scrolling underneath do not show through (headers overlapped). */
+        #veeqo-chargebacks-table .tabulator-col.tabulator-frozen { background:#2663c6 !important; z-index:11; box-shadow:2px 0 0 rgba(255,255,255,.25); }
+        #veeqo-chargebacks-table .tabulator-col.tabulator-frozen .tabulator-col-content { background:#2663c6; }
+        #veeqo-chargebacks-table .tabulator-col .tabulator-col-content { overflow:hidden; }
+        #veeqo-chargebacks-table .tabulator-col, #veeqo-chargebacks-table .tabulator-col .tabulator-col-title-holder { min-width:0; }
+        #veeqo-chargebacks-table .tabulator-col .tabulator-col-title { overflow:hidden; text-overflow:ellipsis; }
+        #veeqo-chargebacks-table .tabulator-row .tabulator-cell.tabulator-frozen { background:#fff; z-index:5; }
+        #veeqo-chargebacks-table .tabulator-row:nth-child(even) .tabulator-cell.tabulator-frozen { background:#f8fafc; }
+        #veeqo-chargebacks-table .tabulator-row:hover .tabulator-cell.tabulator-frozen { background:#e8f0fe; }
         #vc-col-dropdown { max-height:70vh; overflow-y:auto; min-width:280px; padding:.5rem .75rem; }
         #vc-col-dropdown label { display:flex; gap:.4rem; align-items:center; font-size:.8rem; padding:2px 0; }
         .btn-sku-report { background:linear-gradient(135deg,#7c3aed 0%,#db2777 55%,#f97316 100%); color:#fff; border:none; font-weight:600; box-shadow:0 3px 10px rgba(219,39,119,.35); }
@@ -189,7 +198,7 @@
                         </label>
                         <label>Status <select id="vcStatus" class="form-select form-select-sm"><option value="">All</option></select></label>
                         <label style="min-width:220px;flex:1;">Search
-                            <input type="search" id="vcSearch" class="form-control form-control-sm" placeholder="Order, reason, service, settlement, transaction…">
+                            <input type="search" id="vcSearch" class="form-control form-control-sm" placeholder="Order, SKU, reason, service, settlement, transaction…">
                         </label>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Columns">
@@ -329,7 +338,8 @@
                     reason: document.getElementById('vcReason').value,
                     direction: document.getElementById('vcDirection').value,
                     status: document.getElementById('vcStatus').value,
-                    search: document.getElementById('vcSearch').value.trim(),
+                    // A leading # is dropped (it also breaks some firewalls); "#P-123" and "P-123" find the same order.
+                    search: document.getElementById('vcSearch').value.trim().replace(/^[#\s]+/, ''),
                 };
             }
             function qs(obj) {
