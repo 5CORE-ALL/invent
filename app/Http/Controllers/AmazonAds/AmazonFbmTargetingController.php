@@ -432,6 +432,8 @@ class AmazonFbmTargetingController extends Controller
                 // Same function as /amazon-ads/all (L30 report + keywords pulled from / pushed to Amazon), so both pages match.
                 'target_count' => $adsCounts[$row['ad_type'] ?? 'SP']['t'][$id] ?? count($targets),
                 'target_pending' => $pending[$id] ?? 0,
+                // Keywords the app holds for this campaign (Amazon reports + the app's keyword store, deleted ones left out).
+                'app_target_count' => count($targets),
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),

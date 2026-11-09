@@ -954,7 +954,7 @@
                 formatter: ltFormatter,
             },
             {
-                title: 'Targets',
+                title: 'Target Amz',
                 field: 'target_count',
                 minWidth: 80,
                 hozAlign: 'center',
@@ -965,6 +965,25 @@
                     // are not counted - they are only mentioned in the tooltip.
                     const p = Number((cell.getRow().getData() || {}).target_pending || 0);
                     const tip = 'View targets' + (p > 0 ? ' (' + p.toLocaleString() + ' more copied from KW cousins, not pushed to Amazon yet)' : '');
+                    return '<span class="aft-count-badge" title="' + tip + '">' + n.toLocaleString() + '</span>';
+                },
+                cellClick: function (_e, cell) {
+                    openTargetsModal(cell.getRow().getData() || {}, 'kw');
+                },
+            },
+            {
+                title: 'App Target',
+                field: 'app_target_count',
+                minWidth: 90,
+                hozAlign: 'center',
+                headerSort: false,
+                headerTooltip: 'Keywords the app holds for this campaign (Amazon reports + the app\'s own keyword store, including ones copied from KW cousins that are not on Amazon yet).',
+                formatter: function (cell) {
+                    const d = cell.getRow().getData() || {};
+                    const n = Number(cell.getValue() || 0);
+                    const amz = Number(d.target_count || 0);
+                    const diff = n - amz;
+                    const tip = 'View targets in the app' + (diff > 0 ? ' (' + diff.toLocaleString() + ' more than Target Amz)' : (diff < 0 ? ' (' + Math.abs(diff).toLocaleString() + ' fewer than Target Amz)' : ''));
                     return '<span class="aft-count-badge" title="' + tip + '">' + n.toLocaleString() + '</span>';
                 },
                 cellClick: function (_e, cell) {
