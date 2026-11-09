@@ -223,23 +223,91 @@
     .dfb-rv-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .dfb-rv-note { margin: 4px 0 2px; white-space: pre-wrap; color: #334155; font-size: 13px; }
     .dfb-rv-meta { color: #94a3b8; font-size: 12px; }
-    .dfb-agr-hint { font-size: 12px; color: #64748b; margin-bottom: 10px; }
-    .dfb-agr-hint code { background: #f1f5f9; padding: 0 4px; border-radius: 4px; }
-    .dfb-agr-row {
-        display: grid; grid-template-columns: 54px minmax(0, 1.1fr) minmax(0, 1.4fr) auto;
-        gap: 10px; align-items: start; padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px;
+    #dfbAgRulesModal .modal-content { border: 0; background: #f4f6fb; }
+    #dfbAgRulesModal .dfb-agm-head {
+        display: flex; align-items: center; gap: 14px; padding: 14px 22px; color: #fff;
+        background: linear-gradient(120deg, #4338ca 0%, #6d28d9 55%, #0ea5e9 100%);
     }
-    .dfb-agr-row.is-off { opacity: .6; background: #f8fafc; }
-    .dfb-agr-cond { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-    .dfb-agr-cond .form-select, .dfb-agr-cond .form-control { width: auto; min-width: 90px; font-size: 13px; }
-    .dfb-agr-row textarea { min-height: 70px; font-size: 13px; }
-    .dfb-agr-act { display: flex; flex-direction: column; gap: 6px; }
+    #dfbAgRulesModal .dfb-agm-ico {
+        width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+        background: rgba(255, 255, 255, .18); backdrop-filter: blur(4px);
+    }
+    #dfbAgRulesModal .dfb-agm-head h5 { margin: 0; font-weight: 800; letter-spacing: .01em; }
+    #dfbAgRulesModal .dfb-agm-head small { opacity: .85; }
+    #dfbAgRulesModal .dfb-agm-count {
+        margin-left: 6px; padding: 2px 10px; border-radius: 999px; background: rgba(255, 255, 255, .22); font-size: 12px; font-weight: 700;
+    }
+    #dfbAgRulesModal .dfb-agm-add {
+        margin-left: auto; border: 0; border-radius: 10px; padding: 8px 16px; font-weight: 700; font-size: 13px;
+        background: #fff; color: #4338ca; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); cursor: pointer;
+    }
+    #dfbAgRulesModal .dfb-agm-add:hover { background: #eef2ff; }
+    #dfbAgRulesModal .dfb-agm-close {
+        border: 0; width: 36px; height: 36px; border-radius: 10px; background: rgba(255, 255, 255, .18); color: #fff; font-size: 20px; cursor: pointer;
+    }
+    #dfbAgRulesModal .dfb-agm-close:hover { background: rgba(255, 255, 255, .3); }
+    #dfbAgRulesModal .modal-body { padding: 16px 22px 22px; }
+    .dfb-agr-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: #64748b; margin-bottom: 14px; }
+    .dfb-agr-hint button {
+        border: 1px solid #c7d2fe; background: #fff; color: #4338ca; border-radius: 999px; padding: 2px 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; cursor: pointer;
+    }
+    .dfb-agr-hint button:hover { background: #eef2ff; }
+    .dfb-agr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 14px; align-items: stretch; }
+    .dfb-agr-row {
+        display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #fff; border-radius: 16px;
+        border: 1px solid #e5e9f5; box-shadow: 0 6px 22px rgba(67, 56, 202, .07); transition: box-shadow .2s, transform .2s;
+        border-top: 4px solid #6d28d9;
+    }
+    .dfb-agr-row:hover { box-shadow: 0 10px 28px rgba(67, 56, 202, .14); transform: translateY(-1px); }
+    .dfb-agr-row.is-off { opacity: .65; border-top-color: #cbd5e1; }
+    .dfb-agr-top { display: flex; align-items: center; gap: 10px; }
+    .dfb-agr-top .form-switch { margin: 0; min-height: 0; }
+    .dfb-agr-state { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #059669; }
+    .dfb-agr-row.is-off .dfb-agr-state { color: #dc2626; }
+    .dfb-agr-ic { display: inline-grid; place-items: center; font-size: 22px; line-height: 1; }
+    .dfb-agr-ic.is-on { color: #16a34a; }
+    .dfb-agr-ic.is-off { color: #dc2626; }
+    .dfb-agr-ic.is-on i { animation: dfbAgPulse 2s ease-in-out infinite; }
+    @keyframes dfbAgPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+    @media (prefers-reduced-motion: reduce) { .dfb-agr-ic.is-on i { animation: none; } }
+    .dfb-agr-lbl { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
+    .dfb-agr-conds { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: #f1f5ff; }
+    .dfb-agr-c { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .dfb-agr-c .form-select, .dfb-agr-c .form-control { width: auto; min-width: 90px; font-size: 13px; border-radius: 8px; border-color: #dbe3f7; }
+    .dfb-agr-join { width: 38px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #6d28d9; }
+    .dfb-agr-x {
+        border: 0; width: 28px; height: 28px; border-radius: 8px; background: #fff; color: #94a3b8; cursor: pointer; line-height: 1;
+    }
+    .dfb-agr-x:hover { background: #fee2e2; color: #b91c1c; }
+    .dfb-agr-addc {
+        margin-top: 6px; border: 1px dashed #a5b4fc; background: #fff; color: #4338ca; border-radius: 10px;
+        padding: 4px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .dfb-agr-addc:hover { background: #eef2ff; }
+    .dfb-agr-match { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #64748b; text-transform: uppercase; }
+    .dfb-agr-match[hidden] { display: none; }
+    .dfb-agr-match .form-select { width: auto; font-size: 12px; border-radius: 8px; text-transform: none; letter-spacing: 0; }
+    .dfb-agr-cond { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border-radius: 12px; background: #f1f5ff; }
+    .dfb-agr-cond .form-select, .dfb-agr-cond .form-control { width: auto; min-width: 90px; font-size: 13px; border-radius: 8px; border-color: #dbe3f7; }
+    .dfb-agr-row textarea { flex: 1; min-height: 150px; resize: vertical; font-size: 13px; border-radius: 12px; border-color: #dbe3f7; }
+    .dfb-agr-row textarea:focus, .dfb-agr-cond .form-select:focus, .dfb-agr-cond .form-control:focus { border-color: #6d28d9; box-shadow: 0 0 0 3px rgba(109, 40, 217, .12); }
+    .dfb-agr-foot { display: flex; align-items: center; gap: 8px; }
+    .dfb-agr-foot .form-check { margin: 0; flex: 1; }
+    .dfb-agr-btn { border: 0; border-radius: 10px; padding: 6px 16px; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .dfb-agr-btn.is-save { background: linear-gradient(120deg, #4338ca, #6d28d9); color: #fff; }
+    .dfb-agr-btn.is-save:hover { filter: brightness(1.1); }
+    .dfb-agr-btn.is-del { background: #fff1f2; color: #be123c; }
+    .dfb-agr-btn.is-del:hover { background: #ffe4e6; }
+    .dfb-agr-btn.is-cancel { background: #f1f5f9; color: #475569; }
+    .dfb-agr-empty { text-align: center; color: #64748b; padding: 60px 0; }
+    .dfb-agr-empty i { font-size: 44px; color: #a5b4fc; display: block; }
     .dfb-toast {
         position: fixed; right: 18px; bottom: 18px; z-index: 3000; max-width: 380px; padding: 10px 14px;
         background: #0f172a; color: #fff; border-radius: 10px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
     }
     .dfb-toast.is-err { background: #b91c1c; }
-    @media (max-width: 767px) { .dfb-agr-row { grid-template-columns: 1fr; } }
+    @media (max-width: 575px) { .dfb-agr-grid { grid-template-columns: 1fr; } }
     .dfb-users-table { margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #fff; }
     .dfb-users-table .tabulator { border: 0; font-size: 13px; }
     .dfb-users-table .tabulator .tabulator-header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569; }
@@ -379,21 +447,25 @@
 
         @if($canAgMsg ?? false)
             <div class="modal fade" id="dfbAgRulesModal" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+                <div class="modal-dialog modal-fullscreen">
                     <div class="modal-content">
-                        <div class="modal-header">
+                        <div class="dfb-agm-head">
+                            <div class="dfb-agm-ico"><i class="ri-mail-send-line"></i></div>
                             <div>
-                                <h5 class="modal-title mb-0"><i class="ri-mail-send-line me-1"></i>AG-MSG Rules</h5>
-                                <small class="text-muted">When a person's row matches a rule, the message beside it is sent to them from president@5core.com.</small>
+                                <h5>AG-MSG Rules <span class="dfb-agm-count" id="dfbAgCount">0</span></h5>
+                                <small>When a person's row matches a rule, the message beside it is sent to them from president@5core.com.</small>
                             </div>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <button type="button" class="dfb-agm-add" id="dfbAgAddRule"><i class="ri-add-line"></i> Add rule</button>
+                            <button type="button" class="dfb-agm-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                         </div>
                         <div class="modal-body">
                             <div class="dfb-agr-hint">
-                                Placeholders: <code>{name}</code> <code>{first_name}</code> <code>{date}</code> <code>{department}</code> <code>{status}</code> <code>{avg}</code> <code>{ratings}</code> <code>{reviews}</code>
+                                Tap a placeholder to insert it into the message:
+                                @foreach(['name', 'first_name', 'date', 'department', 'status', 'avg', 'ratings', 'reviews'] as $ph)
+                                    <button type="button" data-ph="{{ '{'.$ph.'}' }}">{{ '{'.$ph.'}' }}</button>
+                                @endforeach
                             </div>
-                            <div id="dfbAgRulesList"></div>
-                            <button type="button" class="btn btn-sm btn-primary mt-2" id="dfbAgAddRule"><i class="ri-add-line"></i> Add rule</button>
+                            <div id="dfbAgRulesList" class="dfb-agr-grid"></div>
                         </div>
                     </div>
                 </div>
@@ -690,78 +762,148 @@
         var NUM_OPS = ['=', '!=', '<', '<=', '>', '>='];
         function opt(v, label, sel) { return '<option value="' + escHtml(v) + '"' + (sel ? ' selected' : '') + '>' + escHtml(label) + '</option>'; }
 
-        function condHtml(r) {
-            var f = r.field || 'status';
+        // One condition = "<field> <operator> <value>". A rule can hold several, joined with AND / OR.
+        function condHtml(c) {
+            var f = c.field || 'status';
             var fieldSel = '<select class="form-select form-select-sm" data-f="field">' + FIELDS.map(function (x) { return opt(x[0], x[1], x[0] === f); }).join('') + '</select>';
             var opSel, valCtl;
             if (f === 'status') {
-                opSel = '<select class="form-select form-select-sm" data-f="operator">' + opt('=', 'is', r.operator !== '!=') + opt('!=', 'is not', r.operator === '!=') + '</select>';
-                valCtl = '<select class="form-select form-select-sm" data-f="value">' + opt('given', 'Given', r.value === 'given') + opt('none', 'Not given yet', r.value !== 'given') + '</select>';
+                opSel = '<select class="form-select form-select-sm" data-f="operator">' + opt('=', 'is', c.operator !== '!=') + opt('!=', 'is not', c.operator === '!=') + '</select>';
+                valCtl = '<select class="form-select form-select-sm" data-f="value">' + opt('given', 'Given', c.value === 'given') + opt('none', 'Not given yet', c.value !== 'given') + '</select>';
             } else {
-                opSel = '<select class="form-select form-select-sm" data-f="operator">' + NUM_OPS.map(function (o) { return opt(o, o, o === (r.operator || '=')); }).join('') + '</select>';
-                valCtl = '<input type="number" step="any" class="form-control form-control-sm" data-f="value" value="' + escHtml(r.value == null ? '0' : r.value) + '" style="width:90px">';
+                opSel = '<select class="form-select form-select-sm" data-f="operator">' + NUM_OPS.map(function (o) { return opt(o, o, o === (c.operator || '=')); }).join('') + '</select>';
+                valCtl = '<input type="number" step="any" class="form-control form-control-sm" data-f="value" value="' + escHtml(c.value == null ? '0' : c.value) + '" style="width:90px">';
             }
             return fieldSel + opSel + valCtl;
+        }
+        function condRow(c, first) {
+            var el = document.createElement('div');
+            el.className = 'dfb-agr-c';
+            el.innerHTML = '<span class="dfb-agr-join" data-join>' + (first ? 'IF' : '') + '</span>' + condHtml(c) +
+                '<button type="button" class="dfb-agr-x" data-rmcond title="Remove this condition" aria-label="Remove condition"><i class="ri-close-line"></i></button>';
+            return el;
+        }
+        function syncConds(row) {
+            var rows = row.querySelectorAll('.dfb-agr-c');
+            var any = (row.querySelector('[data-f="match_mode"]') || {}).value === 'any';
+            rows.forEach(function (el, i) {
+                el.querySelector('[data-join]').textContent = i === 0 ? 'IF' : (any ? 'OR' : 'AND');
+                el.querySelector('[data-rmcond]').style.visibility = rows.length > 1 ? 'visible' : 'hidden';
+            });
+            var mm = row.querySelector('.dfb-agr-match');
+            if (mm) mm.hidden = rows.length < 2;
         }
 
         function ruleRow(r) {
             var row = document.createElement('div');
             row.className = 'dfb-agr-row' + (r.is_active === false ? ' is-off' : '');
             row.dataset.id = r.id || '';
+            var on = r.is_active !== false;
+            var conds = (r.conditions && r.conditions.length) ? r.conditions : [{ field: r.field || 'status', operator: r.operator || '=', value: r.value == null ? 'none' : r.value }];
             row.innerHTML =
-                '<div><div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-f="is_active"' + (r.is_active === false ? '' : ' checked') + ' title="Rule on / off"></div></div>' +
-                '<div><div class="small fw-bold text-muted mb-1">IF</div><div class="dfb-agr-cond">' + condHtml(r) + '</div></div>' +
-                '<div><div class="small fw-bold text-muted mb-1">THEN SEND MESSAGE</div><textarea class="form-control" data-f="message" maxlength="2000" placeholder="Hi {name}, please share your feedback for {department}.">' + escHtml(r.message || '') + '</textarea>' +
-                '<div class="form-check mt-1"><input class="form-check-input" type="checkbox" data-f="allow_reply"' + (r.allow_reply ? ' checked' : '') + '> <label class="form-check-label small">Allow reply</label></div></div>' +
-                '<div class="dfb-agr-act"><button type="button" class="btn btn-sm btn-success" data-save>Save</button>' +
-                (r.id ? '<button type="button" class="btn btn-sm btn-outline-danger" data-del>Delete</button>' : '<button type="button" class="btn btn-sm btn-outline-secondary" data-cancel>Cancel</button>') + '</div>';
+                '<div class="dfb-agr-top"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-f="is_active"' + (on ? ' checked' : '') + ' title="Rule on / off"></div>' +
+                (r.id ? '<span class="dfb-agr-ic ' + (on ? 'is-on' : 'is-off') + '" title="Saved rule: ' + (on ? 'Active' : 'Paused') + '"><i class="' + (on ? 'ri-checkbox-circle-fill' : 'ri-pause-circle-fill') + '"></i></span>' : '') +
+                '<span class="dfb-agr-state">' + (on ? 'Active' : 'Paused') + '</span>' +
+                '<label class="dfb-agr-match" hidden>Match <select class="form-select form-select-sm" data-f="match_mode">' +
+                opt('all', 'ALL conditions (AND)', r.match_mode !== 'any') + opt('any', 'ANY condition (OR)', r.match_mode === 'any') + '</select></label></div>' +
+                '<div><div class="dfb-agr-lbl">Conditions</div><div class="dfb-agr-conds"></div>' +
+                '<button type="button" class="dfb-agr-addc" data-addcond><i class="ri-add-line"></i> Add condition</button></div>' +
+                '<div style="display:flex;flex-direction:column;flex:1"><div class="dfb-agr-lbl">Then send message</div>' +
+                '<textarea class="form-control" data-f="message" maxlength="2000" placeholder="Hi {name}, please share your feedback for {department}.">' + escHtml(r.message || '') + '</textarea></div>' +
+                '<div class="dfb-agr-foot"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" data-f="allow_reply"' + (r.allow_reply ? ' checked' : '') + '> <label class="form-check-label small">Allow reply</label></div>' +
+                (r.id ? '<button type="button" class="dfb-agr-btn is-del" data-del><i class="ri-delete-bin-line"></i> Delete</button>' : '<button type="button" class="dfb-agr-btn is-cancel" data-cancel>Cancel</button>') +
+                '<button type="button" class="dfb-agr-btn is-save" data-save><i class="ri-save-3-line"></i> Save</button></div>';
+            var box = row.querySelector('.dfb-agr-conds');
+            conds.forEach(function (c, i) { box.appendChild(condRow(c, i === 0)); });
+            syncConds(row);
             return row;
+        }
+        function readCond(el) {
+            return {
+                field: el.querySelector('[data-f="field"]').value,
+                operator: el.querySelector('[data-f="operator"]').value,
+                value: el.querySelector('[data-f="value"]').value
+            };
         }
         function readRow(row) {
             function q(f) { return row.querySelector('[data-f="' + f + '"]'); }
             return {
                 id: row.dataset.id ? parseInt(row.dataset.id, 10) : null,
-                field: q('field').value,
-                operator: q('operator').value,
-                value: q('value').value,
+                conditions: Array.prototype.map.call(row.querySelectorAll('.dfb-agr-c'), readCond),
+                match_mode: q('match_mode').value,
                 message: q('message').value.trim(),
                 allow_reply: q('allow_reply').checked,
                 is_active: q('is_active').checked
             };
         }
+        function updateCount() {
+            var el = document.getElementById('dfbAgCount');
+            if (el) el.textContent = listEl.querySelectorAll('.dfb-agr-row').length;
+        }
+        // Placeholder chips insert at the cursor of the last message box that was used.
+        var lastTa = null;
+        listEl.addEventListener('focusin', function (e) { if (e.target.matches('textarea')) lastTa = e.target; });
+        document.querySelector('#dfbAgRulesModal .dfb-agr-hint').addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ph]');
+            if (!b) return;
+            var ta = (lastTa && document.body.contains(lastTa)) ? lastTa : listEl.querySelector('textarea');
+            if (!ta) { flash('Add a rule first.', true); return; }
+            var st = ta.selectionStart == null ? ta.value.length : ta.selectionStart;
+            var en = ta.selectionEnd == null ? st : ta.selectionEnd;
+            ta.value = ta.value.slice(0, st) + b.getAttribute('data-ph') + ta.value.slice(en);
+            ta.focus();
+            ta.setSelectionRange(st + b.getAttribute('data-ph').length, st + b.getAttribute('data-ph').length);
+        });
         function loadRules() {
             listEl.innerHTML = '<div class="text-muted py-3">Loading…</div>';
             api(URLS.rules).then(function (j) {
                 listEl.innerHTML = '';
-                if (!j.data.length) listEl.innerHTML = '<p class="text-muted" id="dfbAgEmpty">No rules yet. Click “Add rule”.</p>';
+                if (!j.data.length) listEl.innerHTML = '<div class="dfb-agr-empty" id="dfbAgEmpty" style="grid-column:1/-1"><i class="ri-mail-send-line"></i>No rules yet. Click “Add rule” to create one.</div>';
                 j.data.forEach(function (r) { listEl.appendChild(ruleRow(r)); });
+                updateCount();
             }).catch(function (e) { listEl.innerHTML = '<div class="alert alert-danger">' + escHtml(e.message) + '</div>'; });
         }
         rulesBtn.addEventListener('click', function () { showModal('dfbAgRulesModal'); loadRules(); });
         document.getElementById('dfbAgAddRule').addEventListener('click', function () {
             var empty = document.getElementById('dfbAgEmpty'); if (empty) empty.remove();
-            var row = ruleRow({ field: 'status', operator: '=', value: 'none', message: '', is_active: true });
-            listEl.appendChild(row);
+            var row = ruleRow({ conditions: [{ field: 'status', operator: '=', value: 'none' }], match_mode: 'all', message: '', is_active: true });
+            listEl.prepend(row);
             row.querySelector('textarea').focus();
+            updateCount();
         });
         listEl.addEventListener('change', function (e) {
             var row = e.target.closest('.dfb-agr-row');
             if (!row) return;
             if (e.target.matches('[data-f="field"]')) {
-                var cur = readRow(row);
-                cur.field = e.target.value;
-                cur.operator = '='; cur.value = cur.field === 'status' ? 'none' : '0';
-                row.querySelector('.dfb-agr-cond').innerHTML = condHtml(cur);
+                var cEl = e.target.closest('.dfb-agr-c');
+                var f = e.target.value;
+                var rebuilt = condRow({ field: f, operator: '=', value: f === 'status' ? 'none' : '0' }, false);
+                cEl.innerHTML = rebuilt.innerHTML;
+                syncConds(row);
             }
-            if (e.target.matches('[data-f="is_active"]')) row.classList.toggle('is-off', !e.target.checked);
+            if (e.target.matches('[data-f="match_mode"]')) syncConds(row);
+            if (e.target.matches('[data-f="is_active"]')) {
+                row.classList.toggle('is-off', !e.target.checked);
+                var st = row.querySelector('.dfb-agr-state'); if (st) st.textContent = e.target.checked ? 'Active' : 'Paused';
+            }
         });
         listEl.addEventListener('click', function (e) {
             var row = e.target.closest('.dfb-agr-row');
             if (!row) return;
-            if (e.target.closest('[data-cancel]')) { row.remove(); return; }
+            if (e.target.closest('[data-addcond]')) {
+                row.querySelector('.dfb-agr-conds').appendChild(condRow({ field: 'reviews', operator: '<', value: '1' }, false));
+                syncConds(row);
+                return;
+            }
+            var rm = e.target.closest('[data-rmcond]');
+            if (rm) {
+                if (row.querySelectorAll('.dfb-agr-c').length > 1) { rm.closest('.dfb-agr-c').remove(); syncConds(row); }
+                return;
+            }
+            if (e.target.closest('[data-cancel]')) { row.remove(); updateCount(); return; }
             if (e.target.closest('[data-del]')) {
                 if (!window.confirm('Delete this rule?')) return;
-                api(URLS.rulesBase + '/' + row.dataset.id, { method: 'DELETE' }).then(function () { row.remove(); flash('Rule deleted.'); })
+                api(URLS.rulesBase + '/' + row.dataset.id, { method: 'DELETE' }).then(function () { row.remove(); updateCount(); flash('Rule deleted.'); })
                     .catch(function (err) { flash(err.message, true); });
                 return;
             }
