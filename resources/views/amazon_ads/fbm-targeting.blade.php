@@ -28,6 +28,9 @@
     .amz-fbm-targeting .aft-sku-btn { border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; border-radius: 6px; padding: 1px 8px; font-size: 12px; cursor: pointer; }
     .amz-fbm-targeting .aft-sku-btn.is-open { background: #1d4ed8; color: #fff; }
     .amz-fbm-targeting .aft-status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.06); vertical-align: middle; }
+    .amz-fbm-targeting .aft-dd-menu { position: fixed; z-index: 1055; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 4px 0; min-width: 150px; }
+    .amz-fbm-targeting .aft-dd-item { display: flex; align-items: center; gap: 8px; margin: 0; padding: 5px 14px; font-size: 13px; cursor: pointer; color: #111827; user-select: none; }
+    .amz-fbm-targeting .aft-dd-item:hover { background: #eff6ff; }
     .amz-fbm-targeting .aft-mag { cursor: pointer; color: #1d4ed8; font-size: 13px; padding: 3px; border-radius: 4px; vertical-align: middle; }
     .amz-fbm-targeting .aft-mag:hover { background: #dbeafe; color: #1e40af; }
     .amz-fbm-targeting .aft-low-badge { font-size: .72rem; cursor: pointer; user-select: none; border: 2px solid transparent; }
@@ -158,46 +161,46 @@
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h4 class="mb-0"><i class="mdi mdi-bullseye-arrow"></i> Keyword Targeting</h4>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
-                        <button type="button" id="aft-push-sel" class="btn btn-success btn-sm fw-bold" disabled
-                                title="Tick campaigns in the grid. A check shows what is missing; after you confirm, their live keywords are pulled from Amazon and the missing ones pushed (KW campaigns and their parents' HL campaigns), in the background with progress.">
-                            <i class="fas fa-check-square"></i> Push / Pull selected (0)
-                        </button>
                         <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
-                        <button type="button" id="aft-undo-btn" class="btn btn-outline-light btn-sm fw-bold"
-                                title="Undo a previous push: archive on Amazon the keywords it sent to KW campaigns">
-                            <i class="fas fa-undo"></i> Undo a push
-                        </button>
                     </div>
                     <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
                 </div>
                 <div class="card-body">
                     <div class="mb-3 d-flex gap-1 flex-nowrap align-items-center aft-oneline" style="overflow-x:auto;">
-                        <div class="btn-group btn-group-sm flex-shrink-0" role="group" id="aft-type-group" aria-label="Campaign type">
-                            <button type="button" class="btn btn-primary active" data-type="" title="Show every campaign type (clears the KW / PT / HL selection)">All</button>
-                            <button type="button" class="btn btn-outline-primary" data-type="kw" title="KW campaigns (Sponsored Products keyword campaigns)">KW</button>
-                            <button type="button" class="btn btn-outline-primary" data-type="pt" title="PT campaigns (Sponsored Products product targeting)">PT</button>
-                            <button type="button" class="btn btn-outline-primary" data-type="hl" title="HL / HEAD campaigns (Sponsored Brands headline)">HL / Head</button>
+                        <div class="flex-shrink-0" id="aft-type-group">
+                            <button type="button" id="aft-type-btn" class="btn btn-sm btn-outline-primary dropdown-toggle text-nowrap" aria-haspopup="true" aria-expanded="false"
+                                    title="Campaign type: tick several to combine">Type: All</button>
+                            <div id="aft-type-menu" class="aft-dd-menu" style="display:none;" role="menu">
+                                <label class="aft-dd-item" title="Show every campaign type (clears the selection)"><input type="checkbox" data-type="" checked> All</label>
+                                <label class="aft-dd-item" title="KW campaigns (Sponsored Products keyword campaigns)"><input type="checkbox" data-type="kw"> KW</label>
+                                <label class="aft-dd-item" title="PT campaigns (Sponsored Products product targeting)"><input type="checkbox" data-type="pt"> PT</label>
+                                <label class="aft-dd-item" title="HL / HEAD campaigns (Sponsored Brands headline)"><input type="checkbox" data-type="hl"> HL / Head</label>
+                            </div>
                         </div>
-                        <input type="text" id="aft-cousin-search" class="form-control form-control-sm"
-                               style="flex:1 1 90px;min-width:70px;max-width:200px;" placeholder="Search KW cousins..." autocomplete="off"
-                               title="Filter by cousin name, cousin parent or cousin campaign">
-                        <select id="aft-status" class="form-select form-select-sm flex-shrink-0" style="width:auto;max-width:125px;" title="Campaign status (same values as Ads All)">
-                            <option value="" selected>All statuses</option>
-                            <option value="ENABLED">Enabled</option>
-                            <option value="PAUSED">Paused</option>
-                            <option value="ARCHIVED">Archived</option>
-                        </select>
+                        <input type="text" id="aft-search" class="form-control form-control-sm"
+                               style="flex:1 1 140px;min-width:100px;max-width:260px;" placeholder="Search..." autocomplete="off"
+                               title="Type to search in the fields chosen in the dropdown next to it">
+                        <div class="flex-shrink-0" id="aft-in-group">
+                            <button type="button" id="aft-in-btn" class="btn btn-sm btn-outline-secondary dropdown-toggle text-nowrap" aria-haspopup="true" aria-expanded="false"
+                                    title="Choose where to search: tick several to search in all of them">In: Campaign</button>
+                            <div id="aft-in-menu" class="aft-dd-menu" style="display:none;" role="menu">
+                                <label class="aft-dd-item" title="Campaign name, or a SKU advertised in the campaign"><input type="checkbox" data-in="campaign" checked> Campaign</label>
+                                <label class="aft-dd-item" title="Parent column"><input type="checkbox" data-in="parent"> Parent</label>
+                                <label class="aft-dd-item" title="Product Master title of the parent"><input type="checkbox" data-in="title"> Title</label>
+                                <label class="aft-dd-item" title="KW cousin name, cousin campaigns and cousin parents"><input type="checkbox" data-in="cousin"> KW cousin</label>
+                            </div>
+                        </div>
+                        <div class="btn-group btn-group-sm flex-shrink-0" role="group" id="aft-status" aria-label="Campaign status" title="Campaign status (same values as Ads All). Click several to combine.">
+                            <button type="button" class="btn btn-primary active" data-status="" title="All statuses (clears the selection)">All</button>
+                            <button type="button" class="btn btn-outline-primary" data-status="ENABLED">Enabled</button>
+                            <button type="button" class="btn btn-outline-primary" data-status="PAUSED">Paused</button>
+                            <button type="button" class="btn btn-outline-primary" data-status="ARCHIVED">Archived</button>
+                        </div>
                         <select id="aft-scope" class="form-select form-select-sm flex-shrink-0" style="width:auto;max-width:125px;" title="Show parent campaigns or single-SKU campaigns">
                             <option value="all">Parent + SKU</option>
                             <option value="parent">Parent</option>
                             <option value="sku">SKU</option>
                         </select>
-                        <input type="text" id="aft-parent-search" class="form-control form-control-sm"
-                               style="flex:1 1 80px;min-width:60px;max-width:170px;" placeholder="Search parents..." autocomplete="off">
-                        <input type="text" id="aft-title-search" class="form-control form-control-sm"
-                               style="flex:1 1 80px;min-width:60px;max-width:200px;" placeholder="Search title..." autocomplete="off">
-                        <input type="text" id="aft-search" class="form-control form-control-sm"
-                               style="flex:1 1 90px;min-width:70px;max-width:200px;" placeholder="Search campaigns..." autocomplete="off">
                         <span class="text-muted small text-nowrap flex-shrink-0" id="aft-count"></span>
                         <span class="badge bg-danger text-nowrap flex-shrink-0" id="aft-missing-titles" style="font-size:.72rem;"
                               title="M = Missing: parents with no title in Product Master">M Titles: 0</span>
@@ -473,14 +476,13 @@
 (function () {
     const dataUrl = @json(route('amazon.ads.fbm-targeting.data'));
     const searchEl = document.getElementById('aft-search');
-    const parentSearchEl = document.getElementById('aft-parent-search');
-    const titleSearchEl = document.getElementById('aft-title-search');
     const scopeEl = document.getElementById('aft-scope');
     const statusEl = document.getElementById('aft-status');
+    const statusSel = new Set(); // any of ENABLED / PAUSED / ARCHIVED; empty = all statuses
     const typeGroupEl = document.getElementById('aft-type-group');
     const typeSel = new Set(); // any of 'kw', 'pt', 'hl'; empty = all types
     let typeFilter = ''; // comma separated typeSel, sent to the server
-    const cousinSearchEl = document.getElementById('aft-cousin-search');
+    const inSel = new Set(['campaign']); // fields the search box looks in: campaign / parent / title / cousin
     const countEl = document.getElementById('aft-count');
     const missingTitlesEl = document.getElementById('aft-missing-titles');
     const missingCousinsEl = document.getElementById('aft-missing-cousins');
@@ -557,6 +559,42 @@
     })();
 
     // Clicks LT / Sold LT: totals over the whole KW cousin group of the row (hover for how many campaigns had data).
+    // "App Target" / "App Negative" column: how many keywords (kind 'kw') or negatives (kind 'neg') the app holds for the
+    // campaign (after edits and deletes). Amber = some of them did not come from Amazon and are not on it yet. The
+    // magnifying glass opens the matching list.
+    function appCountColumn(kind) {
+        const neg = kind === 'neg';
+        const noun = neg ? 'negative keyword(s)' : 'keyword(s)';
+        const countField = neg ? 'app_negative_count' : 'app_target_count';
+        const pendingField = neg ? 'app_negative_pending' : 'app_target_pending';
+        return {
+            title: neg ? 'App Negative' : 'App Target',
+            field: countField,
+            width: neg ? 100 : 92,
+            hozAlign: 'center',
+            headerSort: false,
+            headerTooltip: neg
+                ? 'Negative keywords the app holds for this campaign (after edits and deletes). Amber = some of them are not on Amazon yet. The same negatives are kept on all KW cousins.'
+                : 'Keywords the app holds for this campaign (after edits and deletes). Amber = some of them are not on Amazon yet and wait for a push. The same keywords are kept on all KW cousins.',
+            formatter: function (cell) {
+                const d = cell.getRow().getData() || {};
+                const n = Number(cell.getValue() || 0);
+                const wait = Number(d[pendingField] || 0);
+                const tip = n.toLocaleString() + ' ' + noun + ' in the app' +
+                    (wait ? ' · ' + wait.toLocaleString() + ' not on Amazon yet' + (neg ? '' : ' (waiting for a push)') : ' · all on Amazon');
+                // amber while some of them are not on Amazon yet; cursor stays normal: only the magnifier is clickable
+                const style = ' style="cursor:default;' + (wait ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : '') + '"';
+                return '<span class="aft-count-badge" title="' + tip + '"' + style + '>' + n.toLocaleString() + '</span>' +
+                    ' <i class="fas fa-search aft-mag" role="button" tabindex="0" title="View the ' + (neg ? 'negative keywords' : 'targets') + ' of this campaign" aria-label="View ' + (neg ? 'negatives' : 'targets') + '"></i>';
+            },
+            cellClick: function (e, cell) {
+                // only the magnifying glass opens the list
+                if (!e.target || !e.target.closest || !e.target.closest('.aft-mag')) return;
+                openTargetsModal(cell.getRow().getData() || {}, kind);
+            },
+        };
+    }
+
     function ltFormatter(cell) {
         const d = cell.getRow().getData() || {};
         const n = Number(cell.getValue() || 0);
@@ -768,16 +806,13 @@
             q.set('page', String(params.page || 1));
             q.set('size', String(params.size || 50));
             const search = (searchEl && searchEl.value || '').trim();
-            if (search) q.set('campaign', search);
-            const parentQ = (parentSearchEl && parentSearchEl.value || '').trim();
-            if (parentQ) q.set('parent', parentQ);
-            const titleQ = (titleSearchEl && titleSearchEl.value || '').trim();
-            if (titleQ) q.set('title', titleQ);
-            const cousinQ = (cousinSearchEl && cousinSearchEl.value || '').trim();
-            if (cousinQ) q.set('cousin', cousinQ);
+            if (search) {
+                q.set('q', search);
+                q.set('in', Array.from(inSel).join(','));
+            }
             const scope = scopeEl ? scopeEl.value : 'all';
             if (scope && scope !== 'all') q.set('scope', scope);
-            const statusQ = statusEl ? statusEl.value : '';
+            const statusQ = Array.from(statusSel).join(',');
             if (statusQ) q.set('status', statusQ);
             if (typeFilter) q.set('type', typeFilter);
             if (lowFilter) q.set('low', lowFilter);
@@ -943,8 +978,12 @@
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
-                    const n = Number(cell.getValue() || 0);
-                    return '<span class="kwc-btn' + (n ? '' : ' kwc-empty') + '" title="Manage KW cousins">KWC <span class="kwc-n">' + n + '</span></span>';
+                    // Total in the group INCLUDING this row's own parent: 1 when it has no cousins.
+                    const others = Number(cell.getValue() || 0);
+                    const total = others + 1;
+                    return '<span class="kwc-btn' + (others ? '' : ' kwc-empty') + '" title="' + (others
+                        ? total + ' parents in this KW cousin group (this row + ' + others + ' cousin' + (others === 1 ? '' : 's') + '). Click to manage.'
+                        : 'No KW cousins (only this row). Click to manage.') + '">KWC <span class="kwc-n">' + total + '</span></span>';
                 },
                 cellClick: function (_e, cell) {
                     openCousinsModal(cell.getRow().getData() || {});
@@ -990,30 +1029,7 @@
                     openTargetsModal(cell.getRow().getData() || {}, 'kw');
                 },
             },
-            {
-                title: 'App Target',
-                field: 'app_target_count',
-                width: 92,
-                hozAlign: 'center',
-                headerSort: false,
-                headerTooltip: 'Keywords the app holds for this campaign (after edits and deletes). Amber = some of them are not on Amazon yet and wait for a push. The same keywords are kept on all KW cousins.',
-                formatter: function (cell) {
-                    const d = cell.getRow().getData() || {};
-                    const n = Number(cell.getValue() || 0);
-                    const wait = Number(d.app_target_pending || 0);
-                    const tip = n.toLocaleString() + ' keyword(s) in the app' +
-                        (wait ? ' · ' + wait.toLocaleString() + ' not on Amazon yet (waiting for a push)' : ' · nothing waiting to be pushed');
-                    // amber while some of them still wait for a push; cursor stays normal: only the magnifier is clickable
-                    const style = ' style="cursor:default;' + (wait ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : '') + '"';
-                    return '<span class="aft-count-badge" title="' + tip + '"' + style + '>' + n.toLocaleString() + '</span>' +
-                        ' <i class="fas fa-search aft-mag" role="button" tabindex="0" title="View the targets of this campaign" aria-label="View targets"></i>';
-                },
-                cellClick: function (e, cell) {
-                    // only the magnifying glass opens the targets
-                    if (!e.target || !e.target.closest || !e.target.closest('.aft-mag')) return;
-                    openTargetsModal(cell.getRow().getData() || {}, 'kw');
-                },
-            },
+            appCountColumn('kw'),
             {
                 title: 'Negative KW',
                 field: 'negative_count',
@@ -1028,6 +1044,7 @@
                     openTargetsModal(cell.getRow().getData() || {}, 'neg');
                 },
             },
+            appCountColumn('neg'),
             {
                 title: 'Specific KW',
                 field: 'specific_count',
@@ -2371,6 +2388,12 @@
         });
     }
 
+    function closeModalEl(el) {
+        if (!el) return;
+        if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
+        else if (window.jQuery) window.jQuery(el).modal('hide');
+    }
+
     // Poll the background push until it is done / failed; shows live progress against the keywords found by the check.
     const pushStatusUrl = @json(route('amazon.ads.fbm-targeting.push-status'));
     let pkPollTimer = null;
@@ -2398,6 +2421,14 @@
                         if (b.status === 'done') pkRender(b, true); else pkWrap.innerHTML = '';
                         pkConfirm.innerHTML = originalBtnHtml || '<i class="fas fa-upload"></i> Push now';
                         pkConfirm.disabled = b.status === 'done';
+                        if (b.status === 'done') {
+                            refreshVisibleRows(); // show the pushed keywords in the grid
+                            if (!t.failed) {
+                                // everything went through: close the window and keep the result on the page
+                                closeModalEl(pkModalEl);
+                                showPullMsg(b.message || 'Push done.', true);
+                            }
+                        }
                         return;
                     }
                     pkPollTimer = setTimeout(tick, 2000);
@@ -2441,7 +2472,14 @@
                             const added = mine.reduce(function (s, x) { return s + Number(x.added || 0); }, 0);
                             const failed = mine.reduce(function (s, x) { return s + Number(x.failed || 0); }, 0);
                             const note = (mine.find(function (x) { return x.message; }) || {}).message || '';
-                            finish('Pushed to Amazon: ' + added.toLocaleString() + ' keyword(s) added' + (failed ? ', ' + failed.toLocaleString() + ' failed' + (note ? ' (' + note + ')' : '') : '') + '.', !failed);
+                            const doneText = 'Pushed to Amazon: ' + added.toLocaleString() + ' keyword(s) added' + (failed ? ', ' + failed.toLocaleString() + ' failed' + (note ? ' (' + note + ')' : '') : '') + '.';
+                            finish(doneText, !failed);
+                            refreshVisibleRows(); // update the grid counts in place
+                            if (!failed && added > 0) {
+                                // pushed cleanly: close the targets window and keep the result on the page
+                                closeModalEl(document.getElementById('aftTargetsModal'));
+                                showPullMsg(tgt.name + ' - ' + doneText, true);
+                            }
                         })
                         .catch(function () { setTimeout(tick, 5000); });
                 };
@@ -2578,13 +2616,6 @@
         });
     });
 
-    if (cousinSearchEl) {
-        cousinSearchEl.addEventListener('input', function () {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(function () { table.setPage(1); }, 300);
-        });
-    }
-
     // Re-fit the column widths to each newly loaded page / search result.
     table.on('dataLoaded', function () {
         setTimeout(function () { try { table.redraw(true); } catch (e) { /* table not ready */ } }, 0);
@@ -2605,9 +2636,8 @@
 
     // ---------- Bulk push: tick campaigns, then push only those ----------
     (function wireBulkPush() {
-        const selBtn = document.getElementById('aft-push-sel');
         const clearBtn = document.getElementById('aft-sel-clear');
-        if (!selBtn) return;
+        if (!clearBtn) return;
         const picked = new Map(); // grid row id -> KW campaign id (survives paging / filtering)
         const ids = function () {
             const set = new Set();
@@ -2624,8 +2654,6 @@
                     ? 'Check and push only the ' + n.toLocaleString() + ' ticked campaign(s) to Amazon'
                     : 'Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon';
             }
-            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Push / Pull selected (' + n.toLocaleString() + ')';
-            selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
             if (syncEl.sel) {
                 syncEl.sel.dataset.n = n;
@@ -2649,37 +2677,20 @@
             table.deselectRow();
             paint();
         });
-        selBtn.addEventListener('click', function () {
-            const list = ids();
-            if (!list.length) return;
-            pkBulk = list;
-            pkOpen();
-        });
     })();
 
     if (statusEl) {
-        statusEl.addEventListener('change', function () { table.setPage(1); });
-    }
-    if (scopeEl) {
-        scopeEl.addEventListener('change', function () { table.setPage(1); });
-    }
-    if (typeGroupEl) {
-        typeGroupEl.addEventListener('click', function (e) {
-            const btn = e.target.closest('button[data-type]');
+        statusEl.addEventListener('click', function (e) {
+            const btn = e.target.closest('button[data-status]');
             if (!btn) return;
-            const t = btn.getAttribute('data-type') || '';
-            // "All" clears the selection; KW / PT / HL toggle and can be combined.
-            if (t === '') {
-                typeSel.clear();
-            } else if (typeSel.has(t)) {
-                typeSel.delete(t);
-            } else {
-                typeSel.add(t);
-            }
-            typeFilter = Array.from(typeSel).join(',');
-            typeGroupEl.querySelectorAll('button[data-type]').forEach(function (b) {
-                const bt = b.getAttribute('data-type') || '';
-                const on = bt === '' ? typeSel.size === 0 : typeSel.has(bt);
+            const v = btn.getAttribute('data-status') || '';
+            // "All" clears the selection; Enabled / Paused / Archived toggle and can be combined.
+            if (v === '') statusSel.clear();
+            else if (statusSel.has(v)) statusSel.delete(v);
+            else statusSel.add(v);
+            statusEl.querySelectorAll('button[data-status]').forEach(function (b) {
+                const bv = b.getAttribute('data-status') || '';
+                const on = bv === '' ? statusSel.size === 0 : statusSel.has(bv);
                 b.classList.toggle('active', on);
                 b.classList.toggle('btn-primary', on);
                 b.classList.toggle('btn-outline-primary', !on);
@@ -2687,14 +2698,103 @@
             table.setPage(1);
         });
     }
+    if (scopeEl) {
+        scopeEl.addEventListener('change', function () { table.setPage(1); });
+    }
+    if (typeGroupEl) {
+        const typeBtn = document.getElementById('aft-type-btn');
+        const typeMenu = document.getElementById('aft-type-menu');
+        const typeBoxes = Array.prototype.slice.call(typeMenu.querySelectorAll('input[data-type]'));
+        const typeNames = { kw: 'KW', pt: 'PT', hl: 'HL / Head' };
+        const closeMenu = function () { typeMenu.style.display = 'none'; typeBtn.setAttribute('aria-expanded', 'false'); };
+        const openMenu = function () {
+            const r = typeBtn.getBoundingClientRect();
+            typeMenu.style.display = 'block';
+            typeMenu.style.top = (r.bottom + 2) + 'px';
+            typeMenu.style.left = r.left + 'px';
+            typeBtn.setAttribute('aria-expanded', 'true');
+        };
+        const paintType = function () {
+            typeBoxes.forEach(function (b) {
+                const t = b.getAttribute('data-type') || '';
+                b.checked = t === '' ? typeSel.size === 0 : typeSel.has(t);
+            });
+            const names = Array.from(typeSel).map(function (t) { return typeNames[t] || t; });
+            typeBtn.textContent = 'Type: ' + (names.length ? names.join(', ') : 'All');
+            typeBtn.classList.toggle('btn-primary', names.length > 0);
+            typeBtn.classList.toggle('btn-outline-primary', names.length === 0);
+        };
+        typeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            typeMenu.style.display === 'none' ? openMenu() : closeMenu();
+        });
+        typeMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+        typeBoxes.forEach(function (b) {
+            b.addEventListener('change', function () {
+                const t = b.getAttribute('data-type') || '';
+                // "All" clears the selection; KW / PT / HL toggle and can be combined.
+                if (t === '') typeSel.clear();
+                else if (b.checked) typeSel.add(t);
+                else typeSel.delete(t);
+                typeFilter = Array.from(typeSel).join(',');
+                paintType();
+                table.setPage(1);
+            });
+        });
+        document.addEventListener('click', closeMenu);
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+        window.addEventListener('resize', closeMenu);
+        window.addEventListener('scroll', closeMenu, true);
+        paintType();
+    }
 
-    [searchEl, parentSearchEl, titleSearchEl].forEach(function (el) {
-        if (!el) return;
-        el.addEventListener('input', function () {
+    if (searchEl) {
+        searchEl.addEventListener('input', function () {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(function () { table.setPage(1); }, 300);
         });
-    });
+    }
+
+    // "Search in" dropdown: tick the fields the search box should look in (at least one stays ticked).
+    (function wireSearchIn() {
+        const btn = document.getElementById('aft-in-btn');
+        const menu = document.getElementById('aft-in-menu');
+        if (!btn || !menu) return;
+        const boxes = Array.prototype.slice.call(menu.querySelectorAll('input[data-in]'));
+        const names = { campaign: 'Campaign', parent: 'Parent', title: 'Title', cousin: 'KW cousin' };
+        const order = ['campaign', 'parent', 'title', 'cousin'];
+        const close = function () { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); };
+        const open = function () {
+            const r = btn.getBoundingClientRect();
+            menu.style.display = 'block';
+            menu.style.top = (r.bottom + 2) + 'px';
+            menu.style.left = r.left + 'px';
+            btn.setAttribute('aria-expanded', 'true');
+        };
+        const paint = function () {
+            boxes.forEach(function (b) { b.checked = inSel.has(b.getAttribute('data-in')); });
+            const list = order.filter(function (k) { return inSel.has(k); });
+            btn.textContent = 'In: ' + (list.length === order.length ? 'All' : list.map(function (k) { return names[k]; }).join(', '));
+            btn.classList.toggle('btn-secondary', list.length !== 1 || list[0] !== 'campaign');
+            btn.classList.toggle('btn-outline-secondary', list.length === 1 && list[0] === 'campaign');
+        };
+        btn.addEventListener('click', function (e) { e.stopPropagation(); menu.style.display === 'none' ? open() : close(); });
+        menu.addEventListener('click', function (e) { e.stopPropagation(); });
+        boxes.forEach(function (b) {
+            b.addEventListener('change', function () {
+                const k = b.getAttribute('data-in');
+                if (b.checked) inSel.add(k);
+                else if (inSel.size > 1) inSel.delete(k); // never search in nothing
+                paint();
+                if ((searchEl && searchEl.value || '').trim()) table.setPage(1);
+            });
+        });
+        document.addEventListener('click', close);
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+        window.addEventListener('resize', close);
+        window.addEventListener('scroll', close, true);
+        paint();
+    })();
 })();
 </script>
 @endsection

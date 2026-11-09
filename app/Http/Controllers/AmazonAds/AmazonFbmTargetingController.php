@@ -234,39 +234,41 @@ class AmazonFbmTargetingController extends Controller
             $all = array_values(array_filter($all, static fn (array $c) => $scope === 'parent' ? $c['is_parent'] : ! $c['is_parent']));
         }
 
-        // Separate filters: campaign name, parent, and the parent's Product Master title (every word must match).
-        if ($search !== '') {
-            $needle = mb_strtolower($search);
-            // A campaign matches by its name OR by a SKU advertised in it (the SKUs shown by "Campaign SKUs" on
-            // /amazon-ads/all), e.g. "WF 10 140 PP 4OHM" finds "PARENT 10 CW KW" which advertises that SKU.
-            // When the text is exactly a SKU, only the campaigns advertising that exact SKU are shown
-            // ("WF 10 140 PP 4OHM" no longer pulls in the "… 4OHM 2PCS" SKU); otherwise it is a contains search.
-            $exactSku = $this->campaignIdsAdvertisingSku($search, true);
-            if ($exactSku !== []) {
-                $all = array_values(array_filter($all, static fn (array $c) => $c['campaign_id'] !== '' && isset($exactSku[$c['campaign_id']])));
-            } else {
-                $bySku = $this->campaignIdsAdvertisingSku($search);
-                $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
-                    || ($c['campaign_id'] !== '' && isset($bySku[$c['campaign_id']]))));
-            }
-        }
-        $parentQ = mb_strtolower(trim((string) $request->query('parent', '')));
-        if ($parentQ !== '') {
-            $all = array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['parent']), $parentQ)));
-        }
-        $titleTerms = array_values(array_filter(preg_split('/\s+/', mb_strtolower(trim((string) $request->query('title', '')))) ?: []));
-        if ($titleTerms !== []) {
-            $titleMap = $this->parentTitles(array_map(static fn (array $c) => $c['parent'], $all));
-            $all = array_values(array_filter($all, function (array $c) use ($titleMap, $titleTerms) {
-                $title = mb_strtolower($titleMap[$this->parentKey($c['parent'])] ?? '');
-                foreach ($titleTerms as $t) {
-                    if (! str_contains($title, $t)) {
-                        return false;
-                    }
+        // One search box with a choice of fields: q = text, in = campaign,parent,title,cousin (comma separated). A campaign
+        // is kept when the text matches in ANY of the chosen fields.
+        $q = trim((string) $request->query('q', ''));
+        $inFields = array_values(array_unique(array_filter(array_map(
+            static fn (string $v) => strtolower(trim($v)),
+            explode(',', (string) $request->query('in', 'campaign'))
+        ), static fn (string $v) => in_array($v, ['campaign', 'parent', 'title', 'cousin'], true))));
+        if ($q !== '' && $inFields !== []) {
+            $base = $all;
+            $hit = [];
+            foreach ($inFields as $field) {
+                $subset = match ($field) {
+                    'campaign' => $this->searchCampaigns($base, $q),
+                    'parent' => $this->searchParents($base, $q),
+                    'title' => $this->searchTitles($base, $q),
+                    default => $this->searchCousins($base, $q),
+                };
+                foreach ($subset as $c) {
+                    $hit[$this->exactNameKey((string) $c['campaign_name'])] = true;
                 }
+            }
+            $all = array_values(array_filter($base, fn (array $c) => isset($hit[$this->exactNameKey((string) $c['campaign_name'])])));
+        }
 
-                return $title !== '';
-            }));
+        // Separate filters (kept for older callers): campaign name, parent, and the parent's Product Master title (every word must match).
+        if ($search !== '') {
+            $all = $this->searchCampaigns($all, $search);
+        }
+        $parentQ = trim((string) $request->query('parent', ''));
+        if ($parentQ !== '') {
+            $all = $this->searchParents($all, $parentQ);
+        }
+        $titleQ = trim((string) $request->query('title', ''));
+        if ($titleQ !== '') {
+            $all = $this->searchTitles($all, $titleQ);
         }
 
         if (isset(self::LOW_LIMITS[$low])) {
@@ -275,26 +277,9 @@ class AmazonFbmTargetingController extends Controller
         }
 
         // KW cousin filter: matches the cousin group name, or any cousin campaign / cousin parent.
-        $cousinSearch = mb_strtolower(trim((string) $request->query('cousin', '')));
-        if ($cousinSearch !== '') {
-            $groupsAll = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
-            $namesAll = $this->cousinNameMap();
-            $index = $this->campaignIndex();
-            $terms = preg_split('/\s+/', $cousinSearch) ?: [];
-            $all = array_values(array_filter($all, function (array $c) use ($groupsAll, $namesAll, $index, $terms) {
-                $group = $this->effectiveGroup($c['campaign_name'], $groupsAll);
-                $hay = mb_strtolower($this->groupNameFor($group, $c['campaign_name'], $namesAll));
-                foreach ($this->cousinCampaignNames($group, $c['campaign_name']) as $member) {
-                    $hay .= ' '.mb_strtolower($member).' '.mb_strtolower($index[$this->cousins->normalize($member)]['parent'] ?? '');
-                }
-                foreach ($terms as $t) {
-                    if ($t !== '' && ! str_contains($hay, $t)) {
-                        return false;
-                    }
-                }
-
-                return true;
-            }));
+        $cousinQ = trim((string) $request->query('cousin', ''));
+        if ($cousinQ !== '') {
+            $all = $this->searchCousins($all, $cousinQ);
         }
 
         $groups = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
@@ -399,6 +384,27 @@ class AmazonFbmTargetingController extends Controller
             Log::warning('AmazonFbmTargetingController: pending cousin keyword counts failed', ['error' => $e->getMessage()]);
         }
 
+        // App Negative: same idea for negatives - the part of the app's negatives that did not come from Amazon
+        // (copied from KW cousins or added by hand) and is not deleted / ignored in the modal.
+        $negToPush = [];
+        try {
+            if ($campaignIds !== [] && $this->hasTable(self::NEG_TABLE)) {
+                $negFlags = $this->flagMap('neg', $campaignIds);
+                foreach (array_chunk($campaignIds, 1000) as $chunk) {
+                    foreach (DB::table(self::NEG_TABLE)->whereIn('campaign_id', $chunk)->whereIn('source', ['cousin', 'manual'])
+                        ->get(['campaign_id', 'keyword_key', 'match_type']) as $o) {
+                        $cid = (string) $o->campaign_id;
+                        if (isset($negFlags[$cid][$o->keyword_key.'|'.strtoupper((string) $o->match_type)])) {
+                            continue;
+                        }
+                        $negToPush[$cid] = ($negToPush[$cid] ?? 0) + 1;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: pending negative counts failed', ['error' => $e->getMessage()]);
+        }
+
         // Lifetime clicks / sold of every campaign in each row's KW cousin group (own parent + cousin parents).
         $lt = $ltAll ?? $this->lifetimeForRows($rows, $groups);
         $mark('lifetime');
@@ -453,6 +459,9 @@ class AmazonFbmTargetingController extends Controller
                 'ignored_targets' => $ignoredTargets,
                 'negatives' => $negatives,
                 'negative_count' => $adsCounts[$row['ad_type'] ?? 'SP']['n'][$id] ?? count($negatives),
+                // Negatives the app holds for this campaign (deleted ones gone, edits applied); pending = not from Amazon yet.
+                'app_negative_count' => count($negatives),
+                'app_negative_pending' => $negToPush[$id] ?? 0,
                 'ignored_negatives' => $ignoredNegatives,
                 'specific' => $specific,
                 'specific_count' => count($specific),
@@ -3862,6 +3871,94 @@ class AmazonFbmTargetingController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Campaign search: by name OR by a SKU advertised in the campaign (the SKUs shown by "Campaign SKUs" on /amazon-ads/all),
+     * e.g. "WF 10 140 PP 4OHM" finds "PARENT 10 CW KW" which advertises that SKU. When the text is exactly a SKU, only the
+     * campaigns advertising that exact SKU are kept ("WF 10 140 PP 4OHM" no longer pulls in the "… 4OHM 2PCS" SKU);
+     * otherwise it is a contains search.
+     *
+     * @param  list<array<string, mixed>>  $all
+     * @return list<array<string, mixed>>
+     */
+    protected function searchCampaigns(array $all, string $search): array
+    {
+        $needle = mb_strtolower($search);
+        $exactSku = $this->campaignIdsAdvertisingSku($search, true);
+        if ($exactSku !== []) {
+            return array_values(array_filter($all, static fn (array $c) => $c['campaign_id'] !== '' && isset($exactSku[$c['campaign_id']])));
+        }
+        $bySku = $this->campaignIdsAdvertisingSku($search);
+
+        return array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower($c['campaign_name']), $needle)
+            || ($c['campaign_id'] !== '' && isset($bySku[$c['campaign_id']]))));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $all
+     * @return list<array<string, mixed>>
+     */
+    protected function searchParents(array $all, string $q): array
+    {
+        $needle = mb_strtolower(trim($q));
+
+        return array_values(array_filter($all, static fn (array $c) => str_contains(mb_strtolower((string) $c['parent']), $needle)));
+    }
+
+    /**
+     * The parent's Product Master title must contain every word typed.
+     *
+     * @param  list<array<string, mixed>>  $all
+     * @return list<array<string, mixed>>
+     */
+    protected function searchTitles(array $all, string $q): array
+    {
+        $terms = array_values(array_filter(preg_split('/\s+/', mb_strtolower(trim($q))) ?: []));
+        if ($terms === []) {
+            return $all;
+        }
+        $titleMap = $this->parentTitles(array_map(static fn (array $c) => $c['parent'], $all));
+
+        return array_values(array_filter($all, function (array $c) use ($titleMap, $terms) {
+            $title = mb_strtolower($titleMap[$this->parentKey($c['parent'])] ?? '');
+            foreach ($terms as $t) {
+                if (! str_contains($title, $t)) {
+                    return false;
+                }
+            }
+
+            return $title !== '';
+        }));
+    }
+
+    /**
+     * Matches the cousin group name, or any cousin campaign / cousin parent (every word must match).
+     *
+     * @param  list<array<string, mixed>>  $all
+     * @return list<array<string, mixed>>
+     */
+    protected function searchCousins(array $all, string $q): array
+    {
+        $terms = preg_split('/\s+/', mb_strtolower(trim($q))) ?: [];
+        $groupsAll = $this->hasTable(self::COUSIN_TABLE) ? $this->cousins->groupsMap() : [];
+        $namesAll = $this->cousinNameMap();
+        $index = $this->campaignIndex();
+
+        return array_values(array_filter($all, function (array $c) use ($groupsAll, $namesAll, $index, $terms) {
+            $group = $this->effectiveGroup($c['campaign_name'], $groupsAll);
+            $hay = mb_strtolower($this->groupNameFor($group, $c['campaign_name'], $namesAll));
+            foreach ($this->cousinCampaignNames($group, $c['campaign_name']) as $member) {
+                $hay .= ' '.mb_strtolower($member).' '.mb_strtolower($index[$this->cousins->normalize($member)]['parent'] ?? '');
+            }
+            foreach ($terms as $t) {
+                if ($t !== '' && ! str_contains($hay, $t)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }));
     }
 
     /**
