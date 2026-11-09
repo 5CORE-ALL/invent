@@ -158,24 +158,12 @@
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <button type="button" id="aft-push-sel" class="btn btn-success btn-sm fw-bold" disabled
                                 title="Tick campaigns in the grid. A check shows what is missing; after you confirm, their live keywords are pulled from Amazon and the missing ones pushed (KW campaigns and their parents' HL campaigns), in the background with progress.">
-                            <i class="fas fa-check-square"></i> Pull + Push selected (0)
+                            <i class="fas fa-check-square"></i> Push / Pull selected (0)
                         </button>
                         <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
-                        <button type="button" id="aft-sync-sel" class="btn btn-info btn-sm fw-bold" disabled
-                                title="Pull the live keywords of the ticked campaigns (and their linked KW cousins) from Amazon, then push what is missing. Runs in the background, in chunks.">
-                            <i class="fas fa-sync-alt"></i> Sync selected (0)
-                        </button>
-                        <button type="button" id="aft-sync-all" class="btn btn-light btn-sm fw-bold"
-                                title="Pull from Amazon and push what is missing for ALL KW campaigns. Runs in the background, in chunks.">
-                            <i class="fas fa-sync-alt"></i> Sync all (Pull + Push)
-                        </button>
                         <button type="button" id="aft-undo-btn" class="btn btn-outline-light btn-sm fw-bold"
                                 title="Undo a previous push: archive on Amazon the keywords it sent to KW campaigns">
                             <i class="fas fa-undo"></i> Undo a push
-                        </button>
-                        <button type="button" id="aft-push-kw" class="btn btn-warning btn-sm fw-bold"
-                                title="Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon">
-                            <i class="fas fa-upload"></i> Push KW to KW + HL Campaigns
                         </button>
                     </div>
                     <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
@@ -225,15 +213,15 @@
                               title="Clicks LT / Sold LT add up the stored daily Amazon Ads campaign reports. Amazon only serves about the last 95 days."></span>
                         <button type="button" id="aft-pull-lt" class="btn btn-sm btn-info ms-auto"
                                 title="Fetch missing daily campaign reports (clicks / sold) from the Amazon Ads API for the Clicks LT / Sold LT columns. Runs in the background.">
-                            <i class="fas fa-chart-line"></i> Pull LT Clicks / Sold
+                            <i class="fas fa-chart-line"></i> Pull LT
                         </button>
                         <button type="button" id="aft-pull-kw" class="btn btn-sm btn-success"
                                 title="Add keywords that exist in Amazon KW campaigns but not in the app. Existing keywords are kept.">
-                            <i class="fas fa-cloud-download-alt"></i> Pull Keywords
+                            <i class="fas fa-cloud-download-alt"></i> Pull KW
                         </button>
                         <button type="button" id="aft-pull-neg" class="btn btn-sm btn-danger"
                                 title="Add negative keywords that exist in Amazon KW campaigns but not in the app. Existing negative keywords are kept.">
-                            <i class="fas fa-ban"></i> Pull Negative KW
+                            <i class="fas fa-ban"></i> Pull Neg KW
                         </button>
                     </div>
                     <div id="aft-pull-msg" class="small mb-2" style="display:none;"></div>
@@ -2585,7 +2573,7 @@
                     ? 'Check and push only the ' + n.toLocaleString() + ' ticked campaign(s) to Amazon'
                     : 'Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon';
             }
-            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Pull + Push selected (' + n.toLocaleString() + ')';
+            selBtn.innerHTML = '<i class="fas fa-check-square"></i> Push / Pull selected (' + n.toLocaleString() + ')';
             selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
             if (syncEl.sel) {
