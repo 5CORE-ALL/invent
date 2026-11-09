@@ -648,6 +648,33 @@
             .finally(function () { row.normalizeHeight(); });
     }
 
+    // Floating tooltip with the full product title (the Title column is narrow and clamped to 2 lines).
+    let titleTipEl = null;
+    function showTitleTip(text, e) {
+        if (!text) return;
+        if (!titleTipEl) {
+            titleTipEl = document.createElement('div');
+            titleTipEl.style.cssText = 'position:fixed;z-index:20000;max-width:460px;padding:8px 10px;background:#111827;color:#fff;' +
+                'font-size:13px;line-height:1.4;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);pointer-events:none;white-space:normal;display:none;';
+            document.body.appendChild(titleTipEl);
+        }
+        titleTipEl.textContent = text;
+        titleTipEl.style.display = 'block';
+        moveTitleTip(e);
+    }
+    function moveTitleTip(e) {
+        if (!titleTipEl || titleTipEl.style.display === 'none') return;
+        const pad = 14;
+        let x = e.clientX + pad;
+        let y = e.clientY + pad;
+        const w = titleTipEl.offsetWidth, h = titleTipEl.offsetHeight;
+        if (x + w > window.innerWidth - 8) x = Math.max(8, e.clientX - w - pad);
+        if (y + h > window.innerHeight - 8) y = Math.max(8, e.clientY - h - pad);
+        titleTipEl.style.left = x + 'px';
+        titleTipEl.style.top = y + 'px';
+    }
+    function hideTitleTip() { if (titleTipEl) titleTipEl.style.display = 'none'; }
+
     // Toolbar badges (missing titles / cousins, LT coverage, "low" counts) from a data response.
     function applyBadges(response) {
         if (missingTitlesEl) {
@@ -845,19 +872,23 @@
             {
                 title: 'Title',
                 field: 'title',
-                minWidth: 180,
-                maxWidth: 420,
+                width: 210,
+                minWidth: 120,
+                maxWidth: 210,
                 headerSort: false,
                 formatter: function (cell) {
                     const d = cell.getRow().getData() || {};
                     const t = String(d.title || '').trim();
                     if (!t) return '<span class="aft-empty">-</span>';
-                    // Autofilled on every row; later rows of a parent are clamped to 2 lines (full title on hover).
-                    const clamp = d.parent_first
-                        ? ''
-                        : 'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
-                    return '<div style="white-space:normal;line-height:1.3;' + clamp + '" title="' + escapeHtml(t) + '">' + escapeHtml(t) + '</div>';
+                    // Narrow column: every row is clamped to 2 lines; hovering shows the full title.
+                    return '<div style="white-space:normal;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' + escapeHtml(t) + '</div>';
                 },
+                cellMouseEnter: function (e, cell) {
+                    const t = String(((cell.getRow().getData() || {}).title) || '').trim();
+                    showTitleTip(t, e);
+                },
+                cellMouseMove: function (e) { moveTitleTip(e); },
+                cellMouseLeave: function () { hideTitleTip(); },
             },
             {
                 title: 'Campaign name',
