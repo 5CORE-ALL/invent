@@ -1551,6 +1551,41 @@
         </div>
     </div>
 
+    {{-- SBGT breakdown: opens when the SBGT total in a row is clicked (replaces the long hover tooltip). --}}
+    <div class="modal fade" id="amzSbgtBreakdownModal" tabindex="-1" aria-labelledby="amzSbgtBreakdownTitle" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered modal-fullscreen-lg-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <div class="min-w-0">
+                        <h5 class="modal-title mb-0" id="amzSbgtBreakdownTitle">SBGT breakdown</h5>
+                        <div class="small text-muted text-truncate" id="amzSbgtBreakdownCampaign"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="amzSbgtBreakdownBody"></div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+        #amzSbgtBreakdownModal .sb-total { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+        #amzSbgtBreakdownModal .sb-banner { border-radius: .5rem; padding: .75rem 1rem; font-size: 1rem; font-weight: 600; }
+        #amzSbgtBreakdownModal .sb-banner--bad { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        #amzSbgtBreakdownModal .sb-banner--ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        #amzSbgtBreakdownModal .sb-banner--push { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+        #amzSbgtBreakdownModal table.sb-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #475569; white-space: nowrap; }
+        #amzSbgtBreakdownModal table.sb-table td { vertical-align: middle; font-size: .95rem; }
+        #amzSbgtBreakdownModal .sb-amt { font-weight: 800; font-size: 1.15rem; text-align: right; white-space: nowrap; }
+        #amzSbgtBreakdownModal .sb-amt--pos { color: #15803d; }
+        #amzSbgtBreakdownModal .sb-amt--neg { color: #dc2626; }
+        #amzSbgtBreakdownModal .sb-amt--zero { color: #64748b; }
+        #amzSbgtBreakdownModal .sb-amt--none { color: #94a3b8; font-weight: 600; }
+        #amzSbgtBreakdownModal .sb-formula { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; background: #f1f5f9; border-radius: .5rem; padding: .6rem .9rem; overflow-x: auto; white-space: nowrap; }
+        .amz-sbgt-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+    </style>
+
     <div class="modal fade" id="amazonAdsU7PieModal" tabindex="-1" aria-labelledby="amazonAdsU7PieModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
             <div class="modal-content">
@@ -2893,20 +2928,114 @@
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === Math.max(0, t);
                 var color = t <= 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG';
-                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(gpftBgt) ? gpftBgt : 0) + (isFinite(flagBgt) ? flagBgt : 0);
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + ' + ' + (isFinite(gpftBgt) ? gpftBgt : 0) + ' + ' + (isFinite(flagBgt) ? flagBgt : 0);
-                if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
-                    tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
+                var tip = 'SBGT ' + t + (t < 0 ? ' (negative: campaign will be paused)' : (t === 0 ? ' ($0: campaign will be paused)' : ''))
+                    + ' · click for the full breakdown';
+                return '<span class="fw-semibold amz-sbgt-click" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function amzSbgtFmtAmt(n) {
+                if (!isFinite(n)) return '—';
+                return (n > 0 ? '+' : '') + (Math.round(n * 100) / 100);
+            }
+            // Opens the SBGT breakdown modal for one campaign row: every rule part, what it is based on, the total and what happens to the budget.
+            function amzShowSbgtBreakdown(row) {
+                var modalEl = document.getElementById('amzSbgtBreakdownModal');
+                if (!modalEl || !row || typeof bootstrap === 'undefined') return;
+                var num = function (v) { var n = amzBgtPartNum(v); return isNaN(n) ? NaN : n; };
+                var txt = function (v) { return String(v == null ? '' : v).trim(); };
+                var views = parseFloat(row.viewsL7 != null ? row.viewsL7 : row.page_cvr_sess7);
+                var cvrIn = parseFloat(row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.pageCvr);
+                var price = parseFloat(row.bgt_prc_price != null ? row.bgt_prc_price : row.price);
+                var rating = parseFloat(row.bgt_reviews_rating != null ? row.bgt_reviews_rating : row.reviews);
+                var dil = parseFloat(row.bgt_dil_value != null ? row.bgt_dil_value : row.dil);
+                if (!isFinite(dil)) {
+                    var inv = parseFloat(row.Inv);
+                    if (isFinite(inv) && inv > 0) dil = ((parseFloat(row.ovl30) || 0) / inv) * 100;
                 }
-                if (t < 0) {
-                    tip += ' · total is negative ($' + t + ') — cannot push a negative budget, campaign will be paused';
-                } else if (t === 0) {
-                    tip += ' · total is $0 — cannot push $0, campaign will be paused';
+                var gpft = parseFloat(row.bgt_gpft_value != null ? row.bgt_gpft_value : row.gpft);
+                var gap = parseFloat(row.bgt_flag_value);
+                var acosIn = parseFloat(row.ACOS);
+                var acosVal = row.bgtAcos;
+                var fromAcos = amzBgtAcosFromAcos(row.ACOS, !!row.is_hl);
+                if (fromAcos !== null) acosVal = fromAcos;
+                var parts = [
+                    { name: 'Bgt Views', val: num(row.bgtViews), based: isFinite(views) ? 'Amz page views L7 = ' + Math.round(views).toLocaleString('en-US') : 'Amz page views L7 (no value)', band: txt(row.bgt_views_label), parent: txt(row.page_parent) },
+                    { name: 'Bgt Cvr', val: num(row.bgtCvr), based: isFinite(cvrIn) ? 'Amz page CVR L30 = ' + cvrIn + '%' : 'Amz page CVR L30 (no value)', band: txt(row.bgt_cvr_label), parent: txt(row.page_parent) },
+                    { name: 'BGT ACOS', val: num(acosVal), based: isFinite(acosIn) ? 'Campaign ACOS L30 = ' + (Math.round(acosIn * 10) / 10) + '%' + (row.is_hl ? ' (HL rules)' : '') : 'Campaign ACOS (no value)', band: '' },
+                    { name: 'BGT PRC', val: num(row.bgtPrc), based: isFinite(price) ? 'Campaign price = $' + price : 'Campaign price (no value)', band: txt(row.bgt_prc_label) },
+                    { name: 'Bgt Reviews', val: num(row.bgtReviews), based: isFinite(rating) ? 'Star rating = ' + rating + '★' : 'Star rating (no value)', band: txt(row.bgt_reviews_label) },
+                    { name: 'Bgt Dil', val: num(row.bgtDil), based: isFinite(dil) ? 'Dil% (L30 sold ÷ inventory) = ' + Math.round(dil) + '%' : 'Dil% (no value)', band: txt(row.bgt_dil_label) },
+                    { name: 'Bgt GPFT', val: num(row.bgtGpft), based: isFinite(gpft) ? 'Campaign avg GPFT% = ' + Math.round(gpft) + '%' : 'Campaign avg GPFT% (no value)', band: txt(row.bgt_gpft_label) },
+                    { name: 'Bgt FLAG', val: num(row.bgtFlag), based: isFinite(gap) ? 'Flagged: GPFT% − ACOS% = ' + (Math.round(gap * 10) / 10) + ' pts' : 'Not flagged (ACOS% is not below GPFT%), so no amount', band: txt(row.bgt_flag_label) }
+                ];
+                var sum = 0;
+                parts.forEach(function (p) { if (isFinite(p.val)) sum += p.val; });
+                sum = Math.round(sum * 1e6) / 1e6;
+                var total = parseInt(row.sbgt, 10);
+                if (isNaN(total)) total = amzSumSbgtFromRow(row);
+                if (total === null || total === undefined || isNaN(total)) total = Math.floor(sum);
+                var bgt = parseFloat(row.bgt);
+                var fractional = Math.abs(sum - Math.round(sum)) > 0.0001;
+
+                var rowsHtml = parts.map(function (p) {
+                    var cls = !isFinite(p.val) ? 'sb-amt--none' : (p.val > 0 ? 'sb-amt--pos' : (p.val < 0 ? 'sb-amt--neg' : 'sb-amt--zero'));
+                    var amt = isFinite(p.val) ? (p.val > 0 ? '+$' + p.val : (p.val < 0 ? '−$' + Math.abs(p.val) : '$0')) : 'no amount';
+                    var note = p.val < 0 ? '<div class="small text-danger">Reduces the budget</div>' : '';
+                    return '<tr>'
+                        + '<td class="fw-semibold">' + amzEsc(p.name) + '</td>'
+                        + '<td>' + amzEsc(p.based) + (p.parent ? '<div class="small text-muted">' + amzEsc(p.parent) + '</div>' : '') + '</td>'
+                        + '<td>' + (p.band ? amzEsc(p.band) : '<span class="text-muted">—</span>') + note + '</td>'
+                        + '<td class="sb-amt ' + cls + '">' + amt + '</td>'
+                        + '</tr>';
+                }).join('');
+
+                var formula = parts.map(function (p) {
+                    var v = isFinite(p.val) ? p.val : 0;
+                    return v < 0 ? '(' + v + ')' : String(v);
+                }).join(' + ') + ' = ' + (Math.round(sum * 100) / 100)
+                    + (fractional ? '  →  floored to ' + total : '');
+
+                var bannerCls, bannerMsg;
+                if (total < 0) {
+                    bannerCls = 'sb-banner--bad';
+                    bannerMsg = 'The total is negative ($' + total + '). A negative budget cannot be pushed to Amazon, so this campaign will be PAUSED.';
+                } else if (total === 0) {
+                    bannerCls = 'sb-banner--bad';
+                    bannerMsg = 'The total is $0. A $0 budget cannot be pushed to Amazon, so this campaign will be PAUSED.';
+                } else if (isFinite(bgt) && Math.round(bgt) === total) {
+                    bannerCls = 'sb-banner--ok';
+                    bannerMsg = 'SBGT $' + total + ' already matches the current daily budget (BGT $' + Math.round(bgt) + '). Nothing to push.';
                 } else if (isFinite(bgt)) {
-                    tip += inSync ? ' · matches BGT' : (' · BGT ' + Math.round(bgt) + ' → auto-push');
+                    bannerCls = 'sb-banner--push';
+                    bannerMsg = 'Current daily budget is $' + Math.round(bgt) + ' but SBGT is $' + total + '. The budget will be auto-pushed to $' + total + '.';
+                } else {
+                    bannerCls = 'sb-banner--push';
+                    bannerMsg = 'SBGT is $' + total + '. No current daily budget is shown for this campaign.';
                 }
-                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+
+                var totalColor = total <= 0 ? '#dc2626' : '#0f766e';
+                var body = ''
+                    + '<div class="row g-3 align-items-center mb-3">'
+                    + '<div class="col-md-4"><div class="text-muted small text-uppercase">SBGT (suggested daily budget)</div><div class="sb-total" style="color:' + totalColor + ';">' + (total < 0 ? '−$' + Math.abs(total) : '$' + total) + '</div></div>'
+                    + '<div class="col-md-4"><div class="text-muted small text-uppercase">Current daily budget (BGT)</div><div class="sb-total" style="color:#334155;">' + (isFinite(bgt) ? '$' + Math.round(bgt) : '—') + '</div></div>'
+                    + '<div class="col-md-4"><div class="text-muted small text-uppercase">Status</div><div class="fw-bold fs-5" style="color:' + totalColor + ';">' + (total < 0 ? 'Will be paused (negative)' : (total === 0 ? 'Will be paused ($0)' : 'Valid budget')) + '</div></div>'
+                    + '</div>'
+                    + '<div class="sb-banner ' + bannerCls + ' mb-3">' + amzEsc(bannerMsg) + '</div>'
+                    + '<h6 class="fw-bold mb-2">How this total is made</h6>'
+                    + '<div class="table-responsive"><table class="table table-sm table-hover sb-table mb-3"><thead><tr><th>Part</th><th>Based on</th><th>Rule band</th><th class="text-end">Adds</th></tr></thead><tbody>'
+                    + rowsHtml
+                    + '<tr class="table-light"><td colspan="3" class="fw-bold text-end">Sum of all parts</td><td class="sb-amt">' + (sum < 0 ? '−$' + Math.abs(Math.round(sum * 100) / 100) : '$' + (Math.round(sum * 100) / 100)) + '</td></tr>'
+                    + '</tbody></table></div>'
+                    + '<div class="sb-formula mb-3">' + amzEsc(formula) + '</div>'
+                    + '<div class="small text-muted">'
+                    + '<b>How SBGT works:</b> SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. '
+                    + 'Each part is read from its own rule table, using the campaign number shown in "Based on". Parts can be negative. '
+                    + 'The sum is rounded down to a whole dollar. When it differs from the current budget the daily budget is auto-pushed. '
+                    + 'A total of $0 or less cannot be pushed, so the campaign is paused instead.'
+                    + '</div>';
+
+                document.getElementById('amzSbgtBreakdownCampaign').textContent = txt(row.campaignName) || '';
+                document.getElementById('amzSbgtBreakdownBody').innerHTML = body;
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
             }
             function fmtBgtViews(cell) {
                 var v = cell.getValue();
@@ -3358,6 +3487,7 @@
                     col.title = 'SBGT';
                     col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt GPFT + Bgt FLAG. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
+                    col.cellClick = function (e, cell) { amzShowSbgtBreakdown(cell.getRow().getData()); };
                     col.width = 56;
                     col.minWidth = 50;
                     return;
