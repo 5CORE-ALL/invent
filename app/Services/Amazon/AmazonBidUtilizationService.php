@@ -338,9 +338,9 @@ class AmazonBidUtilizationService
     }
 
     /** Under-utilized rule: an L1 / L7 CPC below this gets {@see LOW_CPC_FLAT_ADD} added instead of the × multiplier. */
-    public const LOW_CPC_THRESHOLD = 0.25;
+    public const LOW_CPC_THRESHOLD = 0.35;
 
-    public const LOW_CPC_FLAT_ADD = 0.07;
+    public const LOW_CPC_FLAT_ADD = 0.10;
 
     /**
      * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).

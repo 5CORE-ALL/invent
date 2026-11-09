@@ -2028,7 +2028,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsSbidRuleModalLabel">SBID rule</h5>
-                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers (an L1 or L7 CPC under $0.25 gets +$0.07 instead of the multiplier). If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + <span id="amazonAdsSbidAvgAddText">0.10</span>; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
+                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers (an L1 or L7 CPC under ${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_THRESHOLD, 2) }} gets +${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_FLAT_ADD, 2) }} instead of the multiplier). If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + <span id="amazonAdsSbidAvgAddText">0.10</span>; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
