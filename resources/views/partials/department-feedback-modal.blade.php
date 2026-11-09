@@ -134,6 +134,13 @@
         min-height: 88px;
         font-size: 14px;
     }
+    #departmentFeedbackModal .dfb-pop-focus-label { font-size: 11px; font-weight: 700; color: #64748b; margin: 8px 0 4px; }
+    #departmentFeedbackModal .dfb-pop-focus { display: flex; flex-wrap: wrap; gap: 6px; }
+    #departmentFeedbackModal .dfb-pop-focus button {
+        border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 999px;
+        padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    #departmentFeedbackModal .dfb-pop-focus button:hover { border-color: var(--dfb-accent); color: var(--dfb-accent); background: #f8fafc; }
     #departmentFeedbackModal .dfb-pop-error {
         color: #b91c1c;
         font-size: 12px;
@@ -193,6 +200,10 @@
                     <div class="dfb-pop-scale"><span>Needs work</span><span>Excellent</span></div>
                     <label class="visually-hidden" for="dfbPopupComment">Feedback</label>
                     <textarea class="form-control" id="dfbPopupComment" maxlength="2000" placeholder="What should this department keep doing, or change?"></textarea>
+                    @if(!empty($dfbPrompt['focus']))
+                        <div class="dfb-pop-focus-label">Where does {{ $dfbPrompt['label'] }} need to improve? Tap to add to your note</div>
+                        <div class="dfb-pop-focus" id="dfbPopupFocus"></div>
+                    @endif
                     <div class="dfb-pop-error" id="dfbPopupError" role="alert"></div>
                 </div>
                 <div class="modal-footer">
@@ -237,6 +248,23 @@
             input.addEventListener('change', function () { paint(parseInt(input.value, 10)); });
         }
     });
+
+    var focusWrap = document.getElementById('dfbPopupFocus');
+    if (focusWrap) {
+        (prompt.focus || []).forEach(function (area) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = area;
+            b.addEventListener('click', function () {
+                var box = document.getElementById('dfbPopupComment');
+                var cur = box.value.replace(/\s+$/, '');
+                box.value = (cur ? cur + '\n' : '') + 'Needs improvement – ' + area + ': ';
+                box.focus();
+                box.setSelectionRange(box.value.length, box.value.length);
+            });
+            focusWrap.appendChild(b);
+        });
+    }
 
     var form = document.getElementById('departmentFeedbackForm');
     var errorEl = document.getElementById('dfbPopupError');

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DepartmentFeedback;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +27,7 @@ class DepartmentFeedbackController extends Controller
         $stats = collect();
         $feed = null;
         $feedCounts = collect();
+        $userCards = collect();
 
         if (DepartmentFeedback::tableReady()) {
             // Total feedback per department (same rules as the "Recent feedback" list).
@@ -35,6 +37,41 @@ class DepartmentFeedbackController extends Controller
                 ->selectRaw('department, COUNT(*) as total')
                 ->groupBy('department')
                 ->pluck('total', 'department');
+
+            // Per-user totals (all weeks). Everyone active is listed, including people who have given nothing yet.
+            $given = DepartmentFeedback::query()
+                ->where('skipped', false)
+                ->whereNotNull('rating')
+                ->selectRaw("user_id, COUNT(*) as total, AVG(rating) as avg_rating, SUM(CASE WHEN comment IS NOT NULL AND TRIM(comment) <> '' THEN 1 ELSE 0 END) as reviews, MAX(created_at) as last_at")
+                ->groupBy('user_id')
+                ->get()
+                ->keyBy('user_id');
+
+            $userCards = User::query()
+                ->active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'avatar', 'designation'])
+                ->map(function (User $u) use ($given) {
+                    $g = $given->get($u->id);
+
+                    return [
+                        'id' => (int) $u->id,
+                        'name' => (string) $u->name,
+                        'designation' => (string) ($u->designation ?? ''),
+                        'avatar' => $u->avatar
+                            ? (preg_match('#^(https?:)?//|^/#', (string) $u->avatar) ? (string) $u->avatar : asset('storage/'.$u->avatar))
+                            : asset('images/users/avatar-2.jpg'),
+                        'ratings' => $g ? (int) $g->total : 0,
+                        'reviews' => $g ? (int) $g->reviews : 0,
+                        'avg' => $g ? round((float) $g->avg_rating, 1) : null,
+                        'last_at' => $g && $g->last_at ? Carbon::parse($g->last_at) : null,
+                    ];
+                })
+                ->sort(function (array $a, array $b) {
+                    // Most active first; people who have not given any feedback sink to the end (alphabetical).
+                    return [$b['ratings'], $a['name']] <=> [$a['ratings'], $b['name']];
+                })
+                ->values();
 
             $responses = DepartmentFeedback::query()
                 ->where('user_id', $request->user()->id)
@@ -87,12 +124,14 @@ class DepartmentFeedbackController extends Controller
             'weekStart' => $weekStart,
             'weekEnd' => $weekStart->copy()->endOfWeek(Carbon::SUNDAY),
             'questions' => collect(DepartmentFeedback::DEPARTMENTS)->map(fn (array $meta) => $meta['question']),
+            'focusAreas' => collect(DepartmentFeedback::DEPARTMENTS)->map(fn (array $meta) => $meta['focus']),
             'todayKey' => $todayKey,
             'todayIso' => now()->dayOfWeekIso,
             'responses' => $responses,
             'stats' => $stats,
             'feed' => $feed,
             'feedCounts' => $feedCounts,
+            'userCards' => $userCards,
             'filter' => $filter,
             'selected' => $selected,
             'ratingValue' => (int) old('rating', $existingRating),

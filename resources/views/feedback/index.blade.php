@@ -179,11 +179,42 @@
         font-size: 12px;
     }
     .dfb-stars-inline { color: #d97706; letter-spacing: 1px; font-size: 12px; }
+    .dfb-focus { margin: -6px 0 12px; }
+    .dfb-focus-label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; }
+    .dfb-focus-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dfb-focus-chips button {
+        border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 999px;
+        padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .dfb-focus-chips button:hover { border-color: var(--dfb-accent, #4338ca); color: var(--dfb-accent, #4338ca); background: #f8fafc; }
+    .dfb-users-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; }
+    .dfb-users-head h5 { margin: 0; font-size: 15px; font-weight: 700; }
+    .dfb-users-head span { color: #64748b; font-size: 12px; }
+    .dfb-users {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .dfb-ucard {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 10px 12px;
+        min-height: 96px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .dfb-ucard.is-none { background: #f8fafc; border-style: dashed; }
+    .dfb-ucard-top { display: flex; align-items: center; gap: 8px; }
+    .dfb-ucard-top img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #e2e8f0; }
+    .dfb-ucard-name { font-weight: 700; font-size: 13px; color: #0f172a; line-height: 1.2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dfb-ucard-role { font-size: 10px; color: #94a3b8; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dfb-ucard .dfb-status.is-none { background: #fef2f2; color: #b91c1c; }
     @media (max-width: 1199px) {
-        .dfb-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .dfb-week, .dfb-users { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
     @media (max-width: 767px) {
-        .dfb-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .dfb-week, .dfb-users { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 </style>
 @endsection
@@ -249,6 +280,40 @@
         @endforeach
     </div>
 
+    @php
+        $uc = $userCards ?? collect();
+        $uGiven = $uc->where('ratings', '>', 0)->count();
+    @endphp
+    @if($uc->isNotEmpty())
+        <div class="dfb-users-head">
+            <h5>Team members</h5>
+            <span>{{ $uGiven }} given feedback · {{ $uc->count() - $uGiven }} yet to give</span>
+        </div>
+        <div class="dfb-users">
+            @foreach($uc as $u)
+                <div class="dfb-ucard {{ $u['ratings'] > 0 ? '' : 'is-none' }}" title="{{ $u['name'] }}">
+                    <div class="dfb-ucard-top">
+                        <img src="{{ $u['avatar'] }}" alt="" loading="lazy">
+                        <div style="min-width:0">
+                            <div class="dfb-ucard-name">{{ $u['name'] }}</div>
+                            @if($u['designation'] !== '')<div class="dfb-ucard-role">{{ $u['designation'] }}</div>@endif
+                        </div>
+                    </div>
+                    @if($u['ratings'] > 0)
+                        <span class="dfb-status is-sent">Given</span>
+                        <div class="dfb-meta">
+                            {{ number_format((float) $u['avg'], 1) }} avg · {{ $u['ratings'] }} {{ $u['ratings'] === 1 ? 'rating' : 'ratings' }} · {{ $u['reviews'] }} {{ $u['reviews'] === 1 ? 'review' : 'reviews' }}
+                            @if($u['last_at'])<br>Last: {{ $u['last_at']->format('M j') }}@endif
+                        </div>
+                    @else
+                        <span class="dfb-status is-none">Not given yet</span>
+                        <div class="dfb-meta">No ratings or reviews</div>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    @endif
+
     <div class="row g-3">
         <div class="col-lg-5">
             <div class="dfb-panel">
@@ -282,6 +347,10 @@
                         <label for="dfbComment" class="form-label">Note</label>
                         <textarea class="form-control" id="dfbComment" name="comment" rows="4" maxlength="2000" required placeholder="What should this department keep doing, or change?">{{ $commentValue }}</textarea>
                         @error('comment')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="dfb-focus" id="dfbFocus" style="--dfb-accent: {{ $departments[$selected]['accent'] }}">
+                        <div class="dfb-focus-label">Where does this department need to improve? Tap to add to your note</div>
+                        <div class="dfb-focus-chips" id="dfbFocusChips"></div>
                     </div>
                     <div class="d-flex flex-wrap gap-2">
                         <button type="submit" class="btn btn-primary">Save this week</button>
@@ -337,6 +406,8 @@
 (function () {
     var mine = @json($mine);
     var questions = @json($questions);
+    var focusAreas = @json($focusAreas);
+    var accents = @json(collect($departments)->map(fn ($m) => $m['accent']));
     var select = document.getElementById('dfbDepartment');
     var stars = document.getElementById('dfbPageStars');
     var comment = document.getElementById('dfbComment');
@@ -358,6 +429,28 @@
         if (input) input.addEventListener('change', function () { paint(parseInt(input.value, 10)); });
     });
 
+    var focusBox = document.getElementById('dfbFocus');
+    var focusChips = document.getElementById('dfbFocusChips');
+    function renderFocus(key) {
+        if (!focusChips) return;
+        focusChips.innerHTML = '';
+        if (focusBox && accents[key]) focusBox.style.setProperty('--dfb-accent', accents[key]);
+        (focusAreas[key] || []).forEach(function (area) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = area;
+            b.addEventListener('click', function () {
+                var line = 'Needs improvement – ' + area + ': ';
+                var cur = comment.value.replace(/\s+$/, '');
+                comment.value = cur ? cur + '\n' + line : line;
+                comment.focus();
+                comment.setSelectionRange(comment.value.length, comment.value.length);
+            });
+            focusChips.appendChild(b);
+        });
+    }
+    renderFocus(select ? select.value : '');
+
     function applyDepartment(key) {
         var saved = mine[key] || {};
         var rating = saved.rating ? parseInt(saved.rating, 10) : 0;
@@ -370,6 +463,7 @@
         var skipDepartment = document.getElementById('dfbSkipDepartment');
         if (skipDepartment) skipDepartment.value = key;
         if (questions[key]) question.textContent = questions[key];
+        renderFocus(key);
         document.querySelectorAll('.dfb-card').forEach(function (card) {
             card.classList.toggle('is-selected', card.getAttribute('data-dept') === key);
         });

@@ -20,7 +20,7 @@ class DepartmentFeedback extends Model
     /**
      * One department per weekday. The popup for that department opens once on its day.
      *
-     * @var array<string, array{label: string, weekday: int, icon: string, accent: string, question: string}>
+     * @var array<string, array{label: string, weekday: int, icon: string, accent: string, question: string, focus: list<string>}>
      */
     public const DEPARTMENTS = [
         'software' => [
@@ -29,6 +29,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-code-s-slash-line',
             'accent' => '#4338ca',
             'question' => 'How is the software team supporting your work this week?',
+            'focus' => ['Bug fixes & stability', 'Page speed & performance', 'Feature delivery time', 'Ease of use / UI', 'Response to requests'],
         ],
         'hr' => [
             'label' => 'HR',
@@ -36,6 +37,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-team-line',
             'accent' => '#0f766e',
             'question' => 'How is HR supporting you this week?',
+            'focus' => ['Query response time', 'Leave & attendance support', 'Policy clarity', 'Hiring speed', 'Training & growth'],
         ],
         'management' => [
             'label' => 'Management',
@@ -43,6 +45,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-briefcase-4-line',
             'accent' => '#1d4ed8',
             'question' => 'How is management supporting the team this week?',
+            'focus' => ['Clear goals & priorities', 'Timely decisions', 'Feedback & recognition', 'Resource support', 'Communication'],
         ],
         'sales' => [
             'label' => 'Sales',
@@ -50,6 +53,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-line-chart-line',
             'accent' => '#b45309',
             'question' => 'How is the sales team doing this week?',
+            'focus' => ['Lead response time', 'Follow-ups', 'Pricing & offers', 'Order handling', 'Targets & reporting'],
         ],
         'advertisement' => [
             'label' => 'Advertisement',
@@ -57,6 +61,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-megaphone-line',
             'accent' => '#be123c',
             'question' => 'How are advertisements working for you this week?',
+            'focus' => ['Budget usage', 'Campaign results (ACOS/ROAS)', 'Creative quality', 'Keywords & targeting', 'Reporting'],
         ],
         'social_media' => [
             'label' => 'Social Media',
@@ -64,6 +69,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-instagram-line',
             'accent' => '#6d28d9',
             'question' => 'How is social media supporting the brand this week?',
+            'focus' => ['Posting consistency', 'Content quality', 'Engagement & replies', 'Brand tone', 'Campaign planning'],
         ],
         'purchase' => [
             'label' => 'Purchase',
@@ -71,6 +77,7 @@ class DepartmentFeedback extends Model
             'icon' => 'ri-shopping-bag-3-line',
             'accent' => '#047857',
             'question' => 'How is the purchase team supporting your work this week?',
+            'focus' => ['Order follow-up & lead time', 'Supplier communication', 'Stock availability', 'Cost & negotiation', 'Quality of received goods'],
         ],
     ];
 
@@ -177,6 +184,7 @@ class DepartmentFeedback extends Model
             'icon' => $meta['icon'],
             'accent' => $meta['accent'],
             'question' => $meta['question'],
+            'focus' => $meta['focus'],
             'day' => self::WEEKDAYS[$meta['weekday']],
             'week_start' => $weekStart->toDateString(),
             'date' => now()->toDateString(),
