@@ -584,7 +584,12 @@
                     if (row.specifics && !Array.isArray(row.specifics)) {
                         Object.keys(row.specifics).forEach(function (name) {
                             const field = specKey(name);
-                            if (!hiddenFields.has(field)) tab.fields.add(field);
+                            if (!hiddenFields.has(field)) {
+                                tab.fields.add(field);
+                                // "Color" and "Color (Main)" are one column on screen, so they count once.
+                                tab.canon = tab.canon || new Map();
+                                tab.canon.set(field, gKey(String(name).replace(/\([^)]*\)/g, '')) || gKey(name));
+                            }
                         });
                     }
                 });
@@ -593,10 +598,16 @@
                 const spec = { missing: 0, cells: 0, categories: [] };
                 byTab.forEach(function (tab, key) {
                     let sum = 0, specSum = 0, specCells = 0;
+                    const groups = new Map();
                     tab.fields.forEach(function (field) {
-                        const isSpec = !specBase.has(field);
+                        const canon = specBase.has(field) || !tab.canon ? field : 'c:' + (tab.canon.get(field) || field);
+                        if (!groups.has(canon)) groups.set(canon, []);
+                        groups.get(canon).push(field);
+                    });
+                    groups.forEach(function (group) {
+                        const isSpec = !specBase.has(group[0]);
                         for (let i = 0; i < tab.rows.length; i++) {
-                            const miss = isMissingValue(tab.rows[i][field]);
+                            const miss = group.every(function (field) { return isMissingValue(tab.rows[i][field]); });
                             if (miss) sum++;
                             if (isSpec) {
                                 specCells++;
@@ -1779,11 +1790,37 @@
             function specNamesForTab() {
                 if (activeTab === ALL) return [];
                 const counts = new Map();
+                const tabRows = [];
                 rows.forEach(function (row) {
                     if (!passesTab(row) || !row.specifics || Array.isArray(row.specifics)) return;
+                    tabRows.push(row);
                     Object.keys(row.specifics).forEach(function (name) { counts.set(name, (counts.get(name) || 0) + 1); });
                 });
-                return Array.from(counts.keys()).sort(function (a, b) {
+                // One column per item specific: "Color", "color" and "Color (Main)" are the same specific, so the
+                // most used spelling of each group becomes the column and the others fill its blanks.
+                const groups = new Map();
+                counts.forEach(function (n, name) {
+                    const canon = gKey(String(name).replace(/\([^)]*\)/g, '')) || gKey(name);
+                    if (!groups.has(canon)) groups.set(canon, []);
+                    groups.get(canon).push(name);
+                });
+                const chosen = [];
+                groups.forEach(function (names) {
+                    names.sort(function (a, b) {
+                        return (counts.get(b) - counts.get(a)) || (a.length - b.length) || a.localeCompare(b);
+                    });
+                    chosen.push(names[0]);
+                    if (names.length < 2) return;
+                    const mainKey = specKey(names[0]);
+                    tabRows.forEach(function (row) {
+                        if (String(row[mainKey] == null ? '' : row[mainKey]).trim() !== '') return;
+                        for (let i = 1; i < names.length; i++) {
+                            const v = row.specifics[names[i]];
+                            if (v != null && String(v).trim() !== '') { row[mainKey] = v; break; }
+                        }
+                    });
+                });
+                return chosen.sort(function (a, b) {
                     return (counts.get(b) - counts.get(a)) || a.localeCompare(b);
                 });
             }
