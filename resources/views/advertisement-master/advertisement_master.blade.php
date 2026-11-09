@@ -124,6 +124,7 @@
         .adm-panel .adm-trend-dot,
         .adm-panel .adm-trend-dot.is-up,
         .adm-panel .adm-trend-dot.is-down,
+        .adm-panel .adm-trend-dot.is-same,
         .adm-panel .adm-trend-dot.is-flat {
             width: 6px;
             height: 6px;
@@ -344,6 +345,8 @@
         .adm-trend-dot.is-up { background: #22c55e; }
         .adm-trend-dot.is-down { background: #ef4444; }
         .adm-trend-dot.is-flat { background: #9ca3af; }
+        /* Refreshed, but identical to the previous day. */
+        .adm-trend-dot.is-same { background: #facc15; }
 
         .adm-task-btn {
             display: inline-flex;
@@ -753,8 +756,10 @@
             // reads red, a down move green — the opposite of clicks/sold/etc.
             const ADM_INVERTED_METRICS = { spend: true, acos: true, tcos: true, missing_ads: true };
 
-            // Same as Active Channel: green = improved, red = worse, gray = unchanged or no prior day.
+            // green = improved, red = worse, yellow = refreshed but same value as the
+            // previous day, gray = no previous day to compare against.
             function admTrendClass(dir, inverted) {
+                if (dir === 'same') return 'is-same';
                 if (dir !== 'up' && dir !== 'down') return 'is-flat';
                 const improved = inverted ? (dir === 'down') : (dir === 'up');
                 return improved ? 'is-up' : 'is-down';
@@ -764,23 +769,28 @@
                 const field = cell.getField();
                 const data  = cell.getRow().getData() || {};
                 const dir = (data.trend || {})[field];
-                return '<span class="adm-trend-dot ' + admTrendClass(dir, !!ADM_INVERTED_METRICS[field]) + '" title="vs previous day"></span>';
+                const cls = admTrendClass(dir, !!ADM_INVERTED_METRICS[field]);
+                const tip = cls === 'is-same' ? 'Updated — same value as the previous day'
+                    : (cls === 'is-flat' ? 'No previous day to compare' : 'vs previous day');
+                return '<span class="adm-trend-dot ' + cls + '" title="' + tip + '"></span>';
             }
 
             function admBadgeDir(rows, field) {
                 const fromChart = admBadgeTrends[field];
-                if (fromChart === 'up' || fromChart === 'down' || fromChart === 'flat') {
+                if (fromChart === 'up' || fromChart === 'down' || fromChart === 'same' || fromChart === 'flat') {
                     return fromChart;
                 }
                 let up = 0;
                 let down = 0;
+                let same = 0;
                 (rows || []).forEach(function (r) {
                     if (!r || r.is_sub_row) return;
                     const dir = (r.trend || {})[field];
                     if (dir === 'up') up++;
                     else if (dir === 'down') down++;
+                    else if (dir === 'same') same++;
                 });
-                if (up === 0 && down === 0) return 'flat';
+                if (up === 0 && down === 0) return same > 0 ? 'same' : 'flat';
                 if (up === down) return 'flat';
                 return up > down ? 'up' : 'down';
             }
@@ -788,7 +798,7 @@
             function admPaintBadgeDots(rows) {
                 document.querySelectorAll('.adm-trend-dot[data-badge-metric]').forEach(function (el) {
                     const field = el.getAttribute('data-badge-metric');
-                    el.classList.remove('is-up', 'is-down', 'is-flat');
+                    el.classList.remove('is-up', 'is-down', 'is-same', 'is-flat');
                     const cls = admTrendClass(admBadgeDir(rows, field), !!ADM_INVERTED_METRICS[field]);
                     el.classList.add(cls);
                     // Tint the whole badge like the all-marketplace panels: green = better, red = worse.
@@ -969,11 +979,12 @@
                 const out = [];
                 ADM_ALERT_FIELDS.forEach(function (def) {
                     if (def.needs && !row[def.needs]) return;
-                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-flat') return;
+                    // Yellow dot only: refreshed but identical to the previous day.
+                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-same') return;
                     out.push({
                         field: def.field,
                         label: def.label,
-                        error: def.label + ' is gray (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
+                        error: def.label + ' is unchanged (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
                         reason: admAlertReason(row, def),
                         ignored: ignored.indexOf(def.field) !== -1,
                     });

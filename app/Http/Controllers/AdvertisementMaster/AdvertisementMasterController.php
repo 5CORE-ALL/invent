@@ -516,8 +516,11 @@ class AdvertisementMasterController extends Controller
 
     private function liveVsPriorDirection(?float $live, ?float $prior, float $epsilon = 0.01): string
     {
-        if ($live === null || $prior === null || abs($live - $prior) < $epsilon) {
+        if ($live === null || $prior === null) {
             return 'flat';
+        }
+        if (abs($live - $prior) < $epsilon) {
+            return 'same';
         }
 
         return $live > $prior ? 'up' : 'down';
@@ -546,7 +549,7 @@ class AdvertisementMasterController extends Controller
         $last = (float) $values[0];
         $prev = (float) $values[1];
         if (abs($last - $prev) < 0.01) {
-            return 'flat';
+            return 'same';
         }
 
         return $last > $prev ? 'up' : 'down';
@@ -621,8 +624,11 @@ class AdvertisementMasterController extends Controller
             }
             $pct[] = $sales > 0 ? ($spend / $sales) * 100 : ($spend > 0 ? 100.0 : 0.0);
         }
-        if (count($pct) < 2 || abs($pct[1] - $pct[0]) < 0.01) {
+        if (count($pct) < 2) {
             return 'flat';
+        }
+        if (abs($pct[1] - $pct[0]) < 0.01) {
+            return 'same';
         }
 
         return $pct[1] > $pct[0] ? 'up' : 'down';
@@ -2881,9 +2887,9 @@ class AdvertisementMasterController extends Controller
         $dir = 'flat';
         if (isset($rows[1])) {
             $prev = (float) $rows[1]->{$column};
-            if (abs($last - $prev) >= 0.01) {
-                $dir = $last > $prev ? 'up' : 'down';
-            }
+            $dir = abs($last - $prev) >= 0.01
+                ? ($last > $prev ? 'up' : 'down')
+                : 'same';
         }
 
         return ['last' => round($last, 2), 'dir' => $dir];
@@ -2928,7 +2934,7 @@ class AdvertisementMasterController extends Controller
         $newer = $pct[0];
         $older = $pct[1];
         if (abs($newer - $older) < 0.01) {
-            return 'flat';
+            return 'same';
         }
 
         return $newer > $older ? 'up' : 'down';
@@ -3235,9 +3241,11 @@ class AdvertisementMasterController extends Controller
             ? ($prevSpend / $prevSales) * 100
             : ($prevSpend > 0 ? 100 : 0);
 
+        // 'same' = refreshed and identical to the previous day (yellow dot).
+        // 'flat' is kept for "nothing to compare against" (gray dot).
         $dir = static fn (float $cur, float $was): string => $cur > $was
             ? 'up'
-            : ($cur < $was ? 'down' : 'flat');
+            : ($cur < $was ? 'down' : 'same');
 
         return [
             'spend'  => $dir((float) ($row['spend'] ?? 0),  $prevSpend),
@@ -3265,7 +3273,7 @@ class AdvertisementMasterController extends Controller
             if ($prev !== null) {
                 $dir = static fn (float $cur, float $was): string => $cur > $was
                     ? 'up'
-                    : ($cur < $was ? 'down' : 'flat');
+                    : ($cur < $was ? 'down' : 'same');
                 $row['trend'] = array_merge($row['trend'] ?? [], [
                     'missing_ads' => $dir((float) ($row['missing_ads'] ?? 0), (float) ($prev['missing_ads'] ?? 0)),
                 ]);
@@ -4109,7 +4117,7 @@ class AdvertisementMasterController extends Controller
                 $prevAcos = (float) ($prev['acos'] ?? 0);
                 $dir = static fn (float $cur, float $was): string => $cur > $was
                     ? 'up'
-                    : ($cur < $was ? 'down' : 'flat');
+                    : ($cur < $was ? 'down' : 'same');
                 $row['trend'] = array_merge($row['trend'] ?? [], [
                     'acos' => $dir((float) $row['acos'], $prevAcos),
                 ]);
