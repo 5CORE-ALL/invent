@@ -567,6 +567,25 @@
         #amzDilGroiModal .amz-dg-tr thead tr th:first-child,
         #amzDilGroiModal .amz-dg-tr tbody tr td:first-child { border-top-width: 1px; }
         #amzDilGroiModal .amz-dg-tr tbody td:empty { padding: 0; }
+        /* custom rule cards ("Add rule card") */
+        #amzDilGroiModal .amz-cr-add-wrap { flex: 0 0 auto; width: 100%; padding: 2px 0 0; }
+        #amzDilGroiModal .amz-dg-card.amz-dg-custom > .amz-dg-side { flex: 0 0 auto; width: max-content; min-width: 300px; max-width: 100%; }
+        #amzDilGroiModal .amz-dg-card.amz-dg-custom > .amz-dg-side { min-width: 0; }
+        #amzDilGroiModal .amz-dg-custom .amz-dg-side .amz-dg-rules-title { flex-wrap: wrap; gap: 6px; }
+        /* If and Then sit side by side on one line (wrapping under each other only when the width runs out) to save height */
+        #amzDilGroiModal .amz-dg-custom > .amz-cr-body { flex: 1 1 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-width: 0; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-line { flex: 0 0 auto; flex-wrap: nowrap; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-lbl { flex: 0 0 auto; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-line .amz-cr-del { margin-left: 4px !important; }
+        /* the name box widens with the text typed into it (JS sets its size) */
+        #amzDilGroiModal .amz-dg-custom .amz-cr-name { flex: 0 1 auto; width: auto; min-width: 90px; max-width: 100%; font-weight: 600; font-size: 12px; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-body { display: flex; flex-direction: column; gap: 5px; }
+        #amzDilGroiModal .amz-cr-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        #amzDilGroiModal .amz-cr-lbl { flex: 0 0 34px; font-size: 11px; font-weight: 700; color: #6f42c1; text-transform: uppercase; }
+        #amzDilGroiModal .amz-cr-line .form-select-sm { width: auto; min-width: 90px; font-size: 12px; padding-top: 1px; padding-bottom: 1px; }
+        #amzDilGroiModal .amz-cr-line .form-control-sm { width: 82px; font-size: 12px; }
+        #amzDilGroiModal .amz-cr-and, #amzDilGroiModal .amz-cr-unit { font-size: 11px; color: #64748b; }
+        #amzDilGroiModal .amz-cr-count { font-size: 11px; }
         /* sequence number of a rule card: the order the rules are applied in */
         #amzDilGroiModal .amz-dg-seq { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; padding: 1px 5px; border-radius: 6px; background: #ede9fe; color: #5b21b6; font-size: 10px; font-weight: 700; flex: 0 0 auto; }
         #amzDilGroiModal .amz-dg-seq-hash { text-transform: uppercase; letter-spacing: .04em; }
@@ -575,7 +594,9 @@
         #amzDilGroiModal .amz-dg-card > .amz-dg-side .amz-dg-rules-title,
         #amzDilGroiModal .amz-dg-card > .amz-dg-card-title > span:first-child { flex-wrap: wrap; }
         /* the rules that belong to a card sit inside that card, as a numbered editable list */
-        #amzDilGroiModal .amz-dg-card > .amz-dg-card-rules { flex: 1 1 260px; min-width: 0; border-left: 1px dashed #e2e8f0; padding-left: 10px; }
+        /* the rules block fits what is typed: it grows with the longest rule, and drops to its own full-width line when it no longer fits beside the table */
+        #amzDilGroiModal .amz-dg-card > .amz-dg-card-rules { flex: 1 1 auto; width: max-content; min-width: 260px; max-width: 100%; border-left: 1px dashed #e2e8f0; padding-left: 10px; }
+        #amzDilGroiModal .amz-dg-card-rules .amz-dg-rule-text { overflow-wrap: anywhere; min-height: 20px; }
         #amzDilGroiModal .amz-dg-card-rules-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px; font-size: 11px; font-weight: 700; color: #6f42c1; }
         #amzDilGroiModal .amz-dg-min-btn {
             position: absolute; top: 5px; right: 6px; z-index: 2;
@@ -1285,7 +1306,13 @@
                     </div>
                     </div>
                     </div>
-                    <div class="small text-muted mt-1" id="amz-dil-groi-status"></div>
+                    <div id="amz-cr-add-wrap" class="amz-cr-add-wrap" style="order: 99999;">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="amz-cr-add-btn" title="Add a new rule card: pick a value of the SKU, a condition and what it does, then give it a Seq number">
+                            <i class="fas fa-plus me-1"></i> Add rule card
+                        </button>
+                        <span class="small text-muted ms-2">A rule with its own condition, action and Seq number.</span>
+                    </div>
+                    <div class="small text-muted mt-1" id="amz-dil-groi-status" style="order: 100000; width: 100%;"></div>
                     </div>
                     </div>
                 </div>
@@ -1589,80 +1616,236 @@
             return amzRuleOn;
         }
         /**
-         * Sequence number of every rule card (same keys as AmazonDilGroiRule::RULE_SEQ_DEFAULT). The cards are sorted by it. Inside the
-         * Target NROI rules (CVR overlay, Ageing, Diff) and inside the price rules (LMP cap, CVR up / down) the number is the order
-         * they are applied in. The Dil slab and the NROI rules always run before the price rules: a rule cannot run before what it
-         * needs. Saved with Save Only / Save All; the server job reads them too.
+         * Sequence number of every rule card (same keys as AmazonDilGroiRule::RULE_SEQ_DEFAULT, plus "c_<id>" for each custom rule
+         * card). The cards are sorted by it. Inside the Target NROI rules (CVR overlay, Ageing, Diff and the custom rules that add
+         * points) and inside the price rules (LMP cap, CVR up / down and the custom rules that change the price) the number is the
+         * order they are applied in. The Dil slab and the NROI rules always run before the price rules: a rule cannot run before what
+         * it needs. Saved with Save Only / Save All; the server job reads them too.
          */
-        const AMZ_RULE_SEQ_KEYS = ['dil', 'cvr', 'age', 'diff', 'lmp', 'cvrud', 'clearance'];
+        const AMZ_RULE_SEQ_BASE = ['dil', 'cvr', 'age', 'diff', 'lmp', 'cvrud', 'clearance'];
         const AMZ_RULE_SEQ_DEFAULT = { dil: 1, cvr: 2, age: 3, diff: 4, lmp: 5, cvrud: 6, clearance: 7 };
+        /** Custom rule cards added with "Add rule": { id, name, on, field, op, value, value2, action ('nroi' | 'price_pct'), points }. */
+        let amzCustomRules = [];
         let amzRuleSeq = Object.assign({}, AMZ_RULE_SEQ_DEFAULT);
+        /** Every key that has a sequence number: the 7 fixed cards, then the custom ones. */
+        function amzSeqKeys() { return AMZ_RULE_SEQ_BASE.concat(amzCustomRules.map(function(r) { return 'c_' + r.id; })); }
         function amzNormalizeRuleSeq(raw) {
-            const out = Object.assign({}, AMZ_RULE_SEQ_DEFAULT);
-            if (!raw || typeof raw !== 'object') return out;
-            AMZ_RULE_SEQ_KEYS.forEach(function(k) {
-                const v = parseFloat(raw[k]);
+            const out = {};
+            amzSeqKeys().forEach(function(k, i) {
+                const v = raw && typeof raw === 'object' ? parseFloat(raw[k]) : NaN;
                 if (isFinite(v)) out[k] = Math.min(99, Math.max(1, Math.round(v * 100) / 100));
+                else out[k] = (k in AMZ_RULE_SEQ_DEFAULT) ? AMZ_RULE_SEQ_DEFAULT[k] : (i + 1);
             });
             return out;
         }
         function amzOrderAmong(keys) {
             return keys.slice().sort(function(a, b) {
-                return (amzRuleSeq[a] - amzRuleSeq[b]) || (keys.indexOf(a) - keys.indexOf(b));
+                return ((amzRuleSeq[a] || 99) - (amzRuleSeq[b] || 99)) || (keys.indexOf(a) - keys.indexOf(b));
             });
         }
-        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, Diff). They always run after the Dil slab. */
-        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age', 'diff']); }
-        /** The price rules in apply order: the LMP cap (with the Std Prc maximum) and the CVR up / down discount. They run after the NROI rules. */
-        function amzPriceOrder() { return amzOrderAmong(['lmp', 'cvrud']); }
+        function amzCustomIds(action) {
+            return amzCustomRules.filter(function(r) { return r.action === action; }).map(function(r) { return 'c_' + r.id; });
+        }
+        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, Diff, then the custom ones). They always run after the Dil slab. */
+        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age', 'diff'].concat(amzCustomIds('nroi'))); }
+        /** The price rules in apply order: the LMP cap (with the Std Prc maximum), the CVR up / down discount and the custom price rules. They run after the NROI rules. */
+        function amzPriceOrder() { return amzOrderAmong(['lmp', 'cvrud'].concat(amzCustomIds('price_pct'))); }
         window.amzNroiOrder = amzNroiOrder;
         window.amzPriceOrder = amzPriceOrder;
-        /** Sort the rule cards by their sequence numbers. */
+        /** Sort the rule cards by their sequence numbers (the Add rule button stays last). */
         function amzPaintRuleSeqOrder() {
             $('#amzDilGroiModal .amz-dg-card[data-amz-card]').each(function() {
                 const k = this.getAttribute('data-amz-card');
                 this.style.order = String(Math.round((amzRuleSeq[k] || 0) * 100));
             });
         }
-        /** Turn the numbers into a clean 1..7 order (lowest first, a tie keeps the default order), one rule per number. */
+        /** Turn the numbers into a clean 1..n order (lowest first, a tie keeps the default order), one rule per number. */
         function amzSeqToRanks(seq) {
             const ranks = {};
-            AMZ_RULE_SEQ_KEYS.slice().sort(function(a, b) {
-                return (seq[a] - seq[b]) || (AMZ_RULE_SEQ_KEYS.indexOf(a) - AMZ_RULE_SEQ_KEYS.indexOf(b));
+            const keys = amzSeqKeys();
+            keys.slice().sort(function(a, b) {
+                return ((seq[a] || 99) - (seq[b] || 99)) || (keys.indexOf(a) - keys.indexOf(b));
             }).forEach(function(k, i) { ranks[k] = i + 1; });
             return ranks;
         }
-        function amzPaintRuleSeq(raw) {
-            amzRuleSeq = amzSeqToRanks(amzNormalizeRuleSeq(raw));
-            AMZ_RULE_SEQ_KEYS.forEach(function(k) {
-                $('#amzDilGroiModal .amz-dg-seq-in[data-amz-seq="' + k + '"]').val(amzRuleSeq[k]);
+        function amzPaintSeqInputs() {
+            const n = amzSeqKeys().length;
+            amzSeqKeys().forEach(function(k) {
+                $('#amzDilGroiModal .amz-dg-seq-in[data-amz-seq="' + k + '"]').attr('max', n).val(amzRuleSeq[k]);
             });
             amzPaintRuleSeqOrder();
         }
+        function amzPaintRuleSeq(raw) {
+            amzRuleSeq = amzSeqToRanks(amzNormalizeRuleSeq(raw));
+            amzPaintSeqInputs();
+        }
         /**
          * A rule was given a new Seq number: it goes to that place and the rules from there on move down one (set Diff to 1 and
-         * the rule that was 1 becomes 2, the one that was 2 becomes 3 ...). Every rule always has its own number, 1 to 7.
+         * the rule that was 1 becomes 2, the one that was 2 becomes 3 ...). Every rule always has its own number, 1 to n.
          */
         function amzMoveRuleSeq(key, wanted) {
-            const n = AMZ_RULE_SEQ_KEYS.length;
+            const keys = amzSeqKeys();
+            const n = keys.length;
             let pos = Math.round(parseFloat(wanted));
             if (!isFinite(pos)) pos = amzRuleSeq[key];
             pos = Math.min(n, Math.max(1, pos));
-            const others = AMZ_RULE_SEQ_KEYS.filter(function(k) { return k !== key; }).sort(function(a, b) {
-                return (amzRuleSeq[a] - amzRuleSeq[b]) || (AMZ_RULE_SEQ_KEYS.indexOf(a) - AMZ_RULE_SEQ_KEYS.indexOf(b));
+            const others = keys.filter(function(k) { return k !== key; }).sort(function(a, b) {
+                return ((amzRuleSeq[a] || 99) - (amzRuleSeq[b] || 99)) || (keys.indexOf(a) - keys.indexOf(b));
             });
             others.splice(pos - 1, 0, key);
             const next = {};
             others.forEach(function(k, i) { next[k] = i + 1; });
             amzRuleSeq = next;
-            AMZ_RULE_SEQ_KEYS.forEach(function(k) {
-                $('#amzDilGroiModal .amz-dg-seq-in[data-amz-seq="' + k + '"]').val(amzRuleSeq[k]);
-            });
-            amzPaintRuleSeqOrder();
+            amzPaintSeqInputs();
             return amzRuleSeq;
         }
         function amzReadRuleSeqFromModal() {
             return amzRuleSeq;
+        }
+
+        // ---- Custom rule cards ("Add rule"): a condition on one value of the SKU and an action, with their own Seq number ----
+        const AMZ_CUSTOM_FIELDS = { dil: 'Dil %', cvr: 'CVR L30 %', age: 'Age (days)', diff: 'Std Diff %', inv: 'INV' };
+        const AMZ_CUSTOM_OPS = ['>', '>=', '<', '<=', '=', 'between'];
+        const AMZ_CUSTOM_MAX = 20;
+        function amzNormalizeCustomRules(raw) {
+            const out = [];
+            const seen = {};
+            (Array.isArray(raw) ? raw : []).forEach(function(r) {
+                if (!r || typeof r !== 'object' || out.length >= AMZ_CUSTOM_MAX) return;
+                const id = String(r.id || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+                if (!id || seen[id]) return;
+                seen[id] = true;
+                const num = function(v) { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+                out.push({
+                    id: id,
+                    name: String(r.name || '').trim().slice(0, 40) || 'Custom rule',
+                    on: !(r.on === false || r.on === 0 || r.on === '0' || r.on === 'false' || r.on === 'off'),
+                    field: AMZ_CUSTOM_FIELDS[r.field] ? r.field : 'dil',
+                    op: AMZ_CUSTOM_OPS.indexOf(r.op) >= 0 ? r.op : '>',
+                    value: num(r.value),
+                    value2: num(r.value2),
+                    action: r.action === 'price_pct' ? 'price_pct' : 'nroi',
+                    points: Math.min(500, Math.max(-500, num(r.points))),
+                });
+            });
+            return out;
+        }
+        function amzCustomRuleById(id) {
+            for (let i = 0; i < amzCustomRules.length; i++) if (amzCustomRules[i].id === id) return amzCustomRules[i];
+            return null;
+        }
+        /** The value of the SKU a custom rule looks at; null when the SKU has none. */
+        function amzCustomValue(field, d) {
+            let v = null;
+            if (field === 'dil') v = amzPefDil(d);
+            else if (field === 'cvr') v = amzPefCvrL30Live(d);
+            else if (field === 'age') { const a = (typeof amzDilGroiAgeInfo === 'function') ? amzDilGroiAgeInfo(d) : null; v = a ? a.days : null; }
+            else if (field === 'diff') v = amzStdPrcDiffPct(d);
+            else if (field === 'inv') v = amzPefInv(d);
+            v = (v === null || v === undefined || v === '') ? null : Number(v);
+            return (v !== null && isFinite(v)) ? v : null;
+        }
+        function amzCustomHit(rule, d) {
+            if (!rule || rule.on === false) return false;
+            const v = amzCustomValue(rule.field, d);
+            if (v === null) return false;
+            const a = Number(rule.value), b = Number(rule.value2);
+            switch (rule.op) {
+                case '>': return v > a;
+                case '>=': return v >= a;
+                case '<': return v < a;
+                case '<=': return v <= a;
+                case '=': return Math.abs(v - a) < 0.0001;
+                case 'between': return v >= Math.min(a, b) && v <= Math.max(a, b);
+            }
+            return false;
+        }
+        /** "Dil % > 50", "Age (days) between 30 and 90" (for the hover text). */
+        function amzCustomCondText(r) {
+            return AMZ_CUSTOM_FIELDS[r.field] + ' ' + (r.op === 'between' ? 'between ' + r.value + ' and ' + r.value2 : r.op + ' ' + r.value);
+        }
+        window.amzCustomRuleById = amzCustomRuleById;
+        window.amzCustomHit = amzCustomHit;
+        window.amzCustomCondText = amzCustomCondText;
+        function amzEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        function amzCustomCardHtml(r) {
+            const key = 'c_' + r.id;
+            const fieldOpts = Object.keys(AMZ_CUSTOM_FIELDS).map(function(f) { return '<option value="' + f + '"' + (r.field === f ? ' selected' : '') + '>' + AMZ_CUSTOM_FIELDS[f] + '</option>'; }).join('');
+            const opOpts = AMZ_CUSTOM_OPS.map(function(o) { return '<option value="' + o + '"' + (r.op === o ? ' selected' : '') + '>' + (o === 'between' ? 'between' : o) + '</option>'; }).join('');
+            return '<div class="amz-dg-card amz-dg-custom" data-amz-card="' + key + '" data-custom-id="' + r.id + '">'
+                + '<button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">\u2212</button>'
+                + '<div class="amz-dg-side"><div class="amz-dg-rules-title amz-dg-has-sw">'
+                + '<span class="amz-dg-seq" title="Sequence number: the order this rule is applied in (Target NROI rules and price rules each run in the order of their numbers). Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="' + (amzCustomRules.length + 7) + '" step="1" class="amz-dg-seq-in" data-amz-seq="' + key + '" value="' + (amzRuleSeq[key] || '') + '"></span>'
+                + '<input type="text" maxlength="40" size="' + Math.max(10, Math.min(40, String(r.name).length + 1)) + '" class="form-control form-control-sm amz-cr-name" value="' + amzEsc(r.name) + '" title="Name of this rule">'
+                + '<label class="amz-dg-rule-sw" title="ON / OFF. OFF = this rule no longer applies."><input type="checkbox" class="amz-dg-rule-sw-in amz-cr-on"' + (r.on ? ' checked' : '') + '><span class="amz-dg-rule-sw-txt">' + (r.on ? 'ON' : 'OFF') + '</span></label>'
+                + '</div></div>'
+                + '<div class="amz-dg-main amz-cr-body' + (r.on ? '' : ' amz-dg-dim') + '">'
+                + '<div class="amz-cr-line"><span class="amz-cr-lbl">If</span>'
+                + '<select class="form-select form-select-sm amz-cr-field">' + fieldOpts + '</select>'
+                + '<select class="form-select form-select-sm amz-cr-op">' + opOpts + '</select>'
+                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value" value="' + r.value + '">'
+                + '<span class="amz-cr-and"' + (r.op === 'between' ? '' : ' style="display:none"') + '>and</span>'
+                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value2" value="' + r.value2 + '"' + (r.op === 'between' ? '' : ' style="display:none"') + '>'
+                + '<span class="amz-cr-count text-muted" title="SKUs (INV > 0) that meet this condition"></span></div>'
+                + '<div class="amz-cr-line"><span class="amz-cr-lbl">Then</span>'
+                + '<select class="form-select form-select-sm amz-cr-action"><option value="nroi"' + (r.action === 'nroi' ? ' selected' : '') + '>add points to the Target NROI</option><option value="price_pct"' + (r.action === 'price_pct' ? ' selected' : '') + '>change the S PRC by %</option></select>'
+                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-points" value="' + r.points + '" title="Points added to the Target NROI, or % change of the price (negative = lower)">'
+                + '<span class="amz-cr-unit">' + (r.action === 'nroi' ? 'pts' : '%') + '</span>'
+                + '<button type="button" class="btn btn-sm btn-outline-danger amz-cr-del py-0 px-2 ms-auto" title="Delete this rule card"><i class="fas fa-trash-alt me-1"></i> Delete</button></div>'
+                + '</div></div>';
+        }
+        /** Rebuild the custom cards from amzCustomRules (on load, add and delete; typing in a card never rebuilds it). */
+        function amzRenderCustomCards() {
+            const $grid = $('#amzDilGroiModal .amz-dg-grid');
+            $grid.find('.amz-dg-card.amz-dg-custom').remove();
+            const $add = $('#amz-cr-add-wrap');
+            amzCustomRules.forEach(function(r) {
+                const $c = $(amzCustomCardHtml(r));
+                if ($add.length) $c.insertBefore($add); else $grid.append($c);
+            });
+            amzPaintCustomCounts();
+            amzPaintSeqInputs();
+        }
+        function amzSetCustomRules(raw) {
+            amzCustomRules = amzNormalizeCustomRules(raw);
+            amzRenderCustomCards();
+        }
+        function amzPaintCustomCounts() {
+            if (!amzCustomRules.length) return;
+            const hits = {};
+            amzCustomRules.forEach(function(r) { hits[r.id] = 0; });
+            if (typeof amzDgEachInvChild === 'function') {
+                amzDgEachInvChild(function(d) {
+                    amzCustomRules.forEach(function(r) { if (amzCustomHit(r, d)) hits[r.id]++; });
+                });
+            }
+            amzCustomRules.forEach(function(r) {
+                $('#amzDilGroiModal .amz-dg-custom[data-custom-id="' + r.id + '"] .amz-cr-count').text(hits[r.id] + ' SKU(s)');
+            });
+        }
+        function amzNewCustomId() {
+            let id;
+            do { id = Math.random().toString(36).slice(2, 8); } while (!id || amzCustomRuleById(id));
+            return id;
+        }
+        /** Read one custom card back into its rule (the card stays as it is). */
+        function amzReadCustomCard($card) {
+            const r = amzCustomRuleById(String($card.attr('data-custom-id') || ''));
+            if (!r) return null;
+            const num = function(sel) { const x = parseFloat($card.find(sel).val()); return isFinite(x) ? x : 0; };
+            r.name = String($card.find('.amz-cr-name').val() || '').trim().slice(0, 40) || 'Custom rule';
+            r.on = $card.find('.amz-cr-on').is(':checked');
+            r.field = $card.find('.amz-cr-field').val();
+            r.op = $card.find('.amz-cr-op').val();
+            r.value = num('.amz-cr-value');
+            r.value2 = num('.amz-cr-value2');
+            r.action = $card.find('.amz-cr-action').val() === 'price_pct' ? 'price_pct' : 'nroi';
+            r.points = Math.min(500, Math.max(-500, num('.amz-cr-points')));
+            $card.find('.amz-cr-and, .amz-cr-value2').toggle(r.op === 'between');
+            $card.find('.amz-cr-unit').text(r.action === 'nroi' ? 'pts' : '%');
+            $card.find('.amz-dg-rule-sw-txt').text(r.on ? 'ON' : 'OFF');
+            $card.find('.amz-cr-body').toggleClass('amz-dg-dim', !r.on);
+            return r;
         }
         let amzCvrGroiAdj = { down_lt: 7, down_adj: -10, up_gt: 10, up_adj: 10 };
         function amzNormalizeCvrGroiAdj(raw) {
@@ -2534,6 +2717,10 @@
                     const pts = amzDilGroiStableDiffAdj(cur, d);
                     out.diff = amzPefRound2(pts);
                     cur = amzPefRound2(cur + pts);
+                } else if (k.indexOf('c_') === 0) {
+                    // A custom rule card: its condition is met -> its points are added to the Target NROI.
+                    const cr = amzCustomRuleById(k.slice(2));
+                    if (cr && amzCustomHit(cr, d)) cur = Math.max(0, amzPefRound2(cur + cr.points));
                 }
             });
             out.nroi = cur < 0 ? 0 : cur;
@@ -2992,6 +3179,7 @@
                     }
                 });
                 amzPaintClearanceSlabCount();
+                amzPaintCustomCounts();
                 amzDgSnapRuleCounts();
                 amzPaintRuleHistDots();
             } catch (e) {
@@ -3297,6 +3485,7 @@
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
                 amzPaintRuleOn(res && res.rule_on);
+                amzSetCustomRules(res && res.custom_rules);
                 amzPaintRuleSeq(res && res.rule_seq);
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -3338,7 +3527,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -3355,6 +3544,7 @@
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 if (res && res.rule_on) amzPaintRuleOn(res.rule_on);
+                if (res && res.custom_rules) amzSetCustomRules(res.custom_rules);
                 if (res && res.rule_seq) amzPaintRuleSeq(res.rule_seq);
                 amzAfterDilGroiRulesChanged();
                 $('#amz-dil-groi-status').text(
@@ -4644,9 +4834,18 @@
                     if (!(capped > 0)) return;
                     if (step === 'lmp') {
                         capped = amzCapRuleSprice(d, capped);
-                    } else if (stdP > 0 && Math.abs(cvrUdPct) >= 0.01) {
-                        const afterDisc = amzPefRound2(capped - (stdP * cvrUdPct / 100));
-                        if (afterDisc >= 0.01) capped = afterDisc;
+                    } else if (step === 'cvrud') {
+                        if (stdP > 0 && Math.abs(cvrUdPct) >= 0.01) {
+                            const afterDisc = amzPefRound2(capped - (stdP * cvrUdPct / 100));
+                            if (afterDisc >= 0.01) capped = afterDisc;
+                        }
+                    } else if (step.indexOf('c_') === 0) {
+                        // A custom rule card: its condition is met -> the price changes by its % (negative = lower).
+                        const cr = amzCustomRuleById(step.slice(2));
+                        if (cr && amzCustomHit(cr, d)) {
+                            const changed = amzPefRound2(capped * (1 + cr.points / 100));
+                            if (changed >= 0.01) capped = changed;
+                        }
                     }
                 });
                 return capped;
@@ -6106,6 +6305,42 @@
                     if ($('#amzDilGroiModal').hasClass('show')) renderAmzDilGroiPies();
                     amzAfterDilGroiRulesChanged();
                 });
+            // Custom rule cards: add one, edit one (the card is not rebuilt while you type), delete one.
+            $(document).off('click.amzCrAdd').on('click.amzCrAdd', '#amz-cr-add-btn', function(e) {
+                e.preventDefault();
+                if (amzCustomRules.length >= AMZ_CUSTOM_MAX) { amzPefToast('error', 'At most ' + AMZ_CUSTOM_MAX + ' custom rules'); return; }
+                const id = amzNewCustomId();
+                const n = amzCustomRules.length + 1;
+                amzCustomRules.push({ id: id, name: 'Custom rule ' + n, on: true, field: 'dil', op: '>', value: 0, value2: 0, action: 'nroi', points: 0 });
+                // New card goes to the end of the order.
+                amzRuleSeq['c_' + id] = amzSeqKeys().length;
+                amzRenderCustomCards();
+                const $card = $('#amzDilGroiModal .amz-dg-custom[data-custom-id="' + id + '"]');
+                if ($card.length) { $card.get(0).scrollIntoView({ block: 'nearest' }); $card.find('.amz-cr-name').trigger('focus').trigger('select'); }
+                amzAfterDilGroiRulesChanged();
+            });
+            $(document).off('input.amzCrEdit change.amzCrEdit', '#amzDilGroiModal .amz-dg-custom .amz-cr-body, #amzDilGroiModal .amz-dg-custom .amz-cr-name, #amzDilGroiModal .amz-dg-custom .amz-cr-on')
+                .on('input.amzCrEdit change.amzCrEdit', '#amzDilGroiModal .amz-dg-custom .amz-cr-body, #amzDilGroiModal .amz-dg-custom .amz-cr-name, #amzDilGroiModal .amz-dg-custom .amz-cr-on', function(e) {
+                    const $card = $(this).closest('.amz-dg-custom');
+                    const $nm = $card.find('.amz-cr-name');
+                    $nm.attr('size', Math.max(10, Math.min(40, String($nm.val() || '').length + 1)));
+                    if (amzReadCustomCard($card)) {
+                        amzPaintCustomCounts();
+                        amzAfterDilGroiRulesChanged();
+                    }
+                });
+            $(document).off('click.amzCrDel').on('click.amzCrDel', '#amzDilGroiModal .amz-dg-custom .amz-cr-del', function(e) {
+                e.preventDefault();
+                const $card = $(this).closest('.amz-dg-custom');
+                const id = String($card.attr('data-custom-id') || '');
+                const r = amzCustomRuleById(id);
+                if (!r || !confirm('Delete the rule card "' + r.name + '"?')) return;
+                amzCustomRules = amzCustomRules.filter(function(x) { return x.id !== id; });
+                delete amzRuleSeq['c_' + id];
+                amzRuleSeq = amzSeqToRanks(amzRuleSeq);
+                amzRenderCustomCards();
+                amzAfterDilGroiRulesChanged();
+            });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
                 .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
                     amzPaintClearanceNroiText();

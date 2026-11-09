@@ -322,6 +322,16 @@
                 }
             };
             ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age', 'diff']).forEach(function(k, idx) {
+                if (k.indexOf('c_') === 0) {
+                    // A custom rule card that adds points to the Target NROI.
+                    const cr = (typeof window.amzCustomRuleById === 'function') ? window.amzCustomRuleById(k.slice(2)) : null;
+                    if (!cr) return;
+                    const no = String(idx + 2) + ' · ' + temuRuleEsc(cr.name);
+                    if (cr.on === false) steps.push(temuRuleStep('skip', no, 'Custom rule is OFF.'));
+                    else if (window.amzCustomHit(cr, d)) steps.push(temuRuleStep('ok', no, temuRuleEsc(window.amzCustomCondText(cr)) + ' → <b>' + (cr.points > 0 ? '+' : '') + cr.points + '</b> to Target NROI'));
+                    else steps.push(temuRuleStep('skip', no, temuRuleEsc(window.amzCustomCondText(cr)) + ' is not met. No change.'));
+                    return;
+                }
                 makers[k](String(idx + 2));
             });
             const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
@@ -450,6 +460,14 @@
                 if (cvrUdStep) steps.push(cvrUdStep);
             }
             if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
+            if (dilOn && typeof window.amzPriceOrder === 'function') {
+                // Custom rule cards that change the price by a %: listed in the order they run (Seq).
+                window.amzPriceOrder().forEach(function(k) {
+                    if (k.indexOf('c_') !== 0) return;
+                    const cr = window.amzCustomRuleById(k.slice(2));
+                    if (cr && window.amzCustomHit(cr, d)) notes.push('Custom rule "' + temuRuleEsc(cr.name) + '" (' + temuRuleEsc(window.amzCustomCondText(cr)) + ') changed the price by ' + (cr.points > 0 ? '+' : '') + cr.points + '% in its Seq place.');
+                });
+            }
             if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
             return {
                 title: 'S PRC ' + temuRuleMoney(final),

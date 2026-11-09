@@ -320,7 +320,22 @@ class AmazonSprcDilAutoPushService
             $cvrL45 = AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60);
             // The CVR overlay, Ageing Rule and Diff rule run in the order of their sequence numbers (Sprc Dil modal; default
             // CVR, Age, Diff). Each one still has its own ON / OFF switch.
-            foreach (AmazonDilGroiRule::ruleOrder($this->ruleSeqCfg) as $step) {
+            $customValues = [
+                'dil' => $dil,
+                'cvr' => $cvrL30,
+                'age' => (isset($row['age_days']) && is_numeric($row['age_days'])) ? (float) $row['age_days'] : null,
+                'diff' => ($std > 0 && (float) ($row['price'] ?? 0) > 0) ? (($std - (float) $row['price']) / (float) $row['price']) * 100 : null,
+                'inv' => $inv,
+            ];
+            foreach (AmazonDilGroiRule::ruleOrder($this->ruleSeqCfg, $this->customRulesCfg) as $step) {
+                // A custom rule card (Sprc Dil modal): its condition is met → its points are added to the Target NROI.
+                if (str_starts_with($step, 'c_')) {
+                    $custom = $this->customRule(substr($step, 2));
+                    if ($custom !== null && AmazonDilGroiRule::customRuleHit($custom, $customValues)) {
+                        $nroi = max(0.0, round($nroi + (float) $custom['points'], 2));
+                    }
+                    continue;
+                }
                 // CVR overlay switched OFF in the Sprc Dil modal: no points added (Dil slab Target NROI stays as is).
                 if ($step === 'cvr' && $this->dilRuleOn('cvr')) {
                     $nroi = AmazonDilGroiRule::adjustGroiForCvr(
@@ -372,7 +387,7 @@ class AmazonSprcDilAutoPushService
             // down discount): the LMP cap (with the Std Prc maximum) and the CVR up / down extra discount off Std Prc.
             $capped = (float) $dilPrice;
             $dilLmpCvrDisc = $std > 0 ? $this->lmpCvrDiscPct($row, $lmp, $std) : 0.0;
-            foreach (AmazonDilGroiRule::priceOrder($this->ruleSeqCfg) as $priceStep) {
+            foreach (AmazonDilGroiRule::priceOrder($this->ruleSeqCfg, $this->customRulesCfg) as $priceStep) {
                 if ($priceStep === 'lmp') {
                     $capped = AmazonDilGroiRule::capSpriceToLmp(
                         $capped,
@@ -390,7 +405,16 @@ class AmazonSprcDilAutoPushService
                     if (! is_finite($capped) || $capped < 0.01) {
                         return null;
                     }
-                } elseif (abs($dilLmpCvrDisc) >= 0.01) {
+                } elseif (str_starts_with($priceStep, 'c_')) {
+                    // A custom rule card: its condition is met → the price changes by its % (negative = lower).
+                    $custom = $this->customRule(substr($priceStep, 2));
+                    if ($custom !== null && AmazonDilGroiRule::customRuleHit($custom, $customValues)) {
+                        $changed = round($capped * (1 + (float) $custom['points'] / 100), 2);
+                        if ($changed >= 0.01) {
+                            $capped = $changed;
+                        }
+                    }
+                } elseif ($priceStep === 'cvrud' && abs($dilLmpCvrDisc) >= 0.01) {
                     // CVR up / down rule: the extra discount off Std Prc. With the default order it comes after the LMP cap and the
                     // Std Prc maximum, so a falling CVR never lifts the price (same step as the page: amzLiveRuleSprice).
                     $afterDisc = round($capped - ($std * $dilLmpCvrDisc / 100), 2);
@@ -1360,6 +1384,21 @@ class AmazonSprcDilAutoPushService
     /** Sequence numbers of the Target NROI rules (cvr, age, diff): the order they are applied in. */
     private array $ruleSeqCfg = ['cvr' => 2.0, 'age' => 3.0, 'diff' => 4.0];
 
+    /** Custom rule cards (Sprc Dil modal "Add rule"): normalized list. */
+    private array $customRulesCfg = [];
+
+    /** @return array<string,mixed>|null */
+    private function customRule(string $id): ?array
+    {
+        foreach ($this->customRulesCfg as $r) {
+            if ($r['id'] === $id) {
+                return $r;
+            }
+        }
+
+        return null;
+    }
+
     private function dilRuleOn(string $key): bool
     {
         return ($this->ruleOnCfg[$key] ?? true) !== false;
@@ -1396,6 +1435,7 @@ class AmazonSprcDilAutoPushService
         $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
         $this->ruleOnCfg = AmazonDilGroiRule::normalizeRuleOn($unpacked['rule_on'] ?? null);
         $this->ruleSeqCfg = AmazonDilGroiRule::normalizeRuleSeq($unpacked['rule_seq'] ?? null);
+        $this->customRulesCfg = AmazonDilGroiRule::normalizeCustomRules($unpacked['custom_rules'] ?? null);
         $cn = $unpacked['clearance_nroi'] ?? null;
         $this->clearanceNroiCfg = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : null;
         if ($unpacked['rules'] === []) {

@@ -614,6 +614,45 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(AmazonDilGroiRule::RULE_SEQ_DEFAULT, AmazonDilGroiRule::unpackStored(null)['rule_seq']);
     }
 
+    public function test_custom_rule_cards_are_normalized_matched_and_ordered_by_sequence(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeCustomRules([
+            ['id' => 'A-b1!', 'name' => '  High dil  ', 'field' => 'dil', 'op' => '>', 'value' => '50', 'action' => 'nroi', 'points' => '5'],
+            ['id' => 'ab1', 'name' => 'duplicate id is dropped'],
+            ['id' => 'x2', 'field' => 'nope', 'op' => '??', 'action' => 'boom', 'points' => 9999, 'on' => 'off'],
+            ['id' => 'p3', 'field' => 'age', 'op' => 'between', 'value' => 90, 'value2' => 30, 'action' => 'price_pct', 'points' => -3],
+            'garbage',
+        ]);
+        $this->assertCount(3, $rules);
+        $this->assertSame('ab1', $rules[0]['id']);
+        $this->assertSame('High dil', $rules[0]['name']);
+        $this->assertSame(5.0, $rules[0]['points']);
+        // Unknown field / op / action fall back, points are clamped, "off" turns the rule off.
+        $this->assertSame(['dil', '>', 'nroi', 500.0, false], [$rules[1]['field'], $rules[1]['op'], $rules[1]['action'], $rules[1]['points'], $rules[1]['on']]);
+        $this->assertSame([], AmazonDilGroiRule::normalizeCustomRules('nope'));
+
+        // Conditions.
+        $this->assertTrue(AmazonDilGroiRule::customRuleHit($rules[0], ['dil' => 60.0]));
+        $this->assertFalse(AmazonDilGroiRule::customRuleHit($rules[0], ['dil' => 50.0]));
+        $this->assertFalse(AmazonDilGroiRule::customRuleHit($rules[0], ['dil' => null]));
+        $this->assertFalse(AmazonDilGroiRule::customRuleHit($rules[1], ['dil' => 99.0]), 'an OFF rule never applies');
+        $this->assertTrue(AmazonDilGroiRule::customRuleHit($rules[2], ['age' => 60.0]), 'between works with the bounds in either order');
+        $this->assertFalse(AmazonDilGroiRule::customRuleHit($rules[2], ['age' => 120.0]));
+
+        // Each custom rule joins the group of its action and is ordered by its c_<id> sequence number.
+        $seq = ['cvr' => 5, 'age' => 6, 'diff' => 7, 'c_ab1' => 1, 'c_x2' => 9, 'c_p3' => 1];
+        $this->assertSame(['c_ab1', 'cvr', 'age', 'diff', 'c_x2'], AmazonDilGroiRule::ruleOrder($seq, $rules));
+        $this->assertSame(['c_p3', 'lmp', 'cvrud'], AmazonDilGroiRule::priceOrder($seq, $rules));
+        // Without custom rules nothing changes.
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(null, []));
+
+        // Saved with the other Sprc Dil blocks.
+        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'custom_rules' => [['id' => 'q9', 'field' => 'inv', 'op' => '<=', 'value' => 3]], 'rule_seq' => ['c_q9' => 2]]);
+        $this->assertSame('q9', $saved['custom_rules'][0]['id']);
+        $this->assertSame(2.0, $saved['rule_seq']['c_q9']);
+        $this->assertSame([], AmazonDilGroiRule::unpackStored(null)['custom_rules']);
+    }
+
     public function test_clearance_snroi_slabs_are_up_to_25_then_up_to_50_then_above(): void
     {
         $rules = AmazonDilGroiRule::normalizeClearanceSnroiRules(null);

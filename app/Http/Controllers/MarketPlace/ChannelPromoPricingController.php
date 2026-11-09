@@ -1952,6 +1952,7 @@ class ChannelPromoPricingController extends Controller
                 'age_adj' => $unpacked['age_adj'],
                 'rule_on' => $unpacked['rule_on'],
                 'rule_seq' => $unpacked['rule_seq'],
+                'custom_rules' => $unpacked['custom_rules'],
             ]);
         }
 
@@ -1969,6 +1970,7 @@ class ChannelPromoPricingController extends Controller
             'age_adj' => $unpacked['age_adj'],
             'rule_on' => $unpacked['rule_on'],
             'rule_seq' => $unpacked['rule_seq'],
+            'custom_rules' => $unpacked['custom_rules'],
         ]);
     }
 
@@ -2002,6 +2004,7 @@ class ChannelPromoPricingController extends Controller
             'age_adj' => $config['age_adj'],
             'rule_on' => $config['rule_on'],
             'rule_seq' => $config['rule_seq'],
+            'custom_rules' => $config['custom_rules'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
         ]);
     }
@@ -2063,6 +2066,7 @@ class ChannelPromoPricingController extends Controller
             'age_adj' => $config['age_adj'],
             'rule_on' => $config['rule_on'],
             'rule_seq' => $config['rule_seq'],
+            'custom_rules' => $config['custom_rules'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
         ]);
     }
@@ -2153,7 +2157,17 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeRuleSeq($ruleSeqIncoming)
             : $existing['rule_seq'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj, 'rule_on' => $ruleOn, 'rule_seq' => $ruleSeq];
+        // Custom rule cards (Sprc Dil modal "Add rule"). A page that does not send them keeps what is saved; a sent empty list removes them.
+        $customIncoming = $request->input('custom_rules');
+        if (is_string($customIncoming)) {
+            $decodedCustom = json_decode($customIncoming, true);
+            $customIncoming = is_array($decodedCustom) ? $decodedCustom : null;
+        }
+        $customRules = ($request->exists('custom_rules') && is_array($customIncoming))
+            ? AmazonDilGroiRule::normalizeCustomRules($customIncoming)
+            : $existing['custom_rules'];
+
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj, 'rule_on' => $ruleOn, 'rule_seq' => $ruleSeq, 'custom_rules' => $customRules];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -2172,6 +2186,7 @@ class ChannelPromoPricingController extends Controller
             'age_adj' => $ageAdj,
             'rule_on' => $ruleOn,
             'rule_seq' => $ruleSeq,
+            'custom_rules' => $customRules,
         ], null];
     }
 

@@ -1098,10 +1098,11 @@ class AmazonDilGroiRule
     public const RULE_SEQ_DEFAULT = ['dil' => 1.0, 'cvr' => 2.0, 'age' => 3.0, 'diff' => 4.0, 'lmp' => 5.0, 'cvrud' => 6.0, 'clearance' => 7.0];
 
     /**
-     * Sequence numbers. A missing / invalid number keeps its default; numbers are clamped to 1..99.
+     * Sequence numbers. A missing / invalid number keeps its default; numbers are clamped to 1..99. Custom rule cards
+     * ("c_<id>") keep the number they were saved with.
      *
      * @param  mixed  $raw
-     * @return array{dil:float,cvr:float,age:float,diff:float,lmp:float,cvrud:float,clearance:float}
+     * @return array<string,float>
      */
     public static function normalizeRuleSeq($raw): array
     {
@@ -1109,9 +1110,13 @@ class AmazonDilGroiRule
         if (! is_array($raw)) {
             return $out;
         }
-        foreach (array_keys(self::RULE_SEQ_DEFAULT) as $key) {
-            if (isset($raw[$key]) && is_numeric($raw[$key])) {
-                $out[$key] = round(min(99.0, max(1.0, (float) $raw[$key])), 2);
+        foreach ($raw as $key => $value) {
+            $key = (string) $key;
+            if (! is_numeric($value)) {
+                continue;
+            }
+            if (array_key_exists($key, self::RULE_SEQ_DEFAULT) || preg_match('/^c_[a-z0-9]{1,12}$/', $key) === 1) {
+                $out[$key] = round(min(99.0, max(1.0, (float) $value)), 2);
             }
         }
 
@@ -1127,31 +1132,129 @@ class AmazonDilGroiRule
     {
         $seq = self::normalizeRuleSeq($seq);
         $pos = array_flip($keys);
-        usort($keys, static fn (string $a, string $b): int => ($seq[$a] <=> $seq[$b]) ?: ($pos[$a] <=> $pos[$b]));
+        usort($keys, static fn (string $a, string $b): int => (($seq[$a] ?? 99.0) <=> ($seq[$b] ?? 99.0)) ?: ($pos[$a] <=> $pos[$b]));
 
         return $keys;
     }
 
     /**
-     * The Target NROI rules (CVR overlay, Ageing, Diff) in the order they are applied to the Dil slab's Target NROI.
+     * The Target NROI rules (CVR overlay, Ageing, Diff and the custom rules that add Target NROI points) in the order they are
+     * applied to the Dil slab's Target NROI.
      *
      * @param  mixed  $seq
+     * @param  list<array<string,mixed>>  $customRules  normalized custom rules
      * @return list<string>
      */
-    public static function ruleOrder($seq): array
+    public static function ruleOrder($seq, array $customRules = []): array
     {
-        return self::orderAmong($seq, ['cvr', 'age', 'diff']);
+        $keys = ['cvr', 'age', 'diff'];
+        foreach ($customRules as $r) {
+            if (($r['action'] ?? '') === 'nroi') {
+                $keys[] = 'c_'.$r['id'];
+            }
+        }
+
+        return self::orderAmong($seq, $keys);
     }
 
     /**
-     * The price rules (LMP cap with the Std Prc maximum, CVR up / down discount) in the order they change the price.
+     * The price rules (LMP cap with the Std Prc maximum, CVR up / down discount and the custom rules that change the price
+     * by a %) in the order they change the price.
      *
      * @param  mixed  $seq
+     * @param  list<array<string,mixed>>  $customRules  normalized custom rules
      * @return list<string>
      */
-    public static function priceOrder($seq): array
+    public static function priceOrder($seq, array $customRules = []): array
     {
-        return self::orderAmong($seq, ['lmp', 'cvrud']);
+        $keys = ['lmp', 'cvrud'];
+        foreach ($customRules as $r) {
+            if (($r['action'] ?? '') === 'price_pct') {
+                $keys[] = 'c_'.$r['id'];
+            }
+        }
+
+        return self::orderAmong($seq, $keys);
+    }
+
+    /** What a custom rule can look at, and what it can do. */
+    public const CUSTOM_FIELDS = ['dil', 'cvr', 'age', 'diff', 'inv'];
+    public const CUSTOM_OPS = ['>', '>=', '<', '<=', '=', 'between'];
+    public const CUSTOM_ACTIONS = ['nroi', 'price_pct'];
+    public const CUSTOM_MAX = 20;
+
+    /**
+     * Custom rule cards added in the Sprc Dil modal. A rule = a condition on one value of the SKU (Dil %, CVR L30 %, age in days,
+     * Std Diff %, INV) and an action: add points to the Target NROI ("nroi") or change the price by a % ("price_pct").
+     * Each has an ON / OFF switch and a sequence number ("c_<id>" in rule_seq).
+     *
+     * @param  mixed  $raw
+     * @return list<array{id:string,name:string,on:bool,field:string,op:string,value:float,value2:float,action:string,points:float}>
+     */
+    public static function normalizeCustomRules($raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        $seen = [];
+        foreach ($raw as $r) {
+            if (! is_array($r) || count($out) >= self::CUSTOM_MAX) {
+                continue;
+            }
+            $id = strtolower((string) preg_replace('/[^a-z0-9]/i', '', (string) ($r['id'] ?? '')));
+            $id = substr($id, 0, 12);
+            if ($id === '' || isset($seen[$id])) {
+                continue;
+            }
+            $field = (string) ($r['field'] ?? 'dil');
+            $op = (string) ($r['op'] ?? '>');
+            $action = (string) ($r['action'] ?? 'nroi');
+            $on = $r['on'] ?? true;
+            $seen[$id] = true;
+            $out[] = [
+                'id' => $id,
+                'name' => mb_substr(trim((string) ($r['name'] ?? '')), 0, 40) ?: 'Custom rule',
+                'on' => ! ($on === false || $on === 0 || $on === '0' || $on === 'false' || $on === 'off'),
+                'field' => in_array($field, self::CUSTOM_FIELDS, true) ? $field : 'dil',
+                'op' => in_array($op, self::CUSTOM_OPS, true) ? $op : '>',
+                'value' => is_numeric($r['value'] ?? null) ? round((float) $r['value'], 4) : 0.0,
+                'value2' => is_numeric($r['value2'] ?? null) ? round((float) $r['value2'], 4) : 0.0,
+                'action' => in_array($action, self::CUSTOM_ACTIONS, true) ? $action : 'nroi',
+                'points' => is_numeric($r['points'] ?? null) ? round(min(500.0, max(-500.0, (float) $r['points'])), 2) : 0.0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Does the SKU meet a custom rule's condition? A value the SKU does not have (null) never meets it.
+     *
+     * @param  array<string,mixed>  $rule  one normalized custom rule
+     * @param  array<string,float|null>  $values  field => value of the SKU (dil, cvr, age, diff, inv)
+     */
+    public static function customRuleHit(array $rule, array $values): bool
+    {
+        if (($rule['on'] ?? true) === false) {
+            return false;
+        }
+        $v = $values[$rule['field'] ?? ''] ?? null;
+        if ($v === null || ! is_finite((float) $v)) {
+            return false;
+        }
+        $a = (float) $rule['value'];
+        $b = (float) $rule['value2'];
+
+        return match ($rule['op']) {
+            '>' => $v > $a,
+            '>=' => $v >= $a,
+            '<' => $v < $a,
+            '<=' => $v <= $a,
+            '=' => abs($v - $a) < 0.0001,
+            'between' => $v >= min($a, $b) && $v <= max($a, $b),
+            default => false,
+        };
     }
 
     /**
@@ -1167,10 +1270,12 @@ class AmazonDilGroiRule
         $ageAdjRaw = null;
         $ruleOnRaw = null;
         $ruleSeqRaw = null;
+        $customRaw = null;
         $clearanceNroi = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $ruleOnRaw = is_array($saved['rule_on'] ?? null) ? $saved['rule_on'] : null;
             $ruleSeqRaw = is_array($saved['rule_seq'] ?? null) ? $saved['rule_seq'] : null;
+            $customRaw = is_array($saved['custom_rules'] ?? null) ? $saved['custom_rules'] : null;
             $rulesRaw = $saved['rules'];
             $cvrRaw = is_array($saved['cvr_adj'] ?? null) ? $saved['cvr_adj'] : null;
             $lmpCapRaw = is_array($saved['lmp_cap'] ?? null) ? $saved['lmp_cap'] : null;
@@ -1192,6 +1297,7 @@ class AmazonDilGroiRule
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
             'rule_on' => self::normalizeRuleOn($ruleOnRaw),
             'rule_seq' => self::normalizeRuleSeq($ruleSeqRaw),
+            'custom_rules' => self::normalizeCustomRules($customRaw),
         ];
     }
 
