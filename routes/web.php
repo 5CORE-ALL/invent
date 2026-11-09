@@ -3788,6 +3788,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/feedback', 'index')->name('feedback.index');
         Route::post('/feedback', 'store')->name('feedback.store');
         Route::post('/feedback/skip', 'skip')->name('feedback.skip');
+        Route::get('/feedback/user/{user}/reviews', 'userReviews')->whereNumber('user')->name('feedback.user-reviews');
+    });
+
+    // AG-MSG: rules + generate messages (from president@5core.com) from the Feedback team table.
+    Route::controller(\App\Http\Controllers\FeedbackAgMsgController::class)->prefix('feedback/ag-msg')->name('feedback.ag-msg.')->group(function () {
+        Route::get('/rules', 'rules')->name('rules');
+        Route::post('/rules', 'save')->name('rules.save');
+        Route::delete('/rules/{id}', 'destroy')->whereNumber('id')->name('rules.destroy');
+        Route::post('/send', 'send')->name('send');
     });
 
     // Scope of Improvement

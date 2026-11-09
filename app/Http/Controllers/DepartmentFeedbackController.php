@@ -13,6 +13,40 @@ use Illuminate\View\View;
 
 class DepartmentFeedbackController extends Controller
 {
+    /** Every review (rating + note) one person has given, optionally for a single department. */
+    public function userReviews(Request $request, int $user): JsonResponse
+    {
+        $member = User::query()->whereKey($user)->first(['id', 'name']);
+        abort_unless($member, 404);
+
+        $dept = $request->query('department');
+        $rows = collect();
+        if (DepartmentFeedback::tableReady()) {
+            $q = DepartmentFeedback::query()
+                ->where('user_id', $member->id)
+                ->where('skipped', false)
+                ->whereNotNull('rating')
+                ->orderByDesc('created_at');
+            if (is_string($dept) && DepartmentFeedback::isKnown($dept)) {
+                $q->where('department', $dept);
+            }
+            $rows = $q->limit(500)->get()->map(function (DepartmentFeedback $r) {
+                $meta = DepartmentFeedback::DEPARTMENTS[$r->department] ?? null;
+
+                return [
+                    'department' => $meta['label'] ?? (string) $r->department,
+                    'accent' => $meta['accent'] ?? '#475569',
+                    'rating' => (int) $r->rating,
+                    'comment' => (string) $r->comment,
+                    'week' => optional($r->week_start)->format('M j, Y'),
+                    'given_at' => optional($r->created_at)->format('M j, Y g:i A'),
+                ];
+            })->values();
+        }
+
+        return response()->json(['name' => (string) $member->name, 'count' => $rows->count(), 'data' => $rows]);
+    }
+
     public function index(Request $request): View
     {
         $weekStart = DepartmentFeedback::weekStart();
@@ -47,11 +81,20 @@ class DepartmentFeedbackController extends Controller
                 ->get()
                 ->keyBy('user_id');
 
+            // Same totals split per department, so the table can be switched by department tab.
+            $givenByDept = DepartmentFeedback::query()
+                ->where('skipped', false)
+                ->whereNotNull('rating')
+                ->selectRaw("user_id, department, COUNT(*) as total, AVG(rating) as avg_rating, SUM(CASE WHEN comment IS NOT NULL AND TRIM(comment) <> '' THEN 1 ELSE 0 END) as reviews, MAX(created_at) as last_at")
+                ->groupBy('user_id', 'department')
+                ->get()
+                ->groupBy('user_id');
+
             $userCards = User::query()
                 ->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'avatar', 'designation'])
-                ->map(function (User $u) use ($given) {
+                ->map(function (User $u) use ($given, $givenByDept) {
                     $g = $given->get($u->id);
 
                     return [
@@ -65,6 +108,14 @@ class DepartmentFeedbackController extends Controller
                         'reviews' => $g ? (int) $g->reviews : 0,
                         'avg' => $g ? round((float) $g->avg_rating, 1) : null,
                         'last_at' => $g && $g->last_at ? Carbon::parse($g->last_at) : null,
+                        'depts' => ($givenByDept->get($u->id) ?? collect())->mapWithKeys(fn ($d) => [
+                            (string) $d->department => [
+                                'ratings' => (int) $d->total,
+                                'reviews' => (int) $d->reviews,
+                                'avg' => round((float) $d->avg_rating, 1),
+                                'last' => $d->last_at ? Carbon::parse($d->last_at)->format('Y-m-d') : '',
+                            ],
+                        ])->all(),
                     ];
                 })
                 ->sort(function (array $a, array $b) {
@@ -132,6 +183,7 @@ class DepartmentFeedbackController extends Controller
             'feed' => $feed,
             'feedCounts' => $feedCounts,
             'userCards' => $userCards,
+            'canAgMsg' => FeedbackAgMsgController::allowed(),
             'filter' => $filter,
             'selected' => $selected,
             'ratingValue' => (int) old('rating', $existingRating),
