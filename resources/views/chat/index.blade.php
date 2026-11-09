@@ -251,10 +251,9 @@
         .slack-msg__seen { font-size: 11px; color: #616061; margin-top: 3px; }
         .slack-msg__seen.is-seen { color: #007a5a; font-weight: 700; }
         .slack-msg__act {
-            display: none; position: absolute; top: 4px; right: 16px;
+            display: flex; position: static; align-self: flex-start; flex-shrink: 0; margin-left: auto;
             background: #fff; border: 1px solid #ddd; border-radius: 6px; overflow: hidden;
         }
-        .slack-msg:hover .slack-msg__act { display: flex; }
         .slack-msg__act button {
             border: 0; background: #fff; padding: 4px 7px; font-size: 16px; line-height: 1; font-weight: 700; color: #1d1c1d;
         }
@@ -300,6 +299,12 @@
             background: #fee2e2; color: #b91c1c; font-size: 1.4rem; line-height: 1;
         }
         #slackAckDeleteTrash:hover { background: #fecaca; color: #991b1b; }
+        .slack-tip {
+            position: fixed; z-index: 3000; pointer-events: none; display: none; max-width: min(90vw, 640px);
+            background: #1d1c1d; color: #fff; font-size: 24px; line-height: 1.3; font-weight: 500;
+            padding: 6px 14px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+        }
+        .slack-tip.is-on { display: block; }
         .slack-composer { padding: 0 16px 16px; }
         .slack-composer__box {
             border: 1px solid #c9c9c9;
@@ -351,6 +356,13 @@
         .slack-head__tools button, .slack-head__tools select {
             border: 1px solid #ddd; background: #fff; border-radius: 6px; font-size: 12px; padding: 3px 8px;
         }
+        .slack-head__tools button, .slack-head__tools .btn {
+            min-width: 32px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+            font-size: 16px; line-height: 1; padding: 0 7px; color: #1d1c1d;
+        }
+        .slack-head__tools button:hover, .slack-head__tools .btn:hover { background: #f0f0f3; }
+        .slack-head__tools .slack-tool-count { font-size: 11px; font-weight: 700; }
+        .slack-head__tools select { width: 52px; height: 30px; padding: 0 4px; overflow: hidden; text-overflow: clip; }
         .slack-head__tools .is-danger { color: #e01e5a; border-color: #f3c6d0; }
         .slack-head__tools .is-pinned { color: #d32f2f; border-color: #ef9a9a; font-weight: 800; }
         .slack-people-search { margin-bottom: 12px; }
@@ -494,15 +506,14 @@
             .slack-back { display: inline-block; }
             .slack-head { padding: 10px 12px; padding-top: calc(10px + env(safe-area-inset-top)); }
             .slack-head__tools { justify-content: flex-end; }
-            .slack-head__tools button, .slack-head__tools select { font-size: 11px; padding: 6px 8px; min-height: 36px; }
+            .slack-head__tools button, .slack-head__tools select { font-size: 16px; padding: 6px 8px; min-height: 36px; }
             .slack-composer { padding: 0 10px calc(12px + env(safe-area-inset-bottom)); }
             .slack-composer textarea { font-size: 16px; min-height: 48px; }
             .slack-msg { padding: 8px 12px; }
             .slack-msg__file img { max-width: 100%; height: auto; }
             .slack-msg__act {
-                display: none; position: static; margin-top: 8px; max-width: none; flex-wrap: wrap;
+                display: flex; position: static; margin-top: 8px; max-width: none; flex-wrap: wrap;
             }
-            .slack-msg.is-open .slack-msg__act { display: flex; }
             .slack-send { min-width: 72px; min-height: 40px; }
         }
         @media (display-mode: standalone) {
@@ -613,20 +624,20 @@
                     </div>
                 </div>
                 <div class="slack-head__tools">
-                    <button type="button" id="slackPinRoomBtn" hidden>Pin</button>
-                    <button type="button" id="slackSearchOpen">Search</button>
-                    <button type="button" id="slackMarkReadBtn">Mark as read</button>
-                    <select id="slackStatusSel" title="Presence">
-                        <option value="active">Active</option>
-                        <option value="away">Away</option>
-                        <option value="dnd">Do not disturb</option>
+                    <button type="button" id="slackPinRoomBtn" title="Pin" aria-label="Pin" hidden><i class="ri-pushpin-line"></i></button>
+                    <button type="button" id="slackSearchOpen" title="Search" aria-label="Search"><i class="ri-search-line"></i></button>
+                    <button type="button" id="slackMarkReadBtn" title="Mark as read" aria-label="Mark as read"><i class="ri-check-double-line"></i></button>
+                    <select id="slackStatusSel" title="Presence status" aria-label="Presence status">
+                        <option value="active">🟢 Active</option>
+                        <option value="away">🟡 Away</option>
+                        <option value="dnd">🔴 Do not disturb</option>
                     </select>
-                    <button type="button" id="slackPrefsBtn">Notify</button>
-                    <button type="button" id="slackMembersBtn" hidden>People</button>
-                    <button type="button" id="slackEditRoomBtn" hidden>Edit</button>
-                    <button type="button" id="slackDeleteRoomBtn" class="is-danger" hidden>Delete</button>
+                    <button type="button" id="slackPrefsBtn" title="Notification settings" aria-label="Notification settings"><i class="ri-notification-3-line"></i></button>
+                    <button type="button" id="slackMembersBtn" title="People" aria-label="People" hidden><i class="ri-group-line"></i></button>
+                    <button type="button" id="slackEditRoomBtn" title="Edit" aria-label="Edit" hidden><i class="ri-edit-line"></i></button>
+                    <button type="button" id="slackDeleteRoomBtn" class="is-danger" title="Delete" aria-label="Delete" hidden><i class="ri-delete-bin-line"></i></button>
                     @if ($canManageChannels)
-                        <a href="{{ route('chat.health') }}" class="btn btn-sm btn-light">Health</a>
+                        <a href="{{ route('chat.health') }}" class="btn btn-sm btn-light" title="Health" aria-label="Health"><i class="ri-heart-pulse-line"></i></a>
                     @endif
                 </div>
             </div>
@@ -1632,17 +1643,22 @@
             const listable = !!(ch && ch.type !== 'dm' && ch.type !== 'bot');
             membersBtn.hidden = !listable;
             const n = Number((src.member_count != null ? src.member_count : (ch && ch.member_count)) || 0);
-            membersBtn.textContent = n > 0 ? 'People (' + n + ')' : 'People';
+            membersBtn.innerHTML = '<i class="ri-group-line"></i>' + (n > 0 ? '<span class="slack-tool-count">' + n + '</span>' : '');
+            membersBtn.title = n > 0 ? 'People (' + n + ')' : 'People';
+            membersBtn.setAttribute('aria-label', membersBtn.title);
         }
         if (delBtn) {
             delBtn.hidden = archived || !canDel;
-            delBtn.textContent = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
+            delBtn.title = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
+            delBtn.setAttribute('aria-label', delBtn.title);
         }
         const pinRoomBtn = document.getElementById('slackPinRoomBtn');
         if (pinRoomBtn) {
             const pinned = !!(ch && (src.pinned || ch.pinned));
             pinRoomBtn.hidden = !ch || archived;
-            pinRoomBtn.textContent = pinned ? 'Remove pin' : 'Pin';
+            pinRoomBtn.innerHTML = '<i class="' + (pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line') + '"></i>';
+            pinRoomBtn.title = pinned ? 'Remove pin' : 'Pin';
+            pinRoomBtn.setAttribute('aria-label', pinRoomBtn.title);
             pinRoomBtn.classList.toggle('is-pinned', pinned);
             const roomName = document.getElementById('slackRoomName');
             if (roomName) roomName.style.color = pinned ? '#d32f2f' : '';
@@ -2191,6 +2207,53 @@
         }, 0);
     });
     document.getElementById('slackAttachBtn').addEventListener('click', function () { fileEl.click(); });
+    // Large hover tooltips (native title tooltips cannot be resized, so render our own at 2x size).
+    (function () {
+        const tip = document.createElement('div');
+        tip.className = 'slack-tip';
+        document.body.appendChild(tip);
+        let cur = null;
+        let timer = null;
+
+        function hideTip() {
+            clearTimeout(timer);
+            tip.classList.remove('is-on');
+            if (cur && cur.dataset.tip && !cur.hasAttribute('title')) cur.setAttribute('title', cur.dataset.tip);
+            if (cur) delete cur.dataset.tip;
+            cur = null;
+        }
+
+        function showTip(el) {
+            tip.textContent = el.dataset.tip;
+            tip.classList.add('is-on');
+            const r = el.getBoundingClientRect();
+            const w = tip.offsetWidth;
+            const h = tip.offsetHeight;
+            let left = r.left + r.width / 2 - w / 2;
+            left = Math.max(6, Math.min(left, window.innerWidth - w - 6));
+            let top = r.bottom + 8;
+            if (top + h > window.innerHeight - 6) top = Math.max(6, r.top - h - 8);
+            tip.style.left = left + 'px';
+            tip.style.top = top + 'px';
+        }
+
+        document.addEventListener('mouseover', function (e) {
+            const el = e.target.closest ? e.target.closest('[title]') : null;
+            if (!el || el === cur || !el.getAttribute('title')) return;
+            hideTip();
+            cur = el;
+            el.dataset.tip = el.getAttribute('title');
+            el.removeAttribute('title'); // suppress the small native tooltip
+            timer = setTimeout(function () { if (cur === el) showTip(el); }, 250);
+        });
+        document.addEventListener('mouseout', function (e) {
+            if (cur && !cur.contains(e.relatedTarget)) hideTip();
+        });
+        setInterval(function () { if (cur && !document.body.contains(cur)) { cur = null; tip.classList.remove('is-on'); } }, 400);
+        ['mousedown', 'scroll', 'keydown'].forEach(function (ev) {
+            document.addEventListener(ev, hideTip, true);
+        });
+    })();
     document.getElementById('slackQuickReplies').addEventListener('click', function (e) {
         const btn = e.target.closest('.slack-quick__btn');
         if (!btn) return;
