@@ -116,6 +116,7 @@
                     <span class="badge fs-6 p-2" id="y-sales-badge"
                         style="background-color: #6f42c1; color: white; font-weight: bold;"
                         title="Yesterday's Wayfair sales{{ !empty($ySalesDate) ? ' — ' . \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT)' : '' }}. Σ unit price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the Wayfair row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
+                    @include('partials.y-badge-history', ['yhPage' => 'wayfair_daily_sales', 'yhValue' => $ySales ?? null, 'yhSel' => '#y-sales-badge'])
                     <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
                         style="color: white; font-weight: bold;">Total Orders: 0</span>
                     <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"

@@ -4078,6 +4078,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu/daily-data', [TemuController::class, 'getDailyData'])->name('temu.daily.data');
     Route::get('/temu/daily-data-l7', [TemuController::class, 'getDailyDataL7'])->name('temu.daily.data.l7');
     Route::get('/temu/daily-data-l60', [TemuController::class, 'getDailyDataL60'])->name('temu.daily.data.l60');
+    // Shared history (trend dot + chart) for the Yesterday badges on sales / marketplace pages.
+    Route::get('/y-badge/chart-data', [\App\Http\Controllers\YesterdayBadgeHistoryController::class, 'chart'])->name('y-badge.chart');
+    Route::get('/y-badge/prev-day', [\App\Http\Controllers\YesterdayBadgeHistoryController::class, 'prevDay'])->name('y-badge.prev');
+    Route::post('/y-badge/snapshot', [\App\Http\Controllers\YesterdayBadgeHistoryController::class, 'snapshot'])->name('y-badge.snapshot');
     Route::get('/ebay/daily-sales-data', [EbaySalesController::class, 'getData'])->name('ebay.daily.sales.data');
     Route::get('/ebay/daily-sales', [EbaySalesController::class, 'index'])->name('ebay.daily.sales');
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);

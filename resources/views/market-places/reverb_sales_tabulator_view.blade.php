@@ -82,6 +82,7 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: #000; font-weight: bold;">Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Sales: $0</span>
                         <span class="badge fs-6 p-2" id="y-sales-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Yesterday's sales (UTC) = Σ order total for yesterday">Y Sales: $0</span>
+                        @include('partials.y-badge-history', ['yhPage' => 'reverb_sales_tabulator'])
                         <span class="badge fs-6 p-2" id="l7-sales-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Last 7 days sales (UTC) = Σ order total for the last 7 days">L7 Sales: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded T PFT ÷ rounded product sales. T PFT = (product sales × {{ (int) ($marginPercent ?? 85) }}%) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded T PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
@@ -737,7 +738,13 @@
             $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
             // Show Reverb order total (matches Reverb dashboard "Sales")
             $('#total-revenue-badge').text('Sales: $' + Math.round(l30Sales).toLocaleString());
-            $('#y-sales-badge').text('Y Sales: $' + Math.round(ySales).toLocaleString());
+            if (window.ChBadgeHistory) {
+                // setText keeps the history dot; setLive paints it and reports today's value for the history.
+                ChBadgeHistory.setText('#y-sales-badge', 'Y Sales: $' + Math.round(ySales).toLocaleString());
+                ChBadgeHistory.setLive('y_sales', ySales);
+            } else {
+                $('#y-sales-badge').text('Y Sales: $' + Math.round(ySales).toLocaleString());
+            }
             $('#l7-sales-badge').text('L7 Sales: $' + Math.round(l7Sales).toLocaleString());
             $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');

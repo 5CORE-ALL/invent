@@ -210,6 +210,7 @@
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #0dcaf0; color: black; font-weight: bold;"
                             title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from Alibaba orders.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
+                        @include('partials.y-badge-history', ['yhPage' => 'alibaba_daily_sales', 'yhValue' => $salesYesterday ?? null, 'yhSel' => '#y-sales-badge'])
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"

@@ -236,6 +236,7 @@
                         <div class="ebay2-summary-badge-row">
                             <span class="badge fs-6 p-2" id="y-sales-badge" style="background-color: #6f42c1; color: white; font-weight: bold;"
                                 title="Y Line Sales = Σ Line Sales for yesterday (Pacific).">Y Line Sales: ${{ number_format((float) ($temu2YSales ?? 0), 0) }}</span>
+                            @include('partials.y-badge-history', ['yhPage' => 'temu2_tabulator', 'yhFields' => [['sel' => '#y-sales-badge', 'metric' => 'y_sales', 'format' => 'money', 'label' => 'Y Line Sales', 'value' => (float) ($temu2YSales ?? 0)], ['sel' => '#y-sales-gpft-badge', 'metric' => 'y_sales_gpft', 'format' => 'money', 'label' => 'Y Sales GPFT$'], ['sel' => '#y-sales-roi-badge', 'metric' => 'y_sales_roi', 'format' => 'pct', 'label' => 'Y Sales ROI%'], ['sel' => '#y-sales-gpft-pct-badge', 'metric' => 'y_sales_gpft_pct', 'format' => 'pct', 'label' => 'Y Sales GPFT%']]])
                             <span class="badge fs-6 p-2" id="l30-full-sales-badge" style="background-color: #0e7490; color: white; font-weight: bold;"
                                 title="L30 Full Sales = Y Line Sales badge × 1.1364">L30 Full Sales: ${{ number_format((float) ($temu2L30FullSales ?? 0), 0) }}</span>
                             <span class="badge fs-6 p-2" id="y-sales-gpft-badge" style="background-color: #1d4ed8; color: white; font-weight: bold;"
@@ -993,10 +994,10 @@
             const ySalesFull = totalApiLineSales * TEMU_PRICE_MULT;
             const ySalesRoi = totalYSalesCogs !== 0 ? (totalYSalesGpft / totalYSalesCogs) * 100 : 0;
             const ySalesGpftPct = ySalesFull !== 0 ? (totalYSalesGpft / ySalesFull) * 100 : 0;
-            $('#y-sales-gpft-badge').text('Y Sales GPFT$: $' + Math.round(totalYSalesGpft).toLocaleString())
-                .css('background-color', totalYSalesGpft < 0 ? '#dc3545' : '#1d4ed8');
-            $('#y-sales-roi-badge').text('Y Sales ROI%: ' + Math.round(ySalesRoi) + '%');
-            $('#y-sales-gpft-pct-badge').text('Y Sales GPFT%: ' + Math.round(ySalesGpftPct) + '%');
+            ybhSet('#y-sales-gpft-badge', 'Y Sales GPFT$: $' + Math.round(totalYSalesGpft).toLocaleString(), 'y_sales_gpft', totalYSalesGpft);
+            $('#y-sales-gpft-badge').css('background-color', totalYSalesGpft < 0 ? '#dc3545' : '#1d4ed8');
+            ybhSet('#y-sales-roi-badge', 'Y Sales ROI%: ' + Math.round(ySalesRoi) + '%', 'y_sales_roi', ySalesRoi);
+            ybhSet('#y-sales-gpft-pct-badge', 'Y Sales GPFT%: ' + Math.round(ySalesGpftPct) + '%', 'y_sales_gpft_pct', ySalesGpftPct);
             const pSales = (l7LineSales / 7) * 30;
             const pFull = pSales * TEMU_PRICE_MULT;
             const pGpft = (l7Gpft / 7) * 30;

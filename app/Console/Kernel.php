@@ -4063,6 +4063,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Y Sales badge history for every sales page (after the Amazon snapshot above).
+        $ist($schedule->command('app:snapshot-yesterday-sales-badges')
+            ->dailyAt('19:40')
+            ->timezone('Asia/Kolkata')
+            ->name('yesterday-sales-badges-snapshot')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('badges:save-all')
             ->dailyAt('19:10')
             ->timezone('Asia/Kolkata')

@@ -115,6 +115,7 @@
                         <span class="badge fs-6 p-2" id="fbm-y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
                             title="Yesterday's FB Sales — {{ !empty($ySalesDate) ? \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT / California)' : 'Pacific / California calendar day' }}. Σ sold_price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the FB Marketplace row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
+                        @include('partials.y-badge-history', ['yhPage' => 'facebook_marketplace', 'yhValue' => $ySales ?? null, 'yhSel' => '#fbm-y-sales-badge'])
                         <span class="badge bg-primary fs-6 p-2" id="fbm-total-orders-badge"
                             style="color: white; font-weight: bold;"
                             title="Orders in the last 30 Pacific days ({{ $l30Start ?? '' }} – {{ $l30End ?? '' }})">L30 Orders: 0</span>
@@ -270,7 +271,13 @@
                 const yOrders = summary && summary.y_orders != null ? Number(summary.y_orders) : 0;
                 const yBadge = document.getElementById('fbm-y-sales-badge');
                 if (yBadge) {
-                    yBadge.textContent = 'Y Sales: ' + fmtMoney(ySales);
+                    // setText keeps the history dot (plain textContent would remove it).
+                    if (window.ChBadgeHistory) {
+                        ChBadgeHistory.setText(yBadge, 'Y Sales: ' + fmtMoney(ySales));
+                        ChBadgeHistory.setLive('y_sales', ySales);
+                    } else {
+                        yBadge.textContent = 'Y Sales: ' + fmtMoney(ySales);
+                    }
                     let dateLabel = 'Pacific / California calendar day';
                     if (ySalesDate) {
                         try {

@@ -195,6 +195,7 @@
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #0dcaf0; color: black; font-weight: bold;"
                             title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from real eBay 3 orders — tax-inclusive, excl. cancelled & fully-refunded.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
+                        @include('partials.y-badge-history', ['yhPage' => 'ebay3_daily_sales', 'yhValue' => $salesYesterday ?? null, 'yhSel' => '#y-sales-badge'])
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;" title="GPFT % = rounded T PFT ÷ rounded Sales AMT. T PFT = (Sales AMT × 85%) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
