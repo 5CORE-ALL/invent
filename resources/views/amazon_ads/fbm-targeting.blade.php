@@ -182,6 +182,12 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
+                        <div class="btn-group btn-group-sm" role="group" id="aft-type-group" aria-label="Campaign type">
+                            <button type="button" class="btn btn-primary active" data-type="" title="Show every campaign type">All</button>
+                            <button type="button" class="btn btn-outline-primary" data-type="kw" title="KW campaigns (Sponsored Products keyword campaigns)">KW</button>
+                            <button type="button" class="btn btn-outline-primary" data-type="pt" title="PT campaigns (Sponsored Products product targeting)">PT</button>
+                            <button type="button" class="btn btn-outline-primary" data-type="hl" title="HL / HEAD campaigns (Sponsored Brands headline)">HL / Head</button>
+                        </div>
                         <input type="text" id="aft-cousin-search" class="form-control form-control-sm"
                                style="max-width: 260px;" placeholder="Search KW cousins..." autocomplete="off"
                                title="Filter by cousin name, cousin parent or cousin campaign">
@@ -481,6 +487,8 @@
     const titleSearchEl = document.getElementById('aft-title-search');
     const scopeEl = document.getElementById('aft-scope');
     const statusEl = document.getElementById('aft-status');
+    const typeGroupEl = document.getElementById('aft-type-group');
+    let typeFilter = ''; // '', 'kw', 'pt' or 'hl'
     const cousinSearchEl = document.getElementById('aft-cousin-search');
     const countEl = document.getElementById('aft-count');
     const missingTitlesEl = document.getElementById('aft-missing-titles');
@@ -678,6 +686,7 @@
             if (scope && scope !== 'all') q.set('scope', scope);
             const statusQ = statusEl ? statusEl.value : '';
             if (statusQ) q.set('status', statusQ);
+            if (typeFilter) q.set('type', typeFilter);
             if (lowFilter) q.set('low', lowFilter);
             const srt = Array.isArray(params.sort) && params.sort.length ? params.sort[0] : null;
             if (srt && (srt.field === 'lt_clicks' || srt.field === 'lt_sold')) {
@@ -2518,6 +2527,20 @@
     }
     if (scopeEl) {
         scopeEl.addEventListener('change', function () { table.setPage(1); });
+    }
+    if (typeGroupEl) {
+        typeGroupEl.addEventListener('click', function (e) {
+            const btn = e.target.closest('button[data-type]');
+            if (!btn) return;
+            typeFilter = btn.getAttribute('data-type') || '';
+            typeGroupEl.querySelectorAll('button[data-type]').forEach(function (b) {
+                const on = b === btn;
+                b.classList.toggle('active', on);
+                b.classList.toggle('btn-primary', on);
+                b.classList.toggle('btn-outline-primary', !on);
+            });
+            table.setPage(1);
+        });
     }
 
     [searchEl, parentSearchEl, titleSearchEl].forEach(function (el) {

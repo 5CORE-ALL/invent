@@ -206,6 +206,12 @@ class AmazonFbmTargetingController extends Controller
             $all = array_values(array_filter($all, static fn (array $c) => in_array($c['status'], $statusWanted, true)));
         }
 
+        // Campaign type: KW = SP keyword campaigns, PT = SP product targeting, HL = SB headline (HEAD) campaigns.
+        $typeWanted = strtolower(trim((string) $request->query('type', '')));
+        if (in_array($typeWanted, ['kw', 'pt', 'hl'], true)) {
+            $all = array_values(array_filter($all, fn (array $c) => $this->campaignTypeOf($c) === $typeWanted));
+        }
+
         // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.
         $scope = strtolower(trim((string) $request->query('scope', 'all')));
         if ($scope === 'parent' || $scope === 'sku') {
@@ -3732,6 +3738,20 @@ class AmazonFbmTargetingController extends Controller
         }
 
         return $rows;
+    }
+
+    /**
+     * Grid type of a listed campaign: 'hl' (Sponsored Brands / HEAD), 'pt' (SP product targeting) or 'kw'.
+     *
+     * @param  array<string, mixed>  $c
+     */
+    protected function campaignTypeOf(array $c): string
+    {
+        if (($c['ad_type'] ?? 'SP') === 'SB') {
+            return 'hl';
+        }
+
+        return $this->isProductTargetingCampaign((string) ($c['campaign_name'] ?? '')) ? 'pt' : 'kw';
     }
 
     /**
