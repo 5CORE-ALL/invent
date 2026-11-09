@@ -214,6 +214,7 @@
                         <button type="button" class="btn btn-sm btn-warning" id="vcImport" title="Upload a Veeqo, Shopify or Temu shipping charges CSV"><i class="fas fa-file-upload"></i> Import CSV</button>
                     </div>
                     <div class="vc-sync mb-2" id="vcSyncInfo"></div>
+                    <div class="alert alert-danger py-1 px-2 small mb-2" id="vcLoadErr" hidden></div>
 
                     <div id="veeqo-chargebacks-table"></div>
                 </div>
@@ -499,6 +500,9 @@
                     columns: columns(),
                 });
                 table.on('tableBuilt', buildColumnPicker);
+                table.on('dataLoadError', function () {
+                    showLoadError('{{ route('veeqo.chargebacks.data') }}?' + qs(Object.assign(params(), { page: 1, size: 100 })));
+                });
             }
 
             const TYPE_KEY = 'veeqo_chargebacks_default_types_v1';
@@ -665,9 +669,29 @@
                 return '<div class="vc-badge ' + (cls || '') + '"><div class="vc-k">' + esc(k) + '</div><div class="vc-v">' + v + '</div></div>';
             }
 
+            // Shows what the server answered when the list or the totals could not be loaded.
+            async function showLoadError(url) {
+                const box = document.getElementById('vcLoadErr');
+                let msg;
+                try {
+                    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+                    if (r.ok) { box.hidden = true; return; }
+                    const body = await r.text();
+                    let detail = body;
+                    try { detail = JSON.parse(body).message || body; } catch (_) {}
+                    msg = 'Could not load (HTTP ' + r.status + '): ' + String(detail).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+                } catch (e) {
+                    msg = 'Could not load: ' + (e && e.message ? e.message : 'network error');
+                }
+                box.textContent = msg;
+                box.hidden = false;
+            }
+
             async function loadSummary(rebuildIfChanged) {
-                const res = await fetch('{{ route('veeqo.chargebacks.summary') }}?' + qs(params()), { headers: { Accept: 'application/json' } });
-                const json = await res.json();
+                const summaryUrl = '{{ route('veeqo.chargebacks.summary') }}?' + qs(params());
+                const res = await fetch(summaryUrl, { headers: { Accept: 'application/json' } });
+                if (!res.ok) showLoadError(summaryUrl); else document.getElementById('vcLoadErr').hidden = true;
+                const json = await res.json().catch(function () { return {}; });
                 const t = json.totals || {};
                 document.getElementById('vcBadges').innerHTML =
                     badge('Adjustments', Number(t.rows_count || 0).toLocaleString()) +

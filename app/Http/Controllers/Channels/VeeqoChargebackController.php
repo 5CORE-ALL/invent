@@ -43,6 +43,32 @@ class VeeqoChargebackController extends Controller
 
     public function data(Request $request)
     {
+        try {
+            return $this->dataResponse($request);
+        } catch (\Throwable $e) {
+            return $this->failed($e, 'data');
+        }
+    }
+
+    public function summary(Request $request)
+    {
+        try {
+            return $this->summaryResponse($request);
+        } catch (\Throwable $e) {
+            return $this->failed($e, 'summary');
+        }
+    }
+
+    /** The page shows this message, so a failing request says why instead of a bare "Error". */
+    private function failed(\Throwable $e, string $what)
+    {
+        Log::error('Veeqo chargebacks '.$what.' failed: '.$e->getMessage(), ['exception' => $e]);
+
+        return response()->json(['message' => class_basename($e).': '.mb_substr($e->getMessage(), 0, 300)], 500);
+    }
+
+    private function dataResponse(Request $request)
+    {
         if (! Schema::hasTable('veeqo_chargebacks')) {
             return response()->json(['last_page' => 1, 'data' => [], 'total' => 0]);
         }
@@ -139,7 +165,7 @@ class VeeqoChargebackController extends Controller
         return $out;
     }
 
-    public function summary(Request $request)
+    private function summaryResponse(Request $request)
     {
         if (! Schema::hasTable('veeqo_chargebacks')) {
             return response()->json(['totals' => [], 'components' => [], 'filters' => [], 'sync' => []]);
