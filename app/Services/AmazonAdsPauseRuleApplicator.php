@@ -9,6 +9,7 @@ use App\Services\FbaInventoryService;
 use App\Support\AmazonAcosSbgtRule;
 use App\Support\AmazonAdsAcosPauseRules;
 use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\AmazonAdsDesiredSbgtResolver;
 use App\Support\AmazonAdsPauseRule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -406,6 +407,180 @@ class AmazonAdsPauseRuleApplicator
             }
             if ($dryRun) {
                 $stats['enabled'] += count($enableIds);
+                continue;
+            }
+            $this->pushState($channel, $enableIds, AmazonAdsPauseRule::ACTION_ENABLED, $stats);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Turn PARENT campaigns that are PAUSED on Amazon back on when they are ready to run:
+     *   - inventory is available: Inv > 0 and the Dil% pause rule does not hit (same Inv / Dil as the Ads All grid);
+     *   - budget is available: the 7-part SBGT of the campaign is above 0 (a $0 SBGT is what pauses an ad) and no
+     *     enabled ACOS pause rule (KW / PT / HL red) holds it.
+     * The paused state is read LIVE from Amazon (the daily report status can be a day old). Child SKU campaigns are
+     * never touched. FBA-suffix SKUs with no FBA stock stay off.
+     *
+     * @param  list<string>|null  $onlyCampaignIds  limit to these campaign ids (null = every paused PARENT campaign)
+     * @return array{paused: int, enabled: int, unchanged: int, skipped: int, failed: int, errors: list<string>, candidates: list<array<string, mixed>>, blocked: array<string, int>, paused_parents: int}
+     */
+    public function activateReadyParents(bool $dryRun = false, ?array $onlyCampaignIds = null): array
+    {
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '512M');
+
+        $stats = [
+            'paused' => 0,
+            'enabled' => 0,
+            'unchanged' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'errors' => [],
+            'candidates' => [],
+            'blocked' => ['inventory' => 0, 'dil' => 0, 'budget' => 0, 'acos_red' => 0, 'fba' => 0],
+            'paused_parents' => 0,
+        ];
+        $only = null;
+        if ($onlyCampaignIds !== null) {
+            $only = [];
+            foreach ($onlyCampaignIds as $id) {
+                $id = trim((string) $id);
+                if ($id !== '') {
+                    $only[$id] = true;
+                }
+            }
+            if ($only === []) {
+                return $stats;
+            }
+        }
+
+        $rule = AmazonAdsPauseRule::resolvedRule();
+        // Campaigns an enabled ACOS pause rule (red KW / PT / HL) holds paused.
+        $redNames = [];
+        $acosKeys = AmazonAdsAcosPauseRules::enabledKeys($rule);
+        if ($acosKeys !== []) {
+            foreach (AmazonAdsAcosPauseRules::redCampaigns($acosKeys) as $hit) {
+                $redNames[AmazonAdsPauseRule::normalizeCampaignName((string) $hit['campaign_name'])] = true;
+            }
+        }
+        $this->trackRuleState = true;
+
+        foreach (['sp', 'sb'] as $channel) {
+            try {
+                $live = $channel === 'sb'
+                    ? $this->ads->listAllSbCampaigns(['PAUSED'])
+                    : $this->ads->listAllSpCampaigns(['PAUSED']);
+            } catch (\Throwable $e) {
+                $stats['errors'][] = strtoupper($channel).': could not read the paused campaigns from Amazon: '.self::shortAmazonError($e->getMessage());
+                Log::warning('Amazon Ads activate-ready: live paused list failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+
+            $rows = [];
+            foreach ($live as $c) {
+                $name = trim((string) ($c['name'] ?? ''));
+                $cid = trim((string) ($c['campaignId'] ?? ''));
+                if ($name === '' || $cid === '' || strtoupper(trim((string) ($c['state'] ?? 'PAUSED'))) !== 'PAUSED') {
+                    continue;
+                }
+                if (! AmazonAdsPauseRule::isParentCampaign($name)) {
+                    continue; // child SKU campaigns are never turned back on here
+                }
+                if ($only !== null && ! isset($only[$cid])) {
+                    continue;
+                }
+                $rows[$cid] = ['campaign_id' => $cid, 'campaignName' => $name];
+            }
+            $stats['paused_parents'] += count($rows);
+            if ($rows === []) {
+                continue;
+            }
+            $rows = array_values($rows);
+            $names = array_column($rows, 'campaignName');
+
+            try {
+                $budgets = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns($rows, $channel);
+                $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+                $parentNames = [];
+                foreach ($familyByName as $fam) {
+                    $fam = trim((string) $fam);
+                    if ($fam !== '') {
+                        $parentNames[] = 'PARENT '.$fam;
+                    }
+                }
+                $metricsByName = AmazonAdsCampaignSkuMetrics::mapForCampaignNames(array_values(array_unique(array_merge($names, $parentNames))));
+                $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($metricsByName);
+                $invByCid = AmazonAdsCampaignSkuMetrics::shopifyInvForCampaignIds(array_column($rows, 'campaign_id'));
+            } catch (\Throwable $e) {
+                $stats['errors'][] = strtoupper($channel).': could not load inventory / budget: '.self::shortAmazonError($e->getMessage());
+                Log::warning('Amazon Ads activate-ready: inventory / budget lookup failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+
+            $enableIds = [];
+            foreach ($rows as $row) {
+                $cid = $row['campaign_id'];
+                $name = $row['campaignName'];
+                $digits = preg_replace('/\D+/', '', $cid) ?: '';
+                $mSku = AmazonAdsCampaignSkuMetrics::overlayCampaignInventory(
+                    is_array($metricsByName[$name] ?? null) ? $metricsByName[$name] : [],
+                    $digits !== '' ? ($invByCid[$digits] ?? null) : null
+                );
+                $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mSku);
+                $inv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+
+                if ($inv === null || $inv <= 0) {
+                    $stats['blocked']['inventory']++;
+
+                    continue;
+                }
+                $decision = AmazonAdsPauseRule::decide($rule, [
+                    'dil' => $gm['dil'],
+                    'parent_dil' => AmazonAdsCampaignSkuMetrics::parentDilForCampaign($name, $familyByName, $parentDilByFam),
+                ], $name);
+                if (($decision['status'] ?? '') === AmazonAdsPauseRule::ACTION_PAUSED) {
+                    $stats['blocked']['dil']++;
+
+                    continue;
+                }
+                if (isset($redNames[AmazonAdsPauseRule::normalizeCampaignName($name)])) {
+                    $stats['blocked']['acos_red']++;
+
+                    continue;
+                }
+                $sbgt = $budgets[$cid] ?? null;
+                if ($sbgt === null || (float) $sbgt <= 0) {
+                    $stats['blocked']['budget']++;
+
+                    continue;
+                }
+                $sku = (string) ($mSku['sku'] ?? '');
+                if ($sku !== '' && FbaInventoryService::blocksEnableForFbaSuffixZeroFbaInv($sku)) {
+                    $stats['blocked']['fba']++;
+
+                    continue;
+                }
+
+                $enableIds[] = $cid;
+                $this->namesByCid[$cid] = $name;
+                $this->reasonsByCid[$cid] = 'Auto-activate - INV '.rtrim(rtrim(number_format($inv, 2, '.', ''), '0'), '.').' and budget $'.rtrim(rtrim(number_format((float) $sbgt, 2, '.', ''), '0'), '.');
+                $stats['candidates'][] = [
+                    'channel' => $channel,
+                    'campaign_id' => $cid,
+                    'campaign_name' => $name,
+                    'inv' => $inv,
+                    'dil' => $gm['dil'],
+                    'sbgt' => (float) $sbgt,
+                ];
+            }
+
+            if ($dryRun) {
+                $stats['enabled'] += count($enableIds);
+
                 continue;
             }
             $this->pushState($channel, $enableIds, AmazonAdsPauseRule::ACTION_ENABLED, $stats);
@@ -848,6 +1023,9 @@ class AmazonAdsPauseRuleApplicator
         if (Schema::hasColumn($table, 'pink_dil_paused_at')) {
             $payload['pink_dil_paused_at'] = $state === AmazonAdsPauseRule::ACTION_PAUSED ? now() : null;
         }
+        // Keep the Keyword Targeting page's live-status copy in step with what was just pushed, so its Status column
+        // never lags behind a pause / enable made here (it would otherwise wait for the next background refresh).
+        \App\Http\Controllers\AmazonAds\AmazonFbmTargetingController::markLiveCampaignStates($channel, $campaignIds, $state);
         try {
             if ($channel === 'sb') {
                 AmazonSbCampaignReport::query()->whereIn('campaign_id', $campaignIds)->update($payload);

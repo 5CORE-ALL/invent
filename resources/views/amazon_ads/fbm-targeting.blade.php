@@ -162,6 +162,10 @@
                     <h4 class="mb-0"><i class="mdi mdi-bullseye-arrow"></i> Keyword Targeting</h4>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <button type="button" id="aft-sel-clear" class="btn btn-outline-light btn-sm d-none" title="Clear the selection">Clear</button>
+                        <button type="button" id="aft-activate" class="btn btn-warning btn-sm fw-bold"
+                                title="Turn PARENT campaigns that are paused on Amazon back on when inventory is available (Inv > 0 and the Dil% rule is clear) and budget is available (SBGT above 0, no red ACOS pause rule). Ticked campaigns only, or every paused PARENT campaign when nothing is ticked. You see the list before anything is sent.">
+                            <i class="fas fa-play-circle"></i> Activate ready ads
+                        </button>
                     </div>
                     <span class="small">Campaign names from the same SP reports table as Ads All. Targets from Amazon Ads (keywords + product targets).</span>
                 </div>
@@ -2633,6 +2637,70 @@
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
         });
     });
+
+    // ---------- Activate ready ads: PARENT campaigns paused on Amazon with inventory + budget available ----------
+    (function wireActivateReady() {
+        const btn = document.getElementById('aft-activate');
+        if (!btn) return;
+        const label = btn.innerHTML;
+        const url = @json(route('amazon.ads.fbm-targeting.activate-ready'));
+        const post = function (body) {
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify(body),
+            }).then(function (res) {
+                return res.json().catch(function () { return {}; }).then(function (b) { return { ok: res.ok && b.success !== false, body: b }; });
+            });
+        };
+        const done = function () { btn.disabled = false; btn.innerHTML = label; };
+        const blockedText = function (b) {
+            const x = b.blocked || {};
+            const parts = [];
+            if (x.inventory) parts.push(x.inventory + ' no inventory');
+            if (x.dil) parts.push(x.dil + ' Dil% rule');
+            if (x.acos_red) parts.push(x.acos_red + ' red ACOS rule');
+            if (x.budget) parts.push(x.budget + ' no budget');
+            if (x.fba) parts.push(x.fba + ' FBA out of stock');
+            return parts.join(', ');
+        };
+        btn.addEventListener('click', function () {
+            const sel = pickedIdsFn();
+            const body = sel.length ? { campaign_ids: sel } : {};
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking…';
+            post(Object.assign({ dry_run: true }, body)).then(function (r) {
+                const b = r.body || {};
+                if (!r.ok && !(b.campaigns && b.campaigns.length)) {
+                    showPullMsg(b.message || (b.errors && b.errors[0]) || 'Could not check the paused campaigns.', false);
+                    done();
+                    return null;
+                }
+                const list = b.campaigns || [];
+                const blocked = blockedText(b);
+                if (!list.length) {
+                    showPullMsg('Nothing to activate: ' + (b.paused_parents || 0) + ' paused PARENT campaign(s)' + (blocked ? ' - kept off: ' + blocked : '') + '.', true);
+                    done();
+                    return null;
+                }
+                const names = list.slice(0, 15).map(function (c) { return '- ' + c.campaign_name + '  (INV ' + c.inv + ', budget $' + c.sbgt + ')'; }).join('\n');
+                const ok = confirm('Turn ON ' + list.length + ' PARENT campaign(s) on Amazon (inventory and budget available)?\n\n' + names +
+                    (list.length > 15 ? '\n... and ' + (list.length - 15) + ' more' : '') + (blocked ? '\n\nKept off: ' + blocked : ''));
+                if (!ok) { done(); return null; }
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Activating…';
+                return post({ dry_run: false, campaign_ids: list.map(function (c) { return c.campaign_id; }) }).then(function (r2) {
+                    const b2 = r2.body || {};
+                    const msg = 'Activated ' + (b2.enabled || 0) + ' PARENT campaign(s) on Amazon' + (b2.failed ? ', ' + b2.failed + ' failed' + (b2.errors && b2.errors[0] ? ' (' + b2.errors[0] + ')' : '') : '') + '.';
+                    showPullMsg(r2.ok || b2.enabled ? msg : (b2.message || msg), !!r2.ok);
+                    refreshVisibleRows();
+                    done();
+                });
+            }).catch(function (e) {
+                showPullMsg('Activate failed: ' + e.message, false);
+                done();
+            });
+        });
+    })();
 
     // ---------- Bulk push: tick campaigns, then push only those ----------
     (function wireBulkPush() {

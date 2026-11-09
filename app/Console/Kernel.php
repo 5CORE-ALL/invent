@@ -2305,6 +2305,16 @@ class Kernel extends ConsoleKernel
         // Dil% ≥ threshold pauses PARENT + child SKU campaigns. Only recently Dil-paused PARENT campaigns auto-enable.
         $retryFiveTimesUntil('amazon:ads-pause-rule', 'amazon-ads-pause-rule', '18:25');
 
+        // PARENT campaigns paused on Amazon that are ready again (inventory available, budget available) are turned back
+        // on every hour instead of waiting for the daily pause-rule run. The page has a button for an immediate run.
+        $schedule->command('amazon:ads-activate-ready')
+            ->hourlyAt(40)
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-activate-ready')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('amazon:auto-update-over-kw-bids')
             ->dailyAt('18:30')
             ->timezone('Asia/Kolkata')

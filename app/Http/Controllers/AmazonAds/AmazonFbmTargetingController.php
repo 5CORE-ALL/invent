@@ -5,6 +5,7 @@ namespace App\Http\Controllers\AmazonAds;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonKwTargetingKeyword;
+use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Services\AmazonAdsService;
 use App\Services\AmazonKwCousinLinkService;
 use App\Services\AmazonKwTargetingPushService;
@@ -1240,6 +1241,90 @@ class AmazonFbmTargetingController extends Controller
         }
 
         return $live;
+    }
+
+    /**
+     * Activate PARENT campaigns that are paused on Amazon but ready to run: inventory available (Inv > 0 and the Dil%
+     * rule does not hit) and budget available (SBGT above 0, no red ACOS pause rule). dry_run=1 only lists them.
+     * With campaign_ids the check is limited to those campaigns; without, it covers every paused PARENT campaign.
+     */
+    public function activateReady(Request $request, AmazonAdsPauseRuleApplicator $applicator): JsonResponse
+    {
+        $dryRun = filter_var($request->input('dry_run', false), FILTER_VALIDATE_BOOLEAN);
+        $ids = $request->input('campaign_ids');
+        $only = is_array($ids)
+            ? array_values(array_filter(array_map(static fn ($v) => trim((string) $v), $ids), static fn (string $v) => $v !== ''))
+            : null;
+
+        try {
+            $stats = $applicator->activateReadyParents($dryRun, $only);
+        } catch (\Throwable $e) {
+            Log::error('AmazonFbmTargetingController: activate-ready failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not check the paused campaigns: '.$e->getMessage()], 500);
+        }
+        if (! $dryRun) {
+            Log::info('amazon-ads activate-ready (page)', [
+                'by' => Auth::user()?->name, 'enabled' => $stats['enabled'], 'failed' => $stats['failed'], 'errors' => array_slice($stats['errors'], 0, 5),
+            ]);
+        }
+
+        return response()->json([
+            'success' => $stats['failed'] === 0,
+            'dry_run' => $dryRun,
+            'paused_parents' => $stats['paused_parents'],
+            'ready' => count($stats['candidates']),
+            'enabled' => $stats['enabled'],
+            'failed' => $stats['failed'],
+            'blocked' => $stats['blocked'],
+            'errors' => array_slice($stats['errors'], 0, 10),
+            'campaigns' => array_map(static fn (array $c) => [
+                'campaign_id' => $c['campaign_id'], 'campaign_name' => $c['campaign_name'], 'inv' => $c['inv'], 'sbgt' => $c['sbgt'],
+            ], array_slice($stats['candidates'], 0, 200)),
+        ]);
+    }
+
+    /**
+     * Patch the cached live state of campaigns that were just paused / enabled through the API, so the grid shows the
+     * new status at once instead of waiting for the next background refresh.
+     *
+     * @param  'sp'|'sb'  $channel
+     * @param  list<string>  $campaignIds
+     */
+    public static function markLiveCampaignStates(string $channel, array $campaignIds, string $state): void
+    {
+        $state = strtoupper(trim($state));
+        if ($state === '' || $campaignIds === []) {
+            return;
+        }
+        try {
+            $live = Cache::get(self::LIVE_CAMPAIGNS);
+            if (! is_array($live)) {
+                return; // nothing cached: the next background refresh reads the real state anyway
+            }
+            foreach ($campaignIds as $id) {
+                $id = trim((string) $id);
+                if ($id === '') {
+                    continue;
+                }
+                if ($channel === 'sb') {
+                    $live['sbById'][$id] = $state;
+
+                    continue;
+                }
+                if (isset($live['byId'][$id])) {
+                    $live['byId'][$id]['state'] = $state;
+                    $key = AmazonAdsMissingLinks::normalizeCampaignName((string) ($live['byId'][$id]['name'] ?? ''));
+                    if ($key !== '' && (string) ($live['byName'][$key]['id'] ?? '') === $id) {
+                        $live['byName'][$key]['state'] = $state;
+                    }
+                }
+            }
+            Cache::put(self::LIVE_CAMPAIGNS, $live, now()->addHours(12));
+            Cache::forget('amz_kw_targeting_campaigns_by_parent_v8');
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: could not patch live campaign states', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
