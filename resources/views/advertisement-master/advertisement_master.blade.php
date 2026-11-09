@@ -932,23 +932,19 @@
                 admCellChart(e, cell);
             }
 
-            // ---- Data Alerts: flag stale / empty SOURCE data only ----
-            // Only the raw ad measures are watched. A gray (unchanged) dot on
-            // Missing / Active is normal (counts often stay the same) and CVR /
-            // ACOS are derived from these four, so none of those can raise an alert.
+            // ---- Data Alerts: the red triangle shows ONLY when a metric dot is RED ----
+            // Green (better), yellow (refreshed, same value) and gray (nothing to
+            // compare) never raise an alert.
             const ADM_ALERT_FIELDS = [
+                { field: 'missing_ads', label: 'Missing', kind: 'int', needs: 'has_missing_ads' },
+                { field: 'active', label: 'Active', kind: 'int' },
                 { field: 'spend', label: 'Spend', kind: 'money' },
                 { field: 'clicks', label: 'Clicks', kind: 'int' },
                 { field: 'sold', label: 'Sold', kind: 'int' },
                 { field: 'sales', label: 'Ads Sales', kind: 'money' },
+                { field: 'cvr', label: 'CVR', kind: 'pct' },
+                { field: 'acos', label: 'ACOS', kind: 'pct' },
             ];
-
-            // A channel that runs no ads (nothing active, all measures 0) has no
-            // data to go stale, so it never alerts.
-            function admRowHasAdActivity(row) {
-                if (Number(row.active || 0) > 0) return true;
-                return ADM_ALERT_FIELDS.some(function (def) { return Number(row[def.field] || 0) !== 0; });
-            }
             const ADM_ALERT_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 1.8 20.4a1 1 0 0 0 .87 1.5h18.66a1 1 0 0 0 .87-1.5L12 2.6z" fill="#dc2626" stroke="#b91c1c" stroke-width="1" stroke-linejoin="round"/><rect x="11" y="9" width="2" height="6.2" rx="1" fill="#fff"/><circle cx="12" cy="17.9" r="1.2" fill="#fff"/></svg>';
 
             function admAlertFormatValue(kind, value) {
@@ -959,32 +955,26 @@
             }
 
             function admAlertReason(row, def) {
-                const value = Number(row[def.field] || 0);
-                if (value === 0) {
-                    return 'Value is 0 and unchanged from the previous day. The source is returning no data for this column.';
-                }
-                return 'Value is identical to the previous day. The source may not have refreshed (stale data).';
+                const dir = (row.trend || {})[def.field];
+                return def.label + ' ' + (dir === 'up' ? 'went up' : 'went down')
+                    + ' vs the previous day, which is worse for this metric.';
             }
 
-            // All gray columns for a row, each flagged ignored or not.
+            // All red columns for a row, each flagged ignored or not.
             function admRowAlerts(row) {
                 row = row || {};
                 if (row.is_custom && !row.is_sum_row) return [];
-                // No previous-day snapshot yet: the change can't be measured, so it
-                // is not a data fault (it resolves itself once today's snapshot exists).
-                if (row.trend_no_prior) return [];
-                if (!admRowHasAdActivity(row)) return [];
                 const ignored = Array.isArray(row.alert_ignored) ? row.alert_ignored : [];
                 const trend = row.trend || {};
                 const out = [];
                 ADM_ALERT_FIELDS.forEach(function (def) {
                     if (def.needs && !row[def.needs]) return;
-                    // Yellow dot only: refreshed but identical to the previous day.
-                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-same') return;
+                    // Red dot only: green and yellow (same value) never alert.
+                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-down') return;
                     out.push({
                         field: def.field,
                         label: def.label,
-                        error: def.label + ' is unchanged (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
+                        error: def.label + ' is red (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
                         reason: admAlertReason(row, def),
                         ignored: ignored.indexOf(def.field) !== -1,
                     });
@@ -1758,7 +1748,7 @@
                 const data = admAlertRow.getData() || {};
                 const name = [data.channel_group, data.channel].filter(Boolean).join(' · ') || data.channel_key || '';
                 const sub = document.getElementById('adm-alert-sub');
-                if (sub) sub.textContent = name + ' — Spend / Clicks / Sold / Ads Sales identical to the previous day while ads are running (possible stale or missing source data).';
+                if (sub) sub.textContent = name + ' — columns showing a red dot (worse than the previous day). Green and yellow dots do not alert.';
                 const body = document.getElementById('adm-alert-body');
                 if (!body) return;
                 const alerts = admRowAlerts(data);
