@@ -932,9 +932,10 @@
                 admCellChart(e, cell);
             }
 
-            // ---- Data Alerts: the red triangle shows ONLY when a metric dot is RED ----
-            // Green (better), yellow (refreshed, same value) and gray (nothing to
-            // compare) never raise an alert.
+            // ---- Data Alerts: the red triangle shows ONLY when a metric dot is GRAY ----
+            // Gray = no previous-day snapshot to compare against (a data gap).
+            // Green (better), yellow (refreshed, same value) and red (worse than
+            // the previous day, a real value change) never raise an alert.
             const ADM_ALERT_FIELDS = [
                 { field: 'missing_ads', label: 'Missing', kind: 'int', needs: 'has_missing_ads' },
                 { field: 'active', label: 'Active', kind: 'int' },
@@ -955,12 +956,11 @@
             }
 
             function admAlertReason(row, def) {
-                const dir = (row.trend || {})[def.field];
-                return def.label + ' ' + (dir === 'up' ? 'went up' : 'went down')
-                    + ' vs the previous day, which is worse for this metric.';
+                return 'No previous-day snapshot exists for this channel, so the change in ' + def.label
+                    + ' cannot be measured yet. It clears once a snapshot is saved (Autofix reloads the data).';
             }
 
-            // All red columns for a row, each flagged ignored or not.
+            // All gray columns for a row, each flagged ignored or not.
             function admRowAlerts(row) {
                 row = row || {};
                 if (row.is_custom && !row.is_sum_row) return [];
@@ -969,12 +969,12 @@
                 const out = [];
                 ADM_ALERT_FIELDS.forEach(function (def) {
                     if (def.needs && !row[def.needs]) return;
-                    // Red dot only: green and yellow (same value) never alert.
-                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-down') return;
+                    // Gray dot only: green, yellow (same value) and red never alert.
+                    if (admTrendClass(trend[def.field], !!ADM_INVERTED_METRICS[def.field]) !== 'is-flat') return;
                     out.push({
                         field: def.field,
                         label: def.label,
-                        error: def.label + ' is red (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
+                        error: def.label + ' is gray (' + admAlertFormatValue(def.kind, row[def.field]) + ')',
                         reason: admAlertReason(row, def),
                         ignored: ignored.indexOf(def.field) !== -1,
                     });
@@ -1748,7 +1748,7 @@
                 const data = admAlertRow.getData() || {};
                 const name = [data.channel_group, data.channel].filter(Boolean).join(' · ') || data.channel_key || '';
                 const sub = document.getElementById('adm-alert-sub');
-                if (sub) sub.textContent = name + ' — columns showing a red dot (worse than the previous day). Green and yellow dots do not alert.';
+                if (sub) sub.textContent = name + ' — columns showing a gray dot (no previous day to compare). Green, yellow and red dots do not alert.';
                 const body = document.getElementById('adm-alert-body');
                 if (!body) return;
                 const alerts = admRowAlerts(data);
