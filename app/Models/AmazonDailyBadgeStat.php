@@ -43,6 +43,13 @@ class AmazonDailyBadgeStat extends Model
         'p_ads_pct',
         'p_acos_pct',
         'p_views',
+        'y_spend',
+        'y_acos_pct',
+        'y_tacos_pct',
+        'y_sales',
+        'y_cvr_pct',
+        'y_bgt',
+        'y_utilized_pct',
     ];
 
     protected $casts = [

@@ -7387,6 +7387,91 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * Server-side daily snapshot of the Yesterday badges (same values /amazon-tabulator-view shows), so trend dots
+     * and history charts keep filling on days nobody opens the page. Called by `app:snapshot-amazon-yesterday-badges`.
+     *
+     * Only the y_* columns are written. If today's row does not exist yet it is started from the latest earlier row
+     * (L30 / Projected values carried over, which is what the charts do for a missing day anyway) instead of zeros;
+     * opening the page later overwrites those with real values.
+     *
+     * @return array<string, float> the y_* values saved (empty when nothing could be saved)
+     */
+    public function snapshotYesterdayBadges(): array
+    {
+        try {
+            if (! Schema::hasTable('amazon_daily_badge_stats')) {
+                return [];
+            }
+
+            $cols = ['ads_percentage', 'ad_sales', 'acos', 'total_ad_spend', 'y_ad_spend', 'yesterday_sales', 'y_day_sales', 'l30_sales'];
+            $channel = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')->first($cols)
+                ?? \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')->first($cols);
+
+            [$start, $end] = AmazonOrder::dailySalesL30Window(AmazonSalesController::DAILY_SALES_WINDOW_DAYS);
+            $salesL30 = (float) AmazonOrder::badgeTotalSalesByOrderDate($start, $end);
+            $ad = $this->amazonTabulatorAdBadges($channel, $salesL30);
+
+            $yPacific = Carbon::yesterday('America/Los_Angeles');
+            $ySales = round((float) AmazonOrder::productSalesByOrderDate(
+                $yPacific->copy()->startOfDay()->utc(),
+                $yPacific->copy()->endOfDay()->utc()
+            ), 2);
+
+            $candidates = [
+                'y_spend' => $ad['y_spend'],
+                'y_acos_pct' => $ad['y_acos'],
+                'y_tacos_pct' => $ad['y_tacos'],
+                'y_sales' => $ySales,
+                'y_cvr_pct' => $this->amazonTabulatorYesterdayCvr()['cvr'] ?? null,
+                'y_bgt' => $ad['y_bgt'],
+                'y_utilized_pct' => $ad['y_utilized_pct'],
+            ];
+
+            $values = [];
+            foreach ($candidates as $key => $v) {
+                if ($v !== null && is_numeric($v) && Schema::hasColumn('amazon_daily_badge_stats', $key)) {
+                    $values[$key] = round((float) $v, 2);
+                }
+            }
+            if ($values === []) {
+                return [];
+            }
+
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = \App\Models\AmazonDailyBadgeStat::query()->whereDate('snapshot_date', $today)->first();
+            if (! $row) {
+                $prev = \App\Models\AmazonDailyBadgeStat::query()
+                    ->whereDate('snapshot_date', '<', $today)
+                    ->orderByDesc('snapshot_date')
+                    ->first();
+                $row = $prev ? $prev->replicate() : new \App\Models\AmazonDailyBadgeStat();
+                // Start the new day without the carried-over y_* values; today's own values are applied below.
+                foreach (self::AMAZON_YESTERDAY_BADGE_METRICS as $yKey) {
+                    if (array_key_exists($yKey, $row->getAttributes())) {
+                        $row->setAttribute($yKey, null);
+                    }
+                }
+                $row->snapshot_date = $today;
+            }
+            foreach ($values as $k => $v) {
+                $row->setAttribute($k, $v);
+            }
+            $row->save();
+
+            return $values;
+        } catch (\Throwable $e) {
+            Log::error('snapshotYesterdayBadges failed: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /** Yesterday-block badges on /amazon-tabulator-view that keep a daily history in amazon_daily_badge_stats. */
+    private const AMAZON_YESTERDAY_BADGE_METRICS = [
+        'y_spend', 'y_acos_pct', 'y_tacos_pct', 'y_sales', 'y_cvr_pct', 'y_bgt', 'y_utilized_pct',
+    ];
+
+    /**
      * Save daily badge stats (called from frontend after stats are computed)
      */
     public function saveAmazonBadgeStats(Request $request)
@@ -7433,6 +7518,14 @@ class OverallAmazonController extends Controller
                 }
             }
 
+            // Yesterday badge history (only numeric values; N/A is skipped) — needs the y_* migration.
+            foreach (self::AMAZON_YESTERDAY_BADGE_METRICS as $yKey) {
+                $raw = $request->input($yKey);
+                if (is_numeric($raw) && \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $yKey)) {
+                    $values[$yKey] = round((float) $raw, 2);
+                }
+            }
+
             \App\Models\AmazonDailyBadgeStat::updateOrCreate(['snapshot_date' => $today], $values);
 
             return response()->json(['success' => true]);
@@ -7461,10 +7554,16 @@ class OverallAmazonController extends Controller
                 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
                 'total_l30_orders',
                 'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views',
+                ...self::AMAZON_YESTERDAY_BADGE_METRICS,
             ];
 
             if (!in_array($metric, $allowedMetrics)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+            // Yesterday metrics only exist after the y_* migration has run.
+            if (in_array($metric, self::AMAZON_YESTERDAY_BADGE_METRICS, true)
+                && ! \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $metric)) {
+                return response()->json(['success' => true, 'data' => []]);
             }
 
             $tz = 'America/Los_Angeles';
@@ -7478,6 +7577,9 @@ class OverallAmazonController extends Controller
 
             $byDate = [];
             foreach ($query->get() as $row) {
+                if ($row->$metric === null) {
+                    continue; // day was saved before this metric existed / value was N/A
+                }
                 $d = \Carbon\Carbon::parse($row->snapshot_date)->toDateString();
                 $byDate[$d] = floatval($row->$metric);
             }
@@ -7545,10 +7647,27 @@ class OverallAmazonController extends Controller
                 return response()->json(['success' => true, 'date' => null, 'metrics' => null]);
             }
 
+            // Yesterday-block metrics: null (not captured) is left out so the dot stays grey instead of comparing to 0.
+            $yMetrics = [];
+            foreach (self::AMAZON_YESTERDAY_BADGE_METRICS as $yKey) {
+                if (! \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $yKey)) {
+                    continue;
+                }
+                // Latest earlier day that actually captured this metric (older rows predate the column).
+                $v = \App\Models\AmazonDailyBadgeStat::query()
+                    ->where('snapshot_date', '<', $today)
+                    ->whereNotNull($yKey)
+                    ->orderBy('snapshot_date', 'desc')
+                    ->value($yKey);
+                if ($v !== null) {
+                    $yMetrics[$yKey] = (float) $v;
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'date' => \Carbon\Carbon::parse($row->snapshot_date)->toDateString(),
-                'metrics' => [
+                'metrics' => $yMetrics + [
                     'gpft_pct' => (float) $row->gpft_pct,
                     'npft_pct' => (float) $row->npft_pct,
                     'groi_pct' => (float) $row->groi_pct,

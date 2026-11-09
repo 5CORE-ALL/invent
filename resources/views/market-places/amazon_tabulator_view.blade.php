@@ -944,10 +944,10 @@
                     <div class="amz-sum-block amz-sum-block--yesterday">
                         <div class="amz-sum-block-title">Yesterday</div>
                         <div class="amz-sum-row amz-sum-row--yesterday" role="group" aria-label="Yesterday metrics">
-                            <span class="badge fs-6 p-2" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS%: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-tacos-badge" style="background-color: #c2410c; color: white; font-weight: bold;" title="Yesterday TACOS% = yesterday ad spend (L1) ÷ yesterday total sales × 100. Total sales (not just ad sales) is the base. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y TACOS%: {{ isset($amazonYTacosPercent) && $amazonYTacosPercent !== null ? round((float) $amazonYTacosPercent, 1) . '%' : 'N/A' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Yesterday's total Amazon sales (Pacific day, product sales tax excluded) — same Y Sales as /amazon/daily-sales.{{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? ' vs L30 daily average: ' . round((float) $amazonYSalesPercent, 1) . '% (positive = yesterday below a typical day).' : '' }}"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales: {{ isset($amazonYSalesTotal) && $amazonYSalesTotal !== null ? '$' . number_format((float) $amazonYSalesTotal) : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_spend" data-live-value="{{ isset($amazonYSpend) && $amazonYSpend !== null ? (float) $amazonYSpend : '' }}" data-format="money" data-invert="1" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold; cursor:pointer;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads. Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_spend" title="Rolling history"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_acos_pct" data-live-value="{{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? (float) $amazonYAcosPercent : '' }}" data-format="pct" data-invert="1" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold; cursor:pointer;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better. Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_acos_pct" title="Rolling history"></span>Y ACOS%: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_tacos_pct" data-live-value="{{ isset($amazonYTacosPercent) && $amazonYTacosPercent !== null ? (float) $amazonYTacosPercent : '' }}" data-format="pct" data-invert="1" id="amazon-y-tacos-badge" style="background-color: #c2410c; color: white; font-weight: bold; cursor:pointer;" title="Yesterday TACOS% = yesterday ad spend (L1) ÷ yesterday total sales × 100. Total sales (not just ad sales) is the base. Lower is better. Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_tacos_pct" title="Rolling history"></span>Y TACOS%: {{ isset($amazonYTacosPercent) && $amazonYTacosPercent !== null ? round((float) $amazonYTacosPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_sales" data-live-value="{{ isset($amazonYSalesTotal) && $amazonYSalesTotal !== null ? (float) $amazonYSalesTotal : '' }}" data-format="money" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Yesterday's total Amazon sales (Pacific day, product sales tax excluded) — same Y Sales as /amazon/daily-sales.{{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? ' vs L30 daily average: ' . round((float) $amazonYSalesPercent, 1) . '% (positive = yesterday below a typical day).' : '' }} Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: {{ isset($amazonYSalesTotal) && $amazonYSalesTotal !== null ? '$' . number_format((float) $amazonYSalesTotal) : 'N/A' }}</span>
                             @php
                                 $yCvr = $amazonYCvr ?? [];
                                 $yCvrPct = $yCvr['cvr'] ?? null;
@@ -957,9 +957,9 @@
                                     : 'Y CVR% = units ordered ÷ sessions × 100 for one day: ' . number_format((int) ($yCvr['qty'] ?? 0)) . ' units ÷ ' . number_format((int) ($yCvr['views'] ?? 0)) . ' sessions'
                                         . ($yCvrAsOf !== '' ? ' on ' . $yCvrAsOf . '. Amazon sessions settle about 3 days after a day ends, so this is the newest settled day, not yesterday.' : ' (yesterday).');
                             @endphp
-                            <span class="badge fs-6 p-2" id="amazon-y-cvr-badge" style="background-color: #059669; color: white; font-weight: bold;" title="{{ $yCvrTip }}"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y CVR%: {{ $yCvrPct !== null ? number_format((float) $yCvrPct, 1) . '%' : 'N/A' }}{{ ($yCvrPct !== null && $yCvrAsOf !== '') ? ' · ' . $yCvrAsOf : '' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Current daily budget of ENABLED SP+SB campaigns (latest L1 row) — same as Y BGT on /amazon-ads/all.{{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? ' That is ' . round((float) $amazonYBgtPercent, 1) . '% of a typical day\'s sales (L30 sales / 30).' : '' }}"><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt: {{ isset($amazonYBgt) && $amazonYBgt !== null ? '$' . number_format((float) $amazonYBgt) : 'N/A' }}</span>
-                            <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_cvr_pct" data-live-value="{{ $yCvrPct !== null ? (float) $yCvrPct : '' }}" data-format="pct" id="amazon-y-cvr-badge" style="background-color: #059669; color: white; font-weight: bold; cursor:pointer;" title="{{ $yCvrTip }} Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_cvr_pct" title="Rolling history"></span>Y CVR%: {{ $yCvrPct !== null ? number_format((float) $yCvrPct, 1) . '%' : 'N/A' }}{{ ($yCvrPct !== null && $yCvrAsOf !== '') ? ' · ' . $yCvrAsOf : '' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_bgt" data-live-value="{{ isset($amazonYBgt) && $amazonYBgt !== null ? (float) $amazonYBgt : '' }}" data-format="money" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold; cursor:pointer;" title="Current daily budget of ENABLED SP+SB campaigns (latest L1 row) — same as Y BGT on /amazon-ads/all.{{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? ' That is ' . round((float) $amazonYBgtPercent, 1) . '% of a typical day\'s sales (L30 sales / 30).' : '' }} Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_bgt" title="Rolling history"></span>Y bgt: {{ isset($amazonYBgt) && $amazonYBgt !== null ? '$' . number_format((float) $amazonYBgt) : 'N/A' }}</span>
+                            <span class="badge fs-6 p-2 amz-badge-chart" data-metric="y_utilized_pct" data-live-value="{{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? (float) $amazonYUtilizedPercent : '' }}" data-format="pct" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB. Click badge or dot for history."><span class="summary-trend-dot none" data-metric="y_utilized_pct" title="Rolling history"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
                         </div>
                     </div>
                     <div class="amz-sum-block amz-sum-block--l30">
@@ -2325,6 +2325,8 @@
             'p_sales': 'Projected Sales', 'p_qty': 'Projected Qty', 'p_groi_pct': 'Projected GROI%',
             'p_npft': 'Projected NPFT%', 'p_nroi_pct': 'Projected NROI%', 'p_ads_pct': 'Projected TACOS%', 'p_acos_pct': 'Projected ACOS%',
             'p_views': 'Projected Views',
+            'y_spend': 'Y Spend', 'y_acos_pct': 'Y ACOS%', 'y_tacos_pct': 'Y TACOS%', 'y_sales': 'Y Sales',
+            'y_cvr_pct': 'Y CVR%', 'y_bgt': 'Y Bgt', 'y_utilized_pct': 'Y Utilized%',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
@@ -2335,12 +2337,13 @@
             'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct',
             'tcos_pct', 'total_l30_orders',
             'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views',
+            'y_spend', 'y_acos_pct', 'y_tacos_pct', 'y_sales', 'y_cvr_pct', 'y_bgt', 'y_utilized_pct',
         ];
 
-        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct'];
-        const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales', 'p_sales'];
+        const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'y_acos_pct', 'y_tacos_pct', 'y_cvr_pct', 'y_utilized_pct'];
+        const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales', 'p_sales', 'y_spend', 'y_sales', 'y_bgt'];
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const amzBadgeInvertMetrics = { p_ads_pct: true, p_acos_pct: true, tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true };
+        const amzBadgeInvertMetrics = { p_ads_pct: true, p_acos_pct: true, tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true, y_acos_pct: true, y_tacos_pct: true, y_spend: true };
         let amzBadgePrevDay = null;
         let amzBadgePrevDayLoaded = false;
 
@@ -2524,7 +2527,7 @@
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders', 'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views'];
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders', 'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views', 'y_spend', 'y_acos_pct', 'y_tacos_pct', 'y_sales', 'y_cvr_pct', 'y_bgt', 'y_utilized_pct'];
             const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
             $('#amzChartModalTitle').text(`Amz - ${label} (${suffix})`);
             withChartJs(function() {
@@ -6847,7 +6850,15 @@
                         p_nroi_pct: AMAZON_P_NROI,
                         p_ads_pct: AMAZON_P_ADS,
                         p_acos_pct: AMAZON_P_ACOS,
-                        p_views: Math.round(pViewsProjected)
+                        p_views: Math.round(pViewsProjected),
+                        // Yesterday block (null / N/A is sent as '' and skipped by the server)
+                        y_spend: amazonYSpend === null ? '' : amazonYSpend,
+                        y_acos_pct: amazonYAcos === null ? '' : amazonYAcos,
+                        y_tacos_pct: amazonYTacos === null ? '' : amazonYTacos,
+                        y_sales: amazonYSalesTotal === null ? '' : amazonYSalesTotal,
+                        y_cvr_pct: amazonYCvr === null ? '' : amazonYCvr,
+                        y_bgt: amazonYBgt === null ? '' : amazonYBgt,
+                        y_utilized_pct: amazonYUtilized === null ? '' : amazonYUtilized
                     });
                 }
             

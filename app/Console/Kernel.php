@@ -4054,6 +4054,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Amazon ad reports land by ~18:10 IST and orders are in by then; save the /amazon-tabulator-view Yesterday badges.
+        $ist($schedule->command('app:snapshot-amazon-yesterday-badges')
+            ->dailyAt('19:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-yesterday-badges-snapshot')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('badges:save-all')
             ->dailyAt('19:10')
             ->timezone('Asia/Kolkata')
