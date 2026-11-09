@@ -534,7 +534,13 @@ class CvrMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'percent required'], 422);
         }
 
-        $result = app(\App\Services\Ebay1PromotionService::class)
+        // Each eBay account has its own listings/token: eBay 2 / eBay 3 pages must not push through the eBay 1 account.
+        $channel = strtolower(trim((string) $request->input('channel', 'ebay1')));
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
+            $channel = 'ebay1';
+        }
+
+        $result = \App\Services\Ebay1PromotionService::for($channel)
             ->syncSkuPromotionPercent($sku, (float) $percent);
 
         return response()->json($result, ! empty($result['success']) ? 200 : 422);

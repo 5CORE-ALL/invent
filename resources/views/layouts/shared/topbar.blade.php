@@ -46,7 +46,6 @@
             <a href="{{ route('team.view') }}" class="topbar-team-btn{{ request()->routeIs('team.view') ? ' is-active' : '' }}"
                 title="Team View" aria-label="Open Team View">
                 <i class="ri-team-fill"></i>
-                <span class="topbar-team-btn__label">Team</span>
             </a>
             {{-- ATE (Auto Task Event) "+ ATE" / "ATE" pills on analytics + active-channels pages (config/ace.php) --}}
             {{-- Every other page gets the buttons too (page key derived from the URL), even with no task/rule yet. --}}
@@ -82,7 +81,7 @@
                 gap: 0.4rem;
                 flex-shrink: 0;
                 margin: 0 0.5rem;
-                padding: 0 14px 0 10px;
+                padding: 0 12px;
                 height: 40px;
                 border-radius: 999px;
                 background: linear-gradient(135deg, #6d28d9, #3b82f6);
@@ -693,7 +692,7 @@
                 $topbarIncShow = $topbarIncTotal > 0 || $topbarIncCount > 0;
                 $topbarIncLabel = '₹'.number_format($topbarIncTotal, 0);
                 $topbarIncDaysLabel = is_int($topbarIncDays) && $topbarIncDays > 1
-                    ? ($topbarIncDays.' days')
+                    ? ($topbarIncDays.'D')
                     : '';
                 $topbarIncTitle = $topbarIncShow ? 'My incentives · '.$topbarIncLabel : 'My incentives';
                 if ($topbarIncCountdown) {

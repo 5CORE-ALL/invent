@@ -256,20 +256,23 @@
         }
         .slack-msg:hover .slack-msg__act { display: flex; }
         .slack-msg__act button {
-            border: 0; background: #fff; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #1d1c1d;
+            border: 0; background: #fff; padding: 4px 7px; font-size: 16px; line-height: 1; font-weight: 700; color: #1d1c1d;
         }
+        .slack-msg__act button:hover { background: #f0f0f3; }
+        .slack-msg__act button.is-danger-act { color: #dc2626; }
+        .slack-msg__act button.is-danger-act:hover { background: #fee2e2; }
         .slack-msg__act button.is-ack-delete {
             color: #dc2626;
             font-size: 16px;
             line-height: 1;
-            padding: 4px 10px;
+            padding: 4px 7px;
         }
         .slack-msg__act button.is-ack-delete:hover { background: #fee2e2; color: #b91c1c; }
         .slack-msg__act button.is-recycle {
             color: #b45309;
             font-size: 16px;
             line-height: 1;
-            padding: 4px 10px;
+            padding: 4px 7px;
         }
         .slack-msg__act button.is-recycle:hover { background: #fef3c7; color: #92400e; }
         .slack-recycle-row {
@@ -317,6 +320,14 @@
             border: 0; background: transparent; color: #616061; font-size: 12px; font-weight: 700; padding: 0;
         }
         .slack-composer__row { display: flex; align-items: center; justify-content: space-between; }
+        .slack-composer__left { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+        .slack-composer__left label { margin: 0; display: flex; align-items: center; gap: 4px; }
+        .slack-quick { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; padding-left: 8px; border-left: 1px solid #e0e0e0; }
+        .slack-quick__btn {
+            width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #616061;
+            display: inline-flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; padding: 0; cursor: pointer;
+        }
+        .slack-quick__btn:hover { background: #f0f0f3; color: #007a5a; }
         .slack-send {
             border: 0; border-radius: 6px; background: #007a5a; color: #fff; font-weight: 700; padding: 5px 12px;
         }
@@ -406,7 +417,7 @@
         .slack-reply { display: none; font-size: 12px; color: #616061; padding: 0 4px 6px; }
         .slack-reply.is-on { display: block; }
         .slack-typing { min-height: 18px; font-size: 12px; color: #616061; padding: 0 20px 4px; }
-        .slack-msg__act { flex-wrap: wrap; max-width: 280px; }
+        .slack-msg__act { flex-wrap: wrap; max-width: 340px; }
         .slack-msg.is-failed { opacity: 1; background: #fff5f5; }
         .slack-thread {
             display: none; width: 340px; border-left: 1px solid #e8e8e8; background: #fff;
@@ -632,6 +643,7 @@
                     <div class="slack-composer__preview" id="slackPastePreview" hidden></div>
                     <textarea id="slackBody" rows="2" placeholder="Message"></textarea>
                     <div class="slack-composer__row">
+                        <div class="slack-composer__left">
                         <label>
                             <input type="file" id="slackFile" hidden accept="image/*,.jpg,.jpeg,.png,.gif,.webp,.pdf,.txt,.csv,.xlsx,.xls,.doc,.docx,.zip">
                             <input type="file" id="slackCamera" hidden accept="image/*" capture="environment">
@@ -639,6 +651,22 @@
                             <button type="button" class="btn btn-sm btn-light" id="slackCameraBtn">Camera</button>
                             <span id="slackFileName" class="text-muted small ms-1"></span>
                         </label>
+                        <div class="slack-quick" id="slackQuickReplies" role="group" aria-label="Common replies">
+                            @foreach ([
+                                ['icon' => 'ri-thumb-up-line', 'title' => 'Okay / Noted', 'text' => 'Okay, noted.'],
+                                ['icon' => 'ri-check-double-line', 'title' => 'Done', 'text' => 'Done. This has been completed.'],
+                                ['icon' => 'ri-loader-4-line', 'title' => 'Working on it', 'text' => 'Working on it. I will update you shortly.'],
+                                ['icon' => 'ri-eye-line', 'title' => 'Checking now', 'text' => 'Checking this now and will get back to you.'],
+                                ['icon' => 'ri-question-line', 'title' => 'Need more details', 'text' => 'Could you please share more details on this?'],
+                                ['icon' => 'ri-calendar-check-line', 'title' => 'Will complete by EOD', 'text' => 'I will complete this by end of day today.'],
+                                ['icon' => 'ri-attachment-2', 'title' => 'Check attachment', 'text' => 'Please check the attached file.'],
+                                ['icon' => 'ri-error-warning-line', 'title' => 'Blocked / need input', 'text' => 'I am blocked on this. Need your input or approval to proceed.'],
+                                ['icon' => 'ri-heart-line', 'title' => 'Thank you', 'text' => 'Thank you!'],
+                            ] as $qr)
+                                <button type="button" class="slack-quick__btn" data-reply="{{ $qr['text'] }}" title="{{ $qr['title'] }}" aria-label="{{ $qr['title'] }}"><i class="{{ $qr['icon'] }}"></i></button>
+                            @endforeach
+                        </div>
+                        </div>
                         <button type="submit" class="slack-send">Send</button>
                     </div>
                 </div>
@@ -1078,7 +1106,7 @@
             btn.className = 'slack-item' + (ch.id === activeId ? ' is-active' : '') + (ch.unread > 0 ? ' is-unread' : '') + (ch.pinned ? ' is-pinned' : '');
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
             const avatar = ch.avatar
-                ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
+                ? '<img class="' + ((ch.type === 'bot' || ch.type === 'public' || ch.type === 'private') ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
                 : (ch.type === 'bot' ? '<i class="ri-robot-2-line"></i>' : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '')));
             const dot = dmMessageDot(ch);
             const badge = ch.unread > 0 ? '<span class="slack-item__badge">' + ch.unread + '</span>' : '';
@@ -1157,7 +1185,7 @@
             item.className = 'slack-item is-archived' + (ch.id === activeId ? ' is-active' : '');
             const prefix = (ch.type === 'public' || ch.type === 'private') ? '<span class="slack-item__hash">#</span>' : '';
             const avatar = ch.avatar
-                ? '<img class="' + (ch.type === 'bot' ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
+                ? '<img class="' + ((ch.type === 'bot' || ch.type === 'public' || ch.type === 'private') ? 'slack-bot-logo' : '') + '" src="' + esc(ch.avatar) + '" alt="">'
                 : (ch.type === 'group' ? '<i class="ri-group-line"></i>' : (ch.type === 'task' ? '<i class="ri-task-line"></i>' : '<i class="ri-archive-line"></i>'));
             if (chatHoverTitle(ch)) item.title = chatHoverTitle(ch);
             item.innerHTML = avatar + prefix + '<span class="slack-item__name">' + esc(chatLabel(ch)) + '</span>';
@@ -1274,15 +1302,15 @@
         const own = Number(m.user_id) === meId;
         const actions = m.deleted ? '' : (
             '<div class="slack-msg__act">' +
-            '<button type="button" data-reply="' + m.id + '">Reply</button>' +
-            '<button type="button" data-copy="' + m.id + '">Copy</button>' +
-            '<button type="button" data-fwd="' + m.id + '">Forward</button>' +
-            '<button type="button" data-reactbtn="' + m.id + '">React</button>' +
-            (own ? '<button type="button" data-edit="' + m.id + '">Edit</button>' : '') +
-            (own ? '<button type="button" data-del="' + m.id + '">Delete</button>' : '') +
-            '<button type="button" data-pin="' + m.id + '">' + (m.pinned ? 'Unpin' : 'Pin') + '</button>' +
-            '<button type="button" data-save="' + m.id + '">' + (m.bookmarked ? 'Saved' : 'Save') + '</button>' +
-            '<button type="button" data-task="' + m.id + '">Create Task</button>' +
+            actBtn('data-reply', m.id, 'ri-reply-line', 'Reply') +
+            actBtn('data-copy', m.id, 'ri-file-copy-line', 'Copy') +
+            actBtn('data-fwd', m.id, 'ri-share-forward-line', 'Forward') +
+            actBtn('data-reactbtn', m.id, 'ri-emotion-line', 'React') +
+            (own ? actBtn('data-edit', m.id, 'ri-edit-line', 'Edit') : '') +
+            (own ? actBtn('data-del', m.id, 'ri-close-circle-line', 'Delete', 'is-danger-act') : '') +
+            actBtn('data-pin', m.id, m.pinned ? 'ri-pushpin-fill' : 'ri-pushpin-line', m.pinned ? 'Unpin' : 'Pin') +
+            actBtn('data-save', m.id, m.bookmarked ? 'ri-bookmark-fill' : 'ri-bookmark-line', m.bookmarked ? 'Saved' : 'Save') +
+            actBtn('data-task', m.id, 'ri-task-line', 'Create Task') +
             '<button type="button" class="is-ack-delete" data-ad="' + m.id + '" title="Hide this message for you only" aria-label="Hide this message for you only"><i class="ri-delete-bin-fill" aria-hidden="true"></i></button>' +
             '<button type="button" class="is-recycle" data-recycle="1" title="Archived messages" aria-label="Archived messages"><i class="ri-recycle-line" aria-hidden="true"></i></button>' +
             '</div>'
@@ -1295,6 +1323,12 @@
         bindMessageActions(wrap, m);
         bindMessageContext(wrap, m);
         return wrap;
+    }
+
+    // Compact icon button for the hover toolbar; the label doubles as tooltip and right-click menu text.
+    function actBtn(attr, id, icon, label, extra) {
+        return '<button type="button" class="' + (extra || '') + '" ' + attr + '="' + id + '" data-label="' + esc(label) +
+            '" title="' + esc(label) + '" aria-label="' + esc(label) + '"><i class="' + icon + '" aria-hidden="true"></i></button>';
     }
 
     // ---- WhatsApp-style reply: quote jump, right-click menu, long-press ----
@@ -1347,7 +1381,7 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.className = en[2];
-            b.textContent = en[1] || src.textContent;
+            b.textContent = en[1] || src.getAttribute('data-label') || src.textContent;
             b.addEventListener('click', function (ev) {
                 ev.stopPropagation();
                 hideCtx();
@@ -1448,7 +1482,12 @@
         const save = wrap.querySelector('[data-save]');
         if (save) save.addEventListener('click', async function () {
             await api('/chat/messages/' + m.id + '/bookmark', { method: 'POST' });
-            save.textContent = save.textContent === 'Saved' ? 'Save' : 'Saved';
+            const nowSaved = save.getAttribute('data-label') !== 'Saved';
+            const lbl = nowSaved ? 'Saved' : 'Save';
+            save.setAttribute('data-label', lbl);
+            save.title = lbl;
+            save.setAttribute('aria-label', lbl);
+            save.innerHTML = '<i class="' + (nowSaved ? 'ri-bookmark-fill' : 'ri-bookmark-line') + '" aria-hidden="true"></i>';
         });
         const task = wrap.querySelector('[data-task]');
         if (task) task.addEventListener('click', function () { openTaskFrom(m); });
@@ -2152,6 +2191,16 @@
         }, 0);
     });
     document.getElementById('slackAttachBtn').addEventListener('click', function () { fileEl.click(); });
+    document.getElementById('slackQuickReplies').addEventListener('click', function (e) {
+        const btn = e.target.closest('.slack-quick__btn');
+        if (!btn) return;
+        const text = btn.getAttribute('data-reply') || '';
+        const cur = bodyEl.value;
+        bodyEl.value = cur.trim() === '' ? text : cur.replace(/\s+$/, '') + ' ' + text;
+        bodyEl.focus();
+        bodyEl.setSelectionRange(bodyEl.value.length, bodyEl.value.length);
+        bodyEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     const cameraEl = document.getElementById('slackCamera');
     document.getElementById('slackCameraBtn').addEventListener('click', function () { cameraEl.click(); });
     function takeFile(input) {

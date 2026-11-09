@@ -8014,6 +8014,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/user-incentives/sync', [\App\Http\Controllers\TaskController::class, 'syncUserIncentives'])->name('tasks.userIncentives.sync');
     Route::get('/incentives', [\App\Http\Controllers\TaskController::class, 'incentivesPage'])->name('incentives.index');
     Route::post('/incentives', [\App\Http\Controllers\TaskController::class, 'updateIncentives'])->name('incentives.update');
+    Route::delete('/incentives/{id}', [\App\Http\Controllers\TaskController::class, 'deleteIncentive'])->whereNumber('id')->name('incentives.destroy');
     Route::post('/incentives/extend', [\App\Http\Controllers\TaskController::class, 'extendIncentiveDate'])->name('incentives.extend');
     Route::post('/incentives/claim', [\App\Http\Controllers\TaskController::class, 'claimIncentive'])->name('incentives.claim');
     Route::post('/incentives/extend-requests/review', [\App\Http\Controllers\TaskController::class, 'reviewIncentiveExtend'])->name('incentives.extend.review');

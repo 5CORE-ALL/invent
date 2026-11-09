@@ -11247,6 +11247,125 @@ class TaskController extends Controller
             ->with('success', 'Incentives saved.');
     }
 
+    /**
+     * One-time Task Manager task for president@5core.com whenever an incentive approval request
+     * (extend / end / help / claim) is created. Never duplicated for the same request.
+     */
+    protected function createIncentiveApprovalTask(UserIncentiveExtendRequest $request, UserIncentive $row, ?User $requester): void
+    {
+        try {
+            $marker = 'incentive_approval_'.$request->id;
+            if (Task::withTrashed()->where('link8', $marker)->exists()) {
+                return;
+            }
+
+            $president = 'president@5core.com';
+            $owner = User::query()->find($row->user_id);
+            $type = (string) ($request->request_type ?: UserIncentiveExtendRequest::TYPE_EXTEND);
+            $typeLabel = match ($type) {
+                UserIncentiveExtendRequest::TYPE_END => 'End incentive',
+                UserIncentiveExtendRequest::TYPE_HELP => 'Need help',
+                UserIncentiveExtendRequest::TYPE_CLAIM => 'Claim incentive',
+                default => 'Extend cutoff date',
+            };
+
+            $lines = [
+                'Request: '.$typeLabel.'.',
+                'For: '.($owner->name ?? ('User #'.$row->user_id)).'.',
+                'Target: '.(trim((string) $row->title) !== '' ? trim((string) $row->title) : '—').'.',
+            ];
+            if (is_numeric($row->amount)) {
+                $lines[] = 'Incentive: ₹'.number_format((float) $row->amount).'.';
+            }
+            if ($type === UserIncentiveExtendRequest::TYPE_EXTEND && $request->requested_cutoff) {
+                $lines[] = 'Requested cutoff: '.$request->requested_cutoff.'.';
+            }
+            if (trim((string) $request->reason) !== '' && $type !== UserIncentiveExtendRequest::TYPE_CLAIM) {
+                $lines[] = 'Reason: '.trim((string) $request->reason);
+            }
+            if ($requester) {
+                $lines[] = 'Requested by: '.$requester->name.'.';
+            }
+
+            $now = now();
+            $due = $now->copy()->addDays(2);
+            $data = [
+                'title' => 'Need Incentive Approval',
+                'description' => implode(' ', $lines),
+                'group' => 'Incentives',
+                'priority' => 'High',
+                'assignor' => trim((string) optional($requester)->email) ?: $president,
+                'assign_to' => $president,
+                'status' => 'Todo',
+                'eta_time' => 10,
+                'start_date' => $now,
+                'completion_date' => $due,
+                'due_date' => $due,
+                'completion_day' => 0,
+                'etc_done' => 0,
+                'is_missed' => 0,
+                'is_missed_track' => 0,
+                'workspace' => 0,
+                'order' => 0,
+                'task_id' => '',
+                'link1' => route('incentives.index').'#inc-user-'.$row->user_id,
+                'link2' => '',
+                'link3' => '',
+                'link4' => '',
+                'link5' => '',
+                'link6' => '',
+                'link7' => '',
+                'link8' => $marker,
+                'link9' => '',
+                'is_data_from' => 0,
+                'is_automate_task' => 0,
+                'task_type' => 'manual',
+                'rework_reason' => '',
+                'delete_rating' => 0,
+                'delete_feedback' => '',
+                'split_tasks' => 0,
+            ];
+            if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+                $data['is_corrective_action'] = 0;
+            }
+
+            $task = Task::create($data);
+
+            try {
+                $this->taskWhatsApp->notifyNewTaskAssigned($task);
+            } catch (\Throwable $e) {
+                \Log::warning('Incentive approval task WhatsApp failed', ['task_id' => $task->id, 'error' => $e->getMessage()]);
+            }
+        } catch (\Throwable $e) {
+            \Log::error('Failed to create Need Incentive Approval task', [
+                'request_id' => $request->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Editor-only: permanently delete one incentive row and its extend/claim requests. */
+    public function deleteIncentive(Request $request, int $id)
+    {
+        $viewer = Auth::user();
+        if (! $this->canEditIncentives($viewer)) {
+            abort(403, 'Only president@5core.com or software5@5core.com can delete incentives.');
+        }
+
+        $row = UserIncentive::query()->where('id', $id)->firstOrFail();
+        $userId = (int) $row->user_id;
+
+        if (Schema::hasTable('user_incentive_extend_requests')) {
+            UserIncentiveExtendRequest::query()->where('user_incentive_id', (int) $row->id)->delete();
+        }
+        $row->delete();
+
+        return redirect()
+            ->route('incentives.index')
+            ->withFragment('inc-user-'.$userId)
+            ->with('success', 'Incentive deleted.');
+    }
+
     /** Open an extend request. President applies it immediately; everyone else waits for approval. */
     public function extendIncentiveDate(Request $request)
     {
@@ -11351,6 +11470,7 @@ class TaskController extends Controller
         }
 
         $extend->save();
+        $this->createIncentiveApprovalTask($extend, $row, $viewer);
 
         $who = $this->canEditIncentives($viewer) && (int) $row->user_id === (int) $viewer->id
             ? 'president@5core.com'
@@ -11422,6 +11542,7 @@ class TaskController extends Controller
         }
         $claim->fill($payload);
         $claim->save();
+        $this->createIncentiveApprovalTask($claim, $row, $viewer);
 
         return redirect()
             ->back()

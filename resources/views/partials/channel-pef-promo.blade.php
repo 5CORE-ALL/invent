@@ -1760,7 +1760,7 @@
                     url: CH_PROMO_EBAY1_PROMOTION_URL,
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
-                    data: { sku: sku, percent: percent, _token: chPromoCsrf() },
+                    data: { sku: sku, percent: percent, channel: CHANNEL_PROMO_CHANNEL, _token: chPromoCsrf() },
                 }).done(function(res) {
                     resolve({
                         ok: !!(res && res.success),

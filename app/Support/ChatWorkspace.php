@@ -302,6 +302,31 @@ class ChatWorkspace
         return $channel;
     }
 
+    /**
+     * Task chats are stored as "#123 Title". Show "Group · Title" instead (no task id).
+     */
+    public static function taskLabel(string $storedName, ?string $group): string
+    {
+        $title = trim((string) preg_replace('/^#\d+\s*/', '', $storedName));
+        $group = trim((string) $group);
+
+        if ($group === '') {
+            return $title !== '' ? $title : $storedName;
+        }
+
+        return $title !== '' ? $group.' · '.$title : $group;
+    }
+
+    public static function taskLabelFor(ChatChannel $channel): string
+    {
+        $group = null;
+        if ($channel->task_id) {
+            $group = Task::query()->where('id', $channel->task_id)->value('group');
+        }
+
+        return self::taskLabel((string) $channel->name, $group);
+    }
+
     public static function taskChatsReady(): bool
     {
         return self::tablesReady() && Schema::hasColumn('chat_channels', 'task_id');
@@ -648,6 +673,28 @@ class ChatWorkspace
             ->groupBy('channel_id')
             ->pluck('last_id', 'channel_id');
 
+        // Groups show the avatar of whoever sent the latest message.
+        $groupChannelIds = $channels->filter(fn ($c) => $c->type === 'group')->pluck('id')->all();
+        $lastSenderAvatarByChannel = [];
+        if ($groupChannelIds !== []) {
+            $lastGroupMessageIds = collect($groupChannelIds)
+                ->map(fn ($id) => (int) ($lastByChannel[$id] ?? 0))
+                ->filter()
+                ->values()
+                ->all();
+            if ($lastGroupMessageIds !== []) {
+                $senders = ChatMessage::query()
+                    ->whereIn('id', $lastGroupMessageIds)
+                    ->with('user:id,name,avatar')
+                    ->get(['id', 'channel_id', 'user_id', 'is_bot']);
+                foreach ($senders as $msg) {
+                    $lastSenderAvatarByChannel[(int) $msg->channel_id] = $msg->is_bot
+                        ? self::botAvatarUrl()
+                        : ($msg->user ? self::avatarUrl($msg->user) : null);
+                }
+            }
+        }
+
         $reads = ChatChannelMember::query()
             ->where('user_id', $user->id)
             ->whereIn('channel_id', $channels->pluck('id'))
@@ -698,9 +745,18 @@ class ChatWorkspace
             : User::query()->whereIn('id', $peerIds)->get(['id', 'name', 'email', 'avatar'])->keyBy('id');
         $presence = ChatPresence::map($peerIds);
 
+        $taskGroups = [];
+        $taskIds = $channels->where('type', 'task')->pluck('task_id')->filter()->unique()->values()->all();
+        if ($taskIds !== []) {
+            $taskGroups = Task::query()->whereIn('id', $taskIds)->pluck('group', 'id')->all();
+        }
+
         $out = [];
         foreach ($channels as $channel) {
             $label = (string) $channel->name;
+            if ($channel->type === 'task') {
+                $label = self::taskLabel($label, $taskGroups[$channel->task_id] ?? null);
+            }
             $peer = null;
             if ($channel->isDm() && $channel->dm_key) {
                 [$left, $right] = array_map('intval', explode(':', (string) $channel->dm_key, 2) + [0, 0]);
@@ -725,7 +781,12 @@ class ChatWorkspace
                 'last_read_message_id' => $lastRead,
                 'first_unread_id' => $lastRead > 0 ? $lastRead + 1 : null,
                 'peer_id' => $peer?->id,
-                'avatar' => $channel->isBotInbox() ? self::botAvatarUrl() : self::avatarUrl($peer),
+                'avatar' => match (true) {
+                    $channel->isBotInbox() => self::botAvatarUrl(),
+                    in_array($channel->type, ['public', 'private'], true) => self::botAvatarUrl(),
+                    $channel->type === 'group' => $lastSenderAvatarByChannel[(int) $channel->id] ?? null,
+                    default => self::avatarUrl($peer),
+                },
                 'member_count' => (int) ($memberCounts[$channel->id] ?? 0),
                 'member_ids' => $memberIdsByChannel[$channel->id] ?? [],
                 'online' => (bool) ($peerPresence['online'] ?? false),

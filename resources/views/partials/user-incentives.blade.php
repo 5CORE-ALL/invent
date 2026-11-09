@@ -831,7 +831,7 @@
         var badge = el('ts-incentive-header-days');
         var header = document.getElementById('ts-incentive-header-btn');
         var countdown = days !== null && days > 1;
-        var label = countdown ? (days + ' days') : '';
+        var label = countdown ? (days + 'D') : '';
         if (badge) {
             badge.textContent = label;
             badge.classList.toggle('d-none', !countdown);

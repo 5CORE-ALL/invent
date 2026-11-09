@@ -442,10 +442,10 @@
         </div>
     </div>
 
-    @if ($canViewAll)
+    @if ($canViewAll && ! ($canEdit && (int) $editUserId > 0))
         <div class="inc-card mb-3">
             <label for="inc-search" class="form-label fw-bold mb-1">Quick search</label>
-            <input type="search" id="inc-search" class="form-control" placeholder="Search name, designation, target, or condition" autocomplete="off">
+            <input type="search" id="inc-search" class="form-control" placeholder="Search by name" autocomplete="off">
             <div class="text-muted small mt-2" id="inc-search-count"></div>
         </div>
     @endif
@@ -527,6 +527,10 @@
         @forelse ($people as $person)
             @php
                 $editing = $canEdit && (int) $editUserId === (int) $person['id'];
+                // While one person's card is being edited, hide everyone else's.
+                if ($canEdit && (int) $editUserId > 0 && ! $editing) {
+                    continue;
+                }
                 $rows = $person['items'];
                 if ($editing && (int) old('user_id') === (int) $person['id'] && is_array(old('items'))) {
                     $rows = old('items');
@@ -553,7 +557,7 @@
                     $personTotal += is_numeric($row['amount'] ?? null) ? (float) $row['amount'] : 0;
                 }
             @endphp
-            <section class="inc-card inc-person" id="inc-user-{{ $person['id'] }}" data-search="{{ $person['search'] }}">
+            <section class="inc-card inc-person" id="inc-user-{{ $person['id'] }}" data-search="{{ mb_strtolower($person['name']) }}">
                 <div class="inc-person-head">
                     <div>
                         <h5>{{ $person['name'] }}</h5>
@@ -686,6 +690,15 @@
                                                         <a class="inc-action-btn" href="{{ route('incentives.index', ['user_id' => $person['id']]).'#inc-user-'.$person['id'] }}" title="Edit" aria-label="Edit incentive">
                                                             <i class="ri-pencil-line" aria-hidden="true"></i>
                                                         </a>
+                                                        @if (! empty($row['id']))
+                                                            <form method="post" action="{{ route('incentives.destroy', ['id' => $row['id']]) }}" class="inc-delete-form d-inline">
+                                                                @csrf
+                                                                @method('DELETE')
+                                                                <button type="submit" class="inc-action-btn text-danger" title="Delete" aria-label="Delete incentive">
+                                                                    <i class="ri-delete-bin-line" aria-hidden="true"></i>
+                                                                </button>
+                                                            </form>
+                                                        @endif
                                                     @endif
                                                     @if (! empty($pending))
                                                         <span class="inc-request-badge" title="{{ !empty($pending['reason']) ? $pending['reason'] : 'Waiting for approval' }}">
@@ -1101,6 +1114,11 @@
     document.querySelectorAll('.inc-deny-form').forEach(function (form) {
         form.addEventListener('submit', function (e) {
             if (!window.confirm('Deny this extend request?')) e.preventDefault();
+        });
+    });
+    document.querySelectorAll('.inc-delete-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!window.confirm('Delete this incentive? This cannot be undone.')) e.preventDefault();
         });
     });
 

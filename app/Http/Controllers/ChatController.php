@@ -1312,6 +1312,10 @@ class ChatController extends Controller
             return $peer?->name ?: (string) $channel->name;
         }
 
+        if ($channel->isTask()) {
+            return ChatWorkspace::taskLabelFor($channel);
+        }
+
         return (string) $channel->name;
     }
 
