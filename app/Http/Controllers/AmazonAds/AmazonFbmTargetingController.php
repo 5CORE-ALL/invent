@@ -207,9 +207,13 @@ class AmazonFbmTargetingController extends Controller
         }
 
         // Campaign type: KW = SP keyword campaigns, PT = SP product targeting, HL = SB headline (HEAD) campaigns.
-        $typeWanted = strtolower(trim((string) $request->query('type', '')));
-        if (in_array($typeWanted, ['kw', 'pt', 'hl'], true)) {
-            $all = array_values(array_filter($all, fn (array $c) => $this->campaignTypeOf($c) === $typeWanted));
+        // Several types can be combined (comma separated, e.g. "kw,hl"); empty = all types.
+        $typeWanted = array_values(array_unique(array_filter(array_map(
+            static fn (string $v) => strtolower(trim($v)),
+            explode(',', (string) $request->query('type', ''))
+        ), static fn (string $v) => in_array($v, ['kw', 'pt', 'hl'], true))));
+        if ($typeWanted !== [] && count($typeWanted) < 3) {
+            $all = array_values(array_filter($all, fn (array $c) => in_array($this->campaignTypeOf($c), $typeWanted, true)));
         }
 
         // Parent = "PARENT …" campaigns, SKU = single-SKU campaigns, all = both.

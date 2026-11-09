@@ -183,7 +183,7 @@
                 <div class="card-body">
                     <div class="mb-3 d-flex gap-2 flex-wrap align-items-center">
                         <div class="btn-group btn-group-sm" role="group" id="aft-type-group" aria-label="Campaign type">
-                            <button type="button" class="btn btn-primary active" data-type="" title="Show every campaign type">All</button>
+                            <button type="button" class="btn btn-primary active" data-type="" title="Show every campaign type (clears the KW / PT / HL selection)">All</button>
                             <button type="button" class="btn btn-outline-primary" data-type="kw" title="KW campaigns (Sponsored Products keyword campaigns)">KW</button>
                             <button type="button" class="btn btn-outline-primary" data-type="pt" title="PT campaigns (Sponsored Products product targeting)">PT</button>
                             <button type="button" class="btn btn-outline-primary" data-type="hl" title="HL / HEAD campaigns (Sponsored Brands headline)">HL / Head</button>
@@ -488,7 +488,8 @@
     const scopeEl = document.getElementById('aft-scope');
     const statusEl = document.getElementById('aft-status');
     const typeGroupEl = document.getElementById('aft-type-group');
-    let typeFilter = ''; // '', 'kw', 'pt' or 'hl'
+    const typeSel = new Set(); // any of 'kw', 'pt', 'hl'; empty = all types
+    let typeFilter = ''; // comma separated typeSel, sent to the server
     const cousinSearchEl = document.getElementById('aft-cousin-search');
     const countEl = document.getElementById('aft-count');
     const missingTitlesEl = document.getElementById('aft-missing-titles');
@@ -2533,9 +2534,19 @@
         typeGroupEl.addEventListener('click', function (e) {
             const btn = e.target.closest('button[data-type]');
             if (!btn) return;
-            typeFilter = btn.getAttribute('data-type') || '';
+            const t = btn.getAttribute('data-type') || '';
+            // "All" clears the selection; KW / PT / HL toggle and can be combined.
+            if (t === '') {
+                typeSel.clear();
+            } else if (typeSel.has(t)) {
+                typeSel.delete(t);
+            } else {
+                typeSel.add(t);
+            }
+            typeFilter = Array.from(typeSel).join(',');
             typeGroupEl.querySelectorAll('button[data-type]').forEach(function (b) {
-                const on = b === btn;
+                const bt = b.getAttribute('data-type') || '';
+                const on = bt === '' ? typeSel.size === 0 : typeSel.has(bt);
                 b.classList.toggle('active', on);
                 b.classList.toggle('btn-primary', on);
                 b.classList.toggle('btn-outline-primary', !on);
