@@ -1101,14 +1101,23 @@ class AmazonFbmTargetingController extends Controller
         }
 
         // The live Amazon state wins for SP campaigns: the daily report keeps the status the campaign had on the report
-        // day, so a campaign paused on Amazon since then would still show ENABLED here. (SB campaigns are not in the
-        // live list, so they keep the report status.)
+        // day, so a campaign paused on Amazon since then would still show ENABLED here. (SB campaigns use the live SB list.)
         $live = $this->liveCampaigns();
         $liveByName = $live['byName'] ?? [];
         $liveById = $live['byId'] ?? [];
+        $sbLiveById = $live['sbById'] ?? [];
+        $sbLiveByName = $live['sbByName'] ?? [];
 
         foreach ($campaigns as $i => $c) {
-            if (($c['ad_type'] ?? 'SP') !== 'SB') {
+            if (($c['ad_type'] ?? 'SP') === 'SB') {
+                $cid = trim((string) ($c['campaign_id'] ?? ''));
+                $sbState = ($cid !== '' ? ($sbLiveById[$cid] ?? '') : '') ?: ($sbLiveByName[$this->exactNameKey((string) $c['campaign_name'])] ?? '');
+                if ($sbState !== '') {
+                    $campaigns[$i]['status'] = (string) $sbState;
+
+                    continue;
+                }
+            } else {
                 $liveKey = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
                 $cid = trim((string) ($c['campaign_id'] ?? ''));
                 if (isset($liveByName[$liveKey]['state']) && $liveByName[$liveKey]['state'] !== '') {
@@ -1208,7 +1217,7 @@ class AmazonFbmTargetingController extends Controller
     private const LIVE_LOCK = 'amz_fbm_live_campaigns_lock';
 
     /** Live campaign states older than this are refreshed in the background. */
-    private const LIVE_STALE_SECONDS = 1800;
+    private const LIVE_STALE_SECONDS = 600;
 
     /**
      * Live SP campaign states from Amazon (name / id => state), refreshed in the background so the page never waits.
@@ -1262,7 +1271,38 @@ class AmazonFbmTargetingController extends Controller
             }
         }
 
-        Cache::put(self::LIVE_CAMPAIGNS, ['at' => time(), 'byName' => $byName, 'byId' => $byId], now()->addHours(12));
+        // Sponsored Brands (HL / HEAD) campaigns: their live state too, so they are not stuck on the report status either.
+        // A failure here must not lose the SP states above.
+        $sbById = [];
+        $sbByName = [];
+        try {
+            foreach ($ads->listAllSbCampaigns(['ENABLED', 'PAUSED', 'ARCHIVED']) as $c) {
+                $name = trim((string) ($c['name'] ?? ''));
+                $id = trim((string) ($c['campaignId'] ?? ''));
+                $state = strtoupper(trim((string) ($c['state'] ?? '')));
+                if ($state === '') {
+                    continue;
+                }
+                if ($id !== '') {
+                    $sbById[$id] = $state;
+                }
+                if ($name !== '') {
+                    $sbKey = $this->exactNameKey($name);
+                    if (! isset($sbByName[$sbKey]) || ($rank[$state] ?? 0) > ($rank[$sbByName[$sbKey]] ?? 0)) {
+                        $sbByName[$sbKey] = $state;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: live SB campaign sync failed', ['error' => $e->getMessage()]);
+            $previous = Cache::get(self::LIVE_CAMPAIGNS);
+            $sbById = is_array($previous) ? (array) ($previous['sbById'] ?? []) : [];
+            $sbByName = is_array($previous) ? (array) ($previous['sbByName'] ?? []) : [];
+        }
+
+        Cache::put(self::LIVE_CAMPAIGNS, [
+            'at' => time(), 'byName' => $byName, 'byId' => $byId, 'sbById' => $sbById, 'sbByName' => $sbByName,
+        ], now()->addHours(12));
         Cache::forget('amz_kw_targeting_campaigns_by_parent_v8');
         $this->forgetBadges();
 
