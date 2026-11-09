@@ -1100,7 +1100,28 @@ class AmazonFbmTargetingController extends Controller
             return $campaigns;
         }
 
+        // The live Amazon state wins for SP campaigns: the daily report keeps the status the campaign had on the report
+        // day, so a campaign paused on Amazon since then would still show ENABLED here. (SB campaigns are not in the
+        // live list, so they keep the report status.)
+        $live = $this->liveCampaigns();
+        $liveByName = $live['byName'] ?? [];
+        $liveById = $live['byId'] ?? [];
+
         foreach ($campaigns as $i => $c) {
+            if (($c['ad_type'] ?? 'SP') !== 'SB') {
+                $liveKey = AmazonAdsMissingLinks::normalizeCampaignName((string) $c['campaign_name']);
+                $cid = trim((string) ($c['campaign_id'] ?? ''));
+                if (isset($liveByName[$liveKey]['state']) && $liveByName[$liveKey]['state'] !== '') {
+                    $campaigns[$i]['status'] = (string) $liveByName[$liveKey]['state'];
+
+                    continue;
+                }
+                if ($cid !== '' && isset($liveById[$cid]['state']) && $liveById[$cid]['state'] !== '') {
+                    $campaigns[$i]['status'] = (string) $liveById[$cid]['state'];
+
+                    continue;
+                }
+            }
             $key = $this->exactNameKey((string) $c['campaign_name']);
             if (isset($map[$key])) {
                 $campaigns[$i]['status'] = $map[$key];
