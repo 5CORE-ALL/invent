@@ -1,7 +1,8 @@
 @extends('layouts.vertical', ['title' => 'Ebay1 Data', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {{-- Font Awesome 6.4.0 is served from this site (public/vendor/fontawesome), not a CDN, so the icons always load. --}}
+    <link rel="stylesheet" href="{{ asset('vendor/fontawesome/css/all.min.css') }}?v=6.4.0">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         .e1d-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
