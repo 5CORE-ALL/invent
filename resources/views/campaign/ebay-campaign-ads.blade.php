@@ -59,9 +59,9 @@
                     <select id="status-filter" class="form-select form-select-sm">
                         <option value="" selected>All Status</option>
                         <option value="RUNNING">RUNNING</option>
-                        <option value="PAUSED">PAUSED</option>
-                        <option value="ENDED">ENDED</option>
                         <option value="INACTIVE">INACTIVE</option>
+                        <option value="ENDED">ENDED</option>
+                        <option value="NO_CAMPAIGN">No Campaign</option>
                     </select>
                 </div>
                 <div class="col-auto">
@@ -240,6 +240,19 @@ function syncSelectAllHeader() {
         && allLoadedListingIds.every(lid => selectedIds.has(lid));
 }
 
+/** Count beside each Status option (the other filters apply, the Status filter does not). */
+function updateStatusCounts(counts) {
+    if (!counts) return;
+    const labels = { RUNNING: 'RUNNING', INACTIVE: 'INACTIVE', ENDED: 'ENDED', NO_CAMPAIGN: 'No Campaign' };
+    let all = 0;
+    Object.keys(labels).forEach(function (key) {
+        const n = Number(counts[key]) || 0;
+        all += n;
+        $('#status-filter option[value="' + key + '"]').text(labels[key] + ' (' + n.toLocaleString() + ')');
+    });
+    $('#status-filter option[value=""]').text('All Status (' + all.toLocaleString() + ')');
+}
+
 function loadData() {
     const search  = $('#search-input').val();
     const funding = $('#funding-filter').val();
@@ -250,6 +263,7 @@ function loadData() {
         .done(function(resp) {
             if (resp && resp.data) {
                 $('#total-count').text(resp.total.toLocaleString() + ' rows');
+                updateStatusCounts(resp.status_counts);
                 $('#last-updated').text('Updated: ' + new Date().toLocaleTimeString());
                 allLoadedListingIds = (resp.data || [])
                     .map(d => d && d.listing_id)
@@ -422,10 +436,28 @@ $(document).ready(function () {
                     const v       = cell.getValue() || '—';
                     if (matched) {
                         return `<span class="fw-semibold text-primary">${v}</span>`;
+                    } else if (row.sku_from_history == 1) {
+                        // Listing id is no longer a live eBay listing; the SKU comes from past orders / eBay data.
+                        return `<span class="fw-semibold text-primary" title="SKU found from past orders for listing ${row.listing_id} (not a live listing now)">${v}</span>`;
                     } else {
                         // No SKU match — show listing_id in grey italic
                         return `<span class="text-muted fst-italic" style="font-size:11px;" title="No SKU match for listing_id ${v}">${v}</span>`;
                     }
+                }
+            },
+            {
+                title: 'INV', field: 'shopify_inv', width: 70, hozAlign: 'center', frozen: true,
+                headerTooltip: 'Inventory from CP Master (the same INV the Dil % is calculated with).',
+                sorter: function(a, b) {
+                    const n = function(v) { return (v === null || v === undefined || v === '' || !isFinite(Number(v))) ? -1 : Number(v); };
+                    return n(a) - n(b);
+                },
+                formatter: function(cell) {
+                    const v = cell.getValue();
+                    if (v === null || v === undefined || v === '' || !isFinite(Number(v))) {
+                        return '<span class="text-muted" title="No CP Master inventory for this SKU">—</span>';
+                    }
+                    return String(Math.round(Number(v)));
                 }
             },
             {
@@ -481,10 +513,12 @@ $(document).ready(function () {
                     const row = cell.getRow().getData() || {};
                     const v = String(cell.getValue() || '').toUpperCase();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
-                    if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
-                    if (v === 'SYSTEM_PAUSED') return '<span class="badge-paus">SYSTEM_PAUSED</span>';
+                    // A paused campaign is shown as INACTIVE.
+                    if (v === 'PAUSED' || v === 'SYSTEM_PAUSED' || v === 'INACTIVE') {
+                        return '<span class="badge-paus" title="Campaign is paused / inactive">INACTIVE</span>';
+                    }
                     const listingStatus = String(row.listing_status || '').toUpperCase();
-                    if (['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'].includes(listingStatus)) {
+                    if (v === 'ENDED' || ['ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD'].includes(listingStatus)) {
                         return '<span class="badge-end" title="Listing ended on eBay">ENDED</span>';
                     }
                     return '<span style="color:#aaa; font-size:11px;" title="Not enrolled in a live campaign">No Campaign</span>';

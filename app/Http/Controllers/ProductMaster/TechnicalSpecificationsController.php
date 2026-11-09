@@ -119,7 +119,7 @@ class TechnicalSpecificationsController extends Controller
                     if (in_array($fixedKey, ['brand', 'manufacturer'], true)) {
                         $values[$name] = '5 Core';
                     } elseif ($fixedKey === 'durabilityguarantee') {
-                        $values[$name] = 'Yes';
+                        $values[$name] = '30';
                     } elseif (in_array($fixedKey, ['mpn', 'model'], true) && ! $rowIsParent) {
                         $values[$name] = (string) ($row['SKU'] ?? '');
                     }
@@ -230,7 +230,7 @@ class TechnicalSpecificationsController extends Controller
             $upcForSave = null;
             foreach ($specs as &$spec) {
                 $name = $this->specKey((string) ($spec['key'] ?? ''));
-                $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => 'Yes'];
+                $fixed = ['brand' => '5 Core', 'manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China', 'durabilityguarantee' => '30'];
                 if (isset($fixed[$name])) {
                     $spec['value'] = $fixed[$name];
                 } elseif (($name === 'mpn' || $name === 'model') && ! $this->isParentSku($sku)) {

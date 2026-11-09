@@ -1434,6 +1434,30 @@
             publishDraftAfter: 'field_missing_data',
             createDraftUrl: '/listing_ebay/create-draft',
             publishDraftUrl: '/listing_ebay/publish-draft',
+            publishDraftUsesModal: true,
+            // Publish dialog Status column: every specific with data / every specific, and images / 13.
+            // Each is green when complete, red when not.
+            publishStatusHtml: function (sku) {
+                if (fieldCountsState !== 'ready') return '';
+                const entry = fieldCounts[fieldCountKey(sku)];
+                if (!entry) return '';
+                const part = function (label, have, total, title, missing) {
+                    const ok = have >= total;
+                    return '<div style="color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:700;white-space:nowrap;" title="' +
+                        escapeHtml(missing ? title : 'All ' + total + ' ' + label.toLowerCase() + ' are there') + '">' +
+                        label + ' ' + have + '/' + total + '</div>';
+                };
+                let html = '';
+                const pair = fieldCountPair({ sku: sku }, 'a');
+                if (pair) {
+                    const names = (entry.a && entry.a[2]) || [];
+                    html += part('Specifics', pair[0], pair[1], (pair[1] - pair[0]) + ' specifics missing: ' + names.join(', '), pair[0] < pair[1]);
+                }
+                if (typeof entry.i === 'number') {
+                    html += part('Images', entry.i, 13, entry.i + ' of 13 images saved', entry.i < 13);
+                }
+                return html;
+            },
             draftStatusFor: function (sku) { return draftStatuses[fieldCountKey(sku)] || ''; },
             onDraftCreated: function (sku, state) {
                 draftStatuses[fieldCountKey(sku)] = state;

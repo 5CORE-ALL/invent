@@ -633,6 +633,23 @@ class EbayCampaignAdsController extends Controller
         return $this->missingAdsCountFor('ebay_campaign_ads', 'ebay_metrics');
     }
 
+    /**
+     * The Status column / dropdown bucket of an ad row (ca = ebay_campaign_ads, em = ebay_metrics):
+     * RUNNING; INACTIVE (paused, system paused and inactive campaigns); ENDED (ended campaign or ended listing);
+     * NO_CAMPAIGN (everything else). Each row is in exactly one bucket, so the counts add up.
+     */
+    private static function statusBucketSql(): string
+    {
+        $status = "UPPER(TRIM(COALESCE(ca.campaign_status, '')))";
+        $listing = "UPPER(TRIM(COALESCE(em.listing_status, '')))";
+
+        return "(CASE"
+            ." WHEN {$status} = 'RUNNING' THEN 'RUNNING'"
+            ." WHEN {$status} IN ('PAUSED', 'SYSTEM_PAUSED', 'INACTIVE') THEN 'INACTIVE'"
+            ." WHEN {$status} = 'ENDED' OR {$listing} IN ('ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD') THEN 'ENDED'"
+            ." ELSE 'NO_CAMPAIGN' END)";
+    }
+
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay_campaign_ads');
@@ -659,17 +676,6 @@ class EbayCampaignAdsController extends Controller
 
         if ($request->filled('funding_strategy')) {
             $query->where('ca.funding_strategy', $request->funding_strategy);
-        }
-        if ($request->filled('campaign_status')) {
-            $status = strtoupper(trim((string) $request->campaign_status));
-            if ($status === 'ENDED') {
-                $query->where(function ($q) {
-                    $q->whereRaw("UPPER(TRIM(COALESCE(ca.campaign_status, ''))) IN ('ENDED', 'INACTIVE')")
-                        ->orWhereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) IN ('ENDED', 'INACTIVE', 'UNSOLD', 'COMPLETED', 'SOLD')");
-                });
-            } else {
-                $query->where('ca.campaign_status', $request->campaign_status);
-            }
         }
         if ($request->filled('promote_with_ad')) {
             $promote = $request->promote_with_ad;
@@ -718,17 +724,105 @@ class EbayCampaignAdsController extends Controller
             });
         }
 
+        // Counts beside the Status dropdown: every other filter applies, the Status filter itself does not.
+        $bucket = self::statusBucketSql();
+        $statusCounts = ['RUNNING' => 0, 'INACTIVE' => 0, 'ENDED' => 0, 'NO_CAMPAIGN' => 0];
+        foreach ((clone $query)->select(DB::raw($bucket.' as status_bucket'), DB::raw('COUNT(*) as c'))->groupBy('status_bucket')->get() as $bucketRow) {
+            $statusCounts[(string) $bucketRow->status_bucket] = (int) $bucketRow->c;
+        }
+
+        if ($request->filled('campaign_status')) {
+            $status = strtoupper(trim((string) $request->campaign_status));
+            if ($status === 'PAUSED' || $status === 'SYSTEM_PAUSED') {
+                $status = 'INACTIVE'; // paused campaigns are shown, and filtered, as INACTIVE
+            }
+            if (in_array($status, ['RUNNING', 'INACTIVE', 'ENDED', 'NO_CAMPAIGN'], true)) {
+                $query->whereRaw($bucket.' = ?', [$status]);
+            }
+        }
+
         $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
+        $this->fillSkuFromHistory($data);
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
         EbayListingReportHistory::attachToRows($data);
         $this->attachStdNpft($data);
         $this->attachGpft($data);
         return response()->json([
+            'status_counts' => $statusCounts,
             'total' => $total,
             'data'  => $data,
         ]);
+    }
+
+    /**
+     * An ad whose listing id is no longer in ebay_metrics (the listing ended or was relisted under a new id) has
+     * no SKU in the join, so the SKU column showed the listing id. Look the SKU up from where that listing id was
+     * seen with a SKU: past orders, the eBay data pull, the stored item specifics and Listing Manager drafts.
+     * Such rows stay sku_matched = 0 (they are not live listings), but show the SKU and get its Dil / INV.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    private function fillSkuFromHistory($rows): void
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if ((int) ($row->sku_matched ?? 0) !== 1) {
+                $id = trim((string) ($row->listing_id ?? ''));
+                if ($id !== '') {
+                    $ids[$id] = true;
+                }
+            }
+        }
+        if ($ids === []) {
+            return;
+        }
+
+        // [table, item id column, sku column]
+        $sources = [
+            ['ebay_order_items', 'item_id', 'sku'],
+            ['fetch_api_for_ebay_data_metric_data', 'item_id', 'sku'],
+            ['ebay1_item_specifics', 'item_id', 'sku'],
+            ['listing_manager_channel_drafts', 'external_listing_id', 'seller_sku'],
+        ];
+        $found = [];
+        foreach (array_chunk(array_keys($ids), 500) as $chunk) {
+            foreach ($sources as [$table, $idCol, $skuCol]) {
+                try {
+                    if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $idCol) || ! Schema::hasColumn($table, $skuCol)) {
+                        continue;
+                    }
+                    $left = array_values(array_filter($chunk, static fn ($id) => ! isset($found[$id])));
+                    if ($left === []) {
+                        break;
+                    }
+                    $hits = DB::table($table)
+                        ->whereIn($idCol, $left)
+                        ->whereNotNull($skuCol)
+                        ->where($skuCol, '!=', '')
+                        ->select($idCol.' as lid', $skuCol.' as s')
+                        ->distinct()
+                        ->get();
+                    foreach ($hits as $hit) {
+                        $lid = (string) $hit->lid;
+                        if (! isset($found[$lid])) {
+                            $found[$lid] = trim((string) $hit->s);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // a missing table or column just means that source has nothing to add
+                }
+            }
+        }
+
+        foreach ($rows as $row) {
+            $id = trim((string) ($row->listing_id ?? ''));
+            if ((int) ($row->sku_matched ?? 0) !== 1 && $id !== '' && ($found[$id] ?? '') !== '') {
+                $row->resolved_sku = $found[$id];
+                $row->sku_from_history = 1;
+            }
+        }
     }
 
     /**

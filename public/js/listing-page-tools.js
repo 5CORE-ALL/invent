@@ -229,7 +229,9 @@
         const sku = String(data.sku || '').trim();
         if (!sku) return '';
         return '<button type="button" class="btn btn-sm btn-success listing-mp-draft-publish-btn" data-sku="' + escapeHtml(sku) +
-            '" title="Update the draft with the latest data and publish it to ' + escapeHtml(cfg().channelLabel || 'the marketplace') +
+            '" title="' + (cfg().publishDraftUsesModal
+                ? 'Choose single listing or variation group and the category, then publish to '
+                : 'Update the draft with the latest data and publish it to ') + escapeHtml(cfg().channelLabel || 'the marketplace') +
             '"><i class="fas fa-rocket"></i> <span class="badge bg-light text-success">Publish</span></button>';
     }
 
@@ -1198,8 +1200,13 @@
         else if (window.$) $(el).modal('hide');
     }
 
-    function statusLabel(status, reason) {
+    function statusLabel(status, reason, sku) {
         if (status === 'will_publish') {
+            // A page can show its own readiness instead (e.g. eBay: specifics with data / specifics required).
+            if (typeof cfg().publishStatusHtml === 'function') {
+                const custom = cfg().publishStatusHtml(String(sku || ''));
+                if (custom) return custom;
+            }
             return '<span class="listing-publish-status is-publish">Will publish</span>';
         }
         return '<span class="listing-publish-status is-skip">' + escapeHtml(reason || 'Skipped') + '</span>';
@@ -1577,7 +1584,7 @@
                 html += '<td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
                 html += '<td>' + role + '</td>';
                 if (perSku) html += skuCategoryCell(sku);
-                html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
+                html += '<td>' + statusLabel(child.status, child.reason, sku) + '</td></tr>';
             });
             html += '</tbody></table></div>';
         });
@@ -2203,7 +2210,13 @@
                 e.preventDefault();
                 e.stopPropagation();
                 const sku = String($(this).data('sku') || $(this).attr('data-sku') || '').trim();
-                if (sku) publishDraftFor(sku);
+                if (!sku) return;
+                // Opens the regular publish dialog (single listing or variation group, category selection, specifics).
+                if (cfg().publishDraftUsesModal) {
+                    openPreview([sku]);
+                    return;
+                }
+                publishDraftFor(sku);
             });
 
         $('#bulk-publish-btn').off('click.listingPageTools').on('click.listingPageTools', function () {
