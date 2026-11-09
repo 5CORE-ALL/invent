@@ -2606,6 +2606,13 @@
             function fmtPushAlert(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || String(v).trim() === '') return '';
+                // KW / PT campaigns (everything except HL) with no inventory: no red alert, nothing to push for.
+                var alertRow = cell.getRow ? cell.getRow().getData() : null;
+                if (alertRow && !alertRow.is_hl) {
+                    var alertInvSrc = alertRow.sku_inv_known ? alertRow.sku_inv_min : alertRow.Inv;
+                    var alertInv = (alertInvSrc !== null && alertInvSrc !== undefined && alertInvSrc !== '') ? parseFloat(alertInvSrc) : NaN;
+                    if (isFinite(alertInv) && alertInv === 0) return '';
+                }
                 var tip = String(v);
                 return '<span class="amz-push-alert" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '">!</span>';
             }
