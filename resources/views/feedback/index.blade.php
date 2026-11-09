@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Feedback', 'sidenav' => 'condensed'])
 
 @section('css')
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <style>
     .dfb-lead {
         color: #64748b;
@@ -190,31 +191,23 @@
     .dfb-users-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; }
     .dfb-users-head h5 { margin: 0; font-size: 15px; font-weight: 700; }
     .dfb-users-head span { color: #64748b; font-size: 12px; }
-    .dfb-users {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 16px;
-    }
-    .dfb-ucard {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 10px 10px 12px;
-        min-height: 96px;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-    }
-    .dfb-ucard.is-none { background: #f8fafc; border-style: dashed; }
-    .dfb-ucard-top { display: flex; align-items: center; gap: 8px; }
-    .dfb-ucard-top img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #e2e8f0; }
-    .dfb-ucard-name { font-weight: 700; font-size: 13px; color: #0f172a; line-height: 1.2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dfb-ucard-role { font-size: 10px; color: #94a3b8; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .dfb-ucard .dfb-status.is-none { background: #fef2f2; color: #b91c1c; }
+    .dfb-users-table { margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #fff; }
+    .dfb-users-table .tabulator { border: 0; font-size: 13px; }
+    .dfb-users-table .tabulator .tabulator-header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569; }
+    .dfb-users-table .tabulator .tabulator-col-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .dfb-users-table .tabulator-row .tabulator-cell { padding: 8px 10px; }
+    .dfb-users-table .tabulator-row.tabulator-row-even { background: #fafbfd; }
+    .dfb-ut-user { display: flex; align-items: center; gap: 8px; }
+    .dfb-ut-user img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #e2e8f0; }
+    .dfb-ut-user b { color: #0f172a; font-weight: 700; }
+    .dfb-ut-pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+    .dfb-ut-pill.is-given { background: #ecfdf5; color: #047857; }
+    .dfb-ut-pill.is-none { background: #fef2f2; color: #b91c1c; }
     @media (max-width: 1199px) {
-        .dfb-week, .dfb-users { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .dfb-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
     @media (max-width: 767px) {
-        .dfb-week, .dfb-users { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .dfb-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 </style>
 @endsection
@@ -229,6 +222,7 @@
                 <p class="dfb-lead">
                     Each department is asked in its own popup, once a week.
                     This week is {{ $weekStart->format('M j') }} – {{ $weekEnd->format('M j') }}.
+                    <strong>Ratings, reviews and averages shown are lifetime totals</strong> (all weeks).
                 </p>
             </div>
         </div>
@@ -283,35 +277,25 @@
     @php
         $uc = $userCards ?? collect();
         $uGiven = $uc->where('ratings', '>', 0)->count();
+        $userRows = $uc->map(function ($u) {
+            return [
+                'name' => $u['name'],
+                'designation' => $u['designation'],
+                'avatar' => $u['avatar'],
+                'status' => $u['ratings'] > 0 ? 1 : 0,
+                'ratings' => $u['ratings'],
+                'reviews' => $u['reviews'],
+                'avg' => $u['avg'],
+                'last' => $u['last_at'] ? $u['last_at']->format('Y-m-d') : '',
+            ];
+        })->values()->all();
     @endphp
     @if($uc->isNotEmpty())
         <div class="dfb-users-head">
-            <h5>Team members</h5>
+            <h5>Team members · Lifetime</h5>
             <span>{{ $uGiven }} given feedback · {{ $uc->count() - $uGiven }} yet to give</span>
         </div>
-        <div class="dfb-users">
-            @foreach($uc as $u)
-                <div class="dfb-ucard {{ $u['ratings'] > 0 ? '' : 'is-none' }}" title="{{ $u['name'] }}">
-                    <div class="dfb-ucard-top">
-                        <img src="{{ $u['avatar'] }}" alt="" loading="lazy">
-                        <div style="min-width:0">
-                            <div class="dfb-ucard-name">{{ $u['name'] }}</div>
-                            @if($u['designation'] !== '')<div class="dfb-ucard-role">{{ $u['designation'] }}</div>@endif
-                        </div>
-                    </div>
-                    @if($u['ratings'] > 0)
-                        <span class="dfb-status is-sent">Given</span>
-                        <div class="dfb-meta">
-                            {{ number_format((float) $u['avg'], 1) }} avg · {{ $u['ratings'] }} {{ $u['ratings'] === 1 ? 'rating' : 'ratings' }} · {{ $u['reviews'] }} {{ $u['reviews'] === 1 ? 'review' : 'reviews' }}
-                            @if($u['last_at'])<br>Last: {{ $u['last_at']->format('M j') }}@endif
-                        </div>
-                    @else
-                        <span class="dfb-status is-none">Not given yet</span>
-                        <div class="dfb-meta">No ratings or reviews</div>
-                    @endif
-                </div>
-            @endforeach
-        </div>
+        <div class="dfb-users-table"><div id="dfbUsersTable"></div></div>
     @endif
 
     <div class="row g-3">
@@ -402,8 +386,52 @@
 @endsection
 
 @section('script-after-vite')
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
 (function () {
+    var userRows = {!! json_encode($userRows ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!};
+    function escHtml(v) {
+        return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    var usersEl = document.getElementById('dfbUsersTable');
+    if (usersEl && window.Tabulator) {
+        new Tabulator(usersEl, {
+            data: userRows,
+            layout: 'fitColumns',
+            maxHeight: '560px',
+            placeholder: 'No team members',
+            // Fewest reviews first, so people who have not given any feedback are on top.
+            initialSort: [{ column: 'reviews', dir: 'asc' }, { column: 'name', dir: 'asc' }],
+            columns: [
+                { title: '#', formatter: 'rownum', width: 50, hozAlign: 'center', headerSort: false },
+                { title: 'Member', field: 'name', minWidth: 180, formatter: function (cell) {
+                    var d = cell.getData();
+                    return '<div class="dfb-ut-user"><img src="' + escHtml(d.avatar) + '" alt="" loading="lazy"><b>' + escHtml(d.name) + '</b></div>';
+                } },
+                { title: 'Designation', field: 'designation', minWidth: 130 },
+                { title: 'Status', field: 'status', width: 130, hozAlign: 'center', formatter: function (cell) {
+                    return cell.getValue() > 0
+                        ? '<span class="dfb-ut-pill is-given">Given</span>'
+                        : '<span class="dfb-ut-pill is-none">Not given yet</span>';
+                }, sorter: 'number' },
+                { title: 'Avg Rating', field: 'avg', width: 110, hozAlign: 'center', sorter: 'number', formatter: function (cell) {
+                    var v = cell.getValue();
+                    return v == null ? '<span class="text-muted">—</span>' : '<span style="color:#d97706">★</span> ' + Number(v).toFixed(1);
+                } },
+                { title: 'No. of Ratings', field: 'ratings', width: 130, hozAlign: 'center', sorter: 'number' },
+                { title: 'No. of Reviews', field: 'reviews', width: 130, hozAlign: 'center', sorter: 'number' },
+                { title: 'Last Given', field: 'last', width: 120, hozAlign: 'center', formatter: function (cell) {
+                    var v = cell.getValue();
+                    if (!v) return '<span class="text-muted">—</span>';
+                    var d = new Date(v + 'T00:00:00');
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                } }
+            ]
+        });
+    }
+
     var mine = @json($mine);
     var questions = @json($questions);
     var focusAreas = @json($focusAreas);
