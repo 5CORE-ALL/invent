@@ -191,6 +191,18 @@
     .dfb-users-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 8px; }
     .dfb-users-head h5 { margin: 0; font-size: 15px; font-weight: 700; }
     .dfb-users-head span { color: #64748b; font-size: 12px; }
+    .dfb-utabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; }
+    .dfb-utabs button {
+        border: 0; background: transparent; padding: 8px 14px; font-size: 13px; font-weight: 700; color: #64748b;
+        border-bottom: 3px solid transparent; margin-bottom: -1px; cursor: pointer;
+    }
+    .dfb-utabs button span {
+        display: inline-block; min-width: 22px; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+        background: #f1f5f9; color: #475569; font-size: 11px; text-align: center;
+    }
+    .dfb-utabs button:hover { color: #0f172a; }
+    .dfb-utabs button.is-active { color: #4338ca; border-bottom-color: #4338ca; }
+    .dfb-utabs button.is-active span { background: #eef2ff; color: #4338ca; }
     .dfb-users-table { margin-bottom: 16px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #fff; }
     .dfb-users-table .tabulator { border: 0; font-size: 13px; }
     .dfb-users-table .tabulator .tabulator-header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #475569; }
@@ -295,6 +307,11 @@
             <h5>Team members · Lifetime</h5>
             <span>{{ $uGiven }} given feedback · {{ $uc->count() - $uGiven }} yet to give</span>
         </div>
+        <div class="dfb-utabs" id="dfbUserTabs" role="tablist">
+            <button type="button" class="is-active" role="tab" data-tab="all">All <span>{{ $uc->count() }}</span></button>
+            <button type="button" role="tab" data-tab="given">Given <span>{{ $uGiven }}</span></button>
+            <button type="button" role="tab" data-tab="none">Not given yet <span>{{ $uc->count() - $uGiven }}</span></button>
+        </div>
         <div class="dfb-users-table"><div id="dfbUsersTable"></div></div>
     @endif
 
@@ -397,7 +414,7 @@
     }
     var usersEl = document.getElementById('dfbUsersTable');
     if (usersEl && window.Tabulator) {
-        new Tabulator(usersEl, {
+        var usersTable = new Tabulator(usersEl, {
             data: userRows,
             layout: 'fitColumns',
             maxHeight: '560px',
@@ -420,7 +437,6 @@
                     var v = cell.getValue();
                     return v == null ? '<span class="text-muted">—</span>' : '<span style="color:#d97706">★</span> ' + Number(v).toFixed(1);
                 } },
-                { title: 'No. of Ratings', field: 'ratings', width: 130, hozAlign: 'center', sorter: 'number' },
                 { title: 'No. of Reviews', field: 'reviews', width: 130, hozAlign: 'center', sorter: 'number' },
                 { title: 'Last Given', field: 'last', width: 120, hozAlign: 'center', formatter: function (cell) {
                     var v = cell.getValue();
@@ -430,6 +446,20 @@
                 } }
             ]
         });
+
+        // Tabs: switch between All / Given / Not given yet and filter the rows.
+        var tabsEl = document.getElementById('dfbUserTabs');
+        if (tabsEl) {
+            tabsEl.addEventListener('click', function (e) {
+                var btn = e.target.closest('button[data-tab]');
+                if (!btn) return;
+                tabsEl.querySelectorAll('button').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+                var tab = btn.getAttribute('data-tab');
+                if (tab === 'given') usersTable.setFilter('status', '=', 1);
+                else if (tab === 'none') usersTable.setFilter('status', '=', 0);
+                else usersTable.clearFilter();
+            });
+        }
     }
 
     var mine = @json($mine);
