@@ -5486,15 +5486,19 @@ class AmazonAdsController extends Controller
         if ($firstData > $start) {
             $start = $firstData;
         }
-        $window = static function (array $tot, string $day, int $len): array {
-            $sum = ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0];
+        // Store-wide total sales per Pacific day: the TACOS% base (ads sales is the ACOS base).
+        $totalSalesByDay = self::amazonTotalSalesByDay($from, $end);
+        $window = static function (array $tot, string $day, int $len) use ($totalSalesByDay): array {
+            $sum = ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0, 'total_sales' => 0.0];
             $d = new \DateTimeImmutable($day);
             for ($i = 0; $i < $len; $i++) {
-                $row = $tot[$d->modify('-'.$i.' day')->format('Y-m-d')] ?? null;
+                $dayKey = $d->modify('-'.$i.' day')->format('Y-m-d');
+                $sum['total_sales'] += (float) ($totalSalesByDay[$dayKey] ?? 0);
+                $row = $tot[$dayKey] ?? null;
                 if ($row === null) {
                     continue;
                 }
-                foreach ($sum as $f => $_) {
+                foreach (['spend', 'sales', 'clicks', 'sold', 'budget'] as $f) {
                     $sum[$f] += $row[$f];
                 }
             }
@@ -5510,7 +5514,8 @@ class AmazonAdsController extends Controller
             $o['bid'] = $w['clicks'] > 0 ? $spend / $w['clicks'] : null;
             $o['cvr'] = $w['clicks'] > 0 ? $w['sold'] / $w['clicks'] * 100 : null;
             $o['acos'] = AmazonAdsYesterdayBadgeHistory::acos($spend, $w['sales']);
-            $o['tacos'] = $o['acos']; // Y TACOS% = spend ÷ sales (only the y_tacos key is exposed)
+            // TACOS% = ad spend ÷ store-wide TOTAL sales (not ads sales, which is what ACOS uses).
+            $o['tacos'] = ($w['total_sales'] ?? 0) > 0 ? $spend / $w['total_sales'] * 100 : null;
             $o['clicks'] = $w['clicks'] * $mul;
             $o['sold'] = $w['sold'] * $mul;
             $o['sales'] = $w['sales'] * $mul;
@@ -5534,7 +5539,7 @@ class AmazonAdsController extends Controller
         while ($cursor <= $last) {
             $day = $cursor->format('Y-m-d');
             $vals = [];
-            foreach ($derive($tot[$day] ?? ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0], 1, false) as $k => $v) {
+            foreach ($derive($window($tot, $day, 1), 1, false) as $k => $v) {
                 if ($k !== 'bgt_total') {
                     $vals['y_'.$k] = $v;
                 }
@@ -8271,6 +8276,7 @@ class AmazonAdsController extends Controller
         }
         if ($kpiBlocks !== null) {
             $payload['kpiBlocks'] = $kpiBlocks;
+            $payload['kpiTotalSales'] = self::amazonKpiTotalSales();
         }
         if ($acosGpftFlagCount !== null) {
             $payload['acosGpftFlagCount'] = $acosGpftFlagCount;
@@ -8531,12 +8537,61 @@ class AmazonAdsController extends Controller
         }
         if ($kpiBlocksSum !== null) {
             $payload['kpiBlocks'] = $kpiBlocksSum;
+            // Store-wide total sales (not campaign ads sales): never summed across SP + SB.
+            $payload['kpiTotalSales'] = self::amazonKpiTotalSales();
         }
         if ($haveAcosGpftFlag) {
             $payload['acosGpftFlagCount'] = $acosGpftFlagSum;
         }
 
         return $payload;
+    }
+
+    /**
+     * Total Amazon sales (all orders, not just ad-attributed) for the windows the TACOS% tiles need:
+     * Yesterday = the last complete Pacific day, L7 / L30 = 7 / 30 Pacific days ending yesterday.
+     * TACOS% = ad spend ÷ these total sales. Null for a window when orders cannot be read.
+     *
+     * @return array{y: float|null, l7: float|null, l30: float|null}
+     */
+    private static function amazonKpiTotalSales(): array
+    {
+        static $memo = null;
+        if ($memo !== null) {
+            return $memo;
+        }
+        $out = ['y' => null, 'l7' => null, 'l30' => null];
+        try {
+            $yesterday = Carbon::yesterday('America/Los_Angeles');
+            $end = $yesterday->copy()->endOfDay()->utc();
+            foreach (['y' => 1, 'l7' => 7, 'l30' => 30] as $key => $days) {
+                $start = $yesterday->copy()->subDays($days - 1)->startOfDay()->utc();
+                $out[$key] = round((float) \App\Models\AmazonOrder::productSalesByOrderDate($start, $end), 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads KPI total sales failed: '.$e->getMessage());
+        }
+
+        return $memo = $out;
+    }
+
+    /**
+     * Total Amazon sales per Pacific day (Y-m-d => sales) for the TACOS% history. Empty when orders cannot be read.
+     *
+     * @return array<string, float>
+     */
+    private static function amazonTotalSalesByDay(string $from, string $to): array
+    {
+        try {
+            return \App\Models\AmazonOrder::productSalesGroupedByPacificDay(
+                Carbon::parse($from, 'America/Los_Angeles')->startOfDay()->utc(),
+                Carbon::parse($to, 'America/Los_Angeles')->endOfDay()->utc()
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads TACOS history total sales failed: '.$e->getMessage());
+
+            return [];
+        }
     }
 
     /**

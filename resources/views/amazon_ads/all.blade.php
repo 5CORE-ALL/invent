@@ -1303,15 +1303,13 @@
                                 ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).', null],
                                 ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.', null],
                                 ['y_acos', 'Y ACOS%', 'Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.', ['amazonAdsYesterdayAcosBadgeDot', 'yacos', 'ACOS']],
-                                ['y_tacos', 'Y TACOS%', 'Yesterday TACOS% = yesterday spend ÷ yesterday sales.', null],
+                                ['y_tacos', 'Y TACOS%', 'Yesterday TACOS% (Total ACOS) = yesterday ad spend ÷ yesterday TOTAL Amazon sales (all orders, not only ad sales).', null],
                                 ['y_clicks', 'Y CLICKS', 'Yesterday clicks (Amazon L1).', null],
                                 ['y_sold', 'Y SOLD', 'Yesterday units sold (Amazon L1).', null],
                                 ['y_sales', 'Y SALES', 'Yesterday ads sales (Amazon L1).', ['amazonAdsYesterdaySalesBadgeDot', 'ysales', 'Ads Sales']],
                                 ['y_spend', 'Y SPEND', 'Yesterday spend (Amazon L1).', ['amazonAdsYesterdaySpendBadgeDot', 'yspend', 'Spend']],
                             ]],
                             ['tag' => 'L30', 'title' => 'L30', 'items' => [
-                                ['l30_bgt', 'BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L30 row), summed over the campaigns shown. Not the suggested SBGT.', null],
-                                ['l30_util', 'UTIL', 'L30 utilization = 30-day spend ÷ (daily budget × 30).', null],
                                 ['l30_bid', 'AVG BID', 'L30 avg bid = 30-day spend ÷ clicks (avg CPC).', null],
                                 ['l30_cvr', 'CVR%', 'Ads CVR = ads sold ÷ ads clicks (L30).', null],
                                 ['l30_acos', 'ACOS%', 'Overall ACOS from Amazon L30.', null],
@@ -1322,12 +1320,10 @@
                                 ['l30_bgt_total', 'BGT × 30', 'CURRENT daily budget (Amazon) × 30.', null],
                             ]],
                             ['tag' => 'Projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
-                                ['p_bgt', 'BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L7 row), summed over the campaigns shown. Not the suggested SBGT.', null],
-                                ['p_util', 'UTIL', 'L7 utilization = 7-day spend ÷ (daily budget × 7).', null],
                                 ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).', null],
                                 ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.', null],
                                 ['p_acos', 'ACOS%', 'Projected ACOS% = projected spend ÷ projected ads sales.', null],
-                                ['p_tacos', 'TACOS%', 'Projected TACOS% = projected spend ÷ projected sales.', null],
+                                ['p_tacos', 'TACOS%', 'Projected TACOS% = projected spend ÷ projected TOTAL Amazon sales (L7 pace, all orders, not only ad sales).', null],
                                 ['p_clicks', 'CLICKS', 'Projected clicks = L7 clicks ÷ 7 × 30.', null],
                                 ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.', null],
                                 ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.', null],
@@ -4228,7 +4224,7 @@
                 spend: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false }
             };
             function amzNum(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
-            function amzWindowKpis(w, days, acosPct) {
+            function amzWindowKpis(w, days, acosPct, totalSales) {
                 var o = {};
                 if (!w) return o;
                 var bud = amzNum(w.budget), sp = amzNum(w.spend), cl = amzNum(w.clicks), so = amzNum(w.sold);
@@ -4237,8 +4233,9 @@
                 o.bid = (sp !== null && cl !== null && cl > 0) ? sp / cl : null;
                 o.cvr = (so !== null && cl !== null && cl > 0) ? so / cl * 100 : null;
                 o.acos = amzNum(acosPct);
-                // TACOS% = spend ÷ sales × 100.
-                o.tacos = (sp !== null && amzNum(w.sales) !== null && amzNum(w.sales) > 0) ? sp / amzNum(w.sales) * 100 : (sp !== null && sp > 0 ? 100 : (sp !== null ? 0 : null));
+                // TACOS% = ad spend ÷ store-wide TOTAL sales × 100 (ACOS uses ads sales; TACOS must not).
+                var ts = amzNum(totalSales);
+                o.tacos = (sp !== null && ts !== null && ts > 0) ? sp / ts * 100 : null;
                 o.clicks = cl; o.sold = so; o.sales = amzNum(w.sales); o.spend = sp;
                 return o;
             }
@@ -4248,9 +4245,10 @@
                 var cmp = {};
                 var base = {};
                 if (b) {
-                    var y = amzWindowKpis(b.y, 1, json.yesterdayAcosPercent);
-                    var l30 = amzWindowKpis(b.l30, 30, json.overallAcosPercent);
-                    var p = amzWindowKpis(b.l7, 7, json.projectedAcosPercent);
+                    var tsb = json.kpiTotalSales || {};
+                    var y = amzWindowKpis(b.y, 1, json.yesterdayAcosPercent, tsb.y);
+                    var l30 = amzWindowKpis(b.l30, 30, json.overallAcosPercent, tsb.l30);
+                    var p = amzWindowKpis(b.l7, 7, json.projectedAcosPercent, tsb.l7);
                     // Projected volume tiles = L7 ÷ 7 × 30 (same formula as the existing projected spend / sales).
                     var proj = function (v) { return v === null ? null : v / 7 * 30; };
                     var pv = {
