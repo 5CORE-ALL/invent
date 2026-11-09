@@ -76,11 +76,21 @@ class MovementAnalysisController extends Controller
         }
 
         $amzPriceBySku = [];
+        // Standard price only (amazon_data_view.STANDARD_PRICE) — used for the "Std Prc $" inventory value.
+        $stdPriceBySku = [];
         try {
             foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
                 $val = is_array($adv->value)
                     ? $adv->value
                     : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $onlyStd = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? null;
+                if (is_numeric($onlyStd) && (float) $onlyStd > 0) {
+                    $sk = strtoupper(trim((string) $adv->sku));
+                    if ($sk !== '') {
+                        $stdPriceBySku[$sk] = (float) $onlyStd;
+                        $stdPriceBySku[str_replace(' ', '', $sk)] = (float) $onlyStd;
+                    }
+                }
                 $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? $val['AMAZON_PRICE'] ?? $val['amazon_price'] ?? $val['price'] ?? null;
                 if (! is_numeric($std) || (float) $std <= 0) {
                     continue;
@@ -111,7 +121,7 @@ class MovementAnalysisController extends Controller
             // ignore missing amazon_datsheets
         }
 
-        $processedData = $filteredData->map(function ($item) use ($shopifyData, $movementBySku, $amzPriceBySku) {
+        $processedData = $filteredData->map(function ($item) use ($shopifyData, $movementBySku, $amzPriceBySku, $stdPriceBySku) {
             $childSku = trim((string) ($item->sku ?? ''));
             $parent = trim((string) ($item->parent ?? ''));
             $item->sku = $childSku;
@@ -133,6 +143,8 @@ class MovementAnalysisController extends Controller
                 $item->dil = null;
                 $item->amz_price = 0;
                 $item->amz_value = null;
+                $item->std_price = 0;
+                $item->std_value = null;
                 $item->lp = 0;
 
                 return $item;
@@ -173,6 +185,8 @@ class MovementAnalysisController extends Controller
             $skuKey = strtoupper($childSku);
             $item->amz_price = $amzPriceBySku[$skuKey] ?? $amzPriceBySku[str_replace(' ', '', $skuKey)] ?? 0;
             $item->amz_value = (int) round($inv * (float) $item->amz_price);
+            $item->std_price = $stdPriceBySku[$skuKey] ?? $stdPriceBySku[str_replace(' ', '', $skuKey)] ?? 0;
+            $item->std_value = (int) round($inv * (float) $item->std_price);
 
             return $item;
         })->values();
@@ -188,15 +202,17 @@ class MovementAnalysisController extends Controller
             'count' => $this->movementDilHistoryRows('movement_analysis_dil_count_hist'),
             'amz' => $this->movementDilHistoryRows('movement_analysis_dil_amz_hist'),
             'lp' => $this->movementDilHistoryRows('movement_analysis_dil_lp_hist'),
+            'std' => $this->movementDilHistoryRows('movement_analysis_dil_std_hist'),
         ]);
     }
 
     private function rememberMovementDilHistory($rows): void
     {
-        $bands = ['0', '0.1-25', '25-50', '50-100', 'gt-100'];
+        $bands = ['0', '0.1-10', '10-25', '25-50', '50-100', 'gt-100'];
         $count = array_fill_keys($bands, 0);
         $amz = array_fill_keys($bands, 0);
         $lp = array_fill_keys($bands, 0);
+        $std = array_fill_keys($bands, 0);
 
         foreach ($rows as $item) {
             $sku = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($item->sku ?? ''))));
@@ -210,6 +226,7 @@ class MovementAnalysisController extends Controller
             $band = $this->movementDilBand((float) ($item->dil ?? 0));
             $count[$band]++;
             $amz[$band] += (float) ($item->amz_value ?? 0);
+            $std[$band] += (float) ($item->std_value ?? 0);
             $lpPrice = (float) ($item->lp ?? 0);
             if ($lpPrice > 0) {
                 $lp[$band] += $inv * $lpPrice;
@@ -221,6 +238,7 @@ class MovementAnalysisController extends Controller
             'movement_analysis_dil_count_hist' => $count,
             'movement_analysis_dil_amz_hist' => $amz,
             'movement_analysis_dil_lp_hist' => $lp,
+            'movement_analysis_dil_std_hist' => $std,
         ] as $key => $day) {
             $hist = Cache::get($key, []);
             if (! is_array($hist)) {
@@ -252,7 +270,11 @@ class MovementAnalysisController extends Controller
             return '25-50';
         }
 
-        return '0.1-25';
+        if ($dil > 10) {
+            return '10-25';
+        }
+
+        return '0.1-10';
     }
 
     private function movementDilHistoryRows(string $cacheKey): array

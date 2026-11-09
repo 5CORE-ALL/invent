@@ -88,7 +88,7 @@
             align-items: flex-start;
             gap: 10px;
             flex: 1 1 320px;
-            min-width: 280px;
+            min-width: 340px;
             max-width: 560px;
             padding: 8px 10px;
             border: 1px solid #e2e8f0;
@@ -96,9 +96,9 @@
             background: #f8fafc;
         }
         .ma-dil-pie-canvas-wrap {
-            width: 140px;
+            width: 180px;
             height: 140px;
-            flex: 0 0 140px;
+            flex: 0 0 180px;
             overflow: hidden;
             position: relative;
             z-index: 0;
@@ -334,6 +334,12 @@
                     </div>
                     <div class="ma-dil-pie-wrap">
                         <div class="ma-dil-pie-canvas-wrap">
+                            <canvas id="ma-dil-std-pie"></canvas>
+                        </div>
+                        <div class="ma-dil-pie-legend" id="ma-dil-std-legend"></div>
+                    </div>
+                    <div class="ma-dil-pie-wrap">
+                        <div class="ma-dil-pie-canvas-wrap">
                             <canvas id="ma-dil-lp-pie"></canvas>
                         </div>
                         <div class="ma-dil-pie-legend" id="ma-dil-lp-legend"></div>
@@ -443,18 +449,22 @@
     let maDilPieChart = null;
     let maDilAmzPieChart = null;
     let maDilLpPieChart = null;
+    let maDilStdPieChart = null;
     let maDilHistChart = null;
     let maDilLiveCounts = {};
     let maDilLiveAmzValues = {};
     let maDilLiveLpValues = {};
+    let maDilLiveStdValues = {};
     let maDilActiveBand = null;
     let maSnapshotHistory = true;
     const MA_DIL_HIST_KEY = 'movement_analysis_dil_hist';
     const MA_DIL_AMZ_HIST_KEY = 'movement_analysis_dil_amz_hist';
     const MA_DIL_LP_HIST_KEY = 'movement_analysis_dil_lp_hist';
+    const MA_DIL_STD_HIST_KEY = 'movement_analysis_dil_std_hist';
     const MA_DIL_SLABS = [
         { key: '0', label: '0%', min: 0, max: 0, color: '#dc3545' },
-        { key: '0.1-25', label: '0.1–25%', min: 0.1, max: 25, color: '#ffc107' },
+        { key: '0.1-10', label: '0.1–10%', min: 0.1, max: 10, color: '#fd7e14' },
+        { key: '10-25', label: '10–25%', min: 10, max: 25, color: '#ffc107' },
         { key: '25-50', label: '25–50%', min: 25, max: 50, color: '#28a745' },
         { key: '50-100', label: '50–100%', min: 50, max: 100, color: '#e83e8c' },
         { key: 'gt-100', label: '>100%', min: 100, max: Infinity, color: '#4e0dab' },
@@ -497,6 +507,12 @@
         const price = parseFloat(row && row.amz_price) || 0;
         return inv > 0 ? inv * price : 0;
     }
+    // INV × Standard Price (amazon_data_view.STANDARD_PRICE); SKUs without a standard price count as $0.
+    function maRowStdValue(row) {
+        const inv = maRowInv(row);
+        const price = parseFloat(row && row.std_price) || 0;
+        return inv > 0 && price > 0 ? inv * price : 0;
+    }
     function maRowLpValue(row) {
         const inv = maRowInv(row);
         const lp = parseFloat(row && row.lp) || 0;
@@ -529,11 +545,13 @@
     function maDilSlabForRow(row) {
         if (maRowInv(row) <= 0) return null;
         const n = Number(maRowDil(row)) || 0;
-        if (maOvDilIsZero(n)) return MA_DIL_SLABS[0];
-        if (n > 100) return MA_DIL_SLABS[4];
-        if (n >= 50) return MA_DIL_SLABS[3];
-        if (n > 25) return MA_DIL_SLABS[2];
-        return MA_DIL_SLABS[1];
+        const slabBy = function(key) { return MA_DIL_SLABS.find(function(s) { return s.key === key; }); };
+        if (maOvDilIsZero(n)) return slabBy('0');
+        if (n > 100) return slabBy('gt-100');
+        if (n >= 50) return slabBy('50-100');
+        if (n > 25) return slabBy('25-50');
+        if (n > 10) return slabBy('10-25');
+        return slabBy('0.1-10');
     }
     function maTodayKey() {
         try {
@@ -592,6 +610,9 @@
     }
     function maCollectDilAmzValues(rows) {
         return maCollectDilValues(rows, maRowAmzValue);
+    }
+    function maCollectDilStdValues(rows) {
+        return maCollectDilValues(rows, maRowStdValue);
     }
     function maCollectDilLpValues(rows) {
         return maCollectDilValues(rows, maRowLpValue);
@@ -663,20 +684,39 @@
             maDilPieChart.destroy();
             maDilPieChart = null;
         }
-        maDilPieChart = new Chart(canvas.getContext('2d'), {
-            type: 'pie',
+        maDilPieChart = maNewDilBarChart(canvas, counts, shares, function(n) { return maRoundInt(n) + ' SKU'; }, function(n) { return String(maRoundInt(n)); });
+    }
+    // Column (bar) chart, one bar per DIL slab; click a bar to filter the table by that slab.
+    function maNewDilBarChart(canvas, values, shares, tipFmt, tickFmt) {
+        return new Chart(canvas.getContext('2d'), {
+            type: 'bar',
             data: {
                 labels: MA_DIL_SLABS.map(function(s) { return s.label; }),
                 datasets: [{
-                    data: MA_DIL_SLABS.map(function(s) { return counts[s.key] || 0; }),
+                    data: MA_DIL_SLABS.map(function(s) { return values[s.key] || 0; }),
                     backgroundColor: MA_DIL_SLABS.map(function(s) { return s.color; }),
-                    borderColor: '#fff',
-                    borderWidth: 1,
+                    borderWidth: 0,
+                    borderRadius: 3,
+                    maxBarThickness: 28,
+                    barPercentage: 0.85,
+                    categoryPercentage: 0.8,
                 }],
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { top: 2, right: 2 } },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45, autoSkip: false },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { font: { size: 8 }, maxTicksLimit: 4, callback: function(v) { return tickFmt(v); } },
+                        grid: { color: '#e2e8f0' },
+                    },
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -685,7 +725,7 @@
                                 const n = Number(ctx.raw) || 0;
                                 const slab = MA_DIL_SLABS[ctx.dataIndex];
                                 const pct = slab ? (shares[slab.key] || 0) : 0;
-                                return ' ' + maRoundInt(n) + ' SKU  ·  ' + pct + '% of total';
+                                return ' ' + tipFmt(n) + '  ·  ' + pct + '% of total';
                             },
                         },
                     },
@@ -695,8 +735,7 @@
                         maSetDilBandFilter(null);
                         return;
                     }
-                    const idx = els[0].index;
-                    const slab = MA_DIL_SLABS[idx];
+                    const slab = MA_DIL_SLABS[els[0].index];
                     if (slab) maSetDilBandFilter(slab.key);
                 },
             },
@@ -709,68 +748,37 @@
         if (prevChart) {
             try { prevChart.destroy(); } catch (e) { /* ignore */ }
         }
-        return new Chart(canvas.getContext('2d'), {
-            type: 'pie',
-            data: {
-                labels: MA_DIL_SLABS.map(function(s) { return s.label; }),
-                datasets: [{
-                    data: MA_DIL_SLABS.map(function(s) { return values[s.key] || 0; }),
-                    backgroundColor: MA_DIL_SLABS.map(function(s) { return s.color; }),
-                    borderColor: '#fff',
-                    borderWidth: 1,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const n = Number(ctx.raw) || 0;
-                                const slab = MA_DIL_SLABS[ctx.dataIndex];
-                                const pct = slab ? (shares[slab.key] || 0) : 0;
-                                return ' ' + maMoneyCompact(n) + '  ·  ' + pct + '% of total';
-                            },
-                        },
-                    },
-                },
-                onClick: function(_evt, els) {
-                    if (!els || !els.length) {
-                        maSetDilBandFilter(null);
-                        return;
-                    }
-                    const idx = els[0].index;
-                    const slab = MA_DIL_SLABS[idx];
-                    if (slab) maSetDilBandFilter(slab.key);
-                },
-            },
-        });
+        return maNewDilBarChart(canvas, values, shares, function(n) { return maMoneyCompact(n); }, function(n) { return maMoneyCompact(n); });
     }
     function maRefreshDilLegends() {
         const countLegend = document.getElementById('ma-dil-legend');
         if (countLegend) countLegend.innerHTML = maDilLegendHtml('Dil', maDilLiveCounts, 'count', false);
         const amzLegend = document.getElementById('ma-dil-amz-legend');
         if (amzLegend) amzLegend.innerHTML = maDilLegendHtml('Amz $', maDilLiveAmzValues, 'amz', true);
+        const stdLegend = document.getElementById('ma-dil-std-legend');
+        if (stdLegend) stdLegend.innerHTML = maDilLegendHtml('Std Prc $', maDilLiveStdValues, 'std', true);
         const lpLegend = document.getElementById('ma-dil-lp-legend');
         if (lpLegend) lpLegend.innerHTML = maDilLegendHtml('LP $', maDilLiveLpValues, 'lp', true);
     }
     function maRenderDilPie(rows, snapshot) {
         const counts = maCollectDilCounts(rows);
         const amzValues = maCollectDilAmzValues(rows);
+        const stdValues = maCollectDilStdValues(rows);
         const lpValues = maCollectDilLpValues(rows);
         maDilLiveCounts = counts;
         maDilLiveAmzValues = amzValues;
+        maDilLiveStdValues = stdValues;
         maDilLiveLpValues = lpValues;
         if (snapshot) {
             maSnapDilHistory(MA_DIL_HIST_KEY, counts);
             maSnapDilHistory(MA_DIL_AMZ_HIST_KEY, amzValues);
+            maSnapDilHistory(MA_DIL_STD_HIST_KEY, stdValues);
             maSnapDilHistory(MA_DIL_LP_HIST_KEY, lpValues);
         }
         maRefreshDilLegends();
         maDrawDilPie(counts);
         maDilAmzPieChart = maDrawDilMoneyPie('ma-dil-amz-pie', maDilAmzPieChart, amzValues);
+        maDilStdPieChart = maDrawDilMoneyPie('ma-dil-std-pie', maDilStdPieChart, stdValues);
         maDilLpPieChart = maDrawDilMoneyPie('ma-dil-lp-pie', maDilLpPieChart, lpValues);
     }
     function maFillSkuFilterList(rows) {
@@ -1035,13 +1043,12 @@
         if (band == null || band === '') return;
         band = String(band);
         maDilHistBand = band;
-        maDilHistKind = kind === 'amz' ? 'amz' : (kind === 'lp' ? 'lp' : 'count');
+        maDilHistKind = (kind === 'amz' || kind === 'lp' || kind === 'std') ? kind : 'count';
         const spec = MA_DIL_SLABS.find(function(s) { return s.key === band; })
             || { key: band, label: band, color: '#6f42c1' };
         const bandLabel = spec.oos ? 'INV 0' : spec.label;
-        const title = maDilHistKind === 'amz'
-            ? ('Dil ' + bandLabel + ' Amz $')
-            : (maDilHistKind === 'lp' ? ('Dil ' + bandLabel + ' LP $') : ('Dil ' + bandLabel + ' count'));
+        const kindTitle = { amz: ' Amz $', lp: ' LP $', std: ' Std Prc $', count: ' count' };
+        const title = 'Dil ' + bandLabel + kindTitle[maDilHistKind];
         const titleEl = document.getElementById('ma-dil-hist-title');
         if (titleEl) titleEl.textContent = title;
         maShowFullWidthModal('maDilHistModal');
@@ -1085,14 +1092,10 @@
         if (band == null || band === '') band = maDilHistBand;
         if (band == null || band === '') return;
         band = String(band);
-        const money = maDilHistKind === 'amz' || maDilHistKind === 'lp';
-        const histKey = maDilHistKind === 'amz' ? 'amz' : (maDilHistKind === 'lp' ? 'lp' : 'count');
-        const live = maDilHistKind === 'amz'
-            ? maDilLiveAmzValues
-            : (maDilHistKind === 'lp' ? maDilLiveLpValues : maDilLiveCounts);
-        const storeKey = maDilHistKind === 'amz'
-            ? MA_DIL_AMZ_HIST_KEY
-            : (maDilHistKind === 'lp' ? MA_DIL_LP_HIST_KEY : MA_DIL_HIST_KEY);
+        const money = maDilHistKind !== 'count';
+        const histKey = maDilHistKind;
+        const live = { amz: maDilLiveAmzValues, lp: maDilLiveLpValues, std: maDilLiveStdValues, count: maDilLiveCounts }[maDilHistKind];
+        const storeKey = { amz: MA_DIL_AMZ_HIST_KEY, lp: MA_DIL_LP_HIST_KEY, std: MA_DIL_STD_HIST_KEY, count: MA_DIL_HIST_KEY }[maDilHistKind];
         const token = ++maDilHistPaintToken;
         const draw = function(serverRows) {
             if (token !== maDilHistPaintToken || band !== String(maDilHistBand)) return;
@@ -1296,7 +1299,7 @@
                     field: "dil",
                     visKey: "dil",
                     sorter: "number",
-                    headerTooltip: "OV L30 ÷ INV. Red 0% rounds to 0.00 with INV > 0 · 0.1–25% yellow · 25–50% green · 50–100% pink · >100% purple. INV 0 is left out of the charts.",
+                    headerTooltip: "OV L30 ÷ INV. Red 0% rounds to 0.00 with INV > 0 · 0.1–10% orange · 10–25% yellow · 25–50% green · 50–100% pink · >100% purple. INV 0 is left out of the charts.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         if (maIsParentRow(row) || maRowInv(row) <= 0) return '';
@@ -1470,7 +1473,7 @@
             if (band == null || band === '') return;
             maDrawDilHist(String(band), kind);
         });
-        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable, #ma-dil-lp-legend .ma-dil-pie-row.is-filterable', function (e) {
+        $(document).off('click.maDilFilter').on('click.maDilFilter', '#ma-dil-legend .ma-dil-pie-row.is-filterable, #ma-dil-amz-legend .ma-dil-pie-row.is-filterable, #ma-dil-std-legend .ma-dil-pie-row.is-filterable, #ma-dil-lp-legend .ma-dil-pie-row.is-filterable', function (e) {
             if ($(e.target).closest('.ma-dil-hist-dot').length) return;
             maSetDilBandFilter(String(this.getAttribute('data-band') || ''));
         });
