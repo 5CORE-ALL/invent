@@ -1,7 +1,8 @@
 @extends('layouts.vertical', ['title' => 'Ebay1 Data', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {{-- Font Awesome 6.4.0 is served from this site (public/vendor/fontawesome), not a CDN, so the icons always load. --}}
+    <link rel="stylesheet" href="{{ asset('vendor/fontawesome/css/all.min.css') }}?v=6.4.0">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
         .e1d-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
@@ -19,6 +20,12 @@
         .e1d-badge.listed { background: #0284c7; }
         .e1d-badge.missing { background: #be123c; }
         .e1d-badge.rows { background: #334155; }
+        .e1d-catpicked { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: .45rem .65rem; font-size: .8rem; color: #334155; }
+        .e1d-catpicked.on { background: #ecfdf5; border-color: #86efac; color: #14532d; }
+        .e1d-catrow { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #f1f5f9; padding: .3rem .5rem; font-size: .8rem; color: #334155; cursor: pointer; }
+        .e1d-catrow:hover { background: #eff6ff; }
+        .e1d-catrow.on { background: #dbeafe; font-weight: 600; }
+        .e1d-catrow small { color: #94a3b8; margin-left: .35rem; }
         .e1d-badge.specmiss { background: #dc2626; display: inline-flex; align-items: center; gap: 6px; }
         .e1d-hist-dot {
             display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid #fecaca;
@@ -288,6 +295,9 @@
                         <button type="button" class="btn btn-sm btn-secondary" id="e1dHdrBtn" title="Edit Column Header: rename the header of any column of this table" aria-label="Edit Column Header">
                             <i class="fas fa-heading"></i>
                         </button>
+                        <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another eBay category, picked from every eBay category" aria-label="Change Category">
+                            <i class="fas fa-tags"></i>
+                        </button>
                         <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live eBay 1 listings" aria-label="Delete Column" disabled>
                             <i class="fas fa-trash-alt"></i>
                         </button>
@@ -390,6 +400,28 @@
                 <span class="d-flex gap-2">
                     <button type="button" class="btn btn-sm btn-light" id="e1dHdrCancel">Cancel</button>
                     <button type="button" class="btn btn-sm btn-primary" id="e1dHdrGo">Save</button>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="e1d-modal" id="e1dCatModal" hidden>
+        <div class="e1d-modal-box" role="dialog" aria-modal="true" aria-labelledby="e1dCatTitle">
+            <h5 id="e1dCatTitle" class="mb-2"><i class="fas fa-tags text-dark"></i> Change Category</h5>
+            <p class="small text-muted mb-2" id="e1dCatIntro"></p>
+            <label class="e1d-addopt fw-bold border-bottom mb-1"><input type="checkbox" id="e1dCatAllSkus"> <span id="e1dCatSkuHead">SKUs</span></label>
+            <div class="e1d-addlist mb-2" id="e1dCatSkus" style="max-height:170px"></div>
+            <label class="form-label small fw-bold" for="e1dCatSearch">Move them to this eBay category</label>
+            <input type="text" id="e1dCatSearch" class="form-control form-control-sm mb-1" placeholder="Search all eBay categories, e.g. car subwoofers" autocomplete="off">
+            <div class="small text-muted mb-1" id="e1dCatCount"></div>
+            <div class="e1d-addlist mb-2" id="e1dCatList" role="listbox" style="max-height:230px"></div>
+            <div class="e1d-catpicked" id="e1dCatPicked">No category picked yet.</div>
+            <div class="small my-2" id="e1dCatHint"></div>
+            <div class="d-flex justify-content-between gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="e1dCatRefresh" title="Fetch the category list from eBay again">Refetch list</button>
+                <span class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-light" id="e1dCatCancel">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-dark" id="e1dCatGo" disabled>Change category</button>
                 </span>
             </div>
         </div>
@@ -582,6 +614,160 @@
                 spec.categories.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
                 specMissing = spec;
                 return totals;
+            }
+
+            // ---- Change Category: pick any eBay category, apply it to many SKUs at once (ticked rows, else the open tab). ----
+            let catRows = [];          // rows the window was opened for
+            let catPicked = new Set(); // SKUs ticked in the window
+            let catChoice = null;      // { id, path }
+            let catTimer = null;
+            let catBusy = false;
+            let catSeq = 0;
+
+            function catScope() {
+                const selected = table && tableReady ? table.getSelectedData() : [];
+                if (selected.length) return { selected: true, rows: selected };
+                if (activeTab === ALL || !table || !tableReady) return { selected: false, rows: [] };
+                return { selected: false, rows: table.getData('active').filter(passesTab) };
+            }
+
+            function renderCatSkus() {
+                const box = document.getElementById('e1dCatSkus');
+                box.innerHTML = '';
+                catRows.forEach(function (row) {
+                    const sku = String(row.sku);
+                    const label = document.createElement('label');
+                    label.className = 'e1d-addopt';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = catPicked.has(sku);
+                    cb.addEventListener('change', function () {
+                        if (cb.checked) catPicked.add(sku); else catPicked.delete(sku);
+                        syncCatState();
+                    });
+                    const text = document.createElement('span');
+                    text.innerHTML = esc(sku) + ' <small class="text-muted">' + esc(catLabel(catKey(row))) + '</small>';
+                    label.appendChild(cb);
+                    label.appendChild(text);
+                    box.appendChild(label);
+                });
+                syncCatState();
+            }
+
+            function syncCatState() {
+                const all = document.getElementById('e1dCatAllSkus');
+                all.checked = catRows.length > 0 && catPicked.size === catRows.length;
+                all.indeterminate = catPicked.size > 0 && catPicked.size < catRows.length;
+                document.getElementById('e1dCatSkuHead').textContent = 'SKUs to change (' + catPicked.size + ' of ' + catRows.length + ' ticked)';
+                document.getElementById('e1dCatGo').disabled = catBusy || !catChoice || catPicked.size === 0;
+                const picked = document.getElementById('e1dCatPicked');
+                picked.classList.toggle('on', !!catChoice);
+                picked.innerHTML = catChoice
+                    ? '<b>' + catPicked.size + ' SKU' + (catPicked.size === 1 ? '' : 's') + '</b> will move to <b>' + esc(catChoice.path) + '</b> <small>(ID ' + esc(catChoice.id) + ')</small>'
+                    : 'No category picked yet.';
+            }
+
+            async function loadCatList() {
+                const list = document.getElementById('e1dCatList');
+                const count = document.getElementById('e1dCatCount');
+                const q = document.getElementById('e1dCatSearch').value.trim();
+                const seq = ++catSeq;
+                list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Loading the eBay categories… The first time, they are fetched from eBay (about a minute).</div>';
+                try {
+                    const res = await fetch('/ebay1-data/ebay-categories?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+                    const json = await res.json();
+                    if (seq !== catSeq) return;
+                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not load the eBay categories');
+                    count.textContent = json.total.toLocaleString() + ' eBay categories' + (q ? ' match' : '') + (json.total > json.results.length ? ' (first ' + json.results.length + ' shown, type more to narrow)' : '')
+                        + (json.fetched_at ? ' · list fetched ' + json.fetched_at : '');
+                    list.innerHTML = '';
+                    if (!json.results.length) list.innerHTML = '<div class="small text-muted p-2">No eBay category matches.</div>';
+                    json.results.forEach(function (cat) {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'e1d-catrow' + (catChoice && catChoice.id === cat.id ? ' on' : '');
+                        btn.innerHTML = esc(cat.path) + '<small>' + esc(cat.id) + '</small>';
+                        btn.addEventListener('click', function () {
+                            catChoice = { id: cat.id, path: cat.path };
+                            list.querySelectorAll('.e1d-catrow').forEach(function (el) { el.classList.remove('on'); });
+                            btn.classList.add('on');
+                            syncCatState();
+                        });
+                        list.appendChild(btn);
+                    });
+                } catch (e) {
+                    if (seq !== catSeq) return;
+                    count.textContent = '';
+                    list.innerHTML = '<div class="alert alert-danger small m-2">' + esc(e.message || 'Could not load the eBay categories') + '</div>';
+                }
+            }
+
+            function openCatModal() {
+                const scope = catScope();
+                if (!scope.rows.length) {
+                    rowToast('Tick the rows to change, or open a category tab first.', false);
+                    return;
+                }
+                catRows = scope.rows.slice();
+                catPicked = new Set(catRows.map(function (r) { return String(r.sku); }));
+                catChoice = null;
+                catBusy = false;
+                document.getElementById('e1dCatIntro').textContent = scope.selected
+                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is.'
+                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is.';
+                document.getElementById('e1dCatSearch').value = '';
+                document.getElementById('e1dCatHint').innerHTML = '';
+                renderCatSkus();
+                document.getElementById('e1dCatModal').hidden = false;
+                loadCatList();
+                setTimeout(function () { document.getElementById('e1dCatSearch').focus(); }, 50);
+            }
+
+            async function runCatChange() {
+                if (catBusy || !catChoice || !catPicked.size) return;
+                const hint = document.getElementById('e1dCatHint');
+                const skus = Array.from(catPicked);
+                if (skus.length > 1 && !window.confirm('Move ' + skus.length + ' SKUs to "' + catChoice.path + '"?')) return;
+                catBusy = true;
+                syncCatState();
+                hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                try {
+                    const res = await fetch('/ebay1-data/change-category', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ skus: skus, category_id: catChoice.id, category_path: catChoice.path }),
+                    });
+                    const json = await res.json().catch(function () { return {}; });
+                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not change the category');
+                    document.getElementById('e1dCatModal').hidden = true;
+                    rowToast(json.skus + ' SKU' + (json.skus === 1 ? '' : 's') + ' moved to ' + json.category_path + '.', true);
+                    await loadData(); // the tabs follow the new categories (an emptied tab goes away)
+                } catch (e) {
+                    hint.innerHTML = '<span class="text-danger">' + esc(e.message || 'Failed') + '</span>';
+                }
+                catBusy = false;
+                syncCatState();
+            }
+
+            function bindCatModal() {
+                document.getElementById('e1dCatBtn').addEventListener('click', openCatModal);
+                document.getElementById('e1dCatCancel').addEventListener('click', function () { document.getElementById('e1dCatModal').hidden = true; });
+                document.getElementById('e1dCatGo').addEventListener('click', runCatChange);
+                document.getElementById('e1dCatSearch').addEventListener('input', function () {
+                    clearTimeout(catTimer);
+                    catTimer = setTimeout(loadCatList, 300);
+                });
+                document.getElementById('e1dCatAllSkus').addEventListener('change', function () {
+                    catPicked = this.checked ? new Set(catRows.map(function (r) { return String(r.sku); })) : new Set();
+                    renderCatSkus();
+                });
+                document.getElementById('e1dCatRefresh').addEventListener('click', async function () {
+                    const list = document.getElementById('e1dCatList');
+                    list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Fetching the eBay categories again…</div>';
+                    try { await fetch('/ebay1-data/ebay-categories?refresh=1&q=__none__', { headers: { Accept: 'application/json' } }); } catch (e) {}
+                    loadCatList();
+                });
             }
 
             // ---- Badge: missing item specifics over every category, with a history dot (one saved figure per day). ----
@@ -3320,6 +3506,7 @@
                     }
                 });
                 document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
+                bindCatModal();
                 document.getElementById('e1dHdrReset').addEventListener('click', resetHdrNames);
                 document.getElementById('e1dHdrSearch').addEventListener('input', renderHdrList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);

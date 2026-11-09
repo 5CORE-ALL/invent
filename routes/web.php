@@ -4518,10 +4518,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Master listing form for marketplaces with no API (details come from our masters, exported as CSV)
     Route::get('/master-listing/{channel}/skus', [\App\Http\Controllers\MarketPlace\MasterListingController::class, 'skus'])
-        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->where('channel', \App\Support\Marketplace\MasterListingDetails::routePattern())
         ->name('master.listing.skus');
     Route::post('/master-listing/{channel}/details', [\App\Http\Controllers\MarketPlace\MasterListingController::class, 'details'])
-        ->where('channel', \App\Support\Marketplace\SheetListingCatalog::routePattern())
+        ->where('channel', \App\Support\Marketplace\MasterListingDetails::routePattern())
         ->name('master.listing.details');
 
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
@@ -5029,6 +5029,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay1-data/add-column', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'addColumn'])->name('ebay1.data.add.column');
     Route::post('/ebay1-data/push', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'pushSpecifics'])->name('ebay1.data.push');
     Route::post('/ebay1-data/cell-styles', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveCellStyles'])->name('ebay1.data.cell.styles');
+    Route::get('/ebay1-data/ebay-categories', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'ebayCategories'])->name('ebay1.data.ebay.categories');
+    Route::post('/ebay1-data/change-category', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'changeCategory'])->name('ebay1.data.change.category');
     Route::get('/ebay1-data/missing-history', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'missingHistory'])->name('ebay1.data.missing.history');
     Route::post('/ebay1-data/missing-history', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveMissingHistory'])->name('ebay1.data.missing.history.save');
     Route::post('/ebay1-data/auto-push', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'setAutoPush'])->name('ebay1.data.auto.push');
