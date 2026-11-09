@@ -713,8 +713,8 @@
                 catChoice = null;
                 catBusy = false;
                 document.getElementById('e1dCatIntro').textContent = scope.selected
-                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is.'
-                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is.';
+                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. The category is changed on the live eBay 1 listing too.'
+                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. The category is changed on the live eBay 1 listing too.';
                 document.getElementById('e1dCatSearch').value = '';
                 document.getElementById('e1dCatHint').innerHTML = '';
                 renderCatSkus();
@@ -727,27 +727,44 @@
                 if (catBusy || !catChoice || !catPicked.size) return;
                 const hint = document.getElementById('e1dCatHint');
                 const skus = Array.from(catPicked);
-                if (skus.length > 1 && !window.confirm('Move ' + skus.length + ' SKUs to "' + catChoice.path + '"?')) return;
+                if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\nSKUs with a live eBay 1 listing are changed on eBay 1 too. A SKU eBay rejects stays unchanged.')) return;
                 catBusy = true;
                 syncCatState();
-                hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                try {
-                    const res = await fetch('/ebay1-data/change-category', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                        body: JSON.stringify({ skus: skus, category_id: catChoice.id, category_path: catChoice.path }),
-                    });
-                    const json = await res.json().catch(function () { return {}; });
-                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not change the category');
-                    document.getElementById('e1dCatModal').hidden = true;
-                    rowToast(json.skus + ' SKU' + (json.skus === 1 ? '' : 's') + ' moved to ' + json.category_path + '.', true);
-                    await loadData(); // the tabs follow the new categories (an emptied tab goes away)
-                } catch (e) {
-                    hint.innerHTML = '<span class="text-danger">' + esc(e.message || 'Failed') + '</span>';
+                const CHUNK = 6; // each live SKU is one eBay call, so keep every request short
+                let saved = 0, onEbay = 0, failed = 0, fatal = '';
+                const problems = [];
+                for (let i = 0; i < skus.length; i += CHUNK) {
+                    const part = skus.slice(i, i + CHUNK);
+                    hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing on eBay 1 and in the app… ' + Math.min(i + CHUNK, skus.length) + ' / ' + skus.length;
+                    try {
+                        const res = await fetch('/ebay1-data/change-category', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                            body: JSON.stringify({ skus: part, category_id: catChoice.id, category_path: catChoice.path }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        (json.results || []).forEach(function (r) {
+                            if (r.ebay === 'pushed') onEbay++;
+                            if (r.ebay === 'failed') { failed++; problems.push(r.sku + ': ' + r.message); }
+                        });
+                        if (json.skus) saved += json.skus;
+                        if (!res.ok && !(json.results || []).length) throw new Error(json.message || 'Could not change the category');
+                    } catch (e) {
+                        fatal = e.message || 'Failed';
+                        failed += part.length;
+                        problems.push('Stopped: ' + fatal);
+                        break;
+                    }
                 }
+                document.getElementById('e1dCatModal').hidden = true;
                 catBusy = false;
                 syncCatState();
+                const title = saved + ' SKU' + (saved === 1 ? '' : 's') + ' moved to ' + catChoice.path + ' (' + onEbay + ' on eBay 1)'
+                    + (failed ? ', ' + failed + ' failed' : '');
+                if (failed) jobShow(title, skus.length, saved, failed, false, problems);
+                else rowToast(title + '.', true);
+                await loadData(); // the tabs follow the new categories (an emptied tab goes away)
             }
 
             function bindCatModal() {

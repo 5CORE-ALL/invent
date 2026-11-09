@@ -5,6 +5,8 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Models\EbayDataView;
+use App\Models\EbayMetric;
+use App\Support\Marketplace\EbayListingEnded;
 use App\Models\ProductMaster;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
@@ -1385,9 +1387,9 @@ class Ebay1DataController extends Controller
 
     /**
      * POST /ebay1-data/change-category
-     * Moves the given SKUs to one eBay category in this app: Category Master (so Technical Specifications follows)
-     * and the stored eBay 1 pull of each SKU, which is what puts a SKU under a category tab here.
-     * Nothing is sent to eBay.
+     * Moves the given SKUs to one eBay category: on the live eBay 1 listing when there is one, and in this app
+     * (Category Master, so Technical Specifications follows, and the stored eBay 1 pull of each SKU, which is what
+     * puts a SKU under a category tab here). A SKU that eBay rejects is left unchanged everywhere.
      */
     public function changeCategory(Request $request)
     {
@@ -1410,11 +1412,63 @@ class Ebay1DataController extends Controller
             return response()->json(['success' => false, 'message' => 'The category path is longer than 255 characters.'], 422);
         }
 
+        @set_time_limit(300);
         $skus = array_values(array_unique(array_filter(array_map('trim', $data['skus']))));
         $now = now();
         $userId = $request->user()?->id;
         $masters = 0;
         $pulls = 0;
+
+        // eBay 1 first: a SKU with a live eBay 1 listing is moved on eBay (ReviseFixedPriceItem), and only moved
+        // in the app when eBay accepted it, so the app and the marketplace never disagree. A SKU with no live
+        // eBay 1 listing (Missing L) is changed in the app only.
+        $results = [];
+        $toSave = [];
+        $ebay = null;
+        foreach ($skus as $sku) {
+            $metric = EbayListingEnded::preferredRow(EbayMetric::class, $sku);
+            $itemId = trim((string) ($metric->item_id ?? ''));
+            $live = $metric !== null
+                && $itemId !== ''
+                && ! str_starts_with($itemId, 'UNSOLD-')
+                && strcasecmp($itemId, $sku) !== 0
+                && ! EbayListingEnded::isEnded($metric->listing_status ?? null)
+                && ! EbayListingEnded::isNotListed($metric->listing_status ?? null);
+            if (! $live) {
+                $results[] = ['sku' => $sku, 'ebay' => 'not_live', 'message' => 'No live eBay 1 listing: changed in the app only.'];
+                $toSave[] = $sku;
+
+                continue;
+            }
+            try {
+                $ebay ??= app(EbayApiService::class);
+                $pushed = $ebay->updateCategory($itemId, $categoryId);
+            } catch (\Throwable $e) {
+                $pushed = ['success' => false, 'message' => $e->getMessage()];
+            }
+            if ($pushed['success'] ?? false) {
+                $results[] = ['sku' => $sku, 'ebay' => 'pushed', 'item_id' => $itemId, 'message' => (string) ($pushed['message'] ?? 'Changed on eBay.')];
+                $toSave[] = $sku;
+            } else {
+                $results[] = ['sku' => $sku, 'ebay' => 'failed', 'item_id' => $itemId, 'message' => (string) ($pushed['message'] ?? 'eBay rejected the category change.')];
+            }
+            Log::info('Ebay1 Data change category', [
+                'user_id' => $userId, 'sku' => $sku, 'item_id' => $itemId, 'category_id' => $categoryId, 'ok' => (bool) ($pushed['success'] ?? false),
+            ]);
+        }
+        $failed = count(array_filter($results, static fn ($r) => $r['ebay'] === 'failed'));
+        $skus = $toSave;
+        if ($skus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'eBay did not accept the change for any SKU, so nothing was changed in the app.',
+                'skus' => 0,
+                'failed' => $failed,
+                'results' => $results,
+                'category_id' => $categoryId,
+                'category_path' => $path,
+            ], 422);
+        }
 
         DB::transaction(function () use ($skus, $categoryId, $path, $now, $userId, &$masters, &$pulls) {
             if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay')) {
@@ -1471,6 +1525,8 @@ class Ebay1DataController extends Controller
         return response()->json([
             'success' => true,
             'skus' => count($skus),
+            'failed' => $failed,
+            'results' => $results,
             'category_master_rows' => $masters,
             'pull_rows' => $pulls,
             'category_id' => $categoryId,
