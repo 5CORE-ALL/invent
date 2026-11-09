@@ -228,7 +228,7 @@
                                 ['value' => 'pricing_masters_clone', 'text' => 'Pricing Masters Clone'],
                                 ['value' => 'listing_analysis', 'text' => 'Listing Analysis'],
                                 ['value' => 'cost_price_analysis', 'text' => 'Cost Price Analysis'],
-                                ['value' => 'movement_analysis', 'text' => 'Movement Analysis'],
+                                ['value' => 'movement_analysis', 'text' => 'Movement Analysis Count'],
                                 ['value' => 'tobedc_list', 'text' => '2BDC'],
                                 ['value' => 'transit_analysis', 'text' => 'Transit Analysis'],
                                 ['value' => 'review_analysis', 'text' => 'Review Analysis'],

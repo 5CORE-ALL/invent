@@ -22,7 +22,7 @@ return [
     ['value' => 'pricing_masters', 'text' => 'Pricing Masters', 'group' => 'Product Masters'],
     ['value' => 'listing_analysis', 'text' => 'Listing Analysis', 'group' => 'Product Masters'],
     ['value' => 'cost_price_analysis', 'text' => 'Cost Price Analysis', 'group' => 'Product Masters'],
-    ['value' => 'movement_analysis', 'text' => 'Movement Analysis', 'group' => 'Product Masters'],
+    ['value' => 'movement_analysis', 'text' => 'Movement Analysis Count', 'group' => 'Product Masters'],
     ['value' => 'forecast_analysis', 'text' => 'Forecast Analysis', 'group' => 'Product Masters'],
     ['value' => 'to_order_analysis', 'text' => 'Order', 'group' => 'Product Masters'],
     ['value' => 'in_order_analysis', 'text' => 'In Order Analysis', 'group' => 'Product Masters'],

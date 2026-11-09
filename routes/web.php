@@ -5981,6 +5981,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Movement Analysis
     Route::get('/movement.analysis', action: [MovementAnalysisController::class, 'movementAnalysis'])->name('movement.analysis');
+    Route::get('/movement-analysis', [MovementAnalysisController::class, 'movementAnalysisTable'])->name('movement.analysis.table');
     Route::post('/update-smsl', [MovementAnalysisController::class, 'updateSmsl'])->name('update-smsl');
 
     // Update Forecast Sheet

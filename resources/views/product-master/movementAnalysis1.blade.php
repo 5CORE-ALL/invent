@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Movement Analysis', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Movement Analysis Count', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -273,14 +273,14 @@
 @endsection
 
 @section('content')
-@include('layouts.shared.page-title', ['page_title' => 'Movement Analysis', 'sub_title' => 'Movement Analysis'])
+@include('layouts.shared.page-title', ['page_title' => 'Movement Analysis Count', 'sub_title' => 'Movement Analysis Count'])
 <div class="row">
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
 
                 <div class="ma-toolbar">
-                    <h4 class="ma-toolbar-title">Movement Analysis</h4>
+                    <h4 class="ma-toolbar-title">Movement Analysis Count</h4>
                     <div class="btn-group time-navigation-group" role="group">
                         <button id="play-backward" class="btn btn-sm btn-light rounded-circle shadow-sm" title="Previous parent">
                             <i class="fas fa-step-backward"></i>

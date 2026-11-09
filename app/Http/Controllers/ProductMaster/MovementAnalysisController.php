@@ -44,6 +44,15 @@ class MovementAnalysisController extends Controller
     }
 
 
+    /** Movement Analysis: simple Tabulator (image, parent, sku, INV, L30, Dil %). Data comes from getViewMovementAnalysisData. */
+    public function movementAnalysisTable(Request $request)
+    {
+        return view('product-master.movement_analysis_table', [
+            'mode' => $request->query('mode'),
+            'demo' => $request->query('demo'),
+        ]);
+    }
+
     public function getViewMovementAnalysisData(Request $request)
     {
         $productData = ProductMaster::query()
@@ -145,6 +154,7 @@ class MovementAnalysisController extends Controller
                 $item->amz_value = null;
                 $item->std_price = 0;
                 $item->std_value = null;
+                $item->image = null;
                 $item->lp = 0;
 
                 return $item;
@@ -153,6 +163,7 @@ class MovementAnalysisController extends Controller
             $shopify = $shopifyData[$childSku] ?? null;
             $item->INV = $shopify ? (int) round((float) ($shopify->inv ?? 0)) : 0;
             $item->L30 = $shopify ? (int) round((float) ($shopify->quantity ?? 0)) : 0;
+            $item->image = $shopify ? ($shopify->image_src ?? null) : null;
 
             $movementItem = $movementBySku[$skuUpper] ?? $movementBySku[str_replace(' ', '', $skuUpper)] ?? null;
             $months = [];

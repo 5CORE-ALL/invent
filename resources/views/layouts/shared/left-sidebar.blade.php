@@ -3111,7 +3111,10 @@
                         </li>
 
                         <li>
-                            <a href="{{ route('movement.analysis') }}">Movement Analysis</a>
+                            <a href="{{ route('movement.analysis') }}">Movement Analysis Count</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('movement.analysis.table') }}">Movement Analysis</a>
                         </li>
                         <li>
                             <a href="{{ route('tobedc.list') }}">2BDC</a>
