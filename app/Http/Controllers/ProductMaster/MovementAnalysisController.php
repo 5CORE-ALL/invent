@@ -100,27 +100,16 @@ class MovementAnalysisController extends Controller
                         $stdPriceBySku[str_replace(' ', '', $sk)] = (float) $onlyStd;
                     }
                 }
-                $std = $val['STANDARD_PRICE'] ?? $val['standard_price'] ?? $val['AMAZON_PRICE'] ?? $val['amazon_price'] ?? $val['price'] ?? null;
-                if (! is_numeric($std) || (float) $std <= 0) {
-                    continue;
-                }
-                $k = strtoupper(trim((string) $adv->sku));
-                if ($k === '') {
-                    continue;
-                }
-                $amzPriceBySku[$k] = (float) $std;
-                $amzPriceBySku[str_replace(' ', '', $k)] = (float) $std;
             }
         } catch (\Throwable $e) {
             // ignore missing amazon_data_view
         }
+        // Amz $ uses the live Amazon price (amazon_datsheets.price), NOT the standard price,
+        // so it differs from "Std Prc $". Fallback: price keys stored on amazon_data_view (never STANDARD_PRICE).
         try {
             foreach (DB::table('amazon_datsheets')->whereIn('sku', $skus)->whereNotNull('price')->get(['sku', 'price']) as $ar) {
                 $k = strtoupper(trim((string) ($ar->sku ?? '')));
-                if ($k === '' || isset($amzPriceBySku[$k])) {
-                    continue;
-                }
-                if (! is_numeric($ar->price) || (float) $ar->price <= 0) {
+                if ($k === '' || ! is_numeric($ar->price) || (float) $ar->price <= 0) {
                     continue;
                 }
                 $amzPriceBySku[$k] = (float) $ar->price;
@@ -128,6 +117,25 @@ class MovementAnalysisController extends Controller
             }
         } catch (\Throwable $e) {
             // ignore missing amazon_datsheets
+        }
+        try {
+            foreach (AmazonDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $adv) {
+                $k = strtoupper(trim((string) $adv->sku));
+                if ($k === '' || isset($amzPriceBySku[$k])) {
+                    continue;
+                }
+                $val = is_array($adv->value)
+                    ? $adv->value
+                    : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+                $live = $val['AMAZON_PRICE'] ?? $val['amazon_price'] ?? $val['price'] ?? null;
+                if (! is_numeric($live) || (float) $live <= 0) {
+                    continue;
+                }
+                $amzPriceBySku[$k] = (float) $live;
+                $amzPriceBySku[str_replace(' ', '', $k)] = (float) $live;
+            }
+        } catch (\Throwable $e) {
+            // ignore missing amazon_data_view
         }
 
         $processedData = $filteredData->map(function ($item) use ($shopifyData, $movementBySku, $amzPriceBySku, $stdPriceBySku) {
