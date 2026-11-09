@@ -3263,7 +3263,7 @@ class AmazonFbmTargetingController extends Controller
             if ($key === $ownParent || $p['linked'] >= $p['campaigns']) {
                 continue;
             }
-            if ($q !== '' && ! str_contains(mb_strtolower($p['parent']), $q)) {
+            if ($q !== '' && ! str_starts_with(mb_strtolower($p['parent']), $q)) {
                 continue;
             }
             $out[] = ['parent' => $p['parent'], 'campaigns' => $p['campaigns']];

@@ -1737,10 +1737,11 @@
     // Instant, client-side filter over the parents loaded once per open.
     function kwcRenderResults() {
         const q = (kwcEl.search.value || '').trim().toLowerCase();
-        const terms = q.split(/\s+/).filter(Boolean);
+        // Parent name only: the typed text must match the parent exactly or be its beginning ("04 CS" finds "04 CS", not "104 CS").
+        const needle = q.replace(/\s+/g, ' ');
         kwcState.shown = kwcState.parents.filter(function (p) {
-            const hay = String(p.parent).toLowerCase();
-            return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+            const hay = String(p.parent).toLowerCase().replace(/\s+/g, ' ').trim();
+            return needle === '' || hay.indexOf(needle) === 0;
         });
         kwcEl.shown.textContent = kwcState.shown.length.toLocaleString() + ' of ' + kwcState.parents.length.toLocaleString() + ' parents';
         if (!kwcState.shown.length) {
