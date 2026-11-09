@@ -3777,7 +3777,21 @@ class OverallAmazonController extends Controller
         );
         $amazonYCvr = $this->amazonTabulatorYesterdayCvr();
 
+        // Yesterday's total sales — same Pacific-day product sales (tax excluded) the
+        // /amazon/daily-sales "Y Sales" badge shows.
+        $amazonYSalesTotal = null;
+        try {
+            $yPacific = \Carbon\Carbon::yesterday('America/Los_Angeles');
+            $amazonYSalesTotal = round((float) AmazonOrder::productSalesByOrderDate(
+                $yPacific->copy()->startOfDay()->utc(),
+                $yPacific->copy()->endOfDay()->utc()
+            ), 2);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator Y Sales total failed: '.$e->getMessage());
+        }
+
         return view("market-places.amazon_tabulator_view", [
+            'amazonYSalesTotal'  => $amazonYSalesTotal,
             'amazonProjected'    => $amazonProjected,
             'amazonAdsPercent'   => $amazonAdsPercent,
             'amazonAdSales'      => $amazonAdSales,
@@ -3788,6 +3802,7 @@ class OverallAmazonController extends Controller
             'amazonYTacosPercent' => $amazonAdBadges['y_tacos'],
             'amazonYSalesPercent' => $amazonAdBadges['y_sales_pct'],
             'amazonYBgtPercent'  => $amazonAdBadges['y_bgt_pct'],
+            'amazonYBgt'         => $amazonAdBadges['y_bgt'],
             'amazonYUtilizedPercent' => $amazonAdBadges['y_utilized_pct'],
             'amazonYCvr'         => $amazonYCvr,
             'amazonUnitsSoldL30' => $amazonUnitsSoldL30,
@@ -3945,6 +3960,7 @@ class OverallAmazonController extends Controller
             'y_tacos' => null,
             'y_sales_pct' => null,
             'y_bgt_pct' => null,
+            'y_bgt' => null,
             'y_utilized_pct' => null,
         ];
 
@@ -4067,6 +4083,7 @@ class OverallAmazonController extends Controller
                 $blank['y_acos'] = 0.0;
             }
             if ($live['budget'] > 0) {
+                $blank['y_bgt'] = round($live['budget'], 2);
                 if ($dailyAvg > 0) {
                     $blank['y_bgt_pct'] = round(($live['budget'] / $dailyAvg) * 100, 1);
                 }
