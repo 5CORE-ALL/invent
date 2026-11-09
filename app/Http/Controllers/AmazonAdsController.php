@@ -1592,6 +1592,35 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Y BGT exactly as /amazon-ads/all shows it with its default filters (Stat = ENABLED): the current daily
+     * budget (campaignBudgetAmount) of the latest L1 row per campaign, summed over SP + SB campaigns that have an
+     * ENABLED L30 row. Used by the /amazon-tabulator-view "Y bgt" badge so both pages agree.
+     */
+    public static function yesterdayEnabledDailyBudget(): ?float
+    {
+        $total = 0.0;
+        $found = false;
+        foreach (['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'] as $table) {
+            if (! SchemaMemo::hasTable($table)) {
+                continue;
+            }
+            $dbColumns = self::orderedColumnsForTable($table);
+            foreach (['campaign_id', 'report_date_range', 'campaignStatus', 'campaignBudgetAmount'] as $need) {
+                if (! in_array($need, $dbColumns, true)) {
+                    continue 2;
+                }
+            }
+            $universe = DB::table($table)
+                ->where('report_date_range', 'L30')
+                ->whereIn('campaignStatus', ['ENABLED']);
+            $total += self::sumLatestSummaryMetricsForFilteredCampaigns($universe, $table, $dbColumns, 'L1')['budget_sum'];
+            $found = true;
+        }
+
+        return $found ? round($total, 2) : null;
+    }
+
+    /**
      * Utilized Y / Utilized L7 blocks: campaigns (distinct campaign_id [+ ad_type]) bucketed by utilisation of the
      * latest L1 or L7 summary row — spend ÷ (campaignBudgetAmount × days), same bands and n/a rule as
      * {@see sqlU7BucketCaseExpression} (< 66, 66–99, > 99).

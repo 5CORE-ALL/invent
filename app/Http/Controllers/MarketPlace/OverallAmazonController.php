@@ -4082,11 +4082,20 @@ class OverallAmazonController extends Controller
             } elseif ($ySpend !== null) {
                 $blank['y_acos'] = 0.0;
             }
-            if ($live['budget'] > 0) {
-                $blank['y_bgt'] = round($live['budget'], 2);
+            // Y bgt = same number as Y BGT on /amazon-ads/all (ENABLED campaigns, latest L1 row budget).
+            $yBgt = null;
+            try {
+                $yBgt = \App\Http\Controllers\AmazonAdsController::yesterdayEnabledDailyBudget();
+            } catch (\Throwable $e) {
+                Log::warning('Amazon tabulator Y bgt failed: '.$e->getMessage());
+            }
+            if ($yBgt !== null) {
+                $blank['y_bgt'] = $yBgt;
                 if ($dailyAvg > 0) {
-                    $blank['y_bgt_pct'] = round(($live['budget'] / $dailyAvg) * 100, 1);
+                    $blank['y_bgt_pct'] = round(($yBgt / $dailyAvg) * 100, 1);
                 }
+            }
+            if ($live['budget'] > 0) {
                 if ($ySpend !== null) {
                     $blank['y_utilized_pct'] = round(($ySpend / $live['budget']) * 100, 1);
                 }
