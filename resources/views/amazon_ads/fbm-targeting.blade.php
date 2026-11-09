@@ -11,11 +11,11 @@
         position: sticky; top: var(--tz-topbar-height, 70px); z-index: 24;
     }
     .amz-fbm-targeting .tabulator .tabulator-header .tabulator-col .tabulator-col-title {
-        font-size: 12.5px; text-align: center; padding: 6px 4px;
+        font-size: 12.5px; text-align: center; padding: 6px 4px; white-space: normal; line-height: 1.2;
     }
     .amz-fbm-targeting .tabulator-row { min-height: 36px; }
     .amz-fbm-targeting .tabulator-row:hover { background-color: #f8fafc !important; }
-    .amz-fbm-targeting .tabulator-cell { padding: 6px 8px !important; }
+    .amz-fbm-targeting .tabulator-cell { padding: 6px 5px !important; }
     .amz-fbm-targeting .aft-loadbar { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:10px; }
     .amz-fbm-targeting .aft-loadbar-top { display:flex; justify-content:space-between; gap:12px; font-size:.85rem; font-weight:600; color:#1e3a8a; margin-bottom:6px; }
     .amz-fbm-targeting .tabulator-row.aft-has-panel { flex-wrap: wrap; }
@@ -751,7 +751,7 @@
     }
 
     const table = new Tabulator('#aft-table', {
-        layout: 'fitDataFill', // every column sizes to its data (capped below for long text); the table fills any space left
+        layout: 'fitColumns', // all columns fit in the screen width (no sideways scroll): short columns are fixed, text columns share the rest
         placeholder: 'Loading campaigns…',
         pagination: true,
         paginationMode: 'remote',
@@ -845,8 +845,8 @@
             {
                 title: 'KWC Cousin',
                 field: 'cousin_name',
-                minWidth: 110,
-                maxWidth: 240,
+                minWidth: 80,
+                widthGrow: 1,
                 headerSort: false,
                 formatter: function (cell) {
                     const n = String(cell.getValue() || '').trim();
@@ -856,8 +856,8 @@
             {
                 title: 'Parents',
                 field: 'parent',
-                minWidth: 90,
-                maxWidth: 220,
+                minWidth: 60,
+                widthGrow: 1,
                 headerSort: false,
                 formatter: function (cell) {
                     // Autofilled on every campaign row; the first row of a parent group is bold, the rest are lighter.
@@ -872,9 +872,8 @@
             {
                 title: 'Title',
                 field: 'title',
-                width: 210,
-                minWidth: 120,
-                maxWidth: 210,
+                minWidth: 100,
+                widthGrow: 2,
                 headerSort: false,
                 formatter: function (cell) {
                     const d = cell.getRow().getData() || {};
@@ -893,8 +892,8 @@
             {
                 title: 'Campaign name',
                 field: 'campaign_name',
-                minWidth: 150,
-                maxWidth: 260,
+                minWidth: 120,
+                widthGrow: 2,
                 headerSort: false,
                 formatter: function (cell) {
                     const raw = String(cell.getValue() || '');
@@ -909,7 +908,7 @@
             {
                 title: 'Status',
                 field: 'status',
-                minWidth: 80,
+                width: 56,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
@@ -924,8 +923,7 @@
             {
                 title: 'SKUs',
                 field: 'campaign_id',
-                minWidth: 78,
-                maxWidth: 90,
+                width: 76,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function () {
@@ -939,7 +937,7 @@
             {
                 title: 'KW cousins',
                 field: 'cousin_count',
-                minWidth: 100,
+                width: 80,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
@@ -953,7 +951,7 @@
             {
                 title: 'Clicks LT',
                 field: 'lt_clicks',
-                minWidth: 90,
+                width: 72,
                 hozAlign: 'right',
                 headerSort: true,
                 headerSortStartingDir: 'desc',
@@ -964,7 +962,7 @@
             {
                 title: 'Sold LT',
                 field: 'lt_sold',
-                minWidth: 90,
+                width: 72,
                 hozAlign: 'right',
                 headerSort: true,
                 headerSortStartingDir: 'desc',
@@ -975,7 +973,7 @@
             {
                 title: 'Target Amz',
                 field: 'target_count',
-                minWidth: 80,
+                width: 76,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
@@ -993,7 +991,7 @@
             {
                 title: 'App Target',
                 field: 'app_target_count',
-                minWidth: 90,
+                width: 76,
                 hozAlign: 'center',
                 headerSort: false,
                 headerTooltip: 'Keywords the app holds for this campaign (Amazon reports + the app\'s own keyword store, including ones copied from KW cousins that are not on Amazon yet).',
@@ -1012,7 +1010,7 @@
             {
                 title: 'Negative KW',
                 field: 'negative_count',
-                minWidth: 100,
+                width: 76,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
@@ -1026,7 +1024,7 @@
             {
                 title: 'Specific KW',
                 field: 'specific_count',
-                minWidth: 100,
+                width: 76,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
@@ -1040,7 +1038,7 @@
             {
                 title: 'S Negative KW',
                 field: 'specific_neg_count',
-                minWidth: 110,
+                width: 80,
                 hozAlign: 'center',
                 headerSort: false,
                 formatter: function (cell) {
