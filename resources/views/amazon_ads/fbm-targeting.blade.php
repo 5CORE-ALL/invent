@@ -2280,7 +2280,13 @@
         });
     }
 
-    if (pkBtn) pkBtn.addEventListener('click', function () { pkBulk = null; pkOpen(); });
+    // With campaigns ticked in the grid, this is the same check + push as "Pull + Push selected" (only those campaigns);
+    // with nothing ticked it is the push of every campaign.
+    if (pkBtn) pkBtn.addEventListener('click', function () {
+        const sel = pickedIdsFn();
+        pkBulk = sel.length ? sel : null;
+        pkOpen();
+    });
 
     if (pkConfirm) {
         pkConfirm.addEventListener('click', function () {
@@ -2573,6 +2579,12 @@
         const paint = function () {
             const n = ids().length;
             pullDefs.forEach(function (d) { if (d.btn && !d.btn.disabled && d.label) d.btn.innerHTML = d.label(); });
+            if (pkBtn) {
+                pkBtn.innerHTML = '<i class="fas fa-upload"></i> Push KW to KW + HL Campaigns' + (n ? ' (' + n.toLocaleString() + ' selected)' : '');
+                pkBtn.title = n
+                    ? 'Check and push only the ' + n.toLocaleString() + ' ticked campaign(s) to Amazon'
+                    : 'Send the keywords in the app to ALL KW campaigns and the HL campaigns on Amazon';
+            }
             selBtn.innerHTML = '<i class="fas fa-check-square"></i> Pull + Push selected (' + n.toLocaleString() + ')';
             selBtn.disabled = n === 0;
             clearBtn.classList.toggle('d-none', n === 0);
