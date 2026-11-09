@@ -660,6 +660,81 @@
             .finally(function () { row.normalizeHeight(); });
     }
 
+    // Toolbar badges (missing titles / cousins, LT coverage, "low" counts) from a data response.
+    function applyBadges(response) {
+        if (missingTitlesEl) {
+            const mt = Number(response.missing_titles || 0);
+            missingTitlesEl.textContent = 'Missing Titles: ' + mt.toLocaleString();
+            missingTitlesEl.classList.toggle('bg-danger', mt > 0);
+            missingTitlesEl.classList.toggle('bg-success', mt === 0);
+            const names = Array.isArray(response.missing_title_parents) ? response.missing_title_parents : [];
+            missingTitlesEl.title = mt > 0
+                ? 'Parents with no title in Product Master: ' + names.join(', ') + (mt > names.length ? ' …' : '')
+                : 'Every parent has a title in Product Master';
+        }
+        if (missingCousinsEl) {
+            const mc = Number(response.missing_cousins || 0);
+            missingCousinsEl.textContent = 'Missing KW cousins: ' + mc.toLocaleString();
+            missingCousinsEl.classList.toggle('bg-danger', mc > 0);
+            missingCousinsEl.classList.toggle('bg-success', mc === 0);
+            const cn = Array.isArray(response.missing_cousin_parents) ? response.missing_cousin_parents : [];
+            missingCousinsEl.title = mc > 0
+                ? 'Parents with no KW cousins: ' + cn.join(', ') + (mc > cn.length ? ' …' : '')
+                : 'Every parent has KW cousins';
+        }
+        if (ltCoverageEl) {
+            const c = response.lt_coverage || {};
+            const days = Number(c.days || 0);
+            ltCoverageEl.textContent = days
+                ? 'LT data: ' + c.from + ' → ' + c.to + ' (' + days.toLocaleString() + ' days)' + (c.syncing ? ' · pulling from Amazon…' : '')
+                : 'LT data: none stored yet' + (c.syncing ? ' · pulling from Amazon…' : '');
+            ltCoverageEl.classList.toggle('text-danger', days === 0);
+            ltCoverageEl.classList.toggle('text-muted', days > 0);
+        }
+        lowBadgeEls.forEach(function (el) {
+            const k = el.getAttribute('data-low');
+            const n = Number((response.low_counts || {})[k] || 0);
+            const lim = Number((response.low_limits || {})[k] || 0);
+            el.innerHTML = escapeHtml(lowLabels[k]) + ' &lt; ' + lim + ': ' + n.toLocaleString();
+            el.classList.toggle('bg-primary', n === 0 || lowFilter === k);
+            el.classList.toggle('bg-warning', n > 0 && lowFilter !== k);
+            el.classList.toggle('text-dark', n > 0 && lowFilter !== k);
+            el.classList.toggle('is-active', lowFilter === k);
+        });
+    }
+
+    // Refresh only the given campaigns (by name) in place: no page reload, no scroll / page / selection reset.
+    // The server returns just those rows; the badges are refreshed from the same response.
+    const rowRefreshBusy = { n: 0 };
+    function refreshRows(names) {
+        names = Array.from(new Set((names || []).filter(Boolean)));
+        if (!names.length || typeof table === 'undefined' || !table) return Promise.resolve();
+        const chunks = [];
+        for (let i = 0; i < names.length; i += 25) chunks.push(names.slice(i, i + 25));
+        rowRefreshBusy.n++;
+        return Promise.all(chunks.map(function (chunk, ci) {
+            const q = new URLSearchParams();
+            q.set('page', '1');
+            q.set('size', '100');
+            chunk.forEach(function (n) { q.append('names[]', n); });
+            return fetch(dataUrl + '?' + q.toString(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (json) {
+                    if (!json || !Array.isArray(json.data)) return;
+                    // parent_first only makes sense for the whole page, not for this handful of rows: keep the current one.
+                    const rows = json.data.map(function (d) { const c = Object.assign({}, d); delete c.parent_first; return c; });
+                    if (rows.length) table.updateData(rows);
+                    if (ci === 0) applyBadges(json);
+                })
+                .catch(function () { /* the next refresh will try again */ });
+        })).finally(function () { rowRefreshBusy.n--; });
+    }
+    // Refresh the campaigns currently shown in the grid.
+    function refreshVisibleRows() {
+        if (typeof table === 'undefined' || !table) return Promise.resolve();
+        return refreshRows(table.getRows().map(function (r) { return (r.getData() || {}).id; }));
+    }
+
     const table = new Tabulator('#aft-table', {
         layout: 'fitDataFill', // every column sizes to its data (capped below for long text); the table fills any space left
         placeholder: 'Loading campaigns…',
@@ -724,45 +799,7 @@
         ajaxResponse: function (_url, _params, response) {
             const total = Number(response.total || 0);
             if (countEl) countEl.textContent = total ? (total.toLocaleString() + ' campaigns') : '';
-            if (missingTitlesEl) {
-                const mt = Number(response.missing_titles || 0);
-                missingTitlesEl.textContent = 'Missing Titles: ' + mt.toLocaleString();
-                missingTitlesEl.classList.toggle('bg-danger', mt > 0);
-                missingTitlesEl.classList.toggle('bg-success', mt === 0);
-                const names = Array.isArray(response.missing_title_parents) ? response.missing_title_parents : [];
-                missingTitlesEl.title = mt > 0
-                    ? 'Parents with no title in Product Master: ' + names.join(', ') + (mt > names.length ? ' …' : '')
-                    : 'Every parent has a title in Product Master';
-            }
-            if (missingCousinsEl) {
-                const mc = Number(response.missing_cousins || 0);
-                missingCousinsEl.textContent = 'Missing KW cousins: ' + mc.toLocaleString();
-                missingCousinsEl.classList.toggle('bg-danger', mc > 0);
-                missingCousinsEl.classList.toggle('bg-success', mc === 0);
-                const cn = Array.isArray(response.missing_cousin_parents) ? response.missing_cousin_parents : [];
-                missingCousinsEl.title = mc > 0
-                    ? 'Parents with no KW cousins: ' + cn.join(', ') + (mc > cn.length ? ' …' : '')
-                    : 'Every parent has KW cousins';
-            }
-            if (ltCoverageEl) {
-                const c = response.lt_coverage || {};
-                const days = Number(c.days || 0);
-                ltCoverageEl.textContent = days
-                    ? 'LT data: ' + c.from + ' → ' + c.to + ' (' + days.toLocaleString() + ' days)' + (c.syncing ? ' · pulling from Amazon…' : '')
-                    : 'LT data: none stored yet' + (c.syncing ? ' · pulling from Amazon…' : '');
-                ltCoverageEl.classList.toggle('text-danger', days === 0);
-                ltCoverageEl.classList.toggle('text-muted', days > 0);
-            }
-            lowBadgeEls.forEach(function (el) {
-                const k = el.getAttribute('data-low');
-                const n = Number((response.low_counts || {})[k] || 0);
-                const lim = Number((response.low_limits || {})[k] || 0);
-                el.innerHTML = escapeHtml(lowLabels[k]) + ' &lt; ' + lim + ': ' + n.toLocaleString();
-                el.classList.toggle('bg-primary', n === 0 || lowFilter === k);
-                el.classList.toggle('bg-warning', n > 0 && lowFilter !== k);
-                el.classList.toggle('text-dark', n > 0 && lowFilter !== k);
-                el.classList.toggle('is-active', lowFilter === k);
-            });
+            applyBadges(response);
             return {
                 data: response.data || [],
                 last_page: response.last_page || 1,
@@ -1306,7 +1343,7 @@
             setTargetItems(tgt.kind === 'neg' ? b.negatives : b.targets, tgt.kind === 'neg' ? b.ignored_negatives : b.ignored_targets);
             closeEditPanel();
             if (b.message) showModalMsg(b.message, true);
-            if (typeof table !== 'undefined' && table && table.replaceData) table.replaceData(); // refresh the grid counts / badges
+            refreshVisibleRows(); // refresh the grid counts / badges in place
             if (action === 'edit') loadTargetMetrics(); // edited keywords have a new text
         }).catch(function () {
             alert('Network error. Please try again.');
@@ -1421,7 +1458,7 @@
         function applyStatus(b) {
             if (b.status === 'done') {
                 showPullMsg((b.message || 'Done.') + ' (' + (b.campaigns || 0) + ' KW campaigns, ' + (b.fetched || 0) + ' ' + def.what + ' fetched)', true);
-                table.setPage(1);
+                refreshVisibleRows(); // update the rows in place, no page reload
                 finish();
                 return true;
             }
@@ -1485,6 +1522,8 @@
     };
     let syncTimer = null;
     let syncRunning = false;
+    let syncLiveSig = '';
+    let syncLiveAt = 0;
     function syncLock(on) {
         syncRunning = on;
         if (syncEl.all) syncEl.all.disabled = on;
@@ -1529,8 +1568,16 @@
             syncEl.fill.classList.toggle('bg-success', b.status === 'done');
             syncEl.text.className = b.status === 'error' ? 'text-danger' : (b.failed ? 'text-warning' : 'text-success');
             syncLock(false);
-            if (b.status === 'done' && typeof table !== 'undefined') table.setPage(1); // refresh the counts once
+            // Refresh the rows on screen in place (no page reload), so the result can be checked right away.
+            if (b.status === 'done') refreshVisibleRows();
             return true;
+        }
+        // While it runs, refresh the visible rows whenever the progress moved (at most every 6 s).
+        const sig = [b.done, b.pulled, b.added, b.failed, b.chunk, b.phase].join('|');
+        if (sig !== syncLiveSig && Date.now() - syncLiveAt > 6000 && !rowRefreshBusy.n) {
+            syncLiveSig = sig;
+            syncLiveAt = Date.now();
+            refreshVisibleRows();
         }
         syncEl.fill.classList.add('progress-bar-animated', 'progress-bar-striped');
         syncEl.fill.classList.remove('bg-danger', 'bg-success');

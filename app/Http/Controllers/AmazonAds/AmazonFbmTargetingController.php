@@ -206,6 +206,18 @@ class AmazonFbmTargetingController extends Controller
             $all = array_values(array_filter($all, static fn (array $c) => in_array($c['status'], $statusWanted, true)));
         }
 
+        // Exact campaign names (names[]): used by the page to refresh just some rows in place after a sync.
+        $namesWanted = $request->query('names');
+        if (is_array($namesWanted) && $namesWanted !== []) {
+            $want = [];
+            foreach (array_slice($namesWanted, 0, 100) as $n) {
+                if (is_string($n) && trim($n) !== '') {
+                    $want[$this->exactNameKey($n)] = true;
+                }
+            }
+            $all = array_values(array_filter($all, fn (array $c) => isset($want[$this->exactNameKey((string) $c['campaign_name'])])));
+        }
+
         // Campaign type: KW = SP keyword campaigns, PT = SP product targeting, HL = SB headline (HEAD) campaigns.
         // Several types can be combined (comma separated, e.g. "kw,hl"); empty = all types.
         $typeWanted = array_values(array_unique(array_filter(array_map(
