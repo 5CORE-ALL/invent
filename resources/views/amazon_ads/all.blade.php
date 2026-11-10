@@ -337,6 +337,42 @@
             color: #2563eb; cursor: pointer;
         }
         .amz-lrange-btn:hover { color: #1d4ed8; transform: scale(1.2); }
+        /* Audit column: button + status dot, report modal */
+        .amz-audit-cell { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+        .amz-audit-btn {
+            border: 1px solid #2563eb; background: #fff; color: #2563eb; border-radius: 4px;
+            font-size: 11px; line-height: 1; padding: 3px 7px; cursor: pointer; min-width: 44px;
+        }
+        .amz-audit-btn:hover:not(:disabled) { background: #2563eb; color: #fff; }
+        .amz-audit-btn:disabled { opacity: .7; cursor: default; }
+        .amz-audit-head { cursor: pointer; color: #2563eb; font-weight: 600; }
+        .amz-audit-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; cursor: pointer; flex-shrink: 0; background: #cbd5e1; box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
+        .amz-audit-dot:hover { transform: scale(1.25); }
+        .amz-audit-none { background: #cbd5e1; }
+        .amz-audit-running { background: #3b82f6; animation: amzAuditPulse 1s infinite; }
+        .amz-audit-ok { background: #16a34a; }
+        .amz-audit-low { background: #eab308; }
+        .amz-audit-medium { background: #f97316; }
+        .amz-audit-high { background: #dc2626; }
+        .amz-audit-failed { background: #111827; }
+        @keyframes amzAuditPulse { 50% { opacity: .35; } }
+        .amz-audit-banner { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .amz-audit-ok-bg { background: #16a34a; }
+        .amz-audit-low-bg { background: #ca8a04; }
+        .amz-audit-medium-bg { background: #ea580c; }
+        .amz-audit-high-bg { background: #dc2626; }
+        .amz-audit-failed-bg { background: #111827; }
+        .amz-audit-reasons { padding-left: 20px; margin-bottom: 4px; }
+        .amz-audit-reasons li { margin-bottom: 8px; }
+        .amz-audit-impact { display: inline-block; font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; color: #fff; background: #64748b; }
+        .amz-audit-impact-high { background: #dc2626; }
+        .amz-audit-impact-medium { background: #ea580c; }
+        .amz-audit-impact-low { background: #ca8a04; }
+        #amazonAdsAuditModal.modal { z-index: 1085; }
+        .amz-audit-toast {
+            display: none; position: fixed; right: 18px; bottom: 18px; z-index: 2000; background: #1f2937; color: #fff;
+            padding: 8px 14px; border-radius: 6px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.25); max-width: 360px;
+        }
         #amazonAdsLRangeModal.modal { z-index: 1085; }
         #amazonAdsLRangeModal .modal-dialog { max-width: 820px; }
         .amz-lrange-boxes {
@@ -1712,6 +1748,24 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amazonAdsAuditModal" tabindex="-1" aria-labelledby="amazonAdsAuditModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsAuditModalLabel">AI audit - why not enough clicks?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-2" id="amazonAdsAuditModalSub"></p>
+                    <div id="amazonAdsAuditModalBody"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-xl modal-fullscreen-sm-down">
             <div class="modal-content">
@@ -2308,6 +2362,9 @@
             var bgtCapRuleUrl = @json(route('amazon.ads.bgt-cap-rule'));
             var bgtCapRuleSaveUrl = @json(route('amazon.ads.bgt-cap-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
+            var campaignAuditRunUrl = @json(route('amazon.ads.campaign-audit.run'));
+            var campaignAuditStatusesUrl = @json(route('amazon.ads.campaign-audit.statuses'));
+            var campaignAuditReportUrl = @json(route('amazon.ads.campaign-audit.report'));
             var sbAdAddUrl = @json(route('amazon.ads.sb-ads.products.add'));
             var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
@@ -2346,7 +2403,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
-            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory', 'audit'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -3263,6 +3320,261 @@
                      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
                      + lowInv + copy + '</span>';
             }
+            // ---- Audit column: AI audit of "why is this campaign not getting enough clicks?" ----
+            // State per campaign id: { status: running|done|failed, severity: high|medium|low|ok, verdict, at, error }.
+            var amzAuditState = {};
+            var amzAuditBusy = {};
+            var amzAuditToastTimer = null;
+            var amzAuditModalCtx = { cid: '', ch: '', name: '' };
+            var AMZ_AUDIT_SEVERITY_LABEL = { high: 'High - serious problems', medium: 'Medium - needs attention', low: 'Low - minor issues', ok: 'OK - clicks look fine' };
+
+            function amzAuditHeaders() {
+                return {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                };
+            }
+            function amzAuditToast(text, keep) {
+                var el = document.getElementById('amz-audit-toast');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'amz-audit-toast';
+                    el.className = 'amz-audit-toast';
+                    document.body.appendChild(el);
+                }
+                el.textContent = text;
+                el.style.display = 'block';
+                if (amzAuditToastTimer) clearTimeout(amzAuditToastTimer);
+                if (!keep) {
+                    amzAuditToastTimer = setTimeout(function () { el.style.display = 'none'; }, 5000);
+                }
+            }
+            function amzAuditRowInfo(row) {
+                var d = row && row.getData ? row.getData() : (row || {});
+                var cid = d && d.campaign_id != null ? String(d.campaign_id).trim() : '';
+                if (cid === '') return null;
+                return { cid: cid, ch: amzRowChannel(d), name: String(d.campaignName || d.campaign_name || ''), row: row };
+            }
+            function amzAuditDotState(cid) {
+                if (amzAuditBusy[cid]) return 'running';
+                var st = amzAuditState[cid];
+                if (!st) return 'none';
+                if (st.status === 'failed') return 'failed';
+                if (st.status === 'running') return 'running';
+                return st.severity && AMZ_AUDIT_SEVERITY_LABEL[st.severity] ? st.severity : 'medium';
+            }
+            function amzAuditDotTitle(cid, state) {
+                var st = amzAuditState[cid] || {};
+                if (state === 'none') return 'Not audited yet';
+                if (state === 'running') return 'Audit running...';
+                if (state === 'failed') return 'Audit failed: ' + (st.error || 'unknown error') + ' - click for details';
+                return (AMZ_AUDIT_SEVERITY_LABEL[state] || state) + (st.verdict ? ' - ' + st.verdict : '') + ' (click for the report)';
+            }
+            function fmtAudit(cell) {
+                var info = amzAuditRowInfo(cell.getRow());
+                if (!info) return amzDash();
+                var state = amzAuditDotState(info.cid);
+                var busy = !!amzAuditBusy[info.cid];
+                return '<span class="amz-audit-cell">'
+                    + '<button type="button" class="amz-audit-btn" data-act="run"' + (busy ? ' disabled' : '')
+                    + ' title="Audit with AI: why not enough clicks? Runs on every selected row when this row is selected.">'
+                    + (busy ? '<i class="fas fa-spinner fa-spin"></i>' : 'Audit') + '</button>'
+                    + '<span class="amz-audit-dot amz-audit-' + state + '" data-act="report" role="button" title="' + amzEsc(amzAuditDotTitle(info.cid, state)) + '"></span>'
+                    + '</span>';
+            }
+            function amzAuditRepaint(info) {
+                try { if (info && info.row && info.row.reformat) info.row.reformat(); } catch (e) {}
+            }
+            function amzAuditRowsByCid(cid) {
+                var out = [];
+                try {
+                    table.getRows().forEach(function (r) {
+                        var d = r.getData();
+                        if (d && d.campaign_id != null && String(d.campaign_id).trim() === cid) out.push(r);
+                    });
+                } catch (e) {}
+                return out;
+            }
+            function amzAuditSelectedInfos() {
+                var out = [];
+                var seen = {};
+                try {
+                    table.getSelectedRows().forEach(function (r) {
+                        var info = amzAuditRowInfo(r);
+                        if (info && !seen[info.cid]) { seen[info.cid] = true; out.push(info); }
+                    });
+                } catch (e) {}
+                return out;
+            }
+            function amzAuditRunSelected() {
+                var infos = amzAuditSelectedInfos();
+                if (!infos.length) {
+                    amzAuditToast('Select one or more campaigns first (tick the boxes on the left), then click Audit.');
+                    return;
+                }
+                amzAuditRunInfos(infos);
+            }
+            function amzAuditCellClick(e, cell) {
+                var t = e && e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+                if (!t) return;
+                // Keep the click from toggling row selection.
+                e.stopPropagation();
+                var info = amzAuditRowInfo(cell.getRow());
+                if (!info) return;
+                if (t.getAttribute('data-act') === 'report') {
+                    amzAuditOpenReport(info);
+                    return;
+                }
+                if (amzAuditBusy[info.cid]) return;
+                var selected = amzAuditSelectedInfos();
+                var rowIsSelected = false;
+                try { rowIsSelected = cell.getRow().isSelected(); } catch (err) {}
+                amzAuditRunInfos(rowIsSelected && selected.length ? selected : [info]);
+            }
+            function amzAuditRunInfos(infos) {
+                var todo = infos.filter(function (i) { return !amzAuditBusy[i.cid]; });
+                if (!todo.length) return;
+                var total = todo.length;
+                var done = 0;
+                var failed = 0;
+                var next = 0;
+                todo.forEach(function (i) { amzAuditBusy[i.cid] = true; amzAuditRepaint(i); });
+                amzAuditToast('AI audit: 0 / ' + total + ' done...', true);
+
+                function finishOne(info, ok) {
+                    active--;
+                    delete amzAuditBusy[info.cid];
+                    amzAuditRowsByCid(info.cid).forEach(function (r) { try { r.reformat(); } catch (e) {} });
+                    done++;
+                    if (!ok) failed++;
+                    if (done >= total) {
+                        amzAuditToast('AI audit finished: ' + (total - failed) + ' done' + (failed ? ', ' + failed + ' failed (click the black dot for the reason)' : '') + '.');
+                    } else {
+                        amzAuditToast('AI audit: ' + done + ' / ' + total + ' done...', true);
+                    }
+                    pump();
+                }
+                function runOne(info) {
+                    fetch(campaignAuditRunUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: amzAuditHeaders(),
+                        body: JSON.stringify({ campaign_id: info.cid, channel: info.ch, campaign_name: info.name })
+                    }).then(function (res) {
+                        return res.json().catch(function () { return { ok: false, message: 'HTTP ' + res.status }; });
+                    }).then(function (json) {
+                        if (json && json.status) {
+                            amzAuditState[info.cid] = json.status;
+                        } else {
+                            amzAuditState[info.cid] = { status: 'failed', error: (json && json.message) || 'Request failed.' };
+                        }
+                        finishOne(info, !!(json && json.ok));
+                    }).catch(function (err) {
+                        amzAuditState[info.cid] = { status: 'failed', error: String(err && err.message ? err.message : err) };
+                        finishOne(info, false);
+                    });
+                }
+                // At most 3 audits at a time; every finished audit frees a slot and starts the next one.
+                var active = 0;
+                function pump() {
+                    while (active < 3 && next < todo.length) {
+                        active++;
+                        runOne(todo[next++]);
+                    }
+                }
+                pump();
+            }
+            function amzAuditLoadStatuses() {
+                var ids = [];
+                try {
+                    if (!table.getColumn('audit')) return;
+                    table.getRows().forEach(function (r) {
+                        var d = r.getData();
+                        if (d && d.campaign_id != null && String(d.campaign_id).trim() !== '') ids.push(String(d.campaign_id).trim());
+                    });
+                } catch (e) { return; }
+                if (!ids.length) return;
+                fetch(campaignAuditStatusesUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: amzAuditHeaders(),
+                    body: JSON.stringify({ ids: ids })
+                }).then(function (res) { return res.json(); }).then(function (json) {
+                    var map = (json && json.statuses) || {};
+                    Object.keys(map).forEach(function (cid) {
+                        if (!amzAuditBusy[cid]) amzAuditState[cid] = map[cid];
+                    });
+                    table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
+                }).catch(function () {});
+            }
+            function amzAuditOpenReport(info) {
+                var modalEl = document.getElementById('amazonAdsAuditModal');
+                if (!modalEl || typeof bootstrap === 'undefined') return;
+                var state = amzAuditDotState(info.cid);
+                if (state === 'none') {
+                    amzAuditToast('This campaign has not been audited yet. Click Audit first.');
+                    return;
+                }
+                amzAuditModalCtx = { cid: info.cid, ch: info.ch, name: info.name };
+                document.getElementById('amazonAdsAuditModalSub').textContent = info.name || info.cid;
+                var body = document.getElementById('amazonAdsAuditModalBody');
+                body.innerHTML = '<div class="small text-muted">Loading...</div>';
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                fetch(campaignAuditReportUrl + '?campaign_id=' + encodeURIComponent(info.cid) + '&channel=' + encodeURIComponent(info.ch), {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (res) {
+                    return res.json().catch(function () { return { ok: false, message: 'HTTP ' + res.status }; });
+                }).then(function (json) {
+                    body.innerHTML = amzAuditReportHtml(json);
+                }).catch(function (err) {
+                    body.innerHTML = '<div class="text-danger small">' + amzEsc(String(err && err.message ? err.message : err)) + '</div>';
+                });
+            }
+            function amzAuditReportHtml(json) {
+                if (!json || !json.ok) {
+                    return '<div class="text-danger small">' + amzEsc((json && json.message) || 'No report.') + '</div>';
+                }
+                var st = json.status || {};
+                var when = st.at ? new Date(st.at).toLocaleString() : '';
+                if (st.status === 'failed') {
+                    return '<div class="amz-audit-banner amz-audit-failed-bg">Audit failed</div>'
+                        + '<p class="small mb-1">' + amzEsc(st.error || 'Unknown error.') + '</p>'
+                        + '<p class="small text-muted mb-0">Close this and click Audit to try again.</p>';
+                }
+                var rep = json.report || {};
+                var sev = AMZ_AUDIT_SEVERITY_LABEL[rep.severity] ? rep.severity : 'medium';
+                var html = '<div class="amz-audit-banner amz-audit-' + sev + '-bg">' + amzEsc(AMZ_AUDIT_SEVERITY_LABEL[sev]) + '</div>';
+                if (rep.verdict) html += '<p class="fw-semibold mb-2">' + amzEsc(rep.verdict) + '</p>';
+                var reasons = Array.isArray(rep.reasons) ? rep.reasons : [];
+                if (reasons.length) {
+                    html += '<div class="small text-uppercase text-muted mb-1">Possible reasons for not enough clicks</div><ol class="amz-audit-reasons">';
+                    reasons.forEach(function (r) {
+                        html += '<li><div><span class="amz-audit-impact amz-audit-impact-' + amzEsc(r.impact || 'medium') + '">' + amzEsc(r.impact || 'medium') + '</span> <strong>' + amzEsc(r.title || '') + '</strong></div>'
+                            + (r.evidence ? '<div class="small text-muted">Data: ' + amzEsc(r.evidence) + '</div>' : '')
+                            + (r.fix ? '<div class="small">Fix: ' + amzEsc(r.fix) + '</div>' : '') + '</li>';
+                    });
+                    html += '</ol>';
+                }
+                var steps = Array.isArray(rep.next_steps) ? rep.next_steps : [];
+                if (steps.length) {
+                    html += '<div class="small text-uppercase text-muted mb-1 mt-2">Next steps</div><ul class="small mb-2">';
+                    steps.forEach(function (s) { html += '<li>' + amzEsc(s) + '</li>'; });
+                    html += '</ul>';
+                }
+                var signals = Array.isArray(json.signals) ? json.signals : [];
+                if (signals.length) {
+                    html += '<details class="small mt-2"><summary class="text-muted">Numbers the AI was given</summary><ul class="mb-0 mt-1">';
+                    signals.forEach(function (s) { html += '<li>' + amzEsc(s) + '</li>'; });
+                    html += '</ul></details>';
+                }
+                html += '<div class="small text-muted mt-3">' + (when ? 'Audited ' + amzEsc(when) : '')
+                    + (json.provider ? ' &middot; ' + amzEsc(json.provider) : '')
+                    + (json.requested_by ? ' &middot; by ' + amzEsc(json.requested_by) : '') + '</div>';
+                return html;
+            }
             function fmtSkuInv(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
@@ -3575,6 +3887,23 @@
                     col.formatter = function (cell) { return fmtAmzParentViews(cell, null); };
                     col.width = 72;
                     col.minWidth = 64;
+                    return;
+                }
+                if (c === 'audit') {
+                    col.title = 'Audit';
+                    col.titleFormatter = function () {
+                        return '<span class="amz-audit-head" title="Audit every selected row with AI">Audit <i class="fas fa-bolt"></i></span>';
+                    };
+                    col.headerTooltip = 'AI audit: why is this campaign not getting enough clicks? Select rows, then click Audit here (or on a selected row) to audit them all. The dot beside each button opens the report: grey = not audited, blue = running, green = clicks look fine, yellow / orange / red = problems found, black = failed.';
+                    col.headerClick = function (e) {
+                        var t = e && e.target && e.target.closest ? e.target.closest('.amz-audit-head') : null;
+                        if (t) { amzAuditRunSelected(); }
+                    };
+                    col.cellClick = function (e, cell) { amzAuditCellClick(e, cell); };
+                    col.formatter = fmtAudit;
+                    col.headerSort = false;
+                    col.width = 92;
+                    col.minWidth = 84;
                     return;
                 }
                 if (c === 'viewsL7') {
@@ -4549,6 +4878,8 @@
             });
 
             table.on('pageLoaded', amzRefreshUiSoon);
+            // Audit dots: fetch the stored audit state for the campaigns now on the grid.
+            table.on('dataLoaded', amzAuditLoadStatuses);
             // Parent Vs Ads SKU (Amazon Ads variation check): load once, then repaint the column.
             table.on('dataLoaded', function () {
                 if (amzPvaMap !== null) { return; }
