@@ -79,6 +79,21 @@ class EbayPmtRuleAutoPushCommand extends Command
             (int) ($result['skipped'] ?? 0)
         ));
 
+        // Why pushes failed: the most common reasons (the result rows are not stored anywhere else).
+        $reasons = [];
+        foreach ($result['results'] ?? [] as $row) {
+            if (! in_array(strtolower((string) ($row['status'] ?? '')), ['failed', 'error'], true)) {
+                continue;
+            }
+            $why = (string) ($row['reason'] ?? $row['error'] ?? $row['message'] ?? 'unknown');
+            $why = mb_substr(preg_replace('/\d{6,}/', 'N', $why) ?? $why, 0, 200);
+            $reasons[$why] = ($reasons[$why] ?? 0) + 1;
+        }
+        arsort($reasons);
+        foreach (array_slice($reasons, 0, 8, true) as $why => $n) {
+            $this->line(sprintf('  failed x%d: %s', $n, $why));
+        }
+
         return true;
     }
 }
