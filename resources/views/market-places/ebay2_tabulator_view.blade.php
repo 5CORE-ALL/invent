@@ -439,7 +439,7 @@
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2'])
-@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'css', 'pmtAccount' => 'ebay2'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'css', 'pmtAccount' => 'ebay2', 'pmtSbidFallback' => true])
     </style>
 @endsection
 
@@ -547,7 +547,12 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
-@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay2'])
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
+                        title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
+                        Dil vs SBid
+                    </button>
+                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 2'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay2', 'pmtSbidFallback' => true])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}
@@ -914,7 +919,13 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
-@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'modals', 'pmtAccount' => 'ebay2'])
+    @include('campaign.partials.ebay-dil-sbid-rule', [
+        'part' => 'modal',
+        'account' => 'eBay 2',
+        'extended' => true,
+        'listingWise' => true,
+    ])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'modals', 'pmtAccount' => 'ebay2', 'pmtSbidFallback' => true])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
 @endsection
@@ -939,8 +950,17 @@
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
+        @include('campaign.partials.ebay-dil-sbid-rule', [
+            'part' => 'script',
+            'account' => 'eBay 2',
+            'extended' => true,
+            'listingWise' => true,
+            'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
+            'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
+            'applyUrl' => url('/ebay2/campaign-ads/push-selected'),
+        ])
         $(function () {
-@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'script', 'pmtAccount' => 'ebay2'])
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'script', 'pmtAccount' => 'ebay2', 'pmtSbidFallback' => true])
         });
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         /** L30 units / sales from ebay2_order_metrics — same getData as /ebay2/daily-sales. */
@@ -1555,6 +1575,55 @@
             const n = parseFloat(data && data[field]);
             return isFinite(n) && n > 0 ? n : 0;
         }
+        function getCombinedSbid(row) {
+            const listingKey = (typeof dilSbidListingKey === 'function') ? dilSbidListingKey(row) : '';
+            if (!ebay2HasCampaignAdsRow(row) && !listingKey) {
+                return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay2/campaign-ads' };
+            }
+            if (typeof campaignSbid === 'function') return campaignSbid(row);
+            return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
+        }
+
+        /** Same tenth the C Bid and S Bid cells print. Matches /ebay2/campaign-ads. */
+        function ebay2TabShownPercent(n) {
+            return Math.round(Number(n) * 10) / 10;
+        }
+
+        /**
+         * Running COST_PER_SALE listing with Dil vs SBid on and a real S Bid. Parent and variation SKUs share that listing bid.
+         * While Ads Rule PMT is on it owns the bids (decided per parent), so no S Bid dot is shown.
+         */
+        function ebay2TabSbidResult(row) {
+            if (typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn()) return null;
+            if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+            if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
+            if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
+            const res = getCombinedSbid(row);
+            if (!res || res.skip || res.off || !(res.bid > 0)) return null;
+            return res;
+        }
+
+        /** Green when C Bid matches S Bid, yellow when it is still waiting. Null outside that rule. */
+        function ebay2TabBidSync(row) {
+            const res = ebay2TabSbidResult(row);
+            if (!res) return null;
+            const live = parseFloat(row.ca_bid_percentage);
+            const liveOk = isFinite(live) && live > 0;
+            const want = Number(res.bid).toFixed(1);
+            const liveText = liveOk ? live.toFixed(1) + '%' : 'empty';
+            if (liveOk && ebay2TabShownPercent(live) === ebay2TabShownPercent(res.bid)) {
+                return { color: 'green', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
+            }
+            return { color: 'yellow', tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText };
+        }
+
+        /** Same alert as /ebay2/campaign-ads: red only after a failed push. A pending gap stays the yellow dot. */
+        function ebay2TabBidAlertText(row) {
+            const sync = ebay2TabBidSync(row);
+            if (!sync || sync.color !== 'red') return '';
+            return 'S Bid: ' + sync.tip;
+        }
+
         // ── Sku Link LMP (mirrors /ebay-tabulator-view; shared sku.link.lmp.* routes) ──
         const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
         const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
@@ -3066,6 +3135,9 @@
                     ebay2StampAllOrder(allTableData);
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
+                    if (typeof dilSbidClearListingCache === 'function') {
+                        dilSbidClearListingCache();
+                    }
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     setTimeout(function() {
                         if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
@@ -4224,9 +4296,14 @@
                         headerTooltip: "Live eBay bid percentage. Hover a value for the source and what the Ads Rule PMT pushes.",
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue());
-                            if (isNaN(v)) return '<span class="text-muted">—</span>';
-                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
                             const cRow = cell.getRow().getData();
+                            const cSync = ebay2TabBidSync(cRow);
+                            const cDot = cSync
+                                ? '<span class="eca-sync-dot is-' + cSync.color + '" title="' + escapeHtmlAttr(cSync.tip) + '"></span>'
+                                : '';
+                            const cWrap = function(inner) { return cSync ? '<span class="eca-sync-cell">' + cDot + inner + '</span>' : inner; };
+                            if (isNaN(v)) return cWrap('<span class="text-muted">—</span>');
+                            const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
                             const cPmt = typeof window.ebayPmtDetail === 'function' ? window.ebayPmtDetail(cRow) : null;
                             const cOn = typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn();
                             const cData = ['Live bid on eBay now: ' + v.toFixed(1) + '%'];
@@ -4245,10 +4322,53 @@
                                     pmtSteps: cPmt ? cPmt.steps : []
                                 })
                                 : '';
-                            return '<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
+                            return cWrap('<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>');
                         }
                     },
-@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay2'])
+                    {
+                        title: "Alert",
+                        field: "_bid_alert",
+                        width: 56,
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Shown only when the S Bid push failed. A pending gap stays the yellow dot on C Bid.",
+                        formatter: function(cell) {
+                            const tip = ebay2TabBidAlertText(cell.getRow().getData());
+                            if (!tip) return '';
+                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(tip) : tip;
+                            return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
+                        }
+                    },
+                    ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
+                    {
+                        title: "S BID",
+                        field: "s_bid",
+                        hozAlign: "center",
+                        width: 108,
+                        headerTooltip: "eBay 2 Dil vs SBid is one bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR / L30 View overlays, then the Min cap (a bid above ES Bid uses ES Bid). Every SKU under that parent shows the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
+                        sorter: function(a, b, aRow, bRow) {
+                            return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const res = getCombinedSbid(row);
+                            if (res && res.off) {
+                                return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
+                            }
+                            if (res.skip) {
+                                const why = String(res.title || 'No S Bid').replace(/"/g, '&quot;');
+                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${res.short || 'No S Bid'}</span>`;
+                            }
+                            const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
+                            const title = res.title || 'Dil vs SBid';
+                            const noAds = !isEbay2TabulatorParentRow(row) && !ebay2AdsAlreadyRunning(row);
+                            const dilText = noAds
+                                ? '<span style="color:#fd7e14;font-weight:700;margin-left:4px;" title="No ads. This S BID is from Dil.">dil</span>'
+                                : '';
+                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>${dilText}`;
+                        }
+                    },
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay2', 'pmtSbidFallback' => true])
                     {
                         title: "PROMOTE",
                         field: "ca_promote_with_ad",
@@ -5193,6 +5313,9 @@
             });
 
             table.on('dataLoaded', function() {
+                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
+                    renderDilSbidTable();
+                }
                 if (ebay2SkipNextDataLoadedFilter) {
                     ebay2SkipNextDataLoadedFilter = false;
                 } else if (allTableData.length) {
@@ -5200,6 +5323,9 @@
                 }
                 if (typeof chPromoInvalidateListingDilCache === 'function') {
                     chPromoInvalidateListingDilCache({ skipApply: true });
+                }
+                if (typeof dilSbidClearListingCache === 'function') {
+                    dilSbidClearListingCache();
                 }
                 updateCalcValues();
                 updateSummary();
@@ -5400,6 +5526,15 @@
                 'rpt_spend': 'Spend',
                 'rpt_sales': 'Sales',
                 'ca_suggested_bid': 'ES BID',
+                'sbid_diff_dil': 'Dil',
+                'sbid_diff_views': 'Views',
+                'sbid_diff_cvr': 'CVR %',
+                'sbid_diff_sold': 'eBay Sold',
+                'sbid_diff_npft': 'Std NPFT %',
+                'sbid_diff_cvrAdj': 'CVR up / down',
+                'sbid_diff_viewAdj': 'L30 View up / down',
+                'sbid_total_discount': 'Sum S Bid',
+                's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',
                 'ca_promote_with_ad': 'PROMOTE'
             };
