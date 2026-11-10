@@ -3123,6 +3123,88 @@ class NeweggApiService
     }
 
     /**
+     * ITEM_PROMOTION_DATA feed (FeedType 7, Newegg.com only). This is Newegg's time-boxed
+     * promotional price for an item (sale price, optional MSRP, free shipping, qty limits).
+     * It is NOT a promo/coupon code; promo codes exist only in Seller Portal > Marketing > Promotion Code.
+     *
+     * Each row: seller_part_number, promo_price, start_date, end_date (Y-m-d or any strtotime date);
+     * optional: newegg_item_number, promo_msrp, free_shipping, limit_qty, max_qty, min_inventory,
+     * inventory_locked, note. Schema: ItemPromotion.xsd from the Newegg feedschema API.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public static function buildItemPromotionFeedXml(array $rows): string
+    {
+        $esc = static fn (string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $date = static function (mixed $v): string {
+            $ts = strtotime((string) $v);
+
+            return $ts === false ? '' : date('m/d/Y', $ts);
+        };
+
+        $items = '';
+        foreach ($rows as $row) {
+            $spn = trim((string) ($row['seller_part_number'] ?? ''));
+            $price = $row['promo_price'] ?? null;
+            $start = $date($row['start_date'] ?? '');
+            $end = $date($row['end_date'] ?? '');
+            if ($spn === '' || ! is_numeric($price) || (float) $price <= 0 || $start === '' || $end === ''
+                || strtotime((string) $row['end_date']) <= strtotime((string) $row['start_date'])) {
+                continue;
+            }
+
+            $x = '<SellerPartNumber>'.$esc($spn).'</SellerPartNumber>';
+            $neNo = trim((string) ($row['newegg_item_number'] ?? ''));
+            if ($neNo !== '') {
+                $x .= '<NeweggItemNumber>'.$esc($neNo).'</NeweggItemNumber>';
+            }
+            if (is_numeric($row['promo_msrp'] ?? null) && (float) $row['promo_msrp'] > 0) {
+                $x .= '<PromoMSRP>'.number_format((float) $row['promo_msrp'], 2, '.', '').'</PromoMSRP>';
+            }
+            $x .= '<PromoSellingPrice>'.number_format((float) $price, 2, '.', '').'</PromoSellingPrice>';
+            $x .= '<PromoShipping>'.(! empty($row['free_shipping']) ? 'Free' : 'Default').'</PromoShipping>';
+            $x .= '<PromoStartDate>'.$start.'</PromoStartDate><PromoEndDate>'.$end.'</PromoEndDate>';
+            foreach (['limit_qty' => 'LimitQty', 'max_qty' => 'MaxQty', 'min_inventory' => 'MinInventory'] as $key => $tag) {
+                if (is_numeric($row[$key] ?? null)) {
+                    $x .= "<{$tag}>".(int) $row[$key]."</{$tag}>";
+                }
+            }
+            $x .= '<InventoryLocked>'.(! empty($row['inventory_locked']) ? 'Yes' : 'No').'</InventoryLocked>';
+            $note = trim((string) ($row['note'] ?? ''));
+            if ($note !== '') {
+                $x .= '<Note>'.$esc($note).'</Note>';
+            }
+            $items .= '<Item>'.$x.'</Item>';
+        }
+
+        if ($items === '') {
+            return '';
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<NeweggEnvelope><Header><DocumentVersion>1.0</DocumentVersion></Header>'
+            .'<MessageType>ItemPromotion</MessageType>'
+            .'<Message>'.$items.'</Message></NeweggEnvelope>';
+    }
+
+    /**
+     * Submit promotional prices to Newegg.com (see buildItemPromotionFeedXml). Not called from
+     * anywhere automatically; invalid rows are dropped.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
+     */
+    public function submitItemPromotions(array $rows): array
+    {
+        $xml = self::buildItemPromotionFeedXml($rows);
+        if ($xml === '') {
+            return ['success' => false, 'message' => 'No valid promotion rows (need part number, price > 0, start and end dates with end after start).'];
+        }
+
+        return $this->submitXmlFeed($xml, 'ITEM_PROMOTION_DATA', 'b2c');
+    }
+
+    /**
      * @return array{success: bool, message: string, request_id?: string, blocked_by_cloudflare?: bool}
      */
     protected function submitXmlFeed(string $xml, string $requestType, string $platform = 'b2c'): array
