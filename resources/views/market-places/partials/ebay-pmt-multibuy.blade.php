@@ -154,6 +154,7 @@
                                         <th>Category</th>
                                         <th class="text-center" style="width: 80px;">{{ $pmtUnit }}s</th>
                                         <th class="text-center" style="width: 110px;" title="Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. Read only.">Promoted listings ad rate</th>
+                                        <th class="text-center" style="width: 110px;" title="Type your own Promoted ad rate here. Starts blank; not saved and not used by the rule.">Promoted ad rate Manual</th>
                                         <th style="width: 140px;">Highest (%)</th>
                                         <th style="width: 140px;">Lowest (%)</th>
                                     </tr>
@@ -547,6 +548,9 @@
                         const hi = saved.highest != null ? saved.highest : '';
                         const lo = saved.lowest != null ? saved.lowest : '';
                         $tr.append($('<td>').append(
+                            $('<input type="number" class="form-control form-control-sm ads-rule-pmt-manual" min="0" max="100" step="0.01" placeholder="">')
+                        ));
+                        $tr.append($('<td>').append(
                             $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-high" min="0" max="100" step="0.01" placeholder="e.g. 9">').val(hi)
                         ));
                         $tr.append($('<td>').append(
@@ -555,7 +559,7 @@
                         $body.append($tr);
                     });
                     if (!rows.length) {
-                        $body.append('<tr><td colspan="5" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
+                        $body.append('<tr><td colspan="6" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
                     updateSummary();
                     renderRuleCounts();
