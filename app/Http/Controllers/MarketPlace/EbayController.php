@@ -1132,6 +1132,21 @@ class EbayController extends Controller
         $weightSlabs = app(\App\Services\ShippingSlabRateService::class);
         $excelCategoryBySku = app(\App\Services\ExcelCategoryLookupService::class)->map();
 
+        // "Category 2": the eBay category of each SKU from Category Masters (/category-masters).
+        $categoryMasterEbayBySku = [];
+        try {
+            if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay')) {
+                foreach (DB::table('category_masters')->select(['sku', 'category_ebay'])->get() as $cmRow) {
+                    $cmCategory = trim((string) ($cmRow->category_ebay ?? ''));
+                    if ($cmCategory !== '') {
+                        $categoryMasterEbayBySku[strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $cmRow->sku)))] = $cmCategory;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay data: Category Masters lookup failed: ' . $e->getMessage());
+        }
+
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
@@ -1639,6 +1654,7 @@ class EbayController extends Controller
             // Category from /excel upload (worksheet name), matched by eBay Item ID (blank when no match)
             $excelItemKey = \App\Services\ExcelCategoryLookupService::normalizeItemId($ebayMetric?->item_id ?? '');
             $row['excel_category'] = $excelItemKey !== '' ? ($excelCategoryBySku[$excelItemKey] ?? '') : '';
+            $row['category2'] = $categoryMasterEbayBySku[strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $pm->sku)))] ?? '';
 
             $result[] = (object) $row;
         }
