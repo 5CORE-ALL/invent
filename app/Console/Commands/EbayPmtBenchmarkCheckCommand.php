@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  */
 class EbayPmtBenchmarkCheckCommand extends Command
 {
-    protected $signature = 'ebay:pmt-benchmark-check {account=ebay1}';
+    protected $signature = 'ebay:pmt-benchmark-check {account=ebay1} {--category= : only categories containing this text, e.g. "Stands & Hangers"}';
 
     protected $description = 'Compare the Ads Rule PMT categories with the /benchmarks sheets and show the Highest / Lowest each would get';
 
@@ -57,6 +57,8 @@ class EbayPmtBenchmarkCheckCommand extends Command
                 $bench[$key]['highest'] = $val;
             } elseif ($row['benchmark'] === 'Bottom 10%') {
                 $bench[$key]['lowest'] = $val;
+            } elseif ($row['benchmark'] === 'Yours') {
+                $bench[$key]['yours'] = trim((string) $row[$rate['field']]);
             }
         }
 
@@ -68,7 +70,11 @@ class EbayPmtBenchmarkCheckCommand extends Command
         $used = [];
         $rows = [];
         $missing = 0;
+        $only = mb_strtolower(trim((string) $this->option('category')));
         foreach ($names as $name) {
+            if ($only !== '' && ! str_contains(mb_strtolower($name), $only)) {
+                continue;
+            }
             $hit = $this->find($bench, $name);
             if ($hit) {
                 $used[$this->norm($hit['sheet'])] = true;
@@ -80,12 +86,13 @@ class EbayPmtBenchmarkCheckCommand extends Command
                 $name,
                 $skus[$name] ?? 0,
                 $hit['sheet'] ?? '— no benchmark —',
+                $hit['yours'] ?? '',
                 $hit['highest'] ?? '',
                 $hit['lowest'] ?? '',
                 $s ? (($s['highest'] ?? '').' / '.($s['lowest'] ?? '')) : '',
             ];
         }
-        $this->table(['Modal category', 'SKUs', 'Benchmark sheet', 'Highest', 'Lowest', 'Saved H / L'], $rows);
+        $this->table(['Modal category', 'SKUs', 'Benchmark sheet', 'Yours', 'Highest', 'Lowest', 'Saved H / L'], $rows);
         $this->line(count($names).' categories, '.($missing).' without a benchmark.');
 
         $unused = array_values(array_filter(array_map(fn ($b) => $b['sheet'], $bench), fn ($sheet) => ! isset($used[$this->norm($sheet)])));
