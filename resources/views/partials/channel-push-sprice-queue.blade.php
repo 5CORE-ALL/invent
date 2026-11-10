@@ -118,6 +118,9 @@
             let chPushSpriceTimer = null;
             let chPushSpricePollTimer = null;
             let chPushSpriceLastToastKey = '';
+            // True once THIS page load queued a push or saw one running. A job that finished before the page was
+            // opened (the old "S PRC push done: 0 ok, 1 failed.") is not toasted again on every reload.
+            let chPushSpriceLiveRun = false;
             let chPushSpricePulledKey = '';
             let chPushSpriceFlushing = false;
             let chPushSpriceExclusive = false;
@@ -764,6 +767,7 @@
                     }
                     chPushSpriceExpectMisses = 0;
                     const active = !!resp.active;
+                    if (active) chPushSpriceLiveRun = true;
                     applyChannelPushSpriceTasks(resp.tasks || []);
                     setChannelPushSpriceProgress({
                         active: active,
@@ -785,7 +789,7 @@
                         const toastKey = jobStatus + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
                         if (toastKey !== chPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
                             chPushSpriceLastToastKey = toastKey;
-                            chPushSpriceToast(
+                            if (chPushSpriceLiveRun) chPushSpriceToast(
                                 (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success',
                                 resp.message || ('S PRC: ' + (resp.ok_count || 0) + ' ok')
                             );
@@ -804,6 +808,7 @@
                 pollChannelPushSpriceStatus();
             }
             global.chPushSpriceMarkExpecting = function() {
+                chPushSpriceLiveRun = true;
                 chPushSpriceExpecting = true;
                 chPushSpriceExpectMisses = 0;
             };
@@ -953,6 +958,7 @@
                 });
                 const n = Object.keys(chPushSpriceBuf).length;
                 if (!n) return;
+                chPushSpriceLiveRun = true;
                 chPushSpriceExpecting = true;
                 if (!opts.silent) {
                     setChannelPushSpriceProgress({
