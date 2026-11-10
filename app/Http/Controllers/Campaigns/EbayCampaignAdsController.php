@@ -147,13 +147,17 @@ class EbayCampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        $result = app(\App\Services\DilVsSbidApplyService::class)->apply(
-            \App\Support\DilVsSbidRule::KEY_EBAY1,
-            'ebay_campaign_ads',
-            \App\Models\EbayMetric::class,
-            \App\Services\EbayApiService::class,
-            $listingIds
-        );
+        // While Ads Rule PMT is on it owns the bids, so push its rule bid (Manual / Highest, else the S Bid).
+        $service = app(\App\Services\DilVsSbidApplyService::class);
+        $result = \App\Support\PmtCategoryBidRule::isOn('ebay1')
+            ? $service->applyPmtChanged('ebay1', false, $listingIds)
+            : $service->apply(
+                \App\Support\DilVsSbidRule::KEY_EBAY1,
+                'ebay_campaign_ads',
+                \App\Models\EbayMetric::class,
+                \App\Services\EbayApiService::class,
+                $listingIds
+            );
         if (! empty($result['error'])) {
             return response()->json(['error' => $result['error']], 500);
         }
@@ -749,6 +753,7 @@ class EbayCampaignAdsController extends Controller
         EbayListingReportHistory::attachToRows($data);
         $this->attachStdNpft($data);
         $this->attachGpft($data);
+        \App\Support\EbayPmtRowInputs::attach($data, 'ebay1');
         return response()->json([
             'status_counts' => $statusCounts,
             'total' => $total,

@@ -10,10 +10,14 @@
     $pmtBenchUrl = $pmtAccount === 'ebay1' ? '/benchmarks/data' : '/'.$pmtAccount.'-benchmarks/data';
     $pmtBenchPage = $pmtAccount === 'ebay1' ? '/benchmarks' : '/'.$pmtAccount.'-benchmarks';
     $pmtExcelPath = $pmtAccount === 'ebay1' ? '/excel' : '/'.$pmtAccount.'-excel';
-    $pmtDilNote = $pmtAccount === 'ebay1' ? ' Dil vs SBid is not pushed for eBay 1 while this is on.' : '';
+    // $pmtAdsPage: the Campaign Ads page (one row per ad listing). It shows only the Ads Rule PMT button / window / PMT BID column.
+    $pmtAdsPage = ! empty($pmtAdsPage);
+    // The old Dil vs SBid S BID is the fallback for a category with no Highest / Manual (eBay 1 grid and eBay 1 / 2 Campaign Ads pages).
+    $pmtSbidFallback = $pmtSbidFallback ?? ($pmtAccount === 'ebay1');
+    $pmtDilNote = in_array($pmtAccount, ['ebay1', 'ebay2'], true) ? ' Dil vs SBid is not pushed for '.$pmtLabel.' while this is on.' : '';
     // eBay 2: the rule is decided per PARENT (family INV / OV L30 / eBay sold), not per child SKU.
     $pmtByParent = $pmtAccount === 'ebay2';
-    $pmtUnit = $pmtByParent ? 'Parent' : 'SKU';
+    $pmtUnit = $pmtAdsPage ? 'Listing' : ($pmtByParent ? 'Parent' : 'SKU');
 @endphp
 @if ($pmtPart === 'css')
         #ebay-bid-tip-box {
@@ -101,6 +105,7 @@
                         title="Set the suggested PMT bid % for each category">
                         <i class="fas fa-bullhorn"></i> Ads Rule PMT
                     </button>
+@if (! $pmtAdsPage)
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" id="multi-buy-btn"
                         title="Set the discount % for Buy 2, Buy 3 and Buy 4">
                         <i class="fas fa-tags"></i> Multi Buy
@@ -117,6 +122,7 @@
                             <div id="ebay-cat-add-list"></div>
                         </div>
                     </div>
+@endif
 @elseif ($pmtPart === 'modals')
     <!-- Ads Rule PMT Modal: suggested bid % per category -->
     <div class="modal fade" id="adsRulePmtModal" tabindex="-1" aria-hidden="true">
@@ -193,6 +199,7 @@
         </div>
     </div>
 
+@if (! $pmtAdsPage)
     <!-- Multi Buy Rule Modal -->
     <div class="modal fade" id="multiBuyModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -254,6 +261,7 @@
             </div>
         </div>
     </div>
+@endif
 @elseif ($pmtPart === 'script')
             // ---- Hover box for S BID / C BID / PMT BID: where the bid comes from and how it is worked out ----
             const arpEsc = function(text) { return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
@@ -356,6 +364,9 @@
             const PMT_BY_PARENT = @json($pmtByParent);
             window.ebayPmtIsRuled = function(d) {
                 if (!d) return false;
+                // A page can narrow the rows the rule applies to (the Campaign Ads pages: running cost-per-sale ads only).
+                if (typeof window.ebayPmtRowActive === 'function' && !window.ebayPmtRowActive(d)) return false;
+                if (d.pmt_family_row === true) return true; // Campaign Ads row of eBay 2: carries its parent family's numbers
                 if (!PMT_BY_PARENT) return !window.ebayPmtIsParent(d);
                 if (d.is_parent_summary === true) return false;
                 if (window.ebayPmtIsParent(d)) return true;
@@ -385,7 +396,7 @@
                 //  2. category has Promoted ad rate Manual -> Manual
                 //  3. category has a Highest           -> Highest
                 //  4. no match                         -> the old Dil vs SBid S Bid (eBay 1; other accounts: no bid)
-                const PMT_SBID_FALLBACK = @json($pmtAccount === 'ebay1');
+                const PMT_SBID_FALLBACK = @json((bool) $pmtSbidFallback);
                 const RULE_DEFS = [
                     { key: '1', label: 'INV = 0', bid: '0 &mdash; ads paused' },
                     { key: '2', label: 'Category has Promoted ad rate Manual', bid: 'Manual' },
@@ -483,6 +494,8 @@
                         const col = t && t.getColumn ? t.getColumn('pmt_rule_bid') : null;
                         if (col) col.getCells().forEach(function(c) { c.reformat(); });
                     } catch (e) { /* table not built yet — formatter reads savedBids when it renders */ }
+                    // A page can repaint other cells that depend on the rule (the C Bid sync dots on the Campaign Ads pages).
+                    try { if (typeof window.ebayPmtAfterChange === 'function') window.ebayPmtAfterChange(); } catch (e) { /* ignore */ }
                 }
 
                 function loadSavedBids() {
@@ -841,7 +854,7 @@
                             if (typeof showToast === 'function') showToast('success', ruleOn ? 'Ads Rule PMT is On' : 'Ads Rule PMT is Off');
                         })
                         .catch(function(e) { $err.removeClass('d-none').text(e.message || 'Could not change the switch.'); })
-                        .finally(function() { $box.prop('disabled', false); paintMode(); });
+                        .finally(function() { $box.prop('disabled', false); paintMode(); refreshPmtColumn(); });
                 });
 
                 $('#ads-rule-pmt-apply-all').on('click', function() {
@@ -1172,6 +1185,7 @@
                             return '<span ' + tip + ' style="color:#0d6efd; font-weight:700; cursor:help;">' + Number(r.bid).toFixed(1) + '%</span>';
                         }
                     },
+@if (! $pmtAdsPage)
                     {
                         title: "MULTI BUY",
                         field: "multi_buy_rule",
@@ -1192,4 +1206,5 @@
                                 + '2: ' + fmt(d.buy2) + ' · 3: ' + fmt(d.buy3) + ' · 4: ' + fmt(d.buy4) + '</span>';
                         }
                     },
+@endif
 @endif

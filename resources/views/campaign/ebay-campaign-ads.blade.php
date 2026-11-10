@@ -26,6 +26,7 @@
                 <i class="fas fa-percent me-1"></i>Dil vs SBid
             </button>
             @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
+            @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay1', 'pmtAdsPage' => true])
             <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
@@ -133,6 +134,8 @@
     'gpft' => true,
 ])
 
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'modals', 'pmtAccount' => 'ebay1', 'pmtAdsPage' => true])
+
 @include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay/listing-report-history')])
 
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
@@ -177,6 +180,7 @@
 <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.1/dist/css/tabulator_bootstrap5.min.css">
 <style>
     #ebay-campaign-ads-table .tabulator-row:hover { background: #f0f7ff !important; }
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'css', 'pmtAccount' => 'ebay1', 'pmtAdsPage' => true])
     .badge-cps  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-cpc  { background: #0d6efd; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-run  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
@@ -662,6 +666,7 @@ $(document).ready(function () {
                 }
             },
             ...ebaySbidDiffColumns(),
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay1', 'pmtAdsPage' => true])
             {
                 title: 'CVR', field: 'ebay_l30', width: 80, hozAlign: 'center',
                 sorter: function(a, b, aRow, bRow) {
@@ -712,6 +717,8 @@ $(document).ready(function () {
         ]
     });
 
+    window.table = table; // the Ads Rule PMT window refreshes the PMT BID column through window.table
+
     // Search — live on typing (debounced 400ms)
     let searchTimer;
     $('#search-input').on('input', function() {
@@ -761,11 +768,21 @@ function ebayShownPercent(n) {
     return Math.round(Number(n) * 10) / 10;
 }
 
-/** Running promoted listing with Dil vs SBid on and a real S Bid. Otherwise null. */
+function ebayPmtIsOn() {
+    return typeof window.ebayPmtRuleOn === 'function' && !!window.ebayPmtRuleOn();
+}
+
+/** Running promoted listing with a bid to push: the Ads Rule PMT bid when it is on, else the Dil vs SBid S Bid. Otherwise null. */
 function ebaySbidResult(row) {
-    if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
+    if (!row) return null;
     if (String(row.funding_strategy || '') !== 'COST_PER_SALE') return null;
     if (campaignStatusOf(row) !== 'RUNNING') return null;
+    // Ads Rule PMT on: its bid (Manual / Highest, else the S Bid) is the one pushed.
+    if (ebayPmtIsOn()) {
+        const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(row) : null;
+        return (r && !r.pause && r.bid !== null && r.bid > 0) ? { bid: r.bid } : null;
+    }
+    if (typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
     if (typeof campaignSbid !== 'function') return null;
     const res = campaignSbid(row);
     if (!res || res.skip || res.off || !(res.bid > 0)) return null;
@@ -792,22 +809,23 @@ function ebayBidSync(row) {
     const want = Number(res.bid).toFixed(1);
     const live = parseFloat(row.bid_percentage);
     const liveText = (isFinite(live) && live > 0) ? live.toFixed(1) + '%' : 'empty';
+    const what = ebayPmtIsOn() ? 'PMT bid' : 'S Bid';
     if (ebayBidMatches(row)) {
         if (id) delete ebayPushFailed[id];
-        return { color: 'green', reason: 'already_matched', tip: 'Updated — C Bid matches S Bid ' + want + '%' };
+        return { color: 'green', reason: 'already_matched', tip: 'Updated — C Bid matches ' + what + ' ' + want + '%' };
     }
     const fail = id ? ebayPushFailed[id] : '';
     if (fail) {
         return {
             color: 'red',
             reason: 'push_failed',
-            tip: 'S Bid push failed — C Bid ' + liveText + ', S Bid ' + want + '%. ' + fail
+            tip: what + ' push failed — C Bid ' + liveText + ', ' + what + ' ' + want + '%. ' + fail
         };
     }
     return {
         color: 'yellow',
         reason: 'sbid_differs',
-        tip: 'Pending — S Bid ' + want + '% does not match C Bid ' + liveText
+        tip: 'Pending — ' + what + ' ' + want + '% does not match C Bid ' + liveText
     };
 }
 
@@ -815,7 +833,7 @@ function ebayBidSync(row) {
 function ebayBidAlertText(row) {
     const sync = ebayBidSync(row);
     if (!sync || sync.color !== 'red') return '';
-    return 'S Bid: ' + sync.tip;
+    return sync.tip;
 }
 
 /** Checked mismatches when any row is selected; otherwise every loaded mismatch. */
@@ -836,12 +854,12 @@ function ebayPaintForcePush() {
     const countEl = document.getElementById('force-push-count');
     if (!btn || !countEl || ebayForcePushBusy) return;
     const n = ebayForcePushTargets().length;
-    const ruleOn = typeof dilSbidEnabled !== 'undefined' && !!dilSbidEnabled;
+    const ruleOn = (typeof dilSbidEnabled !== 'undefined' && !!dilSbidEnabled) || ebayPmtIsOn();
     countEl.textContent = String(n);
     btn.disabled = !ruleOn || n === 0;
     btn.title = ruleOn
-        ? 'Pull live C Bid and push S Bid until they match for ' + n + ' listing(s). Checked rows are used when any row is selected.'
-        : 'Dil vs SBid is off. Turn it on to force push.';
+        ? 'Pull live C Bid and push the bid (' + (ebayPmtIsOn() ? 'Ads Rule PMT' : 'S Bid') + ') until they match for ' + n + ' listing(s). Checked rows are used when any row is selected.'
+        : 'Dil vs SBid and Ads Rule PMT are both off. Turn one on to force push.';
 }
 
 /**
@@ -1092,6 +1110,22 @@ function getDilColor(dil) {
     'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay/campaign-ads/push-selected'),
 ])
+
+/** Ads Rule PMT works on running cost-per-sale ads only (the ones it pushes to). */
+window.ebayPmtRowActive = function (row) {
+    return !!row && String(row.funding_strategy || '') === 'COST_PER_SALE' && campaignStatusOf(row) === 'RUNNING';
+};
+/** Ads Rule PMT saved / switched: repaint the C Bid dots and the Force Push count. */
+window.ebayPmtAfterChange = function () {
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
+    if (typeof ebayPaintForcePush === 'function') ebayPaintForcePush();
+};
+/** The old rule for a category with no Highest / Manual: the S Bid of this row. */
+function getCombinedSbid(row) {
+    return campaignSbid(row);
+}
+
+@include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'script', 'pmtAccount' => 'ebay1', 'pmtAdsPage' => true])
 
 let ecaYSpendRow = null;
 let ecaYSpendChart = null;

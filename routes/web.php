@@ -7352,6 +7352,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/campaign-ads/badges', 'getBadgeSummary')->name('ebay2.campaign.ads.badges');
         Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
         Route::get('/ebay2/listing-report-history', 'listingReportHistory')->name('ebay2.listing.report.history');
+        Route::get('/ebay2/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay2.campaign.ads.dil.sbid');
+        Route::post('/ebay2/campaign-ads/dil-sbid-rule', 'saveDilSbidRule')->name('ebay2.campaign.ads.dil.sbid.save');
+        Route::post('/ebay2/campaign-ads/push-selected', 'pushSelected')->name('ebay2.campaign.ads.push.selected');
         Route::get('/ebay2/campaign-ads/campaigns', 'getCampaignList')->name('ebay2.campaign.ads.campaigns');
         Route::post('/ebay2/campaign-ads/enroll', 'enrollInCampaign')->name('ebay2.campaign.ads.enroll');
         Route::post('/ebay2/campaign-ads/auto-enroll-eligible', 'autoEnrollEligibleHttp')->name('ebay2.campaign.ads.auto.enroll');

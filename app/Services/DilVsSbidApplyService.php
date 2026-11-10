@@ -233,8 +233,9 @@ class DilVsSbidApplyService
         if (empty($stored['enabled'])) {
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Dil vs SBid is off'];
         }
-        if ($ruleKey === DilVsSbidRule::KEY_EBAY1 && PmtCategoryBidRule::isOn()) {
-            // Ads Rule PMT owns the eBay 1 bids while it is on; two rules would keep overwriting each other.
+        $pmtAccount = $ruleKey === DilVsSbidRule::KEY_EBAY1 ? 'ebay1' : ($ruleKey === DilVsSbidRule::KEY_EBAY2 ? 'ebay2' : null);
+        if ($pmtAccount !== null && PmtCategoryBidRule::isOn($pmtAccount)) {
+            // Ads Rule PMT owns the eBay 1 / eBay 2 bids while it is on; two rules would keep overwriting each other.
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => [], 'error' => 'Ads Rule PMT is on'];
         }
 
@@ -298,11 +299,11 @@ class DilVsSbidApplyService
             : [];
         $fallback = $this->pmtSbidFallback($account, $cfg['rule']);
         $decider = fn (string $lid, object $ad, array $rolled): array => isset($families[(string) $lid])
-            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids)
+            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids, $fallback === null ? null : fn (): array => $fallback($ad, $rolled))
             : $this->pmtDecision($lid, $rolled, $bids, $categories, $fallback === null ? null : fn (): array => $fallback($ad, $rolled));
 
         if ($onlyLocalMismatch) {
-            $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider);
+            $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider, $cfg['rule']);
             if ($listingIds === []) {
                 return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => []];
             }
@@ -318,6 +319,43 @@ class DilVsSbidApplyService
             $decider,
             fn (): bool => PmtCategoryBidRule::isOn($account)
         );
+    }
+
+    /**
+     * The numbers Ads Rule PMT decides with, per ad listing: INV, OV L30, eBay sold and category.
+     * eBay 2 gives the whole PARENT family's numbers (the same for every listing of the parent);
+     * the other accounts give the listing's own roll-up. Same code as the push, so a grid shows what is pushed.
+     *
+     * @param  array<int, mixed>  $listingIds
+     * @return array<string, array{inv:mixed,ovL30:mixed,sold:mixed,category:string}>  listing id => inputs
+     */
+    public function pmtRowInputs(string $account, array $listingIds): array
+    {
+        $cfg = self::PMT_ACCOUNTS[$account] ?? null;
+        $ids = array_values(array_unique(array_filter(array_map(fn ($id) => trim((string) $id), $listingIds), fn ($id) => $id !== '')));
+        if ($cfg === null || $ids === []) {
+            return [];
+        }
+        $categories = app(ExcelCategoryLookupService::class)->map($account);
+        if ($account === 'ebay2') {
+            return $this->pmtParentFamilies($ids, $cfg['metric'], $categories);
+        }
+
+        $metricsByListing = $cfg['metric']::whereIn('item_id', $ids)->get()->groupBy(fn ($m) => (string) $m->item_id);
+        $skus = $this->skusForListings($ids, $metricsByListing, collect());
+        $shopifyMap = $this->shopifyBySku($skus);
+        $out = [];
+        foreach ($ids as $lid) {
+            $rolled = $this->rolledListingInputs($lid, (object) ['sku' => ''], $metricsByListing, $shopifyMap, [], []);
+            $out[$lid] = [
+                'inv' => $rolled['shopify']->inv,
+                'ovL30' => $rolled['shopify']->quantity,
+                'sold' => $rolled['metric']->ebay_l30,
+                'category' => $categories[ExcelCategoryLookupService::normalizeItemId($lid)] ?? '',
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -429,17 +467,21 @@ class DilVsSbidApplyService
 
     /**
      * The old Dil vs SBid decision of one listing, used by Ads Rule PMT when the category has no Highest / Manual.
-     * eBay 1 only (eBay 2 / 3 retired Dil vs SBid, so those accounts keep skipping such listings).
-     * Runs even when the Dil vs SBid switch is Off: the slabs and tables are what counts here.
+     * eBay 1 always (even when its Dil vs SBid switch is Off: the slabs and tables are what counts).
+     * eBay 2 only while its own Dil vs SBid switch is On (its slabs start at defaults, so Off must not push anything).
+     * eBay 3 retired Dil vs SBid, so it keeps skipping such listings.
      *
      * @return (callable(object, array): array)|null
      */
     private function pmtSbidFallback(string $account, string $ruleKey): ?callable
     {
-        if ($account !== 'ebay1') {
+        if (! in_array($account, ['ebay1', 'ebay2'], true)) {
             return null;
         }
         $dil = DilVsSbidRule::load($ruleKey);
+        if ($account === 'ebay2' && empty($dil['enabled'])) {
+            return null;
+        }
 
         return fn (object $ad, array $rolled): array => $this->listingDecision(
             true,
@@ -671,7 +713,7 @@ class DilVsSbidApplyService
      * @param  callable(string, object, array): array  $decider
      * @return list<string>
      */
-    private function pmtLocalMismatches(array $listingIds, string $adsTable, string $metricClass, callable $decider): array
+    private function pmtLocalMismatches(array $listingIds, string $adsTable, string $metricClass, callable $decider, string $ruleKey = DilVsSbidRule::KEY_EBAY1): array
     {
         $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
         if ($listingIds === []) {
@@ -689,7 +731,7 @@ class DilVsSbidApplyService
         $skus = $this->skusForListings($listingIds, $metricsByListing, $ads);
         $shopifyMap = $this->shopifyBySku($skus);
         // The old S Bid fallback (eBay 1) needs the Std NPFT / GPFT maps when those tables add something.
-        $dilTables = DilVsSbidRule::load(DilVsSbidRule::KEY_EBAY1)['tables'];
+        $dilTables = DilVsSbidRule::load($ruleKey)['tables'];
         $npftMap = DilVsSbidRule::usesNpft($dilTables) ? EbayStdNpftLookup::forSkus($skus) : [];
         $gpftMap = DilVsSbidRule::usesGpft($dilTables) ? $this->gpftBySku($metricsByListing) : [];
 

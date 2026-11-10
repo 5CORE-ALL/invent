@@ -665,6 +665,8 @@ class Kernel extends ConsoleKernel
         foreach ([
             ['09:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-morning'],
             ['19:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-evening'],
+            ['09:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-morning'],
+            ['19:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-evening'],
         ] as [$at, $cmd, $name]) {
             $ist($schedule->command($cmd)
                 ->dailyAt($at)
@@ -674,7 +676,7 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log));
         }
-        foreach (['ebay1'] as $account) { // eBay 2 / 3: Dil vs SBid retired, Ads Rule PMT replaced it
+        foreach (['ebay1', 'ebay2'] as $account) { // eBay 3: Dil vs SBid retired, Ads Rule PMT replaced it
             $ist($schedule->command('ebay:dil-sbid-auto-push '.$account.' --mismatch')
                 ->everyThirtyMinutes()
                 ->timezone('Asia/Kolkata')

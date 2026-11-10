@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Ebay2Metric;
 use App\Models\EbayMetric;
 use App\Services\DilVsSbidApplyService;
+use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Support\DilVsSbidRule;
 use Illuminate\Console\Command;
@@ -13,10 +15,10 @@ use Throwable;
 class EbayDilSbidAutoPushCommand extends Command
 {
     protected $signature = 'ebay:dil-sbid-auto-push
-        {account=all : ebay1 or all (Dil vs SBid is removed on eBay 2 / 3)}
+        {account=all : ebay1, ebay2 or all (Dil vs SBid is removed on eBay 3)}
         {--mismatch : Only ads whose stored C Bid differs from S Bid}';
 
-    protected $description = 'eBay 1: push Dil vs SBid when Dil, views, or CVR changed the bid.';
+    protected $description = 'eBay 1 and 2: push Dil vs SBid when Dil, views, or CVR changed the bid.';
 
     public function handle(DilVsSbidApplyService $apply): int
     {
@@ -25,7 +27,7 @@ class EbayDilSbidAutoPushCommand extends Command
 
         $accounts = $this->accounts((string) $this->argument('account'));
         if ($accounts === []) {
-            $this->error('Unsupported account. Dil vs SBid only exists for ebay1 (use ebay1 or all).');
+            $this->error('Unsupported account. Dil vs SBid exists for ebay1 and ebay2 (use ebay1, ebay2 or all).');
 
             return self::FAILURE;
         }
@@ -55,9 +57,9 @@ class EbayDilSbidAutoPushCommand extends Command
     {
         $account = strtolower(trim($account));
         if ($account === 'all') {
-            return ['ebay1'];
+            return ['ebay1', 'ebay2'];
         }
-        if ($account === 'ebay1') {
+        if (in_array($account, ['ebay1', 'ebay2'], true)) {
             return [$account];
         }
 
@@ -83,7 +85,9 @@ class EbayDilSbidAutoPushCommand extends Command
     private function pushAccount(DilVsSbidApplyService $apply, string $account): void
     {
         $mismatch = (bool) $this->option('mismatch');
-        $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY1, 'ebay_campaign_ads', EbayMetric::class, EbayApiService::class, $mismatch);
+        $result = $account === 'ebay2'
+            ? $apply->applyChanged(DilVsSbidRule::KEY_EBAY2, 'ebay2_campaign_ads', Ebay2Metric::class, Ebay2ApiService::class, $mismatch)
+            : $apply->applyChanged(DilVsSbidRule::KEY_EBAY1, 'ebay_campaign_ads', EbayMetric::class, EbayApiService::class, $mismatch);
 
         if (! empty($result['error']) && ($result['error'] ?? '') === 'Dil vs SBid is off') {
             $this->line($account.': switch is off, nothing pushed');

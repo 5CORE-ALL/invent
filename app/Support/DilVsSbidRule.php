@@ -46,10 +46,10 @@ final class DilVsSbidRule
         ];
     }
 
-    /** eBay 2 / eBay 3 no longer use Dil vs SBid (Ads Rule PMT replaced it): always Off, nothing pushes. */
+    /** eBay 3 no longer uses Dil vs SBid (Ads Rule PMT replaced it): always Off, nothing pushes. eBay 1 and eBay 2 use it. */
     public static function isRetired(string $key): bool
     {
-        return $key === self::KEY_EBAY2 || $key === self::KEY_EBAY3;
+        return $key === self::KEY_EBAY3;
     }
 
     public static function load(string $key): array

@@ -30,8 +30,8 @@ final class DilVsSbidAutoPush
             return;
         }
         PmtRuleAutoPush::afterDataChange($account);
-        if (in_array($account, ['ebay2', 'ebay3'], true)) {
-            return; // Dil vs SBid is retired for eBay 2 / 3; Ads Rule PMT replaced it
+        if ($account === 'ebay3') {
+            return; // Dil vs SBid is retired for eBay 3; Ads Rule PMT replaced it
         }
         if (! Cache::add(self::spawnLockName($account), 1, self::SPAWN_SECONDS)) {
             return;

@@ -11,6 +11,8 @@ use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\CpMasterDil;
 use App\Support\EbayListingReportHistory;
+use App\Support\EbayPmtRowInputs;
+use App\Support\EbayStdNpftLookup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -29,6 +31,56 @@ class Ebay2CampaignAdsController extends Controller
     public function index()
     {
         return view('campaign.ebay2-campaign-ads');
+    }
+
+    public function getDilSbidRule()
+    {
+        return response()->json(\App\Support\DilVsSbidRule::load(\App\Support\DilVsSbidRule::KEY_EBAY2));
+    }
+
+    public function saveDilSbidRule(Request $request)
+    {
+        $saved = \App\Support\DilVsSbidRule::save(
+            \App\Support\DilVsSbidRule::KEY_EBAY2,
+            $request->input('slabs', []),
+            $request->exists('enabled') ? $request->boolean('enabled') : null,
+            $request->exists('cvr') ? $request->input('cvr') : null,
+            $request->exists('tables') ? $request->input('tables') : null,
+            $request->exists('cap') ? $request->input('cap') : null,
+            $request->exists('views_over') ? $request->input('views_over') : null
+        );
+
+        return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * Push the bid of the chosen listings. While Ads Rule PMT is on it owns the bids, so its rule bid
+     * is pushed (Manual / Highest, else the Dil vs SBid S Bid); otherwise the Dil vs SBid S Bid is pushed.
+     */
+    public function pushSelected(Request $request)
+    {
+        $listingIds = $request->input('listing_ids', []);
+        if (empty($listingIds) || ! is_array($listingIds)) {
+            return response()->json(['error' => 'No listings selected'], 422);
+        }
+
+        $service = app(\App\Services\DilVsSbidApplyService::class);
+        if (\App\Support\PmtCategoryBidRule::isOn('ebay2')) {
+            $result = $service->applyPmtChanged('ebay2', false, $listingIds);
+        } else {
+            $result = $service->apply(
+                \App\Support\DilVsSbidRule::KEY_EBAY2,
+                'ebay2_campaign_ads',
+                Ebay2Metric::class,
+                \App\Services\Ebay2ApiService::class,
+                $listingIds
+            );
+        }
+        if (! empty($result['error'])) {
+            return response()->json(['error' => $result['error']], 500);
+        }
+
+        return response()->json($result);
     }
 
     public function getCampaignList()
@@ -830,6 +882,7 @@ class Ebay2CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
+        $all = $request->boolean('all'); // every row at once (the Dil vs SBid / Ads Rule PMT windows count the whole list)
         $page = max(1, (int) $request->input('page', 1));
         $size = (int) $request->input('size', 100);
         if ($size < 1) {
@@ -841,7 +894,7 @@ class Ebay2CampaignAdsController extends Controller
 
         // Remap and the eBay search backfill rewrite rows. Run them on the
         // first page only so flipping pages is a read of one slice.
-        if ($page === 1) {
+        if ($page === 1 && ! $all) {
             EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
             $this->backfillMissingEligibleForSearch($request->input('search'));
         }
@@ -966,9 +1019,12 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         $total = (int) (clone $query)->count();
-        $data = $query->orderBy('ca.id', 'desc')->forPage($page, $size)->get();
+        $ordered = $query->orderBy('ca.id', 'desc');
+        $data = $all ? $ordered->get() : $ordered->forPage($page, $size)->get();
         CpMasterDil::hydrate($data);
         EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
+        $this->attachStdNpft($data);
+        EbayPmtRowInputs::attach($data, 'ebay2');
 
         return response()->json([
             'total' => $total,
@@ -984,6 +1040,30 @@ class Ebay2CampaignAdsController extends Controller
      *
      * @return array<int, array<string, mixed>>
      */
+    /**
+     * Std NPFT % from /lmp-overall (with Sku Link siblings), so the Dil vs SBid window counts the number the push uses.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    private function attachStdNpft($rows): void
+    {
+        $skus = [];
+        foreach ($rows as $row) {
+            if ((int) ($row->sku_matched ?? 0) !== 1) {
+                continue;
+            }
+            $sku = trim((string) ($row->resolved_sku ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $npft = EbayStdNpftLookup::forSkus($skus);
+        foreach ($rows as $row) {
+            $key = EbayStdNpftLookup::key((string) ($row->resolved_sku ?? ''));
+            $row->std_npft = ($key !== '' && array_key_exists($key, $npft)) ? $npft[$key] : null;
+        }
+    }
+
     public function getAdvertisementMasterChannelRows(): array
     {
         $kwMetrics = $this->advertisementMasterKwMetrics();
