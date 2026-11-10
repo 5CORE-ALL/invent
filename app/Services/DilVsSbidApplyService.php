@@ -133,7 +133,6 @@ class DilVsSbidApplyService
         $skipped = 0;
         $unchanged = 0;
         $bidsByCampaign = [];
-        $offsByCampaign = [];
 
         foreach ($listingIds as $lid) {
             $campaignAds = $ads->get($lid);
@@ -173,15 +172,10 @@ class DilVsSbidApplyService
                 }
 
                 if ($wanted['off']) {
-                    if (empty($ad->ad_id)) {
-                        $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Pause but no ad id'];
-                        $skipped++;
-                        continue;
-                    }
-                    $offsByCampaign[(string) $ad->campaign_id][] = [
-                        'listingId' => $lid,
-                        'adId' => (string) $ad->ad_id,
-                    ];
+                    // eBay rejects a pause on a COST_PER_SALE ad ("only supported for CPC funding model"). Every ad here is
+                    // CPS, which costs nothing without a sale, so an INV 0 listing is left as is instead of failing each run.
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'INV 0: a COST_PER_SALE ad cannot be paused (no cost without a sale)'];
+                    $skipped++;
                     continue;
                 }
 
@@ -205,17 +199,13 @@ class DilVsSbidApplyService
             ! $onlyChanged
         );
 
-        foreach ($offsByCampaign as $campaignId => $requests) {
-            foreach (array_chunk($requests, 200) as $chunk) {
-                if ($this->switchIsOff()) {
-                    foreach ($chunk as $r) {
-                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'skipped', 'reason' => 'Dil vs SBid switched off'];
-                        $this->switchOffSkipped++;
-                    }
-
-                    continue;
-                }
-                $this->pauseAds($http, $adsTable, $campaignId, $chunk, $results, $success, $failed);
+        // An ended listing that could not be re-found is not a push failure: report it as skipped.
+        foreach ($results as $i => $row) {
+            if (($row['status'] ?? '') === 'failed' && EbayCampaignEndedListingRemap::isEndedListingError((string) ($row['reason'] ?? ''))) {
+                $results[$i]['status'] = 'skipped';
+                $results[$i]['reason'] = 'Listing ended: '.($row['reason'] ?? '');
+                $failed--;
+                $skipped++;
             }
         }
 
@@ -715,9 +705,7 @@ class DilVsSbidApplyService
                     continue;
                 }
                 if ($wanted['off']) {
-                    $out[] = $lid; // still RUNNING, so it needs pausing
-
-                    continue;
+                    continue; // INV 0: a COST_PER_SALE ad cannot be paused, so there is nothing to push
                 }
                 $local = isset($ad->bid_percentage) && is_numeric($ad->bid_percentage) ? (float) $ad->bid_percentage : null;
                 if (! EbayCampaignAdLiveBid::matches($local, (float) $wanted['formatted'])) {
