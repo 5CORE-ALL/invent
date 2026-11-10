@@ -8,6 +8,7 @@ use App\Support\PmtCategoryBidRule;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Builds an Item ID => Category map from the workbook uploaded in /excel.
@@ -83,9 +84,90 @@ class ExcelCategoryLookupService
      */
     public function map(string $account = 'ebay1'): array
     {
-        $map = $this->baseMap($account);
+        // eBay 1 uses the eBay category of Category Masters (last level); the other accounts keep the /excel upload.
+        $map = $account === 'ebay1' ? $this->categoryMasterMap() : $this->baseMap($account);
         foreach ($this->overrides($account) as $itemId => $category) {
             $map[$itemId] = $category;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Last level of a category path: "Vehicle Electronics > Car Audio > Car Speakers" => "Car Speakers".
+     */
+    public static function lastLevel(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return '';
+        }
+        $parts = preg_split('/\s*>\s*/u', $path) ?: [$path];
+        $last = trim((string) end($parts));
+
+        return $last !== '' ? $last : $path;
+    }
+
+    /**
+     * SKU (upper case, NBSP-safe) => last level of the eBay category in Category Masters (/category-masters).
+     *
+     * @return array<string, string>
+     */
+    public function categoryMasterBySku(): array
+    {
+        $out = [];
+        try {
+            if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay')) {
+                foreach (DB::table('category_masters')->select(['sku', 'category_ebay'])->get() as $row) {
+                    $category = self::lastLevel((string) ($row->category_ebay ?? ''));
+                    if ($category !== '') {
+                        $out[self::skuKey((string) $row->sku)] = $category;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ExcelCategoryLookupService::categoryMasterBySku: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
+    private static function skuKey(string $sku): string
+    {
+        return strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)));
+    }
+
+    /**
+     * eBay 1: normalized eBay item id => Category Masters category (last level), matched through ebay_metrics (item id => SKU).
+     *
+     * @return array<string, string>
+     */
+    private function categoryMasterMap(): array
+    {
+        $bySku = $this->categoryMasterBySku();
+        if ($bySku === []) {
+            return [];
+        }
+
+        $map = [];
+        try {
+            DB::table('ebay_metrics')
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
+                ->select(['id', 'sku', 'item_id'])
+                ->orderBy('id')
+                ->chunkById(5000, function ($rows) use (&$map, $bySku) {
+                    foreach ($rows as $row) {
+                        $itemId = self::normalizeItemId($row->item_id);
+                        $category = $bySku[self::skuKey((string) $row->sku)] ?? '';
+                        if ($itemId === '' || $category === '' || str_starts_with($itemId, 'UNSOLD-')) {
+                            continue;
+                        }
+                        $map[$itemId] = $category;
+                    }
+                });
+        } catch (\Throwable $e) {
+            Log::warning('ExcelCategoryLookupService::categoryMasterMap: '.$e->getMessage());
         }
 
         return $map;
@@ -164,18 +246,27 @@ class ExcelCategoryLookupService
     {
         $names = [];
 
-        try {
-            $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
-            if ($importId) {
-                foreach (ExcelWorksheet::query()->where('excel_import_id', $importId)->pluck('worksheet_name') as $name) {
-                    $name = trim((string) $name);
-                    if ($this->isCategorySheet($name)) {
-                        $names[$name] = true;
+        if ($account === 'ebay1') {
+            foreach ($this->categoryMasterBySku() as $category) {
+                $names[$category] = true;
+            }
+        }
+
+        // eBay 1 lists the Category Masters categories; the other accounts the /excel worksheet tabs.
+        if ($account !== 'ebay1') {
+            try {
+                $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
+                if ($importId) {
+                    foreach (ExcelWorksheet::query()->where('excel_import_id', $importId)->pluck('worksheet_name') as $name) {
+                        $name = trim((string) $name);
+                        if ($this->isCategorySheet($name)) {
+                            $names[$name] = true;
+                        }
                     }
                 }
+            } catch (\Throwable $e) {
+                Log::warning('ExcelCategoryLookupService::categoryNames: '.$e->getMessage());
             }
-        } catch (\Throwable $e) {
-            Log::warning('ExcelCategoryLookupService::categoryNames: '.$e->getMessage());
         }
 
         try {

@@ -1657,7 +1657,9 @@ class EbayController extends Controller
             // eBay category (last level) from Category Masters (/category-masters), by SKU.
             // The "Category" column now shows this instead of the /excel worksheet name.
             $row['category2'] = $categoryMasterEbayBySku[strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $pm->sku)))] ?? '';
-            $row['excel_category'] = $row['category2'];
+            // Same category the Ads Rule PMT uses (Category Masters by item id, plus the manual "+" Category picks).
+            $excelItemKey = \App\Services\ExcelCategoryLookupService::normalizeItemId($ebayMetric?->item_id ?? '');
+            $row['excel_category'] = ($excelItemKey !== '' ? ($excelCategoryBySku[$excelItemKey] ?? '') : '') ?: $row['category2'];
 
             $result[] = (object) $row;
         }
