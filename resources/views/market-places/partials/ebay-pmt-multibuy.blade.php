@@ -153,6 +153,7 @@
                                     <tr>
                                         <th>Category</th>
                                         <th class="text-center" style="width: 80px;">{{ $pmtUnit }}s</th>
+                                        <th class="text-center" style="width: 110px;" title="Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. Read only.">Promoted listings ad rate</th>
                                         <th style="width: 140px;">Highest (%)</th>
                                         <th style="width: 140px;">Lowest (%)</th>
                                     </tr>
@@ -444,6 +445,7 @@
                                     map[key] = map[key] || {};
                                     if (row.benchmark === 'Top 10%') map[key].highest = val;
                                     else if (row.benchmark === 'Bottom 10%') map[key].lowest = val;
+                                    else if (row.benchmark === 'Yours') map[key].yours = String(row[col.field]).trim();
                                 });
                             }
                             return { map: map, column: col ? col.title : '' };
@@ -502,6 +504,10 @@
                             if (touched) cats++;
                         });
                         benchMapLoaded = b.map;
+                        $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                            const hit = benchFor(b.map, $(this).attr('data-category'));
+                            $(this).find('.arp-yours').text(hit && hit.yours ? hit.yours : '');
+                        });
                         markBenchMatches(); // also saved values that equal the benchmark
                         updateSummary();
                         if (b.failed) $status.text('Could not load {{ $pmtBenchPage }} data.');
@@ -536,6 +542,7 @@
                         const $tr = $('<tr>').attr('data-category', r.category);
                         $tr.append($('<td>').text(r.category));
                         $tr.append($('<td class="text-center">').text(r.count.toLocaleString()));
+                        $tr.append($('<td class="text-center fw-semibold arp-yours">').text('')); // read only; filled from the benchmarks
                         const saved = savedBids[r.category] || {};
                         const hi = saved.highest != null ? saved.highest : '';
                         const lo = saved.lowest != null ? saved.lowest : '';
@@ -548,7 +555,7 @@
                         $body.append($tr);
                     });
                     if (!rows.length) {
-                        $body.append('<tr><td colspan="4" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
+                        $body.append('<tr><td colspan="5" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
                     updateSummary();
                     renderRuleCounts();
