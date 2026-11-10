@@ -64,7 +64,7 @@
         .arp-table tbody tr:hover { background: #f8f9ff; }
         .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
         .arp-table .form-control { border-radius: 8px; height: 28px; }
-        .arp-table input.arp-bench { background: #ecfdf5; border-color: #86efac; }
+        .arp-table input.arp-bench { background: #dcfce7; border-color: #86efac; }
         .mb-buy-card { background: #fff; border: 1px solid #e6e8f0; border-radius: 12px; padding: 14px 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
         .mb-buy-title { font-weight: 700; font-size: 15px; color: #047857; margin-bottom: 8px; }
         .mb-buy-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
@@ -465,6 +465,22 @@
                     }
                     return null;
                 }
+                let benchMapLoaded = null;
+
+                /** Light green on every Highest / Lowest input whose value equals the benchmark of its category. */
+                function markBenchMatches($rows) {
+                    if (!benchMapLoaded) return;
+                    ($rows || $('#ads-rule-pmt-body tr[data-category]')).each(function() {
+                        const hit = benchFor(benchMapLoaded, $(this).attr('data-category'));
+                        [['.ads-rule-pmt-high', hit && hit.highest], ['.ads-rule-pmt-low', hit && hit.lowest]].forEach(function(p) {
+                            const $in = $(this).find(p[0]);
+                            const v = $in.val();
+                            const match = p[1] != null && v !== '' && Math.abs(parseFloat(v) - p[1]) < 0.005;
+                            $in.toggleClass('arp-bench', !!match);
+                        }.bind(this));
+                    });
+                }
+
                 /** Fill Highest / Lowest inputs from the benchmarks. overwrite=false only fills blank inputs. */
                 function fillFromBenchmarks(overwrite) {
                     const $status = $('#ads-rule-pmt-bench-status').text('Loading benchmarks...');
@@ -485,11 +501,13 @@
                             }.bind(this));
                             if (touched) cats++;
                         });
+                        benchMapLoaded = b.map;
+                        markBenchMatches(); // also saved values that equal the benchmark
                         updateSummary();
                         if (b.failed) $status.text('Could not load {{ $pmtBenchPage }} data.');
                         else if (!b.column) $status.text('No "Promoted Listings ads rate" column found in {{ $pmtBenchPage }} (upload the {{ $pmtLabel }} LQS report in {{ $pmtExcelPath }}).');
                         else $status.text('Benchmarks (' + b.column + ', Impressions in eBay search): filled ' + cats + ' categor' + (cats === 1 ? 'y' : 'ies')
-                            + (missing ? ', ' + missing + ' without a benchmark' : '') + '. Green = from benchmarks, not saved until you press Save.');
+                            + (missing ? ', ' + missing + ' without a benchmark' : '') + '. Light green = value matches the benchmark (filled values are not saved until you press Save).');
                     });
                 }
 
@@ -572,6 +590,7 @@
 
                 $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
                     $(this).removeClass('arp-bench');
+                    markBenchMatches($(this).closest('tr')); // green again if the typed value equals the benchmark
                     updateSummary();
                 });
                 $('#ads-rule-pmt-bench-fill').on('click', function() { fillFromBenchmarks(true); });
