@@ -5,7 +5,7 @@
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title mt-3"
                         title="Extra discount on S PRC for SKUs whose CVR L30 arrow is Down or Up. Saved with Save Only / Save All. Count = SKUs (INV &gt; 0) in that row.">
-                        <span class="amz-dg-seq" title="Sequence number: the order of the price rules (the LMP cap with the Std Prc maximum, and this CVR up / down discount). The price rules always run after the Target NROI rules. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="cvrud" value="6"></span>CVR up / down — extra discount on S PRC
+                        <span class="amz-dg-seq" title="Sequence number: the order of the price rules (the LMP cap with the Std Prc maximum, and this CVR up / down discount). The price rules always run after the Target NROI rules. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="cvrud" value="7"></span>CVR up / down — extra discount on S PRC
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-3 mb-1">
                         <div class="form-check form-switch mb-0">

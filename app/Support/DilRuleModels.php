@@ -115,6 +115,10 @@ final class DilRuleModels
         if (is_array($targetStored) && is_array($targetStored['rule_seq'] ?? null)) {
             $out['rule_seq'] = $existing['rule_seq'];
         }
+        // Review Discount slabs (Amazon only) stay with the page that saved them.
+        if (is_array($targetStored) && is_array($targetStored['rev_reduce'] ?? null)) {
+            $out['rev_reduce'] = $existing['rev_reduce'];
+        }
         // Custom rule cards stay with the page that has them too.
         if (is_array($targetStored) && is_array($targetStored['custom_rules'] ?? null)) {
             $out['custom_rules'] = $existing['custom_rules'];

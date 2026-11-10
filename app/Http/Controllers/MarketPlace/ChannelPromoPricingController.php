@@ -1950,6 +1950,7 @@ class ChannelPromoPricingController extends Controller
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
+                'rev_reduce' => $unpacked['rev_reduce'],
                 'rule_on' => $unpacked['rule_on'],
                 'rule_seq' => $unpacked['rule_seq'],
                 'custom_rules' => $unpacked['custom_rules'],
@@ -1968,6 +1969,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
+            'rev_reduce' => $unpacked['rev_reduce'],
             'rule_on' => $unpacked['rule_on'],
             'rule_seq' => $unpacked['rule_seq'],
             'custom_rules' => $unpacked['custom_rules'],
@@ -2002,6 +2004,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $config['lmp_cap'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
+            'rev_reduce' => $config['rev_reduce'],
             'rule_on' => $config['rule_on'],
             'rule_seq' => $config['rule_seq'],
             'custom_rules' => $config['custom_rules'],
@@ -2064,6 +2067,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $config['lmp_cap'],
             'diff_adj' => $config['diff_adj'],
             'age_adj' => $config['age_adj'],
+            'rev_reduce' => $config['rev_reduce'],
             'rule_on' => $config['rule_on'],
             'rule_seq' => $config['rule_seq'],
             'custom_rules' => $config['custom_rules'],
@@ -2137,6 +2141,17 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeAgeAdj($ageAdjIncoming)
             : $existing['age_adj'];
 
+        // Review Discount slabs (star rating → Reduce % added to the LMP reduce %). An old page that does not send them keeps what
+        // is saved; a sent empty list turns the block off.
+        $revReduceIncoming = $request->input('rev_reduce');
+        if (is_string($revReduceIncoming)) {
+            $decodedRevReduce = json_decode($revReduceIncoming, true);
+            $revReduceIncoming = is_array($decodedRevReduce) ? $decodedRevReduce : null;
+        }
+        $revReduce = ($request->exists('rev_reduce') && is_array($revReduceIncoming))
+            ? AmazonDilGroiRule::normalizeRevReduce($revReduceIncoming)
+            : $existing['rev_reduce'];
+
         // ON / OFF switches of the Sprc Dil blocks. A page that does not send them keeps what is saved.
         $ruleOnIncoming = $request->input('rule_on');
         if (is_string($ruleOnIncoming)) {
@@ -2167,7 +2182,7 @@ class ChannelPromoPricingController extends Controller
             ? AmazonDilGroiRule::normalizeCustomRules($customIncoming)
             : $existing['custom_rules'];
 
-        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj, 'rule_on' => $ruleOn, 'rule_seq' => $ruleSeq, 'custom_rules' => $customRules];
+        $visibility = ['rules' => $rules, 'cvr_adj' => $cvrAdj, 'lmp_cap' => $lmpCap, 'diff_adj' => $diffAdj, 'age_adj' => $ageAdj, 'rev_reduce' => $revReduce, 'rule_on' => $ruleOn, 'rule_seq' => $ruleSeq, 'custom_rules' => $customRules];
         if ($request->exists('clearance_nroi')) {
             $rawNroi = $request->input('clearance_nroi');
             $visibility['clearance_nroi'] = is_numeric($rawNroi)
@@ -2184,6 +2199,7 @@ class ChannelPromoPricingController extends Controller
             'lmp_cap' => $lmpCap,
             'diff_adj' => $diffAdj,
             'age_adj' => $ageAdj,
+            'rev_reduce' => $revReduce,
             'rule_on' => $ruleOn,
             'rule_seq' => $ruleSeq,
             'custom_rules' => $customRules,

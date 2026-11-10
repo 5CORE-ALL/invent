@@ -397,8 +397,9 @@ class AmazonSprcDilAutoPushService
                         $ship,
                         AmazonDilGroiRule::TAKE_HOME,
                         $std,
-                        // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page.
-                        AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg),
+                        // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page,
+                        // plus the Reduce % Discount of the Review Discount rule (star rating slab) when that rule is ON.
+                        AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg) + $this->revReducePct($row),
                         // LMP rule: LMP available and the calculated S PRC ≥ LMP → LMP − x%. No "SNROI at LMP ≥ 20%" condition.
                         false
                     );
@@ -1378,11 +1379,14 @@ class AmazonSprcDilAutoPushService
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceNroiCfg = null;
 
-    /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, diff, lmp, clearance). A block that is OFF no longer applies. */
-    private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
+    /** Review Discount slabs (star rating → Reduce % added to the LMP reduce %) saved in the Sprc Dil modal; null = defaults (0%). */
+    private ?array $revReduceCfg = null;
+
+    /** ON / OFF switches of the Sprc Dil blocks (dil, rev, cvr, age, diff, lmp, clearance). A block that is OFF no longer applies. */
+    private array $ruleOnCfg = ['dil' => true, 'rev' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
 
     /** Sequence numbers of the Target NROI rules (cvr, age, diff): the order they are applied in. */
-    private array $ruleSeqCfg = ['cvr' => 2.0, 'age' => 3.0, 'diff' => 4.0];
+    private array $ruleSeqCfg = ['cvr' => 3.0, 'age' => 4.0, 'diff' => 5.0];
 
     /** Custom rule cards (Sprc Dil modal "Add rule"): normalized list. */
     private array $customRulesCfg = [];
@@ -1402,6 +1406,24 @@ class AmazonSprcDilAutoPushService
     private function dilRuleOn(string $key): bool
     {
         return ($this->ruleOnCfg[$key] ?? true) !== false;
+    }
+
+    /**
+     * Review Discount rule (Sprc Dil modal, seq 2): the Reduce % Discount of the SKU's star-rating slab. It is added to the
+     * LMP reduce % of the LMP Rule, so S PRC at LMP = LMP − (Dil band % + this %). 0 when the rule is OFF, the SKU has no rating
+     * or no reviews, or its rating is in no slab. Same as the page (amzLmpReducePctForRow).
+     *
+     * @param  array<string,mixed>  $row
+     */
+    private function revReducePct(array $row): float
+    {
+        if (! $this->dilRuleOn('rev')) {
+            return 0.0;
+        }
+        $rating = isset($row['review_rating']) && is_numeric($row['review_rating']) ? (float) $row['review_rating'] : null;
+        $qty = isset($row['review_count']) && is_numeric($row['review_count']) ? (float) $row['review_count'] : null;
+
+        return AmazonDilGroiRule::revReducePct($rating, $qty, $this->revReduceCfg);
     }
 
     /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
@@ -1433,6 +1455,7 @@ class AmazonSprcDilAutoPushService
         $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
         $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
         $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
+        $this->revReduceCfg = $unpacked['rev_reduce'] ?? null;
         $this->ruleOnCfg = AmazonDilGroiRule::normalizeRuleOn($unpacked['rule_on'] ?? null);
         $this->ruleSeqCfg = AmazonDilGroiRule::normalizeRuleSeq($unpacked['rule_seq'] ?? null);
         $this->customRulesCfg = AmazonDilGroiRule::normalizeCustomRules($unpacked['custom_rules'] ?? null);

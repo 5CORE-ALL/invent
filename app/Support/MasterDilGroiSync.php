@@ -288,6 +288,7 @@ class MasterDilGroiSync
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
+                'rev_reduce' => $unpacked['rev_reduce'],
                 'rule_on' => $unpacked['rule_on'],
                 'rule_seq' => $unpacked['rule_seq'],
                 'custom_rules' => $unpacked['custom_rules'],
@@ -305,6 +306,7 @@ class MasterDilGroiSync
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
+            'rev_reduce' => $unpacked['rev_reduce'],
             'rule_on' => $unpacked['rule_on'],
             'rule_seq' => $unpacked['rule_seq'],
             'custom_rules' => $unpacked['custom_rules'],
@@ -334,6 +336,9 @@ class MasterDilGroiSync
         }
         if (is_array($existing['age_adj'] ?? null)) {
             $visibility['age_adj'] = $existing['age_adj'];
+        }
+        if (is_array($existing['rev_reduce'] ?? null)) {
+            $visibility['rev_reduce'] = $existing['rev_reduce'];
         }
         if (is_array($existing['rule_on'] ?? null)) {
             $visibility['rule_on'] = $existing['rule_on'];

@@ -423,8 +423,23 @@
             line-height: 1;
             cursor: pointer;
         }
+        #amz-rev-reduce-table .amz-rev-reduce-input {
+            max-width: 84px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
+        #amz-rev-reduce-table .amz-rev-reduce-del {
+            border: none;
+            background: none;
+            color: #dc3545;
+            padding: 0 4px;
+            line-height: 1;
+            cursor: pointer;
+        }
         #amz-cvr-groi-table .amz-dg-count,
         #amz-lmp-cap-table .amz-dg-count,
+        #amz-rev-reduce-table .amz-dg-count,
         #amz-age-adj-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
@@ -1068,7 +1083,7 @@
                     <div class="amz-dg-card" data-amz-card="dil">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-card-title d-flex justify-content-between align-items-center">
-                        <span class="d-inline-flex align-items-center gap-2"><span class="amz-dg-seq" title="Sequence number: sorts this card. The Dil slab picks the base Target NROI, so it always runs before the rules that change it. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="dil" value="1"></span><span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
+                        <span class="d-inline-flex align-items-center gap-2"><span class="amz-dg-seq" title="Sequence number: sorts this card. The Dil slab picks the base Target NROI, so it always runs before the rules that change it. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="dil" value="1"></span><span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
                             <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Dil slabs no longer set a Target NROI, so Sprc Dil calculates no price from them."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="dil" checked><span class="amz-dg-rule-sw-txt">ON</span></label></span>
                         <button type="button" class="btn btn-sm btn-outline-primary amz-dg-add-btn py-0 px-2" id="amz-dil-groi-add-btn">
                             <i class="fas fa-plus me-1"></i> Add slab
@@ -1102,9 +1117,42 @@
                         </div>
                     </div>
                     </div>
+                    <div class="amz-dg-card" data-amz-card="rev">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <div class="amz-dg-side">
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
+                        title="Each star-rating band (the 4.0 in Reviews, not the count) has a Reduce % Discount. It is ADDED to the LMP reduce % of the LMP Rule: when S PRC reaches LMP it lands on LMP − (Dil band % + this %). Count = SKUs (INV &gt; 0, with reviews) whose rating is in that band.">
+                        <span class="amz-dg-seq" title="Sequence number: sorts this card. The Reduce % is added to the LMP reduce %, so it is used whenever the LMP Rule applies; the number does not change any price. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="rev" value="2"></span><span>Review Discount — Reduce % of LMP</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Reduce % no longer lowers the LMP price (the LMP Rule keeps only its Dil band %)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="rev" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                    </div>
+                    </div>
+                    <div class="amz-dg-main">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-rev-reduce-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" style="width:90px;" title="Star rating From (0 – 5)">From (★)</th>
+                                    <th class="text-center" style="width:90px;" title="Star rating To (0 – 5)">To (★)</th>
+                                    <th class="text-end" style="width:130px;" title="Reduce % Discount added to the LMP reduce %">Reduce % Discount</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0, with reviews) whose star rating is in this band">Count</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="amz-rev-reduce-tbody"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 mt-1" id="amz-rev-reduce-add-btn">
+                        <i class="fas fa-plus me-1"></i> Add review slab
+                    </button>
+                    </div>
+                    <div class="amz-dg-card-rules" data-card="rev">
+                        <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
+                        <div class="amz-dg-rules-list"></div>
+                    </div>
+                    </div>
                     <div class="amz-dg-card" data-amz-card="cvr">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="cvr" value="2"></span><span>CVR overlay — Target NROI</span>
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="cvr" value="3"></span><span>CVR overlay — Target NROI</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the CVR overlay no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="cvr" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     <div class="table-responsive">
@@ -1153,7 +1201,7 @@
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
                         title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
-                        <span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="age" value="3"></span><span>Ageing Rule</span>
+                        <span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="age" value="4"></span><span>Ageing Rule</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Ageing Rule no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="age" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
@@ -1184,7 +1232,7 @@
                     <div class="amz-dg-card" data-amz-card="diff">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-side">
-                    <div class="amz-dg-rules-title amz-dg-has-sw" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI."><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="diff" value="4"></span><span>Diff rule</span>
+                    <div class="amz-dg-rules-title amz-dg-has-sw" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI."><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="diff" value="5"></span><span>Diff rule</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Diff rule no longer adds points to the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="diff" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
@@ -1207,7 +1255,7 @@
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw mt-3"
                         title="If LMP is available and the calculated S PRC is at or above LMP: S PRC = LMP × (1 − x/100). x depends on the SKU's Dil band. Count = SKUs (INV &gt; 0) in that band whose calculated S PRC is at or above LMP.">
-                        <span class="amz-dg-seq" title="Sequence number: the order of the price rules (this LMP cap with the Std Prc maximum, and the CVR up / down discount). The price rules always run after the Target NROI rules. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="lmp" value="5"></span><span>LMP Rule</span>
+                        <span class="amz-dg-seq" title="Sequence number: the order of the price rules (this LMP cap with the Std Prc maximum, and the CVR up / down discount). The price rules always run after the Target NROI rules. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="lmp" value="6"></span><span>LMP Rule</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = S PRC is no longer capped to LMP (Std Prc is still the maximum)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="lmp" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
@@ -1271,7 +1319,7 @@
                     <div class="amz-dg-card" data-amz-card="clearance">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-side">
-                    <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: sorts this card. Clearance SKUs are priced from the Clearance Target NROI% instead of the other rules, so the number does not change any price. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="7" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="7"></span><span>Clearance</span>
+                    <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: sorts this card. Clearance SKUs are priced from the Clearance Target NROI% instead of the other rules, so the number does not change any price. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="8"></span><span>Clearance</span>
                             <label class="amz-dg-rule-sw" title="ON / OFF. OFF = clearance SKUs are priced like any other SKU (the Clearance Target NROI% no longer applies)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
@@ -1355,7 +1403,11 @@
                 'When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.',
                 'When you change the first Target NROI%: later rows fill as first +5, +10, \u2026 (increasing down the table).',
                 'When INV \u2264 0: Count and pies skip that SKU.',
-                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay, Ageing Rule and Diff rule in the order of their Seq numbers (lowest first). After them the price rules run in the order of their Seq numbers: the LMP cap (with the Std Prc maximum) and the CVR up / down discount. A rule never runs before what it needs, so the NROI rules always come before the price rules. Clearance is a separate path, so its number only sorts the card.',
+                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay, Ageing Rule and Diff rule in the order of their Seq numbers (lowest first). After them the price rules run in the order of their Seq numbers: the LMP cap (with the Std Prc maximum) and the CVR up / down discount. A rule never runs before what it needs, so the NROI rules always come before the price rules. Review Discount (Seq 2) only adds its Reduce % to the LMP reduce %, so it is used whenever the LMP cap applies and its number only sorts the card. Clearance is a separate path, so its number only sorts the card.',
+            ],
+            rev: [
+                'If the SKU\u2019s star rating (the 4.0 in Reviews, not the count) is inside a review slab, its Reduce % Discount is ADDED to the LMP reduce %: when S PRC reaches LMP it lands on LMP \u2212 (Dil band % + Reduce %). Used only when the LMP Rule applies (LMP available and the calculated S PRC is at or above LMP).',
+                'A SKU with no rating, no reviews, or a rating in no slab adds 0%. The total reduce % never goes above 99%. Std Prc is still the maximum.',
             ],
             cvr: [
                 'When a SKU matches a row in the CVR overlay table (Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold; horizontal / opposite arrows are excluded): apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).',
@@ -1569,15 +1621,16 @@
         ];
         /**
          * ON / OFF switches of the Sprc Dil blocks (same keys as AmazonDilGroiRule::RULE_ON_KEYS). A block that is OFF no longer
-         * applies: dil = Dil slabs (Target NROI), cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+         * applies: dil = Dil slabs (Target NROI), rev = Review Discount (Reduce % added to the LMP reduce %), cvr = CVR overlay,
+         * age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
          * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
          */
-        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
-        let amzRuleOn = { dil: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
+        const AMZ_RULE_ON_KEYS = ['dil', 'rev', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
+        let amzRuleOn = { dil: true, rev: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
         function amzRuleIsOn(key) { return amzRuleOn[key] !== false; }
         window.amzRuleIsOn = amzRuleIsOn;
         function amzNormalizeRuleOn(raw) {
-            const out = { dil: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
+            const out = { dil: true, rev: true, cvr: true, age: true, diff: true, lmp: true, clearance: true };
             if (!raw || typeof raw !== 'object') return out;
             AMZ_RULE_ON_KEYS.forEach(function(k) {
                 const v = raw[k];
@@ -1594,6 +1647,7 @@
                 $sw.siblings('.amz-dg-rule-sw-txt').text(on ? 'ON' : 'OFF');
                 let $parts = $();
                 if (k === 'dil') $parts = $('#amz-dil-groi-table').closest('.table-responsive').add('#amz-dil-groi-add-btn');
+                else if (k === 'rev') $parts = $('#amz-rev-reduce-table').closest('.table-responsive').add('#amz-rev-reduce-add-btn');
                 else if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
                 else if (k === 'age') $parts = $('#amz-age-adj-table').closest('.table-responsive').prev('.small').add($('#amz-age-adj-table').closest('.table-responsive')).add('#amz-age-adj-add-btn');
                 else if (k === 'diff') $parts = $('#amzDilGroiModal .amz-dg-diffrow');
@@ -1622,12 +1676,12 @@
          * order they are applied in. The Dil slab and the NROI rules always run before the price rules: a rule cannot run before what
          * it needs. Saved with Save Only / Save All; the server job reads them too.
          */
-        const AMZ_RULE_SEQ_BASE = ['dil', 'cvr', 'age', 'diff', 'lmp', 'cvrud', 'clearance'];
-        const AMZ_RULE_SEQ_DEFAULT = { dil: 1, cvr: 2, age: 3, diff: 4, lmp: 5, cvrud: 6, clearance: 7 };
+        const AMZ_RULE_SEQ_BASE = ['dil', 'rev', 'cvr', 'age', 'diff', 'lmp', 'cvrud', 'clearance'];
+        const AMZ_RULE_SEQ_DEFAULT = { dil: 1, rev: 2, cvr: 3, age: 4, diff: 5, lmp: 6, cvrud: 7, clearance: 8 };
         /** Custom rule cards added with "Add rule": { id, name, on, field, op, value, value2, action ('nroi' | 'price_pct'), points }. */
         let amzCustomRules = [];
         let amzRuleSeq = Object.assign({}, AMZ_RULE_SEQ_DEFAULT);
-        /** Every key that has a sequence number: the 7 fixed cards, then the custom ones. */
+        /** Every key that has a sequence number: the 8 fixed cards, then the custom ones. */
         function amzSeqKeys() { return AMZ_RULE_SEQ_BASE.concat(amzCustomRules.map(function(r) { return 'c_' + r.id; })); }
         function amzNormalizeRuleSeq(raw) {
             const out = {};
@@ -1775,7 +1829,7 @@
             return '<div class="amz-dg-card amz-dg-custom" data-amz-card="' + key + '" data-custom-id="' + r.id + '">'
                 + '<button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">\u2212</button>'
                 + '<div class="amz-dg-side"><div class="amz-dg-rules-title amz-dg-has-sw">'
-                + '<span class="amz-dg-seq" title="Sequence number: the order this rule is applied in (Target NROI rules and price rules each run in the order of their numbers). Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="' + (amzCustomRules.length + 7) + '" step="1" class="amz-dg-seq-in" data-amz-seq="' + key + '" value="' + (amzRuleSeq[key] || '') + '"></span>'
+                + '<span class="amz-dg-seq" title="Sequence number: the order this rule is applied in (Target NROI rules and price rules each run in the order of their numbers). Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="' + (amzCustomRules.length + 8) + '" step="1" class="amz-dg-seq-in" data-amz-seq="' + key + '" value="' + (amzRuleSeq[key] || '') + '"></span>'
                 + '<input type="text" maxlength="40" size="' + Math.max(10, Math.min(40, String(r.name).length + 1)) + '" class="form-control form-control-sm amz-cr-name" value="' + amzEsc(r.name) + '" title="Name of this rule">'
                 + '<label class="amz-dg-rule-sw" title="ON / OFF. OFF = this rule no longer applies."><input type="checkbox" class="amz-dg-rule-sw-in amz-cr-on"' + (r.on ? ' checked' : '') + '><span class="amz-dg-rule-sw-txt">' + (r.on ? 'ON' : 'OFF') + '</span></label>'
                 + '</div></div>'
@@ -1931,13 +1985,133 @@
             $tbl.find('.amz-lmp-cap-high-pct').val(cfg.high_pct);
             amzPaintLmpCapExamples(cfg);
         }
-        /** LMP reduce % for one grid row, from its Dil (OV L30 ÷ INV). */
+        /**
+         * Review Discount (Sprc Dil, Seq 2): the SKU's star rating (the 4.0 in Reviews, not the count) picks a slab; the slab's
+         * Reduce % Discount is ADDED to the LMP reduce % of the LMP Rule (LMP − (Dil band % + Reduce %)). Same as the server
+         * (AmazonDilGroiRule::revReducePct / AmazonSprcDilAutoPushService::revReducePct).
+         * Not saved yet = 3 bands at 0%, so nothing changes until the % are edited.
+         */
+        const AMZ_REV_REDUCE_DEFAULT = [
+            { min: 0, max: 3, pct: 0 },
+            { min: 3, max: 4, pct: 0 },
+            { min: 4, max: 5, pct: 0 },
+        ];
+        let amzRevReduce = AMZ_REV_REDUCE_DEFAULT.map(function(r) { return Object.assign({}, r); });
+        /** One slab as the server stores it ({min,max,pct}, 0 ≤ min ≤ max ≤ 5, pct 0..99), or null when From / To is blank or not a number. */
+        function amzRevReduceBand(r) {
+            if (!r || r.min === '' || r.max === '' || r.min == null || r.max == null) return null;
+            let min = Number(r.min);
+            let max = Number(r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            min = Math.min(5, Math.max(0, min));
+            max = Math.min(5, Math.max(0, max));
+            if (max < min) { const t = min; min = max; max = t; }
+            const p = Number(r.pct);
+            const pct = (r.pct !== '' && r.pct !== null && r.pct !== undefined && isFinite(p)) ? Math.min(99, Math.max(0, p)) : 0;
+            return { min: amzPefRound2(min), max: amzPefRound2(max), pct: amzPefRound2(pct) };
+        }
+        /** Saved slabs → editable rows. Nothing saved (null) = defaults; a saved empty list = no slabs. */
+        function amzNormalizeRevReduce(raw) {
+            if (raw === null || raw === undefined) return AMZ_REV_REDUCE_DEFAULT.map(function(r) { return Object.assign({}, r); });
+            if (!Array.isArray(raw)) return [];
+            return raw.map(amzRevReduceBand).filter(Boolean);
+        }
+        /** Slabs to save: the editable rows that have a valid From and To. */
+        function amzRevReducePayload() {
+            return amzRevReduce.map(amzRevReduceBand).filter(Boolean);
+        }
+        /** Index (in the editable rows) of the slab a star rating is in, or -1. min ≤ rating < max; the last valid slab also includes max. */
+        function amzRevReduceSlabIdx(rating, rows) {
+            if (rating === null || !isFinite(rating) || !(rating > 0)) return -1;
+            const list = rows || [];
+            let last = -1;
+            for (let i = 0; i < list.length; i++) { if (amzRevReduceBand(list[i])) last = i; }
+            for (let i = 0; i < list.length; i++) {
+                const b = amzRevReduceBand(list[i]);
+                if (!b) continue;
+                const hit = Math.abs(b.max - b.min) < 0.00001
+                    ? Math.abs(rating - b.min) < 0.00001
+                    : (rating >= b.min && (i === last ? rating <= b.max : rating < b.max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /** Slab index for one grid row: needs a star rating and at least one review (a SKU with no reviews is in no slab). */
+        function amzRevReduceIdxForRow(d) {
+            if (!(amzPefReviewQty(d) > 0)) return -1;
+            return amzRevReduceSlabIdx(amzPefReviewCount(d), amzRevReduce);
+        }
+        /** Reduce % Discount for one grid row (0 when the Review Discount rule is OFF, or the SKU has no rating / reviews / slab). */
+        function amzRevReducePctForRow(d) {
+            if (!amzRuleIsOn('rev')) return 0;
+            const i = amzRevReduceIdxForRow(d);
+            const band = i >= 0 ? amzRevReduceBand(amzRevReduce[i]) : null;
+            return band ? band.pct : 0;
+        }
+        window.amzRevReducePctForRow = amzRevReducePctForRow;
+        function amzRenderRevReduceTable() {
+            const $tb = $('#amz-rev-reduce-tbody');
+            if (!$tb.length) return;
+            $tb.empty();
+            amzRevReduce.forEach(function(r, idx) {
+                $tb.append(
+                    '<tr data-idx="' + idx + '">'
+                    + '<td><input type="number" min="0" max="5" step="0.1" class="form-control form-control-sm amz-rev-reduce-input amz-rev-reduce-min" value="' + r.min + '"></td>'
+                    + '<td><input type="number" min="0" max="5" step="0.1" class="form-control form-control-sm amz-rev-reduce-input amz-rev-reduce-max" value="' + r.max + '"></td>'
+                    + '<td class="text-end"><input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-rev-reduce-input amz-rev-reduce-pct" value="' + r.pct + '" title="Reduce % Discount added to the LMP reduce %"></td>'
+                    + '<td class="amz-dg-count"><span class="amz-rev-reduce-count">0</span></td>'
+                    + '<td class="text-center"><button type="button" class="amz-rev-reduce-del" data-idx="' + idx + '" title="Remove review slab">&times;</button></td>'
+                    + '</tr>'
+                );
+            });
+            amzPaintRevReduceCounts();
+        }
+        function amzPaintRevReduceTable(raw) {
+            amzRevReduce = amzNormalizeRevReduce(raw);
+            amzRenderRevReduceTable();
+        }
+        /** Read the slab inputs into amzRevReduce. Rows with a blank From / To are kept as typed (and ignored) until they are filled. */
+        function amzReadRevReduceFromTable() {
+            const rows = [];
+            $('#amz-rev-reduce-tbody tr').each(function() {
+                const $r = $(this);
+                rows.push({
+                    min: $r.find('.amz-rev-reduce-min').val(),
+                    max: $r.find('.amz-rev-reduce-max').val(),
+                    pct: $r.find('.amz-rev-reduce-pct').val(),
+                });
+            });
+            amzRevReduce = rows;
+        }
+        function amzRevReduceCollectCounts() {
+            const counts = amzRevReduce.map(function() { return 0; });
+            if (typeof amzDgEachInvChild === 'function') {
+                amzDgEachInvChild(function(d) {
+                    const i = amzRevReduceIdxForRow(d);
+                    if (i >= 0) counts[i]++;
+                });
+            }
+            return counts;
+        }
+        function amzPaintRevReduceCounts() {
+            const $rows = $('#amz-rev-reduce-tbody tr');
+            if (!$rows.length) return;
+            const counts = amzRevReduceCollectCounts();
+            $rows.each(function(i) {
+                $(this).find('.amz-rev-reduce-count').text(counts[i] || 0);
+            });
+        }
+        /**
+         * LMP reduce % for one grid row: the Dil band % of the LMP cap table plus the Reduce % Discount of the Review Discount
+         * rule (star-rating slab). Dil from OV L30 ÷ INV. Capped at 99 like the price (AmazonDilGroiRule::lmpTargetPrice).
+         */
         function amzLmpReducePctForRow(d) {
             const cfg = amzNormalizeLmpCap(amzLmpCap);
             const dil = Number(amzPefDil(d)) || 0;
-            if (dil < cfg.low_lt) return cfg.low_pct;
-            if (dil > cfg.high_gt) return cfg.high_pct;
-            return cfg.mid_pct;
+            let base = cfg.mid_pct;
+            if (dil < cfg.low_lt) base = cfg.low_pct;
+            else if (dil > cfg.high_gt) base = cfg.high_pct;
+            return Math.min(99, base + amzRevReducePctForRow(d));
         }
         window.amzLmpReducePctForRow = amzLmpReducePctForRow;
         /**
@@ -2779,6 +2953,7 @@
             $('#amz-cvr-groi-table .amz-cvr-groi-up-count').text(counts.up);
             amzPaintLmpCapCounts();
             amzPaintAgeAdjCounts();
+            amzPaintRevReduceCounts();
             amzPaintRuleHistDots();
         }
         function amzDgSlabColor(idx) {
@@ -3484,6 +3659,8 @@
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
+                if (res && Array.isArray(res.rev_reduce)) amzPaintRevReduceTable(res.rev_reduce);
+                else amzRenderRevReduceTable();
                 amzPaintRuleOn(res && res.rule_on);
                 amzSetCustomRules(res && res.custom_rules);
                 amzPaintRuleSeq(res && res.rule_seq);
@@ -3515,6 +3692,7 @@
             const diffAdj = amzDiffAdjNow();
             amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
+            const revReduce = amzRevReducePayload();
             const ruleOn = amzReadRuleOnFromModal();
             const ruleSeq = amzReadRuleSeqFromModal();
             // CVR up / down extra discount lives in this modal too: save it with the rest.
@@ -3527,7 +3705,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, lmp_cap: lmpCap, diff_adj: diffAdj, age_adj: ageAdj, rev_reduce: revReduce, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -3543,6 +3721,7 @@
                 if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
+                if (res && Array.isArray(res.rev_reduce)) amzPaintRevReduceTable(res.rev_reduce);
                 if (res && res.rule_on) amzPaintRuleOn(res.rule_on);
                 if (res && res.custom_rules) amzSetCustomRules(res.custom_rules);
                 if (res && res.rule_seq) amzPaintRuleSeq(res.rule_seq);
@@ -3560,6 +3739,7 @@
             if (!modalEl) return;
             renderAmzDilGroiModalTable();
             amzRenderAgeAdjTable();
+            amzRenderRevReduceTable();
             loadAmzDilGroiRules();
             if (typeof window.amzLmpCvrFillForm === 'function') window.amzLmpCvrFillForm();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -6383,6 +6563,29 @@
                     const from = last ? last.max : 0;
                     amzAgeAdj.push({ min: from, max: from + 90, points: 0 });
                     amzRenderAgeAdjTable();
+                    amzAfterDilGroiRulesChanged();
+                });
+            // Review Discount slabs: editing a From / To / Reduce %, adding or removing a slab applies at once on this page (the server once saved).
+            $(document).off('input.amzRevReduce change.amzRevReduce', '#amz-rev-reduce-table .amz-rev-reduce-input')
+                .on('input.amzRevReduce change.amzRevReduce', '#amz-rev-reduce-table .amz-rev-reduce-input', function() {
+                    amzReadRevReduceFromTable();
+                    amzPaintRevReduceCounts();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('click.amzRevReduceDel', '#amz-rev-reduce-table .amz-rev-reduce-del')
+                .on('click.amzRevReduceDel', '#amz-rev-reduce-table .amz-rev-reduce-del', function() {
+                    amzReadRevReduceFromTable();
+                    amzRevReduce.splice(Number($(this).attr('data-idx')), 1);
+                    amzRenderRevReduceTable();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('click.amzRevReduceAdd', '#amz-rev-reduce-add-btn')
+                .on('click.amzRevReduceAdd', '#amz-rev-reduce-add-btn', function() {
+                    amzReadRevReduceFromTable();
+                    const last = amzRevReduce.map(amzRevReduceBand).filter(Boolean).pop();
+                    const from = last ? Math.min(5, last.max) : 0;
+                    amzRevReduce.push({ min: from, max: Math.min(5, from + 1), pct: 0 });
+                    amzRenderRevReduceTable();
                     amzAfterDilGroiRulesChanged();
                 });
             $(document).off('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input')

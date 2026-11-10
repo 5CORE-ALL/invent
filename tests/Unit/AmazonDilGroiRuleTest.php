@@ -578,14 +578,15 @@ class AmazonDilGroiRuleTest extends TestCase
 
     public function test_rule_on_switches_default_to_on_and_only_an_explicit_off_turns_a_rule_off(): void
     {
-        $allOn = ['dil' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
+        $allOn = ['dil' => true, 'rev' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
         // Rows saved before the switches existed, or with garbage, stay fully ON.
         $this->assertSame($allOn, AmazonDilGroiRule::unpackStored(['rules' => []])['rule_on']);
         $this->assertSame($allOn, AmazonDilGroiRule::normalizeRuleOn('nope'));
         $this->assertSame($allOn, AmazonDilGroiRule::normalizeRuleOn(['cvr' => true, 'unknown' => false]));
 
         $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'rule_on' => ['dil' => false, 'age' => false, 'lmp' => 0, 'diff' => 'false', 'cvr' => '0']]);
-        $this->assertSame(['dil' => false, 'cvr' => false, 'age' => false, 'diff' => false, 'lmp' => false, 'clearance' => true], $saved['rule_on']);
+        $this->assertSame(['dil' => false, 'rev' => true, 'cvr' => false, 'age' => false, 'diff' => false, 'lmp' => false, 'clearance' => true], $saved['rule_on']);
+        $this->assertFalse(AmazonDilGroiRule::normalizeRuleOn(['rev' => 'off'])['rev']);
     }
 
     public function test_rule_sequence_orders_the_target_nroi_rules_and_the_price_rules(): void
@@ -604,14 +605,66 @@ class AmazonDilGroiRuleTest extends TestCase
         // Garbage keeps the default number; numbers are clamped to 1..99.
         $seq = AmazonDilGroiRule::normalizeRuleSeq(['cvr' => -4, 'age' => 'x', 'diff' => 500, 'dil' => 12]);
         $this->assertSame(1.0, $seq['cvr']);
-        $this->assertSame(3.0, $seq['age']);
+        $this->assertSame(4.0, $seq['age']);
         $this->assertSame(99.0, $seq['diff']);
         $this->assertSame(12.0, $seq['dil']);
-        $this->assertSame(7.0, $seq['clearance']);
+        $this->assertSame(8.0, $seq['clearance']);
 
         $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'rule_seq' => ['age' => 2, 'cvr' => 3]]);
-        $this->assertSame(['dil' => 1.0, 'cvr' => 3.0, 'age' => 2.0, 'diff' => 4.0, 'lmp' => 5.0, 'cvrud' => 6.0, 'clearance' => 7.0], $saved['rule_seq']);
+        $this->assertSame(['dil' => 1.0, 'rev' => 2.0, 'cvr' => 3.0, 'age' => 2.0, 'diff' => 5.0, 'lmp' => 6.0, 'cvrud' => 7.0, 'clearance' => 8.0], $saved['rule_seq']);
         $this->assertSame(AmazonDilGroiRule::RULE_SEQ_DEFAULT, AmazonDilGroiRule::unpackStored(null)['rule_seq']);
+        // Review Discount is Seq 2 by default and never reorders the NROI / price rules.
+        $this->assertSame(2.0, AmazonDilGroiRule::RULE_SEQ_DEFAULT['rev']);
+        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['rev' => 1]));
+        $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(['rev' => 99]));
+    }
+
+    public function test_review_discount_slabs_give_the_reduce_pct_added_to_the_lmp_reduce(): void
+    {
+        $rules = AmazonDilGroiRule::normalizeRevReduce([
+            ['min' => 0, 'max' => 3, 'pct' => 5],
+            ['min' => 3, 'max' => 4, 'pct' => 3],
+            ['min' => 4, 'max' => 5, 'pct' => 1.5],
+        ]);
+
+        $this->assertSame(5.0, AmazonDilGroiRule::revReducePct(2.5, 10, $rules));
+        // min ≤ rating < max: 3.0 is in the second slab, 4.0 in the third; the last slab also includes its To value.
+        $this->assertSame(3.0, AmazonDilGroiRule::revReducePct(3.0, 10, $rules));
+        $this->assertSame(1.5, AmazonDilGroiRule::revReducePct(4.0, 10, $rules));
+        $this->assertSame(1.5, AmazonDilGroiRule::revReducePct(5.0, 10, $rules));
+        // No rating, no reviews, or a rating outside every slab adds nothing. An unknown review count does not block it.
+        $this->assertSame(0.0, AmazonDilGroiRule::revReducePct(0.0, 10, $rules));
+        $this->assertSame(0.0, AmazonDilGroiRule::revReducePct(null, 10, $rules));
+        $this->assertSame(0.0, AmazonDilGroiRule::revReducePct(2.5, 0, $rules));
+        $this->assertSame(5.0, AmazonDilGroiRule::revReducePct(2.5, null, $rules));
+        $this->assertSame(0.0, AmazonDilGroiRule::revReducePct(5.5, 10, $rules));
+
+        // It is ADDED to the Dil band %: LMP $30, Dil band 2% + rating slab 5% → LMP − 7% = 27.90.
+        $reduce = AmazonDilGroiRule::lmpCapReducePct(10.0, null) + AmazonDilGroiRule::revReducePct(2.5, 10, $rules);
+        $this->assertSame(7.0, $reduce);
+        $this->assertEqualsWithDelta(27.9, AmazonDilGroiRule::capSpriceToLmp(50, 30, 10, 0, 0.80, 0, $reduce, false), 0.001);
+        // The total never goes above 99%.
+        $this->assertEqualsWithDelta(0.3, AmazonDilGroiRule::lmpTargetPrice(30, 99 + 50), 0.001);
+    }
+
+    public function test_review_discount_defaults_change_nothing_and_are_saved_with_the_sprc_dil_rules(): void
+    {
+        $defaults = AmazonDilGroiRule::normalizeRevReduce(null);
+        $this->assertSame(AmazonDilGroiRule::REV_REDUCE_DEFAULTS, $defaults);
+        foreach ([0.5, 2.9, 3.0, 4.2, 5.0] as $rating) {
+            $this->assertSame(0.0, AmazonDilGroiRule::revReducePct($rating, 5, $defaults), 'rating '.$rating);
+        }
+        // Rows saved before the rule existed → defaults. A saved empty list → off.
+        $this->assertSame(AmazonDilGroiRule::REV_REDUCE_DEFAULTS, AmazonDilGroiRule::unpackStored(['rules' => []])['rev_reduce']);
+        $this->assertSame([], AmazonDilGroiRule::unpackStored(['rules' => [], 'rev_reduce' => []])['rev_reduce']);
+        $this->assertSame(0.0, AmazonDilGroiRule::revReducePct(2.0, 5, []));
+        $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'rev_reduce' => [['min' => 1, 'max' => 4, 'pct' => 6]]]);
+        $this->assertSame([['min' => 1.0, 'max' => 4.0, 'pct' => 6.0]], $saved['rev_reduce']);
+
+        // A swapped From / To is put right, % is clamped to 0..99, a row without a number is dropped.
+        $rules = AmazonDilGroiRule::normalizeRevReduce([['min' => 4, 'max' => 2, 'pct' => 500], ['min' => '', 'max' => 3, 'pct' => 1], ['min' => 1, 'max' => 2, 'pct' => -4]]);
+        $this->assertSame([['min' => 2.0, 'max' => 4.0, 'pct' => 99.0], ['min' => 1.0, 'max' => 2.0, 'pct' => 0.0]], $rules);
+        $this->assertSame([], AmazonDilGroiRule::normalizeRevReduce('nope'));
     }
 
     public function test_custom_rule_cards_are_normalized_matched_and_ordered_by_sequence(): void

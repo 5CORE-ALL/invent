@@ -567,6 +567,96 @@ class AmazonDilGroiRule
     }
 
     /**
+     * Sprc Dil "Review Discount" slabs when nothing is saved: star-rating bands with a 0 Reduce %, so nothing changes until the
+     * % are edited in the modal. A saved empty list turns the block off.
+     */
+    public const REV_REDUCE_DEFAULTS = [
+        ['min' => 0.0, 'max' => 3.0, 'pct' => 0.0],
+        ['min' => 3.0, 'max' => 4.0, 'pct' => 0.0],
+        ['min' => 4.0, 'max' => 5.0, 'pct' => 0.0],
+    ];
+
+    /**
+     * Review Discount slabs (Sprc Dil modal): one { min, max, pct } per star-rating band (the 4.0 in Reviews, not the count).
+     * `pct` is the Reduce % Discount that is ADDED to the LMP reduce % of the LMP Rule (LMP − (Dil band % + this %)).
+     * Nothing saved (null) → the defaults (0%). A saved empty list → the block is off. Rows without a From / To are dropped.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,pct:float}>
+     */
+    public static function normalizeRevReduce($incoming): array
+    {
+        if ($incoming === null) {
+            return self::REV_REDUCE_DEFAULTS;
+        }
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = min(5.0, max(0.0, (float) $item['min']));
+            $max = min(5.0, max(0.0, (float) $item['max']));
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $pct = is_numeric($item['pct'] ?? null) ? min(99.0, max(0.0, (float) $item['pct'])) : 0.0;
+            $rules[] = ['min' => round($min, 2), 'max' => round($max, 2), 'pct' => round($pct, 2)];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Index of the Review Discount slab a star rating falls in, or -1. A slab covers min ≤ rating < max (the last one also max);
+     * min = max matches that rating only. The first matching slab wins.
+     *
+     * @param  list<array{min:float,max:float,pct:float}>|null  $rules
+     */
+    public static function revReduceSlab(?float $rating, ?array $rules): int
+    {
+        if ($rating === null || ! is_finite($rating) || ! ($rating > 0)) {
+            return -1;
+        }
+        $rules = array_values($rules ?? []);
+        $last = count($rules) - 1;
+        foreach ($rules as $i => $r) {
+            $min = (float) ($r['min'] ?? 0);
+            $max = (float) ($r['max'] ?? 0);
+            $hit = abs($max - $min) < 0.00001
+                ? abs($rating - $min) < 0.00001
+                : ($rating >= $min && ($i === $last ? $rating <= $max : $rating < $max));
+            if ($hit) {
+                return $i;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Reduce % Discount of the Review Discount rule for a SKU: the % of its star-rating band, 0 when the SKU has no rating,
+     * no reviews (count 0; pass null when the count is unknown) or sits in no band. It is added to the LMP reduce %.
+     *
+     * @param  list<array{min:float,max:float,pct:float}>|null  $rules
+     */
+    public static function revReducePct(?float $rating, ?float $reviewQty, ?array $rules): float
+    {
+        if ($reviewQty !== null && ! ($reviewQty > 0)) {
+            return 0.0;
+        }
+        $i = self::revReduceSlab($rating, $rules);
+        if ($i < 0) {
+            return 0.0;
+        }
+        $p = array_values($rules ?? [])[$i]['pct'] ?? 0;
+
+        return is_numeric($p) ? max(0.0, (float) $p) : 0.0;
+    }
+
+    /**
      * Saved Dynamic Rule (Ads % by price slab) of /amazon-tabulator-view. Disabled when missing or unreadable.
      *
      * @return array{enabled: bool, slabs: list<array{min: float, max: float|null, pct: float}>}
@@ -1058,16 +1148,17 @@ class AmazonDilGroiRule
 
     /**
      * Blocks of the Amazon Sprc Dil modal that have an ON / OFF switch. A block switched OFF no longer applies:
-     * dil = Dil slabs (Target NROI), cvr = CVR overlay, age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+     * dil = Dil slabs (Target NROI), rev = Review Discount (Reduce % added to the LMP reduce %), cvr = CVR overlay, age = Ageing Rule,
+     * diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
      */
-    public const RULE_ON_KEYS = ['dil', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
+    public const RULE_ON_KEYS = ['dil', 'rev', 'cvr', 'age', 'diff', 'lmp', 'clearance'];
 
     /**
      * ON / OFF switches of the Sprc Dil blocks. Everything is ON unless it was saved as off (false / 0 / "0" / "false"),
      * so rows saved before the switches existed behave exactly as before.
      *
      * @param  mixed  $raw
-     * @return array{dil:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}
+     * @return array{dil:bool,rev:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}
      */
     public static function normalizeRuleOn($raw): array
     {
@@ -1089,13 +1180,15 @@ class AmazonDilGroiRule
     }
 
     /**
-     * Every rule card of the Sprc Dil modal has a sequence number (editable). Defaults 1..7 = the order the rules have always run in.
+     * Every rule card of the Sprc Dil modal has a sequence number (editable). Defaults 1..8 = the order the rules have always run in.
      * Dil slab picks the base Target NROI; CVR overlay, Ageing and Diff change it (the Target NROI rules); then the LMP cap (with
      * the Std Prc maximum) and the CVR up / down discount change the price (the price rules); Clearance is a separate way of
      * pricing clearance SKUs. A rule cannot run before what it depends on, so the numbers decide the order inside each group
      * (see ruleOrder and priceOrder): the Target NROI rules always run before the price rules.
+     * Review Discount (rev, seq 2) only supplies an extra Reduce % to the LMP cap, so its number sorts the card and never
+     * reorders the other rules.
      */
-    public const RULE_SEQ_DEFAULT = ['dil' => 1.0, 'cvr' => 2.0, 'age' => 3.0, 'diff' => 4.0, 'lmp' => 5.0, 'cvrud' => 6.0, 'clearance' => 7.0];
+    public const RULE_SEQ_DEFAULT = ['dil' => 1.0, 'rev' => 2.0, 'cvr' => 3.0, 'age' => 4.0, 'diff' => 5.0, 'lmp' => 6.0, 'cvrud' => 7.0, 'clearance' => 8.0];
 
     /**
      * Sequence numbers. A missing / invalid number keeps its default; numbers are clamped to 1..99. Custom rule cards
@@ -1259,11 +1352,12 @@ class AmazonDilGroiRule
 
     /**
      * @param  array<string, mixed>|null  $saved
-     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rule_on:array{dil:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,cvr_adj:array{down_lt:float,down_adj:float,up_gt:float,up_adj:float},clearance_nroi:?float,lmp_cap:array{low_lt:float,high_gt:float,low_pct:float,mid_pct:float,high_pct:float},diff_adj:array{gt_pct:float,points:float},age_adj:list<array{min:float,max:float,points:float}>,rev_reduce:list<array{min:float,max:float,pct:float}>,rule_on:array{dil:bool,rev:bool,cvr:bool,age:bool,diff:bool,lmp:bool,clearance:bool}}
      */
     public static function unpackStored(?array $saved): array
     {
         $rulesRaw = $saved;
+        $revReduceRaw = null;
         $cvrRaw = null;
         $lmpCapRaw = null;
         $diffAdjRaw = null;
@@ -1282,6 +1376,8 @@ class AmazonDilGroiRule
             $diffAdjRaw = is_array($saved['diff_adj'] ?? null) ? $saved['diff_adj'] : null;
             // Not saved yet → null → defaults. A saved empty list stays empty (block off).
             $ageAdjRaw = array_key_exists('age_adj', $saved) && is_array($saved['age_adj']) ? $saved['age_adj'] : null;
+            // Review Discount slabs: same rule (not saved → defaults at 0%, saved empty list → off).
+            $revReduceRaw = array_key_exists('rev_reduce', $saved) && is_array($saved['rev_reduce']) ? $saved['rev_reduce'] : null;
             if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
                 $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
             }
@@ -1295,6 +1391,7 @@ class AmazonDilGroiRule
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
+            'rev_reduce' => self::normalizeRevReduce($revReduceRaw),
             'rule_on' => self::normalizeRuleOn($ruleOnRaw),
             'rule_seq' => self::normalizeRuleSeq($ruleSeqRaw),
             'custom_rules' => self::normalizeCustomRules($customRaw),
