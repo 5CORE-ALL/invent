@@ -479,7 +479,7 @@
             const E1_MAIN = @json((bool) $ebayCfg['main']);
 
             // ---- Main page (eBay 1) only: every change that was accepted here is repeated on the eBay 2 and eBay 3 pages,
-            // in the app and on their live listings. The eBay title and description are never repeated. A change made on
+            // in the app and on their live listings, SKU by SKU (the eBay title included). A change made on
             // the eBay 2 / eBay 3 page stays there. The repeats run one after another in the background. ----
             const E1_MIRRORS = [{ name: 'eBay 2', base: '/ebay2-item-data' }, { name: 'eBay 3', base: '/ebay3-item-data' }];
             const E1_MIRROR_PATHS = ['/change-category', '/add-column', '/save-source', '/delete-specific', '/edit-column', '/push'];
@@ -526,8 +526,9 @@
                         const out = { sku: it.sku };
                         if (it.specifics && Object.keys(it.specifics).length) out.specifics = it.specifics;
                         if (it.price) out.price = it.price;
+                        if (it.title) out.title = it.title;
                         return out;
-                    }).filter(function (it) { return it.specifics || it.price; });
+                    }).filter(function (it) { return it.specifics || it.price || it.title; });
                     return items.length ? { items: items } : null;
                 }
                 if (path === '/change-category') {
@@ -536,8 +537,6 @@
                     return skus.length ? Object.assign({}, body, { skus: skus }) : null;
                 }
                 if (path === '/edit-column') {
-                    const column = String(body.column || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-                    if (column === 'ebaytitle') return null;
                     return body;
                 }
                 return body;
