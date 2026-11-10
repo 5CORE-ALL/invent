@@ -1519,9 +1519,9 @@
                             <div class="amz-raw-filter-field" id="amazonAdsFilterInvWrap">
                                 <label class="amz-raw-filter-label mb-0" for="amazonAdsFilterInv">Inv</label>
                                 <select id="amazonAdsFilterInv" class="form-select form-select-sm amz-raw-filter-select" title="Shopify inventory on the Inv column">
-                                    <option value="" selected>All</option>
+                                    <option value="">All</option>
                                     <option value="zero">= 0</option>
-                                    <option value="gt">&gt; 0</option>
+                                    <option value="gt" selected>&gt; 0</option>
                                 </select>
                             </div>
                             <div class="amz-raw-filter-field">
@@ -4224,6 +4224,15 @@
                 if (againIdx !== -1 && againIdx !== defs.length - 1) {
                     defs.push(defs.splice(againIdx, 1)[0]);
                 }
+                // Auto-fit: every column is exactly as wide as its widest value (or header), with no
+                // leftover side space. Drop the fixed widths / grow factors set per column above;
+                // the checkbox and task columns keep their small fixed size.
+                defs.forEach(function (d) {
+                    if (d.field === '__sel' || d.field === '__task') return;
+                    delete d.width;
+                    d.widthGrow = 0;
+                    d.minWidth = d.field === 'campaignName' ? 120 : 30;
+                });
                 return defs;
             }
 
@@ -4842,7 +4851,7 @@
                 ajaxURL: dataUrlTemplate + 'all_reports',
                 ajaxRequestFunc: amzAjaxRequestFunc,
                 height: false,
-                layout: 'fitDataFill',
+                layout: 'fitData',
                 layoutColumnsOnNewData: true,
                 pagination: true,
                 paginationMode: 'remote',
@@ -5377,7 +5386,8 @@
             if (clearBtn) {
                 clearBtn.addEventListener('click', function () {
                     ['amazonAdsFilterSummaryRange', 'amazonAdsFilterU7', 'amazonAdsFilterU2', 'amazonAdsFilterU1', 'amazonAdsFilterInv', 'amazonAdsFilterTargets', 'amazonAdsFilterAcos', 'amazonAdsFilterAdsCvr'].forEach(function (id) {
-                        var el = document.getElementById(id); if (el) el.value = '';
+                        // Inv goes back to its default "> 0"; every other filter goes back to All.
+                        var el = document.getElementById(id); if (el) el.value = (id === 'amazonAdsFilterInv' ? 'gt' : '');
                     });
                     amzResetStatFilter();
                     amzSetDatesToLatestForSource(activeRawSourceKey);
