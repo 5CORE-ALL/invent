@@ -5,14 +5,13 @@ namespace App\Support;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Ads Rule PMT: per-category Highest / Lowest bid % and Promoted ad rate Manual, plus the On / Off switch.
+ * Ads Rule PMT: per-category Highest / Lowest bid %, plus the On / Off switch.
  *
  * Rules, first match wins:
  *   1. INV = 0                              -> bid 0 and the ad is paused
- *   2. the category has a Manual rate       -> Manual
- *   3. the category has a Highest           -> Highest
- *   4. no match (category has neither)      -> the old Dil vs SBid S Bid of the listing (eBay 1 only;
- *                                              the other accounts skip the listing, as before)
+ *   2. the category has a Highest           -> Highest
+ *   3. no match                             -> the old Dil vs SBid S Bid of the listing (when enabled)
+ * The old Promoted ad rate Manual is gone (the column is now the read-only live CBID): a stored value is ignored.
  * Lowest is still stored and shown but no longer pushes a bid.
  *
  * The same logic runs in the browser (ebay_tabulator_view) for the PMT BID column.
@@ -74,7 +73,7 @@ final class PmtCategoryBidRule
             $out[(string) $category] = [
                 'highest' => is_numeric($hi) ? (float) $hi : null,
                 'lowest' => is_numeric($lo) ? (float) $lo : null,
-                'manual' => is_numeric($man) ? (float) $man : null,
+                'manual' => null, // retired: stored values are ignored
             ];
         }
 
@@ -129,13 +128,10 @@ final class PmtCategoryBidRule
         if ($inv <= 0) {
             return ['rule' => '1', 'pause' => true, 'bid' => null, 'label' => 'PMT rule 1: INV 0, ad paused', 'fallback' => false];
         }
-        if ($manual !== null) {
-            return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($manual, 2)), 'label' => 'PMT rule 2: category Promoted ad rate Manual', 'fallback' => false];
-        }
         if ($highest !== null) {
-            return ['rule' => '3', 'pause' => false, 'bid' => max(0.0, round($highest, 2)), 'label' => 'PMT rule 3: category Highest', 'fallback' => false];
+            return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($highest, 2)), 'label' => 'PMT rule 2: category Highest', 'fallback' => false];
         }
 
-        return ['rule' => '4', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 4: no Highest for this category, old S Bid', 'fallback' => true];
+        return ['rule' => '3', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 3: no Highest for this category, old S Bid', 'fallback' => true];
     }
 }
