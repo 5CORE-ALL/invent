@@ -196,8 +196,8 @@
             padding-right: 14px !important;
         }
         #amz-ads-raw-wrap .tabulator .tabulator-row { min-height: 32px; }
-        #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 2px !important; }
-        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 2px !important; padding-right: 2px !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-row .tabulator-cell { padding: 3px 8px !important; }
+        #amz-ads-raw-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder { padding-left: 8px !important; padding-right: 8px !important; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell .amz-raw-status-cell { white-space: nowrap; }
         #amz-ads-raw-wrap .amz-sync-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
@@ -320,15 +320,6 @@
         .amz-cpc-avg-history-dot.is-down { background: #ff2727; }
         .amz-cpc-avg-history-dot.is-flat { background: #9ca3af; }
         .amz-cpc-avg-history-dot:hover { transform: scale(1.35); }
-        /* History icon variant: a colored history glyph instead of a plain dot. */
-        .amz-cpc-avg-history-dot.amz-hist-as-icon {
-            width: auto; height: auto; background: transparent; border-radius: 0;
-            line-height: 1; font-size: 12px; color: #166534;
-        }
-        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-up { background: transparent; color: #05bd30; }
-        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-down { background: transparent; color: #ff2727; }
-        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-flat { background: transparent; color: #9ca3af; }
-        .amz-cpc-avg-history-dot.amz-hist-as-icon:hover { transform: scale(1.25); }
         .amz-l1-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
         }
@@ -2762,9 +2753,9 @@
                 else if (trend === 'up') tip += ' · Up vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else if (trend === 'down') tip += ' · Down vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else tip += ' · Same as previous day $' + prevTxt;
-                return '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
+                return '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
                     + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
-                    + '<i class="fas fa-history"></i></button>';
+                    + '</button>';
             }
             function fmtLtAcos(cell) {
                 var v = cell.getValue();
@@ -2822,9 +2813,9 @@
                 else if (trend === 'flat') histTip += ' · Same as prior day $' + prevTxt;
                 else histTip += ' · Click for daily history';
                 var l7Tip = isSales ? 'L1–L7 ads sales' : 'L1–L7 ads spend';
-                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
+                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
                     + ' data-history="' + kind + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
-                    + '<i class="fas fa-history"></i></button>';
+                    + '</button>';
                 var l7Btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(l7Tip) + '" aria-label="' + amzEsc(l7Tip) + '"'
                     + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
                     + '<i class="fas fa-chart-bar"></i></button>';
@@ -2849,9 +2840,9 @@
                 else if (trend === 'flat') histTip += ' · Same as yesterday×30 $' + prevTxt;
                 else histTip += ' · Click for daily history';
                 var l7Tip = isSales ? 'L1–L7 ads sales + projected 30' : 'L1–L7 ads spend + projected 30';
-                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
+                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
                     + ' data-history="' + kind + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
-                    + '<i class="fas fa-history"></i></button>';
+                    + '</button>';
                 var l7Btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(l7Tip) + '" aria-label="' + amzEsc(l7Tip) + '"'
                     + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
                     + '<i class="fas fa-chart-bar"></i></button>';
@@ -4317,7 +4308,7 @@
                     if (d.field === '__sel' || d.field === '__task') return;
                     delete d.width;
                     d.widthGrow = 0;
-                    d.minWidth = d.field === 'campaignName' ? 120 : 30;
+                    d.minWidth = d.field === 'campaignName' ? 120 : 44;
                 });
                 return defs;
             }
