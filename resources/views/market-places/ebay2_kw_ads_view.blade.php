@@ -28,7 +28,13 @@
                 <span id="kw-badge-paused" class="kw-badge bg-warning text-dark">Paused: …</span>
                 <span id="kw-badge-spend" class="kw-badge bg-info text-dark">KW Spend L30: …</span>
 
-                <select id="kw-filter" class="form-select form-select-sm ms-auto" style="width:210px;">
+                <select id="kw-status" class="form-select form-select-sm ms-auto" style="width:150px;" title="Filter by campaign Status">
+                    <option value="all" selected>Status: All</option>
+                    <option value="RUNNING">Status: Running</option>
+                    <option value="PAUSED">Status: Paused</option>
+                    <option value="NONE">Status: No campaign</option>
+                </select>
+                <select id="kw-filter" class="form-select form-select-sm" style="width:210px;">
                     <option value="with" selected>Only SKUs with KW campaign</option>
                     <option value="without">Only SKUs without KW data</option>
                     <option value="all">All SKUs</option>
@@ -68,7 +74,6 @@ document.addEventListener('DOMContentLoaded', function () {
             { title: 'KW?', field: 'kw_campaign_id', hozAlign: 'center', width: 70,
               formatter: c => hasKw(c.getRow().getData()) ? '<span class="kw-yes">Yes</span>' : '<span class="kw-no">No</span>' },
             { title: 'Status', field: 'kw_campaignStatus', hozAlign: 'center', width: 95 },
-            { title: 'Campaign ID', field: 'kw_campaign_id', width: 130 },
             { title: 'Budget', field: 'kw_campaignBudgetAmount', hozAlign: 'right', sorter: 'number', width: 90, formatter: c => money(c.getValue()) },
             { title: 'Spend L30', field: 'kw_spend_L30', hozAlign: 'right', sorter: 'number', width: 100, formatter: c => money(c.getValue()) },
             { title: 'Clicks L30', field: 'kw_clicks', hozAlign: 'center', sorter: 'number', width: 95 },
@@ -79,9 +84,7 @@ document.addEventListener('DOMContentLoaded', function () {
             { title: 'CPC L7', field: 'kw_l7_cpc', hozAlign: 'right', sorter: 'number', width: 85, formatter: c => money(c.getValue()) },
             { title: 'Spend L1', field: 'kw_l1_spend', hozAlign: 'right', sorter: 'number', width: 90, formatter: c => money(c.getValue()) },
             { title: 'CPC L1', field: 'kw_l1_cpc', hozAlign: 'right', sorter: 'number', width: 85, formatter: c => money(c.getValue()) },
-            { title: 'Last SBID', field: 'kw_last_sbid', hozAlign: 'center', width: 90 },
-            { title: 'SBID M', field: 'kw_sbid_m', hozAlign: 'center', width: 85 },
-            { title: 'Appr SBID', field: 'kw_apprSbid', hozAlign: 'center', width: 95 },
+            { title: 'Campaign ID', field: 'kw_campaign_id', width: 130 },
         ],
     });
 
@@ -101,8 +104,13 @@ document.addEventListener('DOMContentLoaded', function () {
     function applyFilter() {
         const mode = document.getElementById('kw-filter').value;
         const q = document.getElementById('kw-search').value.trim().toLowerCase();
+        const status = document.getElementById('kw-status').value;
         const rows = allRows.filter(r => {
             if (isParent(r)) return false;
+            if (status !== 'all') {
+                const s = String(r.kw_campaignStatus || '').toUpperCase();
+                if (status === 'NONE' ? hasKw(r) : s !== status) return false;
+            }
             if (mode === 'with' && !hasKw(r)) return false;
             if (mode === 'without' && hasKw(r)) return false;
             if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q))) return false;
@@ -123,6 +131,12 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => { table.alert('Failed to load data: ' + err.message, 'error'); });
     });
 
+    document.getElementById('kw-status').addEventListener('change', function () {
+        // "No campaign" only makes sense when SKUs without KW data are listed
+        if (this.value === 'NONE') document.getElementById('kw-filter').value = 'all';
+        else if (this.value !== 'all') document.getElementById('kw-filter').value = 'with';
+        applyFilter();
+    });
     document.getElementById('kw-filter').addEventListener('change', applyFilter);
     document.getElementById('kw-search').addEventListener('input', applyFilter);
 });
