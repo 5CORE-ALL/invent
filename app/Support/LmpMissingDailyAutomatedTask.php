@@ -46,18 +46,20 @@ class LmpMissingDailyAutomatedTask
             'link1' => self::LINK,
             'schedule_type' => 'daily',
             'schedule_time' => TaskBusinessTime::dailyGenerateTime(),
-            'schedule_days' => '',
             'status' => 'Todo',
             'link8' => self::MARKER,
             'updated_at' => $now,
         ];
 
         if ($existing) {
+            // Never touch schedule_days here: it holds the week off (e.g. "Mon,Tue,Wed,Thu,Fri,Sat").
+            // This runs on every generator tick, so resetting it would bring Sunday tasks back.
             DB::table('automate_tasks')->where('id', $existing->id)->update($payload);
 
             return;
         }
 
+        $payload['schedule_days'] = '';
         $payload['start_date'] = $now;
         $payload['due_date'] = $now;
         $payload['order'] = 0;
