@@ -365,6 +365,7 @@
         .amz-audit-reasons { padding-left: 20px; margin-bottom: 4px; }
         .amz-audit-reasons li { margin-bottom: 8px; }
         .amz-audit-impact { display: inline-block; font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; color: #fff; background: #64748b; }
+        .amz-audit-cat { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #e0e7ff; color: #3730a3; }
         .amz-audit-impact-high { background: #dc2626; }
         .amz-audit-impact-medium { background: #ea580c; }
         .amz-audit-impact-low { background: #ca8a04; }
@@ -2403,7 +2404,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
-            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory', 'audit'];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory', 'audit', 'auditBudget', 'auditBid', 'auditKeywords', 'auditStock', 'auditListing'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -3328,6 +3329,18 @@
             var amzAuditModalCtx = { cid: '', ch: '', name: '' };
             var AMZ_AUDIT_SEVERITY_LABEL = { high: 'High - serious problems', medium: 'Medium - needs attention', low: 'Low - minor issues', ok: 'OK - clicks look fine' };
 
+            var AMZ_AUDIT_ASPECTS = {
+                budget: { title: 'Bgt Issue', name: 'Budget' },
+                bid: { title: 'Bid Issue', name: 'Bid / CPC' },
+                keywords: { title: 'KW Issue', name: 'Keywords / targets' },
+                stock: { title: 'Stock Issue', name: 'Stock / eligibility' },
+                listing: { title: 'Listing Issue', name: 'Listing (price, rating, views, CVR)' }
+            };
+            var AMZ_AUDIT_ASPECT_BY_FIELD = {
+                auditBudget: 'budget', auditBid: 'bid', auditKeywords: 'keywords', auditStock: 'stock', auditListing: 'listing'
+            };
+            var AMZ_AUDIT_ASPECT_LEVEL_LABEL = { ok: 'no issue found', low: 'low issue', medium: 'medium issue', high: 'high issue' };
+
             function amzAuditHeaders() {
                 return {
                     'X-CSRF-TOKEN': csrfToken,
@@ -3383,6 +3396,43 @@
                     + (busy ? '<i class="fas fa-spinner fa-spin"></i>' : 'Audit') + '</button>'
                     + '<span class="amz-audit-dot amz-audit-' + state + '" data-act="report" role="button" title="' + amzEsc(amzAuditDotTitle(info.cid, state)) + '"></span>'
                     + '</span>';
+            }
+            // Dot for one aspect of the stored audit: grey = not audited (or audited before aspects existed), else ok / low / medium / high.
+            function amzAuditAspectLevel(cid, aspect) {
+                if (amzAuditBusy[cid]) return 'running';
+                var st = amzAuditState[cid];
+                if (!st || st.status !== 'done') return st && st.status === 'failed' ? 'failed' : 'none';
+                if (!st.aspects) return 'none';
+                return st.aspects[aspect] || 'ok';
+            }
+            function fmtAuditAspect(cell, aspect) {
+                var info = amzAuditRowInfo(cell.getRow());
+                if (!info) return amzDash();
+                var level = amzAuditAspectLevel(info.cid, aspect);
+                var name = AMZ_AUDIT_ASPECTS[aspect].name;
+                var tip;
+                if (level === 'running') tip = 'Audit running...';
+                else if (level === 'failed') tip = 'Audit failed - click the Audit dot for the reason';
+                else if (level === 'none') {
+                    var st = amzAuditState[info.cid];
+                    tip = st && st.status === 'done' && !st.aspects ? 'Audited before aspects existed - run Audit again' : 'Not audited yet';
+                } else tip = name + ': ' + AMZ_AUDIT_ASPECT_LEVEL_LABEL[level] + ' - click for the solution';
+                return '<span class="amz-audit-cell"><span class="amz-audit-dot amz-audit-' + level + '" data-act="aspect" role="button" title="' + amzEsc(tip) + '"></span></span>';
+            }
+            function amzAuditAspectClick(e, cell, aspect) {
+                var t = e && e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+                if (!t) return;
+                e.stopPropagation();
+                var info = amzAuditRowInfo(cell.getRow());
+                if (!info) return;
+                var level = amzAuditAspectLevel(info.cid, aspect);
+                if (level === 'none') {
+                    var st = amzAuditState[info.cid];
+                    amzAuditToast(st && st.status === 'done' ? 'This audit has no aspect data yet. Click Audit to run it again.' : 'This campaign has not been audited yet. Click Audit first.');
+                    return;
+                }
+                if (level === 'running') return;
+                amzAuditOpenReport(info, aspect);
             }
             function amzAuditRepaint(info) {
                 try { if (info && info.row && info.row.reformat) info.row.reformat(); } catch (e) {}
@@ -3486,6 +3536,13 @@
                 }
                 pump();
             }
+            document.addEventListener('click', function (e) {
+                var link = e.target && e.target.closest ? e.target.closest('.amz-audit-full-link') : null;
+                if (!link) return;
+                e.preventDefault();
+                var body = document.getElementById('amazonAdsAuditModalBody');
+                if (body && amzAuditModalCtx.json) body.innerHTML = amzAuditReportHtml(amzAuditModalCtx.json, '');
+            });
             function amzAuditLoadStatuses() {
                 var ids = [];
                 try {
@@ -3509,7 +3566,7 @@
                     table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
                 }).catch(function () {});
             }
-            function amzAuditOpenReport(info) {
+            function amzAuditOpenReport(info, aspect) {
                 var modalEl = document.getElementById('amazonAdsAuditModal');
                 if (!modalEl || typeof bootstrap === 'undefined') return;
                 var state = amzAuditDotState(info.cid);
@@ -3517,7 +3574,7 @@
                     amzAuditToast('This campaign has not been audited yet. Click Audit first.');
                     return;
                 }
-                amzAuditModalCtx = { cid: info.cid, ch: info.ch, name: info.name };
+                amzAuditModalCtx = { cid: info.cid, ch: info.ch, name: info.name, json: null };
                 document.getElementById('amazonAdsAuditModalSub').textContent = info.name || info.cid;
                 var body = document.getElementById('amazonAdsAuditModalBody');
                 body.innerHTML = '<div class="small text-muted">Loading...</div>';
@@ -3528,12 +3585,13 @@
                 }).then(function (res) {
                     return res.json().catch(function () { return { ok: false, message: 'HTTP ' + res.status }; });
                 }).then(function (json) {
-                    body.innerHTML = amzAuditReportHtml(json);
+                    amzAuditModalCtx.json = json;
+                    body.innerHTML = amzAuditReportHtml(json, aspect || '');
                 }).catch(function (err) {
                     body.innerHTML = '<div class="text-danger small">' + amzEsc(String(err && err.message ? err.message : err)) + '</div>';
                 });
             }
-            function amzAuditReportHtml(json) {
+            function amzAuditReportHtml(json, aspect) {
                 if (!json || !json.ok) {
                     return '<div class="text-danger small">' + amzEsc((json && json.message) || 'No report.') + '</div>';
                 }
@@ -3549,14 +3607,30 @@
                 var html = '<div class="amz-audit-banner amz-audit-' + sev + '-bg">' + amzEsc(AMZ_AUDIT_SEVERITY_LABEL[sev]) + '</div>';
                 if (rep.verdict) html += '<p class="fw-semibold mb-2">' + amzEsc(rep.verdict) + '</p>';
                 var reasons = Array.isArray(rep.reasons) ? rep.reasons : [];
+                if (aspect && AMZ_AUDIT_ASPECTS[aspect]) {
+                    // One aspect only: its issues and solutions, with a link to the whole report.
+                    var aspectName = AMZ_AUDIT_ASPECTS[aspect].name;
+                    reasons = reasons.filter(function (r) { return r && r.category === aspect; });
+                    html = '<div class="amz-audit-banner amz-audit-' + (st.aspects && st.aspects[aspect] ? st.aspects[aspect] : 'ok') + '-bg">' + amzEsc(aspectName) + '</div>';
+                    if (!reasons.length) {
+                        html += '<p class="mb-2">No ' + amzEsc(aspectName.toLowerCase()) + ' issue was found in this audit.</p>';
+                    }
+                }
                 if (reasons.length) {
-                    html += '<div class="small text-uppercase text-muted mb-1">Possible reasons for not enough clicks</div><ol class="amz-audit-reasons">';
+                    html += '<div class="small text-uppercase text-muted mb-1">' + (aspect ? 'Issues and solutions' : 'Possible reasons for not enough clicks') + '</div><ol class="amz-audit-reasons">';
                     reasons.forEach(function (r) {
-                        html += '<li><div><span class="amz-audit-impact amz-audit-impact-' + amzEsc(r.impact || 'medium') + '">' + amzEsc(r.impact || 'medium') + '</span> <strong>' + amzEsc(r.title || '') + '</strong></div>'
+                        html += '<li><div><span class="amz-audit-impact amz-audit-impact-' + amzEsc(r.impact || 'medium') + '">' + amzEsc(r.impact || 'medium') + '</span> '
+                            + (!aspect && r.category && AMZ_AUDIT_ASPECTS[r.category] ? '<span class="amz-audit-cat">' + amzEsc(AMZ_AUDIT_ASPECTS[r.category].name) + '</span> ' : '')
+                            + '<strong>' + amzEsc(r.title || '') + '</strong></div>'
                             + (r.evidence ? '<div class="small text-muted">Data: ' + amzEsc(r.evidence) + '</div>' : '')
                             + (r.fix ? '<div class="small">Fix: ' + amzEsc(r.fix) + '</div>' : '') + '</li>';
                     });
                     html += '</ol>';
+                }
+                if (aspect) {
+                    html += '<div class="small mt-2"><a href="#" class="amz-audit-full-link">Show the full report</a></div>'
+                        + '<div class="small text-muted mt-2">' + (when ? 'Audited ' + amzEsc(when) : '') + '</div>';
+                    return html;
                 }
                 var steps = Array.isArray(rep.next_steps) ? rep.next_steps : [];
                 if (steps.length) {
@@ -3904,6 +3978,18 @@
                     col.headerSort = false;
                     col.width = 92;
                     col.minWidth = 84;
+                    return;
+                }
+                if (AMZ_AUDIT_ASPECT_BY_FIELD[c]) {
+                    var aspectKey = AMZ_AUDIT_ASPECT_BY_FIELD[c];
+                    var aspectLabel = AMZ_AUDIT_ASPECTS[aspectKey];
+                    col.title = aspectLabel.title;
+                    col.headerTooltip = 'Audit result for ' + aspectLabel.name + '. Grey = not audited, green = no issue found, yellow / orange / red = low / medium / high issue. Click a dot to see the issues and the solution for ' + aspectLabel.name + '.';
+                    col.formatter = function (cell) { return fmtAuditAspect(cell, aspectKey); };
+                    col.cellClick = function (e, cell) { amzAuditAspectClick(e, cell, aspectKey); };
+                    col.headerSort = false;
+                    col.width = 52;
+                    col.minWidth = 44;
                     return;
                 }
                 if (c === 'viewsL7') {

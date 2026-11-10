@@ -32,6 +32,11 @@ class AmazonAdsCampaignAuditService
 
     private const SEVERITIES = ['high', 'medium', 'low', 'ok'];
 
+    /** Aspects that get their own dot column on the grid. Anything else the AI reports is category "other". */
+    public const ASPECTS = ['budget', 'bid', 'keywords', 'stock', 'listing'];
+
+    private const IMPACT_RANK = ['ok' => 0, 'low' => 1, 'medium' => 2, 'high' => 3];
+
     /** A "running" audit older than this is treated as dead (the request was cut off). */
     public const STALE_RUNNING_MINUTES = 10;
 
@@ -93,7 +98,7 @@ class AmazonAdsCampaignAuditService
      * What the dot shows for a campaign.
      *
      * @param  list<string>  $campaignIds
-     * @return array<string, array{channel: string, status: string, severity: ?string, verdict: ?string, at: ?string, error: ?string}>
+     * @return array<string, array{channel: string, status: string, severity: ?string, verdict: ?string, at: ?string, error: ?string, aspects: ?array<string, string>}>
      */
     public function statuses(array $campaignIds): array
     {
@@ -105,7 +110,7 @@ class AmazonAdsCampaignAuditService
             $rows = AmazonAdsCampaignAudit::query()
                 ->whereIn('campaign_id', $chunk)
                 ->orderBy('updated_at')
-                ->get(['channel', 'campaign_id', 'status', 'severity', 'summary', 'error', 'started_at', 'finished_at']);
+                ->get(['channel', 'campaign_id', 'status', 'severity', 'summary', 'report', 'error', 'started_at', 'finished_at']);
             foreach ($rows as $r) {
                 $out[(string) $r->campaign_id] = $this->statusPayload($r);
             }
@@ -115,7 +120,7 @@ class AmazonAdsCampaignAuditService
     }
 
     /**
-     * @return array{channel: string, status: string, severity: ?string, verdict: ?string, at: ?string, error: ?string}
+     * @return array{channel: string, status: string, severity: ?string, verdict: ?string, at: ?string, error: ?string, aspects: ?array<string, string>}
      */
     public function statusPayload(AmazonAdsCampaignAudit $r): array
     {
@@ -135,7 +140,47 @@ class AmazonAdsCampaignAuditService
             'verdict' => $r->summary,
             'at' => $r->finished_at?->toIso8601String(),
             'error' => $error,
+            'aspects' => $status === AmazonAdsCampaignAudit::STATUS_DONE ? $this->aspectLevels($r->report) : null,
         ];
+    }
+
+    /**
+     * Worst impact per aspect (budget / bid / keywords / stock / listing) from the stored report:
+     * ok = audited and nothing found, low / medium / high = worst reason in that aspect.
+     * Null for reports saved before reasons had a category: run the audit again to fill the aspect dots.
+     *
+     * @param  mixed  $report
+     * @return array<string, string>|null
+     */
+    private function aspectLevels(mixed $report): ?array
+    {
+        if (! is_array($report) || ! isset($report['reasons']) || ! is_array($report['reasons'])) {
+            return null;
+        }
+        $reasons = array_values(array_filter($report['reasons'], 'is_array'));
+        $hasCategory = false;
+        foreach ($reasons as $r) {
+            if (isset($r['category'])) {
+                $hasCategory = true;
+                break;
+            }
+        }
+        if ($reasons !== [] && ! $hasCategory) {
+            return null;
+        }
+        $out = array_fill_keys(self::ASPECTS, 'ok');
+        foreach ($reasons as $r) {
+            $cat = (string) ($r['category'] ?? 'other');
+            if (! isset($out[$cat])) {
+                continue;
+            }
+            $impact = (string) ($r['impact'] ?? 'medium');
+            if ((self::IMPACT_RANK[$impact] ?? 2) > self::IMPACT_RANK[$out[$cat]]) {
+                $out[$cat] = isset(self::IMPACT_RANK[$impact]) ? $impact : 'medium';
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -409,16 +454,22 @@ class AmazonAdsCampaignAuditService
     {
         return "Question: what could be the possible reasons this campaign is not getting enough clicks?\n\n"
             ."Campaign data (JSON):\n".json_encode($facts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR)."\n\n"
-            ."Rank the reasons from most to least likely. For each one give the evidence (cite the numbers above) and one concrete fix. "
+            ."Rank the reasons from most to least likely. For each one give the evidence (cite the numbers above), one concrete fix, and a category: \n"
+            ."- budget: daily budget too low or runs out early\n"
+            ."- bid: bid / CPC too low versus what others pay, bidding strategy\n"
+            ."- keywords: too few or weak keywords / targets, match types, negatives blocking traffic\n"
+            ."- stock: ad paused or not eligible, no or low inventory, buy box\n"
+            ."- listing: price, rating / reviews, page views, conversion, title / images\n"
+            ."- other: anything else, such as a sudden recent drop or seasonality\n"
             ."Typical causes to check: ad not eligible or paused / no stock, budget runs out early, bid too low versus the CPC others pay, "
             ."too few or weak keywords / targets, wrong match types, negatives blocking traffic, low page views, price or rating hurting the listing, "
             ."and a sudden drop in the last few days.\n"
             ."If clicks are actually healthy, say so and set severity to \"ok\".\n\n"
             ."Return exactly this JSON shape:\n"
             .'{"verdict": "one sentence, max 160 characters", "severity": "high|medium|low|ok", '
-            .'"reasons": [{"title": "short title", "evidence": "numbers from the data", "fix": "one concrete action", "impact": "high|medium|low"}], '
+            .'"reasons": [{"category": "budget|bid|keywords|stock|listing|other", "title": "short title", "evidence": "numbers from the data", "fix": "one concrete action", "impact": "high|medium|low"}], '
             .'"next_steps": ["max 4 short action items"]}'."\n"
-            .'Give at most 6 reasons.';
+            .'Give at most 8 reasons. Only list real problems; an aspect with no problem gets no reason.';
     }
 
     /**
@@ -437,13 +488,15 @@ class AmazonAdsCampaignAuditService
                 continue;
             }
             $impact = strtolower(trim((string) ($r['impact'] ?? '')));
+            $category = strtolower(trim((string) ($r['category'] ?? '')));
             $reasons[] = [
+                'category' => in_array($category, self::ASPECTS, true) ? $category : 'other',
                 'title' => mb_substr(trim((string) ($r['title'] ?? '')), 0, 200),
                 'evidence' => mb_substr(trim((string) ($r['evidence'] ?? '')), 0, 600),
                 'fix' => mb_substr(trim((string) ($r['fix'] ?? '')), 0, 600),
                 'impact' => in_array($impact, ['high', 'medium', 'low'], true) ? $impact : 'medium',
             ];
-            if (count($reasons) >= 6) {
+            if (count($reasons) >= 8) {
                 break;
             }
         }

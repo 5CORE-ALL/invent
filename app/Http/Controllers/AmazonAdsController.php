@@ -91,6 +91,9 @@ class AmazonAdsController extends Controller
         ],
     ];
 
+    /** Audit button, then one dot column per audited aspect (the report's budget / bid / keywords / stock / listing issues). */
+    private const AUDIT_DISPLAY_COLUMNS = ['audit', 'auditBudget', 'auditBid', 'auditKeywords', 'auditStock', 'auditListing'];
+
     /** Inv / ovl30 / dil / price / gpft / reviews on each campaign row, after campaignName. */
     private const SKU_METRIC_DISPLAY_COLUMNS = ['Inv', 'ovl30', 'dil', 'price', 'gpft', 'reviews'];
 
@@ -519,7 +522,7 @@ class AmazonAdsController extends Controller
         if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {
             $ordered = array_values(array_filter(
                 $ordered,
-                static fn (string $c): bool => ! in_array($c, ['pageCvr', 'viewsL30', 'audit', 'viewsL7'], true)
+                static fn (string $c): bool => ! in_array($c, ['pageCvr', 'viewsL30', 'viewsL7', ...self::AUDIT_DISPLAY_COLUMNS], true)
             ));
             $idxPageCvr = array_search('ltCvr', $ordered, true);
             if ($idxPageCvr === false) {
@@ -529,8 +532,16 @@ class AmazonAdsController extends Controller
                 $idxPageCvr = array_search('Prchase', $ordered, true);
             }
             if ($idxPageCvr !== false) {
-                // 'audit' is a button column (AI audit of why the campaign gets too few clicks); it sits right before Vw L7.
-                array_splice($ordered, $idxPageCvr + 1, 0, ['pageCvr', 'viewsL30', 'audit', 'viewsL7']);
+                array_splice($ordered, $idxPageCvr + 1, 0, ['pageCvr', 'viewsL30', 'viewsL7']);
+            }
+            // Audit button + one issue dot column per aspect (AI audit of why the campaign gets too few clicks); they sit right before U7%.
+            // Without a U7% column (it only exists with the utilization columns) it falls back to right before Vw L7.
+            $idxAuditAnchor = array_search('U7%', $ordered, true);
+            if ($idxAuditAnchor === false) {
+                $idxAuditAnchor = array_search('viewsL7', $ordered, true);
+            }
+            if ($idxAuditAnchor !== false) {
+                array_splice($ordered, $idxAuditAnchor, 0, self::AUDIT_DISPLAY_COLUMNS);
             }
             if (in_array('viewsL7', $ordered, true) && in_array('clicks', $ordered, true)) {
                 $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
