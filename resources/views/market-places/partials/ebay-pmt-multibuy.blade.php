@@ -17,11 +17,16 @@
 @endphp
 @if ($pmtPart === 'css')
         #ebay-bid-tip-box {
-            position: fixed; z-index: 99999; display: none; max-width: 380px; pointer-events: none;
-            background: #0f172a; color: #f8fafc; border-radius: 8px; padding: 9px 12px; font-size: 12px; line-height: 1.4;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+            position: fixed; z-index: 99999; display: none; width: 640px; max-width: 94vw; pointer-events: none;
+            background: #0f172a; color: #f8fafc; border-radius: 12px; padding: 16px 20px; font-size: 14px; line-height: 1.5;
+            box-shadow: 0 14px 40px rgba(15, 23, 42, 0.45); border: 1px solid #1e3a5f;
         }
-        #ebay-bid-tip-box .tip-h { color: #93c5fd; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-top: 6px; }
+        #ebay-bid-tip-box .tip-h { color: #93c5fd; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-top: 12px; padding-bottom: 3px; border-bottom: 1px solid #1e3a5f; margin-bottom: 4px; }
+        #ebay-bid-tip-box .tip-h.tip-result { color: #86efac; }
+        #ebay-bid-tip-box .tip-line { display: flex; gap: 8px; padding: 1px 0; }
+        #ebay-bid-tip-box .tip-n { flex: 0 0 22px; color: #fbbf24; font-weight: 700; text-align: right; }
+        #ebay-bid-tip-box .tip-dot { flex: 0 0 22px; color: #64748b; text-align: right; }
+        #ebay-bid-tip-box .tip-res { font-size: 17px; font-weight: 700; color: #86efac; }
         #ebay-bid-tip-box .tip-h:first-child { margin-top: 0; }
         #ebay-bid-tip-box .tip-b { white-space: pre-wrap; word-break: break-word; }
         [data-bid-tip] { cursor: help; }
@@ -252,8 +257,15 @@
 @elseif ($pmtPart === 'script')
             // ---- Hover box for S BID / C BID / PMT BID: where the bid comes from and how it is worked out ----
             const arpEsc = function(text) { return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
-            window.ebayBidTipAttrs = function(source, formula, extra) {
-                return 'data-bid-tip="1" data-tip-src="' + arpEsc(source) + '" data-tip-formula="' + arpEsc(formula) + '" data-tip-extra="' + arpEsc(extra || '') + '"';
+            /**
+             * Attributes for a hover-box cell. Either one object { src, data[], steps[], result, pushed, pmtSteps[] }
+             * or the short form (source, formula, extra).
+             */
+            window.ebayBidTipAttrs = function(a, formula, extra) {
+                const o = (a && typeof a === 'object') ? a : { src: a, result: formula, pushed: extra };
+                return 'data-bid-tip="' + arpEsc(JSON.stringify({
+                    src: o.src || '', data: o.data || [], steps: o.steps || [], result: o.result || '', pushed: o.pushed || '', pmtSteps: o.pmtSteps || []
+                })) + '"';
             };
             /** What is pushed to eBay for this row: the Ads Rule PMT bid when its switch is on, else the Dil vs SBid S BID (eBay 1). */
             window.ebayBidPushedText = function(row) {
@@ -261,16 +273,24 @@
                     if (typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn() && typeof window.ebayPmtRuleBid === 'function') {
                         const r = window.ebayPmtRuleBid(row);
                         if (r) {
-                            const head = r.pause ? 'No bid pushed (INV 0)' : (r.bid !== null ? 'Pushed to eBay: ' + Number(r.bid).toFixed(1) + '%' : 'No bid pushed');
-                            return 'Ads Rule PMT is ON. ' + head + '\n' + (r.title || '');
+                            const head = r.pause ? 'No bid pushed (INV 0, a cost-per-sale ad cannot be paused)' : (r.bid !== null ? Number(r.bid).toFixed(1) + '% is pushed to eBay' : 'No bid pushed');
+                            return 'Ads Rule PMT is ON: ' + head + '  [rule ' + r.rule + ']';
                         }
                     }
                     if (typeof getCombinedSbid === 'function') {
                         const res = getCombinedSbid(row);
-                        if (res && !res.skip && !res.off && res.bid > 0) return 'Ads Rule PMT is off here. Pushed to eBay: ' + Number(res.bid).toFixed(1) + '% (Dil vs SBid S BID)';
+                        if (res && !res.skip && !res.off && res.bid > 0) return 'Ads Rule PMT is off here: ' + Number(res.bid).toFixed(1) + '% (Dil vs SBid S BID) is pushed';
                     }
                 } catch (e) { /* fall through */ }
                 return '';
+            };
+            /** Data + steps of the Ads Rule PMT decision for a row (null when PMT does not apply to it). */
+            window.ebayPmtDetail = function(row) {
+                try {
+                    if (typeof window.ebayPmtRuleBid !== 'function') return null;
+                    const r = window.ebayPmtRuleBid(row);
+                    return r ? { data: r.data || [], steps: r.steps || [], rule: r.rule, bid: r.bid } : null;
+                } catch (e) { return null; }
             };
             (function() {
                 if (window.__ebayBidTipWired) return;
@@ -280,12 +300,30 @@
                     if (!box) { box = document.createElement('div'); box.id = 'ebay-bid-tip-box'; document.body.appendChild(box); }
                     return box;
                 }
-                function section(h, t) { return t ? '<div class="tip-h">' + arpEsc(h) + '</div><div class="tip-b">' + arpEsc(t) + '</div>' : ''; }
+                function section(h, t, cls) { return t ? '<div class="tip-h ' + (cls || '') + '">' + arpEsc(h) + '</div><div class="tip-b">' + arpEsc(t) + '</div>' : ''; }
+                function bullets(h, list) {
+                    if (!list || !list.length) return '';
+                    return '<div class="tip-h">' + arpEsc(h) + '</div>' + list.map(function(x) { return '<div class="tip-line"><span class="tip-dot">&bull;</span><span class="tip-b">' + arpEsc(x) + '</span></div>'; }).join('');
+                }
+                function numbered(h, list) {
+                    if (!list || !list.length) return '';
+                    return '<div class="tip-h">' + arpEsc(h) + '</div>' + list.map(function(x, i) { return '<div class="tip-line"><span class="tip-n">' + (i + 1) + '.</span><span class="tip-b">' + arpEsc(x) + '</span></div>'; }).join('');
+                }
+                function render(o) {
+                    return section('Source', o.src)
+                        + bullets('Data used', o.data)
+                        + numbered('Steps followed', o.steps)
+                        + (o.result ? '<div class="tip-h tip-result">Result</div><div class="tip-b tip-res">' + arpEsc(o.result) + '</div>' : '')
+                        + (o.pushed ? '<div class="tip-h">Pushed to eBay</div><div class="tip-b">' + arpEsc(o.pushed) + '</div>' : '')
+                        + numbered('Ads Rule PMT steps', o.pmtSteps);
+                }
                 document.addEventListener('mouseover', function(e) {
                     const el = e.target && e.target.closest ? e.target.closest('[data-bid-tip]') : null;
                     if (!el) return;
                     const b = ensure();
-                    b.innerHTML = section('Source', el.getAttribute('data-tip-src')) + section('Formula', el.getAttribute('data-tip-formula')) + section('Pushed', el.getAttribute('data-tip-extra'));
+                    let o = {};
+                    try { o = JSON.parse(el.getAttribute('data-bid-tip')) || {}; } catch (err) { o = {}; }
+                    b.innerHTML = render(o);
                     b.style.display = 'block';
                     const r = el.getBoundingClientRect();
                     const w = b.offsetWidth, h = b.offsetHeight;
@@ -395,7 +433,17 @@
                     const rule = classifyRow(row);
                     const cat = String(row.excel_category || '').trim();
                     const saved = savedBids[cat] || {};
-                    const out = { rule: rule, bid: null, pause: false, missing: false, title: '' };
+                    const out = { rule: rule, bid: null, pause: false, missing: false, title: '', data: [], steps: [] };
+                    const fmt = function(v) { return v === null || v === undefined ? 'not set' : v + '%'; };
+                    out.data.push('Category: ' + (cat || 'none (no Category Masters category)'));
+                    out.data.push((PMT_BY_PARENT ? 'Family INV: ' : 'INV: ') + rowInv(row));
+                    out.data.push('Saved for the category: Manual ' + fmt(num(saved.manual)) + ', Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)));
+                    out.steps.push('Is INV above 0?  ' + (rowInv(row) > 0 ? 'Yes (INV ' + rowInv(row) + ')' : 'No -> bid 0, the ad is left as it is (eBay cannot pause a cost-per-sale ad)'));
+                    if (rowInv(row) > 0) out.steps.push('Does the category have a Promoted ad rate Manual?  ' + (num(saved.manual) !== null ? 'Yes (' + num(saved.manual) + '%) -> use it' : 'No'));
+                    if (rowInv(row) > 0 && num(saved.manual) === null) out.steps.push('Does the category have a Highest?  ' + (num(saved.highest) !== null ? 'Yes (' + num(saved.highest) + '%) -> use it' : 'No'));
+                    if (rowInv(row) > 0 && num(saved.manual) === null && num(saved.highest) === null) {
+                        out.steps.push(PMT_SBID_FALLBACK ? 'No match -> use the old Dil vs SBid S BID of this listing' : 'No match -> no bid is pushed for this ' + @json($pmtUnit));
+                    }
                     let calc = null;
                     if (rule === '1') {
                         out.bid = 0; out.pause = true; out.title = 'Rule 1: INV = ' + rowInv(row) + ' (not above 0)\nBid 0 / pause the ad. eBay cannot pause a cost-per-sale ad, so the ad is left as it is.';
@@ -421,6 +469,7 @@
                         return out;
                     }
                     out.bid = Math.min(100, Math.max(2, Math.round(calc * 100) / 100)); // eBay accepts 2-100
+                    out.steps.push('Keep the bid between 2% and 100% (eBay limits) -> ' + Number(out.bid).toFixed(1) + '% is the PMT bid');
                     return out;
                 };
 
@@ -1104,8 +1153,15 @@
                         formatter: function(cell) {
                             const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(cell.getRow().getData()) : null;
                             if (!r) return '';
+                            const pmtRow = cell.getRow().getData();
                             const tip = typeof window.ebayBidTipAttrs === 'function'
-                                ? window.ebayBidTipAttrs('Ads Rule PMT (category rules in the Ads Rule PMT window)', r.title || '', '')
+                                ? window.ebayBidTipAttrs({
+                                    src: 'Ads Rule PMT: the category rules saved in the Ads Rule PMT window (Manual, else Highest, else the old rule)',
+                                    data: r.data || [],
+                                    steps: r.steps || [],
+                                    result: r.pause ? 'No bid (INV 0)' : (r.bid !== null ? 'PMT bid ' + Number(r.bid).toFixed(1) + '%' : 'No bid'),
+                                    pushed: typeof window.ebayBidPushedText === 'function' ? window.ebayBidPushedText(pmtRow) : ''
+                                })
                                 : 'title="' + String(r.title || '').replace(/"/g, '&quot;') + '"';
                             if (r.pause) {
                                 return '<span ' + tip + ' style="color:#842029; font-weight:700; cursor:help;">0 · PAUSE</span>';

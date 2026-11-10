@@ -4226,11 +4226,24 @@
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span class="text-muted">—</span>';
                             const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
+                            const cRow = cell.getRow().getData();
+                            const cPmt = typeof window.ebayPmtDetail === 'function' ? window.ebayPmtDetail(cRow) : null;
+                            const cOn = typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn();
+                            const cData = ['Live bid on eBay now: ' + v.toFixed(1) + '%'];
+                            if (cPmt && cPmt.bid !== null) cData.push('PMT BID (Ads Rule PMT, rule ' + cPmt.rule + '): ' + Number(cPmt.bid).toFixed(1) + '%');
                             const cTip = typeof window.ebayBidTipAttrs === 'function'
-                                ? window.ebayBidTipAttrs(
-                                    'Live eBay bid (campaign ads, last pulled from eBay) — the bid the ad is running at now',
-                                    'Live bid ' + v.toFixed(1) + '%',
-                                    typeof window.ebayBidPushedText === 'function' ? window.ebayBidPushedText(cell.getRow().getData()) : '')
+                                ? window.ebayBidTipAttrs({
+                                    src: 'Live eBay bid (campaign ads, last pulled from eBay): the bid the ad is running at now',
+                                    data: cData,
+                                    steps: [
+                                        'Read from eBay campaign ads: the bid the ad is running at (last pull).',
+                                        cOn ? 'Ads Rule PMT is ON: it decides the bid per PARENT (family INV, OV L30 and eBay sold) and pushes it to every ad listing of that parent.' : 'Ads Rule PMT is off here, so no rule bid is pushed.',
+                                        (cPmt && cPmt.bid !== null) ? (Math.abs(v - cPmt.bid) < 0.05 ? 'Live bid equals the PMT bid: up to date.' : 'Live bid differs from the PMT bid: it is pushed at the next run (every 30 minutes).') : 'No PMT bid for this row.'
+                                    ],
+                                    result: 'C BID ' + v.toFixed(1) + '%',
+                                    pushed: typeof window.ebayBidPushedText === 'function' ? window.ebayBidPushedText(cRow) : '',
+                                    pmtSteps: cPmt ? cPmt.steps : []
+                                })
                                 : '';
                             return '<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                         }

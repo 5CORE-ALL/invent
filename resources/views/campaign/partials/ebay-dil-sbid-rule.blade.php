@@ -1467,6 +1467,104 @@ function dilSbidBreakdown(row) {
     };
 }
 window.dilSbidBreakdown = dilSbidBreakdown;
+/**
+ * Step by step story of one row's S Bid for the hover box: the data it used and each step of the Dil vs SBid rule.
+ * Mirrors dilSbidOfRow. Returns { data: [lines], steps: [lines], result: text } or null.
+ */
+function dilSbidExplain(row, esFrom) {
+    try {
+        const esRow = esFrom || row;
+        if (row && !row._dilSbidRolled) {
+            const parent = dilSbidParentFor(row);
+            if (parent) return dilSbidExplain(dilSbidAsParentSource(parent), esRow);
+        }
+        if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
+            const key = dilSbidListingKey(row);
+            const rolled = key ? dilSbidRollupRow(key) : null;
+            return rolled ? dilSbidExplain(rolled, esRow) : null;
+        }
+        const r = dilSbidRound;
+        const num = function(v) { const n = parseFloat(v); return isFinite(n) ? n : null; };
+        const range = function(slabs, i) {
+            const sl = slabs[i];
+            return r(parseFloat(sl.min)) + (i === slabs.length - 1 ? ' and above' : ' to ' + r(parseFloat(sl.max)));
+        };
+        const sg = function(n) { return (n > 0 ? '+' : '') + r(n); };
+        const data = [];
+        const steps = [];
+
+        const dil = dilSbidMetric(row);
+        const invRaw = (row && row.shopify_inv != null && row.shopify_inv !== '') ? row.shopify_inv : (row && row.INV);
+        const ovl = (row && row.shopify_qty != null && row.shopify_qty !== '') ? row.shopify_qty : null;
+        if (num(invRaw) !== null) data.push('Inventory (INV): ' + r(num(invRaw)));
+        if (ovl !== null && num(ovl) !== null) data.push('OV L30 (units sold in 30 days): ' + r(num(ovl)));
+        data.push('Dil % (OV L30 / INV x 100): ' + (dil === null || !isFinite(dil) ? 'not available' : r(dil) + '%'));
+        const views = num(row && row.views);
+        data.push('Views L30: ' + (views === null ? 'n/a' : r(views)) + (num(row && row.l7_views) !== null ? '   (L7 views: ' + r(num(row.l7_views)) + ')' : ''));
+        const cp = dilSbidCvrParts(row);
+        data.push('CVR (eBay sold L30 / views): ' + (cp ? r(cp.cvr) + '%   (previous 30 days: ' + r(cp.cvr60) + '%)' : 'n/a (no views)'));
+        if (DIL_SBID_EXT) {
+            const sold = dilSbidExtValue('sold', row);
+            data.push('eBay Sold L30: ' + (sold === null ? 'n/a' : r(sold)));
+            const npft = dilSbidExtValue('npft', row);
+            data.push('Std NPFT %: ' + (npft === null ? 'n/a' : r(npft) + '%'));
+            if (DIL_SBID_GPFT) {
+                const gp = dilSbidExtValue('gpft', row);
+                data.push('GPFT %: ' + (gp === null ? 'n/a' : r(gp) + '%'));
+            }
+        }
+        const es = dilSbidEsBid(esRow) || dilSbidEsBid(row);
+        data.push('ES Bid (eBay suggested): ' + (es > 0 ? es + '%' : 'none'));
+
+        if (dil === null || !isFinite(dil)) {
+            steps.push('Dil cannot be worked out (no inventory or OV L30), so there is no S Bid.');
+            return { data: data, steps: steps, result: 'No S Bid' };
+        }
+
+        // 1. Dil slab
+        const part = dilSbidDilPart(row, dil);
+        const di = dilSbidIndexIn(currentDilSbidSlabs, dil);
+        steps.push('Dil slab: Dil ' + r(dil) + '% falls in the slab ' + (di >= 0 ? range(currentDilSbidSlabs, di) + '%' : '(none)')
+            + ' -> S Bid ' + sg(parseFloat(part.bid) || 0) + '%' + (part.miss ? '  [' + part.miss + ']' : ''));
+        let base = parseFloat(part.bid) || 0;
+
+        // 2..6 extra tables
+        if (DIL_SBID_EXT) {
+            const extra = dilSbidExtBids(row);
+            DIL_SBID_EXT_KEYS.forEach(function(key) {
+                const e = extra[key];
+                const slabs = currentDilSbidTables[key] || [];
+                const label = DIL_SBID_EXT_LABELS[key];
+                if (e.idx >= 0) {
+                    steps.push(label + ' table: value ' + r(e.value) + ' falls in ' + range(slabs, e.idx) + ' -> ' + sg(e.bid) + '%');
+                } else {
+                    steps.push(label + ' table: ' + (e.value === null ? 'no data for this SKU' : 'value ' + r(e.value) + ' is in no range') + ' -> +0%');
+                }
+                base += e.bid;
+            });
+        }
+        base = r(base);
+        steps.push('Add them up: ' + base + '%');
+
+        // CVR up / down
+        const adj = dilSbidApplyCvr(base, row);
+        steps.push('CVR up / down: ' + (adj.why ? adj.why + ' -> ' + sg(adj.adj) + '% = ' + adj.bid + '%' : 'no CVR rule hit -> no change'));
+        // L30 view up / down
+        const vAdj = dilSbidApplyView(adj.bid, row);
+        steps.push('L30 View up / down: ' + (vAdj.why ? vAdj.why + ' -> ' + sg(vAdj.adj) + '% = ' + vAdj.bid + '%' : 'no view rule hit -> no change'));
+        // cap
+        const capped = dilSbidApplyCap(vAdj.bid, es);
+        const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
+        const tenths = Math.round(vAdj.bid * 10) / 10;
+        steps.push('Cap: ' + (DIL_SBID_ES_CEILING ? 'at least ' + cap.min + '% and not above the ES Bid' + (es > 0 ? ' (' + es + '%)' : '') : 'between ' + cap.min + '% and ' + cap.max + '%')
+            + ' -> ' + (capped !== tenths ? tenths + '% becomes ' + capped + '%' : capped + '% (unchanged)'));
+        steps.push('Final S Bid: ' + (capped > 0 ? Number(capped).toFixed(1) + '%' : 'none'));
+        return { data: data, steps: steps, result: capped > 0 ? 'S Bid ' + Number(capped).toFixed(1) + '%' : 'No S Bid' };
+    } catch (e) {
+        return null;
+    }
+}
+window.dilSbidExplain = dilSbidExplain;
 function dilSbidDiffEsc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

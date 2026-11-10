@@ -6037,11 +6037,24 @@
                             if (!isNaN(v)) {
                                 const color = v > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                                 const cSync = ebayTabBidSync(row);
-                                const cTip = ebayBidTipAttrs(
-                                    'Live eBay bid (campaign ads, last pulled from eBay) — the bid your ad is running at now',
-                                    'Live bid ' + v + '%' + (cSync ? '\n' + cSync.tip : ''),
-                                    ebayBidPushedText(row)
-                                );
+                                const cSb = getCombinedSbid(row);
+                                const cPmt = typeof window.ebayPmtDetail === 'function' ? window.ebayPmtDetail(row) : null;
+                                const cData = ['Live bid on eBay now: ' + v + '%'];
+                                if (cSb && !cSb.skip && !cSb.off && cSb.bid > 0) cData.push('S BID (Dil vs SBid) for this listing: ' + Number(cSb.bid).toFixed(1) + '%');
+                                if (cPmt && cPmt.bid !== null) cData.push('PMT BID (Ads Rule PMT, rule ' + cPmt.rule + '): ' + Number(cPmt.bid).toFixed(1) + '%');
+                                const cSteps = [
+                                    'Read from eBay campaign ads: the bid the ad is running at (last pull).',
+                                    'The bid we want is worked out: ' + (typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn() ? 'Ads Rule PMT is ON, so the PMT bid is used.' : 'Ads Rule PMT is off, so the S BID is used.'),
+                                    cSync ? 'Compared with the live bid: ' + cSync.tip : 'No S Bid to compare with.'
+                                ];
+                                const cTip = ebayBidTipAttrs({
+                                    src: 'Live eBay bid (campaign ads, last pulled from eBay): the bid your ad is running at now',
+                                    data: cData,
+                                    steps: cSteps,
+                                    result: 'C BID ' + v + '%' + (cSync ? (cSync.color === 'green' ? ' - matches the wanted bid' : ' - not yet the wanted bid') : ''),
+                                    pushed: ebayBidPushedText(row),
+                                    pmtSteps: cPmt ? cPmt.steps : []
+                                });
                                 valueHtml = '<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + Math.round(v) + '%</span>';
                             }
                             const sync = ebayTabBidSync(row);
@@ -6077,8 +6090,19 @@
                         formatter: function(cell) {
                             const sbidRow = cell.getRow().getData();
                             const res = getCombinedSbid(sbidRow);
-                            const sbidSrc = 'Dil vs SBid rule (slabs + Views / CVR / eBay Sold / Std NPFT / GPFT tables, CVR and L30 view overlays, Min / Max cap)';
-                            const tipAttrs = function(formula) { return ebayBidTipAttrs(sbidSrc, formula, ebayBidPushedText(sbidRow)); };
+                            const sbidSrc = 'Dil vs SBid rule: Dil slab + Views / CVR / eBay Sold / Std NPFT / GPFT tables, then the CVR and L30 view overlays and the cap (set in the Dil vs SBid window)';
+                            const sbidExp = typeof window.dilSbidExplain === 'function' ? window.dilSbidExplain(sbidRow) : null;
+                            const sbidPmt = typeof window.ebayPmtDetail === 'function' ? window.ebayPmtDetail(sbidRow) : null;
+                            const tipAttrs = function(formula) {
+                                return ebayBidTipAttrs({
+                                    src: sbidSrc,
+                                    data: sbidExp ? sbidExp.data : [],
+                                    steps: sbidExp ? sbidExp.steps : [formula],
+                                    result: (sbidExp && sbidExp.result) || formula,
+                                    pushed: ebayBidPushedText(sbidRow),
+                                    pmtSteps: (typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn() && sbidPmt) ? sbidPmt.steps : []
+                                });
+                            };
                             if (res && res.off) {
                                 return `<span class="fw-bold" style="color:#842029;" ${tipAttrs(res.title || 'Paused slab')}>OFF</span>`;
                             }
