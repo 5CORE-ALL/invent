@@ -1139,6 +1139,9 @@ class EbayController extends Controller
                 foreach (DB::table('category_masters')->select(['sku', 'category_ebay'])->get() as $cmRow) {
                     $cmCategory = trim((string) ($cmRow->category_ebay ?? ''));
                     if ($cmCategory !== '') {
+                        // The stored value is the full path ("Vehicle Electronics > Car Audio > Car Speakers ..."): keep the last level only.
+                        $cmParts = preg_split('/\s*>\s*/u', $cmCategory) ?: [$cmCategory];
+                        $cmCategory = trim((string) end($cmParts)) ?: $cmCategory;
                         $categoryMasterEbayBySku[strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $cmRow->sku)))] = $cmCategory;
                     }
                 }
