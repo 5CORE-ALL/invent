@@ -702,7 +702,8 @@ class VeeqoChargebackController extends Controller
         $search = ltrim(trim((string) $request->input('search', '')), '# ');
         if ($search !== '') {
             $like = '%'.addcslashes($search, '\\%_').'%';
-            $query->where(function (Builder $q) use ($search, $like) {
+            $isUps = $request->input('source') === 'ups_csv';
+            $query->where(function (Builder $q) use ($like, $isUps) {
                 foreach (self::SEARCHABLE as $column) {
                     $q->orWhere($column, 'like', $like);
                 }
@@ -710,7 +711,7 @@ class VeeqoChargebackController extends Controller
                 if (Schema::hasTable('veeqo_billing_shipments')) {
                     $q->orWhereIn('order_number', DB::table('veeqo_billing_shipments')->where('skus', 'like', $like)->select('order_number'));
                 }
-                if ($request->input('source') === 'ups_csv') {
+                if ($isUps) {
                     // The UPS sheet shows addresses and reference numbers that only live in the stored row.
                     $q->orWhere('raw', 'like', $like);
                 }
