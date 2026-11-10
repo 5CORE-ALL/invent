@@ -41,8 +41,8 @@ class EbayAccountRulesController extends Controller
         $bids = [];
         foreach ($stored as $category => $value) {
             $bids[$category] = is_array($value)
-                ? ['highest' => $value['highest'] ?? null, 'lowest' => $value['lowest'] ?? null]
-                : ['highest' => $value, 'lowest' => null];
+                ? ['highest' => $value['highest'] ?? null, 'lowest' => $value['lowest'] ?? null, 'manual' => $value['manual'] ?? null]
+                : ['highest' => $value, 'lowest' => null, 'manual' => null];
         }
 
         return response()->json([
@@ -80,7 +80,7 @@ class EbayAccountRulesController extends Controller
             }
 
             $values = [];
-            foreach (['highest', 'lowest'] as $field) {
+            foreach (['highest', 'lowest', 'manual'] as $field) {
                 $v = $pair[$field] ?? null;
                 if ($v === null || $v === '') {
                     $values[$field] = null;
@@ -96,7 +96,7 @@ class EbayAccountRulesController extends Controller
             if ($values['highest'] !== null && $values['lowest'] !== null && $values['lowest'] > $values['highest']) {
                 return response()->json(['error' => 'Lowest cannot be greater than Highest for "'.$category.'"'], 422);
             }
-            if ($values['highest'] === null && $values['lowest'] === null) {
+            if ($values['highest'] === null && $values['lowest'] === null && $values['manual'] === null) {
                 continue; // nothing set for this category
             }
 
