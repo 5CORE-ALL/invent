@@ -57,6 +57,8 @@ class AmazonFbmTargetingController extends Controller
     /** @var array<string, list<string>>|null parent key => campaign names */
     private ?array $siblingsMemo = null;
 
+    private ?array $listedIndexMemo = null;
+
     public function __construct(private AmazonAdsService $ads, private AmazonKwCousinLinkService $cousins)
     {
     }
@@ -3508,6 +3510,29 @@ class AmazonFbmTargetingController extends Controller
     }
 
     /**
+     * Like campaignIndex() but also holds the campaigns that are only listed in the grid (HL / SB, PT, renamed ones).
+     * Used to find a clicked row's parent; the keyword sync keeps using campaignIndex() (SP KW campaigns only).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function listedIndex(): array
+    {
+        if ($this->listedIndexMemo !== null) {
+            return $this->listedIndexMemo;
+        }
+        $index = $this->campaignIndex();
+        try {
+            foreach ($this->mergeSbCampaigns($this->campaignsGroupedByParent()) as $c) {
+                $index[$this->cousins->normalize((string) $c['campaign_name'])] ??= $c;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: listed campaigns could not be indexed', ['error' => $e->getMessage()]);
+        }
+
+        return $this->listedIndexMemo = $index;
+    }
+
+    /**
      * Parents for the cousin picker. Picking a parent brings in all of its campaigns automatically.
      * The campaign's own parent and parents that are already cousins are left out.
      */
@@ -3515,7 +3540,7 @@ class AmazonFbmTargetingController extends Controller
     {
         $q = mb_strtolower(trim((string) $request->query('q', '')));
         $campaign = (string) $request->query('exclude', '');
-        $index = $this->campaignIndex();
+        $index = $this->listedIndex();
         $ownParent = strtoupper($index[$this->cousins->normalize($campaign)]['parent'] ?? '');
 
         $inGroup = [];
@@ -3568,7 +3593,7 @@ class AmazonFbmTargetingController extends Controller
             return response()->json(['success' => false, 'message' => 'Cousin table is missing. Run php artisan migrate.'], 500);
         }
 
-        $index = $this->campaignIndex();
+        $index = $this->listedIndex(); // HL / PT rows are listed only, but can still be given cousins
         $campaign = trim($v['campaign']);
         $self = $index[$this->cousins->normalize($campaign)] ?? null;
         if (! $self) {
@@ -3748,7 +3773,7 @@ class AmazonFbmTargetingController extends Controller
         $norm = $this->cousins->normalize($campaign);
         $members = $groupsMap[$norm] ?? [$campaign];
 
-        $self = $this->campaignIndex()[$norm] ?? null;
+        $self = $this->listedIndex()[$norm] ?? null;
         if ($self && $self['parent'] !== '') {
             foreach ($this->siblingsByParent()[strtoupper($self['parent'])] ?? [] as $sib) {
                 foreach ($groupsMap[$this->cousins->normalize($sib)] ?? [$sib] as $m) {
@@ -3770,7 +3795,7 @@ class AmazonFbmTargetingController extends Controller
     {
         $index = $this->campaignIndex();
         $selfNorm = $this->cousins->normalize($campaign);
-        $ownParent = strtoupper($index[$selfNorm]['parent'] ?? '');
+        $ownParent = strtoupper(($this->listedIndex()[$selfNorm]['parent'] ?? $index[$selfNorm]['parent'] ?? ''));
 
         return array_values(array_filter($group, function ($m) use ($index, $selfNorm, $ownParent) {
             $norm = $this->cousins->normalize((string) $m);
@@ -3948,7 +3973,7 @@ class AmazonFbmTargetingController extends Controller
         }
 
         $campaign = trim($v['campaign']);
-        if (! isset($this->campaignIndex()[$this->cousins->normalize($campaign)])) {
+        if (! isset($this->listedIndex()[$this->cousins->normalize($campaign)])) {
             return response()->json(['success' => false, 'message' => 'Unknown campaign.'], 422);
         }
 
