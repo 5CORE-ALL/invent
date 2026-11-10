@@ -4866,19 +4866,6 @@
                         sorter: "string", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Category...",
-                        tooltip: true,
-                        width: 140,
-                        visible: true,
-                        formatter: function(cell) {
-                            return cell.getValue() || '';
-                        }
-                    },
-                    {
-                        title: "Category 2",
-                        field: "category2",
-                        sorter: "string", sorterParams: { alignEmptyValues: "bottom" },
-                        headerFilter: "input",
-                        headerFilterPlaceholder: "Search Category 2...",
                         headerTooltip: "eBay category from Category Masters (/category-masters)",
                         tooltip: true,
                         width: 220,

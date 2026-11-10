@@ -1654,10 +1654,10 @@ class EbayController extends Controller
             }
             $row['nrp'] = $nrpOut;
 
-            // Category from /excel upload (worksheet name), matched by eBay Item ID (blank when no match)
-            $excelItemKey = \App\Services\ExcelCategoryLookupService::normalizeItemId($ebayMetric?->item_id ?? '');
-            $row['excel_category'] = $excelItemKey !== '' ? ($excelCategoryBySku[$excelItemKey] ?? '') : '';
+            // eBay category (last level) from Category Masters (/category-masters), by SKU.
+            // The "Category" column now shows this instead of the /excel worksheet name.
             $row['category2'] = $categoryMasterEbayBySku[strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $pm->sku)))] ?? '';
+            $row['excel_category'] = $row['category2'];
 
             $result[] = (object) $row;
         }
