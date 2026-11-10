@@ -63,7 +63,7 @@ class EbayPmtBenchmarkCheckCommand extends Command
         }
 
         // SKUs per modal category.
-        $skus = array_count_values(array_values($account === 'ebay1' ? $categories->categoryMasterBySku() : []));
+        $skus = array_count_values(array_values(ExcelCategoryLookupService::usesCategoryMasters($account) ? $categories->categoryMasterBySku() : []));
         $saved = PmtCategoryBidRule::bids($account);
         $names = $categories->categoryNames($account);
 

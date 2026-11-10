@@ -4221,12 +4221,18 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
-                        headerTooltip: "Live eBay bid percentage.",
+                        headerTooltip: "Live eBay bid percentage. Hover a value for the source and what the Ads Rule PMT pushes.",
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span class="text-muted">—</span>';
                             const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
-                            return '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
+                            const cTip = typeof window.ebayBidTipAttrs === 'function'
+                                ? window.ebayBidTipAttrs(
+                                    'Live eBay bid (campaign ads, last pulled from eBay) — the bid the ad is running at now',
+                                    'Live bid ' + v.toFixed(1) + '%',
+                                    typeof window.ebayBidPushedText === 'function' ? window.ebayBidPushedText(cell.getRow().getData()) : '')
+                                : '';
+                            return '<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                         }
                     },
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay2'])

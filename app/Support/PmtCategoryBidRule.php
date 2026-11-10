@@ -78,7 +78,46 @@ final class PmtCategoryBidRule
             ];
         }
 
+        // eBay 2 saved its ranges under the /excel sheet names (cut at 31 characters). The categories are now the
+        // Category Masters ones, so a saved name that is the start of a master category moves to that category.
+        if ($account === 'ebay2' && $out !== []) {
+            $out = self::renameToMasterCategories($out);
+        }
+
         return $out;
+    }
+
+    /**
+     * @param  array<string, array{highest:?float,lowest:?float,manual:?float}>  $bids
+     * @return array<string, array{highest:?float,lowest:?float,manual:?float}>
+     */
+    private static function renameToMasterCategories(array $bids): array
+    {
+        try {
+            $masters = app(\App\Services\ExcelCategoryLookupService::class)->masterCategoryNames();
+        } catch (\Throwable $e) {
+            return $bids;
+        }
+        if ($masters === []) {
+            return $bids;
+        }
+        $isMaster = array_flip($masters);
+        foreach (array_keys($bids) as $key) {
+            if (isset($isMaster[$key])) {
+                continue;
+            }
+            $k = mb_strtolower(trim($key));
+            foreach ($masters as $name) {
+                $n = mb_strtolower($name);
+                if (min(mb_strlen($k), mb_strlen($n)) >= 10 && (str_starts_with($n, $k) || str_starts_with($k, $n)) && ! isset($bids[$name])) {
+                    $bids[$name] = $bids[$key];
+                    unset($bids[$key]);
+                    break;
+                }
+            }
+        }
+
+        return $bids;
     }
 
     /**

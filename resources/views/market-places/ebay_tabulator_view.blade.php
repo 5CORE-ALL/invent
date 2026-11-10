@@ -6036,7 +6036,13 @@
                             let valueHtml = '<span class="text-muted">—</span>';
                             if (!isNaN(v)) {
                                 const color = v > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                                valueHtml = '<span style="color:' + color + '; font-weight:600;">' + Math.round(v) + '%</span>';
+                                const cSync = ebayTabBidSync(row);
+                                const cTip = ebayBidTipAttrs(
+                                    'Live eBay bid (campaign ads, last pulled from eBay) — the bid your ad is running at now',
+                                    'Live bid ' + v + '%' + (cSync ? '\n' + cSync.tip : ''),
+                                    ebayBidPushedText(row)
+                                );
+                                valueHtml = '<span ' + cTip + ' style="color:' + color + '; font-weight:600;">' + Math.round(v) + '%</span>';
                             }
                             const sync = ebayTabBidSync(row);
                             if (!sync) return valueHtml;
@@ -6069,17 +6075,18 @@
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
                         formatter: function(cell) {
-                            const res = getCombinedSbid(cell.getRow().getData());
+                            const sbidRow = cell.getRow().getData();
+                            const res = getCombinedSbid(sbidRow);
+                            const sbidSrc = 'Dil vs SBid rule (slabs + Views / CVR / eBay Sold / Std NPFT / GPFT tables, CVR and L30 view overlays, Min / Max cap)';
+                            const tipAttrs = function(formula) { return ebayBidTipAttrs(sbidSrc, formula, ebayBidPushedText(sbidRow)); };
                             if (res && res.off) {
-                                return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
+                                return `<span class="fw-bold" style="color:#842029;" ${tipAttrs(res.title || 'Paused slab')}>OFF</span>`;
                             }
                             if (res.skip) {
-                                const why = String(res.title || 'No S Bid').replace(/"/g, '&quot;');
-                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${res.short || 'No S Bid'}</span>`;
+                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap;" ${tipAttrs(res.title || 'No S Bid')}>${res.short || 'No S Bid'}</span>`;
                             }
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
-                            const title = res.title || 'Dil vs SBid';
-                            return `<span title="${title}" style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
+                            return `<span ${tipAttrs(res.title || 'Dil vs SBid')} style="color:${color}; font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;
                         }
                     },
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'columns', 'pmtAccount' => 'ebay1'])

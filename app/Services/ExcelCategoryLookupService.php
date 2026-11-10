@@ -84,13 +84,29 @@ class ExcelCategoryLookupService
      */
     public function map(string $account = 'ebay1'): array
     {
-        // eBay 1 uses the eBay category of Category Masters (last level); the other accounts keep the /excel upload.
-        $map = $account === 'ebay1' ? $this->categoryMasterMap() : $this->baseMap($account);
+        // eBay 1 and eBay 2 use the eBay category of Category Masters (last level); eBay 3 keeps the /excel upload.
+        $map = self::usesCategoryMasters($account) ? $this->categoryMasterMap($account) : $this->baseMap($account);
         foreach ($this->overrides($account) as $itemId => $category) {
             $map[$itemId] = $category;
         }
 
         return $map;
+    }
+
+    /** eBay 1 / eBay 2 take their category from Category Masters; eBay 3 from the /excel upload. */
+    public static function usesCategoryMasters(string $account): bool
+    {
+        return in_array($account, ['ebay1', 'ebay2'], true);
+    }
+
+    /**
+     * Every Category Masters category (last level), once each.
+     *
+     * @return array<int, string>
+     */
+    public function masterCategoryNames(): array
+    {
+        return array_values(array_unique(array_values($this->categoryMasterBySku())));
     }
 
     /**
@@ -138,20 +154,24 @@ class ExcelCategoryLookupService
     }
 
     /**
-     * eBay 1: normalized eBay item id => Category Masters category (last level), matched through ebay_metrics (item id => SKU).
+     * eBay 1 / eBay 2: normalized eBay item id => Category Masters category (last level), matched through the
+     * account's metrics table (item id => SKU).
      *
      * @return array<string, string>
      */
-    private function categoryMasterMap(): array
+    private function categoryMasterMap(string $account = 'ebay1'): array
     {
         $bySku = $this->categoryMasterBySku();
         if ($bySku === []) {
             return [];
         }
-
+        $table = 'ebay_metrics';
+        if ($account === 'ebay2') {
+            $table = Schema::hasTable('ebay_2_metrics') ? 'ebay_2_metrics' : 'ebay2_metrics';
+        }
         $map = [];
         try {
-            DB::table('ebay_metrics')
+            DB::table($table)
                 ->whereNotNull('item_id')
                 ->where('item_id', '!=', '')
                 ->select(['id', 'sku', 'item_id'])
@@ -246,14 +266,14 @@ class ExcelCategoryLookupService
     {
         $names = [];
 
-        if ($account === 'ebay1') {
+        if (self::usesCategoryMasters($account)) {
             foreach ($this->categoryMasterBySku() as $category) {
                 $names[$category] = true;
             }
         }
 
-        // eBay 1 lists the Category Masters categories; the other accounts the /excel worksheet tabs.
-        if ($account !== 'ebay1') {
+        // eBay 1 / 2 list the Category Masters categories; eBay 3 the /excel worksheet tabs.
+        if (! self::usesCategoryMasters($account)) {
             try {
                 $importId = ExcelWorksheet::query()->forAccount($account)->orderByDesc('id')->value('excel_import_id');
                 if ($importId) {

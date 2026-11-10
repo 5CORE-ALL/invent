@@ -35,15 +35,8 @@ class EbayAccountRulesController extends Controller
     public function getPmtCategoryBids(Request $request)
     {
         $account = $this->account($request);
-        $row = DB::table('ebay_sbid_rules')->where('key', PmtCategoryBidRule::keyBids($account))->first();
-        $stored = $row ? (json_decode($row->rule, true) ?: []) : [];
-
-        $bids = [];
-        foreach ($stored as $category => $value) {
-            $bids[$category] = is_array($value)
-                ? ['highest' => $value['highest'] ?? null, 'lowest' => $value['lowest'] ?? null, 'manual' => $value['manual'] ?? null]
-                : ['highest' => $value, 'lowest' => null, 'manual' => null];
-        }
+        // Same read as the push (older plain-number data, eBay 2 names moved to the Category Masters categories).
+        $bids = PmtCategoryBidRule::bids($account);
 
         return response()->json([
             'bids' => (object) $bids,

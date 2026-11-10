@@ -16,6 +16,15 @@
     $pmtUnit = $pmtByParent ? 'Parent' : 'SKU';
 @endphp
 @if ($pmtPart === 'css')
+        #ebay-bid-tip-box {
+            position: fixed; z-index: 99999; display: none; max-width: 380px; pointer-events: none;
+            background: #0f172a; color: #f8fafc; border-radius: 8px; padding: 9px 12px; font-size: 12px; line-height: 1.4;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+        }
+        #ebay-bid-tip-box .tip-h { color: #93c5fd; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-top: 6px; }
+        #ebay-bid-tip-box .tip-h:first-child { margin-top: 0; }
+        #ebay-bid-tip-box .tip-b { white-space: pre-wrap; word-break: break-word; }
+        [data-bid-tip] { cursor: help; }
         /* Ads Rule PMT modal (next-gen look) */
         #adsRulePmtModal .modal-dialog { max-width: min(1200px, 96vw); }
         .arp-modal { height: 94vh; border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
@@ -65,6 +74,7 @@
         .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
         .arp-table .form-control { border-radius: 8px; height: 28px; }
         .arp-table td.arp-yours-sbid { color: #64748b; font-style: italic; font-weight: 500; }
+        .arp-table td.arp-yours-ok { background: #dcfce7; box-shadow: inset 0 0 0 1px #86efac; }
         .arp-table input.arp-bench { background: #dcfce7; border-color: #86efac; }
         .mb-buy-card { background: #fff; border: 1px solid #e6e8f0; border-radius: 12px; padding: 14px 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
         .mb-buy-title { font-weight: 700; font-size: 15px; color: #047857; margin-bottom: 8px; }
@@ -240,6 +250,58 @@
         </div>
     </div>
 @elseif ($pmtPart === 'script')
+            // ---- Hover box for S BID / C BID / PMT BID: where the bid comes from and how it is worked out ----
+            const arpEsc = function(text) { return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+            window.ebayBidTipAttrs = function(source, formula, extra) {
+                return 'data-bid-tip="1" data-tip-src="' + arpEsc(source) + '" data-tip-formula="' + arpEsc(formula) + '" data-tip-extra="' + arpEsc(extra || '') + '"';
+            };
+            /** What is pushed to eBay for this row: the Ads Rule PMT bid when its switch is on, else the Dil vs SBid S BID (eBay 1). */
+            window.ebayBidPushedText = function(row) {
+                try {
+                    if (typeof window.ebayPmtRuleOn === 'function' && window.ebayPmtRuleOn() && typeof window.ebayPmtRuleBid === 'function') {
+                        const r = window.ebayPmtRuleBid(row);
+                        if (r) {
+                            const head = r.pause ? 'No bid pushed (INV 0)' : (r.bid !== null ? 'Pushed to eBay: ' + Number(r.bid).toFixed(1) + '%' : 'No bid pushed');
+                            return 'Ads Rule PMT is ON. ' + head + '\n' + (r.title || '');
+                        }
+                    }
+                    if (typeof getCombinedSbid === 'function') {
+                        const res = getCombinedSbid(row);
+                        if (res && !res.skip && !res.off && res.bid > 0) return 'Ads Rule PMT is off here. Pushed to eBay: ' + Number(res.bid).toFixed(1) + '% (Dil vs SBid S BID)';
+                    }
+                } catch (e) { /* fall through */ }
+                return '';
+            };
+            (function() {
+                if (window.__ebayBidTipWired) return;
+                window.__ebayBidTipWired = true;
+                let box = null;
+                function ensure() {
+                    if (!box) { box = document.createElement('div'); box.id = 'ebay-bid-tip-box'; document.body.appendChild(box); }
+                    return box;
+                }
+                function section(h, t) { return t ? '<div class="tip-h">' + arpEsc(h) + '</div><div class="tip-b">' + arpEsc(t) + '</div>' : ''; }
+                document.addEventListener('mouseover', function(e) {
+                    const el = e.target && e.target.closest ? e.target.closest('[data-bid-tip]') : null;
+                    if (!el) return;
+                    const b = ensure();
+                    b.innerHTML = section('Source', el.getAttribute('data-tip-src')) + section('Formula', el.getAttribute('data-tip-formula')) + section('Pushed', el.getAttribute('data-tip-extra'));
+                    b.style.display = 'block';
+                    const r = el.getBoundingClientRect();
+                    const w = b.offsetWidth, h = b.offsetHeight;
+                    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+                    let top = r.bottom + 8;
+                    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+                    b.style.left = left + 'px';
+                    b.style.top = top + 'px';
+                });
+                document.addEventListener('mouseout', function(e) {
+                    const el = e.target && e.target.closest ? e.target.closest('[data-bid-tip]') : null;
+                    if (el && box && !(e.relatedTarget && el.contains(e.relatedTarget))) box.style.display = 'none';
+                });
+                document.addEventListener('scroll', function() { if (box) box.style.display = 'none'; }, true);
+            })();
+
             /** Parent / summary rows get no rule (child SKUs carry Parent = "PARENT xyz", which is just the parent's name). */
             window.ebayPmtIsParent = function(d) {
                 if (!d) return true;
@@ -336,14 +398,20 @@
                     const out = { rule: rule, bid: null, pause: false, missing: false, title: '' };
                     let calc = null;
                     if (rule === '1') {
-                        out.bid = 0; out.pause = true; out.title = 'Rule 1: INV = 0 — bid 0, ads paused';
+                        out.bid = 0; out.pause = true; out.title = 'Rule 1: INV = ' + rowInv(row) + ' (not above 0)\nBid 0 / pause the ad. eBay cannot pause a cost-per-sale ad, so the ad is left as it is.';
                         return out;
                     }
-                    if (rule === '2') { calc = num(saved.manual); out.title = 'Rule 2: category Promoted ad rate Manual'; }
-                    else if (rule === '3') { calc = num(saved.highest); out.title = 'Rule 3: category Highest'; }
-                    else if (PMT_SBID_FALLBACK) {
+                    if (rule === '2') {
+                        calc = num(saved.manual);
+                        out.title = 'Rule 2: category "' + cat + '" has a Promoted ad rate Manual of ' + calc + '%\nBid = Manual (kept between 2 and 100) — it overrides Highest.';
+                    } else if (rule === '3') {
+                        calc = num(saved.highest);
+                        out.title = 'Rule 3: category "' + cat + '" has a Highest of ' + calc + '%\nBid = Highest (kept between 2 and 100).';
+                    } else if (PMT_SBID_FALLBACK) {
                         calc = rowSbid(row);
-                        out.title = 'Rule 4: no Highest for ' + (cat ? '"' + cat + '"' : 'this row') + ' — old rule S BID';
+                        let old = '';
+                        try { old = (typeof getCombinedSbid === 'function' && getCombinedSbid(row).title) || ''; } catch (e) { old = ''; }
+                        out.title = 'Rule 4: ' + (cat ? 'category "' + cat + '"' : 'this row has no category') + ' has no Highest / Manual\nBid = the old Dil vs SBid S BID' + (old ? ':\n' + old : '');
                     } else {
                         out.title = 'Rule 4: no Highest for ' + (cat ? '"' + cat + '"' : 'this row') + ' — set one in Ads Rule PMT';
                     }
@@ -355,6 +423,9 @@
                     out.bid = Math.min(100, Math.max(2, Math.round(calc * 100) / 100)); // eBay accepts 2-100
                     return out;
                 };
+
+                /** Whether the Ads Rule PMT switch is on (read by the S BID / C BID hover boxes). */
+                window.ebayPmtRuleOn = function() { return !!ruleOn; };
 
                 /** Re-render the PMT BID column (after bids load / save). */
                 function refreshPmtColumn() {
@@ -471,8 +542,27 @@
                 }
                 let benchMapLoaded = null;
 
+                /**
+                 * Green background on the Promoted listings ad rate cell when it agrees with the Highest (%) of its row:
+                 * Yours equals Highest, or the typed Promoted ad rate Manual equals Highest.
+                 */
+                function markYoursOk($tr) {
+                    const $c = $tr.find('.arp-yours');
+                    const high = parseFloat($tr.find('.ads-rule-pmt-high').val());
+                    const man = parseFloat($tr.find('.ads-rule-pmt-manual').val());
+                    const yours = $c.hasClass('arp-yours-sbid') ? NaN : parseFloat($c.text());
+                    const same = function(a, b) { return isFinite(a) && isFinite(b) && Math.abs(a - b) < 0.005; };
+                    const ok = same(yours, high) || same(man, high);
+                    $c.toggleClass('arp-yours-ok', ok);
+                    if (ok) $c.attr('title', (same(yours, high) ? 'Yours' : 'Promoted ad rate Manual') + ' equals Highest (' + high + '%)');
+                }
+
                 /** Promoted listings ad rate cell: the Yours value from the benchmarks, else the category's S BID (grey). */
                 function paintYoursCell($tr, hit, sbids) {
+                    paintYoursCellText($tr, hit, sbids);
+                    markYoursOk($tr);
+                }
+                function paintYoursCellText($tr, hit, sbids) {
                     const $c = $tr.find('.arp-yours');
                     const yours = hit && hit.yours ? String(hit.yours) : '';
                     if (yours) {
@@ -672,6 +762,9 @@
                     });
                 });
 
+                $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input, .ads-rule-pmt-manual', function() {
+                    markYoursOk($(this).closest('tr'));
+                });
                 $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
                     $(this).removeClass('arp-bench');
                     markBenchMatches($(this).closest('tr')); // green again if the typed value equals the benchmark
@@ -1011,14 +1104,16 @@
                         formatter: function(cell) {
                             const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(cell.getRow().getData()) : null;
                             if (!r) return '';
-                            const tip = String(r.title || '').replace(/"/g, '&quot;');
+                            const tip = typeof window.ebayBidTipAttrs === 'function'
+                                ? window.ebayBidTipAttrs('Ads Rule PMT (category rules in the Ads Rule PMT window)', r.title || '', '')
+                                : 'title="' + String(r.title || '').replace(/"/g, '&quot;') + '"';
                             if (r.pause) {
-                                return '<span title="' + tip + '" style="color:#842029; font-weight:700;">0 · PAUSE</span>';
+                                return '<span ' + tip + ' style="color:#842029; font-weight:700; cursor:help;">0 · PAUSE</span>';
                             }
                             if (r.bid === null) {
-                                return '<span title="' + tip + '" class="text-muted" style="cursor:help;">—</span>';
+                                return '<span ' + tip + ' class="text-muted" style="cursor:help;">—</span>';
                             }
-                            return '<span title="' + tip + '" style="color:#0d6efd; font-weight:700;">' + Number(r.bid).toFixed(1) + '%</span>';
+                            return '<span ' + tip + ' style="color:#0d6efd; font-weight:700; cursor:help;">' + Number(r.bid).toFixed(1) + '%</span>';
                         }
                     },
                     {
