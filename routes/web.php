@@ -5047,6 +5047,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay1-data/edit-column', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'editColumn'])->name('ebay1.data.edit.column');
     Route::post('/ebay1-data/column-groups', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveColumnGroups'])->name('ebay1.data.column.groups');
     Route::post('/ebay1-data/delete-specific', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'deleteSpecific'])->name('ebay1.data.delete.specific');
+    // eBay 2 and eBay 3 Data: the same page and endpoints for their own accounts. eBay 1 is the main page and repeats its changes on these.
+    foreach ([2 => \App\Http\Controllers\MarketPlace\Ebay2DataController::class, 3 => \App\Http\Controllers\MarketPlace\Ebay3DataController::class] as $ebayNo => $ebayCtl) {
+        $ebayBase = '/ebay'.$ebayNo.'-item-data';
+        $ebayName = 'ebay'.$ebayNo.'.item.data';
+        Route::get($ebayBase, [$ebayCtl, 'index'])->name($ebayName);
+        Route::get($ebayBase.'/rows', [$ebayCtl, 'rows'])->name($ebayName.'.rows');
+        Route::get($ebayBase.'/column-options', [$ebayCtl, 'columnOptions'])->name($ebayName.'.column.options');
+        Route::post($ebayBase.'/add-column', [$ebayCtl, 'addColumn'])->name($ebayName.'.add.column');
+        Route::post($ebayBase.'/push', [$ebayCtl, 'pushSpecifics'])->name($ebayName.'.push');
+        Route::post($ebayBase.'/cell-styles', [$ebayCtl, 'saveCellStyles'])->name($ebayName.'.cell.styles');
+        Route::get($ebayBase.'/ebay-categories', [$ebayCtl, 'ebayCategories'])->name($ebayName.'.ebay.categories');
+        Route::post($ebayBase.'/change-category', [$ebayCtl, 'changeCategory'])->name($ebayName.'.change.category');
+        Route::get($ebayBase.'/missing-history', [$ebayCtl, 'missingHistory'])->name($ebayName.'.missing.history');
+        Route::post($ebayBase.'/missing-history', [$ebayCtl, 'saveMissingHistory'])->name($ebayName.'.missing.history.save');
+        Route::post($ebayBase.'/auto-push', [$ebayCtl, 'setAutoPush'])->name($ebayName.'.auto.push');
+        Route::post($ebayBase.'/nr-req', [$ebayCtl, 'saveNrReq'])->name($ebayName.'.nr.req');
+        Route::post($ebayBase.'/save-source', [$ebayCtl, 'saveSource'])->name($ebayName.'.save.source');
+        Route::post($ebayBase.'/edit-column', [$ebayCtl, 'editColumn'])->name($ebayName.'.edit.column');
+        Route::post($ebayBase.'/column-groups', [$ebayCtl, 'saveColumnGroups'])->name($ebayName.'.column.groups');
+        Route::post($ebayBase.'/delete-specific', [$ebayCtl, 'deleteSpecific'])->name($ebayName.'.delete.specific');
+        Route::post($ebayBase.'/sync-from-main', [$ebayCtl, 'syncFromMain'])->name($ebayName.'.sync.from.main');
+    }
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');
