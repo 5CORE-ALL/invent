@@ -1748,6 +1748,14 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay2.item.data') }}">Ebay2 Data</a>
+                                    </li>
+
+                                    <li>
+                                        <a href="{{ route('ebay3.item.data') }}">Ebay3 Data</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay.listing.variation.verify') }}">Ebay Listing Variation Verify</a>
                                     </li>
 

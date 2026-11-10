@@ -1,4 +1,8 @@
-@extends('layouts.vertical', ['title' => 'Ebay1 Data', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@php
+    $ebayCfg = $ebayCfg ?? ['key' => 'ebay1', 'label' => 'eBay 1', 'base' => '/ebay1-data', 'main' => true];
+    $ebayNo = (int) substr($ebayCfg['key'], -1);
+@endphp
+@extends('layouts.vertical', ['title' => 'Ebay'.$ebayNo.' Data', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     {{-- Font Awesome 6.4.0 is served from this site (public/vendor/fontawesome), not a CDN, so the icons always load. --}}
@@ -232,8 +236,8 @@
 
 @section('content')
     @include('layouts.shared/page-title', [
-        'page_title' => 'Ebay1 Data',
-        'sub_title' => 'Every eBay 1 listing row, category wise',
+        'page_title' => 'Ebay'.$ebayNo.' Data',
+        'sub_title' => 'Every '.$ebayCfg['label'].' listing row, category wise'.($ebayCfg['main'] ? ' (main page: changes here also go to eBay 2 and eBay 3)' : ' (follows the eBay 1 page)'),
     ])
 
     <div class="row">
@@ -241,7 +245,7 @@
             <div class="card e1d-card">
                 <div class="card-body">
                     <div class="e1d-toolbar">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="e1dAuto" aria-pressed="false" title="Auto Push: when ON, the cells you edit and the cells autofill changes are pushed to the live eBay 1 listings by themselves (only those cells)">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="e1dAuto" aria-pressed="false" title="Auto Push: when ON, the cells you edit and the cells autofill changes are pushed to the live {{ $ebayCfg['label'] }} listings by themselves (only those cells)">
                             <i class="fas fa-bolt"></i> Auto Push: <b id="e1dAutoState">OFF</b>
                         </button>
                         <div class="btn-group btn-group-sm e1d-fmt" role="group" aria-label="Cell text colour">
@@ -280,7 +284,7 @@
                             <i class="fas fa-file-csv"></i>
                         </button>
                         <span class="small text-muted" id="e1dPullStatus"></span>
-                        <button type="button" class="btn btn-sm btn-primary" id="e1dPush" title="Push the item specifics of the ticked rows, or of the whole open tab, to the live eBay 1 listings" disabled>
+                        <button type="button" class="btn btn-sm btn-primary" id="e1dPush" title="Push the item specifics of the ticked rows, or of the whole open tab, to the live {{ $ebayCfg['label'] }} listings" disabled>
                             <i class="fas fa-cloud-upload-alt"></i> <span id="e1dPushLabel">0</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-success" id="e1dAddCol" title="Add Column: add a column to the open category tab" aria-label="Add Column" disabled>
@@ -298,7 +302,17 @@
                         <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another eBay category, picked from every eBay category" aria-label="Change Category">
                             <i class="fas fa-tags"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live eBay 1 listings" aria-label="Delete Column" disabled>
+                        @unless ($ebayCfg['main'])
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dSyncMain" title="Sync from eBay 1: bring item specifics, categories and added columns of every SKU in line with the eBay 1 page (app only, nothing is sent to {{ $ebayCfg['label'] }}; title and price are not copied)">
+                                <i class="fas fa-download"></i> From eBay 1
+                            </button>
+                        @endunless
+                        <span class="btn-group btn-group-sm" role="group" aria-label="Open eBay 1, 2 or 3">
+                            <a class="btn btn-outline-secondary {{ $ebayNo === 1 ? 'active' : '' }}" href="/ebay1-data">eBay 1</a>
+                            <a class="btn btn-outline-secondary {{ $ebayNo === 2 ? 'active' : '' }}" href="/ebay2-item-data">eBay 2</a>
+                            <a class="btn btn-outline-secondary {{ $ebayNo === 3 ? 'active' : '' }}" href="/ebay3-item-data">eBay 3</a>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live {{ $ebayCfg['label'] }} listings" aria-label="Delete Column" disabled>
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         <div class="e1g-wrap" id="e1gWrap">
@@ -460,6 +474,122 @@
     <script>
         (function () {
             'use strict';
+
+            const E1_BASE = @json($ebayCfg['base']);
+            const E1_MAIN = @json((bool) $ebayCfg['main']);
+
+            // ---- Main page (eBay 1) only: every change that was accepted here is repeated on the eBay 2 and eBay 3 pages,
+            // in the app and on their live listings. The eBay title and description are never repeated. A change made on
+            // the eBay 2 / eBay 3 page stays there. The repeats run one after another in the background. ----
+            const E1_MIRRORS = [{ name: 'eBay 2', base: '/ebay2-item-data' }, { name: 'eBay 3', base: '/ebay3-item-data' }];
+            const E1_MIRROR_PATHS = ['/change-category', '/add-column', '/save-source', '/delete-specific', '/edit-column', '/push'];
+            let mirrorQueue = Promise.resolve();
+            let mirrorLeft = 0;
+            let mirrorProblems = [];
+
+            function mirrorChip() {
+                let chip = document.getElementById('e1dMirrorChip');
+                if (!chip) {
+                    chip = document.createElement('div');
+                    chip.id = 'e1dMirrorChip';
+                    chip.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2999;max-width:min(420px,90vw);padding:8px 14px;border-radius:12px;font-size:12px;font-weight:600;color:#fff;box-shadow:0 8px 24px rgba(15,23,42,.3);cursor:pointer;';
+                    chip.title = 'Click to hide';
+                    chip.addEventListener('click', function () { chip.hidden = true; });
+                    document.body.appendChild(chip);
+                }
+                return chip;
+            }
+
+            function mirrorStatus() {
+                const chip = mirrorChip();
+                if (mirrorLeft > 0) {
+                    chip.hidden = false;
+                    chip.style.background = '#2563eb';
+                    chip.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Repeating on eBay 2 and eBay 3… (' + mirrorLeft + ' left)';
+                } else if (mirrorProblems.length) {
+                    chip.hidden = false;
+                    chip.style.background = '#dc2626';
+                    chip.textContent = 'eBay 2 / eBay 3: ' + mirrorProblems.length + ' problem' + (mirrorProblems.length === 1 ? '' : 's') + '. ' + mirrorProblems.slice(0, 3).join(' | ') + (mirrorProblems.length > 3 ? ' …' : '');
+                } else if (!chip.hidden) {
+                    chip.style.background = '#16a34a';
+                    chip.textContent = 'Also done on eBay 2 and eBay 3.';
+                    setTimeout(function () { if (mirrorLeft === 0 && !mirrorProblems.length) chip.hidden = true; }, 4000);
+                }
+            }
+
+            // What to send to the eBay 2 / eBay 3 page for a change that eBay 1 accepted, or null to skip it.
+            function mirrorBody(path, body, json) {
+                if (!body || typeof body !== 'object') return null;
+                if (path === '/push') {
+                    const done = new Set((json.results || []).filter(function (r) { return r.status === 'pushed' || r.status === 'unchanged'; }).map(function (r) { return String(r.sku); }));
+                    const items = (body.items || []).filter(function (it) { return done.has(String(it.sku)); }).map(function (it) {
+                        const out = { sku: it.sku };
+                        if (it.specifics && Object.keys(it.specifics).length) out.specifics = it.specifics;
+                        if (it.price) out.price = it.price;
+                        return out;
+                    }).filter(function (it) { return it.specifics || it.price; });
+                    return items.length ? { items: items } : null;
+                }
+                if (path === '/change-category') {
+                    const ok = new Set((json.results || []).filter(function (r) { return r.ebay !== 'failed'; }).map(function (r) { return String(r.sku); }));
+                    const skus = (body.skus || []).filter(function (s) { return ok.has(String(s)); });
+                    return skus.length ? Object.assign({}, body, { skus: skus }) : null;
+                }
+                if (path === '/edit-column') {
+                    const column = String(body.column || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+                    if (column === 'ebaytitle') return null;
+                    return body;
+                }
+                return body;
+            }
+
+            function mirrorPush(path, body, json) {
+                const send = mirrorBody(path, body, json);
+                if (!send) return;
+                E1_MIRRORS.forEach(function (target) {
+                    mirrorLeft++;
+                    mirrorStatus();
+                    mirrorQueue = mirrorQueue.then(async function () {
+                        try {
+                            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                            const res = await window.fetch(target.base + path, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                                body: JSON.stringify(send),
+                            });
+                            let out = {};
+                            try { out = await res.json(); } catch (e) {}
+                            if (!res.ok || out.success === false) {
+                                mirrorProblems.push(target.name + ' ' + path.slice(1) + ': ' + (out.message || ('HTTP ' + res.status)));
+                            }
+                            (out.results || []).forEach(function (r) {
+                                if (r.status === 'failed' || r.ebay === 'failed') mirrorProblems.push(target.name + ' ' + (r.sku || '') + ': ' + (r.message || 'failed'));
+                            });
+                        } catch (e) {
+                            mirrorProblems.push(target.name + ' ' + path.slice(1) + ': ' + (e && e.message ? e.message : 'failed'));
+                        }
+                        mirrorLeft--;
+                        mirrorStatus();
+                    });
+                });
+            }
+
+            if (E1_MAIN) {
+                const nativeFetch = window.fetch.bind(window);
+                window.fetch = async function (input, init) {
+                    const res = await nativeFetch(input, init);
+                    try {
+                        if (res.ok && init && String(init.method || '').toUpperCase() === 'POST' && typeof input === 'string' && input.indexOf(E1_BASE + '/') === 0) {
+                            const path = input.slice(E1_BASE.length);
+                            if (E1_MIRROR_PATHS.indexOf(path) !== -1) {
+                                const json = await res.clone().json().catch(function () { return {}; });
+                                if (json.success !== false) mirrorPush(path, JSON.parse(String(init.body || '{}')), json);
+                            }
+                        }
+                    } catch (e) { /* a repeat must never break the eBay 1 action */ }
+                    return res;
+                };
+            }
 
             const ALL = '__all__';
             const NO_CATEGORY = 'No category';
@@ -685,7 +815,7 @@
                 const seq = ++catSeq;
                 list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Loading the eBay categories… The first time, they are fetched from eBay (about a minute).</div>';
                 try {
-                    const res = await fetch('/ebay1-data/ebay-categories?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+                    const res = await fetch('{{ $ebayCfg['base'] }}/ebay-categories?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     if (seq !== catSeq) return;
                     if (!res.ok || json.success === false) throw new Error(json.message || 'Could not load the eBay categories');
@@ -724,8 +854,8 @@
                 catChoice = null;
                 catBusy = false;
                 document.getElementById('e1dCatIntro').textContent = scope.selected
-                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. The category is changed on the live eBay 1 listing too.'
-                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. The category is changed on the live eBay 1 listing too.';
+                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. The category is changed on the live {{ $ebayCfg['label'] }} listing too.'
+                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. The category is changed on the live {{ $ebayCfg['label'] }} listing too.';
                 document.getElementById('e1dCatSearch').value = '';
                 document.getElementById('e1dCatHint').innerHTML = '';
                 renderCatSkus();
@@ -738,7 +868,7 @@
                 if (catBusy || !catChoice || !catPicked.size) return;
                 const hint = document.getElementById('e1dCatHint');
                 const skus = Array.from(catPicked);
-                if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\nSKUs with a live eBay 1 listing are changed on eBay 1 too. A SKU eBay rejects stays unchanged.')) return;
+                if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\nSKUs with a live {{ $ebayCfg['label'] }} listing are changed on {{ $ebayCfg['label'] }} too. A SKU eBay rejects stays unchanged.')) return;
                 catBusy = true;
                 syncCatState();
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -747,9 +877,9 @@
                 const problems = [];
                 for (let i = 0; i < skus.length; i += CHUNK) {
                     const part = skus.slice(i, i + CHUNK);
-                    hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing on eBay 1 and in the app… ' + Math.min(i + CHUNK, skus.length) + ' / ' + skus.length;
+                    hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing on {{ $ebayCfg['label'] }} and in the app… ' + Math.min(i + CHUNK, skus.length) + ' / ' + skus.length;
                     try {
-                        const res = await fetch('/ebay1-data/change-category', {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/change-category', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
                             body: JSON.stringify({ skus: part, category_id: catChoice.id, category_path: catChoice.path }),
@@ -771,7 +901,7 @@
                 document.getElementById('e1dCatModal').hidden = true;
                 catBusy = false;
                 syncCatState();
-                const title = saved + ' SKU' + (saved === 1 ? '' : 's') + ' moved to ' + catChoice.path + ' (' + onEbay + ' on eBay 1)'
+                const title = saved + ' SKU' + (saved === 1 ? '' : 's') + ' moved to ' + catChoice.path + ' (' + onEbay + ' on {{ $ebayCfg['label'] }})'
                     + (failed ? ', ' + failed + ' failed' : '');
                 if (failed) jobShow(title, skus.length, saved, failed, false, problems);
                 else rowToast(title + '.', true);
@@ -793,7 +923,7 @@
                 document.getElementById('e1dCatRefresh').addEventListener('click', async function () {
                     const list = document.getElementById('e1dCatList');
                     list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Fetching the eBay categories again…</div>';
-                    try { await fetch('/ebay1-data/ebay-categories?refresh=1&q=__none__', { headers: { Accept: 'application/json' } }); } catch (e) {}
+                    try { await fetch('{{ $ebayCfg['base'] }}/ebay-categories?refresh=1&q=__none__', { headers: { Accept: 'application/json' } }); } catch (e) {}
                     loadCatList();
                 });
             }
@@ -809,7 +939,7 @@
                     if (!rows.length || missPosted === specMissing.missing) return;
                     const sent = specMissing.missing;
                     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                    fetch('/ebay1-data/missing-history', {
+                    fetch('{{ $ebayCfg['base'] }}/missing-history', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
                         body: JSON.stringify({ missing: specMissing.missing, cells: specMissing.cells, categories: specMissing.categories }),
@@ -832,7 +962,7 @@
                 let days = [];
                 let note = '';
                 try {
-                    const res = await fetch('/ebay1-data/missing-history', { headers: { Accept: 'application/json' } });
+                    const res = await fetch('{{ $ebayCfg['base'] }}/missing-history', { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     days = Array.isArray(json.days) ? json.days : [];
                     note = json.message || '';
@@ -980,7 +1110,7 @@
                 });
             }
 
-            // ---- Delete Column: removes one item specific from every SKU of the open tab, here and on eBay 1. ----
+            // ---- Delete Column: removes one item specific from every SKU of the open tab, here and on {{ $ebayCfg['label'] }}. ----
             // ---- Add Column: pick a Technical Specifications column, or type a new name, for the open tab. ----
             let columnOptions = null;
 
@@ -991,7 +1121,7 @@
             async function loadColumnOptions() {
                 if (columnOptions) return;
                 try {
-                    const res = await fetch('/ebay1-data/column-options', { headers: { Accept: 'application/json' } });
+                    const res = await fetch('{{ $ebayCfg['base'] }}/column-options', { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     columnOptions = res.ok && Array.isArray(json.columns) ? json.columns : [];
                 } catch (e) {
@@ -1118,7 +1248,7 @@
                 const skus = rows.filter(passesTab).map(function (row) { return row.sku; });
                 document.getElementById('e1dAddHint').textContent = 'Adding…';
                 try {
-                    const res = await fetch('/ebay1-data/add-column', {
+                    const res = await fetch('{{ $ebayCfg['base'] }}/add-column', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                         body: JSON.stringify({ names: names, category: activeTab === NO_CATEGORY ? '' : activeTab, skus: skus }),
@@ -1145,7 +1275,7 @@
                 const status = document.getElementById('e1dPullStatus');
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 try {
-                    const res = await fetch('/ebay1-data/nr-req', {
+                    const res = await fetch('{{ $ebayCfg['base'] }}/nr-req', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                         body: JSON.stringify({ sku: row.sku, nr_req: value }),
@@ -1181,11 +1311,11 @@
                 const scope = pushScope();
                 btn.disabled = scope.targets.length === 0;
                 document.getElementById('e1dPushLabel').textContent = String(scope.targets.length);
-                btn.setAttribute('aria-label', 'Push to eBay 1');
-                btn.title = 'Push to eBay 1 (' + scope.targets.length + (scope.selected ? ' ticked' : '') + '): '
+                btn.setAttribute('aria-label', 'Push to {{ $ebayCfg['label'] }}');
+                btn.title = 'Push to {{ $ebayCfg['label'] }} (' + scope.targets.length + (scope.selected ? ' ticked' : '') + '): '
                     + (scope.selected
-                        ? 'push the ticked rows to the live eBay 1 listings'
-                        : (activeTab === ALL ? 'push every listed SKU of all categories' : 'push the whole open category to the live eBay 1 listings'));
+                        ? 'push the ticked rows to the live {{ $ebayCfg['label'] }} listings'
+                        : (activeTab === ALL ? 'push every listed SKU of all categories' : 'push the whole open category to the live {{ $ebayCfg['label'] }} listings'));
             }
 
             async function pushToEbay() {
@@ -1197,7 +1327,7 @@
                 const where = scope.selected
                     ? todo.length + ' selected SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                if (!window.confirm('Push the item specifics of ' + where + ' to the live eBay 1 listings?\nAn edited eBay title and an edited price are sent too (a pushed price can be replaced later by the saved S PRC sync). Blank values are not sent and values already on eBay are left alone.')) return;
+                if (!window.confirm('Push the item specifics of ' + where + ' to the live {{ $ebayCfg['label'] }} listings?\nAn edited eBay title and an edited price are sent too (a pushed price can be replaced later by the saved S PRC sync). Blank values are not sent and values already on eBay are left alone.')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 btn.dataset.busy = '1';
                 btn.disabled = true;
@@ -1218,7 +1348,7 @@
                     });
                     status.textContent = 'Pushing ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '…';
                     try {
-                        const res = await fetch('/ebay1-data/push', {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/push', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                             body: JSON.stringify({ items: chunk }),
@@ -1309,7 +1439,7 @@
                     chunk.forEach(function (item) { autoSeen.add(String(item.sku)); });
                     status.textContent = 'Auto push ' + Math.min(i + size, items.length) + ' / ' + items.length + '…';
                     try {
-                        const res = await fetch('/ebay1-data/push', {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/push', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                             body: JSON.stringify({ items: chunk }),
@@ -1330,7 +1460,7 @@
                 autoPushBusy = false;
                 status.textContent = 'Auto push: pushed ' + pushed + ', unchanged ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
                 if (failed) rowToast('Auto push: ' + failed + ' failed. ' + problems.slice(0, 3).join(' | '), false);
-                else if (pushed) rowToast('Auto push: ' + pushed + ' SKU' + (pushed === 1 ? '' : 's') + ' pushed to eBay 1.', true);
+                else if (pushed) rowToast('Auto push: ' + pushed + ' SKU' + (pushed === 1 ? '' : 's') + ' pushed to {{ $ebayCfg['label'] }}.', true);
                 // Reload so the pushed cells are no longer marked as waiting.
                 if (pushed || unchanged) await loadData();
             }
@@ -1341,13 +1471,13 @@
                 if (turnOn) {
                     const waiting = autoItems(true).length;
                     if (!window.confirm('Turn Auto Push ON?\n' + (waiting
-                        ? waiting + ' SKU' + (waiting === 1 ? ' has' : 's have') + ' edited or autofilled cells that are not on eBay 1 yet. Only those cells are pushed to the live listings now, and every later edit is pushed by itself.'
-                        : 'Nothing is waiting now. From now on, every cell you edit or autofill changes is pushed to the live eBay 1 listings by itself.'))) return;
+                        ? waiting + ' SKU' + (waiting === 1 ? ' has' : 's have') + ' edited or autofilled cells that are not on {{ $ebayCfg['label'] }} yet. Only those cells are pushed to the live listings now, and every later edit is pushed by itself.'
+                        : 'Nothing is waiting now. From now on, every cell you edit or autofill changes is pushed to the live {{ $ebayCfg['label'] }} listings by itself.'))) return;
                 }
                 const btn = document.getElementById('e1dAuto');
                 btn.disabled = true;
                 try {
-                    const res = await fetch('/ebay1-data/auto-push', {
+                    const res = await fetch('{{ $ebayCfg['base'] }}/auto-push', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                         body: JSON.stringify({ enabled: turnOn }),
@@ -1455,7 +1585,7 @@
                 save.disabled = true;
                 hint.textContent = 'Saving…';
                 try {
-                    const res = await fetch('/ebay1-data/save-source', {
+                    const res = await fetch('{{ $ebayCfg['base'] }}/save-source', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                         body: JSON.stringify({ category: tabCategory(), column: column, source: source }),
@@ -1483,7 +1613,7 @@
                 const btn = document.getElementById('e1dDelCol');
                 if (!btn) return;
                 btn.disabled = false;
-                btn.title = 'Hide a page column such as L7, or delete an item-specific column here and on the live eBay 1 listings';
+                btn.title = 'Hide a page column such as L7, or delete an item-specific column here and on the live {{ $ebayCfg['label'] }} listings';
             }
 
             // Columns ticked in the Delete Column window.
@@ -1517,7 +1647,7 @@
                     const label = specPicked.length === 1 ? '<strong>' + esc(specPicked[0]) + '</strong>' : '<strong>' + specPicked.length + ' columns</strong>';
                     parts.push(n === 0
                         ? 'No SKU in this category has ' + label + '. ' + (specPicked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
-                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: on the live eBay 1 listing where there is one, and always in the app. It cannot be undone here.');
+                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: on the live {{ $ebayCfg['label'] }} listing where there is one, and always in the app. It cannot be undone here.');
                 }
                 document.getElementById('e1dDelWarn').innerHTML = parts.join(' ');
                 const go = document.getElementById('e1dDelGo');
@@ -1540,7 +1670,7 @@
             }
 
             // Page columns such as L7, Price and Views. Hiding one removes it from the table only.
-            const E1_HIDE_KEY = 'ebay1_data_hidden_fields_v1';
+            const E1_HIDE_KEY = '{{ $ebayCfg['key'] }}_data_hidden_fields_v1';
             let hiddenFields = new Set();
             try { hiddenFields = new Set(JSON.parse(localStorage.getItem(E1_HIDE_KEY) || '[]')); } catch (e) { hiddenFields = new Set(); }
 
@@ -1666,7 +1796,7 @@
                 const question = (pageNote ? pageNote + ' on this page?' : '')
                     + (specPicked.length
                         ? (pageNote ? '\n\n' : '') + (todo.length
-                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live eBay 1 listing where there is one, and the app)?'
+                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live {{ $ebayCfg['label'] }} listing where there is one, and the app)?'
                             : 'Remove ' + label + ' from this tab?')
                         : '');
                 if (!window.confirm(question)) return;
@@ -1700,7 +1830,7 @@
                     progress.textContent = 'Deleting ' + Math.min(i + size, todo.length) + ' / ' + todo.length + '… (you can close this window, it keeps running)';
                     jobShow('Deleting ' + label + '…', todo.length, done, failed, true, problems);
                     try {
-                        const res = await fetch('/ebay1-data/delete-specific', {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/delete-specific', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                             body: JSON.stringify({ names: namesForEbay, category: category, items: chunk }),
@@ -2098,7 +2228,7 @@
                         const edit = edits[c];
                         for (let i = 0; i < skus.length; i += 300) {
                             go.textContent = 'Saving ' + (c + 1) + ' / ' + edits.length + '…';
-                            const res = await fetch('/ebay1-data/edit-column', {
+                            const res = await fetch('{{ $ebayCfg['base'] }}/edit-column', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                                 body: JSON.stringify({ column: edit.column, value: edit.value, skus: skus.slice(i, i + 300) }),
@@ -2162,7 +2292,7 @@
             // ---- Column headers: named headers (Basics, Common, Others, ...) with tick boxes ----
             // Ticking a header or a column shows only the ticked columns (the select box and SKU always stay).
             // A column can sit in several headers: it can be moved to another header or copied to one.
-            const E1G_SEL_KEY = 'ebay1_data_group_sel_v1';
+            const E1G_SEL_KEY = '{{ $ebayCfg['key'] }}_data_group_sel_v1';
             const E1G_DEFAULTS = ['Basics', 'Common', 'Others'];
             let e1gGroups = [];
             let e1gKnown = null;
@@ -2201,7 +2331,7 @@
                 const payload = { groups: e1gGroups.map(function (g) { return { name: g.name, columns: g.columns }; }) };
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 e1gSaving = e1gSaving.then(async function () {
-                    const res = await fetch('/ebay1-data/column-groups', {
+                    const res = await fetch('{{ $ebayCfg['base'] }}/column-groups', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                         body: JSON.stringify(payload),
@@ -2492,7 +2622,7 @@
             }
 
             // ---- Edit Column Header: rename the header text of any column (this browser only). ----
-            const E1_HDR_KEY = 'ebay1_data_header_names_v1';
+            const E1_HDR_KEY = '{{ $ebayCfg['key'] }}_data_header_names_v1';
             let headerLabels = {};
             try {
                 const parsed = JSON.parse(localStorage.getItem(E1_HDR_KEY) || '{}');
@@ -2626,7 +2756,7 @@
             // ---- Copy row / paste: copy the shareable data of one row, paste it into the ticked rows (right click). ----
             // Data that belongs to one SKU is never copied: SKU, parent, item id, UPC, MPN, model, EAN, GTIN, ISBN, serial and part numbers.
             // The eBay title and the price are copied with the item specifics.
-            const E1_CLIP_KEY = 'ebay1_data_row_clip_v2';
+            const E1_CLIP_KEY = '{{ $ebayCfg['key'] }}_data_row_clip_v2';
             const E1_UNIQUE_KEYS = new Set(['sku', 'parent', 'itemid', 'upc', 'ean', 'gtin', 'isbn', 'mpn', 'model', 'modelnumber', 'modelname',
                 'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title', 'price']);
             let rowClip = null;
@@ -2696,7 +2826,7 @@
                     jobShow('Pasting ' + rowClip.sku + ' into ' + targets.length + ' rows…', entries.length, saved.length, failed, true, problems);
                     try {
                         for (let i = 0; i < skus.length; i += 300) {
-                            const res = await fetch('/ebay1-data/edit-column', {
+                            const res = await fetch('{{ $ebayCfg['base'] }}/edit-column', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                                 body: JSON.stringify({ column: entries[c].name, value: entries[c].value, skus: skus.slice(i, i + 300) }),
@@ -3143,8 +3273,8 @@
                     for (let i = 0; i < jobs.length; i++) {
                         const job = jobs[i];
                         if (jobs.length > 1) status.textContent = 'Pasting ' + (i + 1) + ' / ' + jobs.length + '…';
-                        if (job.kind === 'nr') await post('/ebay1-data/nr-req', { sku: job.skus[0], nr_req: job.value });
-                        else await post('/ebay1-data/edit-column', { column: job.column, value: job.value, skus: job.skus });
+                        if (job.kind === 'nr') await post('{{ $ebayCfg['base'] }}/nr-req', { sku: job.skus[0], nr_req: job.value });
+                        else await post('{{ $ebayCfg['base'] }}/edit-column', { column: job.column, value: job.value, skus: job.skus });
                         done.push(job);
                     }
                 } catch (e) {
@@ -3331,8 +3461,8 @@
             ];
             const fmtLast = { color: '#ff0000', bg: '#ffff00' };
             try {
-                fmtLast.color = localStorage.getItem('ebay1_fmt_color') || fmtLast.color;
-                fmtLast.bg = localStorage.getItem('ebay1_fmt_bg') || fmtLast.bg;
+                fmtLast.color = localStorage.getItem('{{ $ebayCfg['key'] }}_fmt_color') || fmtLast.color;
+                fmtLast.bg = localStorage.getItem('{{ $ebayCfg['key'] }}_fmt_bg') || fmtLast.bg;
             } catch (e) {}
             let palMode = 'color';
 
@@ -3391,7 +3521,7 @@
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 try {
                     for (let i = 0; i < cells.length; i += 1500) {
-                        const res = await fetch('/ebay1-data/cell-styles', {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/cell-styles', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
                             body: JSON.stringify(Object.assign({ cells: cells.slice(i, i + 1500) }, patch)),
@@ -3420,7 +3550,7 @@
             function pickColour(mode, value) {
                 if (value) {
                     fmtLast[mode] = value;
-                    try { localStorage.setItem(mode === 'color' ? 'ebay1_fmt_color' : 'ebay1_fmt_bg', value); } catch (e) {}
+                    try { localStorage.setItem(mode === 'color' ? '{{ $ebayCfg['key'] }}_fmt_color' : '{{ $ebayCfg['key'] }}_fmt_bg', value); } catch (e) {}
                     renderFmtSwatches();
                 }
                 closePalette();
@@ -3513,7 +3643,7 @@
                 const placeholder = document.getElementById('e1dBadges');
                 placeholder.innerHTML = '<span class="e1d-badge rows">Loading…</span>';
                 try {
-                    const res = await fetch('/ebay1-data/rows', { headers: { Accept: 'application/json' } });
+                    const res = await fetch('{{ $ebayCfg['base'] }}/rows', { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     if (!res.ok || json.status !== 200) {
                         throw new Error(json.message || 'Failed to load Ebay1 Data');
@@ -3610,6 +3740,27 @@
                 });
                 document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
                 bindCatModal();
+                const syncMainBtn = document.getElementById('e1dSyncMain');
+                if (syncMainBtn) {
+                    syncMainBtn.addEventListener('click', async function () {
+                        if (!window.confirm('Bring this page in line with the eBay 1 page?\n\nItem specifics and categories of every SKU, and the columns added there, are copied here. Title and price are not copied and nothing is sent to {{ $ebayCfg['label'] }}.')) return;
+                        const html = syncMainBtn.innerHTML;
+                        syncMainBtn.disabled = true;
+                        syncMainBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing…';
+                        try {
+                            const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                            const res = await fetch(E1_BASE + '/sync-from-main', { method: 'POST', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
+                            const json = await res.json().catch(function () { return {}; });
+                            if (!res.ok || json.success === false) throw new Error(json.message || 'Sync failed');
+                            rowToast('Synced from eBay 1: ' + json.skus + ' SKUs' + (json.columns ? ', ' + json.columns + ' columns added' : '') + '.', true);
+                            await loadData();
+                        } catch (e) {
+                            rowToast(e.message || 'Sync failed', false);
+                        }
+                        syncMainBtn.innerHTML = html;
+                        syncMainBtn.disabled = false;
+                    });
+                }
                 document.getElementById('e1dHdrReset').addEventListener('click', resetHdrNames);
                 document.getElementById('e1dHdrSearch').addEventListener('input', renderHdrList);
                 document.getElementById('e1dDelGo').addEventListener('click', runDelete);
@@ -3649,7 +3800,7 @@
                 document.getElementById('e1dExport').addEventListener('click', function () {
                     if (!table) return;
                     const label = activeTab === ALL ? 'all' : catLabel(activeTab).replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-                    table.download('csv', 'ebay1_data_' + label + '.csv');
+                    table.download('csv', '{{ $ebayCfg['key'] }}_data_' + label + '.csv');
                 });
                 loadData();
             });
