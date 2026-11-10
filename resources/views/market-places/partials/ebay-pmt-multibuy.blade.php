@@ -64,6 +64,7 @@
         .arp-table tbody tr:hover { background: #f8f9ff; }
         .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
         .arp-table .form-control { border-radius: 8px; height: 28px; }
+        .arp-table td.arp-yours-sbid { color: #64748b; font-style: italic; font-weight: 500; }
         .arp-table input.arp-bench { background: #dcfce7; border-color: #86efac; }
         .mb-buy-card { background: #fff; border: 1px solid #e6e8f0; border-radius: 12px; padding: 14px 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
         .mb-buy-title { font-weight: 700; font-size: 15px; color: #047857; margin-bottom: 8px; }
@@ -153,7 +154,7 @@
                                     <tr>
                                         <th>Category</th>
                                         <th class="text-center" style="width: 80px;">{{ $pmtUnit }}s</th>
-                                        <th class="text-center" style="width: 110px;" title="Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. Read only.">Promoted listings ad rate</th>
+                                        <th class="text-center" style="width: 110px;" title="Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. When there is none, the category S BID is shown in grey italics. Read only.">Promoted listings ad rate</th>
                                         <th class="text-center" style="width: 110px;" title="Type your own Promoted ad rate for the category: it is saved and pushed (before Highest). Left blank it shows the category's S BID in grey (the old Dil vs SBid bid, used when the category has no Highest).">Promoted ad rate Manual</th>
                                         <th style="width: 140px;">Highest (%)</th>
                                         <th style="width: 140px;">Lowest (%)</th>
@@ -470,6 +471,25 @@
                 }
                 let benchMapLoaded = null;
 
+                /** Promoted listings ad rate cell: the Yours value from the benchmarks, else the category's S BID (grey). */
+                function paintYoursCell($tr, hit, sbids) {
+                    const $c = $tr.find('.arp-yours');
+                    const yours = hit && hit.yours ? String(hit.yours) : '';
+                    if (yours) {
+                        $c.text(yours).removeClass('arp-yours-sbid').attr('title', 'Your Promoted listings ad rate (benchmarks)');
+                        return;
+                    }
+                    const sb = sbids ? sbids[$tr.attr('data-category')] : null;
+                    if (sb != null) {
+                        const via = sbidViaDil[$tr.attr('data-category')];
+                        $c.text(sb.toFixed(1) + '%').addClass('arp-yours-sbid').attr('title', via != null
+                            ? 'No Yours value and no S BID in the grid for this category: Dil vs SBid slab for its Dil ' + via + '%'
+                            : 'No Yours value in the benchmarks: showing the category S BID');
+                    } else {
+                        $c.text('').removeClass('arp-yours-sbid').attr('title', '');
+                    }
+                }
+
                 /** Light green on every Highest / Lowest input whose value equals the benchmark of its category. */
                 function markBenchMatches($rows) {
                     if (!benchMapLoaded) return;
@@ -505,9 +525,9 @@
                             if (touched) cats++;
                         });
                         benchMapLoaded = b.map;
+                        const sbidsNow = sbidByCategory();
                         $('#ads-rule-pmt-body tr[data-category]').each(function() {
-                            const hit = benchFor(b.map, $(this).attr('data-category'));
-                            $(this).find('.arp-yours').text(hit && hit.yours ? hit.yours : '');
+                            paintYoursCell($(this), benchFor(b.map, $(this).attr('data-category')), sbidsNow);
                         });
                         markBenchMatches(); // also saved values that equal the benchmark
                         updateSummary();
@@ -536,17 +556,46 @@
                         .map(function(cat) { return { category: cat, count: counts[cat] }; });
                 }
 
-                /** Median S BID (grid S BID column) of the ruled rows of each category, 1 decimal. */
+                /** Categories whose S BID came from the Dil vs SBid slabs (no row had a grid S BID): { category: Dil % }. */
+                let sbidViaDil = {};
+
+                /**
+                 * Median S BID (grid S BID column) of the ruled rows of each category, 1 decimal.
+                 * A category where no row has an S BID takes the Dil vs SBid slab bid of its overall Dil
+                 * (OV L30 / INV of all its rows).
+                 */
                 function sbidByCategory() {
+                    sbidViaDil = {};
                     if (!PMT_SBID_FALLBACK) return {};
                     const buckets = {};
+                    const dilAgg = {};
                     currentRows().forEach(function(row) {
                         if (!window.ebayPmtIsRuled(row)) return;
                         const cat = String(row.excel_category || '').trim();
-                        const v = cat ? rowSbid(row) : null;
+                        if (!cat) return;
+                        const v = rowSbid(row);
                         if (v !== null) (buckets[cat] = buckets[cat] || []).push(v);
+                        const inv = rowInv(row);
+                        if (inv > 0) {
+                            const a = dilAgg[cat] = dilAgg[cat] || { inv: 0, sold: 0 };
+                            a.inv += inv;
+                            a.sold += rowDil(row) * inv / 100;
+                        }
                     });
                     const out = {};
+                    if (typeof dilSbidDilPart === 'function' && typeof currentDilSbidSlabs !== 'undefined') {
+                        Object.keys(dilAgg).forEach(function(cat) {
+                            if (buckets[cat] && buckets[cat].length) return;
+                            const dil = dilAgg[cat].inv > 0 ? (dilAgg[cat].sold / dilAgg[cat].inv) * 100 : null;
+                            if (dil === null || !isFinite(dil)) return;
+                            let part = null;
+                            try { part = dilSbidDilPart(null, dil); } catch (e) { part = null; }
+                            if (part && part.bid > 0) {
+                                out[cat] = Math.round(part.bid * 10) / 10;
+                                sbidViaDil[cat] = Math.round(dil * 100) / 100;
+                            }
+                        });
+                    }
                     Object.keys(buckets).forEach(function(cat) {
                         const a = buckets[cat].sort(function(x, y) { return x - y; });
                         const m = a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
@@ -563,7 +612,7 @@
                         const $tr = $('<tr>').attr('data-category', r.category);
                         $tr.append($('<td>').text(r.category));
                         $tr.append($('<td class="text-center">').text(r.count.toLocaleString()));
-                        $tr.append($('<td class="text-center fw-semibold arp-yours">').text('')); // read only; filled from the benchmarks
+                        $tr.append($('<td class="text-center fw-semibold arp-yours">').text('')); // read only; Yours from the benchmarks, else S BID
                         const saved = savedBids[r.category] || {};
                         const hi = saved.highest != null ? saved.highest : '';
                         const lo = saved.lowest != null ? saved.lowest : '';
@@ -579,6 +628,7 @@
                         $tr.append($('<td>').append(
                             $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-low" min="0" max="100" step="0.01" placeholder="e.g. 2">').val(lo)
                         ));
+                        paintYoursCell($tr, null, sbids); // S BID until the benchmarks load
                         $body.append($tr);
                     });
                     if (!rows.length) {
