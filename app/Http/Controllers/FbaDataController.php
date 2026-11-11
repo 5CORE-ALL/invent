@@ -1067,7 +1067,8 @@ class FbaDataController extends Controller
             'SEND' => $manual ? ($manual->data['send'] ?? '') : '',
             'send_toggle' => $manual ? ($manual->data['send_toggle'] ?? 0) : 0,
             'compliance' => $manual ? ($manual->data['compliance'] ?? '') : '',
-            'Send_Qty' => $manual ? ($manual->data['send_qty'] ?? '') : '',
+            // Only a Send Qty typed by the user (flagged send_qty_manual) is shown; otherwise the page auto-fills it from the rule.
+            'Send_Qty' => ($manual && !empty($manual->data['send_qty_manual'])) ? ($manual->data['send_qty'] ?? '') : '',
             'Send_History' => $manual ? ($manual->data['send_history'] ?? null) : null,
             'Correct_Cost' => $manual ? ($manual->data['correct_cost'] ?? false) : false,
             'Zero_Stock' => $manual ? ($manual->data['zero_stock'] ?? false) : false,

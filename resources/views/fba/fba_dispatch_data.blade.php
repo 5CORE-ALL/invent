@@ -3638,6 +3638,14 @@
                 // Keep the Send filter and count right after a Send Qty is typed / changed
                 table.on('cellEdited', function(cell) {
                     if (cell.getColumn().getField() !== 'Send_Qty') return;
+                    // Flag a typed value as manual so it survives reloads; a cleared value goes back to the rule's auto-fill.
+                    const typed = String(cell.getValue() == null ? '' : cell.getValue()).trim();
+                    const rd = cell.getRow().getData();
+                    $.ajax({
+                        url: '/update-fba-manual-data',
+                        method: 'POST',
+                        data: { sku: rd.FBA_SKU || rd.SKU, field: 'send_qty_manual', value: typed === '' ? '' : '1', _token: '{{ csrf_token() }}' }
+                    });
                     setTimeout(function() {
                         if ($('#sugg-send-filter').val() !== 'all') applyFilters();
                         updateSuggSendBadge();
