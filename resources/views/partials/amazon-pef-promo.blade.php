@@ -597,6 +597,15 @@
             width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700;
         }
         #amzDilGroiModal .amz-dg-min-btn:hover { background: #e2e8f0; }
+        /* delete icon of a rule card: sits next to the minimize button; the first click arms it (red), the second deletes */
+        #amzDilGroiModal .amz-dg-del-btn {
+            position: absolute; top: 5px; right: 32px; z-index: 2;
+            border: 0; background: #fee2e2; color: #b91c1c;
+            width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-size: 11px;
+        }
+        #amzDilGroiModal .amz-dg-del-btn:hover { background: #fecaca; }
+        #amzDilGroiModal .amz-dg-del-btn.is-confirm { background: #dc2626; color: #fff; width: auto; padding: 0 7px; font-weight: 700; }
+        #amzDilGroiModal .amz-dg-card.amz-dg-gone { display: none !important; }
         /* ON / OFF switch on each rule: OFF dims the rule and it no longer applies */
         #amzDilGroiModal .amz-dg-rules-title.amz-dg-has-sw { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         #amzDilGroiModal .amz-dg-rule-sw { display: inline-flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; user-select: none; flex: 0 0 auto; }
@@ -616,7 +625,7 @@
         #amzDilGroiModal .amz-dg-card.is-min .amz-dg-rule-sw { display: none !important; }
         /* minimized: a slim one-line bar with just the title; click it to restore */
         #amzDilGroiModal .amz-dg-card.is-min { flex-wrap: nowrap; cursor: pointer; padding-top: 5px; padding-bottom: 5px; }
-        #amzDilGroiModal .amz-dg-card.is-min > :not(.amz-dg-min-btn):not(.amz-dg-card-title):not(.amz-dg-side):not(.amz-dg-rules-title) { display: none !important; }
+        #amzDilGroiModal .amz-dg-card.is-min > :not(.amz-dg-min-btn):not(.amz-dg-del-btn):not(.amz-dg-card-title):not(.amz-dg-side):not(.amz-dg-rules-title) { display: none !important; }
         #amzDilGroiModal .amz-dg-card.is-min .amz-dg-side > :not(.amz-dg-rules-title) { display: none !important; }
         #amzDilGroiModal .amz-dg-card.is-min .amz-dg-add-btn { display: none !important; }
         #amzDilGroiModal .amz-dg-card.is-min > .amz-dg-card-title,
@@ -1058,6 +1067,7 @@
                     <div class="amz-dg-panel-body amz-dg-grid">
                     <div class="amz-dg-card" data-amz-card="dil">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <button type="button" class="amz-dg-del-btn" data-amz-del="dil" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
                     <div class="amz-dg-card-title d-flex justify-content-between align-items-center">
                         <span class="d-inline-flex align-items-center gap-2"><span class="amz-dg-seq" title="Sequence number: sorts this card. The Dil slab picks the base Target NROI, so it always runs before the rules that change it. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="dil" value="1"></span><span><i class="fas fa-layer-group me-1"></i> Dil slabs — Target NROI</span>
                             <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Dil slabs no longer set a Target NROI, so Sprc Dil calculates no price from them."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="dil" checked><span class="amz-dg-rule-sw-txt">ON</span></label></span>
@@ -1095,6 +1105,7 @@
                     </div>
                     <div class="amz-dg-card" data-amz-card="cvr">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <button type="button" class="amz-dg-del-btn" data-amz-del="cvr" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
                     <div class="amz-dg-rules-title amz-dg-has-sw mt-2"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="cvr" value="3"></span><span>CVR overlay — Target NROI</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the CVR overlay no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="cvr" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
@@ -1141,6 +1152,7 @@
                     </div>
                     <div class="amz-dg-card" data-amz-card="age">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <button type="button" class="amz-dg-del-btn" data-amz-del="age" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
                         title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay. Count = SKUs (INV &gt; 0) whose age is in that band.">
@@ -1174,6 +1186,7 @@
                     </div>
                     <div class="amz-dg-card" data-amz-card="clearance">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <button type="button" class="amz-dg-del-btn" data-amz-del="clearance" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI of clearance SKUs (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="8"></span><span>Clearance</span>
                             <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Clearance rule no longer adds points to the Target NROI of clearance SKUs."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
@@ -1215,6 +1228,7 @@
                             <i class="fas fa-plus me-1"></i> Add rule card
                         </button>
                         <span class="small text-muted ms-2">A rule with its own condition, action and Seq number.</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-2 d-none" id="amz-dg-restore-btn" title="Show the deleted cards again (they come back switched ON)"><i class="fas fa-undo me-1"></i> Restore deleted cards <span class="amz-dg-restore-n"></span></button>
                     </div>
                     <div class="small text-muted mt-1" id="amz-dil-groi-status" style="order: 100000; width: 100%;"></div>
                     </div>
@@ -1252,7 +1266,7 @@
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
         @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'script'])
         // Sprc Dil modal: every card has its own numbered, editable rules (text notes, saved in this browser). × deletes, + adds.
-        const AMZ_DG_RULES_KEY = 'amz_dil_groi_card_rules_v1';
+        const AMZ_DG_RULES_KEY = 'amz_dil_groi_card_rules_v2';
         const AMZ_DG_CARD_RULES_DEFAULT = {
             dil: [
                 'When Dil sits in a From–To range (INV > 0): use that slab\u2019s Target NROI (first match; last slab includes the To value). S PRC is set so SNROI = Target NROI using Channel Master Ads%: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100).',
@@ -1282,7 +1296,27 @@
         function amzDgRulesLoad(card) {
             const st = amzDgRulesStore();
             if (Array.isArray(st[card])) return st[card].map(function(t) { return String(t); });
+            if (card.indexOf('c_') === 0) return amzDgCustomRuleDefault(card);
             return (AMZ_DG_CARD_RULES_DEFAULT[card] || []).slice();
+        }
+        /** Text of a custom rule card, written from its own condition and action (until the user edits it). */
+        function amzDgCustomRuleDefault(card) {
+            const r = (typeof amzCustomRuleById === 'function') ? amzCustomRuleById(card.slice(2)) : null;
+            if (!r) return [];
+            const pts = Number(r.points);
+            const p = isFinite(pts) ? pts : 0;
+            const act = r.action === 'nroi' ? 'add ' + p + ' points to the Target NROI' : 'change the S PRC by ' + p + '%';
+            return [
+                'If ' + amzCustomCondText(r) + ', then ' + act + ' (negative lowers it).',
+                'Runs in its Seq place with the other rules. ON / OFF switches it; Delete removes the card.'
+            ];
+        }
+        /** Forget the saved text of a card that was deleted. */
+        function amzDgRulesForget(card) {
+            const st = amzDgRulesStore();
+            if (!(card in st)) return;
+            delete st[card];
+            try { localStorage.setItem(AMZ_DG_RULES_KEY, JSON.stringify(st)); } catch (e) { /* ignore */ }
         }
         function amzDgRulesRead($box) {
             const list = [];
@@ -1314,17 +1348,17 @@
                 + '<button type="button" class="amz-dg-rule-del" title="Delete this rule" aria-label="Delete this rule">&times;</button>'
                 + '</div>';
         }
-        function amzDgRulesRender() {
-            $('#amzDilGroiModal .amz-dg-card-rules').each(function() {
-                const $box = $(this);
-                const $list = $box.find('.amz-dg-rules-list').empty();
-                amzDgRulesLoad(String($box.attr('data-card') || '')).forEach(function(t) {
-                    const $row = $(amzDgRuleRowHtml());
-                    $row.find('.amz-dg-rule-text').text(t).attr('title', t);
-                    $list.append($row);
-                });
-                amzDgRulesRenumber($box);
+        function amzDgRulesRenderBox($box) {
+            const $list = $box.find('.amz-dg-rules-list').empty();
+            amzDgRulesLoad(String($box.attr('data-card') || '')).forEach(function(t) {
+                const $row = $(amzDgRuleRowHtml());
+                $row.find('.amz-dg-rule-text').text(t).attr('title', t);
+                $list.append($row);
             });
+            amzDgRulesRenumber($box);
+        }
+        function amzDgRulesRender() {
+            $('#amzDilGroiModal .amz-dg-card-rules').each(function() { amzDgRulesRenderBox($(this)); });
         }
         function amzDgRuleFocus(el, toEnd) {
             if (!el) return;
@@ -1379,6 +1413,7 @@
         amzDgRulesRender();
         $(document).off('show.bs.modal.amzdgrules').on('show.bs.modal.amzdgrules', '#amzDilGroiModal', function() {
             if (!$('#amzDilGroiModal .amz-dg-card-rules .amz-dg-rule-row, #amzDilGroiModal .amz-dg-card-rules .amz-dg-rules-empty').length) amzDgRulesRender();
+            amzDgApplyGone();
         });
         // Sprc Dil modal: minimize / restore a rule card
         function amzDgSetCardMin(card, on) {
@@ -1400,6 +1435,28 @@
             if ($(e.target).closest('.amz-dg-min-btn').length) return;
             amzDgSetCardMin(this, false);
         });
+        // Deleted built-in rule cards (Dil slabs, CVR overlay, Ageing, Clearance): the rule is switched OFF (saved with Save Only,
+        // so the server stops using it too) and the card is hidden. Only the hiding is remembered here; "Restore deleted cards" brings it back ON.
+        const AMZ_DG_GONE_KEY = 'amz_dil_groi_deleted_cards_v1';
+        function amzDgGoneLoad() {
+            try {
+                const a = JSON.parse(localStorage.getItem(AMZ_DG_GONE_KEY) || '[]');
+                return Array.isArray(a) ? a.filter(function(k) { return AMZ_RULE_ON_KEYS.indexOf(k) >= 0; }) : [];
+            } catch (e) { return []; }
+        }
+        function amzDgGoneSave(list) {
+            try { localStorage.setItem(AMZ_DG_GONE_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
+        }
+        /** Hide the cards in the deleted list (a card whose rule was switched back ON elsewhere is shown again). */
+        function amzDgApplyGone() {
+            const gone = amzDgGoneLoad().filter(function(k) { return !amzRuleIsOn(k); });
+            AMZ_RULE_ON_KEYS.forEach(function(k) {
+                $('#amzDilGroiModal .amz-dg-card[data-amz-card="' + k + '"]').toggleClass('amz-dg-gone', gone.indexOf(k) >= 0);
+            });
+            const $btn = $('#amz-dg-restore-btn');
+            $btn.toggleClass('d-none', !gone.length);
+            $btn.find('.amz-dg-restore-n').text(gone.length ? '(' + gone.length + ')' : '');
+        }
         // ==================== CVR Disc / Rev Disc / Sprc Dil ====================
         const AMZ_CVR_DISC_DEFAULTS = [
             { key: '0.01-1', label: '0.01–1%', disc: 9 },
@@ -1493,6 +1550,7 @@
                 else if (k === 'clearance') $parts = $('#amzDilGroiModal .amz-dg-clearance-wrap > .small.text-muted').add('#amz-dg-clearance-block');
                 $parts.toggleClass('amz-dg-dim', !on);
             });
+            amzDgApplyGone();
         }
         function amzPaintRuleOn(raw) {
             amzRuleOn = amzNormalizeRuleOn(raw);
@@ -1699,6 +1757,7 @@
             const tv = (r.value2 === null || r.value2 === undefined) ? '' : r.value2;
             return '<div class="amz-dg-card amz-dg-custom" data-amz-card="' + key + '" data-custom-id="' + r.id + '">'
                 + '<button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">\u2212</button>'
+                + '<button type="button" class="amz-dg-del-btn amz-cr-del" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>'
                 + '<div class="amz-dg-side"><div class="amz-dg-rules-title amz-dg-has-sw">'
                 + '<span class="amz-dg-seq" title="Sequence number: the order this rule is applied in (Target NROI rules and price rules each run in the order of their numbers). Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="' + (amzCustomRules.length + 8) + '" step="1" class="amz-dg-seq-in" data-amz-seq="' + key + '" value="' + (amzRuleSeq[key] || '') + '"></span>'
                 + '<input type="text" maxlength="40" size="' + Math.max(10, Math.min(40, String(r.name).length + 1)) + '" class="form-control form-control-sm amz-cr-name" value="' + amzEsc(r.name) + '" title="Name of this rule">'
@@ -1716,8 +1775,11 @@
                 + '<select class="form-select form-select-sm amz-cr-action"><option value="nroi"' + (r.action === 'nroi' ? ' selected' : '') + '>add points to the Target NROI</option><option value="price_pct"' + (r.action === 'price_pct' ? ' selected' : '') + '>change the S PRC by %</option></select>'
                 + '<input type="number" step="any" class="form-control form-control-sm amz-cr-points" value="' + r.points + '" title="Points added to the Target NROI, or % change of the price (negative = lower)">'
                 + '<span class="amz-cr-unit">' + (r.action === 'nroi' ? 'pts' : '%') + '</span>'
-                + '<button type="button" class="btn btn-sm btn-outline-danger amz-cr-del py-0 px-2 ms-auto" title="Delete this rule card"><i class="fas fa-trash-alt me-1"></i> Delete</button></div>'
-                + '</div></div>';
+                + '</div></div>'
+                + '<div class="amz-dg-card-rules" data-card="' + key + '">'
+                + '<div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>'
+                + '<div class="amz-dg-rules-list"></div></div>'
+                + '</div>';
         }
         /** Rebuild the custom cards from amzCustomRules (on load, add and delete; typing in a card never rebuilds it). */
         function amzRenderCustomCards() {
@@ -1730,6 +1792,7 @@
             });
             amzPaintCustomCounts();
             amzPaintSeqInputs();
+            amzDgRulesRender();
         }
         function amzSetCustomRules(raw) {
             amzCustomRules = amzNormalizeCustomRules(raw);
@@ -6078,31 +6141,33 @@
                     const $nm = $card.find('.amz-cr-name');
                     $nm.attr('size', Math.max(10, Math.min(40, String($nm.val() || '').length + 1)));
                     if (amzReadCustomCard($card)) {
+                        const ck = String($card.attr('data-amz-card') || '');
+                        if (!(ck in amzDgRulesStore())) amzDgRulesRenderBox($card.find('.amz-dg-card-rules'));
                         amzPaintCustomCounts();
                         amzAfterDilGroiRulesChanged();
                     }
                 });
-            // Delete a custom rule card. No native confirm() (a browser that blocked dialogs made the button do nothing):
-            // the first click turns the button into "Click again to delete" for a few seconds, the second click deletes.
+            // Delete a rule card. No native confirm() (a browser that blocked dialogs made the button do nothing):
+            // the first click arms the trash icon (red "Delete?") for a few seconds, the second click deletes.
+            function amzDgArmDelete($btn) {
+                if ($btn.hasClass('is-confirm')) { clearTimeout($btn.data('amzDelT')); $btn.removeClass('is-confirm').html('<i class="fas fa-trash-alt"></i>').attr('title', 'Delete this rule card'); return true; }
+                $btn.addClass('is-confirm').html('Delete?').attr('title', 'Click again to delete this rule card');
+                clearTimeout($btn.data('amzDelT'));
+                $btn.data('amzDelT', setTimeout(function() {
+                    $btn.removeClass('is-confirm').html('<i class="fas fa-trash-alt"></i>').attr('title', 'Delete this rule card');
+                }, 3500));
+                return false;
+            }
             $(document).off('click.amzCrDel').on('click.amzCrDel', '#amzDilGroiModal .amz-dg-custom .amz-cr-del', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const $btn = $(this);
                 const $card = $btn.closest('.amz-dg-custom');
                 const id = String($card.attr('data-custom-id') || '');
-                const idle = '<i class="fas fa-trash-alt me-1"></i> Delete';
-                if (!$btn.hasClass('is-confirm')) {
-                    $btn.addClass('is-confirm btn-danger').removeClass('btn-outline-danger')
-                        .html('<i class="fas fa-trash-alt me-1"></i> Click again to delete');
-                    clearTimeout($btn.data('amzCrDelT'));
-                    $btn.data('amzCrDelT', setTimeout(function() {
-                        $btn.removeClass('is-confirm btn-danger').addClass('btn-outline-danger').html(idle);
-                    }, 3500));
-                    return;
-                }
-                clearTimeout($btn.data('amzCrDelT'));
+                if (!amzDgArmDelete($btn)) return;
                 amzCustomRules = amzCustomRules.filter(function(x) { return x.id !== id; });
                 delete amzRuleSeq['c_' + id];
+                amzDgRulesForget('c_' + id);
                 $card.remove();
                 try {
                     amzRuleSeq = amzSeqToRanks(amzRuleSeq);
@@ -6112,6 +6177,30 @@
                     if (window.console && console.error) console.error('Custom rule delete', err);
                 }
                 $('#amz-dil-groi-status').text('Rule card deleted. Press Save Only to keep it deleted.');
+            });
+            // Built-in rule cards (Dil slabs, CVR overlay, Ageing, Clearance): delete = the rule is switched OFF and its card is hidden.
+            $(document).off('click.amzDgDel').on('click.amzDgDel', '#amzDilGroiModal .amz-dg-del-btn[data-amz-del]', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                const key = String($btn.attr('data-amz-del') || '');
+                if (AMZ_RULE_ON_KEYS.indexOf(key) < 0 || !amzDgArmDelete($btn)) return;
+                const gone = amzDgGoneLoad();
+                if (gone.indexOf(key) < 0) gone.push(key);
+                amzDgGoneSave(gone);
+                $('#amzDilGroiModal .amz-dg-rule-sw-in[data-amz-rule="' + key + '"]').prop('checked', false).trigger('change');
+                amzDgApplyGone();
+                $('#amz-dil-groi-status').text('Rule card deleted (the rule is OFF). Press Save Only to keep it deleted.');
+            });
+            $(document).off('click.amzDgRestore').on('click.amzDgRestore', '#amz-dg-restore-btn', function(e) {
+                e.preventDefault();
+                const gone = amzDgGoneLoad();
+                amzDgGoneSave([]);
+                gone.forEach(function(k) {
+                    $('#amzDilGroiModal .amz-dg-rule-sw-in[data-amz-rule="' + k + '"]').prop('checked', true).trigger('change');
+                });
+                amzDgApplyGone();
+                $('#amz-dil-groi-status').text('Deleted cards restored (switched ON). Press Save Only to keep them.');
             });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
                 .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
