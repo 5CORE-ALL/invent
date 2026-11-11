@@ -436,112 +436,6 @@
             color: white !important;
         }
 
-        /* Column visibility dropdown: 4 category panels (only when open) */
-        #column-dropdown-menu.show {
-            display: block;
-            min-width: min(92vw, 900px);
-            max-width: min(96vw, 960px);
-            padding: 0.4rem 0.5rem 0.55rem;
-        }
-
-        #column-dropdown-menu > li.col-vis-full {
-            list-style: none;
-        }
-
-        #column-dropdown-menu .col-vis-groups {
-            display: grid;
-            grid-template-columns: repeat(5, minmax(130px, 1fr));
-            gap: 8px;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-
-        #column-dropdown-menu .col-vis-group {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 6px;
-            min-height: 120px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
-            border-color: #0d6efd;
-            background: #eef5ff;
-            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
-        }
-
-        #column-dropdown-menu .col-vis-group-title {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: #495057;
-            margin: 0 0 6px;
-            padding: 2px 4px;
-            border-bottom: 1px solid #dee2e6;
-            user-select: none;
-            cursor: pointer;
-        }
-
-        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
-            margin: 0;
-            flex-shrink: 0;
-            cursor: pointer;
-        }
-
-        #column-dropdown-menu .col-vis-group-title.col-vis-group-empty {
-            opacity: 0.55;
-        }
-
-        #column-dropdown-menu .col-vis-group-list {
-            flex: 1;
-            min-height: 60px;
-            max-height: 280px;
-            overflow-y: auto;
-            margin: 0;
-            padding: 0;
-            list-style: none;
-        }
-
-        #column-dropdown-menu .col-vis-item {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            border-radius: 4px;
-            cursor: grab;
-        }
-
-        #column-dropdown-menu .col-vis-item:active {
-            cursor: grabbing;
-        }
-
-        #column-dropdown-menu .col-vis-item.col-vis-dragging {
-            opacity: 0.45;
-        }
-
-        #column-dropdown-menu .col-vis-item > label {
-            display: block;
-            padding: 3px 5px;
-            cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin: 0;
-            font-size: 0.8rem;
-            user-select: none;
-        }
-
-        #column-dropdown-menu .col-vis-item > label:hover {
-            background: rgba(0, 0, 0, 0.04);
-            border-radius: 3px;
-        }
-
         #play-backward,
         #play-forward {
             color: #007bff;
@@ -7129,20 +7023,6 @@
              * Category placement (General / Pricing / Advertisement / Others) is classified by
              * defaults below and can be overridden via drag-and-drop (stored in localStorage).
              */
-            const COL_VIS_CATEGORY_KEYS = ['general', 'pricing', 'discounts', 'advertisement', 'others'];
-            const COL_VIS_CATEGORY_LABELS = {
-                general: 'General',
-                pricing: 'Pricing',
-                discounts: 'Discounts',
-                advertisement: 'Advertisement',
-                others: 'Others'
-            };
-            const COL_VIS_CATEGORY_STORAGE_KEY = 'ebay1_tabulator_column_categories_v1';
-
-            function colVisItemKey(field, title) {
-                return String(field || '') + '||' + String(title || field || '');
-            }
-
             /** Default AI-style classification from field / title. */
             function classifyColumnDefault(field, title) {
                 const f = String(field || '');
@@ -7182,246 +7062,32 @@
                 return 'others';
             }
 
-            function loadColumnCategoryOverrides() {
-                try {
-                    const raw = localStorage.getItem(COL_VIS_CATEGORY_STORAGE_KEY);
-                    const parsed = raw ? JSON.parse(raw) : {};
-                    return (parsed && typeof parsed === 'object') ? parsed : {};
-                } catch (e) {
-                    return {};
-                }
-            }
-
-            function saveColumnCategoryOverrides(map) {
-                try {
-                    localStorage.setItem(COL_VIS_CATEGORY_STORAGE_KEY, JSON.stringify(map || {}));
-                } catch (e) {}
-            }
-
-            function resolveColumnCategory(field, title, overrides) {
-                const key = colVisItemKey(field, title);
-                const o = overrides && overrides[key];
-                if (o && COL_VIS_CATEGORY_KEYS.indexOf(o) !== -1) return o;
-                return classifyColumnDefault(field, title);
-            }
-
-            /** Sync category header checkbox: checked / indeterminate / unchecked from its items. */
-            function syncColVisGroupHeaderCheckbox(groupEl) {
-                if (!groupEl) return;
-                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
-                const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
-                if (!headerCb) return;
-                if (!itemCbs.length) {
-                    headerCb.checked = false;
-                    headerCb.indeterminate = false;
-                    headerCb.disabled = true;
-                    const titleEl = headerCb.closest('.col-vis-group-title');
-                    if (titleEl) titleEl.classList.add('col-vis-group-empty');
-                    return;
-                }
-                headerCb.disabled = false;
-                let checked = 0;
-                itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
-                headerCb.checked = checked === itemCbs.length;
-                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
-            }
-
-            function buildColumnDropdown() {
-                const menu = document.getElementById("column-dropdown-menu");
-                if (!menu) return;
-                menu.innerHTML = '';
-
-                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(savedVisibility => {
-                        const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
-                        const overrides = loadColumnCategoryOverrides();
-
-                        const showAllLi = document.createElement("li");
-                        showAllLi.className = "col-vis-full";
-                        showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
-                        menu.appendChild(showAllLi);
-
-                        const hintLi = document.createElement("li");
-                        hintLi.className = "col-vis-full";
-                        hintLi.innerHTML = '<div class="px-2 pb-1 text-muted" style="font-size:0.7rem;">Drag columns between General · Pricing · Advertisement · Others. Use header checkbox to select / deselect a group.</div>';
-                        menu.appendChild(hintLi);
-
-                        const groupsLi = document.createElement("li");
-                        groupsLi.className = "col-vis-full";
-                        const groupsWrap = document.createElement("div");
-                        groupsWrap.className = "col-vis-groups";
-
-                        const lists = {};
-                        const groupEls = {};
-                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
-                            const group = document.createElement("div");
-                            group.className = "col-vis-group";
-                            group.dataset.category = cat;
-
-                            const titleEl = document.createElement("label");
-                            titleEl.className = "col-vis-group-title";
-                            const groupCb = document.createElement("input");
-                            groupCb.type = "checkbox";
-                            groupCb.className = "col-vis-group-toggle";
-                            groupCb.dataset.group = cat;
-                            groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
-                            titleEl.appendChild(groupCb);
-                            titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
-                            group.appendChild(titleEl);
-
-                            const list = document.createElement("ul");
-                            list.className = "col-vis-group-list";
-                            list.dataset.category = cat;
-                            group.appendChild(list);
-                            groupsWrap.appendChild(group);
-                            lists[cat] = list;
-                            groupEls[cat] = group;
-
-                            // Drop onto group / list
-                            [group, list].forEach(function(zone) {
-                                zone.addEventListener("dragover", function(e) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    group.classList.add("col-vis-drop-over");
-                                    e.dataTransfer.dropEffect = "move";
-                                });
-                                zone.addEventListener("dragleave", function(e) {
-                                    if (!group.contains(e.relatedTarget)) {
-                                        group.classList.remove("col-vis-drop-over");
-                                    }
-                                });
-                                zone.addEventListener("drop", function(e) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    group.classList.remove("col-vis-drop-over");
-                                    const itemKey = e.dataTransfer.getData("text/col-vis-key");
-                                    if (!itemKey) return;
-                                    const next = loadColumnCategoryOverrides();
-                                    next[itemKey] = cat;
-                                    saveColumnCategoryOverrides(next);
-                                    buildColumnDropdown();
-                                });
-                            });
-                        });
-
-                        table.getColumns().forEach(col => {
-                            const def = col.getDefinition();
-                            if (!def.field) return;
-                            const title = def.title || def.field;
-                            if (isEbay1RemovedRuleColumn(def.field, title)) return;
-                            const itemKey = colVisItemKey(def.field, title);
-                            const cat = resolveColumnCategory(def.field, title, overrides);
-
-                            const li = document.createElement("li");
-                            li.className = "col-vis-item";
-                            li.draggable = true;
-                            li.dataset.itemKey = itemKey;
-                            li.dataset.field = def.field;
-                            li.dataset.group = cat;
-
-                            li.addEventListener("dragstart", function(e) {
-                                e.stopPropagation();
-                                li.classList.add("col-vis-dragging");
-                                e.dataTransfer.setData("text/col-vis-key", itemKey);
-                                e.dataTransfer.effectAllowed = "move";
-                            });
-                            li.addEventListener("dragend", function() {
-                                li.classList.remove("col-vis-dragging");
-                                menu.querySelectorAll(".col-vis-drop-over").forEach(function(el) {
-                                    el.classList.remove("col-vis-drop-over");
-                                });
-                            });
-
-                            const label = document.createElement("label");
-                            const checkbox = document.createElement("input");
-                            checkbox.type = "checkbox";
-                            checkbox.className = "col-vis-field-toggle";
-                            checkbox.value = def.field;
-                            checkbox.dataset.group = cat;
-                            checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
-                            checkbox.style.marginRight = "6px";
-
-                            label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(title));
-                            label.title = title + " (drag to move category)";
-                            li.appendChild(label);
-                            lists[cat].appendChild(li);
-                        });
-
-                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
-                            syncColVisGroupHeaderCheckbox(groupEls[cat]);
-                        });
-
-                        groupsLi.appendChild(groupsWrap);
-                        menu.appendChild(groupsLi);
-                    })
-                    .catch(err => console.error('Error loading column visibility:', err));
-            }
-
-            function saveColumnVisibilityToServer() {
-                const visibility = {};
-                table.getColumns().forEach(col => {
-                    const def = col.getDefinition();
-                    if (def.field && !isEbay1RemovedRuleColumn(def.field, def.title)) {
-                        visibility[def.field] = col.isVisible();
-                    }
-                });
-
-                fetch(TABULATOR_COLUMN_VISIBILITY_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        channel: TABULATOR_COLUMN_CHANNEL,
-                        visibility: visibility
-                    })
-                }).catch(err => console.error('Error saving column visibility:', err));
-            }
-
-            function applyColumnVisibilityFromServer() {
-                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(savedVisibility => {
-                        if (savedVisibility && typeof savedVisibility === 'object') {
-                            table.getColumns().forEach(col => {
-                                const def = col.getDefinition();
-                                if (!def.field || isEbay1RemovedRuleColumn(def.field, def.title)) return;
-                                if (def.field === 'eBay Stock') {
-                                    col.hide();
-                                    return;
-                                }
-                                if (def.field === 'ca_bid_percentage' || def.field === '_bid_alert') {
-                                    col.show();
-                                    return;
-                                }
-                                if (savedVisibility.hasOwnProperty(def.field)) {
-                                    if (savedVisibility[def.field]) {
-                                        col.show();
-                                    } else {
-                                        col.hide();
-                                    }
-                                }
-                            });
-                        }
-                        enforceAlwaysHiddenColumns();
-                    })
-                    .catch(err => console.error('Error applying column visibility:', err));
-            }
+            // Columns panel: shared with every Tabulator page (resources/views/partials/tabulator-column-manager.blade.php)
+            const tcmConfig = {
+                channel: TABULATOR_COLUMN_CHANNEL,
+                visibilityUrl: TABULATOR_COLUMN_VISIBILITY_URL,
+                groups: [
+                    { key: 'general', label: 'General' },
+                    { key: 'pricing', label: 'Pricing' },
+                    { key: 'discounts', label: 'Discounts' },
+                    { key: 'advertisement', label: 'Advertisement' },
+                    { key: 'others', label: 'Others' }
+                ],
+                fallbackGroup: 'others',
+                showAll: true,
+                legacyCategoryStorageKey: 'ebay1_tabulator_column_categories_v1'
+            };
+            const tcmHooks = {
+                classify: function(field, title) { return classifyColumnDefault(field, title); },
+                skip: function(field, title) { return isEbay1RemovedRuleColumn(field, title); },
+                forceVisible: function(field) {
+                    if (field === 'eBay Stock') return false;
+                    if (field === 'ca_bid_percentage' || field === '_bid_alert') return true;
+                    return undefined;
+                },
+                afterVisibilityChange: function() { enforceAlwaysHiddenColumns(); }
+            };
+            @include('partials.tabulator-column-manager')
 
             // Wait for table to be built
             // Re-apply filters after any sort so hidden parent (summary) rows never
@@ -7522,85 +7188,6 @@
                 });
                 updateSelectAllCheckbox();
             });
-
-            // Toggle column from dropdown — save visibility; keep menu open so multiple
-            // columns can be checked/unchecked without it closing each time.
-            (function() {
-                var colMenu = document.getElementById("column-dropdown-menu");
-                function closeColumnDropdown() {
-                    var toggleBtn = document.getElementById('columnVisibilityDropdown');
-                    if (!toggleBtn) return;
-                    if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
-                        var dd = bootstrap.Dropdown.getInstance(toggleBtn) ||
-                            bootstrap.Dropdown.getOrCreateInstance(toggleBtn);
-                        dd.hide();
-                    } else if (window.jQuery) {
-                        $(toggleBtn).dropdown('hide');
-                    }
-                }
-                if (colMenu) {
-                    // Prevent Bootstrap from treating checkbox/label clicks as "outside"
-                    // and closing the dropdown (data-bs-auto-close="outside" can still
-                    // misfire when the table reflows after show/hide).
-                    colMenu.addEventListener("click", function(e) {
-                        if (e.target.closest('input[type="checkbox"], label, .col-vis-item, .col-vis-group-title')) {
-                            e.stopPropagation();
-                        }
-                    });
-                    colMenu.addEventListener("change", function(e) {
-                        if (e.target.type !== 'checkbox') return;
-
-                        // Category header: select / deselect all columns in that group
-                        if (e.target.classList.contains('col-vis-group-toggle')) {
-                            const checked = e.target.checked;
-                            const groupEl = e.target.closest('.col-vis-group');
-                            const itemCbs = groupEl
-                                ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
-                                : [];
-                            itemCbs.forEach(function(cb) {
-                                const field = cb.value;
-                                cb.checked = checked;
-                                const col = table.getColumn(field);
-                                if (!col) return;
-                                if (checked) col.show();
-                                else col.hide();
-                            });
-                            e.target.indeterminate = false;
-                            if (typeof enforceAlwaysHiddenColumns === 'function') {
-                                enforceAlwaysHiddenColumns();
-                            }
-                            saveColumnVisibilityToServer();
-                            return;
-                        }
-
-                        // Individual column checkbox — keep menu open for multi-toggle
-                        const field = e.target.value;
-                        const col = table.getColumn(field);
-                        if (!col) return;
-                        if (e.target.checked) {
-                            col.show();
-                        } else {
-                            col.hide();
-                        }
-                        syncColVisGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
-                        saveColumnVisibilityToServer();
-                    });
-                    // "Show All" — show every column, save, then close
-                    colMenu.addEventListener("click", function(e) {
-                        var showAll = e.target.closest('#show-all-columns-btn');
-                        if (showAll) {
-                            e.preventDefault();
-                            table.getColumns().forEach(col => col.show());
-                            if (typeof enforceAlwaysHiddenColumns === 'function') {
-                                enforceAlwaysHiddenColumns();
-                            }
-                            buildColumnDropdown();
-                            saveColumnVisibilityToServer();
-                            closeColumnDropdown();
-                        }
-                    });
-                }
-            })();
 
             document.addEventListener("click", function(e) {
                 // Copy SKU to clipboard
