@@ -3908,16 +3908,24 @@ class Temu3ListingPublishService
             return ['success' => true, 'data' => ['success' => true, 'result' => ['goodsId' => (int) $goodsId]]];
         }
 
-        $pendingResult = function () use (&$pending): ?array {
+        $pendingResult = function () use (&$pending, &$messages, &$existing): ?array {
             if ($pending === '') {
                 return null;
+            }
+            $why = [];
+            foreach (array_slice($messages, 0, 4, true) as $label => $msg) {
+                $why[] = $label.': '.$msg;
+            }
+            if ($existing === []) {
+                $why[] = 'the live variations of this goods could not be read from Temu, so the full update was not sent';
             }
 
             return [
                 'success' => false,
                 'pending' => true,
                 'message' => $pending.' It is NOT marked listed yet. Wait a few minutes, then click Refresh listings: it links the SKU as soon as Temu shows it under this goods. '
-                    .'If it never appears, Temu rejected it during processing - see the goods in Seller Center.',
+                    .'If it never appears, Temu rejected it during processing - see the goods in Seller Center.'
+                    .($why !== [] ? ' Details: '.implode(' | ', $why) : ''),
             ];
         };
 
