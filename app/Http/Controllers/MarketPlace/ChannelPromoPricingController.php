@@ -1947,6 +1947,7 @@ class ChannelPromoPricingController extends Controller
                 'rules' => AmazonDilGroiRule::defaultsForChannel($channel),
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
+                'clearance_adj' => $unpacked['clearance_adj'],
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
@@ -1966,6 +1967,7 @@ class ChannelPromoPricingController extends Controller
                 : $unpacked['rules'],
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
+            'clearance_adj' => $unpacked['clearance_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
@@ -2009,6 +2011,7 @@ class ChannelPromoPricingController extends Controller
             'rule_seq' => $config['rule_seq'],
             'custom_rules' => $config['custom_rules'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
+            'clearance_adj' => $config['visibility']['clearance_adj'] ?? null,
         ]);
     }
 
@@ -2072,6 +2075,7 @@ class ChannelPromoPricingController extends Controller
             'rule_seq' => $config['rule_seq'],
             'custom_rules' => $config['custom_rules'],
             'clearance_nroi' => $config['visibility']['clearance_nroi'] ?? null,
+            'clearance_adj' => $config['visibility']['clearance_adj'] ?? null,
         ]);
     }
 
@@ -2190,6 +2194,13 @@ class ChannelPromoPricingController extends Controller
                 : null;
         } elseif (array_key_exists('clearance_nroi', $existing) && $existing['clearance_nroi'] !== null) {
             $visibility['clearance_nroi'] = $existing['clearance_nroi'];
+        }
+        // Amazon Clearance rule: points added to the Target NROI of clearance SKUs (any sign). A page that does not send it keeps what is saved.
+        if ($request->exists('clearance_adj')) {
+            $rawAdj = $request->input('clearance_adj');
+            $visibility['clearance_adj'] = is_numeric($rawAdj) ? round(min(500.0, max(-500.0, (float) $rawAdj)), 2) : null;
+        } elseif (array_key_exists('clearance_adj', $existing) && $existing['clearance_adj'] !== null) {
+            $visibility['clearance_adj'] = $existing['clearance_adj'];
         }
 
         return [[

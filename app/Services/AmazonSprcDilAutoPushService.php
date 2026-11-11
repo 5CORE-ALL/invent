@@ -278,12 +278,8 @@ class AmazonSprcDilAutoPushService
         $clearanceTarget = null;
         if ((new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
             $clearanceOnDilRule = \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil';
-            if ($clearanceOnDilRule && $this->dilRuleOn('clearance')) {
-                // Sprc Dil modal "clearance" row: Target NROI% for clearance SKUs. No Std/LMP cap, no negative guard.
-                return $this->computeClearanceDilTarget($row, $adsPct);
-            }
-            // Sprc Dil with the Clearance switch OFF: the Clearance rule no longer applies, so the SKU is priced like any
-            // other one (Dil slab, CVR / Age). Only the Std prc vs dil rule keeps its own clearance target.
+            // Sprc Dil: a clearance SKU is priced like any other one (Dil slab, CVR / Age ...). The Clearance rule only adds its
+            // points to the Target NROI (see the 'clearance' step below). Only the Std prc vs dil rule keeps its own clearance target.
             if (! $clearanceOnDilRule) {
                 $clearanceTarget = self::stdRulePaused($stdPromo, 'clrsnroi') ? null : AmazonDilGroiRule::clearanceSnroiTarget(
                     (float) ($row['dil'] ?? 0),
@@ -333,6 +329,15 @@ class AmazonSprcDilAutoPushService
                     $custom = $this->customRule(substr($step, 2));
                     if ($custom !== null && AmazonDilGroiRule::customRuleHit($custom, $customValues)) {
                         $nroi = max(0.0, round($nroi + (float) $custom['points'], 2));
+                    }
+                    continue;
+                }
+                // Clearance rule (Sprc Dil modal): a clearance SKU gets the saved points added to its Target NROI, in its Seq place.
+                if ($step === 'clearance') {
+                    if ($this->dilRuleOn('clearance') && $this->clearanceAdjCfg !== null && abs($this->clearanceAdjCfg) > 0.0001
+                        && \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil'
+                        && (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+                        $nroi = max(0.0, round($nroi + $this->clearanceAdjCfg, 2));
                     }
                     continue;
                 }
@@ -558,56 +563,6 @@ class AmazonSprcDilAutoPushService
             .' lmp='.($row['lmp'] ?? 0).' price='.($row['price'] ?? 0);
 
         return implode('; ', $bits);
-    }
-
-    /**
-     * Clearance SKU while the Sprc Dil (Dil GROI) rule is active: price = the Clearance Target NROI% saved in the
-     * Sprc Dil modal (last "clearance" row), same SNROI formula as the Dil slabs (Ads% dynamic rule included).
-     * Std Prc and LMP do not cap it, and the negative-SNROI guard does not apply (it is pushed even when negative).
-     *
-     * @param  array<string, mixed>  $row
-     * @return array<string, mixed>|null
-     */
-    protected function computeClearanceDilTarget(array $row, ?float $adsPct = null): ?array
-    {
-        $lp = (float) ($row['lp'] ?? 0);
-        if (! ($lp > 0)) {
-            return null;
-        }
-        $ship = (float) ($row['ship'] ?? 0);
-        $dil = (float) ($row['dil'] ?? 0);
-        $std = (float) ($row['standard_price'] ?? 0);
-        $nroi = max(0.0, (float) ($this->clearanceNroiCfg ?? 0.0));
-        $ads = $adsPct ?? $this->amazonAdsPercent();
-
-        $price = AmazonDilGroiRule::priceWithDynamicAds(
-            fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
-            (float) $ads,
-            $this->dynamicAdsRule()
-        );
-        if ($price === null || ! is_finite($price) || $price < 0.01) {
-            return null;
-        }
-        $price = round($price, 2);
-
-        return [
-            'sprice' => $price,
-            'dil' => round($dil, 2),
-            'groi' => $nroi,
-            'nroi' => $nroi,
-            'cvr_disc' => 0.0,
-            'review_disc' => 0.0,
-            'buss_disc' => 0.0,
-            'zero_sold_disc' => 0.0,
-            'roi_disc' => 0.0,
-            'dil_disc' => 0.0,
-            'age_disc' => 0.0,
-            'sum_disc' => 0.0,
-            'dil_groi' => true,
-            'lmp_capped' => false,
-            'clearance' => true,
-            'base' => $std > 0 ? round($std, 2) : $price,
-        ];
     }
 
     /**
@@ -1314,7 +1269,7 @@ class AmazonSprcDilAutoPushService
     private ?array $ageAdjCfg = null;
 
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
-    private ?float $clearanceNroiCfg = null;
+    private ?float $clearanceAdjCfg = null;
 
     /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, clearance). A block that is OFF no longer applies. */
     private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'clearance' => true];
@@ -1372,8 +1327,8 @@ class AmazonSprcDilAutoPushService
         $this->ruleOnCfg = AmazonDilGroiRule::normalizeRuleOn($unpacked['rule_on'] ?? null);
         $this->ruleSeqCfg = AmazonDilGroiRule::normalizeRuleSeq($unpacked['rule_seq'] ?? null);
         $this->customRulesCfg = AmazonDilGroiRule::normalizeCustomRules($unpacked['custom_rules'] ?? null);
-        $cn = $unpacked['clearance_nroi'] ?? null;
-        $this->clearanceNroiCfg = (is_numeric($cn) && (float) $cn >= 0) ? (float) $cn : null;
+        $ca = $unpacked['clearance_adj'] ?? null;
+        $this->clearanceAdjCfg = is_numeric($ca) ? (float) $ca : null;
         if ($unpacked['rules'] === []) {
             $unpacked['rules'] = AmazonDilGroiRule::amazonDefaults();
         } else {

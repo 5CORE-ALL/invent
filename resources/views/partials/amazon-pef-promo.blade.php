@@ -1175,13 +1175,13 @@
                     <div class="amz-dg-card" data-amz-card="clearance">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-side">
-                    <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: sorts this card. Clearance SKUs are priced from the Clearance Target NROI% instead of the other rules, so the number does not change any price. Saved with Save Only / Save All."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="8"></span><span>Clearance</span>
-                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = clearance SKUs are priced like any other SKU (the Clearance Target NROI% no longer applies)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                    <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI of clearance SKUs (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="8"></span><span>Clearance</span>
+                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Clearance rule no longer adds points to the Target NROI of clearance SKUs."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
                     <div class="amz-dg-clearance-wrap">
                         <div class="small text-muted mb-1">
-                            <strong>Clearance Rule:</strong> If Item is On Clearance Then Follow The Dynamic Target <strong>SNROI%</strong>.
+                            <strong>Clearance Rule:</strong> If Item is On Clearance Then <strong>add</strong> the points below to the Target <strong>NROI%</strong> (negative lowers it).
                         </div>
                         <div id="amz-dg-clearance-block" class="amz-dg-clr">
                             <div class="amz-dg-clr-stats" title="INV &gt; 0 and Clearance Yes on Inv Days.">
@@ -1193,14 +1193,14 @@
                                     <span class="amz-dg-clr-lbl">INV</span>
                                     <span class="amz-dg-clearance-inv">0</span>
                                 </div>
-                                <div class="amz-dg-clr-stat" title="Target NROI% used for clearance SKUs">
-                                    <span class="amz-dg-clr-lbl">NROI</span>
+                                <div class="amz-dg-clr-stat" title="Points added to the Target NROI of clearance SKUs">
+                                    <span class="amz-dg-clr-lbl">ADJ</span>
                                     <span class="amz-dg-clearance-nroi">0%</span>
                                 </div>
                             </div>
                             <div class="amz-dg-clr-input">
-                                <label class="amz-dg-clr-lbl mb-0" for="amz-dg-clearance-groi-input">Target NROI%</label>
-                                <input type="number" min="0" step="0.1" id="amz-dg-clearance-groi-input" class="form-control form-control-sm amz-dg-clearance-groi" value="0" title="Target NROI% for clearance">
+                                <label class="amz-dg-clr-lbl mb-0" for="amz-dg-clearance-groi-input">Adj NROI (pts)</label>
+                                <input type="number" step="0.1" id="amz-dg-clearance-groi-input" class="form-control form-control-sm amz-dg-clearance-groi" value="0" title="Points added to the Target NROI of clearance SKUs (negative lowers it)">
                             </div>
                         </div>
                     </div>
@@ -1259,7 +1259,7 @@
                 'When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.',
                 'When you change the first Target NROI%: later rows fill as first +5, +10, \u2026 (increasing down the table).',
                 'When INV \u2264 0: Count and pies skip that SKU.',
-                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay and Ageing Rule in the order of their Seq numbers (lowest first). Std Prc is the maximum S PRC. Clearance is a separate path, so its number only sorts the card.',
+                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay and Ageing Rule in the order of their Seq numbers (lowest first). Std Prc is the maximum S PRC. Clearance adds its points to the Target NROI of clearance SKUs, in its Seq place.',
             ],
             cvr: [
                 'When a SKU matches a row in the CVR overlay table (Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold; horizontal / opposite arrows are excluded): apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).',
@@ -1268,7 +1268,7 @@
                 'If the SKU\u2019s age (days) is inside an age band, add that band\u2019s points to the Target NROI (use a negative number to lower it). Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.',
             ],
             clearance: [
-                'If an item is on clearance, follow the Clearance Target NROI% instead of the rules above. Clearance SKUs get no LMP or Std Prc cap.',
+                'If an item is on clearance, add the Clearance points to its Target NROI (negative lowers it), like the CVR overlay and the Ageing Rule. The price then follows the normal rules and Std Prc stays the maximum.',
             ],
         };
         function amzDgRulesStore() {
@@ -1463,7 +1463,7 @@
         /**
          * ON / OFF switches of the Sprc Dil blocks (same keys as AmazonDilGroiRule::RULE_ON_KEYS). A block that is OFF no longer
          * applies: dil = Dil slabs (Target NROI), rev = Review Discount (Reduce % added to the LMP reduce %), cvr = CVR overlay,
-         * age = Ageing Rule, clearance = Clearance NROI%.
+         * age = Ageing Rule, clearance = Clearance points.
          * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
          */
         const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'clearance'];
@@ -1509,7 +1509,7 @@
         }
         /**
          * Sequence number of every rule card (same keys as AmazonDilGroiRule::RULE_SEQ_DEFAULT, plus "c_<id>" for each custom rule
-         * card). The cards are sorted by it. Inside the Target NROI rules (CVR overlay, Ageing and the custom rules that add
+         * card). The cards are sorted by it. Inside the Target NROI rules (CVR overlay, Ageing, Clearance and the custom rules that add
          * points) and inside the price rules (LMP cap, CVR up / down and the custom rules that change the price) the number is the
          * order they are applied in. The Dil slab and the NROI rules always run before the price rules: a rule cannot run before what
          * it needs. Saved with Save Only / Save All; the server job reads them too.
@@ -1538,8 +1538,8 @@
         function amzCustomIds(action) {
             return amzCustomRules.filter(function(r) { return r.action === action; }).map(function(r) { return 'c_' + r.id; });
         }
-        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, then the custom ones). They always run after the Dil slab. */
-        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age'].concat(amzCustomIds('nroi'))); }
+        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, Clearance, then the custom ones). They always run after the Dil slab. */
+        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age', 'clearance'].concat(amzCustomIds('nroi'))); }
         /** The price rules in apply order: the LMP cap (with the Std Prc maximum), the CVR up / down discount and the custom price rules. They run after the NROI rules. */
         function amzPriceOrder() { return amzOrderAmong(amzCustomIds('price_pct')); }
         window.amzNroiOrder = amzNroiOrder;
@@ -1597,7 +1597,17 @@
 
         // ---- Custom rule cards ("Add rule"): a condition on one value of the SKU and an action, with their own Seq number ----
         const AMZ_CUSTOM_FIELDS = { dil: 'Dil %', cvr: 'CVR L30 %', age: 'Age (days)', diff: 'Std Diff %', inv: 'INV' };
-        const AMZ_CUSTOM_OPS = ['>', '>=', '<', '<=', '=', 'between'];
+        /** A rule condition is a From–To slab: From <= value < To (blank = open end; From = To = exactly that value). Rules saved with the older operators (>, <, =, between ...) are converted when they load. */
+        const AMZ_CUSTOM_OPS = ['slab', '>', '>=', '<', '<=', '=', 'between'];
+        function amzCustomToSlab(op, a, b) {
+            switch (op) {
+                case '>': case '>=': return [a, null];
+                case '<': case '<=': return [null, a];
+                case '=': return [a, a];
+                case 'between': return [Math.min(a, b), Math.max(a, b)];
+            }
+            return [a, b];
+        }
         const AMZ_CUSTOM_MAX = 20;
         function amzNormalizeCustomRules(raw) {
             const out = [];
@@ -1608,14 +1618,21 @@
                 if (!id || seen[id]) return;
                 seen[id] = true;
                 const num = function(v) { const x = parseFloat(v); return isFinite(x) ? x : 0; };
+                const numOrNull = function(v) { if (v === null || v === undefined || v === '') return null; const x = parseFloat(v); return isFinite(x) ? x : null; };
+                let from, to;
+                if (r.op === 'slab') { from = numOrNull(r.value); to = numOrNull(r.value2); }
+                else {
+                    const sl = amzCustomToSlab(AMZ_CUSTOM_OPS.indexOf(r.op) >= 0 ? r.op : '>', num(r.value), num(r.value2));
+                    from = sl[0]; to = sl[1];
+                }
                 out.push({
                     id: id,
                     name: String(r.name || '').trim().slice(0, 40) || 'Custom rule',
                     on: !(r.on === false || r.on === 0 || r.on === '0' || r.on === 'false' || r.on === 'off'),
                     field: AMZ_CUSTOM_FIELDS[r.field] ? r.field : 'dil',
-                    op: AMZ_CUSTOM_OPS.indexOf(r.op) >= 0 ? r.op : '>',
-                    value: num(r.value),
-                    value2: num(r.value2),
+                    op: 'slab',
+                    value: from,
+                    value2: to,
                     action: r.action === 'price_pct' ? 'price_pct' : 'nroi',
                     points: Math.min(500, Math.max(-500, num(r.points))),
                 });
@@ -1642,6 +1659,12 @@
             const v = amzCustomValue(rule.field, d);
             if (v === null) return false;
             const a = Number(rule.value), b = Number(rule.value2);
+            if (rule.op === 'slab') {
+                const from = (rule.value === null || rule.value === '' || rule.value === undefined || !isFinite(a)) ? null : a;
+                const to = (rule.value2 === null || rule.value2 === '' || rule.value2 === undefined || !isFinite(b)) ? null : b;
+                if (from !== null && to !== null && Math.abs(to - from) < 0.0001) return Math.abs(v - from) < 0.0001;
+                return (from === null || v >= from) && (to === null || v < to);
+            }
             switch (rule.op) {
                 case '>': return v > a;
                 case '>=': return v >= a;
@@ -1654,6 +1677,15 @@
         }
         /** "Dil % > 50", "Age (days) between 30 and 90" (for the hover text). */
         function amzCustomCondText(r) {
+            if (r.op === 'slab') {
+                const f = (r.value === null || r.value === '' || r.value === undefined) ? null : r.value;
+                const t = (r.value2 === null || r.value2 === '' || r.value2 === undefined) ? null : r.value2;
+                const lbl = AMZ_CUSTOM_FIELDS[r.field];
+                if (f !== null && t !== null) return lbl + (Number(f) === Number(t) ? ' = ' + f : ' from ' + f + ' to ' + t);
+                if (f !== null) return lbl + ' from ' + f;
+                if (t !== null) return lbl + ' below ' + t;
+                return lbl + ' (any)';
+            }
             return AMZ_CUSTOM_FIELDS[r.field] + ' ' + (r.op === 'between' ? 'between ' + r.value + ' and ' + r.value2 : r.op + ' ' + r.value);
         }
         window.amzCustomRuleById = amzCustomRuleById;
@@ -1663,7 +1695,8 @@
         function amzCustomCardHtml(r) {
             const key = 'c_' + r.id;
             const fieldOpts = Object.keys(AMZ_CUSTOM_FIELDS).map(function(f) { return '<option value="' + f + '"' + (r.field === f ? ' selected' : '') + '>' + AMZ_CUSTOM_FIELDS[f] + '</option>'; }).join('');
-            const opOpts = AMZ_CUSTOM_OPS.map(function(o) { return '<option value="' + o + '"' + (r.op === o ? ' selected' : '') + '>' + (o === 'between' ? 'between' : o) + '</option>'; }).join('');
+            const fv = (r.value === null || r.value === undefined) ? '' : r.value;
+            const tv = (r.value2 === null || r.value2 === undefined) ? '' : r.value2;
             return '<div class="amz-dg-card amz-dg-custom" data-amz-card="' + key + '" data-custom-id="' + r.id + '">'
                 + '<button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">\u2212</button>'
                 + '<div class="amz-dg-side"><div class="amz-dg-rules-title amz-dg-has-sw">'
@@ -1674,10 +1707,10 @@
                 + '<div class="amz-dg-main amz-cr-body' + (r.on ? '' : ' amz-dg-dim') + '">'
                 + '<div class="amz-cr-line"><span class="amz-cr-lbl">If</span>'
                 + '<select class="form-select form-select-sm amz-cr-field">' + fieldOpts + '</select>'
-                + '<select class="form-select form-select-sm amz-cr-op">' + opOpts + '</select>'
-                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value" value="' + r.value + '">'
-                + '<span class="amz-cr-and"' + (r.op === 'between' ? '' : ' style="display:none"') + '>and</span>'
-                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value2" value="' + r.value2 + '"' + (r.op === 'between' ? '' : ' style="display:none"') + '>'
+                + '<span class="amz-cr-and">From</span>'
+                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value" placeholder="any" value="' + fv + '" title="From (included). Blank = no lower limit.">'
+                + '<span class="amz-cr-and">To</span>'
+                + '<input type="number" step="any" class="form-control form-control-sm amz-cr-value2" placeholder="any" value="' + tv + '" title="To (not included). Blank = no upper limit. From = To means exactly that value.">'
                 + '<span class="amz-cr-count text-muted" title="SKUs (INV > 0) that meet this condition"></span></div>'
                 + '<div class="amz-cr-line"><span class="amz-cr-lbl">Then</span>'
                 + '<select class="form-select form-select-sm amz-cr-action"><option value="nroi"' + (r.action === 'nroi' ? ' selected' : '') + '>add points to the Target NROI</option><option value="price_pct"' + (r.action === 'price_pct' ? ' selected' : '') + '>change the S PRC by %</option></select>'
@@ -1728,12 +1761,12 @@
             r.name = String($card.find('.amz-cr-name').val() || '').trim().slice(0, 40) || 'Custom rule';
             r.on = $card.find('.amz-cr-on').is(':checked');
             r.field = $card.find('.amz-cr-field').val();
-            r.op = $card.find('.amz-cr-op').val();
-            r.value = num('.amz-cr-value');
-            r.value2 = num('.amz-cr-value2');
+            r.op = 'slab';
+            const nul = function(sel) { const t = String($card.find(sel).val() || '').trim(); const x = parseFloat(t); return (t === '' || !isFinite(x)) ? null : x; };
+            r.value = nul('.amz-cr-value');
+            r.value2 = nul('.amz-cr-value2');
             r.action = $card.find('.amz-cr-action').val() === 'price_pct' ? 'price_pct' : 'nroi';
             r.points = Math.min(500, Math.max(-500, num('.amz-cr-points')));
-            $card.find('.amz-cr-and, .amz-cr-value2').toggle(r.op === 'between');
             $card.find('.amz-cr-unit').text(r.action === 'nroi' ? 'pts' : '%');
             $card.find('.amz-dg-rule-sw-txt').text(r.on ? 'ON' : 'OFF');
             $card.find('.amz-cr-body').toggleClass('amz-dg-dim', !r.on);
@@ -2474,7 +2507,7 @@
         function amzNroiChain(slabGroi, d) {
             const order = amzNroiOrder();
             let cur = Number(slabGroi) || 0;
-            const out = { cvr: 0, age: 0, order: order };
+            const out = { cvr: 0, age: 0, clearance: 0, order: order };
             order.forEach(function(k) {
                 if (k === 'cvr') {
                     out.cvr = amzDilGroiCvrAdj(d);
@@ -2483,6 +2516,11 @@
                     const next = Math.max(0, amzPefRound2(cur + amzDilGroiAgeAdj(d)));
                     out.age = amzPefRound2(next - cur);
                     cur = next;
+                } else if (k === 'clearance') {
+                    // Clearance rule: a clearance SKU gets the saved points added to its Target NROI.
+                    const pts = amzClearanceAdjFor(d);
+                    out.clearance = pts;
+                    cur = Math.max(0, amzPefRound2(cur + pts));
                 } else if (k.indexOf('c_') === 0) {
                     // A custom rule card: its condition is met -> its points are added to the Target NROI.
                     const cr = amzCustomRuleById(k.slice(2));
@@ -3080,13 +3118,13 @@
         }
         function amzClearanceNroiNow() {
             const raw = parseFloat($('#amz-dg-clearance-block .amz-dg-clearance-groi').val());
-            if (isFinite(raw) && raw >= 0) return amzPefRound2(raw);
+            if (isFinite(raw)) return amzPefRound2(Math.min(500, Math.max(-500, raw)));
             return isFinite(amzClearanceNroi) ? amzClearanceNroi : 0;
         }
         function amzPaintClearanceNroiText() {
             amzClearanceNroi = amzClearanceNroiNow();
             const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-nroi');
-            if (el) el.textContent = amzDilGroiFmtNum(amzClearanceNroi) + '%';
+            if (el) el.textContent = (amzClearanceNroi > 0 ? '+' : '') + amzDilGroiFmtNum(amzClearanceNroi);
         }
         /** The Clearance block sits outside the slab table (its own block, rule written above it): fill it from the saved NROI%. */
         function amzAppendClearanceSlabRow() {
@@ -3225,8 +3263,8 @@
                 amzPaintRuleOn(res && res.rule_on);
                 amzSetCustomRules(res && res.custom_rules);
                 amzPaintRuleSeq(res && res.rule_seq);
-                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
-                    amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
+                if (res && res.clearance_adj != null && res.clearance_adj !== '' && isFinite(Number(res.clearance_adj))) {
+                    amzClearanceNroi = amzPefRound2(Number(res.clearance_adj));
                 }
                 amzClearanceNroiLoaded = !!res;
                 renderAmzDilGroiModalTable();
@@ -3259,10 +3297,10 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_adj: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
-                if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
-                    amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
+                if (res && res.clearance_adj != null && res.clearance_adj !== '' && isFinite(Number(res.clearance_adj))) {
+                    amzClearanceNroi = amzPefRound2(Number(res.clearance_adj));
                 }
                 if (res && Array.isArray(res.rules)) {
                     const saved = amzNormalizeDilGroiList(res.rules);
@@ -4504,30 +4542,28 @@
          * saved and pushed like any other SKU. With no target it stays display-only ("C"). Dil GROI rule on = never priced.
          */
         /**
-         * Sprc Dil (Dil GROI) rule on: a clearance SKU is priced from the clearance row of the Sprc Dil modal
-         * (Target NROI%). Same formula as the Dil slabs (dynamic Ads%). No Std / LMP cap, no negative-SNROI block.
-         * Returns 0 until the saved modal has loaded, so a not-yet-read 0% is never pushed.
+         * The Clearance rule is now a Target NROI rule: a clearance SKU is priced through the normal Sprc Dil rules (Dil slab,
+         * CVR, Ageing, custom ...) and the Clearance points are added to its Target NROI (amzNroiChain). There is no separate
+         * clearance price any more, so these two stay only for the places that still ask.
          */
-        function amzClearanceDilActive(d) {
-            // Clearance switch OFF: the Clearance Target NROI% no longer applies, the SKU is priced like any other SKU.
-            return amzRuleIsOn('clearance') && amzIsClearanceSku(d)
-                && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+        function amzClearanceDilActive(d) { return false; }
+        function amzClearanceDilPrice(d) { return 0; }
+        /** Points the Clearance rule adds to the Target NROI of this SKU (0 for a SKU not on clearance, switch OFF, or not on Sprc Dil). */
+        function amzClearanceAdjFor(d) {
+            if (!amzRuleIsOn('clearance') || !amzIsClearanceSku(d)) return 0;
+            if (typeof window.spriceActiveRule !== 'function' || window.spriceActiveRule() !== 'dil') return 0;
+            const v = amzClearanceNroiNow();
+            return isFinite(v) ? v : 0;
         }
-        function amzClearanceDilPrice(d) {
-            if (!amzClearanceDilActive(d)) return 0;
-            if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return 0;
-            if (!amzClearanceNroiLoaded) return 0;
-            const p = amzSpriceFromTargetNroi(d, amzClearanceNroiNow());
-            return p > 0 ? amzPefRound2(p) : 0;
-        }
+        window.amzClearanceAdjFor = amzClearanceAdjFor;
         window.amzClearanceDilActive = amzClearanceDilActive;
         window.amzClearanceDilPrice = amzClearanceDilPrice;
         function amzClearanceHasPrice(d) {
             if (!amzIsClearanceSku(d)) return false;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
-                // Clearance switch OFF: a clearance SKU is priced through the normal Sprc Dil rules.
-                if (!amzRuleIsOn('clearance')) return true;
-                return amzClearanceDilPrice(d) > 0;
+                // Sprc Dil: a clearance SKU is priced through the normal rules (the Clearance points are added to its Target NROI).
+                // Not before the saved modal has loaded, so a not-yet-read adjustment is never pushed.
+                return !amzRuleIsOn('clearance') || amzClearanceNroiLoaded;
             }
             return typeof amzStdClearanceTarget === 'function' && amzStdClearanceTarget(d) != null;
         }
@@ -4547,7 +4583,6 @@
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
             // Clearance SKUs have no S PRC unless the Clearance SNROI block has a target for their Dil. The column shows "C".
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
-            if (amzClearanceDilActive(d)) return amzClearanceDilPrice(d);
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
@@ -6029,7 +6064,7 @@
                 if (amzCustomRules.length >= AMZ_CUSTOM_MAX) { amzPefToast('error', 'At most ' + AMZ_CUSTOM_MAX + ' custom rules'); return; }
                 const id = amzNewCustomId();
                 const n = amzCustomRules.length + 1;
-                amzCustomRules.push({ id: id, name: 'Custom rule ' + n, on: true, field: 'dil', op: '>', value: 0, value2: 0, action: 'nroi', points: 0 });
+                amzCustomRules.push({ id: id, name: 'Custom rule ' + n, on: true, field: 'dil', op: 'slab', value: 0, value2: 10, action: 'nroi', points: 0 });
                 // New card goes to the end of the order.
                 amzRuleSeq['c_' + id] = amzSeqKeys().length;
                 amzRenderCustomCards();

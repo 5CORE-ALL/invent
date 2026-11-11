@@ -285,6 +285,7 @@ class MasterDilGroiSync
                 'rules' => $rules,
                 'cvr_adj' => $unpacked['cvr_adj'],
                 'clearance_nroi' => $unpacked['clearance_nroi'],
+                'clearance_adj' => $unpacked['clearance_adj'],
                 'lmp_cap' => $unpacked['lmp_cap'],
                 'diff_adj' => $unpacked['diff_adj'],
                 'age_adj' => $unpacked['age_adj'],
@@ -303,6 +304,7 @@ class MasterDilGroiSync
             'rules' => $rules,
             'cvr_adj' => $unpacked['cvr_adj'],
             'clearance_nroi' => $unpacked['clearance_nroi'],
+            'clearance_adj' => $unpacked['clearance_adj'],
             'lmp_cap' => $unpacked['lmp_cap'],
             'diff_adj' => $unpacked['diff_adj'],
             'age_adj' => $unpacked['age_adj'],
@@ -351,6 +353,9 @@ class MasterDilGroiSync
         }
         if (isset($existing['clearance_nroi']) && is_numeric($existing['clearance_nroi'])) {
             $visibility['clearance_nroi'] = $existing['clearance_nroi'];
+        }
+        if (isset($existing['clearance_adj']) && is_numeric($existing['clearance_adj'])) {
+            $visibility['clearance_adj'] = $existing['clearance_adj'];
         }
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => self::storeKey($channel)],

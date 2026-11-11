@@ -591,16 +591,17 @@ class AmazonDilGroiRuleTest extends TestCase
 
     public function test_rule_sequence_orders_the_target_nroi_rules_and_the_price_rules(): void
     {
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(null));
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder(null));
         $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(null));
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder('nope'));
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder('nope'));
         // Lowest number first, inside each group.
-        $this->assertSame(['diff', 'cvr', 'age'], AmazonDilGroiRule::ruleOrder(['cvr' => 3, 'age' => 4, 'diff' => 2]));
+        $this->assertSame(['diff', 'cvr', 'age', 'clearance'], AmazonDilGroiRule::ruleOrder(['cvr' => 3, 'age' => 4, 'diff' => 2]));
         $this->assertSame(['cvrud', 'lmp'], AmazonDilGroiRule::priceOrder(['lmp' => 8, 'cvrud' => 2]));
-        // The Dil slab and Clearance numbers never reorder the other groups.
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['dil' => 9, 'clearance' => 1]));
+        // The Dil slab number never reorders the rules; Clearance is a Target NROI rule and goes by its own number.
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder(['dil' => 9]));
+        $this->assertSame(['clearance', 'cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['clearance' => 1]));
         // A tie keeps the default order.
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['cvr' => 5, 'age' => 5, 'diff' => 5]));
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder(['cvr' => 5, 'age' => 5, 'diff' => 5]));
         $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(['lmp' => 5, 'cvrud' => 5]));
         // Garbage keeps the default number; numbers are clamped to 1..99.
         $seq = AmazonDilGroiRule::normalizeRuleSeq(['cvr' => -4, 'age' => 'x', 'diff' => 500, 'dil' => 12]);
@@ -615,7 +616,7 @@ class AmazonDilGroiRuleTest extends TestCase
         $this->assertSame(AmazonDilGroiRule::RULE_SEQ_DEFAULT, AmazonDilGroiRule::unpackStored(null)['rule_seq']);
         // Review Discount is Seq 2 by default and never reorders the NROI / price rules.
         $this->assertSame(2.0, AmazonDilGroiRule::RULE_SEQ_DEFAULT['rev']);
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(['rev' => 1]));
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder(['rev' => 1]));
         $this->assertSame(['lmp', 'cvrud'], AmazonDilGroiRule::priceOrder(['rev' => 99]));
     }
 
@@ -694,10 +695,10 @@ class AmazonDilGroiRuleTest extends TestCase
 
         // Each custom rule joins the group of its action and is ordered by its c_<id> sequence number.
         $seq = ['cvr' => 5, 'age' => 6, 'diff' => 7, 'c_ab1' => 1, 'c_x2' => 9, 'c_p3' => 1];
-        $this->assertSame(['c_ab1', 'cvr', 'age', 'diff', 'c_x2'], AmazonDilGroiRule::ruleOrder($seq, $rules));
+        $this->assertSame(['c_ab1', 'cvr', 'age', 'diff', 'clearance', 'c_x2'], AmazonDilGroiRule::ruleOrder($seq, $rules));
         $this->assertSame(['c_p3', 'lmp', 'cvrud'], AmazonDilGroiRule::priceOrder($seq, $rules));
         // Without custom rules nothing changes.
-        $this->assertSame(['cvr', 'age', 'diff'], AmazonDilGroiRule::ruleOrder(null, []));
+        $this->assertSame(['cvr', 'age', 'diff', 'clearance'], AmazonDilGroiRule::ruleOrder(null, []));
 
         // Saved with the other Sprc Dil blocks.
         $saved = AmazonDilGroiRule::unpackStored(['rules' => [], 'custom_rules' => [['id' => 'q9', 'field' => 'inv', 'op' => '<=', 'value' => 3]], 'rule_seq' => ['c_q9' => 2]]);

@@ -309,9 +309,22 @@
                         steps.push(temuRuleStep('skip', no + ' · Ageing rule',
                             age.days === null ? 'No age for this SKU. Not applied.' : ('Age ' + age.days + ' days: ' + (age.label ? 'slab ' + age.label + ' adds 0.' : 'no Ageing slab matches.'))));
                     }
+                },
+                clearance: function(no) {
+                    const isClr = (typeof amzIsClearanceSku === 'function') && amzIsClearanceSku(d);
+                    const pts = (typeof window.amzClearanceAdjFor === 'function') ? Number(window.amzClearanceAdjFor(d)) || 0 : 0;
+                    if (typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('clearance')) {
+                        steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'The Clearance rule is OFF. No change.'));
+                    } else if (!isClr) {
+                        steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'This SKU is not on clearance. Not applied.'));
+                    } else if (!pts) {
+                        steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'Clearance SKU, but the Clearance points are 0. No change.'));
+                    } else {
+                        steps.push(temuRuleStep('ok', no + ' · Clearance rule', 'Clearance SKU → <b>' + (pts > 0 ? '+' : '') + pts + '</b> to Target NROI'));
+                    }
                 }
             };
-            ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age']).forEach(function(k, idx) {
+            ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age', 'clearance']).forEach(function(k, idx) {
                 if (k.indexOf('c_') === 0) {
                     // A custom rule card that adds points to the Target NROI.
                     const cr = (typeof window.amzCustomRuleById === 'function') ? window.amzCustomRuleById(k.slice(2)) : null;

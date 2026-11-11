@@ -1240,7 +1240,8 @@ class AmazonDilGroiRule
      */
     public static function ruleOrder($seq, array $customRules = []): array
     {
-        $keys = ['cvr', 'age', 'diff'];
+        // Clearance (points added to the Target NROI of clearance SKUs) is a Target NROI rule like CVR and Age.
+        $keys = ['cvr', 'age', 'diff', 'clearance'];
         foreach ($customRules as $r) {
             if (($r['action'] ?? '') === 'nroi') {
                 $keys[] = 'c_'.$r['id'];
@@ -1272,7 +1273,8 @@ class AmazonDilGroiRule
 
     /** What a custom rule can look at, and what it can do. */
     public const CUSTOM_FIELDS = ['dil', 'cvr', 'age', 'diff', 'inv'];
-    public const CUSTOM_OPS = ['>', '>=', '<', '<=', '=', 'between'];
+    /** 'slab' = From–To (From ≤ value < To, blank = open end, From = To = exact). The other operators are older saved rules. */
+    public const CUSTOM_OPS = ['slab', '>', '>=', '<', '<=', '=', 'between'];
     public const CUSTOM_ACTIONS = ['nroi', 'price_pct'];
     public const CUSTOM_MAX = 20;
 
@@ -1282,7 +1284,7 @@ class AmazonDilGroiRule
      * Each has an ON / OFF switch and a sequence number ("c_<id>" in rule_seq).
      *
      * @param  mixed  $raw
-     * @return list<array{id:string,name:string,on:bool,field:string,op:string,value:float,value2:float,action:string,points:float}>
+     * @return list<array{id:string,name:string,on:bool,field:string,op:string,value:?float,value2:?float,action:string,points:float}>
      */
     public static function normalizeCustomRules($raw): array
     {
@@ -1311,8 +1313,9 @@ class AmazonDilGroiRule
                 'on' => ! ($on === false || $on === 0 || $on === '0' || $on === 'false' || $on === 'off'),
                 'field' => in_array($field, self::CUSTOM_FIELDS, true) ? $field : 'dil',
                 'op' => in_array($op, self::CUSTOM_OPS, true) ? $op : '>',
-                'value' => is_numeric($r['value'] ?? null) ? round((float) $r['value'], 4) : 0.0,
-                'value2' => is_numeric($r['value2'] ?? null) ? round((float) $r['value2'], 4) : 0.0,
+                // A slab keeps a blank From / To as null (open end); the older operators default a blank to 0.
+                'value' => is_numeric($r['value'] ?? null) ? round((float) $r['value'], 4) : ($op === 'slab' ? null : 0.0),
+                'value2' => is_numeric($r['value2'] ?? null) ? round((float) $r['value2'], 4) : ($op === 'slab' ? null : 0.0),
                 'action' => in_array($action, self::CUSTOM_ACTIONS, true) ? $action : 'nroi',
                 'points' => is_numeric($r['points'] ?? null) ? round(min(500.0, max(-500.0, (float) $r['points'])), 2) : 0.0,
             ];
@@ -1335,6 +1338,15 @@ class AmazonDilGroiRule
         $v = $values[$rule['field'] ?? ''] ?? null;
         if ($v === null || ! is_finite((float) $v)) {
             return false;
+        }
+        if (($rule['op'] ?? '') === 'slab') {
+            $from = is_numeric($rule['value'] ?? null) ? (float) $rule['value'] : null;
+            $to = is_numeric($rule['value2'] ?? null) ? (float) $rule['value2'] : null;
+            if ($from !== null && $to !== null && abs($to - $from) < 0.0001) {
+                return abs($v - $from) < 0.0001;
+            }
+
+            return ($from === null || $v >= $from) && ($to === null || $v < $to);
         }
         $a = (float) $rule['value'];
         $b = (float) $rule['value2'];
@@ -1366,6 +1378,7 @@ class AmazonDilGroiRule
         $ruleSeqRaw = null;
         $customRaw = null;
         $clearanceNroi = null;
+        $clearanceAdj = null;
         if (is_array($saved) && isset($saved['rules']) && is_array($saved['rules'])) {
             $ruleOnRaw = is_array($saved['rule_on'] ?? null) ? $saved['rule_on'] : null;
             $ruleSeqRaw = is_array($saved['rule_seq'] ?? null) ? $saved['rule_seq'] : null;
@@ -1378,6 +1391,10 @@ class AmazonDilGroiRule
             $ageAdjRaw = array_key_exists('age_adj', $saved) && is_array($saved['age_adj']) ? $saved['age_adj'] : null;
             // Review Discount slabs: same rule (not saved → defaults at 0%, saved empty list → off).
             $revReduceRaw = array_key_exists('rev_reduce', $saved) && is_array($saved['rev_reduce']) ? $saved['rev_reduce'] : null;
+            // Clearance rule of the Amazon Sprc Dil modal: points ADDED to the Target NROI of clearance SKUs (negative lowers it).
+            if (isset($saved['clearance_adj']) && is_numeric($saved['clearance_adj'])) {
+                $clearanceAdj = round(min(500.0, max(-500.0, (float) $saved['clearance_adj'])), 2);
+            }
             if (isset($saved['clearance_nroi']) && is_numeric($saved['clearance_nroi'])) {
                 $clearanceNroi = round(max(0, (float) $saved['clearance_nroi']), 2);
             }
@@ -1388,6 +1405,7 @@ class AmazonDilGroiRule
             'rules' => $rules,
             'cvr_adj' => self::normalizeCvrAdj($cvrRaw),
             'clearance_nroi' => $clearanceNroi,
+            'clearance_adj' => $clearanceAdj,
             'lmp_cap' => self::normalizeLmpCap($lmpCapRaw),
             'diff_adj' => self::normalizeDiffAdj($diffAdjRaw),
             'age_adj' => self::normalizeAgeAdj($ageAdjRaw),
