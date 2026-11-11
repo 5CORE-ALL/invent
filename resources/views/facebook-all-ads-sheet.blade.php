@@ -147,6 +147,8 @@
             transition: transform 0.1s ease;
         }
         .faas-kpi-tile.badge-chart-link { cursor: pointer; }
+        /* Trend dot: yellow = data updated but same as previous day (grey = not updated; green/red come from the layout). */
+        .faas-kpi-tile .summary-trend-dot.same-updated { background: #eab308; }
         .faas-kpi-tile.badge-chart-link:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15); }
         .faas-kpi-tile > .faas-kpi-val { font-size: 1.08em; font-weight: 800; white-space: nowrap; }
         .faas-kpi-tile--count  { background: #475569; color: #fff; border-color: #334155; }
@@ -2465,6 +2467,11 @@
                 sales: faasL30Totals.sales, sold: faasL30Totals.sold,
             });
             const prev = faasDotPrev ? faasDotValues(faasDotPrev) : null;
+            // "Data updated" = the sheet was refreshed since the previous snapshot,
+            // i.e. at least one raw L30 number moved. If none moved, nothing was
+            // refreshed, so an unchanged badge is grey rather than yellow.
+            const dataUpdated = !!prev && ['impr', 'clk', 'spend', 'sales', 'sold']
+                .some(k => Math.abs(cur[k] - prev[k]) > 0.5);
             FAAS_DOT_METRICS.forEach(m => {
                 const badge = document.getElementById(m.id);
                 if (!badge) return;
@@ -2484,9 +2491,17 @@
                 let cls = diff > m.eps ? 'up' : (diff < -m.eps ? 'down' : 'flat');
                 if (m.lower && cls === 'up') cls = 'down';
                 else if (m.lower && cls === 'down') cls = 'up';
-                dot.className = 'summary-trend-dot ' + cls;
+                const same = cls === 'flat';
+                // green = improved, red = worse, yellow = data updated but same as
+                // previous, grey = data not updated (nothing changed at all).
+                dot.className = 'summary-trend-dot ' + (same ? (dataUpdated ? 'same-updated' : 'flat') : cls);
                 const word = diff > m.eps ? 'Up' : (diff < -m.eps ? 'Down' : 'Same');
-                dot.title = word + ' vs ' + (faasDotPrev.date || 'prior day') + ' (' + m.fmt(p) + ' → ' + m.fmt(c) + ')';
+                const prevLbl = faasDotPrev.date || 'prior day';
+                dot.title = same
+                    ? (dataUpdated
+                        ? 'Data updated, but same as ' + prevLbl + ' (' + m.fmt(c) + ')'
+                        : 'Data not updated since ' + prevLbl + ' (' + m.fmt(c) + ')')
+                    : word + ' vs ' + prevLbl + ' (' + m.fmt(p) + ' → ' + m.fmt(c) + ')';
             });
         }
 
