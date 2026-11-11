@@ -578,6 +578,26 @@
         </div>
     </div>
 
+    <!-- CTN Details Modal -->
+    <div class="modal fade" id="ctnDetailsModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">CTN Details for <span id="ctnDetailsSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-sm table-bordered mb-0">
+                        <tbody id="ctnDetailsBody"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- UPC Edit Modal -->
     <div class="modal fade" id="upcEditModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered">
@@ -2143,6 +2163,23 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const raw = cell.getValue();
+                                const text = (raw === null || raw === undefined) ? '' : String(raw);
+                                if (rowData.is_parent) return text;
+                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // mousedown preventDefault keeps the click on the dot from starting the cell editor
+                                const dot = `<span class="ctn-dot" onmousedown="event.preventDefault();" title="View CTN details" style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#28a745;margin-left:6px;vertical-align:middle;cursor:pointer;"></span>`;
+                                return `${esc(text)}${dot}`;
+                            },
+                            cellClick: function(e, cell) {
+                                if (!e.target.closest('.ctn-dot')) return;
+                                e.stopPropagation();
+                                openCtnDetailsModal(cell.getRow());
+                                // Make sure the input editor did not open underneath the modal
+                                setTimeout(function() { try { cell.cancelEdit(); } catch (err) {} }, 0);
+                            },
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -3496,6 +3533,33 @@
                 // Ensure backdrop is properly configured
                 $('.modal-backdrop').css('z-index', '1040');
                 console.log('Modal shown');
+            }
+
+            // CTN details modal: shows L / W / H / Qty / GW CTN and CTN cost for the clicked row (read-only)
+            function openCtnDetailsModal(row) {
+                const data = row.getData();
+                const fields = [
+                    ['L CTN', data.Length],
+                    ['W CTN', data.Width],
+                    ['H CTN', data.Height],
+                    ['Qty CTN', data.Quantity_in_each_box],
+                    ['GW CTN', data.GW_CTN],
+                    ['CTN cost', data.Shipping_Amount]
+                ];
+                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                $('#ctnDetailsSku').text(data.FBA_SKU || data.SKU || '');
+                const body = $('#ctnDetailsBody').empty();
+                fields.forEach(function(f) {
+                    const v = (f[1] === null || f[1] === undefined || String(f[1]).trim() === '') ? '-' : f[1];
+                    body.append(`<tr><th style="width:45%;background:#f8f9fa;">${f[0]}</th><td class="fw-semibold">${esc(v)}</td></tr>`);
+                });
+
+                const modal = $('#ctnDetailsModal');
+                modal.appendTo('body');
+                modal.css('z-index', '1060');
+                modal.modal('show');
+                $('.modal-backdrop').css('z-index', '1059');
             }
 
             // UPC Edit modal: fill UPC code, saved as `upc_edit` and compared with UPC Company
