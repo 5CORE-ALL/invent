@@ -7148,6 +7148,38 @@
             function saveAmazonColCats(map) {
                 try { localStorage.setItem(AMAZON_COL_CAT_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
             }
+            // A column can also show under other headers: { field: [header keys] } (copies; the column itself stays one column).
+            const AMAZON_COL_EXTRA_STORAGE = 'amazon_tabulator_col_extra_v1';
+            function loadAmazonColExtras() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(AMAZON_COL_EXTRA_STORAGE) || '{}');
+                    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+                } catch (e) { return {}; }
+            }
+            function saveAmazonColExtras(map) {
+                try { localStorage.setItem(AMAZON_COL_EXTRA_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
+            function amazonColExtraAdd(field, cat) {
+                const ex = loadAmazonColExtras();
+                const list = Array.isArray(ex[field]) ? ex[field] : [];
+                if (list.indexOf(cat) === -1) list.push(cat);
+                ex[field] = list;
+                saveAmazonColExtras(ex);
+            }
+            function amazonColExtraRemove(field, cat) {
+                const ex = loadAmazonColExtras();
+                if (!Array.isArray(ex[field])) return;
+                ex[field] = ex[field].filter(function(c) { return c !== cat; });
+                if (!ex[field].length) delete ex[field];
+                saveAmazonColExtras(ex);
+            }
+            /** Same column shown under several headers: keep every checkbox of one field equal, and every header tick right. */
+            function amazonColVisSyncField(menu, field, checked) {
+                menu.querySelectorAll('.col-vis-item input.col-vis-field-toggle').forEach(function(cb) {
+                    if ((cb.getAttribute('data-field') || cb.value) === field) cb.checked = checked;
+                });
+                menu.querySelectorAll('.col-vis-group').forEach(syncAmazonGroupHeaderCheckbox);
+            }
             function bindAmazonColVisDrag(li, groupEls) {
                 li.draggable = true;
                 li.addEventListener('dragstart', function(e) {
@@ -7155,6 +7187,7 @@
                     li.classList.add('col-vis-dragging');
                     e.dataTransfer.setData('text/plain', li.dataset.field || '');
                     e.dataTransfer.setData('text/col-vis-field', li.dataset.field || '');
+                    e.dataTransfer.setData('text/col-vis-from', li.dataset.group || '');
                     e.dataTransfer.effectAllowed = 'move';
                 });
                 li.addEventListener('dragend', function() {
@@ -7183,18 +7216,28 @@
                             || e.dataTransfer.getData('text/plain');
                         if (!field) return;
                         const menu = document.getElementById('column-dropdown-menu');
-                        const li = menu ? menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]') : null;
+                        const from = e.dataTransfer.getData('text/col-vis-from');
+                        const li = menu ? (menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"][data-group="' + CSS.escape(from) + '"]')
+                            || menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) : null;
                         if (!li) return;
                         const nextCat = group.dataset.category;
                         if (!nextCat || li.dataset.group === nextCat) return;
+                        // The column is already under that header (same column in two headers is allowed, twice in one is not).
+                        if (list.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) return;
                         const fromGroup = li.closest('.col-vis-group');
+                        const prevCat = li.dataset.group;
                         list.appendChild(li);
                         li.dataset.group = nextCat;
                         const cb = li.querySelector('input[type="checkbox"]');
                         if (cb) cb.dataset.group = nextCat;
-                        const cats = loadAmazonColCats();
-                        cats[field] = nextCat;
-                        saveAmazonColCats(cats);
+                        if (li.dataset.copy === '1') {
+                            amazonColExtraRemove(field, prevCat);
+                            amazonColExtraAdd(field, nextCat);
+                        } else {
+                            const cats = loadAmazonColCats();
+                            cats[field] = nextCat;
+                            saveAmazonColCats(cats);
+                        }
                         syncAmazonGroupHeaderCheckbox(fromGroup);
                         syncAmazonGroupHeaderCheckbox(group);
                     });
@@ -7228,6 +7271,7 @@
                     .then(savedVisibility => {
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
                         const catOverrides = loadAmazonColCats();
+                        const extras = loadAmazonColExtras();
 
                         const groupsLi = document.createElement("li");
                         groupsLi.className = "col-vis-full";
@@ -7303,33 +7347,44 @@
                                 ? (def.visible !== false)
                                 : (map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible());
 
-                            const li = document.createElement("li");
-                            li.className = "col-vis-item";
-                            li.dataset.field = field;
-                            li.dataset.group = cat;
+                            const makeItem = function(itemCat, isCopy) {
+                                const li = document.createElement("li");
+                                li.className = "col-vis-item";
+                                li.dataset.field = field;
+                                li.dataset.group = itemCat;
+                                if (isCopy) li.dataset.copy = '1';
 
-                            const label = document.createElement("label");
-                            const checkbox = document.createElement("input");
-                            checkbox.type = "checkbox";
-                            checkbox.value = field;
-                            checkbox.setAttribute('data-field', field);
-                            checkbox.className = "col-vis-field-toggle";
-                            checkbox.dataset.group = cat;
-                            checkbox.checked = isVisible;
+                                const label = document.createElement("label");
+                                const checkbox = document.createElement("input");
+                                checkbox.type = "checkbox";
+                                checkbox.value = field;
+                                checkbox.setAttribute('data-field', field);
+                                checkbox.className = "col-vis-field-toggle";
+                                checkbox.dataset.group = itemCat;
+                                checkbox.checked = isVisible;
 
-                            label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(' ' + title));
-                            label.title = title + ' (drag to another header)';
-                            li.appendChild(label);
-                            const xBtn = document.createElement("button");
-                            xBtn.type = "button";
-                            xBtn.className = "col-vis-item-x";
-                            xBtn.innerHTML = "&times;";
-                            xBtn.dataset.field = field;
-                            xBtn.title = "Remove from this header (in a normal header: hide the column)";
-                            li.appendChild(xBtn);
-                            bindAmazonColVisDrag(li, groupEls);
-                            lists[cat].appendChild(li);
+                                label.appendChild(checkbox);
+                                label.appendChild(document.createTextNode(' ' + title));
+                                label.title = title + ' (drag to another header)';
+                                li.appendChild(label);
+                                const xBtn = document.createElement("button");
+                                xBtn.type = "button";
+                                xBtn.className = "col-vis-item-x";
+                                xBtn.innerHTML = "&times;";
+                                xBtn.dataset.field = field;
+                                xBtn.title = isCopy ? "Remove from this header" : "Remove from this header (in a normal header: hide the column)";
+                                li.appendChild(xBtn);
+                                bindAmazonColVisDrag(li, groupEls);
+                                lists[itemCat].appendChild(li);
+                            };
+                            makeItem(cat, false);
+                            // The same column also shown under other headers.
+                            const extraCats = extras[field];
+                            if (Array.isArray(extraCats)) {
+                                extraCats.forEach(function(c) {
+                                    if (c !== cat && lists[c]) makeItem(c, true);
+                                });
+                            }
                         });
 
                         visKeys.forEach(function(cat) {
@@ -7955,6 +8010,7 @@
                         if (!col) return;
                         if (checked) col.show();
                         else col.hide();
+                        amazonColVisSyncField(document.getElementById('column-dropdown-menu'), field, checked);
                     });
                     e.target.indeterminate = false;
                     saveColumnVisibilityToServer();
@@ -7968,6 +8024,7 @@
                 else col.hide();
                 const groupEl = e.target.closest('.col-vis-group');
                 syncAmazonGroupHeaderCheckbox(groupEl);
+                amazonColVisSyncField(document.getElementById('column-dropdown-menu'), field, e.target.checked);
                 saveColumnVisibilityToServer();
             });
 
@@ -7985,7 +8042,7 @@
 
                 /** Put a column under another header (same as dragging it there) and remember it. */
                 function moveColToGroup(field, cat) {
-                    const li = menuEl.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]');
+                    const li = menuEl.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]:not([data-copy="1"])');
                     const group = menuEl.querySelector('.col-vis-group[data-category="' + CSS.escape(cat) + '"]');
                     if (!li || !group) return;
                     const fromGroup = li.closest('.col-vis-group');
@@ -8023,8 +8080,14 @@
                     const q = searchEl.value.trim().toLowerCase();
                     if (!q) { picked.clear(); box.style.display = 'none'; box.innerHTML = ''; return; }
                     const hits = [];
+                    const seen = {};
+                    // Columns already in this header are left out; a column that is in another header can still be added (same column in two headers).
                     menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
-                        if (li.dataset.group === cat) return;
+                        if (li.dataset.group === cat) seen[li.dataset.field] = true;
+                    });
+                    menuEl.querySelectorAll('.col-vis-item:not([data-copy="1"])').forEach(function(li) {
+                        if (seen[li.dataset.field]) return;
+                        seen[li.dataset.field] = true;
                         const text = ((li.querySelector('label') || li).textContent || '').trim();
                         if (text.toLowerCase().indexOf(q) !== -1) hits.push({ field: li.dataset.field, text: text, from: amazonColVisLabel(li.dataset.group) });
                     });
@@ -8116,7 +8179,13 @@
                         const li = xBtn.closest('.col-vis-item');
                         if (!li) return;
                         const field = li.dataset.field;
-                        if (amazonColVisIsCustom(li.dataset.group)) {
+                        if (li.dataset.copy === '1') {
+                            // A copy of the column under this header: just take it out of here (the column and its own header stay).
+                            amazonColExtraRemove(field, li.dataset.group);
+                            const grp = li.closest('.col-vis-group');
+                            li.remove();
+                            syncAmazonGroupHeaderCheckbox(grp);
+                        } else if (amazonColVisIsCustom(li.dataset.group)) {
                             // Your header: take the column out, it goes back to its normal header.
                             const def = table.getColumn(field) ? table.getColumn(field).getDefinition() : null;
                             const home = classifyAmazonColumn(field, amazonColVisPlainTitle(def || { field: field }));
@@ -8142,10 +8211,10 @@
                         const group = addSel.closest('.col-vis-group');
                         if (!group) return;
                         const cat = group.dataset.category;
-                        Array.from(pickedSet(cat)).forEach(function(f) { moveColToGroup(f, cat); });
+                        // Added as a copy: the column stays under its own header too.
+                        Array.from(pickedSet(cat)).forEach(function(f) { amazonColExtraAdd(f, cat); });
                         pickedSet(cat).clear();
-                        const search = group.querySelector('.col-vis-group-search');
-                        if (search) { search.value = ''; paintGroupResults(search); }
+                        buildColumnDropdown();
                         return;
                     }
 
@@ -8173,6 +8242,8 @@
                         const cats = loadAmazonColCats();
                         Object.keys(cats).forEach(function(f) { if (cats[f] === key) delete cats[f]; });
                         saveAmazonColCats(cats);
+                        const ex = loadAmazonColExtras();
+                        Object.keys(ex).forEach(function(f) { amazonColExtraRemove(f, key); });
                         buildColumnDropdown();
                     }
                 });
