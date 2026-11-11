@@ -2098,6 +2098,9 @@
                                         <a href="{{ route('temu1.raw.data') }}">Temu 1 Raw Data</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('temu1.item.data') }}">Temu 1 Data</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('temu.ads') }}">Temu Ads (API)</a>
                                     </li>
                                     <li>
