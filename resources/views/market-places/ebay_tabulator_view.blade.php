@@ -695,7 +695,7 @@
                                 <tbody id="pause-rule-rows"></tbody>
                             </table>
                         </div>
-                        <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2">
                             <button type="button" id="pause-rule-add-btn" class="btn btn-sm btn-outline-primary"
                                 style="border-style:dashed;">
                                 <i class="fa-solid fa-plus me-1"></i>Add condition
@@ -715,7 +715,7 @@
                                 <option value="all">Show: All SKUs</option>
                                 <option value="paused">Show: Ads paused</option>
                                 <option value="running">Show: Ads running</option>
-                            </select>
+                    </select>
                         </div>
                         <div class="small text-muted mt-2">
                             Conditions with an empty value are ignored. <strong>AND</strong> is evaluated before
@@ -758,24 +758,24 @@
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
-                        <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
+                            style="width: auto; display: inline-block;">
+                            <option value="all">GPFT%</option>
+                            <option value="negative">Negative</option>
+                            <option value="0-10">0-10%</option>
+                            <option value="10-20">10-20%</option>
+                            <option value="20-30">20-30%</option>
+                            <option value="30-40">30-40%</option>
                         <option value="40plus">Above 40%</option>
-                    </select>
+                        </select>
                     <select id="cvr-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
+                            style="width: auto; display: inline-block;">
                         <option value="all">CVR%</option>
-                        <option value="0-0">0%</option>
+                            <option value="0-0">0%</option>
                         <option value="0-3">0-3%</option>
                         <option value="3-7">3-7%</option>
-                        <option value="7-13">7-13%</option>
-                        <option value="13plus">13%+</option>
-                    </select>
+                            <option value="7-13">7-13%</option>
+                            <option value="13plus">13%+</option>
+                        </select>
 
                     <select id="roi-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -849,7 +849,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
                         title="Set S Bid from Dil. eBay 1 keeps its own slabs.">
                         Dil vs SBid
-                    </button>
+                        </button>
                     @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay1'])
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay1'])
@@ -877,7 +877,7 @@
                         <button type="button" class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown"
                             aria-expanded="false" title="Export / Import">
                             <i class="fas fa-file-export"></i>
-                        </button>
+                    </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#exportModal"><i class="fa fa-file-excel text-success"></i> Export</a></li>
                             <li><a class="dropdown-item" href="#" id="export-lmp-btn"><i class="fas fa-file-export text-warning"></i> Export LMP</a></li>
@@ -926,8 +926,8 @@
                                 data-metric="y_cvr_percent" data-live-value="" data-format="pct"
                                 style="background-color:#059669;color:#fff;font-weight:bold;cursor:pointer;"
                                 title="Y CVR% = yesterday units ÷ yesterday views × 100. Same value as Y CVR on the Active Channel page. Click badge or dot for rolling history.">{!! $ebTrendDot('y_cvr_percent') !!}Y CVR%: …</span>
-                        </div>
                     </div>
+                </div>
                     <div class="amz-sum-block amz-sum-block--l30">
                         <div class="amz-sum-block-title">L30</div>
                         <div class="amz-sum-row amz-sum-row--l30" role="group" aria-label="L30 metrics">
@@ -945,7 +945,7 @@
                                 title="GPFT%. Click badge or dot for rolling history.">{!! $ebTrendDot('gpft_percent') !!}GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%</span>
                             <span class="badge fs-6 p-2 bg-secondary ebay1-badge-chart" id="groi-percent-badge"
                                 data-metric="groi_percent" data-live-value="{{ round((float) ($ordersL30Groi ?? 0)) }}" data-format="pct"
-                                style="color: white; font-weight: bold; cursor: pointer;"
+                            style="color: white; font-weight: bold; cursor: pointer;"
                                 title="GROI%. Click badge or dot for rolling history.">{!! $ebTrendDot('groi_percent') !!}GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%</span>
                             <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
                                 data-metric="npft_percent" data-live-value="{{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1, '.', '') }}" data-format="pct"
@@ -985,11 +985,11 @@
                                 title="Number of rows currently shown after filters">Rows: 0</span>
                             <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
                                 data-metric="sold_count" data-live-value="0"
-                                style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
+                            style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
                                 title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">{!! $ebTrendDot('sold_count') !!}> 0 Sold: 0</span>
                             <span class="badge fs-6 p-2 bg-danger ebay1-badge-chart" id="zero-sold-count-badge"
                                 data-metric="zero_sold_count" data-live-value="0"
-                                style="color: white; font-weight: bold; cursor: pointer;"
+                            style="color: white; font-weight: bold; cursor: pointer;"
                                 title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">{!! $ebTrendDot('zero_sold_count') !!}0 Sold: 0</span>
                             <span class="badge fs-6 p-2 bg-warning" id="no-category-count-badge"
                                 style="color: #1f2937; font-weight: bold; cursor: pointer;"
@@ -1130,9 +1130,9 @@
                     <!-- Table body (scrollable section) -->
                     <div id="ebay-table" style="flex: 1;"></div>
                 </div>
+                </div>
             </div>
         </div>
-    </div>
     </div>
 
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay1'])
@@ -1150,8 +1150,8 @@
                             title="Pull live prices. If the competitor listing has variations, every matching family SKU is updated (4PCS, 2PCS, WH, BLK).">
                             <i class="fas fa-cloud-download-alt"></i> Pull
                         </button>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                            aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
                     </div>
                 </div>
                 <div class="modal-body">
@@ -1232,12 +1232,12 @@
                         </select>
                         <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
-                </div>
+                    </div>
                 <div class="modal-body p-2">
                     <div id="skuChartContainer" style="height: 38vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
-                            <canvas id="skuMetricsChart"></canvas>
-                        </div>
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
                         <div id="skuChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
                             <div class="sku-ref-col" data-metric="0" style="min-width: 62px; text-align: center; padding: 4px 4px;">
                                 <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="skuChartRefDot" class="sku-col-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd; flex-shrink: 0;"></span><span id="skuChartRefLabel">Price</span></div>
@@ -3503,14 +3503,14 @@
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Price (USD)',
-                        data: [],
+                            label: 'Price (USD)',
+                            data: [],
                         borderColor: '#adb5bd',
                         backgroundColor: 'rgba(108,117,125,0.08)',
                         borderWidth: 1.5,
                         pointRadius: 3,
                         pointHoverRadius: 5,
-                        yAxisID: 'y',
+                            yAxisID: 'y',
                         tension: 0.3,
                         fill: true
                     }]
@@ -3710,14 +3710,14 @@
                         });
                     }
 
-                    if (!data || data.length === 0) {
+                        if (!data || data.length === 0) {
                         clearRefPanel();
-                        skuMetricsChart.data.labels = [];
+                            skuMetricsChart.data.labels = [];
                         skuMetricsChart.data.datasets.forEach(dataset => { dataset.data = []; });
                         skuMetricsChart.update('active');
                         $('#chart-no-data-message').show();
-                        return;
-                    }
+                            return;
+                        }
 
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
@@ -4222,8 +4222,8 @@
                         ? ('(' + count + ' SKU' + (count !== 1 ? 's' : '') + ' selected)')
                         : '(select SKUs in table)'
                 );
-                $('#discount-input-container').toggle(count > 0 || decreaseModeActive || increaseModeActive ||
-                    samePriceModeActive);
+                    $('#discount-input-container').toggle(count > 0 || decreaseModeActive || increaseModeActive ||
+                        samePriceModeActive);
             }
 
             // Header checkbox reflects selection on the current page only (Amazon-style)
@@ -4414,10 +4414,10 @@
                 const inputValue = parseFloat(String(rawInput || '').replace(',', '.'));
                 const discountType = $('#discount-type-select').val();
 
-                if (rawInput === '' || rawInput == null) {
+                    if (rawInput === '' || rawInput == null) {
                     showToast(samePriceModeActive ? 'Please enter a price' : 'Please enter a value (% or $)', 'error');
-                    return;
-                }
+                        return;
+                    }
                 if (samePriceModeActive) {
                     if (isNaN(inputValue) || inputValue <= 0) {
                         showToast('Please enter a valid positive price', 'error');
@@ -5062,8 +5062,8 @@
                             const dil = (typeof chPromoDil === 'function')
                                 ? chPromoDil(rowData)
                                 : (function() {
-                                    const INV = parseFloat(rowData.INV) || 0;
-                                    const OVL30 = parseFloat(rowData['L30']) || 0;
+                            const INV = parseFloat(rowData.INV) || 0;
+                            const OVL30 = parseFloat(rowData['L30']) || 0;
                                     return INV === 0 ? 0 : (OVL30 / INV) * 100;
                                 })();
 
@@ -6570,7 +6570,7 @@
                 // Pause Ads Rule view filter (only when rule is on and has usable conditions)
                 if (pauseRuleState.view !== 'all' && pauseRuleState.enabled && pauseRuleHasActiveConditions()) {
                     var wantPaused = pauseRuleState.view === 'paused';
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         var res = pauseRuleEvaluate(data);
                         if (res === null) return false;
                         return res === wantPaused;
@@ -6580,7 +6580,7 @@
                 // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
                 // so the row count matches the badge.
                 if (blueTriangleFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1HasBlueTriangle(data);
                     });
                     updateCalcValues();
@@ -6597,13 +6597,13 @@
                 if (!isProductNavigationActive) {
                     // View type: All | Parent | SKU (parent = only parent rows; sku = only child SKU rows)
                     if (viewTypeFilter === 'parent') {
-                        table.addFilter(function(data) {
+                            table.addFilter(function(data) {
                             return ebayIsParentRowData(data);
-                        });
+                            });
                     } else if (viewTypeFilter === 'sku') {
-                        table.addFilter(function(data) {
+                            table.addFilter(function(data) {
                             return !ebayIsParentRowData(data);
-                        });
+                            });
                     }
                 }
 
@@ -6721,13 +6721,13 @@
                     const cvrTrendTol = 0.1;
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
-                            return true;
+                        return true;
                         let trend = null;
                         if (typeof amazonCvrTrend === 'function') {
                             trend = amazonCvrTrend(data, cvrTrendTol);
                         } else {
-                            const cvr30 = parseFloat(data['SCVR'] || 0);
-                            const cvr60 = parseFloat(data['CVR_60'] || 0);
+                        const cvr30 = parseFloat(data['SCVR'] || 0);
+                        const cvr60 = parseFloat(data['CVR_60'] || 0);
                             if (cvr30 > cvr60 + cvrTrendTol) trend = 'up';
                             else if (cvr30 < cvr60 - cvrTrendTol) trend = 'down';
                             else trend = 'equal';
@@ -6793,8 +6793,8 @@
                         const dil = (typeof chPromoDil === 'function')
                             ? chPromoDil(data)
                             : (function() {
-                                const inv = parseFloat(data['INV']) || 0;
-                                const l30 = parseFloat(data['L30']) || 0;
+                        const inv = parseFloat(data['INV']) || 0;
+                        const l30 = parseFloat(data['L30']) || 0;
                                 return inv === 0 ? 0 : (l30 / inv) * 100;
                             })();
 
@@ -6836,37 +6836,37 @@
                 }
 
                 if (blueTriangleFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1HasBlueTriangle(data);
                     });
                 }
                 if (endedListingFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1IsEndedListing(data);
-                    });
-                }
+                        });
+                    }
                 if (redTriangleFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1HasRedTriangle(data);
                     });
                 }
                 if (priceEqLmpFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1PriceEqLmp(data);
                     });
                 }
                 if (spriceEqLmpFilterActive) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return ebay1SpriceEqLmp(data);
                     });
                 }
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
-                    table.addFilter(function(data) {
+                        table.addFilter(function(data) {
                         return LmpMissingBadge.isMissingLmp(data);
                     });
                 }
                 if (priceLt80LmpFilterActive && window.PriceLt80LmpBadge) {
-                    table.addFilter(function(data) {
+                            table.addFilter(function(data) {
                         return PriceLt80LmpBadge.hasPurpleTriangle(data, 'eBay Price');
                     });
                 }
@@ -7384,8 +7384,8 @@
                         mode: mode,
                         value: mode === 'column' ? $tr.find('.pr-value-col').val() : $tr.find(
                             '.pr-value-num').val()
+                        });
                     });
-                });
                 if (conds.length) pauseRuleState.conditions = conds;
             }
 
