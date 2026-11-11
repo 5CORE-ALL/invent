@@ -5667,7 +5667,7 @@
                     },
 
                     {
-                        title: "NPFT$",
+                        title: "NPFT$ C",
                         field: "c_std_npft_usd",
                         hozAlign: "center",
                         headerSort: true,
@@ -5685,7 +5685,7 @@
                     },
 
                     {
-                        title: "NPFT%",
+                        title: "NPFT% C",
                         field: "c_std_npft_pct",
                         hozAlign: "center",
                         headerSort: true,
