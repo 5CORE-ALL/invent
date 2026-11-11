@@ -366,46 +366,6 @@
 @section('content')
     <div class="toast-container"></div>
 
-    <!-- CTN Details Modal -->
-    <div class="modal fade" id="ctnDetailsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">CTN<span id="ctnDetailsSku" class="ms-2 text-muted"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="ctnProductId">
-                    <input type="hidden" id="ctnSku">
-                    <div class="mb-3">
-                        <label class="form-label">CTN QTY</label>
-                        <input type="number" step="0.01" class="form-control" id="ctnQtyInput">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Carton CBM each</label>
-                        <input type="number" step="0.0001" class="form-control" id="ctnCbmEachInput">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">CBM (E)</label>
-                        <input type="number" step="0.0001" class="form-control" id="cbmEInput">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">CTN Weight (KG)</label>
-                        <input type="number" step="0.01" class="form-control" id="ctnWtKgInput">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">CTN WT (LB)</label>
-                        <input type="number" step="0.0001" class="form-control" id="ctnWtLbInput">
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="ctnDetailsSaveBtn">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Row Details Modal -->
     <div class="modal fade" id="rowDetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -987,90 +947,6 @@
                     modal.show();
                 }
 
-                // CTN details edit modal (same fields and table as /dim-wt-master-ctn)
-                const KG_TO_LB = 2.2046226218;
-                let ctnDetailsRow = null;
-                let ctnDetailsOriginalKg = null;
-
-                function ctnFieldValue(value) {
-                    return (value === null || value === undefined) ? '' : value;
-                }
-
-                function openCtnDetailsModal(row) {
-                    const data = row.getData();
-                    ctnDetailsRow = row;
-                    ctnDetailsOriginalKg = ctnFieldValue(data.CTN_WT_KG);
-
-                    document.getElementById('ctnProductId').value = data.product_id ?? '';
-                    document.getElementById('ctnSku').value = data.SKU ?? '';
-                    document.getElementById('ctnDetailsSku').textContent = (data.FBA_SKU || data.SKU) ? ` — ${data.FBA_SKU || data.SKU}` : '';
-
-                    document.getElementById('ctnQtyInput').value = ctnFieldValue(data.CTN_QTY);
-                    document.getElementById('ctnCbmEachInput').value = ctnFieldValue(data.CTN_CBM_EACH);
-                    document.getElementById('cbmEInput').value = ctnFieldValue(data.CBM_E);
-                    document.getElementById('ctnWtKgInput').value = ctnFieldValue(data.CTN_WT_KG);
-                    document.getElementById('ctnWtLbInput').value = ctnFieldValue(data.CTN_WT_LB);
-
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('ctnDetailsModal')).show();
-                }
-
-                $('#ctnDetailsSaveBtn').on('click', function() {
-                    if (!ctnDetailsRow) return;
-
-                    const productId = document.getElementById('ctnProductId').value;
-                    const sku = document.getElementById('ctnSku').value;
-
-                    const num = (v) => {
-                        if (v === '' || v === null || v === undefined) return null;
-                        const n = parseFloat(v);
-                        return isNaN(n) ? null : n;
-                    };
-
-                    const ctnQty = num(document.getElementById('ctnQtyInput').value);
-                    const ctnCbmEach = num(document.getElementById('ctnCbmEachInput').value);
-                    const cbmE = num(document.getElementById('cbmEInput').value);
-                    const ctnWtKg = num(document.getElementById('ctnWtKgInput').value);
-                    let ctnWtLb = num(document.getElementById('ctnWtLbInput').value);
-                    const kgChanged = String(ctnFieldValue(ctnWtKg)) !== String(ctnDetailsOriginalKg);
-                    if (kgChanged && ctnWtKg !== null) {
-                        ctnWtLb = +(ctnWtKg * KG_TO_LB).toFixed(4);
-                    }
-
-                    const payload = {
-                        _token: '{{ csrf_token() }}',
-                        product_id: productId,
-                        sku: sku,
-                        ctn_qty: ctnQty,
-                        ctn_cbm_each: ctnCbmEach,
-                        cbm_e: cbmE,
-                        ctn_weight_lb: ctnWtLb
-                    };
-                    if (kgChanged) {
-                        payload.ctn_weight_kg = ctnWtKg;
-                    }
-
-                    $.ajax({
-                        url: '/dim-wt-master/update',
-                        method: 'POST',
-                        data: payload,
-                        success: function() {
-                            ctnDetailsRow.update({
-                                CTN_QTY: ctnQty,
-                                CTN_CBM_EACH: ctnCbmEach,
-                                CBM_E: cbmE,
-                                CTN_WT_KG: ctnWtKg,
-                                CTN_WT_LB: ctnWtLb
-                            });
-                            showToast('CTN details saved', 'success');
-                            bootstrap.Modal.getOrCreateInstance(document.getElementById('ctnDetailsModal')).hide();
-                        },
-                        error: function(xhr) {
-                            console.error('Error saving CTN details:', xhr.responseText);
-                            showToast('Failed to save CTN details', 'error');
-                        }
-                    });
-                });
-
                 // Fix modal backdrop z-index issues globally
                 $(document).on('shown.bs.modal', '.modal', function() {
                     $(this).css('z-index', '1050');
@@ -1277,27 +1153,6 @@
                                     return `<span style="color: #dc3545; font-weight: 600;">${value}</span>`;
                                 }
                                 return `${value ?? ''}`;
-                            }
-                        },
-
-                        {
-                            title: "Ctn Qty",
-                            field: "CTN_QTY",
-                            headerSort: false,
-                            hozAlign: "center",
-                            formatter: function(cell) {
-                                const rowData = cell.getRow().getData();
-                                if (rowData.is_parent) return '';
-                                const value = cell.getValue();
-                                const qty = parseFloat(value);
-                                const empty = value === null || value === undefined || value === '' || isNaN(qty);
-                                const label = empty ? '<span class="text-muted">--</span>' : value;
-                                const cls = (!empty && qty > 0) ? 'has' : 'empty';
-                                return `<span class="ctn-details-btn" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="CTN details">${label}<span class="history-dot ${cls}"></span></span>`;
-                            },
-                            cellClick: function(e, cell) {
-                                if (cell.getRow().getData().is_parent) return;
-                                openCtnDetailsModal(cell.getRow());
                             }
                         },
 
@@ -3195,7 +3050,7 @@
                 // Hidden on a fresh layout (until you tick them in the Columns panel and save)
                 const FBA_COL_DEFAULT_HIDDEN = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
                 const FBA_COL_GROUP_FIELDS = {
-                    basic: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'AMZ_Rating', 'NRL_FBA', 'Current_Month_Views'],
+                    basic: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'AMZ_Rating', 'NRL_FBA', 'Current_Month_Views'],
                     price: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
                     shipping: ['Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
                 };
@@ -3622,7 +3477,7 @@
                                     const field = col.getDefinition().field;
                                     if (!field || FBA_COL_SKIP_FIELDS.has(field)) return;
                                     // Dil sits after Ov L30 and stays visible even if an older saved layout still has it hidden.
-                                    if (field === 'Dil' || field === 'CTN_QTY') col.show();
+                                    if (field === 'Dil') col.show();
                                     else if (FBA_COL_DEFAULT_HIDDEN.indexOf(field) !== -1) col.hide();
                                     else if (legacy[field] !== undefined) { if (legacy[field]) col.show(); else col.hide(); }
                                 });
