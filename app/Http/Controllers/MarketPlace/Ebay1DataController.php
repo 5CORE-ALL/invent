@@ -70,6 +70,24 @@ class Ebay1DataController extends Controller
         return true;
     }
 
+    /**
+     * Hook: columns a channel adds to the item specifics of a SKU (Temu: the attribute list of its category).
+     *
+     * @param  array<string, mixed>  $specifics
+     * @param  array{category_path: string, specifics: array<string, mixed>}|null  $live
+     * @return array<string, mixed>
+     */
+    protected function withChannelColumns(array $specifics, string $category, ?array $live): array
+    {
+        return $specifics;
+    }
+
+    /** Hook: extra keys of the rows answer. @return array<string, mixed> */
+    protected function rowsExtra(): array
+    {
+        return [];
+    }
+
     /** Category Master column that holds this channel's category path of a SKU. */
     protected function categoryMasterColumn(): string
     {
@@ -158,7 +176,7 @@ class Ebay1DataController extends Controller
                 $category = ($live['category_path'] ?? '') !== '' ? $live['category_path'] : ($categories[$key] ?? '');
 
                 // Columns added by hand to this category tab: the value comes from Technical Specifications.
-                $specifics = $live['specifics'] ?? [];
+                $specifics = $this->withChannelColumns($live['specifics'] ?? [], $category, $live);
                 foreach ($extras[$this->categoryHash($category)] ?? [] as $extraKey => $extraName) {
                     $already = false;
                     foreach (array_keys($specifics) as $existingName) {
@@ -340,14 +358,14 @@ class Ebay1DataController extends Controller
                 $data[$i]['push_cols'] = $cols;
             }
 
-            return response()->json([
+            return response()->json(array_merge([
                 'status' => 200,
                 'data' => $data,
                 'auto_push' => $this->autoPushEnabled(),
                 'cell_styles' => (object) $this->cellStylesMap(),
                 'sources' => $this->columnSourceList(),
                 'column_groups' => $this->columnGroups(),
-            ]);
+            ], $this->rowsExtra()));
         } catch (\Throwable $e) {
             Log::error('Ebay1Data: rows failed', ['error' => $e->getMessage()]);
 
