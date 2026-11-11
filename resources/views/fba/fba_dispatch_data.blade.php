@@ -399,6 +399,8 @@
         #sendQtyRuleModal .sqr-if { display: inline-block; font-size: .72rem; font-weight: 800; letter-spacing: .08em; color: #7c3aed; background: #f3e8ff; border-radius: 8px; padding: 6px 12px; }
         #sendQtyRuleModal .sqr-table .sqr-join { min-width: 92px; }
         #sendQtyRuleModal .sqr-table .sqr-field { min-width: 200px; }
+        #sendQtyRuleModal .sqr-table .sqr-vtype, #sendQtyRuleModal .sqr-table .sqr-valcol { min-width: 120px; }
+        #sendQtyRuleModal .sqr-table .sqr-valcol { min-width: 190px; }
         #sendQtyRuleModal .sqr-table .sqr-op { font-family: ui-monospace, Menlo, Consolas, monospace; min-width: 190px; }
         #sendQtyRuleModal .sqr-count { font-size: 1rem; white-space: nowrap; }
         #sendQtyRuleModal .sqr-count b { color: #4338ca; font-size: 1.1rem; }
@@ -426,7 +428,8 @@
                                     <th style="width:100px;">Join</th>
                                     <th style="min-width:220px;">Column</th>
                                     <th style="width:210px;">Condition</th>
-                                    <th style="width:140px;">Value</th>
+                                    <th style="width:130px;">Compare with</th>
+                                    <th style="width:170px;">Value</th>
                                     <th style="width:120px;" class="text-end">Count</th>
                                     <th style="width:64px;"></th>
                                 </tr>
@@ -434,7 +437,7 @@
                             <tbody id="sqr-rows"></tbody>
                             <tfoot>
                                 <tr>
-                                    <td colspan="5" style="padding:14px 10px;">
+                                    <td colspan="6" style="padding:14px 10px;">
                                         <button type="button" class="btn sqr-add" id="sqr-add"><i class="fa fa-plus me-1"></i> Add condition</button>
                                         <span class="text-muted small d-block mt-2">AND is checked before OR. Count = rows (with a Qty CTN) that match that line.</span>
                                     </td>
@@ -3296,12 +3299,17 @@
                     return c ? c.title : field;
                 }
                 function sqrValueOk(v) { return /^-?\d+(\.\d+)?%?$/.test(String(v == null ? '' : v).trim()); }
-                function sqrRowOk(r) { return !!r && !!r.field && SQR_OPS.some(function(o) { return o[0] === r.op; }) && sqrValueOk(r.value); }
+                function sqrRowOk(r) {
+                    if (!r || !r.field || !SQR_OPS.some(function(o) { return o[0] === r.op; })) return false;
+                    return r.vtype === 'col' ? String(r.value == null ? '' : r.value).trim() !== '' : sqrValueOk(r.value);
+                }
+                /** Right side of a condition: a number, or the other column (field name for the engine, title for people). */
+                function sqrRight(r, useTitle) { return r.vtype === 'col' ? (useTitle ? sqrTitle(r.value) : String(r.value)) : sqrValueText(r.value); }
                 function sqrValueText(v) { return String(v).trim().replace(/%$/, ''); }
                 /** The rule as text, e.g. "Dil < 50 and Shopify_INV > 0" (fields for the engine, titles for people). */
                 function sqrText(rows, useTitle) {
                     return rows.map(function(r, i) {
-                        return (i ? ' ' + (r.join === 'or' ? 'or' : 'and') + ' ' : '') + (useTitle ? sqrTitle(r.field) : r.field) + ' ' + r.op + ' ' + sqrValueText(r.value);
+                        return (i ? ' ' + (r.join === 'or' ? 'or' : 'and') + ' ' : '') + (useTitle ? sqrTitle(r.field) : r.field) + ' ' + r.op + ' ' + sqrRight(r, useTitle);
                     }).join('');
                 }
                 /** "Dil < 50 and Main INV > 0" -> rows. Returns null when the text is not a plain list of conditions. */
@@ -3312,20 +3320,30 @@
                     const map = fbaRuleColumnMap();
                     const rows = [];
                     for (let i = 0; i < parts.length; i += 2) {
-                        const m = parts[i].trim().match(/^(.+?)\s*(<=|>=|!=|==|=|<|>)\s*(-?\d+(?:\.\d+)?)%?$/);
+                        const m = parts[i].trim().match(/^(.+?)\s*(<=|>=|!=|==|=|<|>)\s*(.+)$/);
                         if (!m) return null;
                         const field = map[fbaRuleKey(m[1])];
                         if (!field) return null;
-                        rows.push({ join: i === 0 ? 'and' : String(parts[i - 1]).toLowerCase(), field: field, op: m[2] === '==' ? '=' : m[2], value: m[3] });
+                        const rhs = m[3].trim();
+                        const row = { join: i === 0 ? 'and' : String(parts[i - 1]).toLowerCase(), field: field, op: m[2] === '==' ? '=' : m[2], vtype: 'num', value: '' };
+                        if (/^-?\d+(\.\d+)?%?$/.test(rhs)) {
+                            row.value = rhs.replace(/%$/, '');
+                        } else if (map[fbaRuleKey(rhs)]) {
+                            row.vtype = 'col';
+                            row.value = map[fbaRuleKey(rhs)];
+                        } else {
+                            return null;
+                        }
+                        rows.push(row);
                     }
                     return rows.length ? rows : null;
                 }
-                function sqrDefaultRows() { return sqrParseText(FBA_SEND_QTY_DEFAULT_RULE) || [{ join: 'and', field: 'Dil', op: '<', value: '50' }]; }
+                function sqrDefaultRows() { return sqrParseText(FBA_SEND_QTY_DEFAULT_RULE) || [{ join: 'and', field: 'Dil', op: '<', vtype: 'num', value: '50' }]; }
                 function sqrLoadRows() {
                     try {
                         const p = JSON.parse(localStorage.getItem(SQR_ROWS_KEY) || 'null');
                         if (Array.isArray(p) && p.length && p.every(sqrRowOk)) {
-                            return p.map(function(r) { return { join: r.join === 'or' ? 'or' : 'and', field: r.field, op: r.op, value: String(r.value) }; });
+                            return p.map(function(r) { return { join: r.join === 'or' ? 'or' : 'and', field: r.field, op: r.op, vtype: r.vtype === 'col' ? 'col' : 'num', value: String(r.value) }; });
                         }
                     } catch (e) { /* ignore */ }
                     return sqrParseText(fbaSendQtyRuleText || FBA_SEND_QTY_DEFAULT_RULE) || sqrDefaultRows();
@@ -3361,7 +3379,10 @@
                             + '<td>' + join + '</td>'
                             + '<td><select class="form-select form-select-sm sqr-field">' + options(r.field) + '</select></td>'
                             + '<td><select class="form-select form-select-sm sqr-op">' + ops + '</select></td>'
-                            + '<td><input type="text" class="form-control form-control-sm sqr-value' + (sqrValueOk(r.value) ? '' : ' is-invalid') + '" value="' + sqrEsc(r.value) + '" placeholder="number" autocomplete="off"></td>'
+                            + '<td><select class="form-select form-select-sm sqr-vtype"><option value="num"' + (r.vtype !== 'col' ? ' selected' : '') + '>Number</option><option value="col"' + (r.vtype === 'col' ? ' selected' : '') + '>Column</option></select></td>'
+                            + (r.vtype === 'col'
+                                ? '<td><select class="form-select form-select-sm sqr-valcol">' + options(r.value) + '</select></td>'
+                                : '<td><input type="text" class="form-control form-control-sm sqr-value' + (sqrValueOk(r.value) ? '' : ' is-invalid') + '" value="' + sqrEsc(r.value) + '" placeholder="number" autocomplete="off"></td>')
                             + '<td class="text-end sqr-count"></td>'
                             + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger sqr-del" title="Remove this condition"' + (sqrRows.length < 2 ? ' disabled' : '') + '><i class="fa fa-trash"></i></button></td></tr>';
                     }).join('');
@@ -3382,7 +3403,7 @@
                         const cell = tb.querySelector('tr[data-i="' + i + '"] .sqr-count');
                         if (!cell) return;
                         if (!sqrRowOk(r)) { cell.innerHTML = '<span class="text-muted">-</span>'; return; }
-                        try { cell.innerHTML = '<b>' + countOf(r.field + ' ' + r.op + ' ' + sqrValueText(r.value)) + '</b><span class="text-muted"> / ' + total + '</span>'; }
+                        try { cell.innerHTML = '<b>' + countOf(r.field + ' ' + r.op + ' ' + sqrRight(r, false)) + '</b><span class="text-muted"> / ' + total + '</span>'; }
                         catch (e) { cell.innerHTML = '<span class="text-danger">?</span>'; }
                     });
                     const totalCell = document.getElementById('sqr-total-count');
@@ -3390,7 +3411,7 @@
                     if (!sqrRows.every(sqrRowOk)) {
                         if (totalCell) totalCell.innerHTML = '<span class="text-muted">-</span>';
                         if (preview) preview.textContent = '...';
-                        setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>Fix the red value: it must be a number, e.g. 50');
+                        setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>Fix the red value: it must be a number, e.g. 50 (or pick Compare with: Column)');
                         return;
                     }
                     try {
@@ -3439,7 +3460,19 @@
                     sqrRender();
                     sqrUpdateCounts();
                 });
-                $('#sqr-rows').on('change', '.sqr-join, .sqr-field, .sqr-op', function() {
+                $('#sqr-rows').on('change', '.sqr-vtype', function() {
+                    const i = parseInt($(this).closest('tr').attr('data-i'), 10);
+                    if (!sqrRows[i]) return;
+                    sqrRows[i].vtype = this.value === 'col' ? 'col' : 'num';
+                    sqrRows[i].value = sqrRows[i].vtype === 'col' ? (sqrRows[i].field === 'Quantity_in_each_box' ? 'Shopify_INV' : 'Quantity_in_each_box') : '0';
+                    sqrRender();
+                    sqrUpdateCounts();
+                }).on('change', '.sqr-valcol', function() {
+                    const i = parseInt($(this).closest('tr').attr('data-i'), 10);
+                    if (!sqrRows[i]) return;
+                    sqrRows[i].value = this.value;
+                    sqrUpdateCounts();
+                }).on('change', '.sqr-join, .sqr-field, .sqr-op', function() {
                     const i = parseInt($(this).closest('tr').attr('data-i'), 10);
                     if (!sqrRows[i]) return;
                     if ($(this).hasClass('sqr-join')) sqrRows[i].join = this.value;
@@ -3462,7 +3495,7 @@
                     sqrUpdateCounts();
                 });
                 $('#sqr-add').on('click', function() {
-                    sqrRows.push({ join: 'and', field: 'Shopify_INV', op: '>', value: '0' });
+                    sqrRows.push({ join: 'and', field: 'Shopify_INV', op: '>', vtype: 'num', value: '0' });
                     sqrRender();
                     sqrUpdateCounts();
                 });
