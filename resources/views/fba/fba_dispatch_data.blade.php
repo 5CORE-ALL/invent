@@ -1006,8 +1006,8 @@
                         if (cell.getRow().getData().is_parent || text.trim() === '') return esc;
                         const n = parseFloat(text);
                         if (isNaN(n)) return esc;
-                        const color = n < limit ? '#146c43' : '#dc3545';
-                        return `<span style="color:${color};font-weight:700;">${esc}</span>`;
+                        const color = n < limit ? '#00b341' : '#ff0000';
+                        return `<span style="color:${color};font-weight:800;">${esc}</span>`;
                     };
                 }
 
@@ -2244,7 +2244,7 @@
                                 const text = (raw === null || raw === undefined) ? '' : String(raw);
                                 const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 // Gross weight above 50 shows in red
-                                if (parseFloat(text) > 50) return `<span style="color:#dc3545;font-weight:700;">${esc}</span>`;
+                                if (parseFloat(text) > 50) return `<span style="color:#ff0000;font-weight:800;">${esc}</span>`;
                                 return esc;
                             },
                             cellEdited: function(cell) {
