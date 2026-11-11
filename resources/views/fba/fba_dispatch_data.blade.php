@@ -996,6 +996,18 @@
                     $('.modal-backdrop').css('z-index', '1040');
                 });
 
+                // L / W / H CTN colour: under 25 dark green, 25 to 36 dark yellow, above 36 red
+                function ctnDimensionFormatter(cell) {
+                    const raw = cell.getValue();
+                    const text = (raw === null || raw === undefined) ? '' : String(raw);
+                    const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    if (cell.getRow().getData().is_parent || text.trim() === '') return esc;
+                    const n = parseFloat(text);
+                    if (isNaN(n)) return esc;
+                    const color = n < 25 ? '#146c43' : (n <= 36 ? '#b58900' : '#dc3545');
+                    return `<span style="color:${color};font-weight:700;">${esc}</span>`;
+                }
+
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
                     layout: "fitDataStretch",
@@ -2059,6 +2071,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: ctnDimensionFormatter,
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -2095,6 +2108,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: ctnDimensionFormatter,
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -2131,6 +2145,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: ctnDimensionFormatter,
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
