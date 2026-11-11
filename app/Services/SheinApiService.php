@@ -1219,8 +1219,15 @@ class SheinApiService
      * Fetch detailed product information by SKU
      * Includes: Price, Views, Rating, Inventory
      */
+    /**
+     * Why the last getProductDetails() call returned null: 'invalid_sku_code' (Shein no longer knows this skuCode:
+     * listing removed / code replaced), 'rate_limited', or null (empty answer / no call yet).
+     */
+    public ?string $lastProductDetailsError = null;
+
     public function getProductDetails(string $sku)
     {
+        $this->lastProductDetailsError = null;
         $endpoint = "/open-api/openapi-business-backend/product/full-detail";
         $timestamp = round(microtime(true) * 1000);
         $random = Str::random(5);
@@ -1326,7 +1333,15 @@ class SheinApiService
             return $productDetails;
         }
 
-        Log::warning('No product details found for SKU: ' . $sku);
+        // Shein answers HTTP 200 with info=null for a skuCode it does not know ("无效的skuCode: [..]") and for rate limits.
+        $answer = (string) ($data['msg'] ?? '').' '.(string) ($data['code'] ?? '');
+        if (str_contains($answer, 'openapi00006') || stripos($answer, 'rate limit') !== false) {
+            $this->lastProductDetailsError = 'rate_limited';
+        } elseif (str_contains($answer, '无效的skuCode') || stripos($answer, 'invalid skucode') !== false) {
+            $this->lastProductDetailsError = 'invalid_sku_code';
+        }
+
+        Log::warning('No product details found for SKU: ' . $sku, ['reason' => $this->lastProductDetailsError]);
         return null;
     }
 
@@ -3578,7 +3593,31 @@ class SheinApiService
                     continue;
                 }
 
+                // price/save answers code "0" / "OK" for the whole request even when single SKUs were refused
+                // (e.g. {"productCode":"I..","success":false,"message":"SKU does not exist"}). Read the per-SKU result,
+                // otherwise a refused SKU is reported as pushed and the Price column never catches up.
+                $perSku = [];
+                foreach ((array) ($json['info']['data'] ?? []) as $entryResult) {
+                    if (is_array($entryResult) && isset($entryResult['productCode'])) {
+                        $perSku[strtoupper(trim((string) $entryResult['productCode']))] = $entryResult;
+                    }
+                }
+
                 foreach ($chunk as $row) {
+                    $skuResult = $perSku[strtoupper($row['sku_code'])] ?? null;
+                    if ($skuResult !== null && array_key_exists('success', $skuResult) && ! $skuResult['success']) {
+                        $failed++;
+                        $lastError = trim((string) ($skuResult['message'] ?? '')) ?: 'Shein refused the price.';
+                        $results[] = [
+                            'sku' => $row['sku'],
+                            'sku_code' => $row['sku_code'],
+                            'success' => false,
+                            'error' => $lastError,
+                        ];
+
+                        continue;
+                    }
+
                     // Shein puts a price change under review. Callers that show the Price column pass false so it only
                     // moves when a live pull / sync reads the new price.
                     if ($persistLocal) {

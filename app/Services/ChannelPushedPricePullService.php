@@ -924,7 +924,19 @@ class ChannelPushedPricePullService
                 $details = $api->getProductDetails($code);
                 $live = is_array($details) && isset($details['price']) ? (float) $details['price'] : 0.0;
                 if (! ($live > 0)) {
-                    $row['message'] = 'Live Shein price not returned';
+                    $reason = $details === null ? $api->lastProductDetailsError : null;
+                    if ($reason === 'invalid_sku_code') {
+                        // Shein no longer knows this skuCode (listing removed / code replaced): a push can never land and
+                        // a read-back can never match. Park the SKU instead of retrying it every run forever.
+                        $row['invalid_sku_code'] = true;
+                        $row['message'] = 'Shein skuCode '.$code.' is invalid (listing no longer on Shein) — resync Shein products';
+                        $this->markSheinSkuCodeInvalid($sku, $code, $row['message']);
+                    } elseif ($reason === 'rate_limited') {
+                        $row['rate_limited'] = true;
+                        $row['message'] = 'Shein rate limit — will retry';
+                    } else {
+                        $row['message'] = 'Live Shein price not returned';
+                    }
                     $out[] = $row;
                     continue;
                 }
@@ -945,6 +957,32 @@ class ChannelPushedPricePullService
         }
 
         return $out;
+    }
+
+    /**
+     * Remember on the Shein data view that this skuCode is dead. /shein-pricing then shows the SKU as Missing (not blue)
+     * for as long as shein_metrics still holds that same code; a resync that stores a new code clears it by itself.
+     * A pending "pushed" status is turned into an error so the SKU leaves the pull queue.
+     */
+    private function markSheinSkuCodeInvalid(string $sku, string $code, string $message): void
+    {
+        try {
+            $view = \App\Models\SheinDataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                ->first() ?? new \App\Models\SheinDataView(['sku' => trim($sku)]);
+            $value = is_array($view->value) ? $view->value : [];
+            $value['SHEIN_SKU_INVALID_CODE'] = $code;
+            $value['SHEIN_SKU_INVALID_AT'] = now()->toDateTimeString();
+            if (strtolower((string) ($value['SPRICE_STATUS'] ?? '')) === 'pushed') {
+                $value['SPRICE_STATUS'] = 'error';
+                $value['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+            }
+            $value['PUSH_PRC_ERROR'] = $message;
+            $view->value = $value;
+            $view->save();
+        } catch (\Throwable $e) {
+            Log::warning('Shein: could not mark invalid skuCode', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
     }
 
     private function writeSheinSalePrice(string $sku, float $price): void

@@ -63,7 +63,8 @@ class PullSheinPushedPricesCommand extends Command
         ksort($due);
         $skus = array_slice(array_values($due), 0, $limit);
 
-        $matched = $pulled = $failed = 0;
+        $matched = $pulled = $failed = $invalid = 0;
+        $rateLimited = false;
         foreach ($skus as $i => $sku) {
             $res = $pull->pullSkus('shein', [$sku], [strtoupper(trim($sku)) => $expected[strtoupper(trim($sku))] ?? 0.0])[0] ?? null;
             if ($res && ! empty($res['success'])) {
@@ -71,6 +72,14 @@ class PullSheinPushedPricesCommand extends Command
                 if (abs((float) ($res['price'] ?? 0) - ($expected[strtoupper(trim($sku))] ?? -1)) < 0.01) {
                     $matched++;
                 }
+            } elseif ($res && ! empty($res['invalid_sku_code'])) {
+                // Dead skuCode: already parked (status error + Missing on /shein-pricing); not retried next run.
+                $invalid++;
+            } elseif ($res && ! empty($res['rate_limited'])) {
+                // Shein is throttling: stop here, the remaining SKUs are picked up next run.
+                $failed++;
+                $rateLimited = true;
+                break;
             } else {
                 $failed++;
             }
@@ -79,7 +88,15 @@ class PullSheinPushedPricesCommand extends Command
             }
         }
 
-        $this->info(sprintf('Shein pushed-price pull: due=%d pulled=%d matched=%d failed=%d', count($due), $pulled, $matched, $failed));
+        $this->info(sprintf(
+            'Shein pushed-price pull: due=%d pulled=%d matched=%d failed=%d invalid_sku_code=%d%s',
+            count($due),
+            $pulled,
+            $matched,
+            $failed,
+            $invalid,
+            $rateLimited ? ' (stopped: Shein rate limit)' : ''
+        ));
 
         return self::SUCCESS;
     }

@@ -663,7 +663,7 @@ class SheinController extends Controller
                         continue;
                     }
                     if (trim((string) ($metric->shein_sku_code ?? '')) !== '') {
-                        $sheinCodeBySku[$nk] = true;
+                        $sheinCodeBySku[$nk] = trim((string) $metric->shein_sku_code);
                     }
                     if (! isset($viewsBySku[$nk]) || $views >= (int) ($viewsBySku[$nk] ?? 0)) {
                         $viewsBySku[$nk] = $views;
@@ -823,8 +823,11 @@ class SheinController extends Controller
                 $sroi   = ($sprice > 0 && $lp > 0) ? round((($sprice * $margin - $lp - $ship) / $lp) * 100, 2) : 0;
 
                 $displaySku = $productMaster?->sku ?? ($priceRow->sku ?? $normalizedSku);
+                // Shein answered "invalid skuCode" for the code we still hold: the listing is gone, nothing can be pushed.
+                $deadSheinCode = trim((string) (is_array($meta) ? ($meta['SHEIN_SKU_INVALID_CODE'] ?? '') : ''));
                 $isMissingShein = ! $priceRow || $spOffer <= 0
-                    || ($sheinCodeBySku !== [] && ! isset($sheinCodeBySku[$normalizedSku]));
+                    || ($sheinCodeBySku !== [] && ! isset($sheinCodeBySku[$normalizedSku]))
+                    || ($deadSheinCode !== '' && ($sheinCodeBySku[$normalizedSku] ?? null) === $deadSheinCode);
 
                 if ($isMissingShein) {
                     $mapValue = '';
