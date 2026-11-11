@@ -399,7 +399,15 @@
         #sendQtyRuleModal .sqr-if { display: inline-block; font-size: .72rem; font-weight: 800; letter-spacing: .08em; color: #7c3aed; background: #f3e8ff; border-radius: 8px; padding: 6px 12px; }
         #sendQtyRuleModal .sqr-table .sqr-join { min-width: 92px; }
         #sendQtyRuleModal .sqr-table .sqr-field { min-width: 200px; }
-        #sendQtyRuleModal .sqr-table .sqr-vtype, #sendQtyRuleModal .sqr-table .sqr-valcol { min-width: 120px; }
+        #sendQtyRuleModal .sqr-table .sqr-pick { min-width: 190px; width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; background-color: #fff; }
+        #sendQtyRuleModal .sqr-picker { position: fixed; z-index: 3000; background: #fff; border: 1px solid #c7d2fe; border-radius: 12px; box-shadow: 0 18px 40px rgba(30, 27, 75, .25); padding: 8px; }
+        #sendQtyRuleModal .sqr-picker-list { max-height: 300px; overflow-y: auto; margin-top: 6px; }
+        #sendQtyRuleModal .sqr-picker-group { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; padding: 6px 8px 2px; }
+        #sendQtyRuleModal .sqr-picker-item { padding: 6px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+        #sendQtyRuleModal .sqr-picker-item.is-active { background: #4f46e5; color: #fff; }
+        #sendQtyRuleModal .sqr-picker-item.is-selected:not(.is-active) { background: #eef2ff; font-weight: 600; }
+        #sendQtyRuleModal .sqr-picker-empty { padding: 10px; color: #6b7280; font-size: 13px; }
+        #sendQtyRuleModal .sqr-table .sqr-vtype { min-width: 120px; }
         #sendQtyRuleModal .sqr-table .sqr-valcol { min-width: 190px; }
         #sendQtyRuleModal .sqr-table .sqr-op { font-family: ui-monospace, Menlo, Consolas, monospace; min-width: 190px; }
         #sendQtyRuleModal .sqr-count { font-size: 1rem; white-space: nowrap; }
@@ -495,7 +503,14 @@
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span id="sugg-send-rows-badge" class="badge bg-primary me-2 d-inline-flex align-items-center" style="font-size: 0.91875rem; padding: 0.3rem 0.6rem; line-height: 1.5;">
-                                <i class="fa fa-list me-1"></i> <strong>Send:</strong> <span id="sugg-send-rows-count" class="ms-1">0</span>
+                                <i class="fa fa-list me-1"></i> <strong>Send:</strong>
+                                <select id="sugg-send-filter" class="form-select form-select-sm mx-2" style="width: auto; display: inline-block;"
+                                    title="Filter Sugg Send: All, Blank (no value) or greater than 0">
+                                    <option value="all" selected>All</option>
+                                    <option value="blank">Blank</option>
+                                    <option value="positive">&gt;0</option>
+                                </select>
+                                <span id="sugg-send-rows-count">0</span>
                             </span>
                             <input type="text" id="sku-search" class="form-control form-control-sm me-2"
                                 style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
@@ -3140,6 +3155,7 @@
 
                 function applyFilters() {
                     const nrlFbaFilter = $('#nrl-fba-filter').val();
+                    const suggSendFilter = $('#sugg-send-filter').val();
 
                     table.clearFilter(true);
 
@@ -3183,6 +3199,17 @@
                         table.addFilter('NRL_FBA', '=', nrlFbaFilter);
                     } else {
                         console.log('NRL FBA filter is "all" - not applying filter');
+                    }
+
+                    // Sugg Send filter: Blank = no Sugg Send value, >0 = positive Sugg Send
+                    if (suggSendFilter === 'blank') {
+                        table.addFilter(function(data) {
+                            return isNaN(getEffectiveSuggSend(data));
+                        });
+                    } else if (suggSendFilter === 'positive') {
+                        table.addFilter(function(data) {
+                            return getEffectiveSuggSend(data) > 0;
+                        });
                     }
                 }
 
@@ -3333,6 +3360,107 @@
                     const box = document.getElementById('send-qty-rule-status');
                     if (box) { box.className = 'sqr-status ' + kind; box.innerHTML = html; }
                 }
+
+                /** Quick-search picker used instead of a plain <select> for the column lists. */
+                let sqrPicker = null;
+                function sqrClosePicker() {
+                    if (!sqrPicker) return;
+                    sqrPicker.el.remove();
+                    document.removeEventListener('mousedown', sqrPicker.out, true);
+                    window.removeEventListener('resize', sqrClosePicker);
+                    sqrPicker = null;
+                }
+                function sqrOpenPicker(sel, btn, refreshLabel) {
+                    if (sqrPicker && sqrPicker.btn === btn) { sqrClosePicker(); return; }
+                    sqrClosePicker();
+                    const items = Array.prototype.map.call(sel.querySelectorAll('option'), function(o) {
+                        return { value: o.value, text: o.textContent, group: o.parentNode.tagName === 'OPTGROUP' ? o.parentNode.label : '' };
+                    });
+                    const el = document.createElement('div');
+                    el.className = 'sqr-picker';
+                    el.innerHTML = '<input type="text" class="form-control form-control-sm sqr-picker-q" placeholder="Quick search column..." autocomplete="off"><div class="sqr-picker-list"></div>';
+                    (document.getElementById('sendQtyRuleModal') || document.body).appendChild(el);
+                    const input = el.querySelector('input');
+                    const list = el.querySelector('.sqr-picker-list');
+                    let shown = [], active = 0;
+
+                    const place = function() {
+                        const r = btn.getBoundingClientRect();
+                        el.style.width = Math.max(r.width, 280) + 'px';
+                        el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8)) + 'px';
+                        const below = r.bottom + 4;
+                        el.style.top = (below + el.offsetHeight > window.innerHeight - 8 ? Math.max(8, r.top - el.offsetHeight - 4) : below) + 'px';
+                    };
+                    const draw = function() {
+                        const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+                        shown = items.filter(function(it) {
+                            const hay = (it.text + ' ' + it.value).toLowerCase();
+                            return words.every(function(w) { return hay.indexOf(w) !== -1; });
+                        });
+                        if (active >= shown.length) active = Math.max(0, shown.length - 1);
+                        let html = '', lastGroup = null;
+                        shown.forEach(function(it, i) {
+                            if (it.group && it.group !== lastGroup) html += '<div class="sqr-picker-group">' + sqrEsc(it.group) + '</div>';
+                            lastGroup = it.group;
+                            html += '<div class="sqr-picker-item' + (i === active ? ' is-active' : '') + (it.value === sel.value ? ' is-selected' : '') + '" data-i="' + i + '">' + sqrEsc(it.text) + '</div>';
+                        });
+                        list.innerHTML = html || '<div class="sqr-picker-empty">No column found</div>';
+                        const a = list.querySelector('.is-active');
+                        if (a) a.scrollIntoView({ block: 'nearest' });
+                    };
+                    const pick = function(i) {
+                        const it = shown[i];
+                        if (!it) return;
+                        sel.value = it.value;
+                        refreshLabel();
+                        sqrClosePicker();
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                        btn.focus();
+                    };
+
+                    input.addEventListener('input', function() { active = 0; draw(); });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(shown.length - 1, active + 1); draw(); }
+                        else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); draw(); }
+                        else if (e.key === 'Enter') { e.preventDefault(); pick(active); }
+                        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); sqrClosePicker(); btn.focus(); }
+                    });
+                    list.addEventListener('mousedown', function(e) {
+                        const t = e.target.closest('.sqr-picker-item');
+                        if (!t) return;
+                        e.preventDefault();
+                        pick(parseInt(t.getAttribute('data-i'), 10));
+                    });
+                    list.addEventListener('mousemove', function(e) {
+                        const t = e.target.closest('.sqr-picker-item');
+                        if (!t) return;
+                        const i = parseInt(t.getAttribute('data-i'), 10);
+                        if (i !== active) {
+                            active = i;
+                            Array.prototype.forEach.call(list.querySelectorAll('.sqr-picker-item'), function(n) { n.classList.toggle('is-active', parseInt(n.getAttribute('data-i'), 10) === i); });
+                        }
+                    });
+                    const out = function(e) { if (!el.contains(e.target) && !btn.contains(e.target)) sqrClosePicker(); };
+                    document.addEventListener('mousedown', out, true);
+                    window.addEventListener('resize', sqrClosePicker);
+                    sqrPicker = { el: el, btn: btn, out: out };
+                    draw();
+                    place();
+                    input.focus();
+                }
+                function sqrEnhanceSelects() {
+                    Array.prototype.forEach.call(document.querySelectorAll('#sqr-rows select.sqr-field, #sqr-rows select.sqr-valcol'), function(sel) {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'form-select form-select-sm sqr-pick';
+                        btn.title = 'Click, then type to search';
+                        const refresh = function() { btn.textContent = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : ''; };
+                        refresh();
+                        sel.style.display = 'none';
+                        sel.parentNode.insertBefore(btn, sel);
+                        btn.addEventListener('click', function() { sqrOpenPicker(sel, btn, refresh); });
+                    });
+                }
                 function sqrRender() {
                     const cols = sqrColumns();
                     const mainSet = SQR_MAIN_FIELDS.filter(function(f) { return cols.some(function(c) { return c.field === f; }); });
@@ -3360,7 +3488,9 @@
                             + '<td class="text-end sqr-count"></td>'
                             + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger sqr-del" title="Remove this condition"' + (sqrRows.length < 2 ? ' disabled' : '') + '><i class="fa fa-trash"></i></button></td></tr>';
                     }).join('');
+                    sqrClosePicker();
                     document.getElementById('sqr-rows').innerHTML = html;
+                    sqrEnhanceSelects();
                 }
                 /** Fill every line's Count and the combined total (no re-render, so typing keeps its focus). */
                 function sqrUpdateCounts() {
@@ -3426,6 +3556,7 @@
                         return false;
                     }
                 }
+                $('#sendQtyRuleModal').on('hide.bs.modal', sqrClosePicker);
                 $('#sendQtyRuleModal').on('show.bs.modal', function() {
                     $(this).appendTo('body');
                     $(this).css('z-index', '1060');
@@ -3494,10 +3625,16 @@
                     updateSuggSendBadge();
                 });
 
+                $('#sugg-send-filter').on('change', function() {
+                    applyFilters();
+                    updateSuggSendBadge();
+                });
+
                 // Reset All Filters button - shows ALL data
                 $('#reset-all-filters-btn').on('click', function() {
                     console.log('Reset All Filters clicked - showing ALL data');
                     $('#nrl-fba-filter').val('all');
+                    $('#sugg-send-filter').val('all');
                     $('#sku-search').val('');
                     skuSearch = '';
                     $('#parent-search').val('');
