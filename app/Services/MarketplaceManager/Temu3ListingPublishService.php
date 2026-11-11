@@ -366,6 +366,22 @@ class Temu3ListingPublishService
         $hostedImages = array_slice($hostedImages, 0, self::MAX_IMAGES);
 
         $catId = $this->resolveCatId($primarySku, $title, $hostedImages[0], $preferredCatId);
+        if ($catId === null && $mode === 'variation') {
+            // Joining a parent that already exists: its own leaf category is the one that counts.
+            $attachModeEarly = strtolower(trim((string) ($attach['mode'] ?? '')));
+            if ($attachModeEarly !== 'new') {
+                $parentGoodsId = $attachModeEarly === 'existing' ? trim((string) ($attach['goods_id'] ?? '')) : '';
+                if ($parentGoodsId === '') {
+                    $parentGoodsId = $this->siblingGoodsId($parentKey);
+                }
+                if ($parentGoodsId !== '') {
+                    $fromGoods = $this->remoteGoodsCatId($parentGoodsId);
+                    if ($fromGoods > 0) {
+                        $catId = $fromGoods;
+                    }
+                }
+            }
+        }
         if ($catId === null) {
             return ['success' => false, 'message' => 'Could not resolve a Temu leaf category. Set '.$this->pricingTable().'.category_id or check category recommend API access.'];
         }
