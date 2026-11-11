@@ -7060,8 +7060,22 @@
             }
             /** Built-in headers first, then yours (read each time, so a new header is picked up at once). */
             function amazonColVisKeys() { return COL_VIS_BASE_KEYS.concat(loadAmazonColGroups().map(function(g) { return g.key; })); }
+            // New names you gave to the built-in headers (Basic, Price ...): { key: label }.
+            const AMAZON_COL_LABEL_STORAGE = 'amazon_tabulator_col_labels_v1';
+            function loadAmazonColLabels() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(AMAZON_COL_LABEL_STORAGE) || '{}');
+                    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+                } catch (e) { return {}; }
+            }
+            function saveAmazonColLabels(map) {
+                try { localStorage.setItem(AMAZON_COL_LABEL_STORAGE, JSON.stringify(map || {})); } catch (e) { /* ignore */ }
+            }
             function amazonColVisLabel(key) {
-                if (COL_VIS_BASE_LABELS[key]) return COL_VIS_BASE_LABELS[key];
+                if (COL_VIS_BASE_LABELS[key]) {
+                    const custom = String(loadAmazonColLabels()[key] || '').trim();
+                    return custom || COL_VIS_BASE_LABELS[key];
+                }
                 const g = loadAmazonColGroups().filter(function(x) { return x.key === key; })[0];
                 return g ? g.label : key;
             }
@@ -7308,19 +7322,20 @@
                             titleEl.appendChild(document.createTextNode(amazonColVisLabel(cat)));
                             group.appendChild(titleEl);
 
-                            if (amazonColVisIsCustom(cat)) {
-                                // Your header: rename / delete, and a search box that finds any column and adds it here.
-                                const tools = document.createElement("div");
-                                tools.className = "col-vis-group-tools";
-                                tools.innerHTML = '<input type="search" class="form-control form-control-sm col-vis-group-search" placeholder="Search &amp; add column…" autocomplete="off" data-category="' + cat + '">'
-                                    + '<button type="button" class="btn btn-sm btn-outline-secondary col-vis-rename" data-category="' + cat + '" title="Rename this header"><i class="fas fa-pen"></i></button>'
-                                    + '<button type="button" class="btn btn-sm btn-outline-danger col-vis-delgroup" data-category="' + cat + '" title="Delete this header (its columns go back to their normal header)"><i class="fas fa-trash-alt"></i></button>';
-                                group.appendChild(tools);
-                                const results = document.createElement("div");
-                                results.className = "col-vis-group-results";
-                                results.style.display = "none";
-                                group.appendChild(results);
-                            }
+                            // Every header: a search box that finds any column and adds it here, and a rename button.
+                            // Your own headers also get a delete button.
+                            const tools = document.createElement("div");
+                            tools.className = "col-vis-group-tools";
+                            tools.innerHTML = '<input type="search" class="form-control form-control-sm col-vis-group-search" placeholder="Search &amp; add column…" autocomplete="off" data-category="' + cat + '">'
+                                + '<button type="button" class="btn btn-sm btn-outline-secondary col-vis-rename" data-category="' + cat + '" title="Rename this header"><i class="fas fa-pen"></i></button>'
+                                + (amazonColVisIsCustom(cat)
+                                    ? '<button type="button" class="btn btn-sm btn-outline-danger col-vis-delgroup" data-category="' + cat + '" title="Delete this header (its columns go back to their normal header)"><i class="fas fa-trash-alt"></i></button>'
+                                    : '');
+                            group.appendChild(tools);
+                            const results = document.createElement("div");
+                            results.className = "col-vis-group-results";
+                            results.style.display = "none";
+                            group.appendChild(results);
 
                             const list = document.createElement("ul");
                             list.className = "col-vis-group-list";
@@ -8226,9 +8241,15 @@
                         if (name === null) return;
                         const clean = name.trim().slice(0, 30);
                         if (!clean) return;
-                        const list = loadAmazonColGroups();
-                        list.forEach(function(g) { if (g.key === key) g.label = clean; });
-                        saveAmazonColGroups(list);
+                        if (amazonColVisIsCustom(key)) {
+                            const list = loadAmazonColGroups();
+                            list.forEach(function(g) { if (g.key === key) g.label = clean; });
+                            saveAmazonColGroups(list);
+                        } else {
+                            const labels = loadAmazonColLabels();
+                            labels[key] = clean;
+                            saveAmazonColLabels(labels);
+                        }
                         buildColumnDropdown();
                         return;
                     }
