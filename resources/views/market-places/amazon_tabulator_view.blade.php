@@ -1499,7 +1499,6 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
         @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
-        @include('partials.amazon-lmp-cvr-disc-rule', ['amzLmpCvrPart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'amazon'])
 
         function amazonNormalizeSkuKey(sku) {
@@ -1669,8 +1668,6 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             return ((sprice * 0.80 - ship - lp) / lp) * 100;
         }
-        /** Sprc Dil rule: when S PRC reaches LMP it lands on LMP − x% (x by Dil band; default 2% = LMP × 0.98, AmazonDilGroiRule::DIL_LMP_REDUCE_PCT). */
-        const AMZ_DIL_LMP_REDUCE_PCT = 2;
         /**
          * LMP is lower than (or equal to) S PRC. Sprc Dil rule: the LMP rule always applies, no SNROI condition.
          * Std prc vs dil rule: also needs SNROI at LMP to be at least 20%.
@@ -1722,17 +1719,13 @@
             let out = +Number(s).toFixed(2);
             // Clearance SKU on the Sprc Dil rule: priced from the clearance Target NROI%, no LMP / Std cap.
             if (typeof window.amzClearanceDilActive === 'function' && window.amzClearanceDilActive(rowData)) return out;
-            if (amazonShouldCapSpriceToLmp(rowData, s)) {
+            // The Sprc Dil rule has no LMP cap any more (the LMP Rule was deleted): only Std Prc limits it, below.
+            // The Std prc vs dil rule keeps its own LMP Reduce block (by Dil slab).
+            const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
+            if (!dilRuleOn && amazonShouldCapSpriceToLmp(rowData, s)) {
                 const lmp = lmpWithShipping(rowData);
                 if (lmp > 0) {
-                    // LMP Reduce block (Std prc vs dil): S PRC at LMP lands on LMP less the % of its Dil slab.
-                    // Sprc Dil rule: S PRC at LMP = LMP × 0.98. Std prc vs dil rule: the LMP Reduce block (by Dil slab).
-                    const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
-                    // Sprc Dil: x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as eBay.
-                    const reducePct = dilRuleOn
-                        ? ((typeof window.amzLmpReducePctForRow === 'function' && isFinite(Number(window.amzLmpReducePctForRow(rowData))))
-                            ? Number(window.amzLmpReducePctForRow(rowData)) : AMZ_DIL_LMP_REDUCE_PCT)
-                        : ((typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0);
+                    const reducePct = (typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0;
                     out = +Number(lmp * (1 - (Math.min(99, Math.max(0, reducePct)) / 100))).toFixed(2);
                 }
             }
