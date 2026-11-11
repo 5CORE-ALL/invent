@@ -1990,6 +1990,21 @@ class FacebookAllAdsSheetController extends Controller
         $perDay = [];   // date => [impr, clk, spend, sales, sold, sbgt]
         $blank  = ['impr' => 0.0, 'clk' => 0.0, 'spend' => 0.0, 'sales' => 0.0, 'sold' => 0.0, 'sbgt' => 0.0];
 
+        // Why the cards can be blank — surfaced to the UI so it never shows a bare "—".
+        $diag = ['reason' => null, 'latest_insight_date' => null, 'matched_campaigns' => null];
+
+        if (! Schema::hasTable('meta_insights_daily') || ! Schema::hasTable('meta_campaigns')) {
+            $diag['reason'] = 'Meta insights tables are missing on this server.';
+        } else {
+            $diag['latest_insight_date'] = DB::table('meta_insights_daily')
+                ->where('entity_type', 'campaign')
+                ->where('breakdown_hash', md5(json_encode([])))
+                ->max('date_start');
+            $diag['matched_campaigns'] = empty($cids)
+                ? null
+                : DB::table('meta_campaigns')->whereIn('meta_id', $cids)->count();
+        }
+
         if (Schema::hasTable('meta_insights_daily') && Schema::hasTable('meta_campaigns')) {
             $ins = DB::table('meta_insights_daily as mid')
                 ->join('meta_campaigns as mc', function ($j) {
@@ -2038,8 +2053,22 @@ class FacebookAllAdsSheetController extends Controller
             }
         }
 
+        if ($diag['reason'] === null && ! isset($perDay[$yesterday])) {
+            if ($diag['latest_insight_date'] === null) {
+                $diag['reason'] = 'No campaign-level Meta daily insights are synced at all (meta_insights_daily is empty).';
+            } elseif ($diag['matched_campaigns'] === 0) {
+                $diag['reason'] = 'None of the visible campaign IDs exist in meta_campaigns, so no daily insights can be matched.';
+            } elseif ($diag['latest_insight_date'] < $yesterday) {
+                $diag['reason'] = 'Meta daily insights are only synced up to ' . $diag['latest_insight_date']
+                    . ' (yesterday PDT is ' . $yesterday . '). Run: php artisan meta-ads:sync --insights-only';
+            } else {
+                $diag['reason'] = 'Meta has no insight rows for the visible campaigns on ' . $yesterday . '.';
+            }
+        }
+
         return response()->json([
             'success'        => true,
+            'diag'           => $diag,
             'yesterday_date' => $yesterday,
             'yesterday'      => $perDay[$yesterday] ?? null,   // null when no insights for yesterday
             'l7'             => $perDay ? $l7 : null,

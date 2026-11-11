@@ -404,7 +404,7 @@
                     @endphp
                     <div class="faas-cards faas-badges flex-grow-1" id="faasSummaryCards">
                         <div class="faas-card faas-card--yesterday">
-                            <div class="faas-card-title">{{ $faasPeriodCards['yesterday']['title'] }}</div>
+                            <div class="faas-card-title" id="faasYesterdayTitle">{{ $faasPeriodCards['yesterday']['title'] }}</div>
                             <div class="faas-card-tiles">
                                 @foreach ($faasPeriodItems as [$k, $label, $tip])
                                     <span class="faas-kpi-tile" id="faasKpi_yesterday_{{ $k }}" data-period="yesterday" data-kpi="{{ $k }}" title="{{ $faasPeriodCards['yesterday']['tip'] }} · {{ $tip }}">Y {{ $label }}:<span class="faas-kpi-val">—</span></span>
@@ -2358,6 +2358,15 @@
                     faasPeriodData = resp;
                     faasCardKey = key;
                     faasPaintPeriodCards();
+                    // Explain a blank card instead of leaving a bare "—".
+                    const yt = document.getElementById('faasYesterdayTitle');
+                    if (yt) {
+                        const why = !resp.yesterday && resp.diag && resp.diag.reason ? resp.diag.reason : '';
+                        yt.textContent = 'Yesterday (PDT' + (resp.yesterday_date ? ' · ' + resp.yesterday_date : '') + ')'
+                            + (why ? ' — no data' : '');
+                        yt.title = why;
+                        if (why) console.warn('FAAS Yesterday card is blank:', why, resp.diag);
+                    }
                 })
                 .catch(err => console.error('period-stats fetch failed:', err));
         }
