@@ -720,6 +720,14 @@ class SheinSprcDilAutoPushService
         $this->log($logger, 'Push failed '.$sku.': '.$err);
         Log::error('Shein Sprc Dil push failed', ['sku' => $sku, 'price' => $price, 'error' => $err]);
         $this->savePushMeta($sku, 'error', null);
+
+        if (! empty($result['invalid_sku_code']) && ($result['sku_code'] ?? '') !== '') {
+            // Shein no longer knows this skuCode: park the SKU as Missing so the 10-min catch-up stops re-pushing it.
+            // pushPricingPrice already marked it, but savePushMeta just rewrote the row from this run's cached copy,
+            // so mark again after it. A resync that stores a new skuCode clears the mark by itself.
+            app(ChannelPushedPricePullService::class)->markSheinSkuCodeInvalid($sku, (string) $result['sku_code'], $err);
+            $this->viewsByNorm = null;
+        }
     }
 
     /**
@@ -763,6 +771,8 @@ class SheinSprcDilAutoPushService
             return [
                 'success' => false,
                 'message' => (string) (($payload['results'][0]['error'] ?? null) ?: ($payload['message'] ?? 'Shein price push failed')),
+                'invalid_sku_code' => ! empty($payload['results'][0]['invalid_sku_code']),
+                'sku_code' => (string) ($payload['results'][0]['sku_code'] ?? ''),
             ];
         } catch (Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];

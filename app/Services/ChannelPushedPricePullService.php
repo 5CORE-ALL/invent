@@ -964,7 +964,7 @@ class ChannelPushedPricePullService
      * for as long as shein_metrics still holds that same code; a resync that stores a new code clears it by itself.
      * A pending "pushed" status is turned into an error so the SKU leaves the pull queue.
      */
-    private function markSheinSkuCodeInvalid(string $sku, string $code, string $message): void
+    public function markSheinSkuCodeInvalid(string $sku, string $code, string $message): void
     {
         try {
             $view = \App\Models\SheinDataView::query()

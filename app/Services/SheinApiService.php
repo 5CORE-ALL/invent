@@ -3613,6 +3613,8 @@ class SheinApiService
                             'sku_code' => $row['sku_code'],
                             'success' => false,
                             'error' => $lastError,
+                            // Shein does not know this skuCode any more: retrying can never work.
+                            'invalid_sku_code' => self::isDeadSkuCodeMessage($lastError),
                         ];
 
                         continue;
@@ -3654,6 +3656,18 @@ class SheinApiService
             'error_message' => $failed > 0 ? $lastError : null,
             'results' => $results,
         ];
+    }
+
+    /**
+     * Shein's wording when a skuCode no longer exists (listing removed / code replaced), from price/save and full-detail.
+     */
+    public static function isDeadSkuCodeMessage(string $message): bool
+    {
+        $m = mb_strtolower($message);
+
+        return str_contains($m, 'sku does not exist')
+            || str_contains($m, 'invalid skucode')
+            || str_contains($message, '无效的skuCode');
     }
 
     private function resolvePlatformSkuCodeForPricePush(string $sellerSku): string

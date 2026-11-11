@@ -7,6 +7,15 @@ use Tests\TestCase;
 
 class SheinPricePushTest extends TestCase
 {
+    public function test_dead_sku_code_messages_are_detected(): void
+    {
+        $this->assertTrue(SheinApiService::isDeadSkuCodeMessage('SKU does not exist'));
+        $this->assertTrue(SheinApiService::isDeadSkuCodeMessage('Invalid skuCode: [I11abc]'));
+        $this->assertTrue(SheinApiService::isDeadSkuCodeMessage('无效的skuCode: [I11abc]'));
+        $this->assertFalse(SheinApiService::isDeadSkuCodeMessage('Price is lower than the minimum'));
+        $this->assertFalse(SheinApiService::isDeadSkuCodeMessage(''));
+    }
+
     public function test_build_price_save_entry_uses_special_when_shop_is_higher(): void
     {
         $row = app(SheinApiService::class)->buildPriceSaveEntry(

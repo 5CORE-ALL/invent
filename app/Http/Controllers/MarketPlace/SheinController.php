@@ -1369,6 +1369,17 @@ class SheinController extends Controller
         // Shein reviews price changes, so the Sp. Price column is not overwritten here. A live pull / sync does it.
         $bulk = $sheinApi->updateItemPriceBulk($items, null, false);
         $results = array_merge($prefail, $bulk['results'] ?? []);
+        // Shein refused a price because it no longer knows the skuCode: park the SKU as Missing instead of leaving it blue
+        // and being re-pushed (and refused) on every catch-up run.
+        foreach ($results as $r) {
+            if (! empty($r['invalid_sku_code']) && ! empty($r['sku']) && ! empty($r['sku_code'])) {
+                app(\App\Services\ChannelPushedPricePullService::class)->markSheinSkuCodeInvalid(
+                    (string) $r['sku'],
+                    (string) $r['sku_code'],
+                    'Shein skuCode '.$r['sku_code'].' is invalid (listing no longer on Shein) — resync Shein products'
+                );
+            }
+        }
         $pushed = (int) ($bulk['pushed'] ?? 0);
         $failed = (int) ($bulk['failed'] ?? 0) + count($prefail);
         $ok = $pushed > 0 && $failed === 0;
