@@ -146,7 +146,7 @@ class MeetingController extends Controller
     {
         $data = $request->validate([
             'title' => 'required|string|max:255',
-            'agenda' => 'required|string|min:5|max:5000',
+            'agenda' => 'required|string|max:5000',
             'when' => 'required|in:now,later',
             'scheduled_at' => 'required_if:when,later|nullable|date|after:-5 minutes',
             'invitee_ids' => 'required|array|min:1|max:200',
@@ -155,7 +155,6 @@ class MeetingController extends Controller
             'invitee_ids.required' => 'Add at least one member to the meeting.',
             'invitee_ids.min' => 'Add at least one member to the meeting.',
             'agenda.required' => 'Please add a meeting agenda.',
-            'agenda.min' => 'Please add a meeting agenda (at least a few words).',
             'scheduled_at.required_if' => 'Pick a date and time, or choose "Start now".',
             'scheduled_at.after' => 'The meeting time cannot be in the past.',
         ]);

@@ -263,7 +263,7 @@
         $('mrqBtnReview').addEventListener('click', function () {
             var p = collect();
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
-            if (p.agenda.length < 5) return showErr('mrqError', 'Please add a meeting agenda.');
+            if (p.agenda.length < 1) return showErr('mrqError', 'Please add a meeting agenda.');
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
             if (p.when === 'later') {
                 if (!p.scheduled_at) return showErr('mrqError', 'Pick a date and time, or choose "Start now".');
