@@ -568,7 +568,8 @@
         #amzDilGroiModal .amz-dg-custom > .amz-cr-body { flex: 1 1 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 22px; min-width: 0; }
         #amzDilGroiModal .amz-dg-custom .amz-cr-line { flex: 0 0 auto; flex-wrap: nowrap; }
         #amzDilGroiModal .amz-dg-custom .amz-cr-lbl { flex: 0 0 auto; }
-        #amzDilGroiModal .amz-dg-custom .amz-cr-line .amz-cr-del { margin-left: 4px !important; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-line .amz-cr-del { margin-left: 4px !important; white-space: nowrap; }
+        #amzDilGroiModal .amz-dg-custom .amz-cr-count { display: inline-block; min-width: 78px; }
         /* the name box widens with the text typed into it (JS sets its size) */
         #amzDilGroiModal .amz-dg-custom .amz-cr-name { flex: 0 1 auto; width: auto; min-width: 90px; max-width: 100%; font-weight: 600; font-size: 12px; }
         #amzDilGroiModal .amz-dg-custom .amz-cr-body { display: flex; flex-direction: column; gap: 5px; }
@@ -6046,17 +6047,36 @@
                         amzAfterDilGroiRulesChanged();
                     }
                 });
+            // Delete a custom rule card. No native confirm() (a browser that blocked dialogs made the button do nothing):
+            // the first click turns the button into "Click again to delete" for a few seconds, the second click deletes.
             $(document).off('click.amzCrDel').on('click.amzCrDel', '#amzDilGroiModal .amz-dg-custom .amz-cr-del', function(e) {
                 e.preventDefault();
-                const $card = $(this).closest('.amz-dg-custom');
+                e.stopPropagation();
+                const $btn = $(this);
+                const $card = $btn.closest('.amz-dg-custom');
                 const id = String($card.attr('data-custom-id') || '');
-                const r = amzCustomRuleById(id);
-                if (!r || !confirm('Delete the rule card "' + r.name + '"?')) return;
+                const idle = '<i class="fas fa-trash-alt me-1"></i> Delete';
+                if (!$btn.hasClass('is-confirm')) {
+                    $btn.addClass('is-confirm btn-danger').removeClass('btn-outline-danger')
+                        .html('<i class="fas fa-trash-alt me-1"></i> Click again to delete');
+                    clearTimeout($btn.data('amzCrDelT'));
+                    $btn.data('amzCrDelT', setTimeout(function() {
+                        $btn.removeClass('is-confirm btn-danger').addClass('btn-outline-danger').html(idle);
+                    }, 3500));
+                    return;
+                }
+                clearTimeout($btn.data('amzCrDelT'));
                 amzCustomRules = amzCustomRules.filter(function(x) { return x.id !== id; });
                 delete amzRuleSeq['c_' + id];
-                amzRuleSeq = amzSeqToRanks(amzRuleSeq);
-                amzRenderCustomCards();
-                amzAfterDilGroiRulesChanged();
+                $card.remove();
+                try {
+                    amzRuleSeq = amzSeqToRanks(amzRuleSeq);
+                    amzRenderCustomCards();
+                    amzAfterDilGroiRulesChanged();
+                } catch (err) {
+                    if (window.console && console.error) console.error('Custom rule delete', err);
+                }
+                $('#amz-dil-groi-status').text('Rule card deleted. Press Save Only to keep it deleted.');
             });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
                 .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
