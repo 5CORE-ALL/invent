@@ -1403,13 +1403,14 @@
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
-                                const formattedValue = `${value.toFixed(0)}%`;
-                                let color = '';
-                                if (value >= 25 && value <= 50) color = '#b8860b'; // dark mustard
-                                else if (value <= 50) color = 'red';
-                                else if (value <= 100) color = 'green';
-                                else color = 'purple';
-                                return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
+                                // Same colors as Analytics Amz (amazon-tabulator-view) Dil column:
+                                // grey 0%, red < 25%, green 25-50%, pink 50%+
+                                if (!(value > 0)) return '<span style="color:#6c757d;">0%</span>';
+                                let color = '#a00211';
+                                if (value < 25) color = '#a00211';
+                                else if (value < 50) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color:${color}; font-weight:600;">${Math.round(value)}%</span>`;
                             },
                         },
 
@@ -2121,9 +2122,12 @@
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
                                 const value = String(cell.getValue() ?? '').trim();
-                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                const text = value ? `<span style="margin-right:6px;">${esc(value)}</span>` : '';
-                                return `${text}<i class="fa fa-edit" style="color:#3b7ddd;cursor:pointer;" title="Edit UPC code"></i>`;
+                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // Green dot when a UPC code is filled (code shown on hover), then the edit icon
+                                const dot = value
+                                    ? `<span title="${esc(value)}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background-color:#28a745;margin-right:6px;vertical-align:middle;"></span>`
+                                    : '';
+                                return `${dot}<i class="fa fa-edit" style="color:#3b7ddd;cursor:pointer;" title="Edit UPC code"></i>`;
                             },
                             cellClick: function(e, cell) {
                                 const rowData = cell.getRow().getData();
