@@ -455,7 +455,7 @@
                         </div>
 
                         <div class="faas-card faas-card--projected">
-                            <div class="faas-card-title">{{ $faasPeriodCards['projected']['title'] }}</div>
+                            <div class="faas-card-title" id="faasProjectedTitle">{{ $faasPeriodCards['projected']['title'] }}</div>
                             <div class="faas-card-tiles">
                                 @foreach ($faasPeriodItems as [$k, $label, $tip])
                                     <span class="faas-kpi-tile" id="faasKpi_projected_{{ $k }}" data-period="projected" data-kpi="{{ $k }}" title="{{ $faasPeriodCards['projected']['tip'] }} · {{ $tip }}">{{ $label }}:<span class="faas-kpi-val">—</span></span>
@@ -2352,23 +2352,45 @@
                 },
                 body: JSON.stringify({ campaign_ids: cids }),
             })
-                .then(r => r.json())
+                .then(r => {
+                    if (!r.ok) throw new Error('period-stats HTTP ' + r.status);
+                    return r.json();
+                })
                 .then(resp => {
-                    if (req !== faasCardReq || !resp || !resp.success) return;
+                    if (req !== faasCardReq) return;
+                    if (!resp || !resp.success) throw new Error((resp && resp.error) || 'period-stats returned success=false');
                     faasPeriodData = resp;
                     faasCardKey = key;
                     faasPaintPeriodCards();
-                    // Explain a blank card instead of leaving a bare "—".
-                    const yt = document.getElementById('faasYesterdayTitle');
-                    if (yt) {
-                        const why = !resp.yesterday && resp.diag && resp.diag.reason ? resp.diag.reason : '';
-                        yt.textContent = 'Yesterday (PDT' + (resp.yesterday_date ? ' · ' + resp.yesterday_date : '') + ')'
-                            + (why ? ' — no data' : '');
-                        yt.title = why;
-                        if (why) console.warn('FAAS Yesterday card is blank:', why, resp.diag);
-                    }
+                    faasPaintPeriodTitles(resp, '');
                 })
-                .catch(err => console.error('period-stats fetch failed:', err));
+                .catch(err => {
+                    console.error('period-stats fetch failed:', err);
+                    if (req === faasCardReq) faasPaintPeriodTitles(null, String(err && err.message || err));
+                });
+        }
+
+        // Card headings: show the PDT date, the 7-day window actually used for
+        // Projected, and — when a card is blank — the reason (hover the heading).
+        function faasPaintPeriodTitles(resp, errMsg) {
+            const yt = document.getElementById('faasYesterdayTitle');
+            const pt = document.getElementById('faasProjectedTitle');
+            const diagReason = resp && resp.diag && resp.diag.reason ? resp.diag.reason : '';
+            const yWhy = errMsg || (resp && !resp.yesterday ? diagReason : '');
+            const pWhy = errMsg || (resp && !resp.l7 ? diagReason : '');
+            if (yt) {
+                yt.textContent = 'Yesterday (PDT' + (resp && resp.yesterday_date ? ' · ' + resp.yesterday_date : '') + ')'
+                    + (yWhy ? ' — no data' : '');
+                yt.title = yWhy;
+            }
+            if (pt) {
+                const n = resp && resp.l7_days ? resp.l7_days : 0;
+                pt.textContent = 'Projected · L7 ÷ ' + (n || 7) + ' × 30'
+                    + (n && n < 7 ? ' (' + n + ' days of data)' : '')
+                    + (pWhy ? ' — no data' : '');
+                pt.title = pWhy;
+            }
+            if (yWhy || pWhy) console.warn('FAAS period cards blank:', yWhy || pWhy, resp && resp.diag);
         }
 
         // Turn raw sums into the tile values. `days` scales additive sums
@@ -2399,10 +2421,96 @@
         }
 
         // true = higher is better, false = lower is better.
+        // Same standard as /amazon-ads/all (AMZ_KPI_KIND): only Bid and ACOS (and
+        // CPS = cost per sale) are lower-is-better; Spend counts as higher-is-better.
         const FAAS_KPI_HIGHER_BETTER = {
             bgt: true, bid: false, cvr: true, acos: false, ctr: true,
-            impr: true, clicks: true, sold: true, sales: true, spend: false, cps: false,
+            impr: true, clicks: true, sold: true, sales: true, spend: true, cps: false,
         };
+
+        // ── Badge trend dots (green up / red down / grey same) ─────────
+        // The layout injects a grey `.summary-trend-dot.none` into every
+        // `.badge-chart-link`; paint it the standard way: live L30 value vs the
+        // previous day's L30 snapshot (same rule as ChBadgeHistory / Amazon ads).
+        // Lower-is-better metrics (ACOS) flip the colours.
+        const FAAS_DOT_METRICS = [
+            { id: 'faasImpressionsBadge', k: 'impr',  lower: false, eps: 0.5,  fmt: v => Math.round(v).toLocaleString() },
+            { id: 'faasClicksBadge',      k: 'clk',   lower: false, eps: 0.5,  fmt: v => Math.round(v).toLocaleString() },
+            { id: 'faasSpendBadge',       k: 'spend', lower: !FAAS_KPI_HIGHER_BETTER.spend, eps: 0.5, fmt: v => '$' + Math.round(v).toLocaleString() },
+            { id: 'faasSalesBadge',       k: 'sales', lower: false, eps: 0.5,  fmt: v => '$' + Math.round(v).toLocaleString() },
+            { id: 'faasSoldBadge',        k: 'sold',  lower: false, eps: 0.5,  fmt: v => Math.round(v).toLocaleString() },
+            { id: 'faasAcosBadge',        k: 'acos',  lower: true,  eps: 0.5,  fmt: v => Math.round(v) + '%' },
+            { id: 'faasCtrBadge',         k: 'ctr',   lower: false, eps: 0.05, fmt: v => v.toFixed(1) + '%' },
+            { id: 'faasCvrBadge',         k: 'cvr',   lower: false, eps: 0.05, fmt: v => v.toFixed(1) + '%' },
+        ];
+        let faasDotPrev = null;      // previous-day raw sums { date, impr, clk, spend, sales, sold } | null
+        let faasDotPrevKey = null;   // campaign set faasDotPrev was fetched for
+        let faasDotReq = 0;
+        let faasDotTimer = null;
+
+        // Ratios exactly as the badges show them (ACOS 0 when no sales).
+        function faasDotValues(s) {
+            return {
+                impr: s.impr, clk: s.clk, spend: s.spend, sales: s.sales, sold: s.sold,
+                acos: s.sales > 0 ? (s.spend / s.sales) * 100 : 0,
+                ctr:  s.impr  > 0 ? (s.clk / s.impr) * 100 : 0,
+                cvr:  s.clk   > 0 ? (s.sold / s.clk) * 100 : 0,
+            };
+        }
+
+        function faasPaintTrendDots() {
+            if (!faasL30Totals) return;
+            const cur = faasDotValues({
+                impr: faasL30Totals.impr, clk: faasL30Totals.clicks, spend: faasL30Totals.spend,
+                sales: faasL30Totals.sales, sold: faasL30Totals.sold,
+            });
+            const prev = faasDotPrev ? faasDotValues(faasDotPrev) : null;
+            FAAS_DOT_METRICS.forEach(m => {
+                const badge = document.getElementById(m.id);
+                if (!badge) return;
+                let dot = badge.querySelector('.summary-trend-dot');
+                if (!dot) {
+                    dot = document.createElement('span');
+                    dot.className = 'summary-trend-dot none';
+                    badge.insertBefore(dot, badge.firstChild);
+                }
+                const c = cur[m.k], p = prev ? prev[m.k] : NaN;
+                if (!isFinite(c) || !isFinite(p)) {
+                    dot.className = 'summary-trend-dot none';
+                    dot.title = 'No prior-day snapshot yet';
+                    return;
+                }
+                const diff = c - p;
+                let cls = diff > m.eps ? 'up' : (diff < -m.eps ? 'down' : 'flat');
+                if (m.lower && cls === 'up') cls = 'down';
+                else if (m.lower && cls === 'down') cls = 'up';
+                dot.className = 'summary-trend-dot ' + cls;
+                const word = diff > m.eps ? 'Up' : (diff < -m.eps ? 'Down' : 'Same');
+                dot.title = word + ' vs ' + (faasDotPrev.date || 'prior day') + ' (' + m.fmt(p) + ' → ' + m.fmt(c) + ')';
+            });
+        }
+
+        function faasScheduleTrendDots() {
+            faasPaintTrendDots();   // repaint right away from the cached previous day
+            clearTimeout(faasDotTimer);
+            faasDotTimer = setTimeout(function () {
+                const cids = faasVisibleCids();
+                const key = cids.join(',');
+                if (key === faasDotPrevKey) return;
+                const req = ++faasDotReq;
+                const params = new URLSearchParams({ metric: 'tones' });
+                if (cids.length) params.set('campaign_ids', cids.join(','));
+                fetch('/facebook-all-ads-sheet/badge-history?' + params.toString(), { credentials: 'same-origin' })
+                    .then(r => r.json())
+                    .then(resp => {
+                        if (req !== faasDotReq || !resp || !resp.success) return;
+                        faasDotPrev = resp.prev || null;
+                        faasDotPrevKey = key;
+                        faasPaintTrendDots();
+                    })
+                    .catch(err => console.error('badge tones fetch failed:', err));
+            }, 300);
+        }
 
         function faasPaintPeriodCards() {
             const d = faasPeriodData;
@@ -2515,6 +2623,7 @@
             faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,
                               sold: soldSum, bgt: bgtSum };
             faasScheduleCardRefresh();
+            faasScheduleTrendDots();
 
             // Keep the numeric average ACOS (matches the badge: ΣSPEND/ΣSALES,
             // 0 when there are no sales) in sync and repaint the Action column
@@ -3864,9 +3973,8 @@
 
             // Per-day dot colours: green = improved vs prev day,
             // red = worse, grey = flat. Inverted for "lower is better"
-            // metrics (Acos, Spend — same convention as FAAS_KPI_HIGHER_BETTER
-            // on the summary cards), so a rising cost line shows red, not green.
-            const invertedMetrics = ['acos', 'spend'];
+            // metrics (Acos — same standard as /amazon-ads/all and the badge dots).
+            const invertedMetrics = ['acos'];
             const isInverted = invertedMetrics.includes(metric);
             const dotColors = values.map((v, i) => {
                 if (i === 0) return refGray;

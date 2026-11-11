@@ -1889,6 +1889,35 @@ class FacebookAllAdsSheetController extends Controller
         $cidsCsv = (string) $request->input('campaign_ids', '');
         $cids = array_values(array_filter(array_map('trim', explode(',', $cidsCsv)), fn($v) => $v !== ''));
 
+        // metric=tones → previous-day totals for the badge trend dots (green up /
+        // red down / grey same). The L30 badges are rolling-L30 values, and each
+        // snapshot row is the rolling-L30 as of the day the sheet was saved, so the
+        // right comparison is the latest snapshot BEFORE today (PDT) vs the live badge.
+        if ($metric === 'tones') {
+            $today = now('America/Los_Angeles')->toDateString();
+            $q = DB::table('facebook_campaign_metric_snapshots')->where('snapshot_date', '<', $today);
+            if (! empty($cids)) {
+                $q->whereIn('campaign_id', $cids);
+            }
+            $prevDate = (clone $q)->max('snapshot_date');
+            $prev = null;
+            if ($prevDate) {
+                $r = (clone $q)->where('snapshot_date', $prevDate)
+                    ->selectRaw('SUM(impr) AS impr, SUM(clk) AS clk, SUM(spend) AS spend,
+                        SUM(sales) AS sales, SUM(sold) AS sold')
+                    ->first();
+                $prev = [
+                    'date'  => substr((string) $prevDate, 0, 10),
+                    'impr'  => (float) ($r->impr ?? 0),
+                    'clk'   => (float) ($r->clk ?? 0),
+                    'spend' => (float) ($r->spend ?? 0),
+                    'sales' => (float) ($r->sales ?? 0),
+                    'sold'  => (float) ($r->sold ?? 0),
+                ];
+            }
+            return response()->json(['success' => true, 'today' => $today, 'prev' => $prev]);
+        }
+
         $allowed = ['impr', 'clk', 'spend', 'sales', 'sold', 'sbgt', 'acos', 'ctr', 'cvr'];
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
@@ -1993,6 +2022,7 @@ class FacebookAllAdsSheetController extends Controller
         // Why the cards can be blank — surfaced to the UI so it never shows a bare "—".
         $diag = ['reason' => null, 'latest_insight_date' => null, 'matched_campaigns' => null];
 
+        try {
         if (! Schema::hasTable('meta_insights_daily') || ! Schema::hasTable('meta_campaigns')) {
             $diag['reason'] = 'Meta insights tables are missing on this server.';
         } else {
@@ -2030,6 +2060,11 @@ class FacebookAllAdsSheetController extends Controller
                     'sold'  => (float) $r->sold,
                 ]);
             }
+        }
+        } catch (\Throwable $e) {
+            Log::error('FAAS periodStats insights query failed: ' . $e->getMessage());
+            $perDay = [];
+            $diag['reason'] = 'Insights query failed on the server: ' . Str::limit($e->getMessage(), 160);
         }
 
         // Daily budget (Sbgt) isn't in insights; it is a per-day level, so the
