@@ -5295,6 +5295,81 @@
                     },
 
                     {
+                        title: "Amz Chg",
+                        field: "amz_chg",
+                        hozAlign: "center",
+                        width: 70,
+                        headerSort: true,
+                        headerTooltip: "Amazon charge = Std Prc × 15%.",
+                        sorter: amazonMetricSorter(function(d) { const s = parseFloat(d.STANDARD_PRICE); return s > 0 ? s * 0.15 : null; }),
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const std = parseFloat(rowData.STANDARD_PRICE);
+                            if (!(std > 0)) return '<span style="color: #999;">—</span>';
+                            return '<span style="font-weight: 600;">$' + (std * 0.15).toFixed(2) + '</span>';
+                        }
+                    },
+
+                    {
+                        title: "Ship",
+                        field: "Ship_productmaster",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const value = parseFloat(val);
+                            if (!Number.isFinite(value)) return '';
+                            const labelQty = parseInt(rowData.label_qty, 10);
+                            let tip = '';
+                            if (Number.isFinite(labelQty) && labelQty >= 2) {
+                                tip = ` title="Label QTY ${labelQty}. Ship is the stored CP Master / Shipping Master value (already includes combo)."`;
+                            }
+                            return `<span${tip}>$${value.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "LP",
+                        field: "LP_productmaster",
+                        hozAlign: "center",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
+                        headerTooltip: "Landed price (product master)",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const value = parseFloat(val);
+                            if (!Number.isFinite(value)) return '';
+                            return `<span>$${value.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+
+                    {
+                        title: "NPFT$ C",
+                        field: "c_std_npft_usd",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdNpftUsd(d); }),
+                        headerTooltip: "Profit in $ per piece at C Std Prc = C Std Prc × 0.70 − ship − LP.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdNpftUsd(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const color = v < 0 ? '#dc3545' : '#198754';
+                            return '<span style="color:' + color + '; font-weight: 600;">' + (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2) + '</span>';
+                        },
+                        width: 75
+                    },
+
+                    {
                         title: "Price",
                         field: "price",
                         hozAlign: "center",
@@ -5390,29 +5465,6 @@
                                 + meta.sprc.toFixed(2) + '</span>';
                         },
                         width: 78
-                    },
-
-                    {
-                        title: "Sprc % DISC",
-                        field: "sprc_pct_disc",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: amazonMetricSorter(function(d) {
-                            const i = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(d) : null;
-                            return i ? i.total : null;
-                        }),
-                        headerTooltip: "Sum of the % discounts of the rules at Seq 1, 2 and 3 in Sprc Dil (LMP Rule reduce %, Review Discount, CVR up / down, custom % rules). Rules that move the Target NROI have no % discount. A rule counts only when it is ON and applies to the SKU.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const info = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(rowData) : null;
-                            if (!info) return '';
-                            const tip = info.parts.map(function(p) { return 'Seq ' + p.seq + ' · ' + p.label + ': ' + p.pct + '%'; }).join('\n')
-                                + '\nSum: ' + info.total + '%';
-                            const color = info.total > 0 ? '#6f42c1' : '#6c757d';
-                            return '<span style="font-weight:600;color:' + color + ';" title="' + escAttr(tip) + '">' + info.total + '%</span>';
-                        },
-                        width: 80
                     },
 
                     {
@@ -5666,22 +5718,28 @@
                         width: 80
                     },
 
+
                     {
-                        title: "NPFT$ C",
-                        field: "c_std_npft_usd",
+                        title: "Sprc % DISC",
+                        field: "sprc_pct_disc",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: amazonMetricSorter(function(d) { return amazonCStdNpftUsd(d); }),
-                        headerTooltip: "Profit in $ per piece at C Std Prc = C Std Prc × 0.70 − ship − LP.",
+                        sorter: amazonMetricSorter(function(d) {
+                            const i = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(d) : null;
+                            return i ? i.total : null;
+                        }),
+                        headerTooltip: "Sum of the % discounts of the rules at Seq 1, 2 and 3 in Sprc Dil (LMP Rule reduce %, Review Discount, CVR up / down, custom % rules). Rules that move the Target NROI have no % discount. A rule counts only when it is ON and applies to the SKU.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            const v = amazonCStdNpftUsd(rowData);
-                            if (v === null) return '<span style="color: #999;">—</span>';
-                            const color = v < 0 ? '#dc3545' : '#198754';
-                            return '<span style="color:' + color + '; font-weight: 600;">' + (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2) + '</span>';
+                            const info = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(rowData) : null;
+                            if (!info) return '';
+                            const tip = info.parts.map(function(p) { return 'Seq ' + p.seq + ' · ' + p.label + ': ' + p.pct + '%'; }).join('\n')
+                                + '\nSum: ' + info.total + '%';
+                            const color = info.total > 0 ? '#6f42c1' : '#6c757d';
+                            return '<span style="font-weight:600;color:' + color + ';" title="' + escAttr(tip) + '">' + info.total + '%</span>';
                         },
-                        width: 75
+                        width: 80
                     },
 
                     {
@@ -5707,23 +5765,6 @@
                     // CVR Disc. / Rev Disc. / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
-                    {
-                        title: "LP",
-                        field: "LP_productmaster",
-                        hozAlign: "center",
-                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                        headerTooltip: "Landed price (product master)",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const val = cell.getValue();
-                            if (val == null || val === '') return '';
-                            const value = parseFloat(val);
-                            if (!Number.isFinite(value)) return '';
-                            return `<span>$${value.toFixed(2)}</span>`;
-                        },
-                        width: 60
-                    },
 
                     {
                         title: "GROI%",
@@ -5993,28 +6034,6 @@
                         field: "action_taken",
                         hozAlign: "left",
                         visible: false
-                    },
-                    {
-                        title: "Ship",
-                        field: "Ship_productmaster",
-                        hozAlign: "center",
-                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
-                        headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const val = cell.getValue();
-                            if (val == null || val === '') return '';
-                            const value = parseFloat(val);
-                            if (!Number.isFinite(value)) return '';
-                            const labelQty = parseInt(rowData.label_qty, 10);
-                            let tip = '';
-                            if (Number.isFinite(labelQty) && labelQty >= 2) {
-                                tip = ` title="Label QTY ${labelQty}. Ship is the stored CP Master / Shipping Master value (already includes combo)."`;
-                            }
-                            return `<span${tip}>$${value.toFixed(2)}</span>`;
-                        },
-                        width: 60
                     },
                     {
                         title: "KW S",
@@ -7030,7 +7049,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
