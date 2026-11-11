@@ -835,6 +835,29 @@ class FacebookAllAdsSheetController extends Controller
         }
         unset($row);
 
+        // Pass 4b — lifetime (all-time) totals per campaign for the
+        // "Lifetime Acos" / "Lifetime Sales" columns. Raw numbers go on hidden
+        // `_lt_spend` / `_lt_sales` fields so the page can total the visible rows
+        // for its Lifetime badges. Campaigns Meta has no lifetime row for stay blank.
+        $lifetime = [];
+        if (! empty($cids) && Schema::hasTable('facebook_campaign_lifetime_stats')) {
+            foreach (array_chunk($cids, 1000) as $chunk) {
+                foreach (DB::table('facebook_campaign_lifetime_stats')
+                    ->whereIn('campaign_id', $chunk)
+                    ->get(['campaign_id', 'spend', 'sales']) as $lt) {
+                    $lifetime[(string) $lt->campaign_id] = $lt;
+                }
+            }
+        }
+        foreach ($projected as &$row) {
+            $lt = $lifetime[(string) ($row['CAMPAIGN ID'] ?? '')] ?? null;
+            $row['_lt_spend']       = $lt ? (float) $lt->spend : null;
+            $row['_lt_sales']       = $lt ? (float) $lt->sales : null;
+            $row['Lifetime Sales']  = $lt ? '$' . number_format((float) $lt->sales, 0) : null;
+            $row['Lifetime Acos']   = $lt ? $this->acosPct($lt->spend, $lt->sales, 0) : null;
+        }
+        unset($row);
+
         // Pass 5 — write today's per-campaign metric snapshot so the
         // badge trend chart has a real history to query later. Same
         // pass runs every time the merged view is computed (every
@@ -2808,6 +2831,11 @@ class FacebookAllAdsSheetController extends Controller
         // rendered with a "$" prefix. Mode "cps" skips the *100 and
         // the trailing "%" that `divPct()` adds.
         ['title' => 'CPS',           'formula' => ['SPEND', 'SOLD', 0, 'cps']],
+        // Lifetime (all-time) ACOS and SALES per campaign. Placeholders here —
+        // the values are attached in "Pass 4b" from facebook_campaign_lifetime_stats
+        // (filled by `facebook:sync-lifetime-stats` from Meta, date_preset=maximum).
+        ['title' => 'Lifetime Acos',  'sources' => []],
+        ['title' => 'Lifetime Sales', 'sources' => []],
         // Sbgt = suggested budget driven by the ACOS bracket — see
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".

@@ -153,6 +153,7 @@
         .faas-kpi-tile > .faas-kpi-val { font-size: 1.08em; font-weight: 800; white-space: nowrap; }
         .faas-kpi-tile--count  { background: #475569; color: #fff; border-color: #334155; }
         .faas-kpi-tile--active { background: #16a34a; color: #fff; border-color: #15803d; }
+        .faas-kpi-tile--lifetime { background: #f0fdf4; border-color: #86efac; }
         .faas-kpi-tile.faas-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .faas-kpi-tile.faas-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
         @media (max-width: 1399.98px) {
@@ -453,6 +454,10 @@
                                       title="CPS = Spend / Sold (visible rows)">CPS:<span class="faas-kpi-val" id="faasCpsValue">$0</span></span>
                                 <span id="faasBgtBadge" class="faas-kpi-tile"
                                       title="Sum of Sbgt (suggested budget) across the visible rows">BGT:<span class="faas-kpi-val" id="faasBgtValue">$0</span></span>
+                                <span id="faasLtSalesBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="Lifetime Sales = all-time Meta purchase value of the visible campaigns">LT Sales:<span class="faas-kpi-val" id="faasLtSalesValue">$0</span></span>
+                                <span id="faasLtAcosBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="Lifetime Acos = lifetime spend ÷ lifetime sales of the visible campaigns">LT Acos%:<span class="faas-kpi-val" id="faasLtAcosValue">0%</span></span>
                             </div>
                         </div>
 
@@ -1840,6 +1845,7 @@
                         'Campaign name',
                         'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
+                        'Lifetime Acos', 'Lifetime Sales',
                     ]);
                     // Columns whose cell should be painted with the
                     // matched ACOS-band colour (Sbgt only — Acos uses
@@ -1867,6 +1873,17 @@
                             return '<span style="color:#dc2626;font-weight:700;">$0</span>';
                         }
                         return String(v);
+                    }
+                    // Lifetime Sales: all-time Meta purchase value, shown as a green
+                    // badge; a grey "—" when Meta has no lifetime row for the campaign.
+                    function formatLifetimeSalesCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        const text = String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        return '<span style="display:inline-block;padding:1px 8px;border-radius:999px;'
+                             + 'background:#dcfce7;color:#166534;font-weight:700;">' + text + '</span>';
                     }
                     // Same idea for SOLD — show "0" in red when no
                     // orders attribute to the row, without the $ prefix.
@@ -2025,7 +2042,8 @@
                             };
                         }
                         let formatter = 'plaintext';
-                        if (c.field === 'Acos')                formatter = formatAcosCell;
+                        if (c.field === 'Acos' || c.field === 'Lifetime Acos') formatter = formatAcosCell;
+                        else if (c.field === 'Lifetime Sales') formatter = formatLifetimeSalesCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
                         else if (c.field === 'SPEND')        formatter = formatSpendCell;
                         else if (c.field === 'IMPR' || c.field === 'CLK') {
@@ -2053,6 +2071,7 @@
                         const NUMERIC = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR',
                             'SPEND','SALES','SOLD','CVR','CPS',
+                            'Lifetime Acos','Lifetime Sales',
                         ]);
                         const sorter = NUMERIC.has(c.field)
                             ? function (a, b) {
@@ -2073,6 +2092,7 @@
                         // layout fills any leftover horizontal space.
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
+                            'Lifetime Acos','Lifetime Sales',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
                                        : (c.field === 'Campaign name' ? 220
@@ -2584,6 +2604,7 @@
                 || !acosEl || !ctrEl || !cvrEl) return;
 
             let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0, bgtSum = 0;
+            let ltSpendSum = 0, ltSalesSum = 0;   // lifetime totals of the visible rows
             let visibleCount = 0;
             let activeCount = 0;
             if (tabulator) {
@@ -2592,6 +2613,8 @@
                 const rows = tabulator.getData('active') || [];
                 visibleCount = rows.length;
                 rows.forEach(r => {
+                    ltSpendSum += Number(r._lt_spend) || 0;
+                    ltSalesSum += Number(r._lt_sales) || 0;
                     imprSum  += toNumber(r.IMPR);
                     clkSum   += toNumber(r.CLK);
                     spendSum += toNumber(r.SPEND);
@@ -2633,6 +2656,16 @@
             }
             const bgtEl = document.getElementById('faasBgtValue');
             if (bgtEl) bgtEl.textContent = '$' + Math.round(bgtSum).toLocaleString();
+
+            // Lifetime badges: LT Sales = Σ lifetime sales; LT Acos% = Σ spend ÷ Σ sales
+            // (same edge rules as the Acos column: no spend → 0%, spend but no sales → 100%).
+            const ltSalesEl = document.getElementById('faasLtSalesValue');
+            if (ltSalesEl) ltSalesEl.textContent = '$' + Math.round(ltSalesSum).toLocaleString();
+            const ltAcosEl = document.getElementById('faasLtAcosValue');
+            if (ltAcosEl) {
+                ltAcosEl.textContent = (ltSpendSum <= 0 ? 0 : (ltSalesSum > 0 ? (ltSpendSum / ltSalesSum) * 100 : 100))
+                    .toFixed(0) + '%';
+            }
 
             // Totals the Yesterday / Projected cards compare themselves against.
             faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,

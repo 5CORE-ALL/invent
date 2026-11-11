@@ -2749,6 +2749,9 @@ class Kernel extends ConsoleKernel
 
         $retryFiveTimesUntil('shopify:fetch-meta-campaigns --channel=both', 'fetch-shopify-fb-campaigns-7-30-60-days', '19:30');
 
+        // Lifetime Acos / Lifetime Sales columns on /facebook-all-ads-sheet.
+        $retryFiveTimesUntil('facebook:sync-lifetime-stats', 'facebook-lifetime-stats-sync', '19:45');
+
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')
