@@ -329,8 +329,9 @@
                 return new Promise(function (resolve, reject) {
                     function boot() {
                         try {
-                            S.api = new JitsiMeetExternalAPI(CFG.domain, {
+                            S.api = new JitsiMeetExternalAPI(info.domain || CFG.domain, {
                                 roomName: info.room_name,
+                                jwt: info.jwt || undefined,
                                 parentNode: $('mrJitsi'),
                                 width: '100%', height: '100%',
                                 userInfo: { displayName: info.display_name, email: info.email },
@@ -361,7 +362,7 @@
                     }
                     if (window.JitsiMeetExternalAPI) return boot();
                     var s = document.createElement('script');
-                    s.src = 'https://' + CFG.domain + '/external_api.js';
+                    s.src = info.script_url || ('https://' + CFG.domain + '/external_api.js');
                     s.onload = boot;
                     s.onerror = function () { reject(new Error('script load failed')); };
                     document.head.appendChild(s);

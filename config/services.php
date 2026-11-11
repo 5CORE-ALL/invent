@@ -1242,6 +1242,13 @@ return [
     // use point MEETING_JITSI_DOMAIN at a self-hosted Jitsi (or a JaaS domain).
     'meetings' => [
         'jitsi_domain' => env('MEETING_JITSI_DOMAIN', 'meet.jit.si'),
+        // JaaS (8x8) credentials: when set, everyone joins with a signed token and is never asked to log in.
+        // MEETING_JAAS_PRIVATE_KEY may be the PEM text (use \n for newlines) or an absolute path to the .pk file.
+        'jaas' => [
+            'app_id' => env('MEETING_JAAS_APP_ID'),
+            'key_id' => env('MEETING_JAAS_KEY_ID'),
+            'private_key' => env('MEETING_JAAS_PRIVATE_KEY'),
+        ],
         // Timezone meeting times are entered/shown in (the app itself runs in America/Los_Angeles).
         'timezone' => env('MEETING_TIMEZONE', 'Asia/Kolkata'),
         'transcribe_model' => env('MEETING_TRANSCRIBE_MODEL', 'whisper-1'),

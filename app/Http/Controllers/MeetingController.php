@@ -305,6 +305,67 @@ class MeetingController extends Controller
         ]);
     }
 
+    /**
+     * Video server settings for one participant.
+     *
+     * With JaaS (8x8) credentials configured, every participant gets a signed JWT, so nobody is ever
+     * asked to log in (the host is the moderator). Without them it falls back to the plain Jitsi
+     * domain, where meet.jit.si makes the first person log in as moderator.
+     *
+     * @return array{domain: string, room_name: string, script_url: string, jwt: ?string}
+     */
+    private function videoConfig(Meeting $meeting, User $me): array
+    {
+        $domain = (string) config('services.meetings.jitsi_domain', 'meet.jit.si');
+        $appId = (string) config('services.meetings.jaas.app_id');
+        $kid = (string) config('services.meetings.jaas.key_id');
+        $key = (string) config('services.meetings.jaas.private_key');
+
+        if ($appId === '' || $kid === '' || $key === '') {
+            return ['domain' => $domain, 'room_name' => $meeting->room_name, 'script_url' => 'https://'.$domain.'/external_api.js', 'jwt' => null];
+        }
+
+        if (! str_contains($key, 'BEGIN') && is_file($key)) {
+            $key = (string) file_get_contents($key); // value was a path to the .pk file
+        }
+        $key = str_replace('\n', "\n", $key);
+
+        $b64 = fn (string $s) => rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
+        $now = time();
+        $signing = $b64(json_encode(['alg' => 'RS256', 'kid' => $kid, 'typ' => 'JWT'])).'.'.$b64(json_encode([
+            'aud' => 'jitsi',
+            'iss' => 'chat',
+            'iat' => $now,
+            'nbf' => $now - 10,
+            'exp' => $now + 6 * 3600,
+            'sub' => $appId,
+            'room' => '*',
+            'context' => [
+                'user' => [
+                    'id' => (string) $me->id,
+                    'name' => (string) $me->name,
+                    'email' => (string) $me->email,
+                    'moderator' => $this->canManage($meeting, $me) ? 'true' : 'false',
+                ],
+                'features' => ['recording' => 'false', 'livestreaming' => 'false', 'transcription' => 'false', 'outbound-call' => 'false'],
+            ],
+        ]));
+
+        $signature = '';
+        if (! openssl_sign($signing, $signature, $key, OPENSSL_ALGO_SHA256)) {
+            report(new \RuntimeException('Could not sign the JaaS meeting token; check MEETING_JAAS_PRIVATE_KEY.'));
+
+            return ['domain' => $domain, 'room_name' => $meeting->room_name, 'script_url' => 'https://'.$domain.'/external_api.js', 'jwt' => null];
+        }
+
+        return [
+            'domain' => '8x8.vc',
+            'room_name' => $appId.'/'.$meeting->room_name,
+            'script_url' => 'https://8x8.vc/'.$appId.'/external_api.js',
+            'jwt' => $signing.'.'.$b64($signature),
+        ];
+    }
+
     public function join(Meeting $meeting): JsonResponse
     {
         if ($meeting->isEnded()) {
@@ -330,11 +391,16 @@ class MeetingController extends Controller
             }
         });
 
+        $video = $this->videoConfig($meeting, $me);
+
         return response()->json([
             'ok' => true,
             'session' => Str::random(32),
             'server_time_ms' => (int) round(microtime(true) * 1000),
-            'room_name' => $meeting->room_name,
+            'room_name' => $video['room_name'],
+            'domain' => $video['domain'],
+            'script_url' => $video['script_url'],
+            'jwt' => $video['jwt'],
             'display_name' => (string) $me->name,
             'email' => (string) $me->email,
         ]);
