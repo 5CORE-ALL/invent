@@ -3774,9 +3774,51 @@
                     restoreView(view);
                     restyleVisible();
                     autoPushSoon();
+                    // Temu: the attribute list of every category not loaded yet is fetched in the background.
+                    if (E1_TEMU) loadTemuAttributes(Array.isArray(json.temu_pending) ? json.temu_pending : []);
                 } catch (e) {
                     placeholder.innerHTML = '<span class="e1d-badge nrl">' + esc(e.message || 'Failed to load') + '</span>';
                 }
+            }
+
+            // ---- Temu: load the attributes Temu defines for each category, so every category shows its columns ----
+            let attrLoading = false;
+            const attrFailed = new Set();
+            async function loadTemuAttributes(ids) {
+                ids = ids.filter(function (id) { return !attrFailed.has(id); });
+                if (attrLoading || !ids.length) return;
+                attrLoading = true;
+                const status = document.getElementById('e1dPullStatus');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                let done = 0, bad = 0;
+                const problems = [];
+                const size = 3;
+                for (let i = 0; i < ids.length; i += size) {
+                    const part = ids.slice(i, i + size);
+                    status.textContent = 'Loading Temu attributes ' + Math.min(i + size, ids.length) + ' / ' + ids.length + '…';
+                    try {
+                        const res = await fetch(E1_BASE + '/load-attributes', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ category_ids: part }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        if (!res.ok || json.success === false) throw new Error(json.message || ('HTTP ' + res.status));
+                        (json.results || []).forEach(function (r) {
+                            if (r.ok) done++;
+                            else { bad++; attrFailed.add(r.id); problems.push('Category ' + r.id + ': ' + r.message); }
+                        });
+                    } catch (e) {
+                        part.forEach(function (id) { attrFailed.add(id); });
+                        bad += part.length;
+                        problems.push('Stopped: ' + (e.message || 'failed'));
+                        break;
+                    }
+                }
+                attrLoading = false;
+                status.textContent = 'Temu attributes: ' + done + ' of ' + ids.length + ' categories loaded' + (bad ? ', ' + bad + ' could not be read' : '') + '.';
+                if (bad) jobShow('Temu attributes: ' + bad + ' categor' + (bad === 1 ? 'y' : 'ies') + ' could not be read', ids.length, done, bad, false, problems);
+                if (done) await loadData();
             }
 
             document.addEventListener('DOMContentLoaded', function () {

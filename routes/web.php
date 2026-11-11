@@ -5077,7 +5077,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/temu1-item-data'.$temuPath, [\App\Http\Controllers\MarketPlace\Temu1DataController::class, $temuMethod])->name('temu1.item.data'.str_replace('/', '.', $temuPath));
     }
     foreach ([
-        '/add-column' => 'addColumn', '/push' => 'pushSpecifics', '/pull' => 'pullFromTemu', '/cell-styles' => 'saveCellStyles',
+        '/add-column' => 'addColumn', '/push' => 'pushSpecifics', '/pull' => 'pullFromTemu', '/load-attributes' => 'loadAttributes', '/cell-styles' => 'saveCellStyles',
         '/change-category' => 'changeCategory', '/missing-history' => 'saveMissingHistory', '/auto-push' => 'setAutoPush',
         '/nr-req' => 'saveNrReq', '/save-source' => 'saveSource', '/edit-column' => 'editColumn',
         '/column-groups' => 'saveColumnGroups', '/delete-specific' => 'deleteSpecific',

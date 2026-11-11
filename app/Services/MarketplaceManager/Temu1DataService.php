@@ -94,22 +94,56 @@ class Temu1DataService
      *
      * @return list<array<string, mixed>> name, refPid, pid, templatePid, isSale, required, control, values [[vid, label]], units [[id, name]]
      */
-    public function template(int $catId, bool $fresh = false): array
+    /** Why the last template call came back empty (shown to the user). */
+    public string $lastError = '';
+
+    private static function templateFile(int $catId): string
     {
-        if ($catId <= 0) {
-            return [];
-        }
-        $file = 'temu_cache/temu1_tpl_'.$catId.'.json';
+        return 'temu_cache/temu1_tpl_'.$catId.'.json';
+    }
+
+    /**
+     * What is kept for a category: 'ready' (attribute list stored), 'empty' (Temu gave none, tried less than a day ago)
+     * or 'none' (never loaded, or too old). Reading never calls Temu.
+     *
+     * @return array{state: string, props: list<array<string, mixed>>}
+     */
+    public static function cachedTemplate(int $catId): array
+    {
         try {
             $disk = Storage::disk('local');
-            if (! $fresh && $disk->exists($file)) {
+            $file = self::templateFile($catId);
+            if ($catId > 0 && $disk->exists($file)) {
                 $cached = json_decode((string) $disk->get($file), true);
-                if (is_array($cached) && ! empty($cached['props']) && now()->timestamp - (int) ($cached['at'] ?? 0) < 3 * 86400) {
-                    return $cached['props'];
+                if (is_array($cached)) {
+                    $age = now()->timestamp - (int) ($cached['at'] ?? 0);
+                    if (! empty($cached['props']) && $age < 14 * 86400) {
+                        return ['state' => 'ready', 'props' => $cached['props']];
+                    }
+                    if (empty($cached['props']) && $age < 86400) {
+                        return ['state' => 'empty', 'props' => []];
+                    }
                 }
             }
         } catch (\Throwable $e) {
             // no cache
+        }
+
+        return ['state' => 'none', 'props' => []];
+    }
+
+    public function template(int $catId, bool $fresh = false): array
+    {
+        $this->lastError = '';
+        if ($catId <= 0) {
+            return [];
+        }
+        $file = self::templateFile($catId);
+        if (! $fresh) {
+            $cached = self::cachedTemplate($catId);
+            if ($cached['state'] === 'ready') {
+                return $cached['props'];
+            }
         }
 
         $list = [];
@@ -148,7 +182,21 @@ class Temu1DataService
                 'catId' => $catId,
                 'attrs_error' => $attrs['message'] ?? '',
                 'template_error' => $tpl['message'] ?? '',
+                'attrs_result_keys' => array_keys($result),
             ]);
+            $errors = array_values(array_filter([
+                ! ($attrs['success'] ?? false) ? 'attributes: '.($attrs['message'] ?? 'failed') : '',
+                ! ($tpl['success'] ?? false) ? 'template: '.($tpl['message'] ?? 'failed') : '',
+            ]));
+            $this->lastError = $errors !== []
+                ? implode(' | ', $errors)
+                : 'Temu returned no attributes for category '.$catId.' (answer keys: '.implode(',', array_keys($result)).').';
+            try {
+                // Remembered for a day so a category Temu cannot answer is not asked again on every page load.
+                Storage::disk('local')->put($file, json_encode(['at' => now()->timestamp, 'props' => []]));
+            } catch (\Throwable $e) {
+                // not remembered
+            }
 
             return [];
         }
@@ -159,6 +207,25 @@ class Temu1DataService
         }
 
         return $props;
+    }
+
+    /**
+     * The item-specific columns of a category: every attribute that is not a variation option.
+     *
+     * @param  list<array<string, mixed>>  $tpl
+     * @return list<string>
+     */
+    public static function columnNames(array $tpl): array
+    {
+        $names = [];
+        foreach ($tpl as $prop) {
+            $name = (string) ($prop['name'] ?? '');
+            if ($name !== '' && empty($prop['isSale']) && ! preg_match('/\b(upc|gtin|ean|isbn|barcode)\b/i', $name)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
     }
 
     /**

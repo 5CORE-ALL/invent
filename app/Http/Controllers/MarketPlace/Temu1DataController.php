@@ -104,7 +104,131 @@ class Temu1DataController extends Ebay1DataController
 
     protected function pulledSpecificsBySku(): array
     {
-        return $this->pulledMemo ??= parent::pulledSpecificsBySku();
+        if ($this->pulledMemo !== null) {
+            return $this->pulledMemo;
+        }
+        $out = parent::pulledSpecificsBySku();
+        if (Schema::hasTable($this->t('item_specifics')) && Schema::hasColumn($this->t('item_specifics'), 'category_id')) {
+            foreach (DB::table($this->t('item_specifics'))->select(['sku', 'category_id'])->get() as $row) {
+                $key = $this->skuKey((string) $row->sku);
+                if (isset($out[$key])) {
+                    $out[$key]['category_id'] = (string) ($row->category_id ?? '');
+                }
+            }
+        }
+
+        return $this->pulledMemo = $out;
+    }
+
+    // ---- Attribute columns of every category, without pulling each product ----
+
+    /** @var array<string, int>|null lower case category path => Temu category id (leaf categories) */
+    private ?array $idByPath = null;
+
+    /** @var array<int, list<string>> */
+    private array $columnsMemo = [];
+
+    /** @var array<int, true> categories whose attribute list has never been loaded */
+    private array $needTemplate = [];
+
+    private function normalPath(string $path): string
+    {
+        $parts = array_values(array_filter(array_map('trim', explode('>', mb_strtolower($path))), static fn ($p) => $p !== ''));
+
+        return implode(' > ', $parts);
+    }
+
+    private function categoryIdForPath(string $path): int
+    {
+        if ($this->idByPath === null) {
+            $this->idByPath = [];
+            foreach (TemuCategoryTree::read(Temu1DataService::SHOP)['nodes'] as $id => $node) {
+                if (! empty($node[2])) {
+                    $full = TemuCategoryTree::path(Temu1DataService::SHOP, (string) $id);
+                    if ($full !== '') {
+                        $this->idByPath[$this->normalPath($full)] = (int) $id;
+                    }
+                }
+            }
+        }
+
+        return $this->idByPath[$this->normalPath($path)] ?? 0;
+    }
+
+    /**
+     * Every SKU of a category shows the attributes Temu defines for it as columns, blank until its value is known.
+     * Reads the stored attribute lists only; a category without one is loaded by the page (load-attributes).
+     */
+    protected function withChannelColumns(array $specifics, string $category, ?array $live): array
+    {
+        $id = (int) ($live['category_id'] ?? 0);
+        if ($id <= 0 && $category !== '') {
+            $id = $this->categoryIdForPath($category);
+        }
+        if ($id <= 0) {
+            return $specifics;
+        }
+        if (! isset($this->columnsMemo[$id])) {
+            $cached = Temu1DataService::cachedTemplate($id);
+            if ($cached['state'] === 'none') {
+                $this->needTemplate[$id] = true;
+            }
+            $this->columnsMemo[$id] = Temu1DataService::columnNames($cached['props']);
+        }
+        if ($this->columnsMemo[$id] === []) {
+            return $specifics;
+        }
+        $have = [];
+        foreach (array_keys($specifics) as $name) {
+            $have[$this->aspectKey((string) $name)] = true;
+        }
+        foreach ($this->columnsMemo[$id] as $name) {
+            if (! isset($have[$this->aspectKey($name)])) {
+                $specifics[$name] = '';
+            }
+        }
+
+        return $specifics;
+    }
+
+    protected function rowsExtra(): array
+    {
+        return ['temu_pending' => array_keys($this->needTemplate)];
+    }
+
+    /**
+     * POST /temu1-item-data/load-attributes   { category_ids: [..] }
+     * Loads (and stores) the attribute list of up to 3 Temu categories, so their columns show for every SKU.
+     */
+    public function loadAttributes(Request $request)
+    {
+        $data = $request->validate([
+            'category_ids' => 'required|array|min:1|max:3',
+            'category_ids.*' => 'required|integer|min:1',
+        ]);
+        @set_time_limit(300);
+        $api = app(TemuApiService::class);
+        if (! $api->isConfigured()) {
+            return response()->json(['success' => false, 'message' => 'Temu credentials are not configured.'], 500);
+        }
+        $service = new Temu1DataService($api);
+        $results = [];
+        foreach ($data['category_ids'] as $id) {
+            try {
+                $props = $service->template((int) $id, true);
+                $results[] = [
+                    'id' => (int) $id,
+                    'ok' => $props !== [],
+                    'columns' => count(Temu1DataService::columnNames($props)),
+                    'message' => $props !== [] ? '' : ($service->lastError !== '' ? $service->lastError : 'Temu returned no attributes.'),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Temu1Data: load attributes failed', ['category_id' => $id, 'error' => $e->getMessage()]);
+                $results[] = ['id' => (int) $id, 'ok' => false, 'columns' => 0, 'message' => $e->getMessage()];
+            }
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
     }
 
     /**
