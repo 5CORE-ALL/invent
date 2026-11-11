@@ -212,8 +212,26 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            white-space: nowrap;
+            /* Wrap instead of spilling out of the box when a label is wider than its cell */
+            white-space: normal;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            text-wrap: balance;
             text-decoration: none;
+        }
+        /* Narrow 2-column blocks (Yesterday / Listing / Sold): slightly smaller type + tighter padding
+           so labels like "Y TACOS%: 25.1%" fit on one line inside the box. */
+        #summary-stats .amz-sum-row--yesterday > .badge,
+        #summary-stats .amz-sum-row--listing > .badge,
+        #summary-stats .amz-sum-row--sold > .badge {
+            font-size: clamp(0.66rem, 0.55vw + 0.2rem, 0.8rem) !important;
+            padding: 0.4rem 0.3rem !important;
+            letter-spacing: -0.01em;
+        }
+        #summary-stats .amz-sum-row--yesterday > .badge .summary-trend-dot,
+        #summary-stats .amz-sum-row--listing > .badge .summary-trend-dot,
+        #summary-stats .amz-sum-row--sold > .badge .summary-trend-dot {
+            margin-right: 0.18rem;
         }
         /* Hidden helper badges stay hidden inside the grid */
         #summary-stats .amz-sum-row > .badge.d-none { display: none !important; }
