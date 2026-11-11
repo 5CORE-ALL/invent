@@ -3863,29 +3863,52 @@
                         const cat = group.dataset.category;
                         const picked = pickedSet(cat);
                         const q = searchEl.value.trim().toLowerCase();
-                        if (!q) { picked.clear(); box.style.display = 'none'; box.innerHTML = ''; return; }
-                        const hits = [];
-                        const seen = {};
-                        // Columns already in this header are left out; a column from another header can still be added.
+
+                        // Columns already in this header are left out (and can no longer be "picked").
+                        const inHeader = {};
                         menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
-                            if (li.dataset.group === cat) seen[li.dataset.field] = true;
+                            if (li.dataset.group === cat) inHeader[li.dataset.field] = true;
                         });
-                        menuEl.querySelectorAll('.col-vis-item:not([data-copy="1"])').forEach(function(li) {
-                            if (seen[li.dataset.field]) return;
-                            seen[li.dataset.field] = true;
-                            const text = ((li.querySelector('label') || li).textContent || '').trim();
-                            if (text.toLowerCase().indexOf(q) !== -1) hits.push({ field: li.dataset.field, text: text, from: fbaColVisLabel(li.dataset.group) });
+                        Array.from(picked).forEach(function(f) { if (inHeader[f]) picked.delete(f); });
+
+                        const infoFor = function(field) {
+                            const li = menuEl.querySelector('.col-vis-item:not([data-copy="1"])[data-field="' + CSS.escape(field) + '"]');
+                            if (!li) return null;
+                            return { field: field, text: ((li.querySelector('label') || li).textContent || '').trim(), from: fbaColVisLabel(li.dataset.group) };
+                        };
+
+                        // Ticked columns stay in the list (shown first) even when a new search does not match them,
+                        // so you can search again and tick more before pressing "Add selected".
+                        const rows = [];
+                        const seen = {};
+                        Array.from(picked).forEach(function(f) {
+                            const info = infoFor(f);
+                            if (info) { rows.push(info); seen[f] = true; } else { picked.delete(f); }
                         });
-                        const shown = hits.slice(0, 40);
-                        // Only keep ticks that are still in the list.
-                        Array.from(picked).forEach(function(f) { if (!shown.some(function(h) { return h.field === f; })) picked.delete(f); });
+
+                        if (q) {
+                            // A column that is in another header can still be added (same column in two headers).
+                            let extra = 0;
+                            menuEl.querySelectorAll('.col-vis-item:not([data-copy="1"])').forEach(function(li) {
+                                const f = li.dataset.field;
+                                if (inHeader[f] || seen[f] || extra >= 40) return;
+                                const text = ((li.querySelector('label') || li).textContent || '').trim();
+                                if (text.toLowerCase().indexOf(q) !== -1) {
+                                    seen[f] = true;
+                                    extra++;
+                                    rows.push({ field: f, text: text, from: fbaColVisLabel(li.dataset.group) });
+                                }
+                            });
+                        }
+
                         box.innerHTML = '';
-                        if (!shown.length) {
+                        if (!rows.length) {
+                            if (!q) { box.style.display = 'none'; return; }
                             box.innerHTML = '<div class="col-vis-noresult">No column found</div>';
                             box.style.display = '';
                             return;
                         }
-                        shown.forEach(function(h) {
+                        rows.forEach(function(h) {
                             const row = document.createElement('label');
                             row.className = 'col-vis-result';
                             const cb = document.createElement('input');
