@@ -48,11 +48,15 @@ class DilRuleModelsMatchPartialTest extends TestCase
     public function test_amazon_modal_has_the_blocks_of_its_model(): void
     {
         $html = view('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])->render();
-        foreach (['cvr_adj' => 'amz-cvr-groi', 'age_adj' => 'amz-age-adj', 'diff_adj' => 'amz-diff-adj', 'lmp_cap' => 'amz-lmp-cap'] as $block => $marker) {
+        foreach (['cvr_adj' => 'amz-cvr-groi', 'age_adj' => 'amz-age-adj'] as $block => $marker) {
             $this->assertStringContainsString($marker, $html, "Amazon modal lost the {$block} block");
         }
-        $this->assertEqualsCanonicalizing(DilRuleModels::modelFor('amazon')['blocks'], ['cvr_adj', 'age_adj', 'diff_adj', 'lmp_cap']);
-        $this->assertStringContainsString('amz-dil-groi-save-all-btn', $html);
+        // The Diff rule and the LMP cap were deleted from the Amazon modal.
+        foreach (['amz-diff-adj', 'amz-lmp-cap'] as $marker) {
+            $this->assertStringNotContainsString($marker, $html);
+        }
+        $this->assertEqualsCanonicalizing(DilRuleModels::modelFor('amazon')['blocks'], ['cvr_adj', 'age_adj']);
+        $this->assertSame(['amazon'], DilRuleModels::channelsFor('amazon'));
         $this->assertStringContainsString('amz-dil-groi-save-btn', $html);
     }
 

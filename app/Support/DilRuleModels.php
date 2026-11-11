@@ -25,7 +25,14 @@ final class DilRuleModels
         'cvr_age_diff_lmp' => [
             'label' => 'Dil + CVR + Age + Diff + LMP cap',
             'blocks' => ['cvr_adj', 'age_adj', 'diff_adj', 'lmp_cap'],
-            'channels' => ['amazon', 'ebay1', 'ebay2', 'ebay3', 'temu', 'newtemutwo', 'temu3', 'shopify_b2c', 'shopify_b2b', 'reverb', 'shein', 'tiktok', 'tiktok2'],
+            'channels' => ['ebay1', 'ebay2', 'ebay3', 'temu', 'newtemutwo', 'temu3', 'shopify_b2c', 'shopify_b2b', 'reverb', 'shein', 'tiktok', 'tiktok2'],
+        ],
+        // Amazon has its own modal (partials/amazon-pef-promo.blade.php): the Diff rule and the LMP cap were deleted from it,
+        // so it no longer shares a model with the pages that still have them. Save All has no other page to copy to.
+        'cvr_age' => [
+            'label' => 'Dil + CVR + Age',
+            'blocks' => ['cvr_adj', 'age_adj'],
+            'channels' => ['amazon'],
         ],
         'cvr_age_diff' => [
             'label' => 'Dil + CVR + Age + Diff',

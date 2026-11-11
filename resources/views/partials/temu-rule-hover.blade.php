@@ -270,7 +270,7 @@
             }
         };
 @elseif($temuRuleHoverKind === 'amazon')
-        /** Steps 1–4 on Amazon: Dil slab, CVR overlay, Diff rule and the final Target NROI. Returns the target, or null. */
+        /** Steps on Amazon: Dil slab, the Target NROI rules (CVR overlay, Ageing, custom) and the final Target NROI. Returns the target, or null. */
         function amzRuleDilTargetSteps(d, steps) {
             if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) {
                 steps.push(temuRuleStep('skip', 'Sprc Dil', 'Needs a child SKU with INV &gt; 0 and an LP. This SKU has no Dil target.'));
@@ -285,7 +285,7 @@
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             steps.push(temuRuleStep('info', '1 · Dil slab',
                 'Dil <b>' + Number(dil || 0).toFixed(1) + '%</b> → slab <b>' + temuRuleEsc(rule.label) + '</b> → Target NROI <b>' + slabNroi + '%</b>'));
-            // Steps 2-4 are the CVR overlay, Ageing Rule and Diff rule in the order of their sequence numbers (Sprc Dil modal).
+            // The next steps are the CVR overlay, Ageing Rule and custom NROI rules in the order of their sequence numbers (Sprc Dil modal).
             const makers = {
                 cvr: function(no) {
                     const cvrAdj = amzDilGroiCvrAdj(d);
@@ -325,43 +325,8 @@
                 makers[k](String(idx + 2));
             });
             const target = Number(amzDilGroiApplyCvrAdj(slabNroi, d));
-            steps.push(temuRuleStep('info', '5 · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
+            steps.push(temuRuleStep('info', (steps.length + 1) + ' · Target NROI', 'Final target <b>' + (isFinite(target) ? target : '—') + '%</b>'));
             return isFinite(target) ? target : null;
-        }
-
-        /** CVR up / down rule (Sprc Dil modal): one hover step. null when the rule is off or the SKU is not a stocked child row. */
-        function amzRuleCvrUpDownStep(d, num, usedInPrice, final0, beforeCap) {
-            const cfg = (typeof amzLmpCvrRuleSafe === 'function') ? amzLmpCvrRuleSafe() : null;
-            if (!cfg || !cfg.enabled || typeof amzLmpCvrInfo !== 'function') return null;
-            const info = amzLmpCvrInfo(d);
-            if (!info) return null;
-            const title = (num ? num + ' · ' : '') + 'CVR up / down rule';
-            const std = Number(d && d.STANDARD_PRICE) || 0;
-            const cvrTxt = info.cvr.toFixed(1) + '%';
-            if (!info.eligible) {
-                return temuRuleStep('skip', title, 'Needs an LMP and this SKU has none. No extra discount.');
-            }
-            if (!info.band) {
-                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow: no Down / Up row matches. No extra discount.');
-            }
-            const bandTxt = { down2: '&lt; ' + cfg.down2_lt + '%', down: '&lt; ' + cfg.down_lt + '%', up: '&gt; ' + cfg.up_gt + '%', up2: '&gt; ' + cfg.up2_gt + '%' }[info.band];
-            const pct = info.disc;
-            if (!pct) {
-                return temuRuleStep('skip', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ', its Disc % is 0. No extra discount.');
-            }
-            const amt = std > 0 ? (' = <b>' + temuRuleMoney(Math.round(std * pct) / 100) + '</b> off Std Prc') : '';
-            if (!usedInPrice) {
-                // Sprc Dil: the discount comes off Std Prc after the LMP cap and the Std Prc maximum.
-                const off = std > 0 ? Math.round(std * pct) / 100 : 0;
-                if (beforeCap) {
-                    // Sequence: the CVR up / down discount runs before the LMP cap and the Std Prc maximum.
-                    return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
-                        + '. Taken off before the LMP and Std Prc steps (Seq order): ' + temuRuleMoney(final0) + ' − ' + temuRuleMoney(off) + ' = <b>' + temuRuleMoney(Number(final0 || 0) - off) + '</b>.');
-                }
-                return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt
-                    + '. Taken off after the LMP and Std Prc steps: ' + temuRuleMoney(Number(final0 || 0) + off) + ' − ' + temuRuleMoney(off) + ' = <b>' + temuRuleMoney(final0) + '</b>.');
-            }
-            return temuRuleStep('ok', title, 'CVR ' + cvrTxt + ' with ' + info.trend + ' arrow → row ' + bandTxt + ' → <b>' + (pct > 0 ? '+' : '') + pct + '%</b>' + amt + ' (included in Sum disc).');
         }
 
         /** S PRC on Amazon: every rule and exception behind the number. */
@@ -374,7 +339,7 @@
             const lmp = lmpWithShipping(d);
             let base = 0;
             let n = 1;
-            // Dil slabs switched OFF: no slab, CVR, Ageing, Diff, LMP or Std step runs, so the rule sets no price.
+            // Dil slabs switched OFF: no slab, CVR, Ageing or Std step runs, so the rule sets no price.
             if (dilOn && typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('dil')
                 && !(typeof amzClearanceDilActive === 'function' && amzClearanceDilActive(d))) {
                 steps.push(temuRuleStep('skip', '1 · Dil slab',
@@ -394,69 +359,61 @@
                     const lp = parseFloat(d.LP_productmaster) || 0;
                     const ship = parseFloat(d.Ship_productmaster) || 0;
                     const ads = (typeof amazonAdsPctAtPrice === 'function') ? Number(amazonAdsPctAtPrice(base)) || 0 : (Number(AMAZON_CHANNEL_ADS_PCT) || 0);
-                    steps.push(temuRuleStep('ok', '6 · Price from target',
+                    steps.push(temuRuleStep('ok', (steps.length + 1) + ' · Price from target',
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + target + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ (0.80 − Ads ' + ads.toFixed(1) + '%) = <b>' + temuRuleMoney(base) + '</b>'));
                 }
-                n = 7;
+                n = steps.length + 1;
+                // Custom rule cards that change the price by a %, in the order they run (Seq). No LMP cap any more.
+                if (base > 0 && typeof window.amzPriceOrder === 'function') {
+                    window.amzPriceOrder().forEach(function(k) {
+                        if (k.indexOf('c_') !== 0) return;
+                        const cr = window.amzCustomRuleById(k.slice(2));
+                        if (!cr) return;
+                        const no = String(n) + ' · ' + temuRuleEsc(cr.name);
+                        n++;
+                        if (cr.on === false) { steps.push(temuRuleStep('skip', no, 'Custom rule is OFF.')); return; }
+                        const cond = temuRuleEsc(window.amzCustomCondText(cr));
+                        if (window.amzCustomHit(cr, d)) {
+                            const changed = +(base * (1 + cr.points / 100)).toFixed(2);
+                            steps.push(temuRuleStep('ok', no, cond + ' → price <b>' + (cr.points > 0 ? '+' : '') + cr.points + '%</b>: ' + temuRuleMoney(base) + ' → <b>' + temuRuleMoney(changed) + '</b>'));
+                            if (changed >= 0.01) base = changed;
+                        } else {
+                            steps.push(temuRuleStep('skip', no, cond + ' is not met. No change.'));
+                        }
+                    });
+                }
+                if (!(std > 0)) {
+                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
+                } else if (base > std + 0.0001) {
+                    steps.push(temuRuleStep('ok', n + ' · Std Prc maximum', 'Price ' + temuRuleMoney(base) + ' is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
+                } else {
+                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
+                }
             } else {
                 base = Number(amzDisplayedSprice(d)) || 0;
                 const disc = (typeof computeAmzSumDiscountPct === 'function') ? Number(computeAmzSumDiscountPct(d)) : NaN;
                 steps.push(temuRuleStep('info', '1 · Std prc vs dil (switch ON)',
-                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review + CVR up / down discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
+                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
                 if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
                 n = 2;
-                const cvrUdStep = amzRuleCvrUpDownStep(d, '2', true);
-                if (cvrUdStep) { steps.push(cvrUdStep); n = 3; }
-            }
-            // Sprc Dil, Seq order: when the CVR up / down discount has a lower Seq than the LMP rule it comes off the price first.
-            const cvrFirst = dilOn && base > 0 && typeof window.amzPriceOrder === 'function' && window.amzPriceOrder()[0] === 'cvrud';
-            if (cvrFirst) {
-                const udFirst = (typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
-                const cvrUdFirstStep = amzRuleCvrUpDownStep(d, String(n), false, base, true);
-                if (cvrUdFirstStep) steps.push(cvrUdFirstStep);
-                if (cvrUdFirstStep) n++;
-                if (std > 0 && Math.abs(udFirst) >= 0.01) {
-                    const afterD = +(base - Math.round(std * udFirst) / 100).toFixed(2);
-                    if (afterD >= 0.01) base = afterD;
-                }
-            }
-            const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
-            const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
-            let pct = 2;
-            if (dilOn) {
-                pct = (typeof window.amzLmpReducePctForRow === 'function') ? Number(window.amzLmpReducePctForRow(d)) : 2;
-            } else {
-                pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
-            }
-            temuRuleLmpStep(steps, {
-                n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
-                src: dilOn ? 'Dil band, LMP cap table' : 'LMP Reduce block',
-                after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
-            });
-            const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
-            // Sprc Dil: the CVR up / down discount comes off after the Std Prc maximum, so judge the cap on the price before it.
-            const udPct = (dilOn && !cvrFirst && typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
-            const finalPre = (final > 0 && std > 0 && Math.abs(udPct) >= 0.01) ? +(final + Math.round(std * udPct) / 100).toFixed(2) : final;
-            const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - finalPre) < 0.0001 && Math.abs(finalPre - std) < 0.0001;
-            if (!(std > 0)) {
-                steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
-            } else if (capped || (finalPre > 0 && Math.abs(finalPre - std) < 0.0001)) {
-                steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
-            } else {
-                steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
-            }
-            if (dilOn && !cvrFirst) {
-                const cvrUdStep = amzRuleCvrUpDownStep(d, String(n + 2), false, final);
-                if (cvrUdStep) steps.push(cvrUdStep);
-            }
-            if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
-            if (dilOn && typeof window.amzPriceOrder === 'function') {
-                // Custom rule cards that change the price by a %: listed in the order they run (Seq).
-                window.amzPriceOrder().forEach(function(k) {
-                    if (k.indexOf('c_') !== 0) return;
-                    const cr = window.amzCustomRuleById(k.slice(2));
-                    if (cr && window.amzCustomHit(cr, d)) notes.push('Custom rule "' + temuRuleEsc(cr.name) + '" (' + temuRuleEsc(window.amzCustomCondText(cr)) + ') changed the price by ' + (cr.points > 0 ? '+' : '') + cr.points + '% in its Seq place.');
+                const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
+                const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
+                const pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
+                temuRuleLmpStep(steps, {
+                    n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
+                    src: 'LMP Reduce block',
+                    after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
                 });
+                const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
+                const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;
+                if (!(std > 0)) {
+                    steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
+                } else if (capped || (final > 0 && Math.abs(final - std) < 0.0001)) {
+                    steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
+                } else {
+                    steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
+                }
+                if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
             }
             if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
             return {
@@ -490,7 +447,7 @@
                 if (diff !== null) {
                     steps.push(temuRuleStep(diff > temuRuleDiffCfg().gt_pct || diff < -5 ? 'warn' : 'ok', '3 · vs Std Prc',
                         'Std Prc ' + temuRuleMoney(std) + ' vs Price → Diff <b>' + diff.toFixed(1) + '%</b>'
-                        + (diff > temuRuleDiffCfg().gt_pct ? ' (above ' + temuRuleDiffCfg().gt_pct + '%: Sprc Dil adds ' + temuRuleDiffPts(temuRuleDiffCfg().points) + ' to the Target NROI)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
+                        + (diff > temuRuleDiffCfg().gt_pct ? ' (Price is well below Std Prc)' : (diff < -5 ? ' (Price is above Std Prc)' : ' (normal)')) + '.'));
                 } else {
                     steps.push(temuRuleStep('skip', '3 · vs Std Prc', 'Needs both Std Prc and Price.'));
                 }

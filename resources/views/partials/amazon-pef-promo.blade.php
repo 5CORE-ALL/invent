@@ -1223,14 +1223,14 @@
                     @php($amzDilModel = \App\Support\DilRuleModels::modelFor('amazon'))
                     @if($amzDilModel)
                     <span class="small text-muted me-auto">
-                        Rule model: <strong>{{ $amzDilModel['label'] }}</strong> · {{ count($amzDilModel['channels']) }} pages
+                        Rule model: <strong>{{ $amzDilModel['label'] }}</strong>@if(count($amzDilModel['channels']) > 1) · {{ count($amzDilModel['channels']) }} pages @endif
                     </span>
                     @endif
                     <button type="button" class="btn btn-sm btn-primary" id="amz-dil-groi-save-btn"
                         title="Save Only: saves these Dil → Target NROI% rules on THIS page only (Amazon) and applies S PRC on matching SKUs. No other page changes.">
                         <i class="fas fa-save me-1"></i> Save Only
                     </button>
-                    @if($amzDilModel)
+                    @if($amzDilModel && count($amzDilModel['channels']) > 1)
                     <button type="button" class="btn btn-sm btn-outline-primary" id="amz-dil-groi-save-all-btn"
                         title="Save All: saves these Dil rules on Amazon AND every page of the same rule model ({{ implode(', ', $amzDilModel['channels']) }}), then applies S PRC here. Each page keeps its own Clearance NROI%.">
                         <i class="fas fa-layer-group me-1"></i> Save All ({{ count($amzDilModel['channels']) }} pages)
