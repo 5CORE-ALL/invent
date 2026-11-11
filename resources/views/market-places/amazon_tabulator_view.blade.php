@@ -1579,16 +1579,13 @@
             return base > 0 ? base : 0;
         }
 
-        /** C Std Prc = the lower of LMP (landed L1) and Std Prc; whichever exists when only one does; 0 when neither. */
+        /** Price the "C" columns (NPFT$ C, NPFT% C, GPFT% C, GROI% C, NROI% C) are calculated at: the SKU's Std Prc. 0 when it has none. */
         function amazonCStdPrc(rowData) {
-            if (!rowData) return 0;
-            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
-            const lmp = lmpWithShipping(rowData) || 0;
-            if (std > 0 && lmp > 0) return Math.min(std, lmp);
-            return std > 0 ? std : (lmp > 0 ? lmp : 0);
+            const std = parseFloat(rowData && rowData.STANDARD_PRICE) || 0;
+            return std > 0 ? std : 0;
         }
 
-        /** NPFT$ per piece at C Std Prc: C Std Prc × 0.70 − ship − LP (same basis as Std NPFT%). null when there is no C Std Prc. */
+        /** NPFT$ per piece at Std Prc: Std Prc × 0.70 − ship − LP (same basis as Std NPFT%). null when there is no Std Prc. */
         function amazonCStdNpftUsd(rowData) {
             const p = amazonCStdPrc(rowData);
             if (!(p > 0)) return null;
@@ -1598,7 +1595,7 @@
             return p * 0.70 - ship - lpVal;
         }
 
-        /** NPFT% at C Std Prc = NPFT$ / C Std Prc × 100. null when there is no C Std Prc. */
+        /** NPFT% at Std Prc = NPFT$ / Std Prc × 100. null when there is no Std Prc. */
         function amazonCStdNpftPct(rowData) {
             const p = amazonCStdPrc(rowData);
             const profit = amazonCStdNpftUsd(rowData);
@@ -1606,7 +1603,7 @@
             return (profit / p) * 100;
         }
 
-        /** GPFT% at C Std Prc (same GPFT% formula as the GPFT% column, at C Std Prc instead of Price). null when there is no C Std Prc. */
+        /** GPFT% at Std Prc (same GPFT% formula as the GPFT% column, at Std Prc instead of Price). null when there is no Std Prc. */
         function amazonCStdGpftPct(rowData) {
             const p = amazonCStdPrc(rowData);
             if (!(p > 0)) return null;
@@ -1614,7 +1611,7 @@
             return (g == null || !isFinite(g)) ? null : g;
         }
 
-        /** GROI% / NROI% at C Std Prc: (C Std Prc × margin − ship − LP) / LP × 100, margin 0.80 (GROI) or 0.70 (NROI, same as Std NROI%). null without C Std Prc or LP. */
+        /** GROI% / NROI% at Std Prc: (Std Prc × margin − ship − LP) / LP × 100, margin 0.80 (GROI) or 0.70 (NROI, same as Std NROI%). null without Std Prc or LP. */
         function amazonCStdRoiPct(rowData, margin) {
             const p = amazonCStdPrc(rowData);
             const lp = parseFloat(rowData && rowData.LP_productmaster);
@@ -5415,7 +5412,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { return amazonCStdNpftUsd(d); }),
-                        headerTooltip: "Profit in $ per piece at C Std Prc = C Std Prc × 0.70 − ship − LP.",
+                        headerTooltip: "Profit in $ per piece at Std Prc = Std Prc × 0.70 − ship − LP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5784,7 +5781,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { return amazonCStdNpftPct(d); }),
-                        headerTooltip: "NPFT% on C Std Prc = NPFT$ / C Std Prc × 100.",
+                        headerTooltip: "NPFT% on Std Prc = NPFT$ / Std Prc × 100.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5804,7 +5801,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { return amazonCStdGpftPct(d); }),
-                        headerTooltip: "GPFT% at C Std Prc = (C Std Prc × 0.80 − ship − LP) / C Std Prc × 100.",
+                        headerTooltip: "GPFT% at Std Prc = (Std Prc × 0.80 − ship − LP) / Std Prc × 100.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5824,7 +5821,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { return amazonCStdGroiPct(d); }),
-                        headerTooltip: "GROI% at C Std Prc = (C Std Prc × 0.80 − ship − LP) / LP × 100.",
+                        headerTooltip: "GROI% at Std Prc = (Std Prc × 0.80 − ship − LP) / LP × 100.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5844,7 +5841,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { return amazonCStdNroiPct(d); }),
-                        headerTooltip: "NROI% at C Std Prc = (C Std Prc × 0.70 − ship − LP) / LP × 100.",
+                        headerTooltip: "NROI% at Std Prc = (Std Prc × 0.70 − ship − LP) / LP × 100.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
