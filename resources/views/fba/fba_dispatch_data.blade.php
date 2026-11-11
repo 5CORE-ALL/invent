@@ -1403,13 +1403,14 @@
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
-                                const formattedValue = `${value.toFixed(0)}%`;
-                                let color = '';
-                                if (value >= 25 && value <= 50) color = '#b8860b'; // dark mustard
-                                else if (value <= 50) color = 'red';
-                                else if (value <= 100) color = 'green';
-                                else color = 'purple';
-                                return `<span style="color:${color}; font-weight:600;">${formattedValue}</span>`;
+                                // Same colors as Analytics Amz (amazon-tabulator-view) Dil column:
+                                // grey 0%, red < 25%, green 25-50%, pink 50%+
+                                if (!(value > 0)) return '<span style="color:#6c757d;">0%</span>';
+                                let color = '#a00211';
+                                if (value < 25) color = '#a00211';
+                                else if (value < 50) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color:${color}; font-weight:600;">${Math.round(value)}%</span>`;
                             },
                         },
 
