@@ -505,7 +505,7 @@
                             <span id="sugg-send-rows-badge" class="badge bg-primary me-2 d-inline-flex align-items-center" style="font-size: 0.91875rem; padding: 0.3rem 0.6rem; line-height: 1.5;">
                                 <i class="fa fa-list me-1"></i> <strong>Send:</strong>
                                 <select id="sugg-send-filter" class="form-select form-select-sm mx-2" style="width: auto; display: inline-block;"
-                                    title="Filter Sugg Send: All, Blank (no value) or greater than 0">
+                                    title="Filter the Send Qty column: All, Blank (empty) or greater than 0">
                                     <option value="all" selected>All</option>
                                     <option value="blank">Blank</option>
                                     <option value="positive">&gt;0</option>
@@ -1259,6 +1259,14 @@
                     let ok = false;
                     try { ok = !!fbaSendQtyRuleFn(data); } catch (e) { ok = false; }
                     return ok ? { value: q, manual: false } : null;
+                }
+
+                /** True when the Send Qty column shows a number above 0 (typed by the user or auto-filled by the rule). */
+                function fbaSendQtyPositive(data) {
+                    const eff = fbaSendQtyEffective(data);
+                    if (!eff) return false;
+                    const n = parseFloat(String(eff.value).replace(/,/g, ''));
+                    return !isNaN(n) && n > 0;
                 }
 
                 // L / W / H CTN colour: below the limit green, the limit and above red.
@@ -3201,14 +3209,14 @@
                         console.log('NRL FBA filter is "all" - not applying filter');
                     }
 
-                    // Sugg Send filter: Blank = no Sugg Send value, >0 = positive Sugg Send
+                    // Send Qty filter: Blank = Send Qty column is empty, >0 = Send Qty (typed or auto-filled) above 0
                     if (suggSendFilter === 'blank') {
                         table.addFilter(function(data) {
-                            return isNaN(getEffectiveSuggSend(data));
+                            return !fbaSendQtyEffective(data);
                         });
                     } else if (suggSendFilter === 'positive') {
                         table.addFilter(function(data) {
-                            return getEffectiveSuggSend(data) > 0;
+                            return fbaSendQtyPositive(data);
                         });
                     }
                 }
@@ -3252,7 +3260,7 @@
                             // (non-parent active rows that display a value)
                             const visibleRowsCount = allData.filter(row => {
                                 if (row.is_parent) return false;
-                                return !isNaN(parseFloat(row.Sugg_Send));
+                                return fbaSendQtyPositive(row);
                             }).length;
 
                             $('#sugg-send-rows-count').text(visibleRowsCount);
@@ -3549,6 +3557,8 @@
                             localStorage.setItem(SQR_ROWS_KEY, JSON.stringify(sqrRows));
                         } catch (e) { /* ignore */ }
                         table.redraw(true);
+                        applyFilters();
+                        updateSuggSendBadge();
                         showToast('Send Qty rule applied: ' + sqrEsc(fbaSendQtyRuleLabel), 'success');
                         return true;
                     } catch (err) {
@@ -3623,6 +3633,15 @@
                     console.log('NRL FBA Filter changed to:', selectedValue);
                     applyFilters();
                     updateSuggSendBadge();
+                });
+
+                // Keep the Send filter and count right after a Send Qty is typed / changed
+                table.on('cellEdited', function(cell) {
+                    if (cell.getColumn().getField() !== 'Send_Qty') return;
+                    setTimeout(function() {
+                        if ($('#sugg-send-filter').val() !== 'all') applyFilters();
+                        updateSuggSendBadge();
+                    }, 0);
                 });
 
                 $('#sugg-send-filter').on('change', function() {
