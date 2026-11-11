@@ -35,7 +35,8 @@
         #ebay-bid-tip-box .tip-b { white-space: pre-wrap; word-break: break-word; }
         [data-bid-tip] { cursor: help; }
         /* Ads Rule PMT modal (next-gen look) */
-        #adsRulePmtModal .modal-dialog { max-width: min(1200px, 96vw); }
+        #adsRulePmtModal .modal-dialog { max-width: 98vw; width: 98vw; margin-left: auto; margin-right: auto; }
+        @media (min-width: 901px) { #adsRulePmtModal .arp-body { grid-template-columns: 380px minmax(0, 1fr); } }
         .arp-modal { height: 94vh; border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
         .arp-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; color: #fff;
             background: linear-gradient(120deg, #1e3a8a 0%, #4f46e5 55%, #7c3aed 100%); }
@@ -170,7 +171,7 @@
                             <thead>
                                 <tr>
                                     <th style="width: 36px;">#</th>
-                                    <th style="width: 90px;">Join</th>
+                                    <th style="width: 110px;">Join</th>
                                     <th>Column</th>
                                     <th>Condition</th>
                                     <th style="width: 130px;">Compare with</th>
