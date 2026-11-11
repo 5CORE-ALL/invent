@@ -183,12 +183,12 @@ class MeetingController extends Controller
     }
 
     /** @return \Illuminate\Database\Eloquent\Collection<int, MeetingParticipant> */
-    private function pendingInvites()
+    private function pendingInvites(bool $includeAccepted = false)
     {
         return MeetingParticipant::query()
             ->where('user_id', Auth::id())
             ->where('is_invited', true)
-            ->where('rsvp', 'pending')
+            ->whereIn('rsvp', $includeAccepted ? ['pending', 'accepted'] : ['pending'])
             ->whereNull('first_joined_at')
             ->whereHas('meeting', fn ($q) => $q->whereIn('status', [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE]))
             ->with('meeting.host:id,name')
@@ -200,12 +200,14 @@ class MeetingController extends Controller
     /** Pending meeting requests addressed to the current user. */
     public function requests(): JsonResponse
     {
-        $rows = $this->pendingInvites();
+        // Accepted-but-not-yet-joined invites stay listed so the user can still join; only unanswered ones count for the badge.
+        $rows = $this->pendingInvites(true);
 
         return response()->json([
-            'count' => $rows->count(),
+            'count' => $rows->where('rsvp', 'pending')->count(),
             'requests' => $rows->map(fn (MeetingParticipant $p) => [
                 'id' => (int) $p->meeting_id,
+                'rsvp' => (string) $p->rsvp,
                 'title' => $p->meeting->title,
                 'agenda' => $p->meeting->agenda,
                 'host' => $p->meeting->host?->name,

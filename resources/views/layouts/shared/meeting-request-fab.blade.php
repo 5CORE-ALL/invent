@@ -408,7 +408,8 @@
                     actions.innerHTML = '';
                     if (resp === 'accepted') {
                         result.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> You accepted.</span>'
-                            + (res.data.live ? ' <a class="btn btn-success btn-sm ms-2" href="' + esc(res.data.room_url) + '">Join now</a>' : ' The host will start the meeting at the scheduled time.');
+                            + ' <a class="btn btn-success btn-sm ms-2" href="' + esc(res.data.room_url) + '"><i class="ri-vidicon-line"></i> Join meeting</a>'
+                            + (res.data.live ? '' : '<div class="text-muted mt-1">Not started yet — you can join once the host starts it.</div>');
                     } else {
                         result.innerHTML = '<span class="text-secondary"><i class="ri-close-circle-fill"></i> You declined.</span>';
                     }
@@ -418,9 +419,10 @@
                     result.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>';
                 });
             }
-            btn('<i class="ri-check-line"></i> Accept', 'btn-success', function () { answer('accepted'); });
+            // Join is always offered (joining counts as accepting); Accept only while unanswered.
+            btn('<i class="ri-vidicon-line"></i> Join meeting', 'btn-primary', function () { window.location.href = r.room_url; });
+            if (r.rsvp !== 'accepted') btn('<i class="ri-check-line"></i> Accept', 'btn-success', function () { answer('accepted'); });
             btn('<i class="ri-close-line"></i> Decline', 'btn-outline-danger', function () { answer('declined'); });
-            if (r.live) btn('Join now', 'btn-outline-primary', function () { window.location.href = r.room_url; });
             return div;
         }
 
