@@ -5757,27 +5757,6 @@
                     },
 
                     {
-                        title: "C Std Prc",
-                        field: "c_std_prc",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: amazonMetricSorter(function(d) { const n = amazonCStdPrc(d); return n > 0 ? n : null; }),
-                        headerTooltip: "Auto-filled: the lower of LMP and Std Prc. If only one of them is available, that one is used.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const v = amazonCStdPrc(rowData);
-                            if (!(v > 0)) return '<span style="color: #999;">—</span>';
-                            const std = parseFloat(rowData.STANDARD_PRICE) || 0;
-                            const lmp = (typeof lmpWithShipping === 'function') ? lmpWithShipping(rowData) : 0;
-                            const src = (lmp > 0 && (std <= 0 || lmp < std)) ? 'LMP' : 'Std Prc';
-                            return '<span style="font-weight: 600;" title="' + src + ' is the lower price">$' + v.toFixed(2) + '</span>';
-                        },
-                        width: 80
-                    },
-
-
-                    {
                         title: "Sprc % DISC",
                         field: "sprc_pct_disc",
                         hozAlign: "center",
@@ -7201,7 +7180,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
