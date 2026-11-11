@@ -1606,6 +1606,14 @@
             return (profit / p) * 100;
         }
 
+        /** GPFT% at C Std Prc (same GPFT% formula as the GPFT% column, at C Std Prc instead of Price). null when there is no C Std Prc. */
+        function amazonCStdGpftPct(rowData) {
+            const p = amazonCStdPrc(rowData);
+            if (!(p > 0)) return null;
+            const g = amazonComputeGpftAt(p, rowData);
+            return (g == null || !isFinite(g)) ? null : g;
+        }
+
         /** Same test as LMP column red: INV > 0 and Price > landed L1. */
         function amazonPriceGtLandedLmp(data) {
             if (!data || data.is_parent_summary) return false;
@@ -5801,6 +5809,26 @@
                         width: 70
                     },
 
+                    {
+                        title: "GPFT% C",
+                        field: "c_std_gpft_pct",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdGpftPct(d); }),
+                        headerTooltip: "GPFT% at C Std Prc = (C Std Prc × 0.80 − ship − LP) / C Std Prc × 100.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdGpftPct(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const st = (window.MetricPctColors && MetricPctColors.styleForField('gpft', v)) || '';
+                            const txt = Math.round(v) + '%';
+                            return st ? '<span style="' + st + '">' + txt + '</span>'
+                                : '<span style="font-weight:600;color:' + (v < 0 ? '#dc3545' : '#198754') + ';">' + txt + '</span>';
+                        },
+                        width: 70
+                    },
+
                     // CVR Disc. / Rev Disc. / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
@@ -7123,7 +7151,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -7300,6 +7328,7 @@
                         if (li.dataset.group === nextCat) {
                             place();
                             amazonColVisSaveOrder(list);
+                            amazonScheduleColumnArrangement();
                             return;
                         }
                         // The column is already under that header (same column in two headers is allowed, twice in one is not).
@@ -7322,6 +7351,7 @@
                         syncAmazonGroupHeaderCheckbox(group);
                         amazonColVisSaveOrder(list);
                         amazonColVisSaveOrder(fromGroup ? fromGroup.querySelector('.col-vis-group-list') : null);
+                        amazonScheduleColumnArrangement();
                     });
                 });
             }
@@ -7371,6 +7401,7 @@
                             + '<input type="search" class="form-control form-control-sm col-vis-search" placeholder="Quick search columns…" autocomplete="off">'
                             + '<input type="text" class="form-control form-control-sm col-vis-newname" maxlength="30" placeholder="New header name" autocomplete="off">'
                             + '<button type="button" class="btn btn-sm btn-primary col-vis-addgroup" title="Add a new header (column group)">+ Add header</button>'
+                            + '<button type="button" class="btn btn-sm btn-success col-vis-save ms-auto" title="Arrange the table columns as shown here, save, and close">Save &amp; Close</button>'
                             + '</div>'
                             + '<div class="col-vis-hint"><span class="col-vis-status"></span>'
                             + '<span class="text-muted">⌘/Ctrl + click a column to select (Shift = range) · ⌘/Ctrl+C copy · ⌘/Ctrl+V paste into the highlighted header · drag a column to move or re-order it</span></div>';
@@ -7478,6 +7509,8 @@
                         });
 
                         amazonColVisApplyOrder(lists);
+                        // Headers that already have a saved order: keep it equal to what the menu shows now (new copies, removed columns).
+                        Object.keys(loadAmazonColOrder()).forEach(function(cat) { if (lists[cat]) amazonColVisSaveOrder(lists[cat]); });
                         visKeys.forEach(function(cat) {
                             syncAmazonGroupHeaderCheckbox(groupEls[cat]);
                         });
@@ -7671,6 +7704,92 @@
                 }
             }
 
+            /**
+             * Table column order from the Columns menu. A header you made (or whose columns you re-ordered) becomes one block of
+             * columns in the table, in the order shown in the menu, starting where its left-most column already was.
+             * Your own headers go first, so a column kept in one of them follows it. Headers you never touched change nothing.
+             */
+            function amazonColumnArrangementGroups() {
+                const groups = [];
+                const catsMap = loadAmazonColCats();
+                const extras = loadAmazonColExtras();
+                const ord = loadAmazonColOrder();
+                loadAmazonColGroups().forEach(function(g) {
+                    const members = new Set();
+                    Object.keys(catsMap).forEach(function(f) { if (catsMap[f] === g.key) members.add(f); });
+                    Object.keys(extras).forEach(function(f) { if (Array.isArray(extras[f]) && extras[f].indexOf(g.key) !== -1) members.add(f); });
+                    const saved = Array.isArray(ord[g.key]) ? ord[g.key] : [];
+                    const list = saved.filter(function(f) { return members.has(f); });
+                    members.forEach(function(f) { if (list.indexOf(f) === -1) list.push(f); });
+                    if (list.length) groups.push(list);
+                });
+                COL_VIS_BASE_KEYS.forEach(function(cat) {
+                    if (!Array.isArray(ord[cat]) || !ord[cat].length) return;
+                    // A copy of a column placed here does not pull the column out of its own header in the table.
+                    const own = ord[cat].filter(function(f) { return !(Array.isArray(extras[f]) && extras[f].indexOf(cat) !== -1); });
+                    if (own.length) groups.push(own);
+                });
+                return groups;
+            }
+            function amazonMoveColumnsToOrder(order) {
+                if (!table || !Array.isArray(order)) return;
+                amazonApplyingColumnOrder = true;
+                try {
+                    for (let i = 0; i < order.length; i++) {
+                        const field = order[i];
+                        const cols = table.getColumns().filter(function(c) { return !!c.getField(); });
+                        const currentIdx = cols.findIndex(function(c) { return c.getField() === field; });
+                        if (currentIdx === i || currentIdx < 0) continue;
+                        if (i === 0) {
+                            const firstField = cols[0].getField();
+                            if (firstField && firstField !== field) table.moveColumn(field, firstField, false);
+                        } else if (order[i - 1]) {
+                            table.moveColumn(field, order[i - 1], true);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error arranging columns:', err);
+                } finally {
+                    amazonApplyingColumnOrder = false;
+                }
+            }
+            function amazonApplyColumnArrangement() {
+                if (!table) return;
+                const groups = amazonColumnArrangementGroups();
+                if (!groups.length) return;
+                let order = currentAmazonColumnOrder();
+                if (!order.length) return;
+                const consumed = new Set();
+                groups.forEach(function(list) {
+                    const have = new Set(order);
+                    const L = [];
+                    list.forEach(function(f) { if (have.has(f) && !consumed.has(f) && L.indexOf(f) === -1) L.push(f); });
+                    L.forEach(function(f) { consumed.add(f); });
+                    if (L.length < 2) return;
+                    const inL = new Set(L);
+                    const next = [];
+                    let placed = false;
+                    order.forEach(function(f) {
+                        if (inL.has(f)) {
+                            if (!placed) { placed = true; L.forEach(function(x) { next.push(x); }); }
+                        } else {
+                            next.push(f);
+                        }
+                    });
+                    order = next;
+                });
+                amazonMoveColumnsToOrder(order);
+            }
+            let amazonArrangeTimer = null;
+            /** Re-sequence the table a moment after a change in the Columns menu, and keep it saved. */
+            function amazonScheduleColumnArrangement() {
+                if (amazonArrangeTimer) clearTimeout(amazonArrangeTimer);
+                amazonArrangeTimer = setTimeout(function() {
+                    amazonApplyColumnArrangement();
+                    scheduleAmazonColumnOrderSave();
+                }, 250);
+            }
+
             function applyColumnOrderFromServer() {
                 return fetch(TABULATOR_COLUMN_ORDER_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
@@ -7695,6 +7814,7 @@
                 requestAnimationFrame(function() {
                     Promise.resolve(applyColumnVisibilityFromServer())
                         .then(function() { return applyColumnOrderFromServer(); })
+                        .then(function() { amazonApplyColumnArrangement(); })
                         .finally(function() {
                             buildColumnDropdown();
                         });
@@ -8146,6 +8266,9 @@
                     saveAmazonColCats(cats);
                     syncAmazonGroupHeaderCheckbox(fromGroup);
                     syncAmazonGroupHeaderCheckbox(group);
+                    amazonColVisSaveOrder(group.querySelector('.col-vis-group-list'));
+                    amazonColVisSaveOrder(fromGroup ? fromGroup.querySelector('.col-vis-group-list') : null);
+                    amazonScheduleColumnArrangement();
                 }
                 function addHeaderFromToolbar() {
                     const input = menuEl.querySelector('.col-vis-newname');
@@ -8324,12 +8447,25 @@
                             added++;
                         });
                         if (!added) { flashStatus('Already in ' + amazonColVisLabel(cat) + '.'); return; }
+                        amazonScheduleColumnArrangement();
                         amazonColVisFlashMsg = 'Pasted ' + added + ' column' + (added === 1 ? '' : 's') + ' into ' + amazonColVisLabel(cat) + '.';
                         buildColumnDropdown();
                     }
                 });
 
                 menuEl.addEventListener('click', function(e) {
+                    const saveBtn = e.target.closest('.col-vis-save');
+                    if (saveBtn) {
+                        e.preventDefault();
+                        if (amazonArrangeTimer) { clearTimeout(amazonArrangeTimer); amazonArrangeTimer = null; }
+                        amazonApplyColumnArrangement();
+                        saveColumnVisibilityToServer();
+                        saveAmazonColumnOrderToServer();
+                        const tg = document.getElementById('columnVisibilityDropdown');
+                        if (tg && window.bootstrap && bootstrap.Dropdown) bootstrap.Dropdown.getOrCreateInstance(tg).hide();
+                        else if (tg) tg.click();
+                        return;
+                    }
                     const addBtn = e.target.closest('.col-vis-addgroup');
                     if (addBtn) { e.preventDefault(); addHeaderFromToolbar(); return; }
 
@@ -8346,6 +8482,8 @@
                             const grp = li.closest('.col-vis-group');
                             li.remove();
                             syncAmazonGroupHeaderCheckbox(grp);
+                            amazonColVisSaveOrder(grp ? grp.querySelector('.col-vis-group-list') : null);
+                            amazonScheduleColumnArrangement();
                         } else if (amazonColVisIsCustom(li.dataset.group)) {
                             // Your header: take the column out, it goes back to its normal header.
                             const def = table.getColumn(field) ? table.getColumn(field).getDefinition() : null;
@@ -8375,6 +8513,7 @@
                         // Added as a copy: the column stays under its own header too.
                         Array.from(pickedSet(cat)).forEach(function(f) { amazonColExtraAdd(f, cat); });
                         pickedSet(cat).clear();
+                        amazonScheduleColumnArrangement();
                         buildColumnDropdown();
                         return;
                     }
@@ -8411,6 +8550,7 @@
                         saveAmazonColCats(cats);
                         const ex = loadAmazonColExtras();
                         Object.keys(ex).forEach(function(f) { amazonColExtraRemove(f, key); });
+                        amazonScheduleColumnArrangement();
                         buildColumnDropdown();
                     }
                 });
