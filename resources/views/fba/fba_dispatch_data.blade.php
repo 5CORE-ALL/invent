@@ -2203,23 +2203,6 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
-                            formatter: function(cell) {
-                                const rowData = cell.getRow().getData();
-                                const raw = cell.getValue();
-                                const text = (raw === null || raw === undefined) ? '' : String(raw);
-                                if (rowData.is_parent) return text;
-                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                // mousedown preventDefault keeps the click on the dot from starting the cell editor
-                                const dot = `<span class="ctn-dot" onmousedown="event.preventDefault();" title="View CTN details" style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#28a745;margin-left:6px;vertical-align:middle;cursor:pointer;"></span>`;
-                                return `${esc(text)}${dot}`;
-                            },
-                            cellClick: function(e, cell) {
-                                if (!e.target.closest('.ctn-dot')) return;
-                                e.stopPropagation();
-                                openCtnColumnsModal(cell.getRow());
-                                // Make sure the input editor did not open underneath the modal
-                                setTimeout(function() { try { cell.cancelEdit(); } catch (err) {} }, 0);
-                            },
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
