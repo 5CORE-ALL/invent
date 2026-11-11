@@ -445,11 +445,17 @@
                             <tbody id="sqr-rows"></tbody>
                             <tfoot>
                                 <tr>
-                                    <td colspan="6" style="padding:14px 10px;">
+                                    <td colspan="8" style="padding:14px 10px 6px;">
                                         <button type="button" class="btn sqr-add" id="sqr-add"><i class="fa fa-plus me-1"></i> Add condition</button>
-                                        <span class="text-muted small d-block mt-2">AND is checked before OR. Count = rows (with a Qty CTN) that match that line.</span>
+                                        <span class="text-muted small d-block mt-2">AND is checked before OR. Each line's Count = rows (with a Qty CTN) that match that line alone.</span>
                                     </td>
-                                    <td class="text-end fw-bold" id="sqr-total-count" style="font-size:1.05rem;"></td>
+                                </tr>
+                                <tr style="background:#eef2ff;">
+                                    <td colspan="6" class="text-end fw-bold" style="padding:10px 12px;">
+                                        TOTAL: rows matching the whole rule (all lines combined with AND / OR)
+                                        <span class="text-muted fw-normal small d-block">These rows get Send Qty = Qty CTN. Out of all rows that have a Qty CTN.</span>
+                                    </td>
+                                    <td class="text-end fw-bold" id="sqr-total-count" style="font-size:1.15rem; white-space:nowrap;"></td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -505,7 +511,7 @@
                             <span id="sugg-send-rows-badge" class="badge bg-primary me-2 d-inline-flex align-items-center" style="font-size: 0.91875rem; padding: 0.3rem 0.6rem; line-height: 1.5;">
                                 <i class="fa fa-list me-1"></i> <strong>Send:</strong>
                                 <select id="sugg-send-filter" class="form-select form-select-sm mx-2" style="width: auto; display: inline-block;"
-                                    title="Filter the Send Qty column: All, Blank (empty) or greater than 0">
+                                    title="Filter the Send Qty column: All, Blank (empty) or greater than 0. The number is how many rows are shown.">
                                     <option value="all" selected>All</option>
                                     <option value="blank">Blank</option>
                                     <option value="positive">&gt;0</option>
@@ -3286,10 +3292,8 @@
 
                             // Count of rows visible in the Sugg Send column
                             // (non-parent active rows that display a value)
-                            const visibleRowsCount = allData.filter(row => {
-                                if (row.is_parent) return false;
-                                return fbaSendQtyPositive(row);
-                            }).length;
+                            // Rows currently shown (already narrowed by the Send dropdown: All / Blank / >0)
+                            const visibleRowsCount = allData.filter(row => !row.is_parent).length;
 
                             $('#sugg-send-rows-count').text(visibleRowsCount);
                         } catch (e) {
