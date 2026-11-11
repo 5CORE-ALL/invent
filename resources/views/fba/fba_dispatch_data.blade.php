@@ -366,6 +366,40 @@
 @section('content')
     <div class="toast-container"></div>
 
+    <!-- Send Qty Rule Modal -->
+    <div class="modal fade" id="sendQtyRuleModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-sliders-h me-2"></i>Send Qty Rule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label fw-semibold" for="send-qty-rule">Auto-fill Send Qty with Qty CTN when this is true</label>
+                    <input type="text" id="send-qty-rule" class="form-control" value="Dil &lt; 50" spellcheck="false" autocomplete="off"
+                        placeholder="e.g. Dil &lt; 50">
+                    <div id="send-qty-rule-error" class="text-danger small mt-1" style="display:none;"></div>
+                    <div class="small text-muted mt-3">
+                        Use column names (<code>Dil</code>, <code>Main INV</code>, <code>Qty CTN</code>, <code>AMZ Rating</code> ...),
+                        numbers, <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code> <code>=</code> <code>!=</code>,
+                        <code>and</code> <code>or</code> <code>not</code> and brackets.
+                    </div>
+                    <div class="mt-2 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 50">Dil &lt; 50</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 30 and Main INV &gt; 0">Dil &lt; 30 and Main INV &gt; 0</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 50 and AMZ Rating &gt;= 3.5">Dil &lt; 50 and AMZ Rating &gt;= 3.5</button>
+                    </div>
+                    <div class="small text-muted mt-3">A Send Qty you typed yourself is never replaced by the rule.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" id="send-qty-rule-default">Default (Dil &lt; 50)</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="send-qty-rule-apply">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Row Details Modal -->
     <div class="modal fade" id="rowDetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -399,10 +433,11 @@
                                 style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
                             <input type="text" id="parent-search" class="form-control form-control-sm me-2"
                                 style="width: 180px; display: inline-block;" placeholder="Search Parent...">
-                            <input type="text" id="send-qty-rule" class="form-control form-control-sm me-2"
-                                style="width: 230px; display: inline-block;" value="Dil &lt; 50" spellcheck="false" autocomplete="off"
-                                placeholder="Send Qty rule, e.g. Dil < 50"
-                                title="Send Qty is auto-filled with Qty CTN when this rule is true. Use column names, numbers, < <= > >= = !=, and / or, ( ). Example: Dil < 50 and Main INV > 0. Press Enter to apply.">
+                            <button type="button" id="send-qty-rule-btn" class="btn btn-sm btn-info me-2 text-white"
+                                data-bs-toggle="modal" data-bs-target="#sendQtyRuleModal"
+                                title="Rule that decides when Send Qty is auto-filled with Qty CTN">
+                                <i class="fa fa-sliders-h"></i> Send Qty Rule
+                            </button>
                             <select id="nrl-fba-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Types</option>
@@ -3170,27 +3205,55 @@
                 });
 
                 // Send Qty rule: typed in the toolbar, applied on Enter / when leaving the box
+                function setSendQtyRuleError(msg) {
+                    const input = document.getElementById('send-qty-rule');
+                    const box = document.getElementById('send-qty-rule-error');
+                    if (input) input.classList.toggle('is-invalid', !!msg);
+                    if (box) { box.textContent = msg || ''; box.style.display = msg ? '' : 'none'; }
+                }
+                /** Compile + apply the rule typed in the Send Qty Rule window. Returns true when the rule is in use. */
                 function applySendQtyRuleFromInput() {
                     const input = document.getElementById('send-qty-rule');
-                    if (!input) return;
+                    if (!input) return false;
                     const text = input.value.trim();
-                    if (!text || text === fbaSendQtyRuleText) { if (!text) input.value = fbaSendQtyRuleText; input.classList.remove('is-invalid'); return; }
+                    if (!text) { setSendQtyRuleError('Type a rule first, for example: Dil < 50'); return false; }
+                    if (text === fbaSendQtyRuleText && fbaSendQtyRuleFn) { setSendQtyRuleError(''); return true; }
                     try {
                         const fn = fbaCompileRule(text);
                         fbaSendQtyRuleFn = fn;
                         fbaSendQtyRuleText = text;
                         try { localStorage.setItem(FBA_SEND_QTY_RULE_KEY, text); } catch (e) { /* ignore */ }
-                        input.classList.remove('is-invalid');
+                        setSendQtyRuleError('');
                         table.redraw(true);
                         showToast('Send Qty rule applied: ' + text.replace(/</g, '&lt;'), 'success');
+                        return true;
                     } catch (err) {
-                        input.classList.add('is-invalid');
-                        showToast('Send Qty rule not applied: ' + String(err.message).replace(/</g, '&lt;'), 'error');
+                        setSendQtyRuleError('Not applied: ' + err.message);
+                        return false;
                     }
                 }
+                $('#sendQtyRuleModal').on('show.bs.modal', function() {
+                    $(this).appendTo('body');
+                    $(this).css('z-index', '1050');
+                    fbaSendQtyEnsureRule();                                   // loads the saved rule into the box
+                    setSendQtyRuleError('');
+                }).on('shown.bs.modal', function() {
+                    const el = document.getElementById('send-qty-rule');
+                    if (el) { el.focus(); el.select(); }
+                });
                 $('#send-qty-rule').on('keydown', function(e) {
-                    if (e.key === 'Enter') { e.preventDefault(); applySendQtyRuleFromInput(); }
-                }).on('change', applySendQtyRuleFromInput).on('input', function() { this.classList.remove('is-invalid'); });
+                    if (e.key === 'Enter') { e.preventDefault(); $('#send-qty-rule-apply').trigger('click'); }
+                }).on('input', function() { setSendQtyRuleError(''); });
+                $('#send-qty-rule-apply').on('click', function() {
+                    if (applySendQtyRuleFromInput()) bootstrap.Modal.getOrCreateInstance(document.getElementById('sendQtyRuleModal')).hide();
+                });
+                $('#send-qty-rule-default').on('click', function() {
+                    $('#send-qty-rule').val(FBA_SEND_QTY_DEFAULT_RULE);
+                    if (applySendQtyRuleFromInput()) bootstrap.Modal.getOrCreateInstance(document.getElementById('sendQtyRuleModal')).hide();
+                });
+                $(document).on('click', '.send-qty-rule-example', function() {
+                    $('#send-qty-rule').val($(this).attr('data-rule')).trigger('input').trigger('focus');
+                });
 
                 $('#nrl-fba-filter').on('change', function() {
                     const selectedValue = $(this).val();
