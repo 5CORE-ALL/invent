@@ -309,19 +309,9 @@
                         steps.push(temuRuleStep('skip', no + ' · Ageing rule',
                             age.days === null ? 'No age for this SKU. Not applied.' : ('Age ' + age.days + ' days: ' + (age.label ? 'slab ' + age.label + ' adds 0.' : 'no Ageing slab matches.'))));
                     }
-                },
-                diff: function(no) {
-                    const diffAdj = amzDilGroiDiffAdj(d);
-                    const diffPct = amzStdPrcDiffPct(d);
-                    if (diffAdj) {
-                        steps.push(temuRuleStep('ok', no + ' · Diff rule', 'Diff ' + diffPct.toFixed(1) + '% is above ' + temuRuleDiffCfg().gt_pct + '% → <b>' + temuRuleDiffPts(diffAdj) + '</b> to Target NROI'));
-                    } else {
-                        steps.push(temuRuleStep('skip', no + ' · Diff rule',
-                            diffPct === null ? 'Needs both Std Prc and Price. Not applied.' : ('Diff ' + diffPct.toFixed(1) + '% is not above ' + temuRuleDiffCfg().gt_pct + '%. No ' + temuRuleDiffPts(temuRuleDiffCfg().points))));
-                    }
                 }
             };
-            ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age', 'diff']).forEach(function(k, idx) {
+            ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age']).forEach(function(k, idx) {
                 if (k.indexOf('c_') === 0) {
                     // A custom rule card that adds points to the Target NROI.
                     const cr = (typeof window.amzCustomRuleById === 'function') ? window.amzCustomRuleById(k.slice(2)) : null;

@@ -627,13 +627,11 @@
         #amzDilGroiModal .amz-dg-card .small.text-muted.mb-1 { font-size: 10.5px; line-height: 1.25; margin-bottom: 3px !important; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap { margin-top: 6px !important; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .small.text-muted { font-size: 10.5px; line-height: 1.25; }
-        #amzDilGroiModal .amz-dg-diffrow { color: #475569; font-size: 11px; line-height: 1.7; }
         /* tables fit the card: no fixed column widths, narrow inputs */
         #amzDilGroiModal .amz-dg-card .table { width: 100%; margin-bottom: 0; }
         #amzDilGroiModal .amz-dg-card .table th { width: auto !important; white-space: nowrap; }
         #amzDilGroiModal .amz-dg-card .table td { white-space: nowrap; }
         #amzDilGroiModal .amz-dg-card .table .form-control-sm { min-width: 0; width: 100%; max-width: 74px; padding-left: 4px; padding-right: 4px; margin-left: auto; margin-right: auto; }
-        #amzDilGroiModal .amz-dg-card .amz-dg-diffrow .form-control-sm { width: 58px !important; max-width: 58px; }
         #amzDilGroiModal .amz-dg-card .amz-dg-clearance-wrap .form-control-sm { width: 80px !important; }
         #amzDilGroiModal #amz-dil-groi-status { margin: 4px 0 0 !important; }
         @media (min-width: 992px) {
@@ -1144,7 +1142,7 @@
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
-                        title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay and before the Diff rule. Count = SKUs (INV &gt; 0) whose age is in that band.">
+                        title="Each age band (days in stock) adds its points to the Dil slab Target NROI, after the CVR overlay. Count = SKUs (INV &gt; 0) whose age is in that band.">
                         <span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="age" value="4"></span><span>Ageing Rule</span>
                         <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Ageing Rule no longer changes the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="age" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
@@ -1169,27 +1167,6 @@
                     </button>
                     </div>
                     <div class="amz-dg-card-rules" data-card="age">
-                        <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
-                        <div class="amz-dg-rules-list"></div>
-                    </div>
-                    </div>
-                    <div class="amz-dg-card" data-amz-card="diff">
-                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <div class="amz-dg-side">
-                    <div class="amz-dg-rules-title amz-dg-has-sw" title="Std Diff rule: when (Std Prc − Price) / Price is above the threshold, add points to the Target NROI."><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="diff" value="5"></span><span>Diff rule</span>
-                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Diff rule no longer adds points to the Target NROI."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="diff" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
-                    </div>
-                    </div>
-                    <div class="amz-dg-main">
-                    <div class="small amz-dg-diffrow">
-                        <strong>When</strong> the <strong>Std Diff</strong> column
-                            (<code>(Std Prc − Price) / Price</code>) is <strong>&gt;</strong>
-                            <input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-gt" style="width:68px;" value="20" title="Diff threshold %">%:
-                            add <strong>+</strong><input type="number" step="1" class="form-control form-control-sm d-inline-block align-middle amz-diff-adj-input amz-diff-adj-points" style="width:68px;" value="10" title="Points added to the Target NROI">
-                            to the Target NROI.
-                    </div>
-                    </div>
-                    <div class="amz-dg-card-rules" data-card="diff">
                         <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
                         <div class="amz-dg-rules-list"></div>
                     </div>
@@ -1281,16 +1258,13 @@
                 'When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.',
                 'When you change the first Target NROI%: later rows fill as first +5, +10, \u2026 (increasing down the table).',
                 'When INV \u2264 0: Count and pies skip that SKU.',
-                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay, Ageing Rule and Diff rule in the order of their Seq numbers (lowest first). Std Prc is the maximum S PRC. Clearance is a separate path, so its number only sorts the card.',
+                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay and Ageing Rule in the order of their Seq numbers (lowest first). Std Prc is the maximum S PRC. Clearance is a separate path, so its number only sorts the card.',
             ],
             cvr: [
                 'When a SKU matches a row in the CVR overlay table (Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold; horizontal / opposite arrows are excluded): apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).',
             ],
             age: [
                 'If the SKU\u2019s age (days) is inside an age band, add that band\u2019s points to the Target NROI (use a negative number to lower it). Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.',
-            ],
-            diff: [
-                'When the Std Diff column ((Std Prc \u2212 Price) / Price) is above the threshold, add the points to the Target NROI. The Diff is read against the rule price without its own points, so it cannot flip after a push.',
             ],
             clearance: [
                 'If an item is on clearance, follow the Clearance Target NROI% instead of the rules above. Clearance SKUs get no LMP or Std Prc cap.',
@@ -1488,15 +1462,15 @@
         /**
          * ON / OFF switches of the Sprc Dil blocks (same keys as AmazonDilGroiRule::RULE_ON_KEYS). A block that is OFF no longer
          * applies: dil = Dil slabs (Target NROI), rev = Review Discount (Reduce % added to the LMP reduce %), cvr = CVR overlay,
-         * age = Ageing Rule, diff = Diff rule, lmp = LMP Rule (cap), clearance = Clearance NROI%.
+         * age = Ageing Rule, clearance = Clearance NROI%.
          * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
          */
-        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'diff', 'clearance'];
-        let amzRuleOn = { dil: true, cvr: true, age: true, diff: true, clearance: true };
+        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'clearance'];
+        let amzRuleOn = { dil: true, cvr: true, age: true, clearance: true };
         function amzRuleIsOn(key) { return amzRuleOn[key] !== false; }
         window.amzRuleIsOn = amzRuleIsOn;
         function amzNormalizeRuleOn(raw) {
-            const out = { dil: true, cvr: true, age: true, diff: true, clearance: true };
+            const out = { dil: true, cvr: true, age: true, clearance: true };
             if (!raw || typeof raw !== 'object') return out;
             AMZ_RULE_ON_KEYS.forEach(function(k) {
                 const v = raw[k];
@@ -1515,7 +1489,6 @@
                 if (k === 'dil') $parts = $('#amz-dil-groi-table').closest('.table-responsive').add('#amz-dil-groi-add-btn');
                 else if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
                 else if (k === 'age') $parts = $('#amz-age-adj-table').closest('.table-responsive').prev('.small').add($('#amz-age-adj-table').closest('.table-responsive')).add('#amz-age-adj-add-btn');
-                else if (k === 'diff') $parts = $('#amzDilGroiModal .amz-dg-diffrow');
                 else if (k === 'clearance') $parts = $('#amzDilGroiModal .amz-dg-clearance-wrap > .small.text-muted').add('#amz-dg-clearance-block');
                 $parts.toggleClass('amz-dg-dim', !on);
             });
@@ -1535,13 +1508,13 @@
         }
         /**
          * Sequence number of every rule card (same keys as AmazonDilGroiRule::RULE_SEQ_DEFAULT, plus "c_<id>" for each custom rule
-         * card). The cards are sorted by it. Inside the Target NROI rules (CVR overlay, Ageing, Diff and the custom rules that add
+         * card). The cards are sorted by it. Inside the Target NROI rules (CVR overlay, Ageing and the custom rules that add
          * points) and inside the price rules (LMP cap, CVR up / down and the custom rules that change the price) the number is the
          * order they are applied in. The Dil slab and the NROI rules always run before the price rules: a rule cannot run before what
          * it needs. Saved with Save Only / Save All; the server job reads them too.
          */
-        const AMZ_RULE_SEQ_BASE = ['dil', 'cvr', 'age', 'diff', 'clearance'];
-        const AMZ_RULE_SEQ_DEFAULT = { dil: 1, cvr: 2, age: 3, diff: 4, clearance: 5 };
+        const AMZ_RULE_SEQ_BASE = ['dil', 'cvr', 'age', 'clearance'];
+        const AMZ_RULE_SEQ_DEFAULT = { dil: 1, cvr: 2, age: 3, clearance: 4 };
         /** Custom rule cards added with "Add rule": { id, name, on, field, op, value, value2, action ('nroi' | 'price_pct'), points }. */
         let amzCustomRules = [];
         let amzRuleSeq = Object.assign({}, AMZ_RULE_SEQ_DEFAULT);
@@ -1564,8 +1537,8 @@
         function amzCustomIds(action) {
             return amzCustomRules.filter(function(r) { return r.action === action; }).map(function(r) { return 'c_' + r.id; });
         }
-        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, Diff, then the custom ones). They always run after the Dil slab. */
-        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age', 'diff'].concat(amzCustomIds('nroi'))); }
+        /** The Target NROI rules in apply order (lowest number first; a tie keeps CVR, Age, then the custom ones). They always run after the Dil slab. */
+        function amzNroiOrder() { return amzOrderAmong(['cvr', 'age'].concat(amzCustomIds('nroi'))); }
         /** The price rules in apply order: the LMP cap (with the Std Prc maximum), the CVR up / down discount and the custom price rules. They run after the NROI rules. */
         function amzPriceOrder() { return amzOrderAmong(amzCustomIds('price_pct')); }
         window.amzNroiOrder = amzNroiOrder;
@@ -1598,7 +1571,7 @@
             amzPaintSeqInputs();
         }
         /**
-         * A rule was given a new Seq number: it goes to that place and the rules from there on move down one (set Diff to 1 and
+         * A rule was given a new Seq number: it goes to that place and the rules from there on move down one (set Ageing to 1 and
          * the rule that was 1 becomes 2, the one that was 2 becomes 3 ...). Every rule always has its own number, 1 to n.
          */
         function amzMoveRuleSeq(key, wanted) {
@@ -1803,7 +1776,7 @@
         }
         /**
          * Ageing Rule (Sprc Dil): the SKU's age in days picks a band; the band's points are added to the Target NROI after the
-         * CVR overlay and before the Diff rule. Same as the server (AmazonDilGroiRule::ageAdjPoints / adjustGroiForAge).
+         * CVR overlay. Same as the server (AmazonDilGroiRule::ageAdjPoints / adjustGroiForAge).
          * Not saved yet = 4 bands at 0 points, so nothing changes until the points are edited.
          */
         const AMZ_AGE_ADJ_DEFAULT = [
@@ -2485,58 +2458,22 @@
             if (trend === 'up' && cvr > cfg.up_gt) return cfg.up_adj;
             return 0;
         }
-        /** Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above gt_pct adds `points` to the Target NROI. Saved in the modal (default 20 / +10). */
-        const AMZ_DIFF_ADJ_DEFAULT = { gt_pct: 20, points: 10 };
-        let amzDiffAdj = Object.assign({}, AMZ_DIFF_ADJ_DEFAULT);
-        function amzNormalizeDiffAdj(raw) {
-            const out = Object.assign({}, AMZ_DIFF_ADJ_DEFAULT);
-            if (!raw) return out;
-            Object.keys(out).forEach(function(k) {
-                const n = Number(raw[k]);
-                if (!isFinite(n) || raw[k] === '' || raw[k] === null) return;
-                out[k] = Math.round(n * 100) / 100;
-            });
-            return out;
-        }
-        function amzDiffAdjNow() {
-            const $gt = $('.amz-diff-adj-gt').first();
-            if ($gt.length) {
-                return amzNormalizeDiffAdj({
-                    gt_pct: parseFloat($gt.val()),
-                    points: parseFloat($('.amz-diff-adj-points').first().val()),
-                });
-            }
-            return amzNormalizeDiffAdj(amzDiffAdj);
-        }
-        function amzPaintDiffAdj(cfg) {
-            cfg = amzNormalizeDiffAdj(cfg);
-            amzDiffAdj = cfg;
-            $('.amz-diff-adj-gt').val(cfg.gt_pct);
-            $('.amz-diff-adj-points').val(cfg.points);
-        }
-        // The hover card and Std Diff column read the setting through the same hook the eBay pages use.
-        window.ebayDiffAdjCfg = function() { return amzDiffAdj; };
         function amzStdPrcDiffPct(d) {
             const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d && d.STANDARD_PRICE) || 0);
             const price = parseFloat(d && d.price) || 0;
             if (!(std > 0) || !(price > 0)) return null;
             return ((std - price) / price) * 100;
         }
-        function amzDilGroiDiffAdj(d) {
-            if (!d || !amzRuleIsOn('diff')) return 0;
-            const pct = amzStdPrcDiffPct(d);
-            return (pct !== null && pct > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
-        }
         /**
-         * Target NROI after the rules that change it, applied in the order of their sequence numbers (CVR overlay, Ageing, Diff;
-         * default 2, 3, 4). Same chain as the server (AmazonSprcDilAutoPushService::computeTarget). Each step floors at 0 like
-         * the server, and the Diff is read against the rule price WITHOUT its own points (see amzDilGroiStableDiffAdj).
-         * Returns { nroi, cvr (raw points), age (applied), diff (applied), order }.
+         * Target NROI after the rules that change it, applied in the order of their sequence numbers (CVR overlay, Ageing;
+         * default 2, 3). Same chain as the server (AmazonSprcDilAutoPushService::computeTarget). Each step floors at 0 like
+         * the server.
+         * Returns { nroi, cvr (raw points), age (applied), order }.
          */
         function amzNroiChain(slabGroi, d) {
             const order = amzNroiOrder();
             let cur = Number(slabGroi) || 0;
-            const out = { cvr: 0, age: 0, diff: 0, order: order };
+            const out = { cvr: 0, age: 0, order: order };
             order.forEach(function(k) {
                 if (k === 'cvr') {
                     out.cvr = amzDilGroiCvrAdj(d);
@@ -2545,10 +2482,6 @@
                     const next = Math.max(0, amzPefRound2(cur + amzDilGroiAgeAdj(d)));
                     out.age = amzPefRound2(next - cur);
                     cur = next;
-                } else if (k === 'diff') {
-                    const pts = amzDilGroiStableDiffAdj(cur, d);
-                    out.diff = amzPefRound2(pts);
-                    cur = amzPefRound2(cur + pts);
                 } else if (k.indexOf('c_') === 0) {
                     // A custom rule card: its condition is met -> its points are added to the Target NROI.
                     const cr = amzCustomRuleById(k.slice(2));
@@ -2560,19 +2493,6 @@
         }
         function amzDilGroiApplyCvrAdj(slabGroi, d) {
             return amzNroiChain(slabGroi, d).nroi;
-        }
-        /**
-         * Same as the server (AmazonSprcDilAutoPushService::computeTarget). The Diff is read against the rule price WITHOUT the
-         * Diff points, not the live Price. Against the live Price the rule flipped after its own push (boost pushed -> Diff
-         * under the threshold -> boost removed -> lower price pushed -> Diff over again), so the page and the server saw
-         * different S PRC values and Amazon alternated between two prices. A listed SKU (Price > 0) is still required.
-         */
-        function amzDilGroiStableDiffAdj(afterCvr, d) {
-            if (!d || !amzRuleIsOn('diff') || !(parseFloat(d.price) > 0)) return 0;
-            const std = (typeof amazonStdPrice === 'function') ? amazonStdPrice(d) : (parseFloat(d.STANDARD_PRICE) || 0);
-            const base = amzSpriceFromTargetNroi(d, afterCvr);
-            if (!(std > 0) || !(base > 0)) return 0;
-            return ((((std - base) / base) * 100) > amzDiffAdj.gt_pct) ? amzDiffAdj.points : 0;
         }
         function amzDilGroiCollectCounts(list) {
             const rules = list || amzDilGroiDisplayRules();
@@ -3021,12 +2941,11 @@
             const rule = amzDilGroiMatch(dil);
             if (!rule) return null;
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
-            // The CVR / Age / Diff points are applied in the order of their sequence numbers (amzNroiChain).
+            // The CVR / Age points are applied in the order of their sequence numbers (amzNroiChain).
             const chain = amzNroiChain(slabNroi, d);
             const cvrAdj = chain.cvr;
             const nroi = chain.nroi;
             const ageAdj = chain.age;
-            const diffAdj = chain.diff;
             const sprc = amzSpriceFromTargetNroi(d, nroi);
             if (!(sprc > 0)) return null;
             return {
@@ -3039,7 +2958,6 @@
                 nroi: nroi,
                 cvrAdj: cvrAdj,
                 ageAdj: ageAdj,
-                diffAdj: diffAdj,
                 sprc: sprc,
                 zeroSoldMin: false,
             };
@@ -3068,37 +2986,6 @@
         window.amzIsZeroSoldRow = amzIsZeroSoldRow;
         window.amzDilGroiOwnsRow = amzDilGroiOwnsRow;
         window.amzSkipLmpCapForRow = amzSkipLmpCapForRow;
-        /**
-         * Sprc % DISC column: the % discounts of the rules that hold Seq 1, 2 and 3 in the Sprc Dil modal (whatever they are now).
-         * Only a custom "change the S PRC by %" rule lowers the price by a %, so only those count (when ON and its condition is met).
-         * Rules that move the Target NROI (Dil slab, CVR overlay, Ageing, Diff, custom NROI rules) and Clearance have no % discount,
-         * so they add 0. Returns { total, parts: [{ key, label, pct, seq }] } or null for a row with nothing to show.
-         */
-        const AMZ_SEQ_LABELS = { dil: 'Dil slabs', cvr: 'CVR overlay', age: 'Ageing Rule', diff: 'Diff rule', clearance: 'Clearance' };
-        function amzSprcPctDiscInfo(d) {
-            if (!d || !amzPefIsChildRow(d) || !(amzPefInv(d) > 0)) return null;
-            const keys = amzSeqKeys().filter(function(k) { const s = amzRuleSeq[k]; return s >= 1 && s <= 3; })
-                .sort(function(a, b) { return (amzRuleSeq[a] || 99) - (amzRuleSeq[b] || 99); });
-            if (!keys.length) return null;
-            const parts = [];
-            let total = 0;
-            keys.forEach(function(k) {
-                let pct = 0;
-                let label = AMZ_SEQ_LABELS[k] || k;
-                if (k.indexOf('c_') === 0) {
-                    const cr = amzCustomRuleById(k.slice(2));
-                    if (cr) {
-                        label = cr.name;
-                        if (cr.action === 'price_pct' && amzCustomHit(cr, d)) pct = -Number(cr.points) || 0;
-                    }
-                }
-                pct = amzPefRound2(pct);
-                total += pct;
-                parts.push({ key: k, label: label, pct: pct, seq: amzRuleSeq[k] });
-            });
-            return { total: amzPefRound2(total), parts: parts };
-        }
-        window.amzSprcPctDiscInfo = amzSprcPctDiscInfo;
         function redrawAmzSprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
             try {
@@ -3332,7 +3219,6 @@
                     amzDilGroiRules = AMZ_DIL_GROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
-                if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
                 amzPaintRuleOn(res && res.rule_on);
@@ -3361,8 +3247,6 @@
             const rules = readAmzDilGroiRulesFromModal();
             const cvrAdj = amzCvrGroiAdjNow();
             amzCvrGroiAdj = cvrAdj;
-            const diffAdj = amzDiffAdjNow();
-            amzDiffAdj = diffAdj;
             const ageAdj = amzAgeAdjPayload();
             const ruleOn = amzReadRuleOnFromModal();
             const ruleSeq = amzReadRuleSeqFromModal();
@@ -3374,7 +3258,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, diff_adj: diffAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_nroi: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_nroi != null && res.clearance_nroi !== '' && isFinite(Number(res.clearance_nroi))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_nroi));
@@ -3387,7 +3271,6 @@
                     renderAmzDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
-                if (res && res.diff_adj) amzPaintDiffAdj(res.diff_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 if (res && res.rule_on) amzPaintRuleOn(res.rule_on);
                 if (res && res.custom_rules) amzSetCustomRules(res.custom_rules);
@@ -6210,11 +6093,6 @@
                     const from = last ? last.max : 0;
                     amzAgeAdj.push({ min: from, max: from + 90, points: 0 });
                     amzRenderAgeAdjTable();
-                    amzAfterDilGroiRulesChanged();
-                });
-            $(document).off('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input')
-                .on('input.amzDiffAdj change.amzDiffAdj', '.amz-diff-adj-input', function() {
-                    amzDiffAdj = amzDiffAdjNow();
                     amzAfterDilGroiRulesChanged();
                 });
             $('#amzDilGroiModal').off('shown.bs.modal.amzdg').on('shown.bs.modal.amzdg', function() {

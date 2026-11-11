@@ -5757,28 +5757,6 @@
                     },
 
                     {
-                        title: "Sprc % DISC",
-                        field: "sprc_pct_disc",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: amazonMetricSorter(function(d) {
-                            const i = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(d) : null;
-                            return i ? i.total : null;
-                        }),
-                        headerTooltip: "Sum of the % discounts of the rules at Seq 1, 2 and 3 in Sprc Dil (LMP Rule reduce %, Review Discount, CVR up / down, custom % rules). Rules that move the Target NROI have no % discount. A rule counts only when it is ON and applies to the SKU.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            const info = (typeof amzSprcPctDiscInfo === 'function') ? amzSprcPctDiscInfo(rowData) : null;
-                            if (!info) return '';
-                            const tip = info.parts.map(function(p) { return 'Seq ' + p.seq + ' · ' + p.label + ': ' + p.pct + '%'; }).join('\n')
-                                + '\nSum: ' + info.total + '%';
-                            return '<span style="font-weight:600;color:#dc3545;" title="' + escAttr(tip) + '">' + info.total + '%</span>';
-                        },
-                        width: 80
-                    },
-
-                    {
                         title: "NPFT% C",
                         field: "c_std_npft_pct",
                         hozAlign: "center",
@@ -7198,7 +7176,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_gpft_usd|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_gpft_usd|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';

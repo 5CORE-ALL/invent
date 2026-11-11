@@ -283,7 +283,7 @@ class AmazonSprcDilAutoPushService
                 return $this->computeClearanceDilTarget($row, $adsPct);
             }
             // Sprc Dil with the Clearance switch OFF: the Clearance rule no longer applies, so the SKU is priced like any
-            // other one (Dil slab, CVR / Age / Diff, LMP cap). Only the Std prc vs dil rule keeps its own clearance target.
+            // other one (Dil slab, CVR / Age). Only the Std prc vs dil rule keeps its own clearance target.
             if (! $clearanceOnDilRule) {
                 $clearanceTarget = self::stdRulePaused($stdPromo, 'clrsnroi') ? null : AmazonDilGroiRule::clearanceSnroiTarget(
                     (float) ($row['dil'] ?? 0),
@@ -318,8 +318,8 @@ class AmazonSprcDilAutoPushService
             $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
             $cvrL30 = AmazonDilGroiRule::cvrL30($aL30, $sess30);
             $cvrL45 = AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60);
-            // The CVR overlay, Ageing Rule and Diff rule run in the order of their sequence numbers (Sprc Dil modal; default
-            // CVR, Age, Diff). Each one still has its own ON / OFF switch.
+            // The CVR overlay and Ageing Rule run in the order of their sequence numbers (Sprc Dil modal; default
+            // CVR, Age). Each one still has its own ON / OFF switch.
             $customValues = [
                 'dil' => $dil,
                 'cvr' => $cvrL30,
@@ -346,25 +346,12 @@ class AmazonSprcDilAutoPushService
                     );
                 }
                 // Ageing Rule (Sprc Dil modal block): the SKU's age in days picks a slab whose points are added to the Target NROI.
-                // After the CVR overlay and before the Diff rule, so the Diff is judged against the aged rule price. Age is stock
+                // After the CVR overlay. Age is stock
                 // age, not price, so this cannot flip after a push. Unknown age = no change.
                 if ($step === 'age' && isset($row['age_days']) && is_numeric($row['age_days'])
                     && $this->dilRuleOn('age')
                     && \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil') {
                     $nroi = AmazonDilGroiRule::adjustGroiForAge($nroi, (float) $row['age_days'], $this->ageAdjCfg);
-                }
-                // Diff rule (same as eBay 1): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target NROI (default 20% / +10).
-                // The Price is the rule price WITHOUT the Diff points, not the live Price. Read against the live Price the rule flips
-                // after its own push (boosted price pushed -> Diff drops under the threshold -> boost removed -> lower price pushed ->
-                // Diff rises -> boost back), so Amazon alternated between two prices every run. A listed SKU is still required.
-                if ($step === 'diff' && (float) ($row['price'] ?? 0) > 0 && $this->dilRuleOn('diff')) {
-                    $basePrice = AmazonDilGroiRule::priceWithDynamicAds(
-                        fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
-                        (float) $ads,
-                        $this->dynamicAdsRule()
-                    );
-                    $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($basePrice ?? 0));
-                    $nroi += AmazonDilGroiRule::diffAdjPoints($diffPct, $this->diffAdjCfg);
                 }
             }
             // Dynamic Rule (Ads % by price slab): solve the price against the Ads % of the slab it lands in.
@@ -383,30 +370,12 @@ class AmazonSprcDilAutoPushService
             if ($dilPrice === null || ! ($dilPrice >= 0.01)) {
                 return null;
             }
-            // The price rules run in the order of their sequence numbers (Sprc Dil modal; default LMP cap first, then the CVR up /
-            // down discount): the LMP cap (with the Std Prc maximum) and the CVR up / down extra discount off Std Prc.
+            // Price rules: only the custom "change the S PRC by %" cards remain (the LMP Rule, Review Discount and CVR up / down
+            // rules were deleted). They run in the order of their sequence numbers; Std Prc is then the maximum, same as the page.
             $capped = (float) $dilPrice;
-            $dilLmpCvrDisc = $std > 0 ? $this->lmpCvrDiscPct($row, $lmp, $std) : 0.0;
+            $dilLmpCvrDisc = 0.0;
             foreach (AmazonDilGroiRule::priceOrder($this->ruleSeqCfg, $this->customRulesCfg) as $priceStep) {
-                if ($priceStep === 'lmp') {
-                    $capped = AmazonDilGroiRule::capSpriceToLmp(
-                        $capped,
-                        // LMP Rule switched OFF in the Sprc Dil modal: no LMP cap (Std Prc is still the maximum).
-                        $this->dilRuleOn('lmp') ? $lmp : 0.0,
-                        $lp,
-                        $ship,
-                        AmazonDilGroiRule::TAKE_HOME,
-                        $std,
-                        // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98), same as the page,
-                        // plus the Reduce % Discount of the Review Discount rule (star rating slab) when that rule is ON.
-                        AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg) + $this->revReducePct($row),
-                        // LMP rule: LMP available and the calculated S PRC ≥ LMP → LMP − x%. No "SNROI at LMP ≥ 20%" condition.
-                        false
-                    );
-                    if (! is_finite($capped) || $capped < 0.01) {
-                        return null;
-                    }
-                } elseif (str_starts_with($priceStep, 'c_')) {
+                if (str_starts_with($priceStep, 'c_')) {
                     // A custom rule card: its condition is met → the price changes by its % (negative = lower).
                     $custom = $this->customRule(substr($priceStep, 2));
                     if ($custom !== null && AmazonDilGroiRule::customRuleHit($custom, $customValues)) {
@@ -415,14 +384,11 @@ class AmazonSprcDilAutoPushService
                             $capped = $changed;
                         }
                     }
-                } elseif ($priceStep === 'cvrud' && abs($dilLmpCvrDisc) >= 0.01) {
-                    // CVR up / down rule: the extra discount off Std Prc. With the default order it comes after the LMP cap and the
-                    // Std Prc maximum, so a falling CVR never lifts the price (same step as the page: amzLiveRuleSprice).
-                    $afterDisc = round($capped - ($std * $dilLmpCvrDisc / 100), 2);
-                    if ($afterDisc >= 0.01) {
-                        $capped = $afterDisc;
-                    }
                 }
+            }
+            $capped = AmazonDilGroiRule::capToStdWhenNoLmp($capped, 0.0, $std);
+            if (! is_finite($capped) || $capped < 0.01) {
+                return null;
             }
 
             return [
@@ -440,7 +406,7 @@ class AmazonSprcDilAutoPushService
                 'age_disc' => 0.0,
                 'sum_disc' => 0.0,
                 'dil_groi' => true,
-                'lmp_capped' => $this->dilRuleOn('lmp') && $lmp > 0 && ((float) $dilPrice - $capped) > 0.009,
+                'lmp_capped' => false,
                 'base' => $std > 0 ? round($std, 2) : round($capped, 2),
             ];
         }
@@ -472,8 +438,8 @@ class AmazonSprcDilAutoPushService
         $zeroSoldDisc = (! self::stdRulePaused($stdPromo, 'zs') && ! ($aL30Sold > 0))
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        // CVR up / down rule (Sprc Dil modal): extra discount on the CVR arrow band, optionally only when LMP is available.
-        $lmpCvrDisc = $this->lmpCvrDiscPct($row, $lmp, $std);
+        // The CVR up / down rule was deleted: no extra discount.
+        $lmpCvrDisc = 0.0;
         $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpCvrDisc)), 2);
 
         if (! ($std > 0)) {
@@ -570,29 +536,6 @@ class AmazonSprcDilAutoPushService
             'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
-    }
-
-    /**
-     * CVR up / down rule (Sprc Dil modal): extra discount % for this SKU from the CVR arrow band, scaled like the other
-     * rule discounts. 0 when the rule is off, the SKU has no LMP (and the rule needs one), or no band matches.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    protected function lmpCvrDiscPct(array $row, float $lmp, float $std): float
-    {
-        $aL30 = (float) ($row['a_l30'] ?? 0);
-        $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
-        $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
-        $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
-
-        return StdPrcVsDilPricer::scaleRuleDisc(
-            \App\Support\AmazonLmpCvrDiscRule::discount(
-                $lmp,
-                AmazonDilGroiRule::cvrL30($aL30, $sess30),
-                AmazonDilGroiRule::cvrL45($aL30, $sess30, $aL60, $sess60)
-            ),
-            $std
-        );
     }
 
     /** Why computeTarget() returned null for a row (diagnostics only). @param array<string, mixed> $row */
@@ -1367,26 +1310,17 @@ class AmazonSprcDilAutoPushService
     /** @var array{enabled: bool, slabs: array}|null */
     private ?array $dynamicAdsRuleCache = null;
 
-    /** LMP cap (reduce % by Dil band) saved in the Sprc Dil modal; null = default 2%. */
-    private ?array $lmpCapCfg = null;
-
-    /** Diff rule (gt_pct / points) saved in the Sprc Dil modal; null = default 20% / +10. */
-    private ?array $diffAdjCfg = null;
-
     /** Ageing Rule slabs (age days → NROI points) saved in the Sprc Dil modal; null = defaults (0 points = no change). */
     private ?array $ageAdjCfg = null;
 
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceNroiCfg = null;
 
-    /** Review Discount slabs (star rating → Reduce % added to the LMP reduce %) saved in the Sprc Dil modal; null = defaults (0%). */
-    private ?array $revReduceCfg = null;
+    /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, clearance). A block that is OFF no longer applies. */
+    private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'clearance' => true];
 
-    /** ON / OFF switches of the Sprc Dil blocks (dil, rev, cvr, age, diff, lmp, clearance). A block that is OFF no longer applies. */
-    private array $ruleOnCfg = ['dil' => true, 'rev' => true, 'cvr' => true, 'age' => true, 'diff' => true, 'lmp' => true, 'clearance' => true];
-
-    /** Sequence numbers of the Target NROI rules (cvr, age, diff): the order they are applied in. */
-    private array $ruleSeqCfg = ['cvr' => 3.0, 'age' => 4.0, 'diff' => 5.0];
+    /** Sequence numbers of the Target NROI rules (cvr, age): the order they are applied in. */
+    private array $ruleSeqCfg = ['cvr' => 3.0, 'age' => 4.0];
 
     /** Custom rule cards (Sprc Dil modal "Add rule"): normalized list. */
     private array $customRulesCfg = [];
@@ -1406,24 +1340,6 @@ class AmazonSprcDilAutoPushService
     private function dilRuleOn(string $key): bool
     {
         return ($this->ruleOnCfg[$key] ?? true) !== false;
-    }
-
-    /**
-     * Review Discount rule (Sprc Dil modal, seq 2): the Reduce % Discount of the SKU's star-rating slab. It is added to the
-     * LMP reduce % of the LMP Rule, so S PRC at LMP = LMP − (Dil band % + this %). 0 when the rule is OFF, the SKU has no rating
-     * or no reviews, or its rating is in no slab. Same as the page (amzLmpReducePctForRow).
-     *
-     * @param  array<string,mixed>  $row
-     */
-    private function revReducePct(array $row): float
-    {
-        if (! $this->dilRuleOn('rev')) {
-            return 0.0;
-        }
-        $rating = isset($row['review_rating']) && is_numeric($row['review_rating']) ? (float) $row['review_rating'] : null;
-        $qty = isset($row['review_count']) && is_numeric($row['review_count']) ? (float) $row['review_count'] : null;
-
-        return AmazonDilGroiRule::revReducePct($rating, $qty, $this->revReduceCfg);
     }
 
     /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
@@ -1452,10 +1368,7 @@ class AmazonSprcDilAutoPushService
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_dil_vs_groi')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
-        $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
-        $this->diffAdjCfg = $unpacked['diff_adj'] ?? null;
         $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
-        $this->revReduceCfg = $unpacked['rev_reduce'] ?? null;
         $this->ruleOnCfg = AmazonDilGroiRule::normalizeRuleOn($unpacked['rule_on'] ?? null);
         $this->ruleSeqCfg = AmazonDilGroiRule::normalizeRuleSeq($unpacked['rule_seq'] ?? null);
         $this->customRulesCfg = AmazonDilGroiRule::normalizeCustomRules($unpacked['custom_rules'] ?? null);

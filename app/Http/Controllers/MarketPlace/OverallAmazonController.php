@@ -3323,35 +3323,6 @@ class OverallAmazonController extends Controller
         return response()->json(['success' => true] + $payload);
     }
 
-    /** Saved "LMP + CVR decreasing → extra discount" rule (renders the page and the GET endpoint). */
-    public static function amazonLmpCvrDiscRuleConfig(): array
-    {
-        return \App\Support\AmazonLmpCvrDiscRule::config();
-    }
-
-    public function amazonLmpCvrDiscRuleGet()
-    {
-        return response()->json(['success' => true] + self::amazonLmpCvrDiscRuleConfig());
-    }
-
-    public function amazonLmpCvrDiscRuleSave(Request $request)
-    {
-        $payload = \App\Support\AmazonLmpCvrDiscRule::save([
-            'enabled' => $request->input('enabled'),
-            'need_lmp' => $request->input('need_lmp'),
-            'down2_lt' => $request->input('down2_lt'),
-            'down2_disc' => $request->input('down2_disc'),
-            'down_lt' => $request->input('down_lt'),
-            'down_disc' => $request->input('down_disc'),
-            'up_gt' => $request->input('up_gt'),
-            'up_disc' => $request->input('up_disc'),
-            'up2_gt' => $request->input('up2_gt'),
-            'up2_disc' => $request->input('up2_disc'),
-        ]);
-
-        return response()->json(['success' => true] + $payload);
-    }
-
     /**
      * Daily slab counts for Std prc vs dil history dots. One snapshot per PDT day.
      */
