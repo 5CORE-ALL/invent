@@ -53,26 +53,37 @@
             font-size: 10px;
         }
 
+        /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
+        /* Full width panel pinned to the top of the page (Popper's own positioning is overridden). */
         #column-dropdown-menu.show {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
-            max-height: 70vh;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            inset: 0 0 auto 0 !important;
+            transform: none !important;
+            width: 100vw;
+            min-width: 100vw;
+            max-width: 100vw;
+            max-height: 85vh;
+            margin: 0 !important;
+            border-radius: 0 0 8px 8px;
+            z-index: 2000;
             overflow-y: auto;
-            padding: 0.4rem 0.5rem 0.55rem;
+            padding: 0.6rem 1rem 0.75rem;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
         }
-
         #column-dropdown-menu > li.col-vis-full {
             list-style: none;
         }
-
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 10px;
+            list-style: none;
             margin: 0;
             padding: 0;
         }
-
         #column-dropdown-menu .col-vis-group {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
@@ -82,7 +93,28 @@
             display: flex;
             flex-direction: column;
         }
-
+        #column-dropdown-menu .col-vis-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        #column-dropdown-menu .col-vis-toolbar .col-vis-search { flex: 1 1 200px; }
+        #column-dropdown-menu .col-vis-toolbar .col-vis-newname { flex: 0 1 170px; }
+        #column-dropdown-menu .col-vis-group-custom { background: #f3f0ff; border-color: #d9d0f5; }
+        #column-dropdown-menu .col-vis-group-tools { display: flex; gap: 4px; margin-bottom: 6px; }
+        #column-dropdown-menu .col-vis-group-tools .col-vis-group-search { flex: 1 1 auto; min-width: 0; font-size: 0.72rem; }
+        #column-dropdown-menu .col-vis-group-tools .btn { padding: 0 6px; line-height: 1.6; font-size: 0.7rem; }
+        #column-dropdown-menu .col-vis-group-results { border: 1px solid #d9d0f5; border-radius: 4px; background: #fff; margin-bottom: 6px; max-height: 150px; overflow-y: auto; }
+        #column-dropdown-menu .col-vis-result { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0; padding: 3px 6px; font-size: 0.78rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #column-dropdown-menu .col-vis-result input { margin: 0; flex-shrink: 0; }
+        #column-dropdown-menu .col-vis-result-foot { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 6px; background: #f8f9fa; border-top: 1px solid #e9ecef; }
+        #column-dropdown-menu .col-vis-result-all { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 0.75rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result-foot .btn { padding: 0 8px; font-size: 0.72rem; }
+        #column-dropdown-menu .col-vis-result:hover { background: #eef5ff; }
+        #column-dropdown-menu .col-vis-result small { color: #868e96; white-space: nowrap; }
+        #column-dropdown-menu .col-vis-noresult { padding: 4px 6px; font-size: 0.75rem; color: #868e96; }
+        #column-dropdown-menu .col-vis-group.col-vis-drop-over {
+            border-color: #0d6efd;
+            background: #eef5ff;
+            box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.25);
+        }
         #column-dropdown-menu .col-vis-group-title {
             display: flex;
             align-items: center;
@@ -98,13 +130,11 @@
             user-select: none;
             cursor: pointer;
         }
-
         #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
             margin: 0;
             flex-shrink: 0;
             cursor: pointer;
         }
-
         #column-dropdown-menu .col-vis-group-list {
             flex: 1;
             min-height: 60px;
@@ -114,13 +144,25 @@
             padding: 0;
             list-style: none;
         }
-
         #column-dropdown-menu .col-vis-item {
             list-style: none;
             margin: 0;
             padding: 0;
+            border-radius: 4px;
+            cursor: grab;
         }
-
+        #column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #column-dropdown-menu .col-vis-item { display: flex; align-items: center; }
+        #column-dropdown-menu .col-vis-item > label { flex: 1 1 auto; min-width: 0; }
+        #column-dropdown-menu .col-vis-item.col-vis-selected { background: #dbe7ff; border-radius: 4px; box-shadow: inset 0 0 0 1px #6ea8fe; }
+        #column-dropdown-menu .col-vis-group.col-vis-active { box-shadow: 0 0 0 2px #6f42c1; }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-before { box-shadow: inset 0 2px 0 0 #0d6efd; }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-after { box-shadow: inset 0 -2px 0 0 #0d6efd; }
+        #column-dropdown-menu .col-vis-hint { font-size: 0.72rem; margin: -2px 0 8px; }
+        #column-dropdown-menu .col-vis-status { color: #198754; font-weight: 600; }
+        #column-dropdown-menu .col-vis-item-x { flex: 0 0 auto; border: 0; background: none; color: #dc3545; font-size: 1rem; line-height: 1; padding: 0 6px; cursor: pointer; opacity: 0.55; }
+        #column-dropdown-menu .col-vis-item-x:hover { opacity: 1; background: rgba(220, 53, 69, 0.1); border-radius: 3px; }
+        #column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
         #column-dropdown-menu .col-vis-item > label {
             display: flex;
             align-items: center;
@@ -134,19 +176,16 @@
             font-size: 0.8rem;
             user-select: none;
         }
-
         #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
             margin: 0;
             flex-shrink: 0;
             width: 14px;
             height: 14px;
         }
-
         #column-dropdown-menu .col-vis-item > label:hover {
             background: rgba(0, 0, 0, 0.04);
             border-radius: 3px;
         }
-
         @media (max-width: 768px) {
             #column-dropdown-menu .col-vis-groups {
                 grid-template-columns: repeat(2, minmax(140px, 1fr));
@@ -418,10 +457,11 @@
                             </a>
                             <div class="btn-group me-2" role="group">
                                 <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                    id="columnVisibilityDropdown" title="Columns"
                                     data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                                     <i class="fa fa-columns"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"></ul>
+                                <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown"></ul>
                             </div>
                             <button id="reset-all-filters-btn" type="button" class="btn btn-sm btn-warning me-2">
                                 <i class="fa fa-filter-circle-xmark"></i> all
@@ -570,6 +610,26 @@
                     <ul id="missingFieldsList" class="list-group list-group-flush">
                         <!-- Fields will be populated by JS -->
                     </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTN Details Modal -->
+    <div class="modal fade" id="ctnDetailsModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">CTN Details for <span id="ctnDetailsSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-sm table-bordered mb-0">
+                        <tbody id="ctnDetailsBody"></tbody>
+                    </table>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -2143,6 +2203,23 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                const raw = cell.getValue();
+                                const text = (raw === null || raw === undefined) ? '' : String(raw);
+                                if (rowData.is_parent) return text;
+                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // mousedown preventDefault keeps the click on the dot from starting the cell editor
+                                const dot = `<span class="ctn-dot" onmousedown="event.preventDefault();" title="View CTN details" style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#28a745;margin-left:6px;vertical-align:middle;cursor:pointer;"></span>`;
+                                return `${esc(text)}${dot}`;
+                            },
+                            cellClick: function(e, cell) {
+                                if (!e.target.closest('.ctn-dot')) return;
+                                e.stopPropagation();
+                                openCtnDetailsModal(cell.getRow());
+                                // Make sure the input editor did not open underneath the modal
+                                setTimeout(function() { try { cell.cancelEdit(); } catch (err) {} }, 0);
+                            },
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -3107,180 +3184,615 @@
                     });
                 });
 
-                // Build Column Visibility Dropdown
-                function columnMenuLabel(title, field) {
-                    const text = String(title || field || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                    return text || field;
+                // ===== Column manager: same panel as /amazon-tabulator-view =====
+                // Headers (add / rename / delete), search & add column, drag to move / re-order, Ctrl/Cmd+C / +V, Save & Close.
+                const FBA_COL_CHANNEL = 'fba_dispatch_tabulator';
+                const FBA_COL_VIS_URL = '/tabulator-column-visibility';
+                const FBA_COL_ORDER_URL = '/tabulator-column-order';
+                const FBA_COL_LEGACY_VIS_URL = '/fba-dispatch-column-visibility';
+                const FBA_COL_CSRF = '{{ csrf_token() }}';
+                const FBA_COL_SKIP_FIELDS = new Set(['_select', '_accept', '_details']);
+                // Hidden on a fresh layout (until you tick them in the Columns panel and save)
+                const FBA_COL_DEFAULT_HIDDEN = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                const FBA_COL_GROUP_FIELDS = {
+                    basic: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'AMZ_Rating', 'NRL_FBA', 'Current_Month_Views'],
+                    price: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
+                    shipping: ['Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
+                };
+
+                const COL_VIS_BASE_KEYS = ['basic', 'price', 'shipping', 'other'];
+                const COL_VIS_BASE_LABELS = { basic: 'Basic', price: 'Pricing', shipping: 'Shipping', other: 'Other' };
+
+                function fbaColJsonStore(key, fallback) {
+                    try {
+                        const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+                        return parsed === null || parsed === undefined ? fallback : parsed;
+                    } catch (e) { return fallback; }
+                }
+                function fbaColJsonSave(key, value) {
+                    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+                }
+                function fbaColIsPlainObject(o) { return o && typeof o === 'object' && !Array.isArray(o); }
+
+                // Your own headers ("+ Add header"): [{ key: 'u_xxxx', label }]. Saved in this browser.
+                const FBA_COL_GROUP_STORAGE = 'fba_dispatch_col_groups_v1';
+                function loadFbaColGroups() {
+                    const parsed = fbaColJsonStore(FBA_COL_GROUP_STORAGE, []);
+                    return (Array.isArray(parsed) ? parsed : []).filter(function(g) {
+                        return g && /^u_[a-z0-9]+$/.test(String(g.key || '')) && String(g.label || '').trim();
+                    }).map(function(g) { return { key: String(g.key), label: String(g.label).trim().slice(0, 30) }; });
+                }
+                function saveFbaColGroups(list) { fbaColJsonSave(FBA_COL_GROUP_STORAGE, list || []); }
+                function fbaColVisKeys() { return COL_VIS_BASE_KEYS.concat(loadFbaColGroups().map(function(g) { return g.key; })); }
+
+                // New names for the built-in headers: { key: label }.
+                const FBA_COL_LABEL_STORAGE = 'fba_dispatch_col_labels_v1';
+                function loadFbaColLabels() {
+                    const parsed = fbaColJsonStore(FBA_COL_LABEL_STORAGE, {});
+                    return fbaColIsPlainObject(parsed) ? parsed : {};
+                }
+                function saveFbaColLabels(map) { fbaColJsonSave(FBA_COL_LABEL_STORAGE, map || {}); }
+                function fbaColVisLabel(key) {
+                    if (COL_VIS_BASE_LABELS[key]) {
+                        const custom = String(loadFbaColLabels()[key] || '').trim();
+                        return custom || COL_VIS_BASE_LABELS[key];
+                    }
+                    const g = loadFbaColGroups().filter(function(x) { return x.key === key; })[0];
+                    return g ? g.label : key;
+                }
+                function fbaColVisIsCustom(key) { return COL_VIS_BASE_KEYS.indexOf(key) === -1; }
+
+                function fbaColVisPlainTitle(def) {
+                    const field = def && def.field ? String(def.field) : '';
+                    const raw = (def && def.title != null) ? def.title : field;
+                    const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    return t || field;
+                }
+                function classifyFbaColumn(field) {
+                    const f = String(field || '');
+                    const keys = Object.keys(FBA_COL_GROUP_FIELDS);
+                    for (let i = 0; i < keys.length; i++) {
+                        if (FBA_COL_GROUP_FIELDS[keys[i]].indexOf(f) !== -1) return keys[i];
+                    }
+                    return 'other';
+                }
+
+                // Column moved to another header: { field: header key }.
+                const FBA_COL_CAT_STORAGE = 'fba_dispatch_col_cats_v1';
+                function loadFbaColCats() {
+                    const parsed = fbaColJsonStore(FBA_COL_CAT_STORAGE, {});
+                    return fbaColIsPlainObject(parsed) ? parsed : {};
+                }
+                function saveFbaColCats(map) { fbaColJsonSave(FBA_COL_CAT_STORAGE, map || {}); }
+
+                // A column can also show under other headers: { field: [header keys] } (copies; the column stays one column).
+                const FBA_COL_EXTRA_STORAGE = 'fba_dispatch_col_extra_v1';
+                function loadFbaColExtras() {
+                    const parsed = fbaColJsonStore(FBA_COL_EXTRA_STORAGE, {});
+                    return fbaColIsPlainObject(parsed) ? parsed : {};
+                }
+                function saveFbaColExtras(map) { fbaColJsonSave(FBA_COL_EXTRA_STORAGE, map || {}); }
+                function fbaColExtraAdd(field, cat) {
+                    const ex = loadFbaColExtras();
+                    const list = Array.isArray(ex[field]) ? ex[field] : [];
+                    if (list.indexOf(cat) === -1) list.push(cat);
+                    ex[field] = list;
+                    saveFbaColExtras(ex);
+                }
+                function fbaColExtraRemove(field, cat) {
+                    const ex = loadFbaColExtras();
+                    if (!Array.isArray(ex[field])) return;
+                    ex[field] = ex[field].filter(function(c) { return c !== cat; });
+                    if (!ex[field].length) delete ex[field];
+                    saveFbaColExtras(ex);
+                }
+                /** Same column under several headers: keep every checkbox of one field equal, and every header tick right. */
+                function fbaColVisSyncField(menu, field, checked) {
+                    menu.querySelectorAll('.col-vis-item input.col-vis-field-toggle').forEach(function(cb) {
+                        if ((cb.getAttribute('data-field') || cb.value) === field) cb.checked = checked;
+                    });
+                    menu.querySelectorAll('.col-vis-group').forEach(syncFbaGroupHeaderCheckbox);
+                }
+
+                // Order of the columns inside each header: { header key: [fields] }.
+                const FBA_COL_ORDER_STORAGE = 'fba_dispatch_col_order_v1';
+                function loadFbaColOrder() {
+                    const parsed = fbaColJsonStore(FBA_COL_ORDER_STORAGE, {});
+                    return fbaColIsPlainObject(parsed) ? parsed : {};
+                }
+                function fbaColVisSaveOrder(list) {
+                    if (!list) return;
+                    const ord = loadFbaColOrder();
+                    ord[list.dataset.category] = Array.from(list.children).filter(function(li) { return li.classList.contains('col-vis-item'); })
+                        .map(function(li) { return li.dataset.field; });
+                    fbaColJsonSave(FBA_COL_ORDER_STORAGE, ord);
+                }
+                /** Put the columns of every header in their saved order (unplaced columns keep their order, after the placed ones). */
+                function fbaColVisApplyOrder(lists) {
+                    const ord = loadFbaColOrder();
+                    Object.keys(lists).forEach(function(cat) {
+                        const saved = ord[cat];
+                        if (!Array.isArray(saved)) return;
+                        const rank = function(f) { const i = saved.indexOf(f); return i < 0 ? 1e6 : i; };
+                        Array.from(lists[cat].children).map(function(li, i) { return { li: li, i: i }; })
+                            .sort(function(a, b) { return (rank(a.li.dataset.field) - rank(b.li.dataset.field)) || (a.i - b.i); })
+                            .forEach(function(o) { lists[cat].appendChild(o.li); });
+                    });
+                }
+
+                let fbaColVisDropRef = null;      // { li, after }: where a dragged column will land
+                let fbaColVisActiveCat = '';      // header that Ctrl+V pastes into
+                let fbaColVisFlashMsg = '';       // one-time message shown after the menu is rebuilt
+                let fbaApplyingColumnOrder = false;
+                let fbaColumnOrderSaveTimer = null;
+                let fbaArrangeTimer = null;
+
+                function fbaColVisClearDropMarks(root) {
+                    (root || document).querySelectorAll('.col-vis-drop-before, .col-vis-drop-after').forEach(function(el) {
+                        el.classList.remove('col-vis-drop-before', 'col-vis-drop-after');
+                    });
+                }
+                function bindFbaColVisDrag(li, groupEls) {
+                    li.draggable = true;
+                    li.addEventListener('dragstart', function(e) {
+                        e.stopPropagation();
+                        li.classList.add('col-vis-dragging');
+                        e.dataTransfer.setData('text/plain', li.dataset.field || '');
+                        e.dataTransfer.setData('text/col-vis-field', li.dataset.field || '');
+                        e.dataTransfer.setData('text/col-vis-from', li.dataset.group || '');
+                        e.dataTransfer.effectAllowed = 'move';
+                    });
+                    li.addEventListener('dragover', function(e) {
+                        e.preventDefault();
+                        const r = li.getBoundingClientRect();
+                        const after = (e.clientY - r.top) > r.height / 2;
+                        fbaColVisClearDropMarks(li.parentNode);
+                        li.classList.add(after ? 'col-vis-drop-after' : 'col-vis-drop-before');
+                        fbaColVisDropRef = { li: li, after: after };
+                    });
+                    li.addEventListener('dragend', function() {
+                        fbaColVisDropRef = null;
+                        fbaColVisClearDropMarks(li.closest('#column-dropdown-menu'));
+                        li.classList.remove('col-vis-dragging');
+                        Object.keys(groupEls).forEach(function(k) {
+                            groupEls[k].classList.remove('col-vis-drop-over');
+                        });
+                    });
+                }
+                function bindFbaColVisDropZone(group, list, groupEls) {
+                    [group, list].forEach(function(zone) {
+                        zone.addEventListener('dragover', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            group.classList.add('col-vis-drop-over');
+                            if (!e.target.closest || !e.target.closest('.col-vis-item')) fbaColVisDropRef = null;
+                            e.dataTransfer.dropEffect = 'move';
+                        });
+                        zone.addEventListener('dragleave', function(e) {
+                            if (!group.contains(e.relatedTarget)) group.classList.remove('col-vis-drop-over');
+                        });
+                        zone.addEventListener('drop', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            group.classList.remove('col-vis-drop-over');
+                            const field = e.dataTransfer.getData('text/col-vis-field')
+                                || e.dataTransfer.getData('text/plain');
+                            if (!field) return;
+                            const menu = document.getElementById('column-dropdown-menu');
+                            const from = e.dataTransfer.getData('text/col-vis-from');
+                            const li = menu ? (menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"][data-group="' + CSS.escape(from) + '"]')
+                                || menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) : null;
+                            if (!li) return;
+                            const nextCat = group.dataset.category;
+                            if (!nextCat) return;
+                            // Where in the list it lands: before / after the column it was dropped on, else at the end.
+                            const ref = (fbaColVisDropRef && list.contains(fbaColVisDropRef.li) && fbaColVisDropRef.li !== li) ? fbaColVisDropRef : null;
+                            const place = function() {
+                                if (ref) list.insertBefore(li, ref.after ? ref.li.nextSibling : ref.li);
+                                else list.appendChild(li);
+                            };
+                            fbaColVisDropRef = null;
+                            fbaColVisClearDropMarks(menu);
+                            // Same header: only the order changes.
+                            if (li.dataset.group === nextCat) {
+                                place();
+                                fbaColVisSaveOrder(list);
+                                fbaScheduleColumnArrangement();
+                                return;
+                            }
+                            // Already under that header (same column in two headers is allowed, twice in one is not).
+                            if (list.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) return;
+                            const fromGroup = li.closest('.col-vis-group');
+                            const prevCat = li.dataset.group;
+                            place();
+                            li.dataset.group = nextCat;
+                            const cb = li.querySelector('input[type="checkbox"]');
+                            if (cb) cb.dataset.group = nextCat;
+                            if (li.dataset.copy === '1') {
+                                fbaColExtraRemove(field, prevCat);
+                                fbaColExtraAdd(field, nextCat);
+                            } else {
+                                const cats = loadFbaColCats();
+                                cats[field] = nextCat;
+                                saveFbaColCats(cats);
+                            }
+                            syncFbaGroupHeaderCheckbox(fromGroup);
+                            syncFbaGroupHeaderCheckbox(group);
+                            fbaColVisSaveOrder(list);
+                            fbaColVisSaveOrder(fromGroup ? fromGroup.querySelector('.col-vis-group-list') : null);
+                            fbaScheduleColumnArrangement();
+                        });
+                    });
+                }
+
+                function syncFbaGroupHeaderCheckbox(groupEl) {
+                    if (!groupEl) return;
+                    const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                    const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                    if (!headerCb || !itemCbs.length) return;
+                    let checked = 0;
+                    itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+                    headerCb.checked = checked === itemCbs.length;
+                    headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
                 }
 
                 function setFieldVisible(field, visible) {
-                    table.getColumns().forEach(col => {
+                    table.getColumns().forEach(function(col) {
                         if (col.getDefinition().field !== field) return;
                         if (visible) col.show();
                         else col.hide();
                     });
                 }
 
-                function syncGroupHeaderCheckbox(groupEl) {
-                    if (!groupEl) return;
-                    const headerCb = groupEl.querySelector('.col-vis-group-toggle');
-                    const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
-                    if (!headerCb || !itemCbs.length) return;
-                    let checked = 0;
-                    itemCbs.forEach(cb => { if (cb.checked) checked++; });
-                    headerCb.checked = checked === itemCbs.length;
-                    headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
-                }
-
                 function buildColumnDropdown() {
                     const menu = document.getElementById("column-dropdown-menu");
+                    if (!menu) return;
                     menu.innerHTML = '';
 
-                    const groupFields = {
-                        Basics: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'AMZ_Rating', 'NRL_FBA', 'Current_Month_Views'],
-                        Pricing: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
-                        Shipping: ['Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
-                    };
-                    const groupNames = ['Basics', 'Pricing', 'Shipping', 'Other'];
-                    const skipFields = new Set(['_select', '_accept', '_details']);
-                    const grouped = { Basics: [], Pricing: [], Shipping: [], Other: [] };
+                    const catOverrides = loadFbaColCats();
+                    const extras = loadFbaColExtras();
+                    const visKeys = fbaColVisKeys();
 
-                    table.getColumns().forEach(col => {
-                        const field = col.getDefinition().field;
-                        if (!field || skipFields.has(field)) return;
-                        const name = Object.keys(groupFields).find(group => groupFields[group].includes(field)) || 'Other';
-                        grouped[name].push(col);
-                    });
+                    const groupsLi = document.createElement("li");
+                    groupsLi.className = "col-vis-full";
+                    const groupsWrap = document.createElement("div");
+                    groupsWrap.className = "col-vis-groups";
 
-                    const groupsLi = document.createElement('li');
-                    groupsLi.className = 'col-vis-full';
-                    const groupsWrap = document.createElement('div');
-                    groupsWrap.className = 'col-vis-groups';
+                    const lists = {};
+                    const groupEls = {};
 
-                    groupNames.forEach(name => {
-                        const group = document.createElement('div');
-                        group.className = 'col-vis-group';
-                        group.dataset.group = name;
+                    // Toolbar: quick search over every column + add your own header.
+                    const toolbarLi = document.createElement("li");
+                    toolbarLi.className = "col-vis-full";
+                    toolbarLi.innerHTML = '<div class="col-vis-toolbar">'
+                        + '<input type="search" class="form-control form-control-sm col-vis-search" placeholder="Quick search columns…" autocomplete="off">'
+                        + '<input type="text" class="form-control form-control-sm col-vis-newname" maxlength="30" placeholder="New header name" autocomplete="off">'
+                        + '<button type="button" class="btn btn-sm btn-primary col-vis-addgroup" title="Add a new header (column group)">+ Add header</button>'
+                        + '<button type="button" class="btn btn-sm btn-success col-vis-save ms-auto" title="Arrange the table columns as shown here, save, and close">Save &amp; Close</button>'
+                        + '</div>'
+                        + '<div class="col-vis-hint"><span class="col-vis-status"></span>'
+                        + '<span class="text-muted">⌘/Ctrl + click a column to select (Shift = range) · ⌘/Ctrl+C copy · ⌘/Ctrl+V paste into the highlighted header · drag a column to move or re-order it</span></div>';
+                    menu.appendChild(toolbarLi);
+                    if (fbaColVisFlashMsg) {
+                        toolbarLi.querySelector('.col-vis-status').textContent = fbaColVisFlashMsg + ' ';
+                        fbaColVisFlashMsg = '';
+                    }
 
-                        const titleEl = document.createElement('label');
-                        titleEl.className = 'col-vis-group-title';
-                        const groupCb = document.createElement('input');
-                        groupCb.type = 'checkbox';
-                        groupCb.className = 'col-vis-group-toggle';
-                        groupCb.title = 'Select / deselect all in ' + name;
+                    visKeys.forEach(function(cat) {
+                        const group = document.createElement("div");
+                        group.className = "col-vis-group" + (fbaColVisIsCustom(cat) ? " col-vis-group-custom" : "");
+                        group.dataset.category = cat;
+                        if (cat === fbaColVisActiveCat) group.classList.add("col-vis-active");
+
+                        const titleEl = document.createElement("label");
+                        titleEl.className = "col-vis-group-title";
+                        const groupCb = document.createElement("input");
+                        groupCb.type = "checkbox";
+                        groupCb.className = "col-vis-group-toggle";
+                        groupCb.dataset.group = cat;
+                        groupCb.title = "Select / deselect all in " + fbaColVisLabel(cat);
                         titleEl.appendChild(groupCb);
-                        titleEl.appendChild(document.createTextNode(name));
+                        titleEl.appendChild(document.createTextNode(fbaColVisLabel(cat)));
                         group.appendChild(titleEl);
 
-                        const list = document.createElement('ul');
-                        list.className = 'col-vis-group-list';
+                        // Every header: a search box that finds any column and adds it here, and a rename button.
+                        // Your own headers also get a delete button.
+                        const tools = document.createElement("div");
+                        tools.className = "col-vis-group-tools";
+                        tools.innerHTML = '<input type="search" class="form-control form-control-sm col-vis-group-search" placeholder="Search &amp; add column…" autocomplete="off" data-category="' + cat + '">'
+                            + '<button type="button" class="btn btn-sm btn-outline-secondary col-vis-rename" data-category="' + cat + '" title="Rename this header"><i class="fas fa-pen"></i></button>'
+                            + (fbaColVisIsCustom(cat)
+                                ? '<button type="button" class="btn btn-sm btn-outline-danger col-vis-delgroup" data-category="' + cat + '" title="Delete this header (its columns go back to their normal header)"><i class="fas fa-trash-alt"></i></button>'
+                                : '');
+                        group.appendChild(tools);
+                        const results = document.createElement("div");
+                        results.className = "col-vis-group-results";
+                        results.style.display = "none";
+                        group.appendChild(results);
 
-                        grouped[name].forEach(col => {
-                            const def = col.getDefinition();
-                            const li = document.createElement('li');
-                            li.className = 'col-vis-item';
-                            li.dataset.field = def.field;
-
-                            const label = document.createElement('label');
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.className = 'col-vis-field-toggle';
-                            checkbox.checked = col.isVisible();
-                            checkbox.dataset.field = def.field;
-
-                            const title = columnMenuLabel(def.title, def.field);
-                            label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(title));
-                            label.title = title;
-                            li.appendChild(label);
-                            list.appendChild(li);
-                        });
-
+                        const list = document.createElement("ul");
+                        list.className = "col-vis-group-list";
+                        list.dataset.category = cat;
                         group.appendChild(list);
                         groupsWrap.appendChild(group);
-                        syncGroupHeaderCheckbox(group);
+                        lists[cat] = list;
+                        groupEls[cat] = group;
+                        bindFbaColVisDropZone(group, list, groupEls);
                     });
+
+                    table.getColumns().forEach(function(col) {
+                        const def = col.getDefinition();
+                        const field = def.field;
+                        if (!field || FBA_COL_SKIP_FIELDS.has(field)) return;
+
+                        const title = fbaColVisPlainTitle(def);
+                        let cat = catOverrides[field];
+                        if (visKeys.indexOf(cat) === -1) cat = classifyFbaColumn(field);
+                        const isVisible = col.isVisible();
+
+                        const makeItem = function(itemCat, isCopy) {
+                            const li = document.createElement("li");
+                            li.className = "col-vis-item";
+                            li.dataset.field = field;
+                            li.dataset.group = itemCat;
+                            if (isCopy) li.dataset.copy = '1';
+
+                            const label = document.createElement("label");
+                            const checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.value = field;
+                            checkbox.setAttribute('data-field', field);
+                            checkbox.className = "col-vis-field-toggle";
+                            checkbox.dataset.group = itemCat;
+                            checkbox.checked = isVisible;
+
+                            label.appendChild(checkbox);
+                            label.appendChild(document.createTextNode(' ' + title));
+                            label.title = title + ' (drag to another header)';
+                            li.appendChild(label);
+                            const xBtn = document.createElement("button");
+                            xBtn.type = "button";
+                            xBtn.className = "col-vis-item-x";
+                            xBtn.innerHTML = "&times;";
+                            xBtn.dataset.field = field;
+                            xBtn.title = isCopy ? "Remove from this header" : "Remove from this header (in a normal header: hide the column)";
+                            li.appendChild(xBtn);
+                            bindFbaColVisDrag(li, groupEls);
+                            lists[itemCat].appendChild(li);
+                        };
+                        makeItem(cat, false);
+                        // The same column also shown under other headers.
+                        const extraCats = extras[field];
+                        if (Array.isArray(extraCats)) {
+                            extraCats.forEach(function(c) {
+                                if (c !== cat && lists[c]) makeItem(c, true);
+                            });
+                        }
+                    });
+
+                    fbaColVisApplyOrder(lists);
+                    // Headers that already have a saved order: keep it equal to what the menu shows now.
+                    Object.keys(loadFbaColOrder()).forEach(function(cat) { if (lists[cat]) fbaColVisSaveOrder(lists[cat]); });
+                    visKeys.forEach(function(cat) { syncFbaGroupHeaderCheckbox(groupEls[cat]); });
 
                     groupsLi.appendChild(groupsWrap);
                     menu.appendChild(groupsLi);
                 }
 
+                function fbaColFetchJson(url) {
+                    return fetch(url, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+                    }).then(function(res) { return res.json(); });
+                }
+
                 function saveColumnVisibilityToServer() {
                     const visibility = {};
-                    table.getColumns().forEach(col => {
-                        const def = col.getDefinition();
-                        if (def.field) {
-                            visibility[def.field] = col.isVisible();
-                        }
+                    table.getColumns().forEach(function(col) {
+                        const field = col.getDefinition().field;
+                        if (field && !FBA_COL_SKIP_FIELDS.has(field)) visibility[field] = col.isVisible();
                     });
-
-                    fetch('/fba-dispatch-column-visibility', {
+                    fetch(FBA_COL_VIS_URL, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                        },
-                        body: JSON.stringify({
-                            visibility: visibility
-                        })
-                    });
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': FBA_COL_CSRF },
+                        body: JSON.stringify({ channel: FBA_COL_CHANNEL, visibility: visibility })
+                    }).catch(function(err) { console.error('Error saving column visibility:', err); });
                 }
 
                 function applyColumnVisibilityFromServer() {
-                    // Columns that should be hidden by default on initial load (but can be shown via "Show All")
-                    const defaultHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
-
-                    fetch('/fba-dispatch-column-visibility', {
-                            method: 'GET',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            }
-                        })
-                        .then(response => response.json())
-                        .then(savedVisibility => {
-                            table.getColumns().forEach(col => {
-                                const def = col.getDefinition();
-                                if (def.field) {
-                                    // Dil sits after Ov L30 and stays visible even if an older
-                                    // saved layout still has it hidden from when the column was off.
-                                    if (def.field === 'Dil' || def.field === 'CTN_QTY') {
-                                        col.show();
-                                    } else if (defaultHiddenColumns.includes(def.field)) {
+                    return fbaColFetchJson(FBA_COL_VIS_URL + '?channel=' + encodeURIComponent(FBA_COL_CHANNEL))
+                        .then(function(saved) {
+                            if (saved && typeof saved === 'object' && Object.keys(saved).length) {
+                                // Layout saved from the Columns panel: honour it exactly.
+                                table.getColumns().forEach(function(col) {
+                                    const field = col.getDefinition().field;
+                                    if (!field || FBA_COL_SKIP_FIELDS.has(field)) return;
+                                    if (Object.prototype.hasOwnProperty.call(saved, field)) {
+                                        if (saved[field]) col.show(); else col.hide();
+                                    } else if (FBA_COL_DEFAULT_HIDDEN.indexOf(field) !== -1) {
                                         col.hide();
-                                    } else if (savedVisibility[def.field] !== undefined) {
-                                        // Apply saved preferences for other columns
-                                        if (savedVisibility[def.field]) {
-                                            col.show();
-                                        } else {
-                                            col.hide();
-                                        }
                                     }
-                                }
+                                });
+                                return;
+                            }
+                            // First time on the new panel: start from the layout saved by the old Columns menu.
+                            return fbaColFetchJson(FBA_COL_LEGACY_VIS_URL).then(function(legacy) {
+                                legacy = (legacy && typeof legacy === 'object') ? legacy : {};
+                                table.getColumns().forEach(function(col) {
+                                    const field = col.getDefinition().field;
+                                    if (!field || FBA_COL_SKIP_FIELDS.has(field)) return;
+                                    // Dil sits after Ov L30 and stays visible even if an older saved layout still has it hidden.
+                                    if (field === 'Dil' || field === 'CTN_QTY') col.show();
+                                    else if (FBA_COL_DEFAULT_HIDDEN.indexOf(field) !== -1) col.hide();
+                                    else if (legacy[field] !== undefined) { if (legacy[field]) col.show(); else col.hide(); }
+                                });
                             });
-                            table.redraw(true);
-                            buildColumnDropdown();
                         })
-                        .catch(error => console.error('Error loading column visibility:', error));
+                        .then(function() { table.redraw(true); })
+                        .catch(function(err) { console.error('Error loading column visibility:', err); });
                 }
 
-                // Apply saved visibility and build dropdown when table is ready
-                setTimeout(() => {
-                    applyColumnVisibilityFromServer();
-                    buildColumnDropdown();
+                function currentFbaColumnOrder() {
+                    if (!table) return [];
+                    return table.getColumns().map(function(col) { return col.getField(); }).filter(function(f) { return !!f; });
+                }
+                function saveFbaColumnOrderToServer() {
+                    if (!table || fbaApplyingColumnOrder) return;
+                    const order = currentFbaColumnOrder();
+                    if (!order.length) return;
+                    fetch(FBA_COL_ORDER_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': FBA_COL_CSRF },
+                        body: JSON.stringify({ channel: FBA_COL_CHANNEL, order: order })
+                    }).catch(function(err) { console.error('Error saving column order:', err); });
+                }
+                function scheduleFbaColumnOrderSave() {
+                    if (fbaColumnOrderSaveTimer) clearTimeout(fbaColumnOrderSaveTimer);
+                    fbaColumnOrderSaveTimer = setTimeout(saveFbaColumnOrderToServer, 350);
+                }
+
+                function fbaMoveColumnsToOrder(order) {
+                    if (!table || !Array.isArray(order)) return;
+                    fbaApplyingColumnOrder = true;
+                    try {
+                        for (let i = 0; i < order.length; i++) {
+                            const field = order[i];
+                            const cols = table.getColumns().filter(function(c) { return !!c.getField(); });
+                            const currentIdx = cols.findIndex(function(c) { return c.getField() === field; });
+                            if (currentIdx === i || currentIdx < 0) continue;
+                            if (i === 0) {
+                                const firstField = cols[0].getField();
+                                if (firstField && firstField !== field) table.moveColumn(field, firstField, false);
+                            } else if (order[i - 1]) {
+                                table.moveColumn(field, order[i - 1], true);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Error arranging columns:', err);
+                    } finally {
+                        fbaApplyingColumnOrder = false;
+                    }
+                }
+                /** Apply the saved table column order; columns missing from it keep their place next to their neighbour. */
+                function applyFbaColumnOrder(order) {
+                    if (!table || !Array.isArray(order) || !order.length) return;
+                    const existing = currentFbaColumnOrder();
+                    if (!existing.length) return;
+                    const valid = [];
+                    const seen = {};
+                    order.forEach(function(f) {
+                        if (!f || seen[f] || existing.indexOf(f) === -1) return;
+                        seen[f] = true;
+                        valid.push(f);
+                    });
+                    existing.forEach(function(f) {
+                        if (seen[f]) return;
+                        seen[f] = true;
+                        let inserted = false;
+                        const existingIdx = existing.indexOf(f);
+                        for (let j = existingIdx - 1; j >= 0; j--) {
+                            const prevIdx = valid.indexOf(existing[j]);
+                            if (prevIdx !== -1) { valid.splice(prevIdx + 1, 0, f); inserted = true; break; }
+                        }
+                        if (!inserted) valid.unshift(f);
+                    });
+                    fbaMoveColumnsToOrder(valid);
+                }
+
+                /**
+                 * Table column order from the Columns menu. A header you made (or whose columns you re-ordered) becomes one block of
+                 * columns in the table, in the order shown in the menu, starting where its left-most column already was.
+                 */
+                function fbaColumnArrangementGroups() {
+                    const groups = [];
+                    const catsMap = loadFbaColCats();
+                    const extras = loadFbaColExtras();
+                    const ord = loadFbaColOrder();
+                    loadFbaColGroups().forEach(function(g) {
+                        const members = new Set();
+                        Object.keys(catsMap).forEach(function(f) { if (catsMap[f] === g.key) members.add(f); });
+                        Object.keys(extras).forEach(function(f) { if (Array.isArray(extras[f]) && extras[f].indexOf(g.key) !== -1) members.add(f); });
+                        const saved = Array.isArray(ord[g.key]) ? ord[g.key] : [];
+                        const list = saved.filter(function(f) { return members.has(f); });
+                        members.forEach(function(f) { if (list.indexOf(f) === -1) list.push(f); });
+                        if (list.length) groups.push(list);
+                    });
+                    COL_VIS_BASE_KEYS.forEach(function(cat) {
+                        if (!Array.isArray(ord[cat]) || !ord[cat].length) return;
+                        // A copy of a column placed here does not pull the column out of its own header in the table.
+                        const own = ord[cat].filter(function(f) { return !(Array.isArray(extras[f]) && extras[f].indexOf(cat) !== -1); });
+                        if (own.length) groups.push(own);
+                    });
+                    return groups;
+                }
+                function fbaApplyColumnArrangement() {
+                    if (!table) return;
+                    const groups = fbaColumnArrangementGroups();
+                    if (!groups.length) return;
+                    let order = currentFbaColumnOrder();
+                    if (!order.length) return;
+                    const consumed = new Set();
+                    groups.forEach(function(list) {
+                        const have = new Set(order);
+                        const L = [];
+                        list.forEach(function(f) { if (have.has(f) && !consumed.has(f) && L.indexOf(f) === -1) L.push(f); });
+                        L.forEach(function(f) { consumed.add(f); });
+                        if (L.length < 2) return;
+                        const inL = new Set(L);
+                        const next = [];
+                        let placed = false;
+                        order.forEach(function(f) {
+                            if (inL.has(f)) {
+                                if (!placed) { placed = true; L.forEach(function(x) { next.push(x); }); }
+                            } else {
+                                next.push(f);
+                            }
+                        });
+                        order = next;
+                    });
+                    fbaMoveColumnsToOrder(order);
+                }
+                /** Re-sequence the table a moment after a change in the Columns menu, and keep it saved. */
+                function fbaScheduleColumnArrangement() {
+                    if (fbaArrangeTimer) clearTimeout(fbaArrangeTimer);
+                    fbaArrangeTimer = setTimeout(function() {
+                        fbaApplyColumnArrangement();
+                        scheduleFbaColumnOrderSave();
+                    }, 250);
+                }
+                function applyColumnOrderFromServer() {
+                    return fbaColFetchJson(FBA_COL_ORDER_URL + '?channel=' + encodeURIComponent(FBA_COL_CHANNEL))
+                        .then(function(resp) {
+                            if (resp && resp.success && Array.isArray(resp.order) && resp.order.length) applyFbaColumnOrder(resp.order);
+                        })
+                        .catch(function(err) { console.error('Error loading column order:', err); });
+                }
+
+                // Apply saved visibility + order, then build the Columns panel
+                setTimeout(function() {
+                    Promise.resolve(applyColumnVisibilityFromServer())
+                        .then(function() { return applyColumnOrderFromServer(); })
+                        .then(function() { fbaApplyColumnArrangement(); })
+                        .finally(function() { buildColumnDropdown(); });
                 }, 500);
 
+                // Toggle column / whole header from the panel
                 document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                     if (e.target.type !== 'checkbox') return;
+                    // Ticks in the "Search & add column" list are only a pick list, not column on / off switches.
+                    if (e.target.closest('.col-vis-group-results')) return;
+                    const menuRoot = document.getElementById('column-dropdown-menu');
 
+                    // Header checkbox: select / deselect the whole header
                     if (e.target.classList.contains('col-vis-group-toggle')) {
                         const checked = e.target.checked;
                         const groupEl = e.target.closest('.col-vis-group');
-                        const itemCbs = groupEl
-                            ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
-                            : [];
+                        const itemCbs = groupEl ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]') : [];
                         itemCbs.forEach(function(cb) {
+                            const field = cb.getAttribute('data-field') || cb.value;
                             cb.checked = checked;
-                            setFieldVisible(cb.dataset.field, checked);
+                            setFieldVisible(field, checked);
+                            fbaColVisSyncField(menuRoot, field, checked);
                         });
                         e.target.indeterminate = false;
                         saveColumnVisibilityToServer();
@@ -3288,19 +3800,331 @@
                         return;
                     }
 
-                    const field = e.target.dataset.field;
-                    if (!field) return;
+                    const field = e.target.getAttribute('data-field') || e.target.value;
+                    if (!field || !table.getColumn(field)) return;
                     setFieldVisible(field, e.target.checked);
-                    syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                    syncFbaGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                    fbaColVisSyncField(menuRoot, field, e.target.checked);
                     saveColumnVisibilityToServer();
                     table.redraw(true);
                 });
 
+                // Keep the panel open when clicking checkboxes / labels
                 document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
                     if (e.target.closest('label') || e.target.type === 'checkbox') {
                         e.stopPropagation();
                     }
                 });
+
+                // ---- Columns panel: your own headers + quick search + copy / paste ----
+                (function() {
+                    const menuEl = document.getElementById("column-dropdown-menu");
+                    if (!menuEl) return;
+
+                    /** Put a column under another header (same as dragging it there) and remember it. */
+                    function moveColToGroup(field, cat) {
+                        const li = menuEl.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]:not([data-copy="1"])');
+                        const group = menuEl.querySelector('.col-vis-group[data-category="' + CSS.escape(cat) + '"]');
+                        if (!li || !group) return;
+                        const fromGroup = li.closest('.col-vis-group');
+                        group.querySelector('.col-vis-group-list').appendChild(li);
+                        li.dataset.group = cat;
+                        const cb = li.querySelector('input[type="checkbox"]');
+                        if (cb) cb.dataset.group = cat;
+                        const cats = loadFbaColCats();
+                        cats[field] = cat;
+                        saveFbaColCats(cats);
+                        syncFbaGroupHeaderCheckbox(fromGroup);
+                        syncFbaGroupHeaderCheckbox(group);
+                        fbaColVisSaveOrder(group.querySelector('.col-vis-group-list'));
+                        fbaColVisSaveOrder(fromGroup ? fromGroup.querySelector('.col-vis-group-list') : null);
+                        fbaScheduleColumnArrangement();
+                    }
+                    function addHeaderFromToolbar() {
+                        const input = menuEl.querySelector('.col-vis-newname');
+                        const name = input ? input.value.trim().slice(0, 30) : '';
+                        if (!name) { if (input) input.focus(); return; }
+                        const list = loadFbaColGroups();
+                        const dup = list.concat(COL_VIS_BASE_KEYS.map(function(k) { return { label: fbaColVisLabel(k) }; }))
+                            .some(function(g) { return String(g.label).toLowerCase() === name.toLowerCase(); });
+                        if (dup) { alert('A header named "' + name + '" already exists.'); return; }
+                        list.push({ key: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), label: name });
+                        saveFbaColGroups(list);
+                        buildColumnDropdown();
+                    }
+
+                    // Ticked results per header (kept while you keep typing), so several columns can be added at once.
+                    const pickedByGroup = {};
+                    function pickedSet(cat) { return pickedByGroup[cat] || (pickedByGroup[cat] = new Set()); }
+                    function paintGroupResults(searchEl) {
+                        const group = searchEl.closest('.col-vis-group');
+                        const box = group ? group.querySelector('.col-vis-group-results') : null;
+                        if (!box) return;
+                        const cat = group.dataset.category;
+                        const picked = pickedSet(cat);
+                        const q = searchEl.value.trim().toLowerCase();
+                        if (!q) { picked.clear(); box.style.display = 'none'; box.innerHTML = ''; return; }
+                        const hits = [];
+                        const seen = {};
+                        // Columns already in this header are left out; a column from another header can still be added.
+                        menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
+                            if (li.dataset.group === cat) seen[li.dataset.field] = true;
+                        });
+                        menuEl.querySelectorAll('.col-vis-item:not([data-copy="1"])').forEach(function(li) {
+                            if (seen[li.dataset.field]) return;
+                            seen[li.dataset.field] = true;
+                            const text = ((li.querySelector('label') || li).textContent || '').trim();
+                            if (text.toLowerCase().indexOf(q) !== -1) hits.push({ field: li.dataset.field, text: text, from: fbaColVisLabel(li.dataset.group) });
+                        });
+                        const shown = hits.slice(0, 40);
+                        // Only keep ticks that are still in the list.
+                        Array.from(picked).forEach(function(f) { if (!shown.some(function(h) { return h.field === f; })) picked.delete(f); });
+                        box.innerHTML = '';
+                        if (!shown.length) {
+                            box.innerHTML = '<div class="col-vis-noresult">No column found</div>';
+                            box.style.display = '';
+                            return;
+                        }
+                        shown.forEach(function(h) {
+                            const row = document.createElement('label');
+                            row.className = 'col-vis-result';
+                            const cb = document.createElement('input');
+                            cb.type = 'checkbox';
+                            cb.className = 'col-vis-result-cb';
+                            cb.dataset.field = h.field;
+                            cb.checked = picked.has(h.field);
+                            const name = document.createElement('span');
+                            name.textContent = h.text;
+                            const from = document.createElement('small');
+                            from.textContent = h.from;
+                            row.appendChild(cb); row.appendChild(name); row.appendChild(from);
+                            box.appendChild(row);
+                        });
+                        const foot = document.createElement('div');
+                        foot.className = 'col-vis-result-foot';
+                        foot.innerHTML = '<label class="col-vis-result-all"><input type="checkbox" class="col-vis-result-cb-all"> All</label>'
+                            + '<button type="button" class="btn btn-sm btn-primary col-vis-add-selected" disabled>Add selected</button>';
+                        box.appendChild(foot);
+                        box.style.display = '';
+                        syncResultFoot(box, cat);
+                    }
+                    function syncResultFoot(box, cat) {
+                        const cbs = box.querySelectorAll('.col-vis-result-cb');
+                        const n = Array.from(cbs).filter(function(c) { return c.checked; }).length;
+                        const all = box.querySelector('.col-vis-result-cb-all');
+                        const btn = box.querySelector('.col-vis-add-selected');
+                        if (all) { all.checked = cbs.length > 0 && n === cbs.length; all.indeterminate = n > 0 && n < cbs.length; }
+                        if (btn) { btn.disabled = n === 0; btn.textContent = n ? ('Add selected (' + n + ')') : 'Add selected'; }
+                    }
+
+                    menuEl.addEventListener('input', function(e) {
+                        const t = e.target;
+                        if (t.classList && t.classList.contains('col-vis-search')) {
+                            // Quick search: hide the columns that do not match, in every header.
+                            const q = t.value.trim().toLowerCase();
+                            menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
+                                li.style.display = (!q || ((li.querySelector('label') || li).textContent || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+                            });
+                        } else if (t.classList && t.classList.contains('col-vis-group-search')) {
+                            paintGroupResults(t);
+                        }
+                    });
+                    menuEl.addEventListener('change', function(e) {
+                        const t = e.target;
+                        if (!t.classList) return;
+                        const group = t.closest('.col-vis-group');
+                        const box = t.closest('.col-vis-group-results');
+                        if (!group || !box) return;
+                        const cat = group.dataset.category;
+                        const picked = pickedSet(cat);
+                        if (t.classList.contains('col-vis-result-cb')) {
+                            if (t.checked) picked.add(t.dataset.field); else picked.delete(t.dataset.field);
+                        } else if (t.classList.contains('col-vis-result-cb-all')) {
+                            box.querySelectorAll('.col-vis-result-cb').forEach(function(c) {
+                                c.checked = t.checked;
+                                if (t.checked) picked.add(c.dataset.field); else picked.delete(c.dataset.field);
+                            });
+                        } else { return; }
+                        syncResultFoot(box, cat);
+                    });
+                    menuEl.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('col-vis-newname')) {
+                            e.preventDefault();
+                            addHeaderFromToolbar();
+                        }
+                    });
+
+                    // ---- Select columns (Ctrl/Cmd + click, Shift for a range), Ctrl+C copy, Ctrl+V paste into the highlighted header ----
+                    let colClipboard = [];
+                    let lastSelectedLi = null;
+                    function setActiveHeader(cat) {
+                        fbaColVisActiveCat = cat || '';
+                        menuEl.querySelectorAll('.col-vis-group').forEach(function(g) {
+                            g.classList.toggle('col-vis-active', g.dataset.category === fbaColVisActiveCat);
+                        });
+                    }
+                    function flashStatus(msg) {
+                        const el = menuEl.querySelector('.col-vis-status');
+                        if (el) el.textContent = msg + ' ';
+                    }
+                    menuEl.addEventListener('mousedown', function(e) {
+                        const g = e.target.closest ? e.target.closest('.col-vis-group') : null;
+                        if (g) setActiveHeader(g.dataset.category);
+                    });
+                    menuEl.addEventListener('click', function(e) {
+                        const lab = e.target.closest ? e.target.closest('.col-vis-item > label') : null;
+                        if (!lab) return;
+                        const li = lab.closest('.col-vis-item');
+                        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                            e.preventDefault(); // select only, do not tick / untick the column
+                            if (e.shiftKey && lastSelectedLi && lastSelectedLi.parentNode === li.parentNode) {
+                                const items = Array.from(li.parentNode.children);
+                                const a = items.indexOf(lastSelectedLi), b = items.indexOf(li);
+                                items.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function(x) { x.classList.add('col-vis-selected'); });
+                            } else {
+                                li.classList.toggle('col-vis-selected');
+                                lastSelectedLi = li;
+                            }
+                            const g = li.closest('.col-vis-group');
+                            if (g) setActiveHeader(g.dataset.category);
+                        } else {
+                            menuEl.querySelectorAll('.col-vis-item.col-vis-selected').forEach(function(x) { x.classList.remove('col-vis-selected'); });
+                        }
+                    });
+                    document.addEventListener('keydown', function(e) {
+                        if (!menuEl.classList.contains('show')) return;
+                        if (!(e.ctrlKey || e.metaKey)) return;
+                        const t = e.target;
+                        if (t && ((t.tagName === 'INPUT' && t.type !== 'checkbox') || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+                        const k = String(e.key || '').toLowerCase();
+                        if (k === 'c') {
+                            const fields = [];
+                            menuEl.querySelectorAll('.col-vis-item.col-vis-selected').forEach(function(li) {
+                                if (fields.indexOf(li.dataset.field) === -1) fields.push(li.dataset.field);
+                            });
+                            if (!fields.length) return;
+                            e.preventDefault();
+                            colClipboard = fields;
+                            flashStatus('Copied ' + fields.length + ' column' + (fields.length === 1 ? '' : 's') + '.');
+                        } else if (k === 'v') {
+                            if (!colClipboard.length) return;
+                            e.preventDefault();
+                            const cat = fbaColVisActiveCat;
+                            const group = cat ? menuEl.querySelector('.col-vis-group[data-category="' + CSS.escape(cat) + '"]') : null;
+                            if (!group) { flashStatus('Click a header first, then paste.'); return; }
+                            let added = 0;
+                            colClipboard.forEach(function(f) {
+                                if (group.querySelector('.col-vis-item[data-field="' + CSS.escape(f) + '"]')) return; // already there
+                                fbaColExtraAdd(f, cat);
+                                added++;
+                            });
+                            if (!added) { flashStatus('Already in ' + fbaColVisLabel(cat) + '.'); return; }
+                            fbaScheduleColumnArrangement();
+                            fbaColVisFlashMsg = 'Pasted ' + added + ' column' + (added === 1 ? '' : 's') + ' into ' + fbaColVisLabel(cat) + '.';
+                            buildColumnDropdown();
+                        }
+                    });
+
+                    menuEl.addEventListener('click', function(e) {
+                        const saveBtn = e.target.closest('.col-vis-save');
+                        if (saveBtn) {
+                            e.preventDefault();
+                            if (fbaArrangeTimer) { clearTimeout(fbaArrangeTimer); fbaArrangeTimer = null; }
+                            fbaApplyColumnArrangement();
+                            saveColumnVisibilityToServer();
+                            saveFbaColumnOrderToServer();
+                            table.redraw(true);
+                            const tg = document.getElementById('columnVisibilityDropdown');
+                            if (tg && window.bootstrap && bootstrap.Dropdown) bootstrap.Dropdown.getOrCreateInstance(tg).hide();
+                            else if (tg) tg.click();
+                            return;
+                        }
+                        const addBtn = e.target.closest('.col-vis-addgroup');
+                        if (addBtn) { e.preventDefault(); addHeaderFromToolbar(); return; }
+
+                        const xBtn = e.target.closest('.col-vis-item-x');
+                        if (xBtn) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const li = xBtn.closest('.col-vis-item');
+                            if (!li) return;
+                            const field = li.dataset.field;
+                            if (li.dataset.copy === '1') {
+                                // A copy of the column under this header: just take it out of here (the column and its own header stay).
+                                fbaColExtraRemove(field, li.dataset.group);
+                                const grp = li.closest('.col-vis-group');
+                                li.remove();
+                                syncFbaGroupHeaderCheckbox(grp);
+                                fbaColVisSaveOrder(grp ? grp.querySelector('.col-vis-group-list') : null);
+                                fbaScheduleColumnArrangement();
+                            } else if (fbaColVisIsCustom(li.dataset.group)) {
+                                // Your header: take the column out, it goes back to its normal header.
+                                const home = classifyFbaColumn(field);
+                                moveColToGroup(field, home);
+                                const cats = loadFbaColCats();
+                                delete cats[field];
+                                saveFbaColCats(cats);
+                            } else {
+                                // Normal header: hide the column in the table (tick it again to bring it back).
+                                setFieldVisible(field, false);
+                                fbaColVisSyncField(menuEl, field, false);
+                                saveColumnVisibilityToServer();
+                                table.redraw(true);
+                            }
+                            return;
+                        }
+
+                        const addSel = e.target.closest('.col-vis-add-selected');
+                        if (addSel) {
+                            e.preventDefault();
+                            const group = addSel.closest('.col-vis-group');
+                            if (!group) return;
+                            const cat = group.dataset.category;
+                            // Added as a copy: the column stays under its own header too.
+                            Array.from(pickedSet(cat)).forEach(function(f) { fbaColExtraAdd(f, cat); });
+                            pickedSet(cat).clear();
+                            fbaScheduleColumnArrangement();
+                            buildColumnDropdown();
+                            return;
+                        }
+
+                        const renBtn = e.target.closest('.col-vis-rename');
+                        if (renBtn) {
+                            e.preventDefault();
+                            const key = renBtn.dataset.category;
+                            const name = prompt('Header name', fbaColVisLabel(key));
+                            if (name === null) return;
+                            const clean = name.trim().slice(0, 30);
+                            if (!clean) return;
+                            if (fbaColVisIsCustom(key)) {
+                                const list = loadFbaColGroups();
+                                list.forEach(function(g) { if (g.key === key) g.label = clean; });
+                                saveFbaColGroups(list);
+                            } else {
+                                const labels = loadFbaColLabels();
+                                labels[key] = clean;
+                                saveFbaColLabels(labels);
+                            }
+                            buildColumnDropdown();
+                            return;
+                        }
+
+                        const delBtn = e.target.closest('.col-vis-delgroup');
+                        if (delBtn) {
+                            e.preventDefault();
+                            const key = delBtn.dataset.category;
+                            if (!confirm('Delete the header "' + fbaColVisLabel(key) + '"? Its columns go back to their normal header (they stay as they are in the table).')) return;
+                            saveFbaColGroups(loadFbaColGroups().filter(function(g) { return g.key !== key; }));
+                            const cats = loadFbaColCats();
+                            Object.keys(cats).forEach(function(f) { if (cats[f] === key) delete cats[f]; });
+                            saveFbaColCats(cats);
+                            const ex = loadFbaColExtras();
+                            Object.keys(ex).forEach(function(f) { fbaColExtraRemove(f, key); });
+                            fbaScheduleColumnArrangement();
+                            buildColumnDropdown();
+                        }
+                    });
+                })();
 
                 // Pft% Toggle Event Listener
                 $(document).on('click', '.pft-toggle-btn', function(e) {
@@ -3496,6 +4320,33 @@
                 // Ensure backdrop is properly configured
                 $('.modal-backdrop').css('z-index', '1040');
                 console.log('Modal shown');
+            }
+
+            // CTN details modal: shows L / W / H / Qty / GW CTN and CTN cost for the clicked row (read-only)
+            function openCtnDetailsModal(row) {
+                const data = row.getData();
+                const fields = [
+                    ['L CTN', data.Length],
+                    ['W CTN', data.Width],
+                    ['H CTN', data.Height],
+                    ['Qty CTN', data.Quantity_in_each_box],
+                    ['GW CTN', data.GW_CTN],
+                    ['CTN cost', data.Shipping_Amount]
+                ];
+                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                $('#ctnDetailsSku').text(data.FBA_SKU || data.SKU || '');
+                const body = $('#ctnDetailsBody').empty();
+                fields.forEach(function(f) {
+                    const v = (f[1] === null || f[1] === undefined || String(f[1]).trim() === '') ? '-' : f[1];
+                    body.append(`<tr><th style="width:45%;background:#f8f9fa;">${f[0]}</th><td class="fw-semibold">${esc(v)}</td></tr>`);
+                });
+
+                const modal = $('#ctnDetailsModal');
+                modal.appendTo('body');
+                modal.css('z-index', '1060');
+                modal.modal('show');
+                $('.modal-backdrop').css('z-index', '1059');
             }
 
             // UPC Edit modal: fill UPC code, saved as `upc_edit` and compared with UPC Company
