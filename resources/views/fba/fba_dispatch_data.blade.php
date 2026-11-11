@@ -1145,7 +1145,7 @@
                     const src = String(text || '').trim();
                     if (!src) throw new Error('Rule is empty');
                     const colMap = fbaRuleColumnMap();
-                    const re = /\s*(\(|\)|<=|>=|==|!=|=|<|>|&&|\|\||!|-?[A-Za-z0-9_.%\/]+)/y;
+                    const re = /\s*("[^"]*"|\(|\)|<=|>=|==|!=|=|<|>|&&|\|\||!|-?[A-Za-z0-9_.%\/]+)/y;
                     const tokens = [];
                     let pos = 0, m;
                     while (pos < src.length) {
@@ -1171,18 +1171,31 @@
                             i++;
                             return { type: 'bool', fn: inner };
                         }
+                        if (t !== undefined && t.charAt(0) === '"') {
+                            i++;
+                            const str = t.slice(1, -1);
+                            return { type: 'str', fn: function() { return str; }, raw: function() { return str; } };
+                        }
                         if (!isWord(t)) throw new Error(t === undefined ? 'Rule ends too early' : 'Unexpected "' + t + '"');
                         if (/^-?\d+(\.\d+)?%?$/.test(t)) {
                             i++;
                             const n = parseFloat(t);
-                            return { type: 'num', fn: function() { return n; } };
+                            return { type: 'num', fn: function() { return n; }, raw: function() { return String(n); } };
                         }
                         const words = [];
                         while (isWord(tokens[i]) && !/^-?\d+(\.\d+)?%?$/.test(tokens[i])) { words.push(tokens[i]); i++; }
                         const name = words.join(' ');
                         const field = colMap[fbaRuleKey(name)];
                         if (!field) throw new Error('Unknown column "' + name + '"');
-                        return { type: 'num', fn: function(row) { return fbaRuleNum(row[field]); } };
+                        return {
+                            type: 'num',
+                            fn: function(row) { return fbaRuleNum(row[field]); },
+                            raw: function(row) {
+                                let v = row[field];
+                                if (field === 'compliance' && (v === null || v === undefined || String(v).trim() === '')) v = 'green';
+                                return v === null || v === undefined ? '' : v;
+                            }
+                        };
                     }
                     function parseCmp() {
                         const left = parseValue();
@@ -1190,6 +1203,21 @@
                         if (['<', '<=', '>', '>=', '=', '==', '!='].indexOf(op) !== -1) {
                             i++;
                             const right = parseValue();
+                            if (left.type === 'str' || right.type === 'str') {
+                                // text comparison (case-insensitive), e.g. Compliance = "red"
+                                const txt = function(side, row) { return String(side.raw ? side.raw(row) : side.fn(row)).trim().toLowerCase(); };
+                                return function(row) {
+                                    const a = txt(left, row), b = txt(right, row);
+                                    switch (op) {
+                                        case '<': return a < b;
+                                        case '<=': return a <= b;
+                                        case '>': return a > b;
+                                        case '>=': return a >= b;
+                                        case '!=': return a !== b;
+                                        default: return a === b;
+                                    }
+                                };
+                            }
                             return function(row) {
                                 const a = left.fn(row), b = right.fn(row);
                                 switch (op) {
@@ -3287,7 +3315,8 @@
                 const SQR_ROWS_KEY = 'fba_send_qty_rule_rows_v1';
                 const SQR_OPS = [['<', '<  less than'], ['<=', '<=  less than or equal'], ['>', '>  greater than'], ['>=', '>=  greater than or equal'], ['=', '=  equal to'], ['!=', '!=  not equal to']];
                 const SQR_MAIN_FIELDS = ['Dil', 'Shopify_INV', 'Quantity_in_each_box', 'AMZ_Rating', 'Shopify_OV_L30', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'Length', 'Width', 'Height', 'GW_CTN', 'Shipping_Amount', 'Sugg_Send'];
-                const SQR_HIDE_FIELDS = new Set(['image_path', '_select', '_accept', '_details', 'Parent', 'SKU', 'FBA_SKU', 'Barcode', 'Done', 'Listed', 'Live', 'Dispatch_Date', 'UPC_Codes', 'UPC_Edit', 'Send_History', 'Total_quantity_sent', 'compliance']);
+                // Only buttons / pictures are left out; every data column (Compliance, Barcode, Listed, Live, ...) can be used in a rule.
+                const SQR_HIDE_FIELDS = new Set(['image_path', '_select', '_accept', '_details', 'UPC_Edit', 'Send_History']);
                 let sqrRows = [];
                 let sqrCountTimer = null;
 
@@ -3310,10 +3339,13 @@
                 function sqrValueOk(v) { return /^-?\d+(\.\d+)?%?$/.test(String(v == null ? '' : v).trim()); }
                 function sqrRowOk(r) {
                     if (!r || !r.field || !SQR_OPS.some(function(o) { return o[0] === r.op; })) return false;
-                    return r.vtype === 'col' ? String(r.value == null ? '' : r.value).trim() !== '' : sqrValueOk(r.value);
+                    return (r.vtype === 'col' || r.vtype === 'txt') ? String(r.value == null ? '' : r.value).trim() !== '' : sqrValueOk(r.value);
                 }
                 /** Right side of a condition: a number, or the other column (field name for the engine, title for people). */
-                function sqrRight(r, useTitle) { return r.vtype === 'col' ? (useTitle ? sqrTitle(r.value) : String(r.value)) : sqrValueText(r.value); }
+                function sqrRight(r, useTitle) {
+                    if (r.vtype === 'txt') return '"' + String(r.value).trim().replace(/"/g, '') + '"';
+                    return r.vtype === 'col' ? (useTitle ? sqrTitle(r.value) : String(r.value)) : sqrValueText(r.value);
+                }
                 function sqrValueText(v) { return String(v).trim().replace(/%$/, ''); }
                 /** The rule as text, e.g. "Dil < 50 and Shopify_INV > 0" (fields for the engine, titles for people). */
                 function sqrText(rows, useTitle) {
@@ -3335,7 +3367,10 @@
                         if (!field) return null;
                         const rhs = m[3].trim();
                         const row = { join: i === 0 ? 'and' : String(parts[i - 1]).toLowerCase(), field: field, op: m[2] === '==' ? '=' : m[2], vtype: 'num', value: '' };
-                        if (/^-?\d+(\.\d+)?%?$/.test(rhs)) {
+                        if (/^"[^"]*"$/.test(rhs)) {
+                            row.vtype = 'txt';
+                            row.value = rhs.slice(1, -1);
+                        } else if (/^-?\d+(\.\d+)?%?$/.test(rhs)) {
                             row.value = rhs.replace(/%$/, '');
                         } else if (map[fbaRuleKey(rhs)]) {
                             row.vtype = 'col';
@@ -3352,7 +3387,7 @@
                     try {
                         const p = JSON.parse(localStorage.getItem(SQR_ROWS_KEY) || 'null');
                         if (Array.isArray(p) && p.length && p.every(sqrRowOk)) {
-                            return p.map(function(r) { return { join: r.join === 'or' ? 'or' : 'and', field: r.field, op: r.op, vtype: r.vtype === 'col' ? 'col' : 'num', value: String(r.value) }; });
+                            return p.map(function(r) { return { join: r.join === 'or' ? 'or' : 'and', field: r.field, op: r.op, vtype: r.vtype === 'col' || r.vtype === 'txt' ? r.vtype : 'num', value: String(r.value) }; });
                         }
                     } catch (e) { /* ignore */ }
                     return sqrParseText(fbaSendQtyRuleText || FBA_SEND_QTY_DEFAULT_RULE) || sqrDefaultRows();
@@ -3489,10 +3524,10 @@
                             + '<td>' + join + '</td>'
                             + '<td><select class="form-select form-select-sm sqr-field">' + options(r.field) + '</select></td>'
                             + '<td><select class="form-select form-select-sm sqr-op">' + ops + '</select></td>'
-                            + '<td><select class="form-select form-select-sm sqr-vtype"><option value="num"' + (r.vtype !== 'col' ? ' selected' : '') + '>Number</option><option value="col"' + (r.vtype === 'col' ? ' selected' : '') + '>Column</option></select></td>'
+                            + '<td><select class="form-select form-select-sm sqr-vtype"><option value="num"' + (r.vtype !== 'col' && r.vtype !== 'txt' ? ' selected' : '') + '>Number</option><option value="col"' + (r.vtype === 'col' ? ' selected' : '') + '>Column</option><option value="txt"' + (r.vtype === 'txt' ? ' selected' : '') + '>Text</option></select></td>'
                             + (r.vtype === 'col'
                                 ? '<td><select class="form-select form-select-sm sqr-valcol">' + options(r.value) + '</select></td>'
-                                : '<td><input type="text" class="form-control form-control-sm sqr-value' + (sqrValueOk(r.value) ? '' : ' is-invalid') + '" value="' + sqrEsc(r.value) + '" placeholder="number" autocomplete="off"></td>')
+                                : '<td><input type="text" class="form-control form-control-sm sqr-value' + ((r.vtype === 'txt' ? String(r.value).trim() !== '' : sqrValueOk(r.value)) ? '' : ' is-invalid') + '" value="' + sqrEsc(r.value) + '" placeholder="' + (r.vtype === 'txt' ? 'text, e.g. red' : 'number') + '" autocomplete="off"></td>')
                             + '<td class="text-end sqr-count"></td>'
                             + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger sqr-del" title="Remove this condition"' + (sqrRows.length < 2 ? ' disabled' : '') + '><i class="fa fa-trash"></i></button></td></tr>';
                     }).join('');
@@ -3523,7 +3558,7 @@
                     if (!sqrRows.every(sqrRowOk)) {
                         if (totalCell) totalCell.innerHTML = '<span class="text-muted">-</span>';
                         if (preview) preview.textContent = '...';
-                        setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>Fix the red value: it must be a number, e.g. 50 (or pick Compare with: Column)');
+                        setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>Fix the red value: type a number, e.g. 50 (or pick Compare with: Column or Text)');
                         return;
                     }
                     try {
@@ -3578,8 +3613,8 @@
                 $('#sqr-rows').on('change', '.sqr-vtype', function() {
                     const i = parseInt($(this).closest('tr').attr('data-i'), 10);
                     if (!sqrRows[i]) return;
-                    sqrRows[i].vtype = this.value === 'col' ? 'col' : 'num';
-                    sqrRows[i].value = sqrRows[i].vtype === 'col' ? (sqrRows[i].field === 'Quantity_in_each_box' ? 'Shopify_INV' : 'Quantity_in_each_box') : '0';
+                    sqrRows[i].vtype = this.value === 'col' ? 'col' : (this.value === 'txt' ? 'txt' : 'num');
+                    sqrRows[i].value = sqrRows[i].vtype === 'col' ? (sqrRows[i].field === 'Quantity_in_each_box' ? 'Shopify_INV' : 'Quantity_in_each_box') : (sqrRows[i].vtype === 'txt' ? (sqrRows[i].field === 'compliance' ? 'red' : '') : '0');
                     sqrRender();
                     sqrUpdateCounts();
                 }).on('change', '.sqr-valcol', function() {
@@ -3598,7 +3633,7 @@
                     const i = parseInt($(this).closest('tr').attr('data-i'), 10);
                     if (!sqrRows[i]) return;
                     sqrRows[i].value = this.value;
-                    this.classList.toggle('is-invalid', !sqrValueOk(this.value));
+                    this.classList.toggle('is-invalid', sqrRows[i].vtype === 'txt' ? this.value.trim() === '' : !sqrValueOk(this.value));
                     sqrScheduleCounts();
                 }).on('keydown', '.sqr-value', function(e) {
                     if (e.key === 'Enter') { e.preventDefault(); $('#send-qty-rule-apply').trigger('click'); }
