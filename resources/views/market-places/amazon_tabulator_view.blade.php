@@ -239,20 +239,32 @@
         }
 
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
+        /* Full width panel pinned to the top of the page (Popper's own positioning is overridden). */
         #column-dropdown-menu.show {
-            min-width: min(92vw, 900px);
-            max-width: min(96vw, 960px);
-            max-height: 70vh;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            inset: 0 0 auto 0 !important;
+            transform: none !important;
+            width: 100vw;
+            min-width: 100vw;
+            max-width: 100vw;
+            max-height: 85vh;
+            margin: 0 !important;
+            border-radius: 0 0 8px 8px;
+            z-index: 2000;
             overflow-y: auto;
-            padding: 0.4rem 0.5rem 0.55rem;
+            padding: 0.6rem 1rem 0.75rem;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
         }
         #column-dropdown-menu > li.col-vis-full {
             list-style: none;
         }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 10px;
             list-style: none;
             margin: 0;
             padding: 0;
@@ -274,7 +286,12 @@
         #column-dropdown-menu .col-vis-group-tools .col-vis-group-search { flex: 1 1 auto; min-width: 0; font-size: 0.72rem; }
         #column-dropdown-menu .col-vis-group-tools .btn { padding: 0 6px; line-height: 1.6; font-size: 0.7rem; }
         #column-dropdown-menu .col-vis-group-results { border: 1px solid #d9d0f5; border-radius: 4px; background: #fff; margin-bottom: 6px; max-height: 150px; overflow-y: auto; }
-        #column-dropdown-menu .col-vis-result { display: flex; justify-content: space-between; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 3px 6px; font-size: 0.78rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0; padding: 3px 6px; font-size: 0.78rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #column-dropdown-menu .col-vis-result input { margin: 0; flex-shrink: 0; }
+        #column-dropdown-menu .col-vis-result-foot { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 6px; background: #f8f9fa; border-top: 1px solid #e9ecef; }
+        #column-dropdown-menu .col-vis-result-all { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 0.75rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result-foot .btn { padding: 0 8px; font-size: 0.72rem; }
         #column-dropdown-menu .col-vis-result:hover { background: #eef5ff; }
         #column-dropdown-menu .col-vis-result small { color: #868e96; white-space: nowrap; }
         #column-dropdown-menu .col-vis-noresult { padding: 4px 6px; font-size: 0.75rem; color: #868e96; }
@@ -320,6 +337,10 @@
             cursor: grab;
         }
         #column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
+        #column-dropdown-menu .col-vis-item { display: flex; align-items: center; }
+        #column-dropdown-menu .col-vis-item > label { flex: 1 1 auto; min-width: 0; }
+        #column-dropdown-menu .col-vis-item-x { flex: 0 0 auto; border: 0; background: none; color: #dc3545; font-size: 1rem; line-height: 1; padding: 0 6px; cursor: pointer; opacity: 0.55; }
+        #column-dropdown-menu .col-vis-item-x:hover { opacity: 1; background: rgba(220, 53, 69, 0.1); border-radius: 3px; }
         #column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
         #column-dropdown-menu .col-vis-item > label {
             display: flex;
@@ -7300,6 +7321,13 @@
                             label.appendChild(document.createTextNode(' ' + title));
                             label.title = title + ' (drag to another header)';
                             li.appendChild(label);
+                            const xBtn = document.createElement("button");
+                            xBtn.type = "button";
+                            xBtn.className = "col-vis-item-x";
+                            xBtn.innerHTML = "&times;";
+                            xBtn.dataset.field = field;
+                            xBtn.title = "Remove from this header (in a normal header: hide the column)";
+                            li.appendChild(xBtn);
                             bindAmazonColVisDrag(li, groupEls);
                             lists[cat].appendChild(li);
                         });
@@ -7910,6 +7938,8 @@
             // Toggle column / group from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
                 if (e.target.type !== 'checkbox') return;
+                // Ticks in the "Search & add column" list are only a pick list, not column on / off switches.
+                if (e.target.closest('.col-vis-group-results')) return;
 
                 // Group header: select / deselect entire category
                 if (e.target.classList.contains('col-vis-group-toggle')) {
@@ -7981,33 +8011,62 @@
                     saveAmazonColGroups(list);
                     buildColumnDropdown();
                 }
+                // Ticked results per header (kept while you keep typing), so several columns can be added at once.
+                const pickedByGroup = {};
+                function pickedSet(cat) { return pickedByGroup[cat] || (pickedByGroup[cat] = new Set()); }
                 function paintGroupResults(searchEl) {
                     const group = searchEl.closest('.col-vis-group');
                     const box = group ? group.querySelector('.col-vis-group-results') : null;
                     if (!box) return;
-                    const q = searchEl.value.trim().toLowerCase();
-                    if (!q) { box.style.display = 'none'; box.innerHTML = ''; return; }
                     const cat = group.dataset.category;
+                    const picked = pickedSet(cat);
+                    const q = searchEl.value.trim().toLowerCase();
+                    if (!q) { picked.clear(); box.style.display = 'none'; box.innerHTML = ''; return; }
                     const hits = [];
                     menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
                         if (li.dataset.group === cat) return;
-                        const text = (li.textContent || '').trim();
+                        const text = ((li.querySelector('label') || li).textContent || '').trim();
                         if (text.toLowerCase().indexOf(q) !== -1) hits.push({ field: li.dataset.field, text: text, from: amazonColVisLabel(li.dataset.group) });
                     });
+                    const shown = hits.slice(0, 40);
+                    // Only keep ticks that are still in the list.
+                    Array.from(picked).forEach(function(f) { if (!shown.some(function(h) { return h.field === f; })) picked.delete(f); });
                     box.innerHTML = '';
-                    hits.slice(0, 12).forEach(function(h) {
-                        const b = document.createElement('button');
-                        b.type = 'button';
-                        b.className = 'col-vis-result';
-                        b.dataset.field = h.field;
-                        b.dataset.category = cat;
-                        b.innerHTML = '<span></span><small></small>';
-                        b.firstChild.textContent = h.text;
-                        b.lastChild.textContent = h.from;
-                        box.appendChild(b);
+                    if (!shown.length) {
+                        box.innerHTML = '<div class="col-vis-noresult">No column found</div>';
+                        box.style.display = '';
+                        return;
+                    }
+                    shown.forEach(function(h) {
+                        const row = document.createElement('label');
+                        row.className = 'col-vis-result';
+                        const cb = document.createElement('input');
+                        cb.type = 'checkbox';
+                        cb.className = 'col-vis-result-cb';
+                        cb.dataset.field = h.field;
+                        cb.checked = picked.has(h.field);
+                        const name = document.createElement('span');
+                        name.textContent = h.text;
+                        const from = document.createElement('small');
+                        from.textContent = h.from;
+                        row.appendChild(cb); row.appendChild(name); row.appendChild(from);
+                        box.appendChild(row);
                     });
-                    if (!hits.length) box.innerHTML = '<div class="col-vis-noresult">No column found</div>';
+                    const foot = document.createElement('div');
+                    foot.className = 'col-vis-result-foot';
+                    foot.innerHTML = '<label class="col-vis-result-all"><input type="checkbox" class="col-vis-result-cb-all"> All</label>'
+                        + '<button type="button" class="btn btn-sm btn-primary col-vis-add-selected" disabled>Add selected</button>';
+                    box.appendChild(foot);
                     box.style.display = '';
+                    syncResultFoot(box, cat);
+                }
+                function syncResultFoot(box, cat) {
+                    const cbs = box.querySelectorAll('.col-vis-result-cb');
+                    const n = Array.from(cbs).filter(function(c) { return c.checked; }).length;
+                    const all = box.querySelector('.col-vis-result-cb-all');
+                    const btn = box.querySelector('.col-vis-add-selected');
+                    if (all) { all.checked = cbs.length > 0 && n === cbs.length; all.indeterminate = n > 0 && n < cbs.length; }
+                    if (btn) { btn.disabled = n === 0; btn.textContent = n ? ('Add selected (' + n + ')') : 'Add selected'; }
                 }
 
                 menuEl.addEventListener('input', function(e) {
@@ -8016,11 +8075,29 @@
                         // Quick search: hide the columns that do not match, in every header.
                         const q = t.value.trim().toLowerCase();
                         menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
-                            li.style.display = (!q || (li.textContent || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+                            li.style.display = (!q || ((li.querySelector('label') || li).textContent || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
                         });
                     } else if (t.classList && t.classList.contains('col-vis-group-search')) {
                         paintGroupResults(t);
                     }
+                });
+                menuEl.addEventListener('change', function(e) {
+                    const t = e.target;
+                    if (!t.classList) return;
+                    const group = t.closest('.col-vis-group');
+                    const box = t.closest('.col-vis-group-results');
+                    if (!group || !box) return;
+                    const cat = group.dataset.category;
+                    const picked = pickedSet(cat);
+                    if (t.classList.contains('col-vis-result-cb')) {
+                        if (t.checked) picked.add(t.dataset.field); else picked.delete(t.dataset.field);
+                    } else if (t.classList.contains('col-vis-result-cb-all')) {
+                        box.querySelectorAll('.col-vis-result-cb').forEach(function(c) {
+                            c.checked = t.checked;
+                            if (t.checked) picked.add(c.dataset.field); else picked.delete(c.dataset.field);
+                        });
+                    } else { return; }
+                    syncResultFoot(box, cat);
                 });
                 menuEl.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('col-vis-newname')) {
@@ -8032,12 +8109,42 @@
                     const addBtn = e.target.closest('.col-vis-addgroup');
                     if (addBtn) { e.preventDefault(); addHeaderFromToolbar(); return; }
 
-                    const resBtn = e.target.closest('.col-vis-result');
-                    if (resBtn) {
+                    const xBtn = e.target.closest('.col-vis-item-x');
+                    if (xBtn) {
                         e.preventDefault();
-                        moveColToGroup(resBtn.dataset.field, resBtn.dataset.category);
-                        const group = resBtn.closest('.col-vis-group');
-                        const search = group ? group.querySelector('.col-vis-group-search') : null;
+                        e.stopPropagation();
+                        const li = xBtn.closest('.col-vis-item');
+                        if (!li) return;
+                        const field = li.dataset.field;
+                        if (amazonColVisIsCustom(li.dataset.group)) {
+                            // Your header: take the column out, it goes back to its normal header.
+                            const def = table.getColumn(field) ? table.getColumn(field).getDefinition() : null;
+                            const home = classifyAmazonColumn(field, amazonColVisPlainTitle(def || { field: field }));
+                            moveColToGroup(field, home);
+                            const cats = loadAmazonColCats();
+                            delete cats[field];
+                            saveAmazonColCats(cats);
+                        } else {
+                            // Normal header: hide the column in the table (tick it again to bring it back).
+                            const col = table.getColumn(field);
+                            if (col) col.hide();
+                            const cb = li.querySelector('input[type="checkbox"]');
+                            if (cb) cb.checked = false;
+                            syncAmazonGroupHeaderCheckbox(li.closest('.col-vis-group'));
+                            saveColumnVisibilityToServer();
+                        }
+                        return;
+                    }
+
+                    const addSel = e.target.closest('.col-vis-add-selected');
+                    if (addSel) {
+                        e.preventDefault();
+                        const group = addSel.closest('.col-vis-group');
+                        if (!group) return;
+                        const cat = group.dataset.category;
+                        Array.from(pickedSet(cat)).forEach(function(f) { moveColToGroup(f, cat); });
+                        pickedSet(cat).clear();
+                        const search = group.querySelector('.col-vis-group-search');
                         if (search) { search.value = ''; paintGroupResults(search); }
                         return;
                     }
