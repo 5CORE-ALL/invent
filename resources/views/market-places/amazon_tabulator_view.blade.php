@@ -1559,6 +1559,14 @@
             return p * 0.70 - ship - lpVal;
         }
 
+        /** NPFT% at C Std Prc = NPFT$ / C Std Prc × 100. null when there is no C Std Prc. */
+        function amazonCStdNpftPct(rowData) {
+            const p = amazonCStdPrc(rowData);
+            const profit = amazonCStdNpftUsd(rowData);
+            if (!(p > 0) || profit === null) return null;
+            return (profit / p) * 100;
+        }
+
         /** Same test as LMP column red: INV > 0 and Price > landed L1. */
         function amazonPriceGtLandedLmp(data) {
             if (!data || data.is_parent_summary) return false;
@@ -5676,6 +5684,26 @@
                         width: 75
                     },
 
+                    {
+                        title: "NPFT%",
+                        field: "c_std_npft_pct",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdNpftPct(d); }),
+                        headerTooltip: "NPFT% on C Std Prc = NPFT$ / C Std Prc × 100.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdNpftPct(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const st = (window.MetricPctColors && MetricPctColors.styleForField('npft', v)) || '';
+                            const txt = Math.round(v) + '%';
+                            return st ? '<span style="' + st + '">' + txt + '</span>'
+                                : '<span style="font-weight:600;color:' + (v < 0 ? '#dc3545' : '#198754') + ';">' + txt + '</span>';
+                        },
+                        width: 70
+                    },
+
                     // CVR Disc. / Rev Disc. / T Discounts / Push Prc
                     ...amazonPefPromoColumns(),
 
@@ -7002,7 +7030,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
