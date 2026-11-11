@@ -514,13 +514,6 @@
                                 <option value="NRL">NRL</option>
                                 <option value="Both">Both</option>
                             </select>
-                            <select id="sugg-send-filter" class="form-select form-select-sm me-2"
-                                style="width: auto; display: inline-block;">
-                                <option value="all">All Sugg Send</option>
-                                <option value="positive" selected>Positive</option>
-                                <option value="zero">Zero</option>
-                                <option value="negative">Negative</option>
-                            </select>
                             <a href="{{ url('/fba-manual-export') }}" class="btn btn-sm btn-success me-2">
                                 <i class="fa fa-download"></i>
                             </a>
@@ -3147,7 +3140,6 @@
 
                 function applyFilters() {
                     const nrlFbaFilter = $('#nrl-fba-filter').val();
-                    const suggSendFilter = $('#sugg-send-filter').val();
 
                     table.clearFilter(true);
 
@@ -3191,24 +3183,6 @@
                         table.addFilter('NRL_FBA', '=', nrlFbaFilter);
                     } else {
                         console.log('NRL FBA filter is "all" - not applying filter');
-                    }
-
-                    if (suggSendFilter !== 'all') {
-                        table.addFilter(function(data) {
-                            const value = getEffectiveSuggSend(data);
-                            if (isNaN(value)) return false;
-
-                            switch (suggSendFilter) {
-                                case 'positive':
-                                    return value > 0;
-                                case 'zero':
-                                    return value === 0;
-                                case 'negative':
-                                    return value < 0;
-                                default:
-                                    return true;
-                            }
-                        });
                     }
                 }
 
@@ -3520,16 +3494,10 @@
                     updateSuggSendBadge();
                 });
 
-                $('#sugg-send-filter').on('change', function() {
-                    applyFilters();
-                    updateSuggSendBadge();
-                });
-
                 // Reset All Filters button - shows ALL data
                 $('#reset-all-filters-btn').on('click', function() {
                     console.log('Reset All Filters clicked - showing ALL data');
                     $('#nrl-fba-filter').val('all');
-                    $('#sugg-send-filter').val('all');
                     $('#sku-search').val('');
                     skuSearch = '';
                     $('#parent-search').val('');
