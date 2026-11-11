@@ -251,7 +251,7 @@
         }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(5, minmax(130px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -266,6 +266,18 @@
             display: flex;
             flex-direction: column;
         }
+        #column-dropdown-menu .col-vis-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        #column-dropdown-menu .col-vis-toolbar .col-vis-search { flex: 1 1 200px; }
+        #column-dropdown-menu .col-vis-toolbar .col-vis-newname { flex: 0 1 170px; }
+        #column-dropdown-menu .col-vis-group-custom { background: #f3f0ff; border-color: #d9d0f5; }
+        #column-dropdown-menu .col-vis-group-tools { display: flex; gap: 4px; margin-bottom: 6px; }
+        #column-dropdown-menu .col-vis-group-tools .col-vis-group-search { flex: 1 1 auto; min-width: 0; font-size: 0.72rem; }
+        #column-dropdown-menu .col-vis-group-tools .btn { padding: 0 6px; line-height: 1.6; font-size: 0.7rem; }
+        #column-dropdown-menu .col-vis-group-results { border: 1px solid #d9d0f5; border-radius: 4px; background: #fff; margin-bottom: 6px; max-height: 150px; overflow-y: auto; }
+        #column-dropdown-menu .col-vis-result { display: flex; justify-content: space-between; gap: 6px; width: 100%; border: 0; background: none; text-align: left; padding: 3px 6px; font-size: 0.78rem; cursor: pointer; }
+        #column-dropdown-menu .col-vis-result:hover { background: #eef5ff; }
+        #column-dropdown-menu .col-vis-result small { color: #868e96; white-space: nowrap; }
+        #column-dropdown-menu .col-vis-noresult { padding: 4px 6px; font-size: 0.75rem; color: #868e96; }
         #column-dropdown-menu .col-vis-group.col-vis-drop-over {
             border-color: #0d6efd;
             background: #eef5ff;
@@ -7004,14 +7016,35 @@
              * Persists in channel_tabulator_column_settings (channel = amazon_tabulator).
              * Every column with a field is listed; none are removed.
              */
-            const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'discounts', 'ads', 'other'];
-            const COL_VIS_CATEGORY_LABELS = {
+            const COL_VIS_BASE_KEYS = ['basic', 'price', 'discounts', 'ads', 'other'];
+            const COL_VIS_BASE_LABELS = {
                 basic: 'Basic',
                 price: 'Price',
                 discounts: 'Discounts',
                 ads: 'Ads',
                 other: 'Other'
             };
+            // Your own headers (added with "+ Add header" in the Columns menu): [{ key: 'u_xxxx', label }]. Saved in this browser.
+            const AMAZON_COL_GROUP_STORAGE = 'amazon_tabulator_col_groups_v1';
+            function loadAmazonColGroups() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(AMAZON_COL_GROUP_STORAGE) || '[]');
+                    return (Array.isArray(parsed) ? parsed : []).filter(function(g) {
+                        return g && /^u_[a-z0-9]+$/.test(String(g.key || '')) && String(g.label || '').trim();
+                    }).map(function(g) { return { key: String(g.key), label: String(g.label).trim().slice(0, 30) }; });
+                } catch (e) { return []; }
+            }
+            function saveAmazonColGroups(list) {
+                try { localStorage.setItem(AMAZON_COL_GROUP_STORAGE, JSON.stringify(list || [])); } catch (e) { /* ignore */ }
+            }
+            /** Built-in headers first, then yours (read each time, so a new header is picked up at once). */
+            function amazonColVisKeys() { return COL_VIS_BASE_KEYS.concat(loadAmazonColGroups().map(function(g) { return g.key; })); }
+            function amazonColVisLabel(key) {
+                if (COL_VIS_BASE_LABELS[key]) return COL_VIS_BASE_LABELS[key];
+                const g = loadAmazonColGroups().filter(function(x) { return x.key === key; })[0];
+                return g ? g.label : key;
+            }
+            function amazonColVisIsCustom(key) { return COL_VIS_BASE_KEYS.indexOf(key) === -1; }
 
             function amazonColVisPlainTitle(def) {
                 const field = def && def.field ? String(def.field) : '';
@@ -7182,9 +7215,21 @@
 
                         const lists = {};
                         const groupEls = {};
-                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                        const visKeys = amazonColVisKeys();
+
+                        // Toolbar: quick search over every column + add your own header.
+                        const toolbarLi = document.createElement("li");
+                        toolbarLi.className = "col-vis-full";
+                        toolbarLi.innerHTML = '<div class="col-vis-toolbar">'
+                            + '<input type="search" class="form-control form-control-sm col-vis-search" placeholder="Quick search columns…" autocomplete="off">'
+                            + '<input type="text" class="form-control form-control-sm col-vis-newname" maxlength="30" placeholder="New header name" autocomplete="off">'
+                            + '<button type="button" class="btn btn-sm btn-primary col-vis-addgroup" title="Add a new header (column group)">+ Add header</button>'
+                            + '</div>';
+                        menu.appendChild(toolbarLi);
+
+                        visKeys.forEach(function(cat) {
                             const group = document.createElement("div");
-                            group.className = "col-vis-group";
+                            group.className = "col-vis-group" + (amazonColVisIsCustom(cat) ? " col-vis-group-custom" : "");
                             group.dataset.category = cat;
 
                             const titleEl = document.createElement("label");
@@ -7193,10 +7238,24 @@
                             groupCb.type = "checkbox";
                             groupCb.className = "col-vis-group-toggle";
                             groupCb.dataset.group = cat;
-                            groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
+                            groupCb.title = "Select / deselect all in " + amazonColVisLabel(cat);
                             titleEl.appendChild(groupCb);
-                            titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                            titleEl.appendChild(document.createTextNode(amazonColVisLabel(cat)));
                             group.appendChild(titleEl);
+
+                            if (amazonColVisIsCustom(cat)) {
+                                // Your header: rename / delete, and a search box that finds any column and adds it here.
+                                const tools = document.createElement("div");
+                                tools.className = "col-vis-group-tools";
+                                tools.innerHTML = '<input type="search" class="form-control form-control-sm col-vis-group-search" placeholder="Search &amp; add column…" autocomplete="off" data-category="' + cat + '">'
+                                    + '<button type="button" class="btn btn-sm btn-outline-secondary col-vis-rename" data-category="' + cat + '" title="Rename this header"><i class="fas fa-pen"></i></button>'
+                                    + '<button type="button" class="btn btn-sm btn-outline-danger col-vis-delgroup" data-category="' + cat + '" title="Delete this header (its columns go back to their normal header)"><i class="fas fa-trash-alt"></i></button>';
+                                group.appendChild(tools);
+                                const results = document.createElement("div");
+                                results.className = "col-vis-group-results";
+                                results.style.display = "none";
+                                group.appendChild(results);
+                            }
 
                             const list = document.createElement("ul");
                             list.className = "col-vis-group-list";
@@ -7215,7 +7274,7 @@
 
                             const title = amazonColVisPlainTitle(def);
                             let cat = catOverrides[field];
-                            if (COL_VIS_CATEGORY_KEYS.indexOf(cat) === -1) {
+                            if (visKeys.indexOf(cat) === -1) {
                                 cat = classifyAmazonColumn(field, title);
                             }
                             if (amazonSkipColVisField(field)) return;
@@ -7245,7 +7304,7 @@
                             lists[cat].appendChild(li);
                         });
 
-                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                        visKeys.forEach(function(cat) {
                             syncAmazonGroupHeaderCheckbox(groupEls[cat]);
                         });
 
@@ -7888,6 +7947,129 @@
                     e.stopPropagation();
                 }
             });
+
+            // ---- Columns menu: your own headers + quick search ----
+            (function() {
+                const menuEl = document.getElementById("column-dropdown-menu");
+                if (!menuEl) return;
+
+                /** Put a column under another header (same as dragging it there) and remember it. */
+                function moveColToGroup(field, cat) {
+                    const li = menuEl.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]');
+                    const group = menuEl.querySelector('.col-vis-group[data-category="' + CSS.escape(cat) + '"]');
+                    if (!li || !group) return;
+                    const fromGroup = li.closest('.col-vis-group');
+                    group.querySelector('.col-vis-group-list').appendChild(li);
+                    li.dataset.group = cat;
+                    const cb = li.querySelector('input[type="checkbox"]');
+                    if (cb) cb.dataset.group = cat;
+                    const cats = loadAmazonColCats();
+                    cats[field] = cat;
+                    saveAmazonColCats(cats);
+                    syncAmazonGroupHeaderCheckbox(fromGroup);
+                    syncAmazonGroupHeaderCheckbox(group);
+                }
+                function addHeaderFromToolbar() {
+                    const input = menuEl.querySelector('.col-vis-newname');
+                    const name = input ? input.value.trim().slice(0, 30) : '';
+                    if (!name) { if (input) input.focus(); return; }
+                    const list = loadAmazonColGroups();
+                    const dup = list.concat(COL_VIS_BASE_KEYS.map(function(k) { return { label: COL_VIS_BASE_LABELS[k] }; }))
+                        .some(function(g) { return String(g.label).toLowerCase() === name.toLowerCase(); });
+                    if (dup) { alert('A header named "' + name + '" already exists.'); return; }
+                    list.push({ key: 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), label: name });
+                    saveAmazonColGroups(list);
+                    buildColumnDropdown();
+                }
+                function paintGroupResults(searchEl) {
+                    const group = searchEl.closest('.col-vis-group');
+                    const box = group ? group.querySelector('.col-vis-group-results') : null;
+                    if (!box) return;
+                    const q = searchEl.value.trim().toLowerCase();
+                    if (!q) { box.style.display = 'none'; box.innerHTML = ''; return; }
+                    const cat = group.dataset.category;
+                    const hits = [];
+                    menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
+                        if (li.dataset.group === cat) return;
+                        const text = (li.textContent || '').trim();
+                        if (text.toLowerCase().indexOf(q) !== -1) hits.push({ field: li.dataset.field, text: text, from: amazonColVisLabel(li.dataset.group) });
+                    });
+                    box.innerHTML = '';
+                    hits.slice(0, 12).forEach(function(h) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'col-vis-result';
+                        b.dataset.field = h.field;
+                        b.dataset.category = cat;
+                        b.innerHTML = '<span></span><small></small>';
+                        b.firstChild.textContent = h.text;
+                        b.lastChild.textContent = h.from;
+                        box.appendChild(b);
+                    });
+                    if (!hits.length) box.innerHTML = '<div class="col-vis-noresult">No column found</div>';
+                    box.style.display = '';
+                }
+
+                menuEl.addEventListener('input', function(e) {
+                    const t = e.target;
+                    if (t.classList && t.classList.contains('col-vis-search')) {
+                        // Quick search: hide the columns that do not match, in every header.
+                        const q = t.value.trim().toLowerCase();
+                        menuEl.querySelectorAll('.col-vis-item').forEach(function(li) {
+                            li.style.display = (!q || (li.textContent || '').toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+                        });
+                    } else if (t.classList && t.classList.contains('col-vis-group-search')) {
+                        paintGroupResults(t);
+                    }
+                });
+                menuEl.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('col-vis-newname')) {
+                        e.preventDefault();
+                        addHeaderFromToolbar();
+                    }
+                });
+                menuEl.addEventListener('click', function(e) {
+                    const addBtn = e.target.closest('.col-vis-addgroup');
+                    if (addBtn) { e.preventDefault(); addHeaderFromToolbar(); return; }
+
+                    const resBtn = e.target.closest('.col-vis-result');
+                    if (resBtn) {
+                        e.preventDefault();
+                        moveColToGroup(resBtn.dataset.field, resBtn.dataset.category);
+                        const group = resBtn.closest('.col-vis-group');
+                        const search = group ? group.querySelector('.col-vis-group-search') : null;
+                        if (search) { search.value = ''; paintGroupResults(search); }
+                        return;
+                    }
+
+                    const renBtn = e.target.closest('.col-vis-rename');
+                    if (renBtn) {
+                        e.preventDefault();
+                        const key = renBtn.dataset.category;
+                        const name = prompt('Header name', amazonColVisLabel(key));
+                        if (name === null) return;
+                        const clean = name.trim().slice(0, 30);
+                        if (!clean) return;
+                        const list = loadAmazonColGroups();
+                        list.forEach(function(g) { if (g.key === key) g.label = clean; });
+                        saveAmazonColGroups(list);
+                        buildColumnDropdown();
+                        return;
+                    }
+
+                    const delBtn = e.target.closest('.col-vis-delgroup');
+                    if (delBtn) {
+                        e.preventDefault();
+                        const key = delBtn.dataset.category;
+                        if (!confirm('Delete the header "' + amazonColVisLabel(key) + '"? Its columns go back to their normal header (they stay as they are in the table).')) return;
+                        saveAmazonColGroups(loadAmazonColGroups().filter(function(g) { return g.key !== key; }));
+                        const cats = loadAmazonColCats();
+                        Object.keys(cats).forEach(function(f) { if (cats[f] === key) delete cats[f]; });
+                        saveAmazonColCats(cats);
+                        buildColumnDropdown();
+                    }
+                });
+            })();
 
             // Copy SKU to clipboard
             document.addEventListener("click", function(e) {
