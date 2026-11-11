@@ -397,6 +397,12 @@
                             </span>
                             <input type="text" id="sku-search" class="form-control form-control-sm me-2"
                                 style="width: 200px; display: inline-block;" placeholder="Search SKU or FBA SKU...">
+                            <input type="text" id="parent-search" class="form-control form-control-sm me-2"
+                                style="width: 180px; display: inline-block;" placeholder="Search Parent...">
+                            <input type="text" id="send-qty-rule" class="form-control form-control-sm me-2"
+                                style="width: 230px; display: inline-block;" value="Dil &lt; 50" spellcheck="false" autocomplete="off"
+                                placeholder="Send Qty rule, e.g. Dil < 50"
+                                title="Send Qty is auto-filled with Qty CTN when this rule is true. Use column names, numbers, < <= > >= = !=, and / or, ( ). Example: Dil < 50 and Main INV > 0. Press Enter to apply.">
                             <select id="nrl-fba-filter" class="form-select form-select-sm me-2"
                                 style="width: auto; display: inline-block;">
                                 <option value="all">All Types</option>
@@ -996,6 +1002,153 @@
                     $('.modal-backdrop').css('z-index', '1040');
                 });
 
+                // ===== Send Qty: auto-filled with Qty CTN when the rule typed in the toolbar is true =====
+                // Rule examples: "Dil < 50"   "Dil < 30 and Main INV > 0"   "Dil < 50 or Qty CTN >= 100"
+                // Column names are the header names or field names (case / spaces / % ignored). A saved Send Qty value always wins.
+                const FBA_SEND_QTY_RULE_KEY = 'fba_send_qty_rule_v1';
+                const FBA_SEND_QTY_DEFAULT_RULE = 'Dil < 50';
+                let fbaSendQtyRuleText = '';
+                let fbaSendQtyRuleFn = null;
+
+                function fbaRuleKey(s) { return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+                function fbaRuleNum(v) {
+                    if (v === null || v === undefined || v === '') return 0;
+                    if (v === true) return 1;
+                    const n = parseFloat(String(v).replace(/[%,\s]/g, ''));
+                    return isNaN(n) ? 0 : n;
+                }
+                function fbaRuleColumnMap() {
+                    const map = {};
+                    table.getColumns().forEach(function(col) {
+                        const def = col.getDefinition();
+                        if (!def.field) return;
+                        map[fbaRuleKey(def.field)] = def.field;
+                        const title = String(def.title == null ? '' : def.title).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (title && !map[fbaRuleKey(title)]) map[fbaRuleKey(title)] = def.field;
+                    });
+                    return map;
+                }
+                /** Turn the typed rule into a function(rowData) -> boolean. Throws Error(message) when the rule is not understood. */
+                function fbaCompileRule(text) {
+                    const src = String(text || '').trim();
+                    if (!src) throw new Error('Rule is empty');
+                    const colMap = fbaRuleColumnMap();
+                    const re = /\s*(\(|\)|<=|>=|==|!=|=|<|>|&&|\|\||!|-?[A-Za-z0-9_.%\/]+)/y;
+                    const tokens = [];
+                    let pos = 0, m;
+                    while (pos < src.length) {
+                        re.lastIndex = pos;
+                        m = re.exec(src);
+                        if (!m) {
+                            if (/^\s*$/.test(src.slice(pos))) break;
+                            throw new Error('Unexpected "' + src.slice(pos).trim().charAt(0) + '"');
+                        }
+                        tokens.push(m[1]);
+                        pos = re.lastIndex;
+                    }
+                    let i = 0;
+                    const lower = function(t) { return t === undefined ? '' : String(t).toLowerCase(); };
+                    const isWord = function(t) { return t !== undefined && /^-?[A-Za-z0-9_.%\/]+$/.test(t) && ['and', 'or', 'not'].indexOf(lower(t)) === -1; };
+
+                    function parseValue() {
+                        const t = tokens[i];
+                        if (t === '(') {
+                            i++;
+                            const inner = parseOr();
+                            if (tokens[i] !== ')') throw new Error('Missing )');
+                            i++;
+                            return { type: 'bool', fn: inner };
+                        }
+                        if (!isWord(t)) throw new Error(t === undefined ? 'Rule ends too early' : 'Unexpected "' + t + '"');
+                        if (/^-?\d+(\.\d+)?%?$/.test(t)) {
+                            i++;
+                            const n = parseFloat(t);
+                            return { type: 'num', fn: function() { return n; } };
+                        }
+                        const words = [];
+                        while (isWord(tokens[i]) && !/^-?\d+(\.\d+)?%?$/.test(tokens[i])) { words.push(tokens[i]); i++; }
+                        const name = words.join(' ');
+                        const field = colMap[fbaRuleKey(name)];
+                        if (!field) throw new Error('Unknown column "' + name + '"');
+                        return { type: 'num', fn: function(row) { return fbaRuleNum(row[field]); } };
+                    }
+                    function parseCmp() {
+                        const left = parseValue();
+                        const op = tokens[i];
+                        if (['<', '<=', '>', '>=', '=', '==', '!='].indexOf(op) !== -1) {
+                            i++;
+                            const right = parseValue();
+                            return function(row) {
+                                const a = left.fn(row), b = right.fn(row);
+                                switch (op) {
+                                    case '<': return a < b;
+                                    case '<=': return a <= b;
+                                    case '>': return a > b;
+                                    case '>=': return a >= b;
+                                    case '!=': return a !== b;
+                                    default: return a === b;
+                                }
+                            };
+                        }
+                        return function(row) { return !!left.fn(row); };
+                    }
+                    function parseNot() {
+                        if (lower(tokens[i]) === 'not' || tokens[i] === '!') { i++; const f = parseNot(); return function(row) { return !f(row); }; }
+                        return parseCmp();
+                    }
+                    function parseAnd() {
+                        let f = parseNot();
+                        while (lower(tokens[i]) === 'and' || tokens[i] === '&&') {
+                            i++;
+                            const a = f, b = parseNot();
+                            f = function(row) { return a(row) && b(row); };
+                        }
+                        return f;
+                    }
+                    function parseOr() {
+                        let f = parseAnd();
+                        while (lower(tokens[i]) === 'or' || tokens[i] === '||') {
+                            i++;
+                            const a = f, b = parseAnd();
+                            f = function(row) { return a(row) || b(row); };
+                        }
+                        return f;
+                    }
+                    const fn = parseOr();
+                    if (i < tokens.length) throw new Error('Unexpected "' + tokens[i] + '"');
+                    return fn;
+                }
+                function fbaSendQtyEnsureRule() {
+                    if (fbaSendQtyRuleFn) return true;
+                    try {
+                        let text = FBA_SEND_QTY_DEFAULT_RULE;
+                        try { text = localStorage.getItem(FBA_SEND_QTY_RULE_KEY) || text; } catch (e) { /* ignore */ }
+                        try {
+                            fbaSendQtyRuleFn = fbaCompileRule(text);
+                            fbaSendQtyRuleText = text;
+                        } catch (e) {
+                            fbaSendQtyRuleFn = fbaCompileRule(FBA_SEND_QTY_DEFAULT_RULE);
+                            fbaSendQtyRuleText = FBA_SEND_QTY_DEFAULT_RULE;
+                        }
+                        const input = document.getElementById('send-qty-rule');
+                        if (input) input.value = fbaSendQtyRuleText;
+                        return true;
+                    } catch (e) {
+                        return false;      // table is not ready yet
+                    }
+                }
+                /** { value, manual } shown in Send Qty: a saved value wins, else Qty CTN when the rule is true. null = blank. */
+                function fbaSendQtyEffective(data) {
+                    const saved = data.Send_Qty;
+                    if (saved !== null && saved !== undefined && String(saved).trim() !== '') return { value: saved, manual: true };
+                    if (!fbaSendQtyEnsureRule()) return null;
+                    const q = data.Quantity_in_each_box;
+                    if (q === null || q === undefined || String(q).trim() === '') return null;
+                    let ok = false;
+                    try { ok = !!fbaSendQtyRuleFn(data); } catch (e) { ok = false; }
+                    return ok ? { value: q, manual: false } : null;
+                }
+
                 // L / W / H CTN colour: below the limit green, the limit and above red.
                 // L CTN limit 36; W CTN and H CTN limit 25.
                 function ctnDimensionFormatter(limit) {
@@ -1222,28 +1375,37 @@
                             field: "Send_Qty",
                             hozAlign: "center",
                             cssClass: "send-qty-cell",
-                            editor: "input",
-                            editorParams: function(cell) {
-                                const ctnQty = cell.getRow().getData().CTN_QTY;
-                                return {
-                                    elementAttributes: {
-                                        placeholder: (ctnQty !== null && ctnQty !== undefined && ctnQty !== '') ? String(ctnQty) : ''
-                                    }
+                            // Double-click opens the editor with the value that is shown (saved value, or the auto-filled Qty CTN).
+                            editor: function(cell, onRendered, success, cancel) {
+                                const eff = fbaSendQtyEffective(cell.getRow().getData());
+                                const initial = eff ? String(eff.value) : '';
+                                const input = document.createElement('input');
+                                input.type = 'text';
+                                input.value = initial;
+                                input.style.cssText = 'width:100%;box-sizing:border-box;padding:3px;text-align:center;';
+                                let done = false;
+                                const commit = function() {
+                                    if (done) return;
+                                    done = true;
+                                    const v = input.value.trim();
+                                    if (v === initial) cancel(); else success(v);
                                 };
+                                input.addEventListener('blur', commit);
+                                input.addEventListener('keydown', function(e) {
+                                    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                                    else if (e.key === 'Escape') { e.preventDefault(); if (!done) { done = true; cancel(); } }
+                                });
+                                onRendered(function() { input.focus(); input.select(); });
+                                return input;
                             },
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
-                                const value = cell.getValue();
-                                if (value !== null && value !== undefined && value !== '') {
-                                    return `<span style="color:#000; font-weight:600;">${value}</span>`;
-                                }
-                                // Prompt the CTN qty as a suggestion when empty
-                                const ctnQty = rowData.CTN_QTY;
-                                if (ctnQty !== null && ctnQty !== undefined && ctnQty !== '') {
-                                    return `<span style="color:#7a5c00; font-style:italic;">${ctnQty}</span>`;
-                                }
-                                return '';
+                                const eff = fbaSendQtyEffective(rowData);
+                                if (!eff) return '';
+                                const esc = String(eff.value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                const tip = eff.manual ? '' : ` title="Auto-filled from Qty CTN (rule: ${String(fbaSendQtyRuleText).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}). Double-click to edit"`;
+                                return `<span${tip} style="color:#000; font-weight:600;">${esc}</span>`;
                             }
                         },
 
@@ -2877,6 +3039,7 @@
 
                 // INV 0 and More than 0 Filter
                 let skuSearch = '';
+                let parentSearch = '';
 
                 function applyFilters() {
                     const nrlFbaFilter = $('#nrl-fba-filter').val();
@@ -2890,6 +3053,13 @@
                             const sku = (data.SKU || '').toUpperCase();
                             const fbaSku = (data.FBA_SKU || '').toUpperCase();
                             return sku.includes(skuSearch) || fbaSku.includes(skuSearch);
+                        });
+                    }
+
+                    // Parent Search Filter (matches the Parent of each row)
+                    if (parentSearch) {
+                        table.addFilter(function(data) {
+                            return String(data.Parent || '').toUpperCase().includes(parentSearch);
                         });
                     }
 
@@ -2993,6 +3163,35 @@
                     updateSuggSendBadge();
                 });
 
+                $('#parent-search').on('input', function() {
+                    parentSearch = $(this).val().trim().toUpperCase();
+                    applyFilters();
+                    updateSuggSendBadge();
+                });
+
+                // Send Qty rule: typed in the toolbar, applied on Enter / when leaving the box
+                function applySendQtyRuleFromInput() {
+                    const input = document.getElementById('send-qty-rule');
+                    if (!input) return;
+                    const text = input.value.trim();
+                    if (!text || text === fbaSendQtyRuleText) { if (!text) input.value = fbaSendQtyRuleText; input.classList.remove('is-invalid'); return; }
+                    try {
+                        const fn = fbaCompileRule(text);
+                        fbaSendQtyRuleFn = fn;
+                        fbaSendQtyRuleText = text;
+                        try { localStorage.setItem(FBA_SEND_QTY_RULE_KEY, text); } catch (e) { /* ignore */ }
+                        input.classList.remove('is-invalid');
+                        table.redraw(true);
+                        showToast('Send Qty rule applied: ' + text.replace(/</g, '&lt;'), 'success');
+                    } catch (err) {
+                        input.classList.add('is-invalid');
+                        showToast('Send Qty rule not applied: ' + String(err.message).replace(/</g, '&lt;'), 'error');
+                    }
+                }
+                $('#send-qty-rule').on('keydown', function(e) {
+                    if (e.key === 'Enter') { e.preventDefault(); applySendQtyRuleFromInput(); }
+                }).on('change', applySendQtyRuleFromInput).on('input', function() { this.classList.remove('is-invalid'); });
+
                 $('#nrl-fba-filter').on('change', function() {
                     const selectedValue = $(this).val();
                     console.log('NRL FBA Filter changed to:', selectedValue);
@@ -3012,6 +3211,8 @@
                     $('#sugg-send-filter').val('all');
                     $('#sku-search').val('');
                     skuSearch = '';
+                    $('#parent-search').val('');
+                    parentSearch = '';
                     applyFilters();
                     updateSuggSendBadge();
                     showToast('All filters reset - showing all data', 'info');
