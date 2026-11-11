@@ -1000,6 +1000,7 @@
                     ajaxURL: "/fba-data-json",
                     layout: "fitDataStretch",
                     layoutColumnsOnNewData: true,
+                    movableColumns: true,
                     editTriggerEvent: "dblclick",
                     pagination: true,
                     paginationSize: 50,
@@ -2220,6 +2221,14 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
+                            formatter: function(cell) {
+                                const raw = cell.getValue();
+                                const text = (raw === null || raw === undefined) ? '' : String(raw);
+                                const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                // Gross weight above 50 shows in red
+                                if (parseFloat(text) > 50) return `<span style="color:#dc3545;font-weight:700;">${esc}</span>`;
+                                return esc;
+                            },
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -3622,6 +3631,23 @@
                         })
                         .catch(function(err) { console.error('Error loading column order:', err); });
                 }
+
+                // A column dragged in the table header: save the new order and let the Columns box follow it.
+                table.on('columnMoved', function() {
+                    if (fbaApplyingColumnOrder) return;
+                    const tableOrder = currentFbaColumnOrder();
+                    const trank = function(f) { const i = tableOrder.indexOf(f); return i < 0 ? 1e6 : i; };
+                    const ord = loadFbaColOrder();
+                    Object.keys(ord).forEach(function(cat) {
+                        if (!Array.isArray(ord[cat])) return;
+                        ord[cat] = ord[cat].map(function(f, i) { return { f: f, i: i }; })
+                            .sort(function(a, b) { return (trank(a.f) - trank(b.f)) || (a.i - b.i); })
+                            .map(function(o) { return o.f; });
+                    });
+                    fbaColJsonSave(FBA_COL_ORDER_STORAGE, ord);
+                    scheduleFbaColumnOrderSave();
+                    buildColumnDropdown();
+                });
 
                 // Apply saved visibility + order, then build the Columns panel
                 setTimeout(function() {

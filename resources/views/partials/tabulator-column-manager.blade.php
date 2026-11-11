@@ -1022,6 +1022,17 @@ const tcm = (function () {
     if (typeof table !== 'undefined' && table && typeof table.on === 'function') {
         table.on('columnMoved', function () {
             if (applyingOrder) return;
+            // A column dragged in the table header: the panel follows (saved order inside each header = table order).
+            const tableOrder = currentOrder();
+            const trank = function (f) { const i = tableOrder.indexOf(f); return i < 0 ? 1e6 : i; };
+            const ord = loadOrder();
+            Object.keys(ord).forEach(function (cat) {
+                if (!Array.isArray(ord[cat])) return;
+                ord[cat] = ord[cat].map(function (f, i) { return { f: f, i: i }; })
+                    .sort(function (a, b) { return (trank(a.f) - trank(b.f)) || (a.i - b.i); })
+                    .map(function (o) { return o.f; });
+            });
+            save('order_v1', ord);
             scheduleOrderSave();
             build();
         });
