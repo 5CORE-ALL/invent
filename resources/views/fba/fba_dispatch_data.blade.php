@@ -619,16 +619,16 @@
     </div>
 
     <!-- CTN Details Modal -->
-    <div class="modal fade" id="ctnDetailsModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal fade" id="ctnColumnsModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">CTN Details for <span id="ctnDetailsSku"></span></h5>
+                    <h5 class="modal-title">CTN Details for <span id="ctnColumnsSku"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <table class="table table-sm table-bordered mb-0">
-                        <tbody id="ctnDetailsBody"></tbody>
+                        <tbody id="ctnColumnsBody"></tbody>
                     </table>
                 </div>
                 <div class="modal-footer">
@@ -2216,7 +2216,7 @@
                             cellClick: function(e, cell) {
                                 if (!e.target.closest('.ctn-dot')) return;
                                 e.stopPropagation();
-                                openCtnDetailsModal(cell.getRow());
+                                openCtnColumnsModal(cell.getRow());
                                 // Make sure the input editor did not open underneath the modal
                                 setTimeout(function() { try { cell.cancelEdit(); } catch (err) {} }, 0);
                             },
@@ -2342,7 +2342,7 @@
                             cellClick: function(e, cell) {
                                 if (!e.target.closest('.ctn-dot')) return;
                                 e.stopPropagation();
-                                openCtnDetailsModal(cell.getRow());
+                                openCtnColumnsModal(cell.getRow());
                                 // Make sure the input editor did not open underneath the modal
                                 setTimeout(function() { try { cell.cancelEdit(); } catch (err) {} }, 0);
                             },
@@ -4363,7 +4363,7 @@
             }
 
             // CTN details modal: shows L / W / H / Qty / GW CTN and CTN cost for the clicked row (read-only)
-            function openCtnDetailsModal(row) {
+            function openCtnColumnsModal(row) {
                 const data = row.getData();
                 const fields = [
                     ['L CTN', data.Length],
@@ -4375,14 +4375,14 @@
                 ];
                 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-                $('#ctnDetailsSku').text(data.FBA_SKU || data.SKU || '');
-                const body = $('#ctnDetailsBody').empty();
+                $('#ctnColumnsSku').text(data.FBA_SKU || data.SKU || '');
+                const body = $('#ctnColumnsBody').empty();
                 fields.forEach(function(f) {
                     const v = (f[1] === null || f[1] === undefined || String(f[1]).trim() === '') ? '-' : f[1];
                     body.append(`<tr><th style="width:45%;background:#f8f9fa;">${f[0]}</th><td class="fw-semibold">${esc(v)}</td></tr>`);
                 });
 
-                const modal = $('#ctnDetailsModal');
+                const modal = $('#ctnColumnsModal');
                 modal.appendTo('body');
                 modal.css('z-index', '1060');
                 modal.modal('show');
