@@ -87,6 +87,9 @@
         .arp-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid #e6e8f0; border-radius: 10px; }
         .arp-table thead th { position: sticky; top: 0; z-index: 2; background: #eef0fb; color: #1e293b; font-size: 12px; text-transform: uppercase;
             letter-spacing: .4px; border-bottom: 1px solid #dfe3f1; }
+        .arp-table th.arp-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+        .arp-table th.arp-sortable:hover { background: #e3e7f7; }
+        .arp-table th.arp-sortable .arp-sort-ind { display: inline-block; min-width: 14px; margin-left: 4px; color: #4f46e5; font-size: 11px; }
         .arp-table tbody tr:hover { background: #f8f9ff; }
         .arp-table td { font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
         .arp-table .form-control { border-radius: 8px; height: 28px; }
@@ -214,12 +217,12 @@
                             <table class="table table-sm align-middle mb-0 arp-table">
                                 <thead>
                                     <tr>
-                                        <th>Category</th>
-                                        <th class="text-center" style="width: 80px;">{{ $pmtUnit }}s</th>
-                                        <th class="text-center" style="width: 110px;" title="Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. When there is none, the category S BID is shown in grey italics. Read only.">Promoted listings ad rate</th>
-                                        <th class="text-center" style="width: 110px;" title="Live C BID of the category: the median current eBay bid of its listings (hover a value for the range). Read only.">CBID</th>
-                                        <th style="width: 140px;">Highest (%)</th>
-                                        <th style="width: 140px;">Lowest (%)</th>
+                                        <th class="arp-sortable" data-sort="category" title="Click to sort">Category<span class="arp-sort-ind"></span></th>
+                                        <th class="text-center arp-sortable" data-sort="count" style="width: 80px;" title="Click to sort">{{ $pmtUnit }}s<span class="arp-sort-ind"></span></th>
+                                        <th class="text-center arp-sortable" data-sort="yours" style="width: 110px;" title="Click to sort. Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. When there is none, the category S BID is shown in grey italics. Read only.">Promoted listings ad rate<span class="arp-sort-ind"></span></th>
+                                        <th class="text-center arp-sortable" data-sort="cbid" style="width: 110px;" title="Click to sort. Live C BID of the category: the median current eBay bid of its listings (hover a value for the range). Read only.">CBID<span class="arp-sort-ind"></span></th>
+                                        <th class="arp-sortable" data-sort="high" style="width: 140px;" title="Click to sort">Highest (%)<span class="arp-sort-ind"></span></th>
+                                        <th class="arp-sortable" data-sort="low" style="width: 140px;" title="Click to sort">Lowest (%)<span class="arp-sort-ind"></span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="ads-rule-pmt-body"></tbody>
@@ -811,6 +814,7 @@
                             paintYoursCell($(this), benchFor(b.map, $(this).attr('data-category')), sbidsNow);
                         });
                         markBenchMatches(); // also saved values that equal the benchmark
+                        if (arpSort.dir !== 0) applyArpSort(); // Promoted listings ad rate / Highest / Lowest just changed
                         updateSummary();
                         if (b.failed) $status.text('Could not load {{ $pmtBenchPage }} data.');
                         else if (!b.column) $status.text('No "Promoted Listings ads rate" column found in {{ $pmtBenchPage }} (upload the {{ $pmtLabel }} LQS report in {{ $pmtExcelPath }}).');
@@ -909,6 +913,53 @@
                     return out;
                 }
 
+                // ---- Sorting: click a header (A-Z / low-high, then Z-A / high-low, then back to the default order) ----
+                let arpSort = { key: null, dir: 0 }; // dir: 1 = ascending, -1 = descending, 0 = default (category A-Z)
+                function arpSortValue($tr, key) {
+                    const cells = $tr.children();
+                    const numOf = function(txt) {
+                        const n = parseFloat(String(txt == null ? '' : txt).replace(/[%,\s]/g, ''));
+                        return isFinite(n) ? n : null;
+                    };
+                    if (key === 'category') return String($tr.attr('data-category') || '').toLowerCase();
+                    if (key === 'count') return numOf(cells.eq(1).text());
+                    if (key === 'yours') return numOf(cells.eq(2).text());
+                    if (key === 'cbid') return numOf(cells.eq(3).text());
+                    if (key === 'high') return numOf(cells.eq(4).find('input').val());
+                    if (key === 'low') return numOf(cells.eq(5).find('input').val());
+                    return null;
+                }
+                function applyArpSort() {
+                    const $body = $('#ads-rule-pmt-body');
+                    const rows = $body.children('tr[data-category]').get();
+                    const key = arpSort.dir === 0 ? 'category' : arpSort.key;
+                    const dir = arpSort.dir === 0 ? 1 : arpSort.dir;
+                    const decorated = rows.map(function(tr, i) {
+                        return { tr: tr, v: arpSortValue($(tr), key), cat: String($(tr).attr('data-category') || '').toLowerCase(), i: i };
+                    });
+                    decorated.sort(function(a, b) {
+                        const aBlank = a.v === null || a.v === '';
+                        const bBlank = b.v === null || b.v === '';
+                        if (aBlank !== bBlank) return aBlank ? 1 : -1; // blanks always last, in both directions
+                        let c = 0;
+                        if (!aBlank) c = typeof a.v === 'string' ? a.v.localeCompare(b.v) : a.v - b.v;
+                        if (c !== 0) return c * dir;
+                        return a.cat.localeCompare(b.cat); // ties: category A-Z
+                    });
+                    decorated.forEach(function(d) { $body.append(d.tr); });
+                    $('#ads-rule-pmt-body').closest('table').find('th.arp-sortable').each(function() {
+                        const on = arpSort.dir !== 0 && $(this).attr('data-sort') === arpSort.key;
+                        $(this).find('.arp-sort-ind').text(on ? (arpSort.dir === 1 ? '\u25B2' : '\u25BC') : '');
+                    });
+                }
+                $(document).on('click', '#adsRulePmtModal th.arp-sortable', function() {
+                    const key = $(this).attr('data-sort');
+                    if (arpSort.key !== key) arpSort = { key: key, dir: 1 };
+                    else if (arpSort.dir === 1) arpSort.dir = -1;
+                    else arpSort = { key: null, dir: 0 };
+                    applyArpSort();
+                });
+
                 function renderRows() {
                     const $body = $('#ads-rule-pmt-body').empty();
                     const rows = collectCategories();
@@ -940,6 +991,7 @@
                     if (!rows.length) {
                         $body.append('<tr><td colspan="6" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
+                    applyArpSort();
                     updateSummary();
                     renderRuleCounts();
                     $('#ads-rule-pmt-search').val('');
