@@ -1977,47 +1977,73 @@ class FacebookAllAdsSheetController extends Controller
             (array) $cids
         ), fn ($v) => $v !== ''));
 
-        $yesterday = now()->subDay()->toDateString();
-        $from      = now()->subDays(7)->toDateString();
+        // "Yesterday" is the calendar day before today in PDT/PST. config('app.timezone')
+        // is America/Los_Angeles, but pin it here so a config change can't shift the day.
+        $tz        = 'America/Los_Angeles';
+        $yesterday = now($tz)->subDay()->toDateString();
+        $from      = now($tz)->subDays(7)->toDateString();   // 7 days ending yesterday
 
-        $q = DB::table('facebook_campaign_metric_snapshots')
+        // The snapshot table stores the sheet's *rolling L30* values stamped with the
+        // date the sheet was opened, so it can NOT be used for a single day's numbers
+        // (it made "Yesterday" ≈ the whole L30 total). Real per-day figures live in
+        // meta_insights_daily (one row per campaign per day, Meta account day = PDT).
+        $perDay = [];   // date => [impr, clk, spend, sales, sold, sbgt]
+        $blank  = ['impr' => 0.0, 'clk' => 0.0, 'spend' => 0.0, 'sales' => 0.0, 'sold' => 0.0, 'sbgt' => 0.0];
+
+        if (Schema::hasTable('meta_insights_daily') && Schema::hasTable('meta_campaigns')) {
+            $ins = DB::table('meta_insights_daily as mid')
+                ->join('meta_campaigns as mc', function ($j) {
+                    $j->on('mc.id', '=', 'mid.entity_id')->where('mid.entity_type', 'campaign');
+                })
+                ->whereBetween('mid.date_start', [$from, $yesterday])
+                ->where('mid.breakdown_hash', md5(json_encode([])));
+            if (! empty($cids)) {
+                $ins->whereIn('mc.meta_id', $cids);
+            }
+            $insRows = $ins->groupBy('mid.date_start')
+                ->selectRaw('mid.date_start AS d,
+                    SUM(mid.impressions) AS impr, SUM(mid.clicks) AS clk, SUM(mid.spend) AS spend,
+                    SUM(mid.action_values) AS sales, SUM(mid.purchases) AS sold')
+                ->get();
+            foreach ($insRows as $r) {
+                $d = substr((string) $r->d, 0, 10);
+                $perDay[$d] = array_merge($blank, [
+                    'impr'  => (float) $r->impr,
+                    'clk'   => (float) $r->clk,
+                    'spend' => (float) $r->spend,
+                    'sales' => (float) $r->sales,
+                    'sold'  => (float) $r->sold,
+                ]);
+            }
+        }
+
+        // Daily budget (Sbgt) isn't in insights; it is a per-day level, so the
+        // snapshot value is the right source for it.
+        $sq = DB::table('facebook_campaign_metric_snapshots')
             ->whereBetween('snapshot_date', [$from, $yesterday]);
         if (! empty($cids)) {
-            $q->whereIn('campaign_id', $cids);
+            $sq->whereIn('campaign_id', $cids);
         }
-        $rows = $q->groupBy('snapshot_date')
-            ->orderBy('snapshot_date')
-            ->selectRaw('snapshot_date,
-                SUM(impr) AS impr, SUM(clk) AS clk, SUM(spend) AS spend,
-                SUM(sales) AS sales, SUM(sold) AS sold, SUM(sbgt) AS sbgt')
-            ->get();
+        foreach ($sq->groupBy('snapshot_date')->selectRaw('snapshot_date, SUM(sbgt) AS sbgt')->get() as $r) {
+            $d = substr((string) $r->snapshot_date, 0, 10);
+            if (isset($perDay[$d])) {
+                $perDay[$d]['sbgt'] = (float) $r->sbgt;
+            }
+        }
 
-        $zero = ['impr' => 0.0, 'clk' => 0.0, 'spend' => 0.0, 'sales' => 0.0, 'sold' => 0.0, 'sbgt' => 0.0];
-        $y  = null;
-        $l7 = $zero;
-        foreach ($rows as $r) {
-            $vals = [
-                'impr'  => (float) $r->impr,
-                'clk'   => (float) $r->clk,
-                'spend' => (float) $r->spend,
-                'sales' => (float) $r->sales,
-                'sold'  => (float) $r->sold,
-                'sbgt'  => (float) $r->sbgt,
-            ];
+        $l7 = $blank;
+        foreach ($perDay as $vals) {
             foreach ($vals as $k => $v) {
                 $l7[$k] += $v;
-            }
-            if ($r->snapshot_date === $yesterday) {
-                $y = $vals;
             }
         }
 
         return response()->json([
             'success'        => true,
             'yesterday_date' => $yesterday,
-            'yesterday'      => $y,          // null when no snapshot exists for yesterday
-            'l7'             => $rows->isEmpty() ? null : $l7,
-            'l7_days'        => $rows->count(),
+            'yesterday'      => $perDay[$yesterday] ?? null,   // null when no insights for yesterday
+            'l7'             => $perDay ? $l7 : null,
+            'l7_days'        => count($perDay),
         ]);
     }
 

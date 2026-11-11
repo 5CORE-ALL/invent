@@ -122,8 +122,6 @@
         .faas-stat-badge--sales { background: #16a34a; }   /* green   */
         .faas-stat-badge--sold  { background: #8b5cf6; }   /* purple  */
         .faas-stat-badge--acos  { background: #ea580c; }   /* orange  */
-        .faas-stat-badge--tcos  { background: #7c3aed; }   /* violet — matches /advertisement-master */
-
         /* ── Summary cards: Yesterday / L30 / Projected (same look as the Amazon / Google Shopping ads pages) ── */
         .faas-cards {
             display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.5rem;
@@ -153,7 +151,6 @@
         .faas-kpi-tile > .faas-kpi-val { font-size: 1.08em; font-weight: 800; white-space: nowrap; }
         .faas-kpi-tile--count  { background: #475569; color: #fff; border-color: #334155; }
         .faas-kpi-tile--active { background: #16a34a; color: #fff; border-color: #15803d; }
-        .faas-kpi-tile--tcos   { background: #7c3aed; color: #fff; border-color: #6d28d9; }
         .faas-kpi-tile.faas-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .faas-kpi-tile.faas-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
         @media (max-width: 1399.98px) {
@@ -384,12 +381,12 @@
             <div class="card-body py-3">
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 faas-badge-row">
                     @php
-                        // Yesterday / Projected tiles. Values come from the daily
-                        // snapshot table (period-stats endpoint) for the visible
+                        // Yesterday / Projected tiles. Values come from the real daily
+                        // Meta insights (period-stats endpoint) for the visible
                         // campaigns; the L30 card below is the live sheet totals.
                         $faasPeriodCards = [
-                            'yesterday' => ['title' => 'Yesterday', 'p' => 'Y ', 'tip' => 'Yesterday (latest daily snapshot)'],
-                            'projected' => ['title' => 'Projected · L7 ÷ 7 × 30', 'p' => '', 'tip' => 'Projected = last 7 days of snapshots ÷ 7 × 30'],
+                            'yesterday' => ['title' => 'Yesterday (PDT)', 'p' => 'Y ', 'tip' => 'Yesterday in PDT (Meta daily insights)'],
+                            'projected' => ['title' => 'Projected · L7 ÷ 7 × 30', 'p' => '', 'tip' => 'Projected = last 7 PDT days of Meta daily insights ÷ days with data × 30'],
                         ];
                         $faasPeriodItems = [
                             ['bgt',   'BGT',      'Sum of Sbgt (suggested budget) snapshots'],
@@ -444,9 +441,6 @@
                                 <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
                                       class="faas-kpi-tile badge-chart-link"
                                       title="Click for 32-day trend">Acos%:<span class="faas-kpi-val" id="faasAcosValue">0%</span></span>
-                                {{-- TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100 --}}
-                                <span id="faasTcosBadge" class="faas-kpi-tile faas-kpi-tile--tcos"
-                                      title="TCOS = Facebook Ad Spend / FB Marketplace L30 sales × 100">TCOS:<span class="faas-kpi-val" id="faasTcosValue">0%</span></span>
                                 <span id="faasCtrBadge" data-metric="ctr" data-label="CTR"
                                       class="faas-kpi-tile badge-chart-link"
                                       title="Click for 32-day trend">CTR:<span class="faas-kpi-val" id="faasCtrValue">0%</span></span>
@@ -1180,10 +1174,6 @@
         // ?ch=… so the server filters rows by the CH column.
         const CH_FILTER = @json($chFilter);
         const B2B_FILTER = @json($b2bFilter);
-        // TCOS = Active FB ad spend / FB Marketplace L30 sales.
-        let faasMasterTcosPercent = null;
-        let faasFacebookSales = 0;
-        let faasFacebookAdSpend = 0;
         // Dropdown choices on this page. On Video/Carousal pages this is a
         // restricted subset so users can't pick a value that would make the
         // row disappear from the page they're currently looking at.
@@ -1837,11 +1827,6 @@
                         });
                     });
                     updateBatchPill(resp.batch);
-                    faasMasterTcosPercent = (resp.tcos_percent != null && resp.tcos_percent !== undefined)
-                        ? Number(resp.tcos_percent) : null;
-                    faasFacebookSales = Number(resp.facebook_sales || 0);
-                    faasFacebookAdSpend = Number(resp.facebook_ad_spend || 0);
-
                     // Weighted CTR/CVR averages for the whole dataset — computed once
                     // per load so the cell flag colours are stable while filtering.
                     faasComputeAverages(resp.data || []);
@@ -2322,9 +2307,9 @@
         }
 
         // ── Yesterday / Projected cards ───────────────────────────────
-        // Values come from the daily snapshot table for the currently
-        // visible campaigns. Yesterday = yesterday's snapshot; Projected =
-        // (last 7 days of snapshots ÷ days with data) × 30. Tiles turn
+        // Values come from Meta's real daily insights for the currently
+        // visible campaigns. Yesterday = yesterday (PDT); Projected =
+        // (last 7 days ÷ days with data) × 30. Tiles turn
         // green / red against the L30 card (daily pace for yesterday).
         const PERIOD_STATS_URL = '/facebook-all-ads-sheet/period-stats';
         let faasL30Totals = null;
@@ -2407,7 +2392,7 @@
         // true = higher is better, false = lower is better.
         const FAAS_KPI_HIGHER_BETTER = {
             bgt: true, bid: false, cvr: true, acos: false, ctr: true,
-            impr: true, clicks: true, sold: true, sales: true, spend: true, cps: false,
+            impr: true, clicks: true, sold: true, sales: true, spend: false, cps: false,
         };
 
         function faasPaintPeriodCards() {
@@ -2521,24 +2506,6 @@
             faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,
                               sold: soldSum, bgt: bgtSum };
             faasScheduleCardRefresh();
-
-            // TCOS = Active FB ad spend / FB Marketplace's own L30 sales.
-            const tcosEl = document.getElementById('faasTcosValue');
-            if (tcosEl) {
-                const tcos = (faasMasterTcosPercent != null && isFinite(faasMasterTcosPercent))
-                    ? faasMasterTcosPercent
-                    : (faasFacebookSales > 0
-                        ? (faasFacebookAdSpend / faasFacebookSales) * 100
-                        : (faasFacebookAdSpend > 0 ? 100 : 0));
-                tcosEl.textContent = (Math.round(tcos * 10) / 10) + '%';
-                const tcosBadge = document.getElementById('faasTcosBadge');
-                if (tcosBadge) {
-                    tcosBadge.title = 'TCOS = Ad Spend $'
-                        + Math.round(faasFacebookAdSpend).toLocaleString()
-                        + ' / FB Marketplace sales $' + Math.round(faasFacebookSales).toLocaleString()
-                        + ' = ' + (Math.round(tcos * 10) / 10) + '%';
-                }
-            }
 
             // Keep the numeric average ACOS (matches the badge: ΣSPEND/ΣSALES,
             // 0 when there are no sales) in sync and repaint the Action column
@@ -3888,8 +3855,9 @@
 
             // Per-day dot colours: green = improved vs prev day,
             // red = worse, grey = flat. Inverted for "lower is better"
-            // metrics (Acos — same convention as the parent page).
-            const invertedMetrics = ['acos'];
+            // metrics (Acos, Spend — same convention as FAAS_KPI_HIGHER_BETTER
+            // on the summary cards), so a rising cost line shows red, not green.
+            const invertedMetrics = ['acos', 'spend'];
             const isInverted = invertedMetrics.includes(metric);
             const dotColors = values.map((v, i) => {
                 if (i === 0) return refGray;
