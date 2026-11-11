@@ -339,6 +339,12 @@
         #column-dropdown-menu .col-vis-item:active { cursor: grabbing; }
         #column-dropdown-menu .col-vis-item { display: flex; align-items: center; }
         #column-dropdown-menu .col-vis-item > label { flex: 1 1 auto; min-width: 0; }
+        #column-dropdown-menu .col-vis-item.col-vis-selected { background: #dbe7ff; border-radius: 4px; box-shadow: inset 0 0 0 1px #6ea8fe; }
+        #column-dropdown-menu .col-vis-group.col-vis-active { box-shadow: 0 0 0 2px #6f42c1; }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-before { box-shadow: inset 0 2px 0 0 #0d6efd; }
+        #column-dropdown-menu .col-vis-item.col-vis-drop-after { box-shadow: inset 0 -2px 0 0 #0d6efd; }
+        #column-dropdown-menu .col-vis-hint { font-size: 0.72rem; margin: -2px 0 8px; }
+        #column-dropdown-menu .col-vis-status { color: #198754; font-weight: 600; }
         #column-dropdown-menu .col-vis-item-x { flex: 0 0 auto; border: 0; background: none; color: #dc3545; font-size: 1rem; line-height: 1; padding: 0 6px; cursor: pointer; opacity: 0.55; }
         #column-dropdown-menu .col-vis-item-x:hover { opacity: 1; background: rgba(220, 53, 69, 0.1); border-radius: 3px; }
         #column-dropdown-menu .col-vis-item.col-vis-dragging { opacity: 0.55; }
@@ -7194,6 +7200,41 @@
                 });
                 menu.querySelectorAll('.col-vis-group').forEach(syncAmazonGroupHeaderCheckbox);
             }
+            // Order of the columns inside each header: { header key: [fields] }. Changed by dragging a column up / down in its header.
+            const AMAZON_COL_ORDER_STORAGE = 'amazon_tabulator_col_order_v1';
+            function loadAmazonColOrder() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(AMAZON_COL_ORDER_STORAGE) || '{}');
+                    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+                } catch (e) { return {}; }
+            }
+            function amazonColVisSaveOrder(list) {
+                if (!list) return;
+                const ord = loadAmazonColOrder();
+                ord[list.dataset.category] = Array.from(list.children).filter(function(li) { return li.classList.contains('col-vis-item'); })
+                    .map(function(li) { return li.dataset.field; });
+                try { localStorage.setItem(AMAZON_COL_ORDER_STORAGE, JSON.stringify(ord)); } catch (e) { /* ignore */ }
+            }
+            /** Put the columns of every header in their saved order (columns with no saved place keep their order, after the placed ones). */
+            function amazonColVisApplyOrder(lists) {
+                const ord = loadAmazonColOrder();
+                Object.keys(lists).forEach(function(cat) {
+                    const saved = ord[cat];
+                    if (!Array.isArray(saved)) return;
+                    const rank = function(f) { const i = saved.indexOf(f); return i < 0 ? 1e6 : i; };
+                    Array.from(lists[cat].children).map(function(li, i) { return { li: li, i: i }; })
+                        .sort(function(a, b) { return (rank(a.li.dataset.field) - rank(b.li.dataset.field)) || (a.i - b.i); })
+                        .forEach(function(o) { lists[cat].appendChild(o.li); });
+                });
+            }
+            let amazonColVisDropRef = null;      // { li, after }: where a dragged column will land
+            let amazonColVisActiveCat = '';      // header that Ctrl+V pastes into
+            let amazonColVisFlashMsg = '';       // one-time message shown after the menu is rebuilt
+            function amazonColVisClearDropMarks(root) {
+                (root || document).querySelectorAll('.col-vis-drop-before, .col-vis-drop-after').forEach(function(el) {
+                    el.classList.remove('col-vis-drop-before', 'col-vis-drop-after');
+                });
+            }
             function bindAmazonColVisDrag(li, groupEls) {
                 li.draggable = true;
                 li.addEventListener('dragstart', function(e) {
@@ -7204,7 +7245,17 @@
                     e.dataTransfer.setData('text/col-vis-from', li.dataset.group || '');
                     e.dataTransfer.effectAllowed = 'move';
                 });
+                li.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    const r = li.getBoundingClientRect();
+                    const after = (e.clientY - r.top) > r.height / 2;
+                    amazonColVisClearDropMarks(li.parentNode);
+                    li.classList.add(after ? 'col-vis-drop-after' : 'col-vis-drop-before');
+                    amazonColVisDropRef = { li: li, after: after };
+                });
                 li.addEventListener('dragend', function() {
+                    amazonColVisDropRef = null;
+                    amazonColVisClearDropMarks(li.closest('#column-dropdown-menu'));
                     li.classList.remove('col-vis-dragging');
                     Object.keys(groupEls).forEach(function(k) {
                         groupEls[k].classList.remove('col-vis-drop-over');
@@ -7217,6 +7268,7 @@
                         e.preventDefault();
                         e.stopPropagation();
                         group.classList.add('col-vis-drop-over');
+                        if (!e.target.closest || !e.target.closest('.col-vis-item')) amazonColVisDropRef = null;
                         e.dataTransfer.dropEffect = 'move';
                     });
                     zone.addEventListener('dragleave', function(e) {
@@ -7235,12 +7287,26 @@
                             || menu.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) : null;
                         if (!li) return;
                         const nextCat = group.dataset.category;
-                        if (!nextCat || li.dataset.group === nextCat) return;
+                        if (!nextCat) return;
+                        // Where in the list it lands: before / after the column it was dropped on, else at the end.
+                        const ref = (amazonColVisDropRef && list.contains(amazonColVisDropRef.li) && amazonColVisDropRef.li !== li) ? amazonColVisDropRef : null;
+                        const place = function() {
+                            if (ref) list.insertBefore(li, ref.after ? ref.li.nextSibling : ref.li);
+                            else list.appendChild(li);
+                        };
+                        amazonColVisDropRef = null;
+                        amazonColVisClearDropMarks(menu);
+                        // Same header: only the order changes.
+                        if (li.dataset.group === nextCat) {
+                            place();
+                            amazonColVisSaveOrder(list);
+                            return;
+                        }
                         // The column is already under that header (same column in two headers is allowed, twice in one is not).
                         if (list.querySelector('.col-vis-item[data-field="' + CSS.escape(field) + '"]')) return;
                         const fromGroup = li.closest('.col-vis-group');
                         const prevCat = li.dataset.group;
-                        list.appendChild(li);
+                        place();
                         li.dataset.group = nextCat;
                         const cb = li.querySelector('input[type="checkbox"]');
                         if (cb) cb.dataset.group = nextCat;
@@ -7254,6 +7320,8 @@
                         }
                         syncAmazonGroupHeaderCheckbox(fromGroup);
                         syncAmazonGroupHeaderCheckbox(group);
+                        amazonColVisSaveOrder(list);
+                        amazonColVisSaveOrder(fromGroup ? fromGroup.querySelector('.col-vis-group-list') : null);
                     });
                 });
             }
@@ -7303,13 +7371,20 @@
                             + '<input type="search" class="form-control form-control-sm col-vis-search" placeholder="Quick search columns…" autocomplete="off">'
                             + '<input type="text" class="form-control form-control-sm col-vis-newname" maxlength="30" placeholder="New header name" autocomplete="off">'
                             + '<button type="button" class="btn btn-sm btn-primary col-vis-addgroup" title="Add a new header (column group)">+ Add header</button>'
-                            + '</div>';
+                            + '</div>'
+                            + '<div class="col-vis-hint"><span class="col-vis-status"></span>'
+                            + '<span class="text-muted">⌘/Ctrl + click a column to select (Shift = range) · ⌘/Ctrl+C copy · ⌘/Ctrl+V paste into the highlighted header · drag a column to move or re-order it</span></div>';
                         menu.appendChild(toolbarLi);
+                        if (amazonColVisFlashMsg) {
+                            toolbarLi.querySelector('.col-vis-status').textContent = amazonColVisFlashMsg + ' ';
+                            amazonColVisFlashMsg = '';
+                        }
 
                         visKeys.forEach(function(cat) {
                             const group = document.createElement("div");
                             group.className = "col-vis-group" + (amazonColVisIsCustom(cat) ? " col-vis-group-custom" : "");
                             group.dataset.category = cat;
+                            if (cat === amazonColVisActiveCat) group.classList.add("col-vis-active");
 
                             const titleEl = document.createElement("label");
                             titleEl.className = "col-vis-group-title";
@@ -7402,6 +7477,7 @@
                             }
                         });
 
+                        amazonColVisApplyOrder(lists);
                         visKeys.forEach(function(cat) {
                             syncAmazonGroupHeaderCheckbox(groupEls[cat]);
                         });
@@ -8183,6 +8259,76 @@
                         addHeaderFromToolbar();
                     }
                 });
+                // ---- Select columns (Ctrl/Cmd + click, Shift for a range), Ctrl+C copy, Ctrl+V paste into the highlighted header ----
+                let colClipboard = [];
+                let lastSelectedLi = null;
+                function setActiveHeader(cat) {
+                    amazonColVisActiveCat = cat || '';
+                    menuEl.querySelectorAll('.col-vis-group').forEach(function(g) {
+                        g.classList.toggle('col-vis-active', g.dataset.category === amazonColVisActiveCat);
+                    });
+                }
+                function flashStatus(msg) {
+                    const el = menuEl.querySelector('.col-vis-status');
+                    if (el) el.textContent = msg + ' ';
+                }
+                menuEl.addEventListener('mousedown', function(e) {
+                    const g = e.target.closest ? e.target.closest('.col-vis-group') : null;
+                    if (g) setActiveHeader(g.dataset.category);
+                });
+                menuEl.addEventListener('click', function(e) {
+                    const lab = e.target.closest ? e.target.closest('.col-vis-item > label') : null;
+                    if (!lab) return;
+                    const li = lab.closest('.col-vis-item');
+                    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                        e.preventDefault(); // select only, do not tick / untick the column
+                        if (e.shiftKey && lastSelectedLi && lastSelectedLi.parentNode === li.parentNode) {
+                            const items = Array.from(li.parentNode.children);
+                            const a = items.indexOf(lastSelectedLi), b = items.indexOf(li);
+                            items.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function(x) { x.classList.add('col-vis-selected'); });
+                        } else {
+                            li.classList.toggle('col-vis-selected');
+                            lastSelectedLi = li;
+                        }
+                        const g = li.closest('.col-vis-group');
+                        if (g) setActiveHeader(g.dataset.category);
+                    } else {
+                        menuEl.querySelectorAll('.col-vis-item.col-vis-selected').forEach(function(x) { x.classList.remove('col-vis-selected'); });
+                    }
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (!menuEl.classList.contains('show')) return;
+                    if (!(e.ctrlKey || e.metaKey)) return;
+                    const t = e.target;
+                    if (t && ((t.tagName === 'INPUT' && t.type !== 'checkbox') || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+                    const k = String(e.key || '').toLowerCase();
+                    if (k === 'c') {
+                        const fields = [];
+                        menuEl.querySelectorAll('.col-vis-item.col-vis-selected').forEach(function(li) {
+                            if (fields.indexOf(li.dataset.field) === -1) fields.push(li.dataset.field);
+                        });
+                        if (!fields.length) return;
+                        e.preventDefault();
+                        colClipboard = fields;
+                        flashStatus('Copied ' + fields.length + ' column' + (fields.length === 1 ? '' : 's') + '.');
+                    } else if (k === 'v') {
+                        if (!colClipboard.length) return;
+                        e.preventDefault();
+                        const cat = amazonColVisActiveCat;
+                        const group = cat ? menuEl.querySelector('.col-vis-group[data-category="' + CSS.escape(cat) + '"]') : null;
+                        if (!group) { flashStatus('Click a header first, then paste.'); return; }
+                        let added = 0;
+                        colClipboard.forEach(function(f) {
+                            if (group.querySelector('.col-vis-item[data-field="' + CSS.escape(f) + '"]')) return; // already there
+                            amazonColExtraAdd(f, cat);
+                            added++;
+                        });
+                        if (!added) { flashStatus('Already in ' + amazonColVisLabel(cat) + '.'); return; }
+                        amazonColVisFlashMsg = 'Pasted ' + added + ' column' + (added === 1 ? '' : 's') + ' into ' + amazonColVisLabel(cat) + '.';
+                        buildColumnDropdown();
+                    }
+                });
+
                 menuEl.addEventListener('click', function(e) {
                     const addBtn = e.target.closest('.col-vis-addgroup');
                     if (addBtn) { e.preventDefault(); addHeaderFromToolbar(); return; }
