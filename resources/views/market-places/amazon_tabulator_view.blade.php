@@ -1603,6 +1603,16 @@
             return (profit / p) * 100;
         }
 
+        /** GPFT$ per piece at Std Prc: Std Prc × 0.80 − ship − LP (the numerator of GPFT%). null when there is no Std Prc. */
+        function amazonCStdGpftUsd(rowData) {
+            const p = amazonCStdPrc(rowData);
+            if (!(p > 0)) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
+            return p * 0.80 - ship - lpVal;
+        }
+
         /** GPFT% at Std Prc (same GPFT% formula as the GPFT% column, at Std Prc instead of Price). null when there is no Std Prc. */
         function amazonCStdGpftPct(rowData) {
             const p = amazonCStdPrc(rowData);
@@ -5816,6 +5826,24 @@
                     },
 
                     {
+                        title: "GPFT$ C",
+                        field: "c_std_gpft_usd",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdGpftUsd(d); }),
+                        headerTooltip: "Gross profit in $ per piece at Std Prc = Std Prc × 0.80 − ship − LP.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdGpftUsd(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const color = v < 0 ? '#dc3545' : '#198754';
+                            return '<span style="color:' + color + '; font-weight: 600;">' + (v < 0 ? '-' : '') + '$' + Math.abs(v).toFixed(2) + '</span>';
+                        },
+                        width: 75
+                    },
+
+                    {
                         title: "GROI% C",
                         field: "c_std_groi_pct",
                         hozAlign: "center",
@@ -7177,7 +7205,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_gpft_usd|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
