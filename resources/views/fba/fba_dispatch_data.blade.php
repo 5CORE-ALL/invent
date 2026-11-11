@@ -996,16 +996,19 @@
                     $('.modal-backdrop').css('z-index', '1040');
                 });
 
-                // L / W / H CTN colour: under 25 dark green, 25 to 36 dark yellow, above 36 red
-                function ctnDimensionFormatter(cell) {
-                    const raw = cell.getValue();
-                    const text = (raw === null || raw === undefined) ? '' : String(raw);
-                    const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    if (cell.getRow().getData().is_parent || text.trim() === '') return esc;
-                    const n = parseFloat(text);
-                    if (isNaN(n)) return esc;
-                    const color = n < 25 ? '#146c43' : (n <= 36 ? '#b58900' : '#dc3545');
-                    return `<span style="color:${color};font-weight:700;">${esc}</span>`;
+                // L / W / H CTN colour: below the limit green, the limit and above red.
+                // L CTN limit 36; W CTN and H CTN limit 25.
+                function ctnDimensionFormatter(limit) {
+                    return function(cell) {
+                        const raw = cell.getValue();
+                        const text = (raw === null || raw === undefined) ? '' : String(raw);
+                        const esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        if (cell.getRow().getData().is_parent || text.trim() === '') return esc;
+                        const n = parseFloat(text);
+                        if (isNaN(n)) return esc;
+                        const color = n < limit ? '#146c43' : '#dc3545';
+                        return `<span style="color:${color};font-weight:700;">${esc}</span>`;
+                    };
                 }
 
                 const table = new Tabulator("#fba-table", {
@@ -2071,7 +2074,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
-                            formatter: ctnDimensionFormatter,
+                            formatter: ctnDimensionFormatter(36),
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -2108,7 +2111,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
-                            formatter: ctnDimensionFormatter,
+                            formatter: ctnDimensionFormatter(25),
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
@@ -2145,7 +2148,7 @@
                             hozAlign: "center",
                             visible: false,
                             editor: "input",
-                            formatter: ctnDimensionFormatter,
+                            formatter: ctnDimensionFormatter(25),
                             cellEdited: function(cell) {
                                 var data = cell.getRow().getData();
                                 var value = cell.getValue();
