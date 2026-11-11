@@ -366,35 +366,92 @@
 @section('content')
     <div class="toast-container"></div>
 
-    <!-- Send Qty Rule Modal -->
+    <!-- Send Qty Rule Modal (full width, slides in from the top) -->
+    <style>
+        #sendQtyRuleModal .modal-dialog { max-width: 100%; width: 100%; margin: 0; }
+        #sendQtyRuleModal.fade .modal-dialog { transform: translateY(-100%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+        #sendQtyRuleModal.show .modal-dialog { transform: none; }
+        #sendQtyRuleModal .modal-content { border: 0; border-radius: 0 0 22px 22px; overflow: hidden; box-shadow: 0 24px 70px rgba(40, 30, 110, .35); }
+        #sendQtyRuleModal .sqr-header { background: linear-gradient(120deg, #4f46e5 0%, #7c3aed 55%, #db2777 100%); color: #fff; padding: 18px 28px; display: flex; align-items: center; gap: 14px; }
+        #sendQtyRuleModal .sqr-header .sqr-icon { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.18); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        #sendQtyRuleModal .sqr-header h5 { margin: 0; font-weight: 700; letter-spacing: .01em; }
+        #sendQtyRuleModal .sqr-header small { opacity: .85; }
+        #sendQtyRuleModal .sqr-body { padding: 24px 28px; background: #f8f9fe; }
+        #sendQtyRuleModal .sqr-input-wrap { position: relative; }
+        #sendQtyRuleModal #send-qty-rule { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.25rem; padding: 14px 20px; border-radius: 14px; border: 2px solid #d9dcf5; background: #fff; box-shadow: 0 2px 10px rgba(79,70,229,.08); }
+        #sendQtyRuleModal #send-qty-rule:focus { border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,.15); }
+        #sendQtyRuleModal #send-qty-rule.is-invalid { border-color: #ef4444; background-image: none; box-shadow: 0 0 0 4px rgba(239,68,68,.12); }
+        #sendQtyRuleModal #send-qty-rule.is-valid { border-color: #22c55e; background-image: none; box-shadow: 0 0 0 4px rgba(34,197,94,.12); }
+        #sendQtyRuleModal .sqr-status { min-height: 26px; margin-top: 10px; font-size: .95rem; font-weight: 600; }
+        #sendQtyRuleModal .sqr-status.ok { color: #15803d; }
+        #sendQtyRuleModal .sqr-status.bad { color: #dc2626; }
+        #sendQtyRuleModal .sqr-status.idle { color: #6b7280; font-weight: 500; }
+        #sendQtyRuleModal .sqr-card { background: #fff; border-radius: 16px; padding: 16px 18px; height: 100%; box-shadow: 0 2px 12px rgba(30,20,80,.06); }
+        #sendQtyRuleModal .sqr-card h6 { font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #6b7280; margin-bottom: 10px; }
+        #sendQtyRuleModal .sqr-chip { border: 0; border-radius: 999px; padding: 6px 14px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: transform .1s, box-shadow .15s; margin: 0 6px 8px 0; }
+        #sendQtyRuleModal .sqr-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79,70,229,.25); }
+        #sendQtyRuleModal .sqr-col { background: #eef2ff; color: #4338ca; }
+        #sendQtyRuleModal .sqr-op { background: #fdf2f8; color: #be185d; font-family: ui-monospace, Menlo, monospace; }
+        #sendQtyRuleModal .sqr-example { background: #ecfdf5; color: #047857; }
+        #sendQtyRuleModal .sqr-footer { background: #fff; padding: 16px 28px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #eceefb; }
+        #sendQtyRuleModal .sqr-apply { background: linear-gradient(120deg, #4f46e5, #7c3aed); border: 0; color: #fff; font-weight: 700; padding: 10px 30px; border-radius: 12px; box-shadow: 0 6px 18px rgba(124,58,237,.35); }
+        #sendQtyRuleModal .sqr-apply:hover { filter: brightness(1.08); color: #fff; }
+    </style>
     <div class="modal fade" id="sendQtyRuleModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa fa-sliders-h me-2"></i>Send Qty Rule</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <label class="form-label fw-semibold" for="send-qty-rule">Auto-fill Send Qty with Qty CTN when this is true</label>
-                    <input type="text" id="send-qty-rule" class="form-control" value="Dil &lt; 50" spellcheck="false" autocomplete="off"
-                        placeholder="e.g. Dil &lt; 50">
-                    <div id="send-qty-rule-error" class="text-danger small mt-1" style="display:none;"></div>
-                    <div class="small text-muted mt-3">
-                        Use column names (<code>Dil</code>, <code>Main INV</code>, <code>Qty CTN</code>, <code>AMZ Rating</code> ...),
-                        numbers, <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code> <code>=</code> <code>!=</code>,
-                        <code>and</code> <code>or</code> <code>not</code> and brackets.
+                <div class="sqr-header">
+                    <div class="sqr-icon"><i class="fa fa-wand-magic-sparkles"></i></div>
+                    <div class="flex-grow-1">
+                        <h5>Send Qty Rule</h5>
+                        <small>Auto-fill Send Qty with Qty CTN whenever this rule is true. Type any condition, it is understood automatically.</small>
                     </div>
-                    <div class="mt-2 d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 50">Dil &lt; 50</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 30 and Main INV &gt; 0">Dil &lt; 30 and Main INV &gt; 0</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary send-qty-rule-example" data-rule="Dil &lt; 50 and AMZ Rating &gt;= 3.5">Dil &lt; 50 and AMZ Rating &gt;= 3.5</button>
-                    </div>
-                    <div class="small text-muted mt-3">A Send Qty you typed yourself is never replaced by the rule.</div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary me-auto" id="send-qty-rule-default">Default (Dil &lt; 50)</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="send-qty-rule-apply">Apply</button>
+                <div class="sqr-body">
+                    <div class="row g-4">
+                        <div class="col-lg-7">
+                            <div class="sqr-input-wrap">
+                                <input type="text" id="send-qty-rule" class="form-control" value="Dil &lt; 50" spellcheck="false" autocomplete="off"
+                                    placeholder="e.g. Dil &lt; 50 and Main INV &gt; 0">
+                            </div>
+                            <div id="send-qty-rule-status" class="sqr-status idle">Type a rule, e.g. Dil &lt; 50</div>
+                            <div class="mt-3">
+                                <h6 class="text-uppercase text-muted fw-bold" style="font-size:.72rem;letter-spacing:.08em;">Quick rules</h6>
+                                <button type="button" class="sqr-chip sqr-example send-qty-rule-example" data-rule="Dil &lt; 50">Dil &lt; 50</button>
+                                <button type="button" class="sqr-chip sqr-example send-qty-rule-example" data-rule="Dil &lt; 30 and Main INV &gt; 0">Dil &lt; 30 and Main INV &gt; 0</button>
+                                <button type="button" class="sqr-chip sqr-example send-qty-rule-example" data-rule="Dil &lt; 50 and AMZ Rating &gt;= 3.5">Dil &lt; 50 and AMZ Rating &gt;= 3.5</button>
+                                <button type="button" class="sqr-chip sqr-example send-qty-rule-example" data-rule="Dil &lt; 50 or Qty CTN &gt;= 100">Dil &lt; 50 or Qty CTN &gt;= 100</button>
+                            </div>
+                            <div class="small text-muted mt-2">A Send Qty you typed yourself is never replaced by the rule.</div>
+                        </div>
+                        <div class="col-lg-5">
+                            <div class="sqr-card">
+                                <h6>Click to add a column</h6>
+                                <div id="send-qty-rule-columns"></div>
+                                <h6 class="mt-2">Operators</h6>
+                                <div>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="&lt;">&lt;</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="&lt;=">&lt;=</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="&gt;">&gt;</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="&gt;=">&gt;=</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="=">=</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="!=">!=</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="and">and</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="or">or</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="not">not</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins="(">(</button>
+                                    <button type="button" class="sqr-chip sqr-op send-qty-rule-insert" data-ins=")">)</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sqr-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="send-qty-rule-default">Default (Dil &lt; 50)</button>
+                    <span class="ms-auto"></span>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn sqr-apply" id="send-qty-rule-apply"><i class="fa fa-check me-1"></i> Apply</button>
                 </div>
             </div>
         </div>
@@ -3205,25 +3262,86 @@
                 });
 
                 // Send Qty rule: typed in the toolbar, applied on Enter / when leaving the box
-                function setSendQtyRuleError(msg) {
+                function setSendQtyRuleStatus(kind, html) {
                     const input = document.getElementById('send-qty-rule');
-                    const box = document.getElementById('send-qty-rule-error');
-                    if (input) input.classList.toggle('is-invalid', !!msg);
-                    if (box) { box.textContent = msg || ''; box.style.display = msg ? '' : 'none'; }
+                    const box = document.getElementById('send-qty-rule-status');
+                    if (input) { input.classList.toggle('is-invalid', kind === 'bad'); input.classList.toggle('is-valid', kind === 'ok'); }
+                    if (box) { box.className = 'sqr-status ' + kind; box.innerHTML = html; }
+                }
+                function setSendQtyRuleError(msg) {
+                    if (msg) setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>' + String(msg).replace(/</g, '&lt;'));
+                    else setSendQtyRuleStatus('idle', 'Type a rule, e.g. Dil &lt; 50');
+                }
+                /** Live check while typing: is the rule understood, and how many rows will be auto-filled. */
+                let sendQtyRulePreviewTimer = null;
+                function updateSendQtyRulePreview() {
+                    const input = document.getElementById('send-qty-rule');
+                    if (!input) return;
+                    const text = input.value.trim();
+                    if (!text) { setSendQtyRuleStatus('idle', 'Type a rule, e.g. Dil &lt; 50'); return; }
+                    try {
+                        const fn = fbaCompileRule(text);
+                        let withCtn = 0, match = 0;
+                        table.getData().forEach(function(r) {
+                            if (r.is_parent) return;
+                            const q = r.Quantity_in_each_box;
+                            if (q === null || q === undefined || String(q).trim() === '') return;
+                            withCtn++;
+                            let ok = false;
+                            try { ok = !!fn(r); } catch (e) { ok = false; }
+                            if (ok) match++;
+                        });
+                        setSendQtyRuleStatus('ok', '<i class="fa fa-circle-check me-1"></i>Rule understood. Auto-fills <b>' + match + '</b> of ' + withCtn + ' rows that have a Qty CTN.');
+                    } catch (err) {
+                        setSendQtyRuleStatus('bad', '<i class="fa fa-circle-xmark me-1"></i>' + String(err.message).replace(/</g, '&lt;'));
+                    }
+                }
+                function fillSendQtyRuleColumnChips() {
+                    const wrap = document.getElementById('send-qty-rule-columns');
+                    if (!wrap) return;
+                    const fields = ['Dil', 'Shopify_INV', 'Quantity_in_each_box', 'AMZ_Rating', 'Shopify_OV_L30', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'Length', 'Width', 'Height', 'GW_CTN', 'Shipping_Amount', 'Sugg_Send'];
+                    const titles = {};
+                    table.getColumns().forEach(function(col) {
+                        const d = col.getDefinition();
+                        if (d.field) titles[d.field] = String(d.title == null ? d.field : d.title).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || d.field;
+                    });
+                    wrap.innerHTML = '';
+                    fields.forEach(function(f) {
+                        if (!titles[f]) return;
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'sqr-chip sqr-col send-qty-rule-insert';
+                        b.setAttribute('data-ins', titles[f]);
+                        b.textContent = titles[f];
+                        wrap.appendChild(b);
+                    });
+                }
+                function insertIntoSendQtyRule(text) {
+                    const el = document.getElementById('send-qty-rule');
+                    if (!el) return;
+                    const start = el.selectionStart == null ? el.value.length : el.selectionStart;
+                    const end = el.selectionEnd == null ? start : el.selectionEnd;
+                    const before = el.value.slice(0, start), after = el.value.slice(end);
+                    const lead = before && !/\s$/.test(before) ? ' ' : '';
+                    const trail = after && !/^\s/.test(after) ? ' ' : (after ? '' : ' ');
+                    el.value = before + lead + text + trail + after;
+                    const pos = (before + lead + text + trail).length;
+                    el.focus();
+                    el.setSelectionRange(pos, pos);
+                    updateSendQtyRulePreview();
                 }
                 /** Compile + apply the rule typed in the Send Qty Rule window. Returns true when the rule is in use. */
                 function applySendQtyRuleFromInput() {
                     const input = document.getElementById('send-qty-rule');
                     if (!input) return false;
-                    const text = input.value.trim();
+                    const text = input.value.trim().replace(/\s+/g, ' ');
                     if (!text) { setSendQtyRuleError('Type a rule first, for example: Dil < 50'); return false; }
-                    if (text === fbaSendQtyRuleText && fbaSendQtyRuleFn) { setSendQtyRuleError(''); return true; }
+                    if (text === fbaSendQtyRuleText && fbaSendQtyRuleFn) return true;
                     try {
                         const fn = fbaCompileRule(text);
                         fbaSendQtyRuleFn = fn;
                         fbaSendQtyRuleText = text;
                         try { localStorage.setItem(FBA_SEND_QTY_RULE_KEY, text); } catch (e) { /* ignore */ }
-                        setSendQtyRuleError('');
                         table.redraw(true);
                         showToast('Send Qty rule applied: ' + text.replace(/</g, '&lt;'), 'success');
                         return true;
@@ -3236,14 +3354,19 @@
                     $(this).appendTo('body');
                     $(this).css('z-index', '1050');
                     fbaSendQtyEnsureRule();                                   // loads the saved rule into the box
-                    setSendQtyRuleError('');
+                    fillSendQtyRuleColumnChips();
+                    updateSendQtyRulePreview();
                 }).on('shown.bs.modal', function() {
                     const el = document.getElementById('send-qty-rule');
                     if (el) { el.focus(); el.select(); }
                 });
                 $('#send-qty-rule').on('keydown', function(e) {
                     if (e.key === 'Enter') { e.preventDefault(); $('#send-qty-rule-apply').trigger('click'); }
-                }).on('input', function() { setSendQtyRuleError(''); });
+                }).on('input', function() {
+                    clearTimeout(sendQtyRulePreviewTimer);
+                    sendQtyRulePreviewTimer = setTimeout(updateSendQtyRulePreview, 150);
+                });
+                $(document).on('click', '.send-qty-rule-insert', function() { insertIntoSendQtyRule($(this).attr('data-ins')); });
                 $('#send-qty-rule-apply').on('click', function() {
                     if (applySendQtyRuleFromInput()) bootstrap.Modal.getOrCreateInstance(document.getElementById('sendQtyRuleModal')).hide();
                 });
