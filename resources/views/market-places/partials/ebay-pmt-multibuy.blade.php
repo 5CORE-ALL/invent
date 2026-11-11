@@ -96,6 +96,11 @@
         .arp-table td.arp-yours-sbid { color: #64748b; font-style: italic; font-weight: 500; }
         .arp-table td.arp-yours-ok { background: #dcfce7; box-shadow: inset 0 0 0 1px #86efac; }
         .arp-table input.arp-bench { background: #dcfce7; border-color: #86efac; }
+        .arp-table input.arp-default { background: #fef3c7; border-color: #fcd34d; }
+        .arp-filter { max-width: 210px; border-radius: 8px; }
+        .arp-rule.is-click { cursor: pointer; }
+        .arp-rule.is-click:hover { box-shadow: 0 0 0 2px #c7d2fe; }
+        .arp-rule.is-active { box-shadow: 0 0 0 2px #6366f1; }
         .mb-buy-card { background: #fff; border: 1px solid #e6e8f0; border-radius: 12px; padding: 14px 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
         .mb-buy-title { font-weight: 700; font-size: 15px; color: #047857; margin-bottom: 8px; }
         .mb-buy-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
@@ -202,6 +207,11 @@
                                 <i class="fas fa-search"></i>
                                 <input type="text" class="form-control form-control-sm" id="ads-rule-pmt-search" placeholder="Search category...">
                             </div>
+                            <select class="form-select form-select-sm arp-filter" id="ads-rule-pmt-filter" title="Show only the categories of one rule">
+                                <option value="">All categories</option>
+                                <option value="has">Has a Highest (rule 2)</option>
+                                <option value="nomatch">No match (rule 3)</option>
+                            </select>
                             <div class="input-group input-group-sm arp-bulk">
                                 <input type="number" class="form-control" id="ads-rule-pmt-all-high" min="0" max="100" step="0.01" placeholder="All Highest">
                                 <input type="number" class="form-control" id="ads-rule-pmt-all-low" min="0" max="100" step="0.01" placeholder="All Lowest">
@@ -655,7 +665,8 @@
                     const $b = $('#ads-rule-pmt-rules-body').empty();
                     RULE_DEFS.forEach(function(r) {
                         $b.append(
-                            $('<div class="arp-rule">').addClass('is-' + r.key)
+                            $('<div class="arp-rule">').addClass('is-' + r.key + (r.key === '1' ? '' : ' is-click'))
+                                .attr('title', r.key === '1' ? '' : 'Click to show only these categories')
                                 .append($('<span class="arp-rule-num">').text(r.key))
                                 .append($('<div>')
                                     .append($('<div class="arp-rule-cond">').html(r.key === '1' && pauseRule.enabled && pauseHasConditions() ? 'INV = 0 <i>or</i> pause conditions match' : r.label))
@@ -668,6 +679,7 @@
                             .append('<span>Total {{ $pmtUnit }}s</span>')
                             .append($('<b>').text(total.toLocaleString()))
                     );
+                    applyArpFilter(); // repaint the active filter card (the cards were just rebuilt)
                 }
 
                 window.ebayPmtRefresh = refreshPmtColumn;
@@ -794,19 +806,29 @@
                     return loadBenchmarks().then(function(b) {
                         let cats = 0;
                         let missing = 0;
+                        let defaulted = 0;
+                        const benchOk = !b.failed && !!b.column;
                         $('#ads-rule-pmt-body tr[data-category]' + (overwrite ? ':visible' : '')).each(function() {
                             const hit = benchFor(b.map, $(this).attr('data-category'));
-                            if (!hit || (hit.highest == null && hit.lowest == null)) { missing++; return; }
+                            if (!hit || (hit.highest == null && hit.lowest == null)) missing++;
                             let touched = false;
-                            [['.ads-rule-pmt-high', hit.highest], ['.ads-rule-pmt-low', hit.lowest]].forEach(function(p) {
+                            let usedDefault = false;
+                            [['.ads-rule-pmt-high', hit && hit.highest, ARP_DEFAULT_HIGH], ['.ads-rule-pmt-low', hit && hit.lowest, ARP_DEFAULT_LOW]].forEach(function(p) {
                                 const $in = $(this).find(p[0]);
-                                if (p[1] == null) return;
-                                if (overwrite || $in.val() === '') {
-                                    $in.val(p[1]).addClass('arp-bench');
-                                    touched = true;
+                                if (p[1] != null) {
+                                    if (overwrite || $in.val() === '') {
+                                        $in.val(p[1]).removeClass('arp-default').addClass('arp-bench');
+                                        touched = true;
+                                    }
+                                } else if (benchOk && $in.val() === '') {
+                                    // No benchmark for this category: Highest 8 / Lowest 5. Only into a blank input, so a value
+                                    // typed by the user (or saved earlier) is never overwritten.
+                                    $in.val(p[2]).addClass('arp-default');
+                                    usedDefault = true;
                                 }
                             }.bind(this));
                             if (touched) cats++;
+                            if (usedDefault) defaulted++;
                         });
                         benchMapLoaded = b.map;
                         const sbidsNow = sbidByCategory();
@@ -819,9 +841,13 @@
                         if (b.failed) $status.text('Could not load {{ $pmtBenchPage }} data.');
                         else if (!b.column) $status.text('No "Promoted Listings ads rate" column found in {{ $pmtBenchPage }} (upload the {{ $pmtLabel }} LQS report in {{ $pmtExcelPath }}).');
                         else $status.text('Benchmarks (' + b.column + ', Impressions in eBay search): filled ' + cats + ' categor' + (cats === 1 ? 'y' : 'ies')
-                            + (missing ? ', ' + missing + ' without a benchmark' : '') + '. Light green = value matches the benchmark (filled values are not saved until you press Save).');
+                            + (missing ? ', ' + missing + ' without a benchmark' + (defaulted ? ' (' + defaulted + ' set to the default Highest ' + ARP_DEFAULT_HIGH + ' / Lowest ' + ARP_DEFAULT_LOW + ', yellow)' : '') : '')
+                            + '. Light green = value matches the benchmark. Filled values are not saved until you press Save.');
+                        applyArpFilter();
                     });
                 }
+                const ARP_DEFAULT_HIGH = 8;
+                const ARP_DEFAULT_LOW = 5;
 
                 /** Distinct categories (+ SKU counts) from the live table data, merged with saved ones. */
                 function collectCategories() {
@@ -995,6 +1021,8 @@
                     updateSummary();
                     renderRuleCounts();
                     $('#ads-rule-pmt-search').val('');
+                    $('#ads-rule-pmt-filter').val('');
+                    applyArpFilter();
                 }
 
                 function updateSummary() {
@@ -1024,18 +1052,36 @@
                     });
                 });
 
-                $('#ads-rule-pmt-search').on('input', function() {
-                    const q = String($(this).val() || '').toLowerCase();
+                /** Search text + rule filter ('' all, 'has' = category has a Highest, 'nomatch' = no Highest, rule 3). */
+                function applyArpFilter() {
+                    const q = String($('#ads-rule-pmt-search').val() || '').toLowerCase();
+                    const f = $('#ads-rule-pmt-filter').val() || '';
                     $('#ads-rule-pmt-body tr[data-category]').each(function() {
-                        $(this).toggle(String($(this).attr('data-category')).toLowerCase().indexOf(q) !== -1);
+                        const hasHigh = $(this).find('.ads-rule-pmt-high').val() !== '';
+                        const ok = String($(this).attr('data-category')).toLowerCase().indexOf(q) !== -1
+                            && (f === '' || (f === 'has' ? hasHigh : !hasHigh));
+                        $(this).toggle(ok);
                     });
+                    $('#ads-rule-pmt-rules-body .arp-rule.is-click').each(function() {
+                        $(this).toggleClass('is-active', (f === 'has' && $(this).hasClass('is-2')) || (f === 'nomatch' && $(this).hasClass('is-3')));
+                    });
+                }
+                $('#ads-rule-pmt-search').on('input', applyArpFilter);
+                // Not on every keystroke in Highest: a row would vanish while it is being typed. Re-checked on change (leaving the field).
+                $('#ads-rule-pmt-filter').on('change', applyArpFilter);
+                $('#ads-rule-pmt-body').on('change', '.ads-rule-pmt-high', applyArpFilter);
+                // Click rule 2 / 3 on the left to filter the categories (click again to clear)
+                $('#ads-rule-pmt-rules-body').on('click', '.arp-rule.is-click', function() {
+                    const want = $(this).hasClass('is-2') ? 'has' : 'nomatch';
+                    $('#ads-rule-pmt-filter').val($('#ads-rule-pmt-filter').val() === want ? '' : want);
+                    applyArpFilter();
                 });
 
                 $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
                     markYoursOk($(this).closest('tr'));
                 });
                 $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
-                    $(this).removeClass('arp-bench');
+                    $(this).removeClass('arp-bench arp-default');
                     markBenchMatches($(this).closest('tr')); // green again if the typed value equals the benchmark
                     updateSummary();
                 });
