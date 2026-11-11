@@ -453,6 +453,14 @@
             vertical-align: middle;
             margin-left: 6px;
         }
+        #amz-lmp-cap-table .amz-lmp-cap-del {
+            border: none;
+            background: none;
+            color: #dc3545;
+            padding: 0 4px;
+            line-height: 1;
+            cursor: pointer;
+        }
         #amz-lmp-cap-table .amz-lmp-cap-input {
             max-width: 72px;
             display: inline-block;
@@ -1268,6 +1276,7 @@
                                     <th class="text-end">LMP reduce %</th>
                                     <th class="text-center" style="width:90px;" title="S PRC at the LMP cap, e.g. LMP $100 with 2% → $98.00">S PRC</th>
                                     <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) in this Dil band whose calculated S PRC is at or above LMP, so the LMP rule applies">Count</th>
+                                    <th style="width:28px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1282,6 +1291,7 @@
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-low">LMP × 0.98</td>
                                     <td class="amz-dg-count"><span class="amz-lmp-cap-low-count">0</span></td>
+                                    <td class="text-center"><div class="d-flex align-items-center justify-content-center"><button type="button" class="amz-lmp-cap-del" data-row="low" title="Reset LMP reduce % to 0" aria-label="Reset LMP reduce % to 0">&times;</button></div></td>
                                 </tr>
                                 <tr data-row="mid">
                                     <td>Between</td>
@@ -1291,6 +1301,7 @@
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-mid">LMP × 0.98</td>
                                     <td class="amz-dg-count"><span class="amz-lmp-cap-mid-count">0</span></td>
+                                    <td class="text-center"><div class="d-flex align-items-center justify-content-center"><button type="button" class="amz-lmp-cap-del" data-row="mid" title="Reset LMP reduce % to 0" aria-label="Reset LMP reduce % to 0">&times;</button></div></td>
                                 </tr>
                                 <tr data-row="high">
                                     <td>Above</td>
@@ -1303,6 +1314,7 @@
                                     </td>
                                     <td class="text-center text-muted amz-lmp-cap-eg-high">LMP × 0.98</td>
                                     <td class="amz-dg-count"><span class="amz-lmp-cap-high-count">0</span></td>
+                                    <td class="text-center"><div class="d-flex align-items-center justify-content-center"><button type="button" class="amz-lmp-cap-del" data-row="high" title="Reset LMP reduce % to 0" aria-label="Reset LMP reduce % to 0">&times;</button></div></td>
                                 </tr>
                             </tbody>
                         </table>
@@ -3422,6 +3434,59 @@
         window.amzIsZeroSoldRow = amzIsZeroSoldRow;
         window.amzDilGroiOwnsRow = amzDilGroiOwnsRow;
         window.amzSkipLmpCapForRow = amzSkipLmpCapForRow;
+        /**
+         * Sprc % DISC column: the % discounts of the rules that hold Seq 1, 2 and 3 in the Sprc Dil modal (whatever they are now).
+         * Only rules that lower the price by a % count: the LMP Rule (Dil band reduce %), the Review Discount (its Reduce % goes on
+         * top of the LMP reduce %), the CVR up / down discount and a custom "change the S PRC by %" rule. Rules that move the
+         * Target NROI (Dil slab, CVR overlay, Ageing, Diff, custom NROI rules) and Clearance have no % discount, so they add 0.
+         * A rule counts only when it is ON and applies to the SKU (LMP / Review Discount: LMP is there and the calculated price
+         * is at or above it). Returns { total, parts: [{ key, label, pct, seq }] } or null for a row with nothing to show.
+         */
+        const AMZ_SEQ_LABELS = { dil: 'Dil slabs', rev: 'Review Discount', cvr: 'CVR overlay', age: 'Ageing Rule', diff: 'Diff rule', lmp: 'LMP Rule', cvrud: 'CVR up / down', clearance: 'Clearance' };
+        function amzSprcPctDiscInfo(d) {
+            if (!d || !amzPefIsChildRow(d) || !(amzPefInv(d) > 0)) return null;
+            const keys = amzSeqKeys().filter(function(k) { const s = amzRuleSeq[k]; return s >= 1 && s <= 3; })
+                .sort(function(a, b) { return (amzRuleSeq[a] || 99) - (amzRuleSeq[b] || 99); });
+            if (!keys.length) return null;
+            // Does the LMP cap apply to this SKU (LMP there, calculated Sprc Dil price at or above it, not a clearance price)?
+            let lmpApplies = false;
+            if (keys.indexOf('lmp') >= 0 || keys.indexOf('rev') >= 0) {
+                const lmp = amzPefLmp(d);
+                const meta = (lmp > 0 && typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
+                const calc = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
+                lmpApplies = lmp > 0 && calc > 0 && calc + 0.0001 >= lmp && !(amzClearanceDilActive && amzClearanceDilActive(d));
+            }
+            const parts = [];
+            let total = 0;
+            keys.forEach(function(k) {
+                let pct = 0;
+                let label = AMZ_SEQ_LABELS[k] || k;
+                if (k === 'lmp') {
+                    if (lmpApplies && amzRuleIsOn('lmp')) {
+                        const cfg = amzNormalizeLmpCap(amzLmpCap);
+                        const dil = Number(amzPefDil(d)) || 0;
+                        pct = cfg.mid_pct;
+                        if (dil < cfg.low_lt) pct = cfg.low_pct;
+                        else if (dil > cfg.high_gt) pct = cfg.high_pct;
+                    }
+                } else if (k === 'rev') {
+                    if (lmpApplies && amzRuleIsOn('lmp')) pct = amzRevReducePctForRow(d);
+                } else if (k === 'cvrud') {
+                    pct = (typeof computeAmzLmpCvrDiscountPct === 'function') ? (Number(computeAmzLmpCvrDiscountPct(d)) || 0) : 0;
+                } else if (k.indexOf('c_') === 0) {
+                    const cr = amzCustomRuleById(k.slice(2));
+                    if (cr) {
+                        label = cr.name;
+                        if (cr.action === 'price_pct' && amzCustomHit(cr, d)) pct = -Number(cr.points) || 0;
+                    }
+                }
+                pct = amzPefRound2(pct);
+                total += pct;
+                parts.push({ key: k, label: label, pct: pct, seq: amzRuleSeq[k] });
+            });
+            return { total: amzPefRound2(total), parts: parts };
+        }
+        window.amzSprcPctDiscInfo = amzSprcPctDiscInfo;
         function redrawAmzSprcDilColumn() {
             if (typeof table === 'undefined' || !table) return;
             try {
@@ -6542,6 +6607,10 @@
                     amzPaintLmpCapExamples(amzLmpCap);
                     amzPaintLmpCapCounts();
                     amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('click.amzLmpCapDel', '#amz-lmp-cap-table .amz-lmp-cap-del')
+                .on('click.amzLmpCapDel', '#amz-lmp-cap-table .amz-lmp-cap-del', function() {
+                    $('#amz-lmp-cap-table .amz-lmp-cap-' + $(this).attr('data-row') + '-pct').val(0).trigger('input');
                 });
             $(document).off('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input')
                 .on('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input', function() {
