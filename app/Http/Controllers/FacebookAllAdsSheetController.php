@@ -2095,7 +2095,9 @@ class FacebookAllAdsSheetController extends Controller
                 $diag['reason'] = 'None of the visible campaign IDs exist in meta_campaigns, so no daily insights can be matched.';
             } elseif ($diag['latest_insight_date'] < $yesterday) {
                 $diag['reason'] = 'Meta daily insights are only synced up to ' . $diag['latest_insight_date']
-                    . ' (yesterday PDT is ' . $yesterday . '). Run: php artisan meta-ads:sync --insights-only';
+                    . ' (yesterday PDT is ' . $yesterday . '). The sync is not saving data — most often the Meta access token '
+                    . 'has expired (check storage/logs for "Error validating access token"); renew it, then run '
+                    . 'php artisan meta-ads:sync --insights-only --from=<date> --to=' . $yesterday;
             } else {
                 $diag['reason'] = 'Meta has no insight rows for the visible campaigns on ' . $yesterday . '.';
             }
