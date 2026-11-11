@@ -2591,13 +2591,24 @@
                 specSignature = signature;
                 const specColumns = names.map(function (name) {
                     const src = sourceFor(name);
-                    return {
+                    // MPN and Model cells carry a copy icon (like SKU and the eBay title): it copies the full value.
+                    const copyable = ['mpn', 'model', 'modelnumber', 'modelname'].indexOf(gKey(name)) !== -1;
+                    const column = {
                         title: src ? esc(name) + ' <i class="fas fa-link" style="font-size:10px;opacity:.8"></i>' : esc(name),
                         field: specKey(name),
                         specName: name,
                         headerTooltip: src ? 'Synced from Technical Specifications: ' + src : name,
                         formatter: textFormatter,
                     };
+                    if (copyable) {
+                        column.formatter = function (cell) {
+                            const v = String(cell.getValue() || '').trim();
+                            if (!v) return '<span class="e1d-muted">—</span>';
+                            return '<span class="e1d-copy" title="Copy ' + esc(name) + '"><i class="far fa-copy"></i></span>' + esc(v);
+                        };
+                        column.cellClick = copyCellClick;
+                    }
+                    return column;
                 });
                 table.setColumns(baseColumns().concat(specColumns, [copyColumn(), editColumn()]));
                 applyColumnGroupVisibility();

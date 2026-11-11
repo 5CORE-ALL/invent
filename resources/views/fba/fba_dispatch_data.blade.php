@@ -577,6 +577,29 @@
             </div>
         </div>
     </div>
+
+    <!-- UPC Edit Modal -->
+    <div class="modal fade" id="upcEditModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">UPC Code for <span id="upcEditSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <small class="text-muted">UPC Company: <strong id="upcEditCompany">-</strong></small>
+                    </div>
+                    <label for="upcEditInput" class="form-label">UPC Code</label>
+                    <input type="text" class="form-control" id="upcEditInput" placeholder="Enter UPC code" autocomplete="off">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="upcEditSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
     @endsection
 
     @section('script-bottom')
@@ -2056,7 +2079,7 @@
 
 
                         {
-                            title: "UPC Codes",
+                            title: "UPC Company",
                             field: "UPC_Codes",
                             hozAlign: "center",
                             width: 32,
@@ -2067,18 +2090,45 @@
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
                                 const upc = (cell.getValue() || '').toString().trim();
-                                const hasData = upc !== '';
-                                const color = hasData ? '#28a745' : '#dc3545';
-                                const title = hasData ? 'Click to view UPC' : 'No UPC';
-                                return `<span class="upc-dot" data-upc="${upc}" style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:${color}; cursor:${hasData ? 'pointer' : 'default'};" title="${title}"></span>`;
+                                const edited = (rowData.UPC_Edit || '').toString().trim();
+                                const hasData = upc !== '' || edited !== '';
+
+                                // Green = UPC Company matches UPC Edit, Yellow = mismatch, Red = nothing filled
+                                const isMatch = upc !== '' && edited !== '' && upc.toLowerCase() === edited.toLowerCase();
+                                const color = !hasData ? '#dc3545' : (isMatch ? '#28a745' : '#ffc107');
+                                const status = !hasData ? 'No UPC' : (isMatch ? 'Match' : 'No match');
+                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                const title = hasData ? `UPC Company: ${upc || '-'} | UPC Edit: ${edited || '-'} (${status}) - click to view` : status;
+                                return `<span class="upc-dot" data-upc="${esc(upc)}" data-upc-edit="${esc(edited)}" style="display:inline-block; width:12px; height:12px; border-radius:50%; background-color:${color}; cursor:${hasData ? 'pointer' : 'default'};" title="${esc(title)}"></span>`;
                             },
                             cellClick: function(e, cell) {
                                 const dot = e.target.closest('.upc-dot');
                                 if (!dot) return;
                                 const upc = dot.getAttribute('data-upc');
-                                if (upc) {
-                                    showToast(`UPC: ${upc}`, 'success');
+                                const edited = dot.getAttribute('data-upc-edit');
+                                if (upc || edited) {
+                                    showToast(`UPC Company: ${upc || '-'} | UPC Edit: ${edited || '-'}`, 'success');
                                 }
+                            }
+                        },
+
+                        {
+                            title: "UPC Edit",
+                            field: "UPC_Edit",
+                            hozAlign: "center",
+                            headerSort: false,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = String(cell.getValue() ?? '').trim();
+                                const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                const text = value ? `<span style="margin-right:6px;">${esc(value)}</span>` : '';
+                                return `${text}<i class="fa fa-edit" style="color:#3b7ddd;cursor:pointer;" title="Edit UPC code"></i>`;
+                            },
+                            cellClick: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return;
+                                openUpcEditModal(cell.getRow());
                             }
                         },
 
@@ -3443,6 +3493,70 @@
                 $('.modal-backdrop').css('z-index', '1040');
                 console.log('Modal shown');
             }
+
+            // UPC Edit modal: fill UPC code, saved as `upc_edit` and compared with UPC Company
+            let upcEditRow = null;
+
+            function openUpcEditModal(row) {
+                upcEditRow = row;
+                const data = row.getData();
+
+                $('#upcEditSku').text(data.FBA_SKU || data.SKU || '');
+                $('#upcEditCompany').text(String(data.UPC_Codes ?? '').trim() || '-');
+                $('#upcEditInput').val(data.UPC_Edit || '');
+
+                const modal = $('#upcEditModal');
+                modal.appendTo('body');
+                modal.css('z-index', '1060');
+                modal.modal('show');
+                $('.modal-backdrop').css('z-index', '1059');
+            }
+
+            $(document).on('shown.bs.modal', '#upcEditModal', function() {
+                $('#upcEditInput').trigger('focus').select();
+            });
+
+            $(document).on('keydown', '#upcEditInput', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    $('#upcEditSaveBtn').trigger('click');
+                }
+            });
+
+            $(document).on('click', '#upcEditSaveBtn', function() {
+                if (!upcEditRow) return;
+
+                const btn = $(this);
+                const row = upcEditRow;
+                const data = row.getData();
+                const value = ($('#upcEditInput').val() || '').trim();
+
+                btn.prop('disabled', true);
+
+                $.ajax({
+                    url: '/update-fba-manual-data',
+                    method: 'POST',
+                    data: {
+                        sku: data.FBA_SKU || data.SKU,
+                        field: 'upc_edit',
+                        value: value,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function() {
+                        // Re-renders both UPC Edit and UPC Company (dot) cells
+                        row.update({ UPC_Edit: value });
+                        row.reformat();
+                        $('#upcEditModal').modal('hide');
+                    },
+                    error: function(xhr) {
+                        console.error('Error saving UPC Edit:', xhr.responseText);
+                        alert('Failed to save UPC code. Please try again.');
+                    },
+                    complete: function() {
+                        btn.prop('disabled', false);
+                    }
+                });
+            });
 
             // Missing Fields Modal Handler
             $(document).on('click', '.missing-fields-count', function(e) {
