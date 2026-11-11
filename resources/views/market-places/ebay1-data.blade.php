@@ -1,8 +1,12 @@
 @php
     $ebayCfg = $ebayCfg ?? ['key' => 'ebay1', 'label' => 'eBay 1', 'base' => '/ebay1-data', 'main' => true];
     $ebayNo = (int) substr($ebayCfg['key'], -1);
+    // Same page for Temu: wording and column heads come from the controller cfg (channel = temu).
+    $isTemu = ($ebayCfg['channel'] ?? 'ebay') === 'temu';
+    $siteName = $ebayCfg['site'] ?? 'eBay';
+    $pageName = $ebayCfg['page'] ?? ('Ebay'.$ebayNo.' Data');
 @endphp
-@extends('layouts.vertical', ['title' => 'Ebay'.$ebayNo.' Data', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => $pageName, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 @section('css')
     {{-- Font Awesome 6.4.0 is served from this site (public/vendor/fontawesome), not a CDN, so the icons always load. --}}
@@ -236,8 +240,8 @@
 
 @section('content')
     @include('layouts.shared/page-title', [
-        'page_title' => 'Ebay'.$ebayNo.' Data',
-        'sub_title' => 'Every '.$ebayCfg['label'].' listing row, category wise'.($ebayCfg['main'] ? ' (main page: changes here also go to eBay 2 and eBay 3)' : ' (follows the eBay 1 page)'),
+        'page_title' => $pageName,
+        'sub_title' => 'Every '.$ebayCfg['label'].' listing row, category wise'.($isTemu ? ' (category and item specifics as Temu holds them)' : ($ebayCfg['main'] ? ' (main page: changes here also go to eBay 2 and eBay 3)' : ' (follows the eBay 1 page)')),
     ])
 
     <div class="row">
@@ -299,20 +303,26 @@
                         <button type="button" class="btn btn-sm btn-secondary" id="e1dHdrBtn" title="Edit Column Header: rename the header of any column of this table" aria-label="Edit Column Header">
                             <i class="fas fa-heading"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another eBay category, picked from every eBay category" aria-label="Change Category">
+                        <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another {{ $siteName }} category, picked from every {{ $siteName }} category{{ $isTemu ? ' (changed in the app; the live Temu product keeps its category)' : '' }}" aria-label="Change Category">
                             <i class="fas fa-tags"></i>
                         </button>
-                        @unless ($ebayCfg['main'])
-                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dSyncMain" title="Sync from eBay 1: bring item specifics, categories and added columns of every SKU in line with the eBay 1 page (app only, nothing is sent to {{ $ebayCfg['label'] }}; title and price are not copied)">
-                                <i class="fas fa-download"></i> From eBay 1
+                        @if ($isTemu)
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPull" title="Pull from Temu: read the category and the item specifics of the ticked rows (or of the open tab) from the live Temu 1 products, exactly as Temu holds them">
+                                <i class="fas fa-cloud-download-alt"></i> Pull
                             </button>
-                        @endunless
-                        <span class="btn-group btn-group-sm" role="group" aria-label="Open eBay 1, 2 or 3">
-                            <a class="btn btn-outline-secondary {{ $ebayNo === 1 ? 'active' : '' }}" href="/ebay1-data">eBay 1</a>
-                            <a class="btn btn-outline-secondary {{ $ebayNo === 2 ? 'active' : '' }}" href="/ebay2-item-data">eBay 2</a>
-                            <a class="btn btn-outline-secondary {{ $ebayNo === 3 ? 'active' : '' }}" href="/ebay3-item-data">eBay 3</a>
-                        </span>
-                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab, here and on the live {{ $ebayCfg['label'] }} listings" aria-label="Delete Column" disabled>
+                        @else
+                            @unless ($ebayCfg['main'])
+                                <button type="button" class="btn btn-sm btn-outline-dark" id="e1dSyncMain" title="Sync from eBay 1: bring item specifics, categories and added columns of every SKU in line with the eBay 1 page (app only, nothing is sent to {{ $ebayCfg['label'] }}; title and price are not copied)">
+                                    <i class="fas fa-download"></i> From eBay 1
+                                </button>
+                            @endunless
+                            <span class="btn-group btn-group-sm" role="group" aria-label="Open eBay 1, 2 or 3">
+                                <a class="btn btn-outline-secondary {{ $ebayNo === 1 ? 'active' : '' }}" href="/ebay1-data">eBay 1</a>
+                                <a class="btn btn-outline-secondary {{ $ebayNo === 2 ? 'active' : '' }}" href="/ebay2-item-data">eBay 2</a>
+                                <a class="btn btn-outline-secondary {{ $ebayNo === 3 ? 'active' : '' }}" href="/ebay3-item-data">eBay 3</a>
+                            </span>
+                        @endif
+                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab{{ $isTemu ? ' in the app (Temu is not changed)' : ', here and on the live '.$ebayCfg['label'].' listings' }}" aria-label="Delete Column" disabled>
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         <div class="e1g-wrap" id="e1gWrap">
@@ -338,7 +348,7 @@
                         <div class="e1d-job-note" id="e1dJobNote"></div>
                     </div>
 
-                    <div class="e1d-tabs" id="e1dTabs" role="tablist" aria-label="eBay categories"></div>
+                    <div class="e1d-tabs" id="e1dTabs" role="tablist" aria-label="{{ $siteName }} categories"></div>
 
                     <div id="ebay1-data-table"></div>
                 </div>
@@ -477,6 +487,18 @@
 
             const E1_BASE = @json($ebayCfg['base']);
             const E1_MAIN = @json((bool) $ebayCfg['main']);
+            // Channel wording and column heads (Temu uses its own names; the row keys stay the same).
+            const E1_TEMU = @json($isTemu);
+            const E1_SITE = @json($siteName);
+            const E1_TITLE_NAME = @json($ebayCfg['title_name'] ?? 'eBay title');
+            const E1_PRICE_NAME = @json($ebayCfg['price_name'] ?? 'Price');
+            const E1_TITLE_MAX = @json((int) ($ebayCfg['title_max'] ?? 80));
+            const E1_ITEM_URL = @json($ebayCfg['item_url'] ?? 'https://www.ebay.com/itm/');
+            const E1_COL_TITLES = @json((object) ($ebayCfg['col_titles'] ?? []));
+            const E1_COL_HIDE = @json($ebayCfg['hide'] ?? []);
+            const E1_ID_RE = E1_TEMU ? /^\d{6,20}$/ : /^\d{9,15}$/;
+            const E1_TITLE_KEY = String(E1_TITLE_NAME).toLowerCase().replace(/[^a-z0-9]+/g, '');
+            const E1_PRICE_KEY = String(E1_PRICE_NAME).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
             // ---- Main page (eBay 1) only: every change that was accepted here is repeated on the eBay 2 and eBay 3 pages,
             // in the app and on their live listings, SKU by SKU (the eBay title included). A change made on
@@ -812,16 +834,16 @@
                 const count = document.getElementById('e1dCatCount');
                 const q = document.getElementById('e1dCatSearch').value.trim();
                 const seq = ++catSeq;
-                list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Loading the eBay categories… The first time, they are fetched from eBay (about a minute).</div>';
+                list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Loading the ' + E1_SITE + ' categories… The first time, they are fetched from ' + E1_SITE + ' (about a minute' + (E1_TEMU ? ' or more' : '') + ').</div>';
                 try {
                     const res = await fetch('{{ $ebayCfg['base'] }}/ebay-categories?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
                     const json = await res.json();
                     if (seq !== catSeq) return;
-                    if (!res.ok || json.success === false) throw new Error(json.message || 'Could not load the eBay categories');
-                    count.textContent = json.total.toLocaleString() + ' eBay categories' + (q ? ' match' : '') + (json.total > json.results.length ? ' (first ' + json.results.length + ' shown, type more to narrow)' : '')
+                    if (!res.ok || json.success === false) throw new Error(json.message || ('Could not load the ' + E1_SITE + ' categories'));
+                    count.textContent = json.total.toLocaleString() + ' ' + E1_SITE + ' categories' + (q ? ' match' : '') + (json.note ? ' · ' + json.note : '') + (json.total > json.results.length ? ' (first ' + json.results.length + ' shown, type more to narrow)' : '')
                         + (json.fetched_at ? ' · list fetched ' + json.fetched_at : '');
                     list.innerHTML = '';
-                    if (!json.results.length) list.innerHTML = '<div class="small text-muted p-2">No eBay category matches.</div>';
+                    if (!json.results.length) list.innerHTML = '<div class="small text-muted p-2">No ' + E1_SITE + ' category matches.</div>';
                     json.results.forEach(function (cat) {
                         const btn = document.createElement('button');
                         btn.type = 'button';
@@ -838,7 +860,7 @@
                 } catch (e) {
                     if (seq !== catSeq) return;
                     count.textContent = '';
-                    list.innerHTML = '<div class="alert alert-danger small m-2">' + esc(e.message || 'Could not load the eBay categories') + '</div>';
+                    list.innerHTML = '<div class="alert alert-danger small m-2">' + esc(e.message || ('Could not load the ' + E1_SITE + ' categories')) + '</div>';
                 }
             }
 
@@ -853,8 +875,8 @@
                 catChoice = null;
                 catBusy = false;
                 document.getElementById('e1dCatIntro').textContent = scope.selected
-                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. The category is changed on the live {{ $ebayCfg['label'] }} listing too.'
-                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. The category is changed on the live {{ $ebayCfg['label'] }} listing too.';
+                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The category is changed in the app only; the live Temu product keeps its category.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.')
+                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The category is changed in the app only; the live Temu product keeps its category.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.');
                 document.getElementById('e1dCatSearch').value = '';
                 document.getElementById('e1dCatHint').innerHTML = '';
                 renderCatSkus();
@@ -867,7 +889,9 @@
                 if (catBusy || !catChoice || !catPicked.size) return;
                 const hint = document.getElementById('e1dCatHint');
                 const skus = Array.from(catPicked);
-                if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\nSKUs with a live {{ $ebayCfg['label'] }} listing are changed on {{ $ebayCfg['label'] }} too. A SKU eBay rejects stays unchanged.')) return;
+                if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\n' + (E1_TEMU
+                    ? 'This changes the category in the app only (the tab and its columns). The live Temu product keeps its category, and a later Pull restores the category Temu has.'
+                    : 'SKUs with a live {{ $ebayCfg['label'] }} listing are changed on {{ $ebayCfg['label'] }} too. A SKU eBay rejects stays unchanged.'))) return;
                 catBusy = true;
                 syncCatState();
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -876,7 +900,7 @@
                 const problems = [];
                 for (let i = 0; i < skus.length; i += CHUNK) {
                     const part = skus.slice(i, i + CHUNK);
-                    hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing on {{ $ebayCfg['label'] }} and in the app… ' + Math.min(i + CHUNK, skus.length) + ' / ' + skus.length;
+                    hint.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Changing ' + (E1_TEMU ? 'in the app' : 'on {{ $ebayCfg['label'] }} and in the app') + '… ' + Math.min(i + CHUNK, skus.length) + ' / ' + skus.length;
                     try {
                         const res = await fetch('{{ $ebayCfg['base'] }}/change-category', {
                             method: 'POST',
@@ -900,7 +924,7 @@
                 document.getElementById('e1dCatModal').hidden = true;
                 catBusy = false;
                 syncCatState();
-                const title = saved + ' SKU' + (saved === 1 ? '' : 's') + ' moved to ' + catChoice.path + ' (' + onEbay + ' on {{ $ebayCfg['label'] }})'
+                const title = saved + ' SKU' + (saved === 1 ? '' : 's') + ' moved to ' + catChoice.path + (E1_TEMU ? ' (in the app)' : ' (' + onEbay + ' on {{ $ebayCfg['label'] }})')
                     + (failed ? ', ' + failed + ' failed' : '');
                 if (failed) jobShow(title, skus.length, saved, failed, false, problems);
                 else rowToast(title + '.', true);
@@ -921,7 +945,7 @@
                 });
                 document.getElementById('e1dCatRefresh').addEventListener('click', async function () {
                     const list = document.getElementById('e1dCatList');
-                    list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Fetching the eBay categories again…</div>';
+                    list.innerHTML = '<div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Fetching the ' + E1_SITE + ' categories again…</div>';
                     try { await fetch('{{ $ebayCfg['base'] }}/ebay-categories?refresh=1&q=__none__', { headers: { Accept: 'application/json' } }); } catch (e) {}
                     loadCatList();
                 });
@@ -1295,10 +1319,13 @@
                 const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
                 const base = selected.length ? selected : rows.filter(passesTab);
                 const targets = base.filter(function (row) {
-                    if (!/^\d{9,15}$/.test(String(row.item_id || '').trim())) return false;
+                    if (!E1_ID_RE.test(String(row.item_id || '').trim())) return false;
                     if (row.title_pending && String(row.ebay_title || '').trim() !== '') return true;
                     if (row.price_pending && Number(row.ebay_price) > 0) return true;
+                    // Temu: item specifics are a test and go only for ticked rows.
+                    if (E1_TEMU && !selected.length) return false;
                     const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
+                    if (E1_TEMU) return (row.push_cols || []).some(function (name) { return String(spec[name] || '').trim() !== ''; });
                     return Object.keys(spec).some(function (name) { return String(spec[name] || '').trim() !== ''; });
                 });
                 return { selected: selected.length > 0, targets: targets };
@@ -1326,7 +1353,12 @@
                 const where = scope.selected
                     ? todo.length + ' selected SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                if (!window.confirm('Push the item specifics of ' + where + ' to the live {{ $ebayCfg['label'] }} listings?\nAn edited eBay title and an edited price are sent too (a pushed price can be replaced later by the saved S PRC sync). Blank values are not sent and values already on eBay are left alone.')) return;
+                const confirmText = E1_TEMU
+                    ? (scope.selected
+                        ? 'Push ' + where + ' to the live Temu 1 products?\n\nITEM SPECIFICS (TEST): the item specifics of these ticked rows are sent to Temu, together with an edited product name and an edited base price. Temu may reject a value that is not in its own list; the answer is shown per SKU. Blank values are not sent.'
+                        : 'Push ' + where + ' to the live Temu 1 products?\n\nOnly edited product names and edited base prices are sent. Item specifics are a test: tick the SKUs first to send them.')
+                    : 'Push the item specifics of ' + where + ' to the live {{ $ebayCfg['label'] }} listings?\nAn edited eBay title and an edited price are sent too (a pushed price can be replaced later by the saved S PRC sync). Blank values are not sent and values already on eBay are left alone.';
+                if (!window.confirm(confirmText)) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 btn.dataset.busy = '1';
                 btn.disabled = true;
@@ -1336,8 +1368,10 @@
                 for (let i = 0; i < todo.length; i += size) {
                     const chunk = todo.slice(i, i + size).map(function (row) {
                         const specifics = {};
-                        Object.keys(row.specifics || {}).forEach(function (name) {
-                            const v = String(row.specifics[name] || '').trim();
+                        // Temu (test): only the cells that were edited or changed by autofill are sent, never the whole row.
+                        const sendNames = E1_TEMU ? (row.push_cols || []) : Object.keys(row.specifics || {});
+                        sendNames.forEach(function (name) {
+                            const v = String((row.specifics || {})[name] || '').trim();
                             if (v !== '') specifics[name] = v;
                         });
                         const item = { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: specifics };
@@ -1350,7 +1384,7 @@
                         const res = await fetch('{{ $ebayCfg['base'] }}/push', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ items: chunk }),
+                            body: JSON.stringify({ items: chunk, specifics: scope.selected }),
                         });
                         const json = await res.json();
                         if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
@@ -1371,6 +1405,55 @@
                 await loadData();
             }
 
+            // ---- Pull (Temu): reads the category and the item specifics of the ticked rows, else of the open tab, from the live Temu products. ----
+            let pullRunning = false;
+            async function runPull() {
+                if (pullRunning) return;
+                const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
+                const base = selected.length ? selected : rows.filter(passesTab);
+                const todo = base.filter(function (row) { return E1_ID_RE.test(String(row.item_id || '').trim()) && !isParentRow(row); });
+                if (!todo.length) {
+                    rowToast('Nothing to pull: no listed SKU with a Temu goods ID here.', false);
+                    return;
+                }
+                const where = selected.length
+                    ? todo.length + ' ticked SKU' + (todo.length === 1 ? '' : 's')
+                    : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
+                if (!window.confirm('Pull the category and item specifics of ' + where + ' from Temu?\n\nThe columns of each category are the attributes Temu defines for it, and the values are the ones on the live product. Edited cells that are not pushed yet are kept. It takes about a second per SKU; you can keep working.')) return;
+                const btn = document.getElementById('e1dPull');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                pullRunning = true;
+                btn.disabled = true;
+                let ok = 0, bad = 0;
+                const problems = [];
+                const size = 4;
+                for (let i = 0; i < todo.length; i += size) {
+                    const part = todo.slice(i, i + size).map(function (row) { return row.sku; });
+                    jobShow('Pulling from Temu…', todo.length, ok, bad, true, problems);
+                    try {
+                        const res = await fetch(E1_BASE + '/pull', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ skus: part }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        if (!res.ok || json.success === false) throw new Error(json.message || ('HTTP ' + res.status));
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'pulled') ok++;
+                            else { bad++; problems.push(r.sku + ': ' + r.message); }
+                        });
+                    } catch (e) {
+                        bad += part.length;
+                        problems.push('Stopped: ' + (e.message || 'failed'));
+                        break;
+                    }
+                }
+                pullRunning = false;
+                btn.disabled = false;
+                jobShow('Pulled from Temu: ' + ok + ' of ' + todo.length, todo.length, ok, bad, false, problems);
+                await loadData();
+            }
+
             // ---- Auto Push: when ON, only the cells that were edited (by hand) or changed by autofill are pushed. ----
             let autoPushOn = false;
             let autoPushBusy = false;
@@ -1385,10 +1468,11 @@
             }
 
             function autoItem(row) {
-                if (!/^\d{9,15}$/.test(String(row.item_id || '').trim())) return null;
+                if (!E1_ID_RE.test(String(row.item_id || '').trim())) return null;
                 const spec = row.specifics && !Array.isArray(row.specifics) ? row.specifics : {};
                 const specifics = {};
-                (row.push_cols || []).forEach(function (name) {
+                // Temu: Auto Push sends the product name and base price only; item specifics are pushed by hand (test).
+                (E1_TEMU ? [] : (row.push_cols || [])).forEach(function (name) {
                     const v = String(spec[name] == null ? '' : spec[name]).trim();
                     if (v !== '' && gKey(name) !== 'upc') specifics[name] = v;
                 });
@@ -1441,7 +1525,7 @@
                         const res = await fetch('{{ $ebayCfg['base'] }}/push', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
-                            body: JSON.stringify({ items: chunk }),
+                            body: JSON.stringify({ items: chunk, auto: true }),
                         });
                         const json = await res.json();
                         if (!res.ok || !json.success) throw new Error(json.message || 'Request failed');
@@ -1469,7 +1553,9 @@
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 if (turnOn) {
                     const waiting = autoItems(true).length;
-                    if (!window.confirm('Turn Auto Push ON?\n' + (waiting
+                    if (!window.confirm('Turn Auto Push ON?\n' + (E1_TEMU
+                        ? 'On Temu 1, Auto Push sends edited product names and base prices only (' + waiting + ' waiting now). Item specifics are a test and are never auto pushed: tick the SKUs and press Push.'
+                        : waiting
                         ? waiting + ' SKU' + (waiting === 1 ? ' has' : 's have') + ' edited or autofilled cells that are not on {{ $ebayCfg['label'] }} yet. Only those cells are pushed to the live listings now, and every later edit is pushed by itself.'
                         : 'Nothing is waiting now. From now on, every cell you edit or autofill changes is pushed to the live {{ $ebayCfg['label'] }} listings by itself.'))) return;
                 }
@@ -1612,7 +1698,7 @@
                 const btn = document.getElementById('e1dDelCol');
                 if (!btn) return;
                 btn.disabled = false;
-                btn.title = 'Hide a page column such as L7, or delete an item-specific column here and on the live {{ $ebayCfg['label'] }} listings';
+                btn.title = E1_TEMU ? 'Hide a page column, or delete an item-specific column of the open tab in the app (Temu is not changed)' : 'Hide a page column such as L7, or delete an item-specific column here and on the live {{ $ebayCfg['label'] }} listings';
             }
 
             // Columns ticked in the Delete Column window.
@@ -1638,7 +1724,7 @@
                 if (pagePicked.length) {
                     const hiding = pagePicked.filter(function (name) { return !hiddenFields.has(pageColumnByName(name).field); });
                     const showing = pagePicked.filter(function (name) { return hiddenFields.has(pageColumnByName(name).field); });
-                    if (hiding.length) parts.push('Hides <strong>' + esc(hiding.join(', ')) + '</strong> on this page only. Nothing is sent to eBay. Search the name here again to show it.');
+                    if (hiding.length) parts.push('Hides <strong>' + esc(hiding.join(', ')) + '</strong> on this page only. Nothing is sent to ' + E1_SITE + '. Search the name here again to show it.');
                     if (showing.length) parts.push('Shows <strong>' + esc(showing.join(', ')) + '</strong> on this page again.');
                 }
                 if (specPicked.length) {
@@ -1646,7 +1732,7 @@
                     const label = specPicked.length === 1 ? '<strong>' + esc(specPicked[0]) + '</strong>' : '<strong>' + specPicked.length + ' columns</strong>';
                     parts.push(n === 0
                         ? 'No SKU in this category has ' + label + '. ' + (specPicked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
-                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: on the live {{ $ebayCfg['label'] }} listing where there is one, and always in the app. It cannot be undone here.');
+                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: ' + (E1_TEMU ? 'in the app only (Temu is not changed; a later Pull brings back the attributes Temu has for the category)' : 'on the live {{ $ebayCfg['label'] }} listing where there is one, and always in the app') + '. It cannot be undone here.');
                 }
                 document.getElementById('e1dDelWarn').innerHTML = parts.join(' ');
                 const go = document.getElementById('e1dDelGo');
@@ -1738,7 +1824,7 @@
                         count.textContent = hidden ? 'hidden' : 'page';
                         count.title = hidden
                             ? 'Hidden on this page. Tick it and press the button to show it again.'
-                            : 'A column of this page. Hiding it does not change eBay.';
+                            : 'A column of this page. Hiding it does not change ' + E1_SITE + '.';
                     } else {
                         const have = delTargets(name).length;
                         count.className = 'e1d-cnt ' + (have === delTotal ? 'green' : 'red');
@@ -1795,7 +1881,7 @@
                 const question = (pageNote ? pageNote + ' on this page?' : '')
                     + (specPicked.length
                         ? (pageNote ? '\n\n' : '') + (todo.length
-                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (live {{ $ebayCfg['label'] }} listing where there is one, and the app)?'
+                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (' + (E1_TEMU ? 'in the app only, Temu is not changed' : 'live {{ $ebayCfg['label'] }} listing where there is one, and the app') + ')?'
                             : 'Remove ' + label + ' from this tab?')
                         : '');
                 if (!window.confirm(question)) return;
@@ -1982,9 +2068,9 @@
 
             // eBay title and Price are page columns, not item specifics, so they are added beside the specifics.
             function editNames() {
-                const names = ['eBay title', 'Price'];
+                const names = [E1_TITLE_NAME, E1_PRICE_NAME];
                 editableColumnNames().forEach(function (name) {
-                    if (gKey(name) !== 'ebaytitle' && gKey(name) !== 'price') names.push(name);
+                    if (gKey(name) !== E1_TITLE_KEY && gKey(name) !== E1_PRICE_KEY) names.push(name);
                 });
                 return names;
             }
@@ -1999,8 +2085,8 @@
             // What a saved title or price changes on a row. Item specifics return null.
             function pagePatch(name, value) {
                 const k = gKey(name);
-                if (k === 'ebaytitle') return { ebay_title: value, title_pending: true };
-                if (k === 'price') {
+                if (k === E1_TITLE_KEY) return { ebay_title: value, title_pending: true };
+                if (k === E1_PRICE_KEY) {
                     const n = parseFloat(String(value).replace(/[,$\s]/g, ''));
                     return isNaN(n) ? null : { ebay_price: n, price_pending: true };
                 }
@@ -2009,8 +2095,8 @@
 
             function pageValue(row, name) {
                 const k = gKey(name);
-                if (k === 'ebaytitle') return String(row.ebay_title || '');
-                if (k === 'price') return row.ebay_price == null || row.ebay_price === '' ? '' : String(row.ebay_price);
+                if (k === E1_TITLE_KEY) return String(row.ebay_title || '');
+                if (k === E1_PRICE_KEY) return row.ebay_price == null || row.ebay_price === '' ? '' : String(row.ebay_price);
                 return null;
             }
 
@@ -2072,8 +2158,8 @@
                     input.type = 'text';
                     input.className = 'form-control form-control-sm';
                     input.autocomplete = 'off';
-                    input.placeholder = gKey(name) === 'ebaytitle' ? 'eBay title, 80 characters' : (gKey(name) === 'price' ? 'Price, for example 24.99' : 'Type the data for ' + name);
-                    if (gKey(name) === 'ebaytitle') input.maxLength = 80;
+                    input.placeholder = gKey(name) === E1_TITLE_KEY ? E1_TITLE_NAME + ', ' + E1_TITLE_MAX + ' characters' : (gKey(name) === E1_PRICE_KEY ? E1_PRICE_NAME + ', for example 24.99' : 'Type the data for ' + name);
+                    if (gKey(name) === E1_TITLE_KEY) input.maxLength = E1_TITLE_MAX;
                     input.value = editPicked.get(name) || '';
                     input.disabled = editBusy;
                     const listId = 'e1dEditDl' + i;
@@ -2100,7 +2186,7 @@
                     ? (scope.single
                         ? 'Changes only ' + editRow.sku + '.'
                         : 'Changes ' + scope.targets.length + (scope.selected ? ' ticked' : '') + ' row' + (scope.targets.length === 1 ? '' : 's') + '.')
-                        + ' Nothing is sent to eBay until you press Push.'
+                        + ' Nothing is sent to ' + E1_SITE + ' until you press Push.'
                     : '';
                 document.getElementById('e1dEditGo').disabled = !n || editBusy || scope.targets.length === 0;
                 const visible = visibleEditNames();
@@ -2768,7 +2854,7 @@
             // The eBay title and the price are copied with the item specifics.
             const E1_CLIP_KEY = '{{ $ebayCfg['key'] }}_data_row_clip_v2';
             const E1_UNIQUE_KEYS = new Set(['sku', 'parent', 'itemid', 'upc', 'ean', 'gtin', 'isbn', 'mpn', 'model', 'modelnumber', 'modelname',
-                'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title', 'price']);
+                'manufacturerpartnumber', 'partnumber', 'serialnumber', 'epid', 'ebaytitle', 'title', 'price', E1_TITLE_KEY, E1_PRICE_KEY]);
             let rowClip = null;
             let pasteBusy = false;
             try { rowClip = JSON.parse(localStorage.getItem(E1_CLIP_KEY) || 'null'); } catch (e) { rowClip = null; }
@@ -2783,9 +2869,9 @@
                     entries.push({ name: name, value: value });
                 });
                 const title = String(row.ebay_title || '').trim();
-                if (title !== '') entries.push({ name: 'eBay title', value: title.slice(0, 80) });
+                if (title !== '') entries.push({ name: E1_TITLE_NAME, value: title.slice(0, E1_TITLE_MAX) });
                 const price = Number(row.ebay_price);
-                if (row.ebay_price !== null && row.ebay_price !== '' && price > 0) entries.push({ name: 'Price', value: price.toFixed(2) });
+                if (row.ebay_price !== null && row.ebay_price !== '' && price > 0) entries.push({ name: E1_PRICE_NAME, value: price.toFixed(2) });
                 const status = document.getElementById('e1dPullStatus');
                 if (!entries.length) {
                     status.textContent = 'Nothing to copy from ' + row.sku + '.';
@@ -2825,7 +2911,7 @@
             async function pasteRowData(targets) {
                 if (!rowClip || pasteBusy || !targets.length) return;
                 const entries = rowClip.entries;
-                if (!window.confirm('Paste ' + entries.length + ' values copied from ' + rowClip.sku + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + '?\nSKU, item ID, UPC, MPN and model are not touched. The eBay title and price are changed too. Nothing goes to eBay until you press Push.')) return;
+                if (!window.confirm('Paste ' + entries.length + ' values copied from ' + rowClip.sku + ' into ' + targets.length + ' row' + (targets.length === 1 ? '' : 's') + '?\nSKU, item ID, UPC, MPN and model are not touched. The ' + E1_TITLE_NAME + ' and ' + E1_PRICE_NAME.toLowerCase() + ' are changed too. Nothing goes to ' + E1_SITE + ' until you press Push.')) return;
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 const skus = targets.map(function (row) { return row.sku; });
                 const problems = [];
@@ -2925,7 +3011,17 @@
                 return items;
             }
 
+            // The column heads of the channel: Temu renames some heads (Goods ID, Product name, Base price ...) and hides those it has no figure for.
             function baseColumns() {
+                return baseColumnDefs().filter(function (col) {
+                    return !(col.field && E1_COL_HIDE.indexOf(col.field) !== -1);
+                }).map(function (col) {
+                    if (col.field && E1_COL_TITLES[col.field]) col.title = E1_COL_TITLES[col.field];
+                    return col;
+                });
+            }
+
+            function baseColumnDefs() {
                 return [
                         {
                             formatter: 'rowSelection', titleFormatter: 'rowSelection', titleFormatterParams: { rowRange: 'active' },
@@ -2976,7 +3072,7 @@
                                 const id = String(cell.getValue() || '').trim();
                                 if (!id) return '<span class="e1d-muted">—</span>';
                                 const d = cell.getRow().getData();
-                                const href = /^https?:/i.test(d.buyer_link || '') ? d.buyer_link : 'https://www.ebay.com/itm/' + encodeURIComponent(id);
+                                const href = /^https?:/i.test(d.buyer_link || '') ? d.buyer_link : E1_ITEM_URL + encodeURIComponent(id);
                                 return '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(id) + '</a>';
                             },
                         },
@@ -3184,13 +3280,13 @@
                 }
                 if (field === 'ebay_title') {
                     if (!value) return { skip: 'blank' };
-                    if (value.length > 80) return { skip: 'long' };
-                    return { kind: 'col', column: 'eBay title', value: value };
+                    if (value.length > E1_TITLE_MAX) return { skip: 'long' };
+                    return { kind: 'col', column: E1_TITLE_NAME, value: value };
                 }
                 if (field === 'ebay_price') {
                     const n = parseFloat(value.replace(/[,$\s]/g, ''));
                     if (isNaN(n) || n < 0.01 || n > 100000) return { skip: 'blank' };
-                    return { kind: 'col', column: 'Price', value: n.toFixed(2) };
+                    return { kind: 'col', column: E1_PRICE_NAME, value: n.toFixed(2) };
                 }
                 if (def && def.specName) {
                     if (!value) return { skip: 'blank' };
@@ -3247,7 +3343,7 @@
                     const parts = [];
                     if (skipped.readonly) parts.push(skipped.readonly + ' read-only');
                     if (skipped.locked) parts.push(skipped.locked + ' fixed (autofill) value');
-                    if (skipped.long) parts.push(skipped.long + ' title over 80 characters');
+                    if (skipped.long) parts.push(skipped.long + ' title over ' + E1_TITLE_MAX + ' characters');
                     if (skipped.blank) parts.push(skipped.blank + ' blank / not valid');
                     return parts.join(', ');
                 };
@@ -3750,6 +3846,8 @@
                 });
                 document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
                 bindCatModal();
+                const pullBtn = document.getElementById('e1dPull');
+                if (pullBtn) pullBtn.addEventListener('click', runPull);
                 const syncMainBtn = document.getElementById('e1dSyncMain');
                 if (syncMainBtn) {
                     syncMainBtn.addEventListener('click', async function () {

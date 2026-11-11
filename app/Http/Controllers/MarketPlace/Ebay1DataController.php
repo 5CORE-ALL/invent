@@ -48,6 +48,34 @@ class Ebay1DataController extends Controller
         ];
     }
 
+    /** Name of the title column as the page shows it (also the Edit Column name). */
+    protected function titleName(): string
+    {
+        return (string) ($this->cfg()['title_name'] ?? 'eBay title');
+    }
+
+    protected function priceName(): string
+    {
+        return (string) ($this->cfg()['price_name'] ?? 'Price');
+    }
+
+    protected function titleMax(): int
+    {
+        return (int) ($this->cfg()['title_max'] ?? 80);
+    }
+
+    /** eBay shows a UPC column filled from CP Master; other channels do not. */
+    protected function hasUpcColumn(): bool
+    {
+        return true;
+    }
+
+    /** Category Master column that holds this channel's category path of a SKU. */
+    protected function categoryMasterColumn(): string
+    {
+        return 'category_ebay';
+    }
+
     /** Table of this channel, e.g. t('item_specifics') = ebay1_item_specifics / ebay2_item_specifics. */
     protected function t(string $name): string
     {
@@ -167,6 +195,12 @@ class Ebay1DataController extends Controller
                 $pendingTitle = trim((string) ($specifics['__ebay_title'] ?? ''));
                 $pendingPrice = is_numeric($specifics['__ebay_price'] ?? null) ? round((float) $specifics['__ebay_price'], 2) : null;
                 unset($specifics['__ebay_title'], $specifics['__ebay_price']);
+                // Any other reserved key (such as the Temu goods name kept with the pull) is not a column.
+                foreach (array_keys($specifics) as $reservedName) {
+                    if (str_starts_with((string) $reservedName, '__')) {
+                        unset($specifics[$reservedName]);
+                    }
+                }
 
                 // Brand is always 5 Core, and Durability Guarantee is always 30, as on Technical Specifications.
                 foreach (array_keys($specifics) as $specName) {
@@ -182,7 +216,7 @@ class Ebay1DataController extends Controller
                 // Specifications and Push use). It replaces "Does not apply", "Not Applicable" and a blank cell, and every
                 // SKU with a UPC gets the column. A SKU with no UPC anywhere leaves the cell as it was.
                 $upc = (string) ($cpUpc[$sku]['upc'] ?? '');
-                if ($upc !== '') {
+                if ($upc !== '' && $this->hasUpcColumn()) {
                     $upcName = null;
                     foreach (array_keys($specifics) as $specName) {
                         if ($this->aspectKey((string) $specName) === 'upc') {
@@ -889,10 +923,10 @@ class Ebay1DataController extends Controller
             array_map('trim', $data['skus']),
             static fn ($s) => $s !== '' && stripos($s, 'PARENT') === false
         )));
-        if ($columnKey === 'ebaytitle') {
+        if (in_array($columnKey, ['ebaytitle', $this->aspectKey($this->titleName())], true)) {
             return $this->saveEbayTitles($skus, $value);
         }
-        if ($columnKey === 'price') {
+        if (in_array($columnKey, ['price', $this->aspectKey($this->priceName())], true)) {
             return $this->saveEbayPrices($skus, $value);
         }
 
@@ -1014,7 +1048,7 @@ class Ebay1DataController extends Controller
     /**
      * @return list<array{name: string, columns: list<string>}>
      */
-    private function columnGroups(): array
+    protected function columnGroups(): array
     {
         if (! Schema::hasTable($this->t('column_groups'))) {
             return [];
@@ -1036,7 +1070,7 @@ class Ebay1DataController extends Controller
      *
      * @return array<string, array<string, array{column_name: string, source_name: string, source_key: string}>>
      */
-    private function columnSourcesByCategory(): array
+    protected function columnSourcesByCategory(): array
     {
         if (! Schema::hasTable($this->t('column_sources'))) {
             return [];
@@ -1056,7 +1090,7 @@ class Ebay1DataController extends Controller
     /**
      * @return list<array{category: string, column: string, source: string}>
      */
-    private function columnSourceList(): array
+    protected function columnSourceList(): array
     {
         if (! Schema::hasTable($this->t('column_sources'))) {
             return [];
@@ -1072,7 +1106,7 @@ class Ebay1DataController extends Controller
      *
      * @return array<string, array<string, string>>
      */
-    private function extraColumnsByCategory(): array
+    protected function extraColumnsByCategory(): array
     {
         if (! Schema::hasTable($this->t('extra_columns'))) {
             return [];
@@ -1090,7 +1124,7 @@ class Ebay1DataController extends Controller
      *
      * @return array<string, array<string, string>>
      */
-    private function technicalSpecValuesBySku(): array
+    protected function technicalSpecValuesBySku(): array
     {
         if (! Schema::hasTable('product_master') || ! Schema::hasColumn('product_master', 'description_v2_specifications')) {
             return [];
@@ -1118,7 +1152,7 @@ class Ebay1DataController extends Controller
     /**
      * A parent row is a "PARENT ..." SKU, or a row whose SKU is the parent name itself.
      */
-    private function isParentRow(string $sku, string $parent): bool
+    protected function isParentRow(string $sku, string $parent): bool
     {
         $sku = trim($sku);
         if ($sku === '' || stripos($sku, 'PARENT') !== false) {
@@ -1128,12 +1162,12 @@ class Ebay1DataController extends Controller
         return $parent !== '' && $this->skuKey($sku) === $this->skuKey($parent);
     }
 
-    private function categoryHash(string $category): string
+    protected function categoryHash(string $category): string
     {
         return sha1(strtolower(trim($category)));
     }
 
-    private function aspectKey(string $name): string
+    protected function aspectKey(string $name): string
     {
         return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
     }
@@ -1143,7 +1177,7 @@ class Ebay1DataController extends Controller
      *
      * @return array<string, array{category_path: string, specifics: array<string, string>}>
      */
-    private function pulledSpecificsBySku(): array
+    protected function pulledSpecificsBySku(): array
     {
         if (! Schema::hasTable($this->t('item_specifics'))) {
             return [];
@@ -1165,7 +1199,7 @@ class Ebay1DataController extends Controller
      *
      * @return array<string, array<string, mixed>>
      */
-    private function metricsBySku(): array
+    protected function metricsBySku(): array
     {
         if (! Schema::hasTable($this->metricsTable())) {
             return [];
@@ -1200,15 +1234,16 @@ class Ebay1DataController extends Controller
      * @param  iterable<int, object>  $listing
      * @return array<string, string>
      */
-    private function categoriesBySku(iterable $listing): array
+    protected function categoriesBySku(iterable $listing): array
     {
         // Most specific first: the eBay category from Category Master, then CAT-5C, then the Product Master category.
         $byKey = [];
         if (Schema::hasTable('category_masters')) {
-            $columns = array_values(array_filter(['sku', 'category_ebay', 'category_5c'], static fn ($c) => Schema::hasColumn('category_masters', $c)));
+            $ownColumn = $this->categoryMasterColumn();
+            $columns = array_values(array_filter(['sku', $ownColumn, 'category_5c'], static fn ($c) => Schema::hasColumn('category_masters', $c)));
             if (in_array('sku', $columns, true)) {
                 foreach (DB::table('category_masters')->select($columns)->get() as $row) {
-                    $path = trim((string) ($row->category_ebay ?? ''));
+                    $path = trim((string) ($row->{$ownColumn} ?? ''));
                     if ($path === '') {
                         $path = trim((string) ($row->category_5c ?? ''));
                     }
@@ -1274,13 +1309,13 @@ class Ebay1DataController extends Controller
     /**
      * Keeps an edited eBay title on the SKU until Push sends it. eBay allows 80 characters.
      */
-    private function saveEbayTitles(array $skus, string $value)
+    protected function saveEbayTitles(array $skus, string $value)
     {
         if ($value === '') {
-            return response()->json(['success' => false, 'message' => 'eBay title cannot be blank.'], 422);
+            return response()->json(['success' => false, 'message' => $this->titleName().' cannot be blank.'], 422);
         }
-        if (mb_strlen($value) > 80) {
-            return response()->json(['success' => false, 'message' => 'eBay title can be at most 80 characters.'], 422);
+        if (mb_strlen($value) > $this->titleMax()) {
+            return response()->json(['success' => false, 'message' => $this->titleName().' can be at most '.$this->titleMax().' characters.'], 422);
         }
 
         if (Schema::hasTable($this->metricsTable()) && Schema::hasColumn($this->metricsTable(), 'ebay_title')) {
@@ -1293,7 +1328,7 @@ class Ebay1DataController extends Controller
     /**
      * Keeps an edited price on the SKU until Push sends it. The live price on the metrics row is not touched.
      */
-    private function saveEbayPrices(array $skus, string $value)
+    protected function saveEbayPrices(array $skus, string $value)
     {
         $clean = str_replace([',', '$', ' '], '', $value);
         if (! is_numeric($clean) || (float) $clean < 0.01 || (float) $clean > 100000) {
@@ -1303,7 +1338,7 @@ class Ebay1DataController extends Controller
         return $this->storePending($skus, '__ebay_price', number_format((float) $clean, 2, '.', ''));
     }
 
-    private function storePending(array $skus, string $field, string $value)
+    protected function storePending(array $skus, string $field, string $value)
     {
         $copiesUpdated = 0;
         if (Schema::hasTable($this->t('item_specifics'))) {
@@ -1337,7 +1372,7 @@ class Ebay1DataController extends Controller
     /**
      * @return array<string, array<string, array{0: ?string, 1: ?string}>> SKU key => field => [text colour, background]
      */
-    private function cellStylesMap(): array
+    protected function cellStylesMap(): array
     {
         if (! Schema::hasTable($this->t('cell_styles'))) {
             return [];
@@ -1750,7 +1785,7 @@ class Ebay1DataController extends Controller
 
     // ---- Auto Push: the on/off switch and the item specifics edited by hand that are not on eBay yet. ----
 
-    private function autoPushEnabled(): bool
+    protected function autoPushEnabled(): bool
     {
         if (! Schema::hasTable($this->t('settings'))) {
             return false;
@@ -1782,7 +1817,7 @@ class Ebay1DataController extends Controller
     /**
      * @return array<string, array<string, string>> SKU key => [aspect key => column name]
      */
-    private function pendingSpecificsBySku(): array
+    protected function pendingSpecificsBySku(): array
     {
         if (! Schema::hasTable($this->t('pending_specifics'))) {
             return [];
@@ -1795,7 +1830,7 @@ class Ebay1DataController extends Controller
         return $out;
     }
 
-    private function markPendingSpecific(string $sku, string $name): void
+    protected function markPendingSpecific(string $sku, string $name): void
     {
         $key = $this->aspectKey($name);
         if ($key === '' || ! Schema::hasTable($this->t('pending_specifics'))) {
@@ -1812,7 +1847,7 @@ class Ebay1DataController extends Controller
     /**
      * @param  list<string>  $names
      */
-    private function clearPendingSpecifics(string $sku, array $names): void
+    protected function clearPendingSpecifics(string $sku, array $names): void
     {
         if ($names === [] || ! Schema::hasTable($this->t('pending_specifics'))) {
             return;
@@ -1823,7 +1858,7 @@ class Ebay1DataController extends Controller
         }
     }
 
-    private function clearPending(string $sku, string $field): void
+    protected function clearPending(string $sku, string $field): void
     {
         if (! Schema::hasTable($this->t('item_specifics'))) {
             return;
@@ -1844,22 +1879,22 @@ class Ebay1DataController extends Controller
         ]);
     }
 
-    private function clearPendingTitle(string $sku): void
+    protected function clearPendingTitle(string $sku): void
     {
         $this->clearPending($sku, '__ebay_title');
     }
 
-    private function clearPendingPrice(string $sku): void
+    protected function clearPendingPrice(string $sku): void
     {
         $this->clearPending($sku, '__ebay_price');
     }
 
-    private function skuKey(string $sku): string
+    protected function skuKey(string $sku): string
     {
         return strtoupper(trim(str_replace("\u{00a0}", ' ', $sku)));
     }
 
-    private function num(mixed $value): ?float
+    protected function num(mixed $value): ?float
     {
         if ($value === null || $value === '' || ! is_numeric($value)) {
             return null;

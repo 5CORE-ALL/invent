@@ -5069,6 +5069,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post($ebayBase.'/delete-specific', [$ebayCtl, 'deleteSpecific'])->name($ebayName.'.delete.specific');
         Route::post($ebayBase.'/sync-from-main', [$ebayCtl, 'syncFromMain'])->name($ebayName.'.sync.from.main');
     }
+    // Temu 1 Data: the same page for the Temu 1 shop (category and item specifics as Temu holds them). /temu1-data is another page.
+    foreach ([
+        '' => 'index', '/rows' => 'rows', '/column-options' => 'columnOptions', '/ebay-categories' => 'ebayCategories',
+        '/missing-history' => 'missingHistory',
+    ] as $temuPath => $temuMethod) {
+        Route::get('/temu1-item-data'.$temuPath, [\App\Http\Controllers\MarketPlace\Temu1DataController::class, $temuMethod])->name('temu1.item.data'.str_replace('/', '.', $temuPath));
+    }
+    foreach ([
+        '/add-column' => 'addColumn', '/push' => 'pushSpecifics', '/pull' => 'pullFromTemu', '/cell-styles' => 'saveCellStyles',
+        '/change-category' => 'changeCategory', '/missing-history' => 'saveMissingHistory', '/auto-push' => 'setAutoPush',
+        '/nr-req' => 'saveNrReq', '/save-source' => 'saveSource', '/edit-column' => 'editColumn',
+        '/column-groups' => 'saveColumnGroups', '/delete-specific' => 'deleteSpecific',
+    ] as $temuPath => $temuMethod) {
+        Route::post('/temu1-item-data'.$temuPath, [\App\Http\Controllers\MarketPlace\Temu1DataController::class, $temuMethod])->name('temu1.item.data.post'.str_replace('/', '.', $temuPath));
+    }
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');
