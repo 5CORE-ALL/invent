@@ -853,6 +853,7 @@ class FacebookAllAdsSheetController extends Controller
             $lt = $lifetime[(string) ($row['CAMPAIGN ID'] ?? '')] ?? null;
             $row['_lt_spend']       = $lt ? (float) $lt->spend : null;
             $row['_lt_sales']       = $lt ? (float) $lt->sales : null;
+            $row['Lifetime Spend']  = $lt ? '$' . number_format((float) $lt->spend, 0) : null;
             $row['Lifetime Sales']  = $lt ? '$' . number_format((float) $lt->sales, 0) : null;
             $row['Lifetime Acos']   = $lt ? $this->acosPct($lt->spend, $lt->sales, 0) : null;
         }
@@ -2834,8 +2835,9 @@ class FacebookAllAdsSheetController extends Controller
         // Lifetime (all-time) ACOS and SALES per campaign. Placeholders here —
         // the values are attached in "Pass 4b" from facebook_campaign_lifetime_stats
         // (filled by `facebook:sync-lifetime-stats` from Meta, date_preset=maximum).
-        ['title' => 'Lifetime Acos',  'sources' => []],
+        ['title' => 'Lifetime Spend', 'sources' => []],
         ['title' => 'Lifetime Sales', 'sources' => []],
+        ['title' => 'Lifetime Acos',  'sources' => []],
         // Sbgt = suggested budget driven by the ACOS bracket — see
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".

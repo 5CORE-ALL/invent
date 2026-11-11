@@ -454,6 +454,8 @@
                                       title="CPS = Spend / Sold (visible rows)">CPS:<span class="faas-kpi-val" id="faasCpsValue">$0</span></span>
                                 <span id="faasBgtBadge" class="faas-kpi-tile"
                                       title="Sum of Sbgt (suggested budget) across the visible rows">BGT:<span class="faas-kpi-val" id="faasBgtValue">$0</span></span>
+                                <span id="faasLtSpendBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="Lifetime Spend = all-time Meta ad spend of the visible campaigns">LT Spend:<span class="faas-kpi-val" id="faasLtSpendValue">$0</span></span>
                                 <span id="faasLtSalesBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
                                       title="Lifetime Sales = all-time Meta purchase value of the visible campaigns">LT Sales:<span class="faas-kpi-val" id="faasLtSalesValue">$0</span></span>
                                 <span id="faasLtAcosBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
@@ -1845,7 +1847,7 @@
                         'Campaign name',
                         'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
-                        'Lifetime Acos', 'Lifetime Sales',
+                        'Lifetime Acos', 'Lifetime Sales', 'Lifetime Spend',
                     ]);
                     // Columns whose cell should be painted with the
                     // matched ACOS-band colour (Sbgt only — Acos uses
@@ -1874,17 +1876,19 @@
                         }
                         return String(v);
                     }
-                    // Lifetime Sales: all-time Meta purchase value, shown as a green
-                    // badge; a grey "—" when Meta has no lifetime row for the campaign.
-                    function formatLifetimeSalesCell(cell) {
+                    // Lifetime Sales / Spend: all-time Meta values shown as pill badges
+                    // (sales green, spend red); a grey "—" when Meta has no lifetime row.
+                    function faasLifetimePill(cell, bg, fg) {
                         const v = cell.getValue();
                         if (v === null || v === undefined || String(v).trim() === '') {
                             return '<span style="color:#9ca3af;">—</span>';
                         }
                         const text = String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
                         return '<span style="display:inline-block;padding:1px 8px;border-radius:999px;'
-                             + 'background:#dcfce7;color:#166534;font-weight:700;">' + text + '</span>';
+                             + 'background:' + bg + ';color:' + fg + ';font-weight:700;">' + text + '</span>';
                     }
+                    function formatLifetimeSalesCell(cell) { return faasLifetimePill(cell, '#dcfce7', '#166534'); }
+                    function formatLifetimeSpendCell(cell) { return faasLifetimePill(cell, '#fee2e2', '#991b1b'); }
                     // Same idea for SOLD — show "0" in red when no
                     // orders attribute to the row, without the $ prefix.
                     function formatSoldCell(cell) {
@@ -2044,6 +2048,7 @@
                         let formatter = 'plaintext';
                         if (c.field === 'Acos' || c.field === 'Lifetime Acos') formatter = formatAcosCell;
                         else if (c.field === 'Lifetime Sales') formatter = formatLifetimeSalesCell;
+                        else if (c.field === 'Lifetime Spend') formatter = formatLifetimeSpendCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
                         else if (c.field === 'SPEND')        formatter = formatSpendCell;
                         else if (c.field === 'IMPR' || c.field === 'CLK') {
@@ -2071,7 +2076,7 @@
                         const NUMERIC = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR',
                             'SPEND','SALES','SOLD','CVR','CPS',
-                            'Lifetime Acos','Lifetime Sales',
+                            'Lifetime Acos','Lifetime Sales','Lifetime Spend',
                         ]);
                         const sorter = NUMERIC.has(c.field)
                             ? function (a, b) {
@@ -2092,7 +2097,7 @@
                         // layout fills any leftover horizontal space.
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
-                            'Lifetime Acos','Lifetime Sales',
+                            'Lifetime Acos','Lifetime Sales','Lifetime Spend',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
                                        : (c.field === 'Campaign name' ? 220
@@ -2659,6 +2664,8 @@
 
             // Lifetime badges: LT Sales = Σ lifetime sales; LT Acos% = Σ spend ÷ Σ sales
             // (same edge rules as the Acos column: no spend → 0%, spend but no sales → 100%).
+            const ltSpendEl = document.getElementById('faasLtSpendValue');
+            if (ltSpendEl) ltSpendEl.textContent = '$' + Math.round(ltSpendSum).toLocaleString();
             const ltSalesEl = document.getElementById('faasLtSalesValue');
             if (ltSalesEl) ltSalesEl.textContent = '$' + Math.round(ltSalesSum).toLocaleString();
             const ltAcosEl = document.getElementById('faasLtAcosValue');
