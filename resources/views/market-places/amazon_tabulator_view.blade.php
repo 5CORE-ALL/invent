@@ -1614,6 +1614,17 @@
             return (g == null || !isFinite(g)) ? null : g;
         }
 
+        /** GROI% / NROI% at C Std Prc: (C Std Prc × margin − ship − LP) / LP × 100, margin 0.80 (GROI) or 0.70 (NROI, same as Std NROI%). null without C Std Prc or LP. */
+        function amazonCStdRoiPct(rowData, margin) {
+            const p = amazonCStdPrc(rowData);
+            const lp = parseFloat(rowData && rowData.LP_productmaster);
+            if (!(p > 0) || !isFinite(lp) || !(lp > 0)) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((p * margin - ship - lp) / lp) * 100;
+        }
+        function amazonCStdGroiPct(rowData) { return amazonCStdRoiPct(rowData, 0.80); }
+        function amazonCStdNroiPct(rowData) { return amazonCStdRoiPct(rowData, 0.70); }
+
         /** Same test as LMP column red: INV > 0 and Price > landed L1. */
         function amazonPriceGtLandedLmp(data) {
             if (!data || data.is_parent_summary) return false;
@@ -5783,8 +5794,7 @@
                             if (!info) return '';
                             const tip = info.parts.map(function(p) { return 'Seq ' + p.seq + ' · ' + p.label + ': ' + p.pct + '%'; }).join('\n')
                                 + '\nSum: ' + info.total + '%';
-                            const color = info.total > 0 ? '#6f42c1' : '#6c757d';
-                            return '<span style="font-weight:600;color:' + color + ';" title="' + escAttr(tip) + '">' + info.total + '%</span>';
+                            return '<span style="font-weight:600;color:#dc3545;" title="' + escAttr(tip) + '">' + info.total + '%</span>';
                         },
                         width: 80
                     },
@@ -5822,6 +5832,46 @@
                             const v = amazonCStdGpftPct(rowData);
                             if (v === null) return '<span style="color: #999;">—</span>';
                             const st = (window.MetricPctColors && MetricPctColors.styleForField('gpft', v)) || '';
+                            const txt = Math.round(v) + '%';
+                            return st ? '<span style="' + st + '">' + txt + '</span>'
+                                : '<span style="font-weight:600;color:' + (v < 0 ? '#dc3545' : '#198754') + ';">' + txt + '</span>';
+                        },
+                        width: 70
+                    },
+
+                    {
+                        title: "GROI% C",
+                        field: "c_std_groi_pct",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdGroiPct(d); }),
+                        headerTooltip: "GROI% at C Std Prc = (C Std Prc × 0.80 − ship − LP) / LP × 100.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdGroiPct(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const st = (window.MetricPctColors && MetricPctColors.styleForField('groi', v)) || '';
+                            const txt = Math.round(v) + '%';
+                            return st ? '<span style="' + st + '">' + txt + '</span>'
+                                : '<span style="font-weight:600;color:' + (v < 0 ? '#dc3545' : '#198754') + ';">' + txt + '</span>';
+                        },
+                        width: 70
+                    },
+
+                    {
+                        title: "NROI% C",
+                        field: "c_std_nroi_pct",
+                        hozAlign: "center",
+                        headerSort: true,
+                        sorter: amazonMetricSorter(function(d) { return amazonCStdNroiPct(d); }),
+                        headerTooltip: "NROI% at C Std Prc = (C Std Prc × 0.70 − ship − LP) / LP × 100.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const v = amazonCStdNroiPct(rowData);
+                            if (v === null) return '<span style="color: #999;">—</span>';
+                            const st = (window.MetricPctColors && MetricPctColors.styleForField('nroi', v)) || '';
                             const txt = Math.round(v) + '%';
                             return st ? '<span style="' + st + '">' + txt + '</span>'
                                 : '<span style="font-weight:600;color:' + (v < 0 ? '#dc3545' : '#198754') + ';">' + txt + '</span>';
@@ -7151,7 +7201,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|std_prc_diff|c_std_prc|c_std_npft_usd|c_std_npft_pct|c_std_gpft_pct|c_std_groi_pct|c_std_nroi_pct|amz_chg|sprc_pct_disc|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
