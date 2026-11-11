@@ -41,6 +41,7 @@ class EbayAccountRulesController extends Controller
         return response()->json([
             'bids' => (object) $bids,
             'enabled' => PmtCategoryBidRule::isOn($account),
+            'pause_rule' => PmtCategoryBidRule::pauseRule($account),
         ]);
     }
 
@@ -96,10 +97,23 @@ class EbayAccountRulesController extends Controller
             $bids[$category] = $values;
         }
 
+        // Dynamic pause conditions (DIL / L30 / INV). Only touched when the browser sends them.
+        $pauseRule = null;
+        if ($request->has('pause_rule')) {
+            try {
+                $pauseRule = PmtCategoryBidRule::normalizePauseRule($request->input('pause_rule'));
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['error' => $e->getMessage()], 422);
+            }
+        }
+
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => PmtCategoryBidRule::keyBids($account)],
             ['rule' => json_encode($bids, JSON_UNESCAPED_UNICODE), 'updated_at' => now()]
         );
+        if ($pauseRule !== null) {
+            PmtCategoryBidRule::setPauseRule($pauseRule, $account);
+        }
 
         // New ranges while the rule is on: push the changed bids in the background.
         $on = PmtCategoryBidRule::isOn($account);
@@ -107,7 +121,12 @@ class EbayAccountRulesController extends Controller
             PmtRuleAutoPush::spawn($account, true);
         }
 
-        return response()->json(['success' => true, 'bids' => (object) $bids, 'enabled' => $on]);
+        return response()->json([
+            'success' => true,
+            'bids' => (object) $bids,
+            'enabled' => $on,
+            'pause_rule' => PmtCategoryBidRule::pauseRule($account),
+        ]);
     }
 
     /** Every category the "+" button offers for this account. */

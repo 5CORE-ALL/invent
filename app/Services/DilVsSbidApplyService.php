@@ -298,9 +298,10 @@ class DilVsSbidApplyService
             ? $this->pmtParentFamilies($listingIds, $cfg['metric'], $categories)
             : [];
         $fallback = $this->pmtSbidFallback($account, $cfg['rule']);
+        $pauseRule = PmtCategoryBidRule::pauseRule($account);
         $decider = fn (string $lid, object $ad, array $rolled): array => isset($families[(string) $lid])
-            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids, $fallback === null ? null : fn (): array => $fallback($ad, $rolled))
-            : $this->pmtDecision($lid, $rolled, $bids, $categories, $fallback === null ? null : fn (): array => $fallback($ad, $rolled));
+            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule)
+            : $this->pmtDecision($lid, $rolled, $bids, $categories, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule);
 
         if ($onlyLocalMismatch) {
             $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider, $cfg['rule']);
@@ -414,7 +415,8 @@ class DilVsSbidApplyService
         $out['inputs'] = $in + ['dil_pct' => ((float) ($in['inv'] ?? 0)) > 0 ? round(((float) $in['ovL30'] / (float) $in['inv']) * 100, 1) : 0];
         $out['category_range'] = $bids[$in['category']] ?? null;
         $sbidFallback = ($account === 'ebay1' && isset($rolled)) ? $this->pmtSbidFallback($account, $cfg['rule']) : null;
-        $out['wanted'] = $this->pmtDecisionFromInputs($in, $bids, $sbidFallback === null ? null : fn (): array => $sbidFallback($first, $rolled));
+        $out['pause_rule'] = PmtCategoryBidRule::pauseRule($account);
+        $out['wanted'] = $this->pmtDecisionFromInputs($in, $bids, $sbidFallback === null ? null : fn (): array => $sbidFallback($first, $rolled), $out['pause_rule']);
 
         // What eBay says is live.
         $out['live'] = [];
@@ -455,14 +457,14 @@ class DilVsSbidApplyService
      * @param  array<string, string>  $categories
      * @return array{skip:?string, off:bool, formatted:?string, label:string}
      */
-    private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories, ?callable $fallback = null): array
+    private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories, ?callable $fallback = null, ?array $pauseRule = null): array
     {
         return $this->pmtDecisionFromInputs([
             'inv' => $rolled['shopify']->inv ?? null,
             'ovL30' => $rolled['shopify']->quantity ?? 0,
             'sold' => $rolled['metric']->ebay_l30 ?? 0,
             'category' => $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '',
-        ], $bids, $fallback);
+        ], $bids, $fallback, $pauseRule);
     }
 
     /**
@@ -506,7 +508,7 @@ class DilVsSbidApplyService
      * @param  array<string, array{highest:?float,lowest:?float}>  $bids
      * @return array{skip:?string, off:bool, formatted:?string, label:string}
      */
-    private function pmtDecisionFromInputs(array $in, array $bids, ?callable $fallback = null): array
+    private function pmtDecisionFromInputs(array $in, array $bids, ?callable $fallback = null, ?array $pauseRule = null): array
     {
         $inv = $in['inv'] ?? null;
         if ($inv === null || ! is_numeric($inv)) {
@@ -520,7 +522,7 @@ class DilVsSbidApplyService
 
         $category = (string) ($in['category'] ?? '');
         $range = $bids[$category] ?? ['highest' => null, 'lowest' => null, 'manual' => null];
-        $d = PmtCategoryBidRule::decide($inv, $range['highest'], $range['manual'] ?? null);
+        $d = PmtCategoryBidRule::decide($inv, $range['highest'], $range['manual'] ?? null, PmtCategoryBidRule::pauseMatches($pauseRule, $inv, $ovL30));
 
         if ($d['pause']) {
             return ['skip' => null, 'off' => true, 'formatted' => null, 'label' => $d['label']];

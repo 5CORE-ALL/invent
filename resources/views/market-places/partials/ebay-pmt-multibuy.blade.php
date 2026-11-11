@@ -45,6 +45,14 @@
         .arp-title-icon { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
             background: rgba(255, 255, 255, .18); font-size: 16px; }
         .arp-subtitle { font-size: 12px; opacity: .85; }
+        .arp-pause { flex: 0 0 auto; background: #fff; border-bottom: 1px solid #e6e8f0; }
+        .arp-pause-head { display: flex; align-items: center; gap: 12px; padding: 10px 22px; cursor: pointer; background: #f5f3ff; }
+        .arp-pause-icon { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+            background: #ede9fe; color: #6d28d9; font-size: 12px; }
+        .arp-pause-body { padding: 8px 22px 12px; max-height: 32vh; overflow-y: auto; }
+        .arp-pause-table thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #64748b; border-bottom-width: 1px; }
+        .arp-pause-table td { padding-top: 2px; padding-bottom: 2px; }
+        .arp-pause-table .form-select, .arp-pause-table .form-control { border-radius: 8px; height: 30px; padding-top: 2px; padding-bottom: 2px; font-size: 13px; }
         .arp-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; padding: 18px 22px; background: #f6f7fb; }
         .arp-rules, .arp-cats { min-height: 0; display: flex; flex-direction: column; background: #fff; border-radius: 12px;
             border: 1px solid #e6e8f0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); padding: 14px; }
@@ -141,6 +149,39 @@
                             <label class="form-check-label fw-semibold" for="ads-rule-pmt-enabled" id="ads-rule-pmt-enabled-label">Off</label>
                         </div>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <!-- Pause conditions: dynamic IF / AND / OR on DIL, L30, INV. A {{ $pmtUnit }} that matches is paused (rule 1). -->
+                <div class="arp-pause" id="arp-pause">
+                    <div class="arp-pause-head" id="arp-pause-head" title="Click to show / hide the pause conditions">
+                        <span class="arp-pause-icon"><i class="fas fa-pause"></i></span>
+                        <div class="me-auto">
+                            <div class="fw-bold">Pause ads when <span class="arp-muted" id="arp-pause-state"></span></div>
+                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. INV = 0 always pauses. Empty values are ignored. AND is checked before OR.</div>
+                        </div>
+                        <div class="form-check form-switch mb-0" title="On: a {{ $pmtUnit }} that matches the conditions below is paused. Off: only INV = 0 pauses.">
+                            <input class="form-check-input" type="checkbox" role="switch" id="arp-pause-enabled">
+                            <label class="form-check-label small fw-semibold text-nowrap" for="arp-pause-enabled">Conditions On</label>
+                        </div>
+                        <i class="fas fa-chevron-up text-muted" id="arp-pause-chevron"></i>
+                    </div>
+                    <div class="arp-pause-body" id="arp-pause-body">
+                        <table class="table table-sm align-middle mb-1 arp-pause-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 36px;">#</th>
+                                    <th style="width: 90px;">Join</th>
+                                    <th>Column</th>
+                                    <th>Condition</th>
+                                    <th style="width: 130px;">Compare with</th>
+                                    <th>Value</th>
+                                    <th style="width: 40px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="arp-pause-rows"></tbody>
+                        </table>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="arp-pause-add" style="border-style: dashed;"><i class="fas fa-plus me-1"></i>Add condition</button>
+                        <span class="arp-muted ms-2" style="font-size: 12px;">Saved with <b>Save and Apply</b>.</span>
                     </div>
                 </div>
                 <div class="arp-body">
@@ -414,9 +455,102 @@
                     const n = parseFloat(v);
                     return isFinite(n) ? n : null;
                 }
+                // ---- Pause conditions (dynamic): IF / AND / OR on DIL, L30, INV. A match = rule 1 (ad paused). ----
+                const PAUSE_COLS = { dil: 'DIL %', l30: 'L30', inv: 'INV' };
+                const PAUSE_OPS = { '<': '< less than', '<=': '<= less or equal', '=': '= equal to', '!=': '!= not equal to', '>=': '>= greater or equal', '>': '> greater than' };
+                function defaultPauseConditions() {
+                    return [
+                        { join: 'AND', column: 'dil', op: '<', mode: 'number', value: '' },
+                        { join: 'AND', column: 'l30', op: '<', mode: 'number', value: '' },
+                        { join: 'AND', column: 'inv', op: '>', mode: 'number', value: '' }
+                    ];
+                }
+                let pauseRule = { enabled: false, conditions: defaultPauseConditions() };
+                function setPauseRule(p) {
+                    const conds = (p && Array.isArray(p.conditions)) ? p.conditions.filter(function(c) { return c && PAUSE_COLS[c.column]; }) : [];
+                    pauseRule = { enabled: !!(p && p.enabled), conditions: conds.length ? conds : defaultPauseConditions() };
+                }
+                function pauseCondActive(c) {
+                    if (c.mode === 'column') return !!PAUSE_COLS[c.value];
+                    return c.value !== '' && c.value != null && isFinite(parseFloat(c.value));
+                }
+                function pauseVals(row) {
+                    return { dil: rowDil(row), l30: parseFloat(row.L30) || 0, inv: rowInv(row) };
+                }
+                function pauseCmp(left, op, right) {
+                    switch (op) {
+                        case '<': return left < right;
+                        case '<=': return left <= right;
+                        case '=': return Math.abs(left - right) < 1e-9;
+                        case '!=': return Math.abs(left - right) >= 1e-9;
+                        case '>=': return left >= right;
+                        case '>': return left > right;
+                    }
+                    return false;
+                }
+                function pauseHasConditions() { return pauseRule.conditions.some(pauseCondActive); }
+                /** Does the pause rule fire for this row? (AND binds tighter than OR; same logic as the push.) */
+                function pauseMatchRow(row) {
+                    if (!pauseRule.enabled) return false;
+                    const v = pauseVals(row);
+                    const groups = [];
+                    let cur = null;
+                    pauseRule.conditions.forEach(function(c) {
+                        if (!pauseCondActive(c)) return;
+                        const right = c.mode === 'column' ? v[c.value] : parseFloat(c.value);
+                        const hit = pauseCmp(v[c.column], c.op, right);
+                        if (cur === null || c.join === 'OR') { cur = []; groups.push(cur); }
+                        cur.push(hit);
+                    });
+                    return groups.some(function(g) { return g.every(Boolean); });
+                }
+                function pauseColOptions(sel) {
+                    return Object.keys(PAUSE_COLS).map(function(k) { return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + PAUSE_COLS[k] + '</option>'; }).join('');
+                }
+                function renderPauseRows() {
+                    const html = pauseRule.conditions.map(function(c, i) {
+                        const joinCell = i === 0
+                            ? '<span class="badge" style="background:#ede9fe;color:#6d28d9;">IF</span>'
+                            : '<select class="form-select form-select-sm pz-join">' + ['AND', 'OR'].map(function(j) { return '<option' + (c.join === j ? ' selected' : '') + '>' + j + '</option>'; }).join('') + '</select>';
+                        const ops = Object.keys(PAUSE_OPS).map(function(k) { return '<option value="' + k + '"' + (c.op === k ? ' selected' : '') + '>' + arpEsc(PAUSE_OPS[k]) + '</option>'; }).join('');
+                        const valueCell = c.mode === 'column'
+                            ? '<select class="form-select form-select-sm pz-valcol">' + pauseColOptions(c.value) + '</select>'
+                            : '<input type="number" step="any" class="form-control form-control-sm pz-valnum" placeholder="e.g. 5" value="' + arpEsc(c.value) + '">';
+                        return '<tr data-i="' + i + '"><td class="text-muted">' + (i + 1) + '</td><td>' + joinCell + '</td>'
+                            + '<td><select class="form-select form-select-sm pz-col">' + pauseColOptions(c.column) + '</select></td>'
+                            + '<td><select class="form-select form-select-sm pz-op">' + ops + '</select></td>'
+                            + '<td><select class="form-select form-select-sm pz-mode"><option value="number"' + (c.mode !== 'column' ? ' selected' : '') + '>Number</option><option value="column"' + (c.mode === 'column' ? ' selected' : '') + '>Column</option></select></td>'
+                            + '<td>' + valueCell + '</td>'
+                            + '<td><button type="button" class="btn btn-sm btn-outline-danger pz-del" title="Remove"' + (pauseRule.conditions.length <= 1 ? ' disabled' : '') + '><i class="fas fa-trash"></i></button></td></tr>';
+                    }).join('');
+                    $('#arp-pause-rows').html(html);
+                    $('#arp-pause-enabled').prop('checked', pauseRule.enabled);
+                    paintPauseState();
+                }
+                function paintPauseState() {
+                    $('#arp-pause-state').text(!pauseRule.enabled ? '(off, only INV = 0 pauses)' : (pauseHasConditions() ? '(on)' : '(on, but no condition has a value yet)'));
+                }
+                /** DOM -> pauseRule (keeps edits not saved yet). */
+                function readPauseRows() {
+                    const conds = [];
+                    $('#arp-pause-rows tr').each(function(i) {
+                        const $r = $(this);
+                        const mode = $r.find('.pz-mode').val() || 'number';
+                        conds.push({
+                            join: i === 0 ? 'AND' : ($r.find('.pz-join').val() || 'AND'),
+                            column: $r.find('.pz-col').val(),
+                            op: $r.find('.pz-op').val(),
+                            mode: mode,
+                            value: mode === 'column' ? $r.find('.pz-valcol').val() : $r.find('.pz-valnum').val()
+                        });
+                    });
+                    if (conds.length) pauseRule.conditions = conds;
+                    pauseRule.enabled = $('#arp-pause-enabled').is(':checked');
+                }
                 /** Which rule key ('1'..'4') applies to this {{ $pmtUnit }} row. */
                 function classifyRow(row) {
                     if (rowInv(row) <= 0) return '1';
+                    if (pauseMatchRow(row)) return '1';
                     const saved = savedBids[String(row.excel_category || '').trim()] || {};
                     if (num(saved.highest) !== null) return '2';
                     return '3';
@@ -446,13 +580,16 @@
                     out.data.push((PMT_BY_PARENT ? 'Family INV: ' : 'INV: ') + rowInv(row));
                     out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)));
                     out.steps.push('Is INV above 0?  ' + (rowInv(row) > 0 ? 'Yes (INV ' + rowInv(row) + ')' : 'No -> bid 0, the ad is left as it is (eBay cannot pause a cost-per-sale ad)'));
-                    if (rowInv(row) > 0) out.steps.push('Does the category have a Highest?  ' + (num(saved.highest) !== null ? 'Yes (' + num(saved.highest) + '%) -> use it' : 'No'));
-                    if (rowInv(row) > 0 && num(saved.highest) === null) {
+                    const pausedByConds = rowInv(row) > 0 && pauseMatchRow(row);
+                    if (rowInv(row) > 0 && pauseRule.enabled) out.steps.push('Do the pause conditions match (DIL ' + Math.round(rowDil(row) * 100) / 100 + '%, L30 ' + (parseFloat(row.L30) || 0) + ', INV ' + rowInv(row) + ')?  ' + (pausedByConds ? 'Yes -> bid 0, the ad is paused' : 'No'));
+                    if (rowInv(row) > 0 && !pausedByConds) out.steps.push('Does the category have a Highest?  ' + (num(saved.highest) !== null ? 'Yes (' + num(saved.highest) + '%) -> use it' : 'No'));
+                    if (rowInv(row) > 0 && !pausedByConds && num(saved.highest) === null) {
                         out.steps.push(PMT_SBID_FALLBACK ? 'No match -> use the old Dil vs SBid S BID of this listing' : 'No match -> no bid is pushed for this ' + @json($pmtUnit));
                     }
                     let calc = null;
                     if (rule === '1') {
-                        out.bid = 0; out.pause = true; out.title = 'Rule 1: INV = ' + rowInv(row) + ' (not above 0)\nBid 0 / pause the ad. eBay cannot pause a cost-per-sale ad, so the ad is left as it is.';
+                        out.bid = 0; out.pause = true;
+                        out.title = (rowInv(row) > 0 ? 'Rule 1: the pause conditions match' : 'Rule 1: INV = ' + rowInv(row) + ' (not above 0)') + '\nBid 0 / pause the ad. eBay cannot pause a cost-per-sale ad, so the ad is left as it is.';
                         return out;
                     }
                     if (rule === '2') {
@@ -493,7 +630,7 @@
                 function loadSavedBids() {
                     return fetch(PMT_BIDS_URL, { headers: { 'Accept': 'application/json' } })
                         .then(function(r) { return r.json(); })
-                        .then(function(d) { savedBids = (d && d.bids) || {}; ruleOn = !!(d && d.enabled); paintMode(); })
+                        .then(function(d) { savedBids = (d && d.bids) || {}; ruleOn = !!(d && d.enabled); setPauseRule(d && d.pause_rule); paintMode(); })
                         .catch(function() { savedBids = {}; });
                 }
 
@@ -517,7 +654,7 @@
                             $('<div class="arp-rule">').addClass('is-' + r.key)
                                 .append($('<span class="arp-rule-num">').text(r.key))
                                 .append($('<div>')
-                                    .append($('<div class="arp-rule-cond">').html(r.label))
+                                    .append($('<div class="arp-rule-cond">').html(r.key === '1' && pauseRule.enabled && pauseHasConditions() ? 'INV = 0 <i>or</i> pause conditions match' : r.label))
                                     .append($('<span class="arp-rule-bid">').html(r.bid)))
                                 .append($('<div class="arp-rule-count">').text(counts[r.key].toLocaleString()).append('<small>{{ $pmtUnit }}s</small>'))
                         );
@@ -828,6 +965,7 @@
                     $('#ads-rule-pmt-bench-status').text('');
                     paintMode();
                     loadSavedBids().finally(function() {
+                        renderPauseRows();
                         renderRows();
                         fillFromBenchmarks(false); // blank inputs only; saved values are kept
                     });
@@ -849,6 +987,33 @@
                     updateSummary();
                 });
                 $('#ads-rule-pmt-bench-fill').on('click', function() { fillFromBenchmarks(true); });
+
+                // ---- Pause conditions builder ----
+                $('#arp-pause-head').on('click', function(e) {
+                    if ($(e.target).closest('.form-check').length) return; // the On switch does not fold the panel
+                    $('#arp-pause-body').toggle();
+                    $('#arp-pause-chevron').toggleClass('fa-chevron-up fa-chevron-down');
+                });
+                // Any edit: re-read, repaint the rule counts live (nothing is saved until Save and Apply).
+                $('#arp-pause-rows').on('input change', 'select, input', function() { readPauseRows(); paintPauseState(); renderRuleCounts(); });
+                $('#arp-pause-enabled').on('change', function() { readPauseRows(); paintPauseState(); renderRuleCounts(); });
+                $('#arp-pause-rows').on('change', '.pz-mode', function() {
+                    const c = pauseRule.conditions[$(this).closest('tr').data('i')];
+                    c.value = c.mode === 'column' ? 'inv' : '';
+                    renderPauseRows();
+                    renderRuleCounts();
+                });
+                $('#arp-pause-rows').on('click', '.pz-del', function() {
+                    readPauseRows();
+                    if (pauseRule.conditions.length > 1) pauseRule.conditions.splice($(this).closest('tr').data('i'), 1);
+                    renderPauseRows();
+                    renderRuleCounts();
+                });
+                $('#arp-pause-add').on('click', function() {
+                    readPauseRows();
+                    pauseRule.conditions.push({ join: 'AND', column: 'dil', op: '<', mode: 'number', value: '' });
+                    renderPauseRows();
+                });
 
                 $('#ads-rule-pmt-enabled').on('change', function() {
                     const want = !!this.checked;
@@ -899,7 +1064,7 @@
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
-                        body: JSON.stringify({ bids: bids })
+                        body: JSON.stringify({ bids: bids, pause_rule: (readPauseRows(), { enabled: pauseRule.enabled, conditions: pauseRule.conditions }) })
                     })
                         .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
                         .then(function(res) {
@@ -908,6 +1073,7 @@
                                 return;
                             }
                             savedBids = res.d.bids || {};
+                            if (res.d.pause_rule) setPauseRule(res.d.pause_rule);
                             if (typeof res.d.enabled === 'boolean') { ruleOn = res.d.enabled; paintMode(); }
                             if (ruleOn && typeof showToast === 'function') showToast('success', 'Saved. Pushing the new bids to eBay in the background.');
                             refreshPmtColumn();
