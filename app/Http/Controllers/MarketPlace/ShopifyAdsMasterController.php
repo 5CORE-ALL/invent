@@ -846,7 +846,9 @@ class ShopifyAdsMasterController extends Controller
         // such as $2,271.40 -> $2,271.33 and left the dot grey even though the
         // chart's delta label showed the move.
         if (abs($last - $prev) < 1e-9) {
-            return 'flat';
+            // Data is present for both days and genuinely unchanged -> 'same'
+            // (yellow dot). Zero on both days is just "no activity" -> 'flat' (grey).
+            return abs($last) < 1e-9 ? 'flat' : 'same';
         }
 
         return $last > $prev ? 'up' : 'down';

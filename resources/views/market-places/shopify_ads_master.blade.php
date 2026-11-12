@@ -309,7 +309,10 @@
                 const dir   = (data.trend || {})[field];
 
                 let color;
-                if (!dir || dir === 'flat') {
+                if (dir === 'same') {
+                    // Data is updated and the value is unchanged vs previous day.
+                    color = '#facc15';
+                } else if (!dir || dir === 'flat') {
                     color = '#9ca3af';
                 } else {
                     const inverted = !!SAM_INVERTED_METRICS[field];
