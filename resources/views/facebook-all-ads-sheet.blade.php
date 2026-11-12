@@ -312,6 +312,10 @@
         .faas-name-dot.is-inactive { color: #dc2626; }
         .faas-name-dot:hover { text-decoration: underline; }
         .faas-name-dot.copied { color: #0d6efd; }
+        /* Campaign ID dot: just the dot, small hit area, no underline */
+        .faas-name-dot.faas-id-dot { display: inline-block; max-width: none; padding: 3px 10px; }
+        .faas-name-dot.faas-id-dot::before { margin-right: 0; width: 10px; height: 10px; }
+        .faas-name-dot.faas-id-dot:hover { text-decoration: none; filter: brightness(0.85); }
         #faasNamePopup.is-inactive { border-top-color: #dc2626; }
         #faasNamePopup {
             position: fixed;
@@ -1257,12 +1261,16 @@
         // and the rest of the code keep using the full strings — only
         // what the user sees is shortened.
         const AD_TYPE_LABELS = {
-            'WHOLESALE': 'WholeSale',
-            'DROPSHIP':  'Dropship',
+            'WHOLESALE':    'WHS',
+            'DROPSHIP':     'Dropship',
+            'MUSIC SCHOOL': 'M Sch',
+            'MUSIC STORE':  'M Str',
         };
         function shortAdType(v) {
             if (!v) return v;
             if (AD_TYPE_LABELS[v]) return AD_TYPE_LABELS[v];
+            const up = String(v).trim().toUpperCase();
+            if (AD_TYPE_LABELS[up]) return AD_TYPE_LABELS[up];
             return v.replace(/^GROUP\b/,  'G')
                     .replace(/^PARENT\b/, 'P');
         }
@@ -1373,7 +1381,8 @@
             }
             const c     = adTypeColor(v);
             const label = escapeHtml(shortAdType(v));
-            return `<span style="display:inline-block;padding:2px 10px;border-radius:999px;`
+            // Full type name on hover, since the label is abbreviated (M Sch / M Str / G… / P…).
+            return `<span title="${escapeHtml(v)}" style="display:inline-block;padding:2px 10px;border-radius:999px;`
                  + `background:${c.bg};color:${c.fg};font-size:0.75rem;font-weight:600;">${label}</span>`;
         }
 
@@ -2009,19 +2018,17 @@
                              + `<i class="fas fa-external-link-alt"></i>`
                              + `</a>`;
                     }
-                    // CPG (CAMPAIGN ID) — magnifying-glass icon; full
-                    // id is shown on hover via the title tooltip.
+                    // CAMPAIGN ID — a green dot (same widget as the campaign-name dot):
+                    // hover shows the full ID in the popup, click copies it.
                     function formatCampaignIdCell(cell) {
                         const v = (cell.getValue() ?? '').toString().trim();
                         if (!v) return '';
                         const safe = v.replace(/&/g, '&amp;')
                                       .replace(/</g, '&lt;')
                                       .replace(/"/g, '&quot;');
-                        // Show the full ID as text (selectable / searchable).
-                        return `<span title="${safe}"`
-                             + ` style="color:#475569;font-size:12px;font-family:ui-monospace,Menlo,monospace;user-select:all;">`
-                             + safe
-                             + `</span>`;
+                        return `<span class="faas-name-dot faas-id-dot is-active" data-kind="id"`
+                             + ` role="button" tabindex="0" data-name="${safe}" data-active="1"`
+                             + ` aria-label="Copy campaign ID ${safe}"></span>`;
                     }
                     // Distinct Status values present in this dataset →
                     // also populates the toolbar Status filter.
@@ -2060,15 +2067,15 @@
                         }
                         if (c.field === 'CAMPAIGN ID') {
                             return {
-                                // Full Campaign ID shown as text. Field stays
+                                // Campaign ID is a green copy-dot. Field stays
                                 // "CAMPAIGN ID" so audit / bulk / export
                                 // lookups stay unchanged.
                                 title:          'Campaign ID',
                                 field:          c.field,
                                 headerSort:     true,
                                 widthGrow:      0,
-                                width:          170,
-                                minWidth:       150,
+                                width:          80,
+                                minWidth:       60,
                                 hozAlign:       'center',
                                 headerHozAlign: 'center',
                                 headerFilter:   false,
@@ -4258,6 +4265,9 @@
             const dot = e.target.closest && e.target.closest('.faas-name-dot');
             if (!dot) return;
             const el = faasNamePopup();
+            const isId = dot.getAttribute('data-kind') === 'id';
+            el.querySelector('.faas-name-popup-title').textContent = isId ? 'Campaign ID' : 'Campaign name';
+            el.querySelector('.faas-name-popup-hint').textContent  = isId ? 'Click the dot to copy' : 'Click the name to copy';
             el.querySelector('.faas-name-popup-text').textContent = faasDotName(dot);
             el.classList.toggle('is-inactive', dot.getAttribute('data-active') !== '1');
             el.classList.add('show');
