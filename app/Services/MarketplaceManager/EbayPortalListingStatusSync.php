@@ -67,6 +67,7 @@ class EbayPortalListingStatusSync
             'active_skus' => $active['sku_count'],
         ]);
 
+        $skippedMissing = null;
         $unsoldExtracted = $unsold['ok'] && ($unsold['total'] === 0 || $unsold['sku_count'] > 0);
         // Every store: a SKU that neither Active nor Unsold returns is gone from eBay (deleted),
         // so it is MISSING and shows on Missing L. Only when both pulls read every page, so a
@@ -78,14 +79,20 @@ class EbayPortalListingStatusSync
                 ->where('sku', 'NOT LIKE', '%PARENT%')
                 ->pluck('sku')
                 ->unique();
-            // A short or failed Active pull must not flag the whole catalog MISSING.
-            if ($existing->count() > 0 && count($allListings) < (int) ceil($existing->count() * 0.5)) {
+            // A short or failed Active pull must not flag the whole catalog MISSING. Compare with the SKUs
+            // that hold a live eBay item id (the ones that could be wrongly flagged), not with every row:
+            // rows that never had a listing are not "gone from eBay", so counting them made the guard skip
+            // the marking whenever the table held many unlisted SKUs.
+            $withItemId = $this->skusWithLiveItemId($model, $table);
+            if ($withItemId > 0 && count($allListings) < (int) ceil($withItemId * 0.5)) {
                 Log::warning('EbayPortalListingStatusSync: eBay returned too few listings, skipping MISSING marking', [
                     'store' => $store,
                     'portal_skus' => count($allListings),
                     'local_skus' => $existing->count(),
+                    'local_with_item_id' => $withItemId,
                 ]);
                 $existing = collect();
+                $skippedMissing = 'eBay returned only '.count($allListings).' SKUs but '.$withItemId.' are linked locally, so deleted listings were NOT marked Missing L (safety check).';
             }
             foreach ($existing as $sku) {
                 $sku = trim((string) $sku);
@@ -134,7 +141,37 @@ class EbayPortalListingStatusSync
             'active' => (int) ($counts['ACTIVE'] ?? 0),
             'inactive' => (int) ($counts['INACTIVE'] ?? 0),
             'missing' => (int) ($counts['MISSING'] ?? 0),
+            'warning' => $skippedMissing ?? (
+                ! empty($active['complete']) && ! empty($unsold['complete'])
+                    ? null
+                    : 'eBay did not return every page of listings, so deleted listings were NOT marked Missing L.'
+            ),
         ];
+    }
+
+    /**
+     * Distinct non-parent SKUs that currently hold a real (live) eBay item id.
+     *
+     * @param  class-string<Model>  $model
+     */
+    protected function skusWithLiveItemId(string $model, string $table): int
+    {
+        if (! Schema::hasColumn($table, 'item_id')) {
+            return 0;
+        }
+
+        return (int) $model::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', 'NOT LIKE', '%PARENT%')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->where('item_id', 'NOT LIKE', 'UNSOLD-%')
+            ->where(function ($q) {
+                $q->whereNull('listing_status')->orWhereNotIn('listing_status', ['INACTIVE', 'MISSING']);
+            })
+            ->distinct()
+            ->count('sku');
     }
 
     /**

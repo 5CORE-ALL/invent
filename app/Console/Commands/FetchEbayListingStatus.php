@@ -30,6 +30,9 @@ class FetchEbayListingStatus extends Command
                 continue;
             }
             $this->info("ACTIVE: {$result['active']}  INACTIVE: {$result['inactive']}  MISSING: {$result['missing']}");
+            if (! empty($result['warning'])) {
+                $this->warn($result['warning']);
+            }
 
             // Show the new statuses on /missing-listing right away.
             try {

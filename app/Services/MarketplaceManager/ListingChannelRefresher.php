@@ -176,6 +176,16 @@ class ListingChannelRefresher
             switch ($step['type']) {
                 case 'ebay':
                     $result = app(EbayPortalListingStatusSync::class)->sync((int) $step['store']);
+                    if (is_array($result) && ! empty($result['ok'])) {
+                        $text = 'Fetched from eBay: '.(int) ($result['active'] ?? 0).' active, '
+                            .(int) ($result['inactive'] ?? 0).' ended, '
+                            .(int) ($result['missing'] ?? 0).' deleted (now Missing L).';
+                        if (! empty($result['warning'])) {
+                            $text .= ' ⚠ '.$result['warning'];
+                        }
+
+                        return [true, $text];
+                    }
 
                     return $this->fromResult($result);
 
