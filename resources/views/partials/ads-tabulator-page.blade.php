@@ -139,7 +139,7 @@
                 </div>
 
                 <div id="ads-summary-stats" class="mt-2 d-flex flex-wrap gap-2">
-                    <span class="badge bg-primary" id="ads-count-badge" title="SKUs in the current view">SKUs: 0</span>
+                    <span class="badge bg-primary" id="ads-count-badge" title="Rows in the current view (filtered) / total rows">Rows: 0</span>
                     <span class="badge bg-info text-dark" id="ads-inv-badge" title="Total INV in the current view">INV: 0</span>
                     <span class="badge bg-warning text-dark" id="ads-ovl30-badge" title="Total OV L30 in the current view">OV L30: 0</span>
                     <span class="badge bg-success" id="ads-dil-badge" title="OV L30 ÷ INV of the current view">Dil: 0%</span>
@@ -381,7 +381,9 @@
             let ov = 0;
             rows.forEach(function(r) { inv += adsNum(r.inv); ov += adsNum(r.ov_l30); });
             const dil = inv > 0 ? Math.round((ov / inv) * 100) : 0;
-            document.getElementById('ads-count-badge').textContent = 'SKUs: ' + rows.length.toLocaleString();
+            const totalRows = (table.getData() || []).length;
+            document.getElementById('ads-count-badge').textContent = 'Rows: ' + rows.length.toLocaleString()
+                + (rows.length !== totalRows ? ' / ' + totalRows.toLocaleString() : '');
             document.getElementById('ads-inv-badge').textContent = 'INV: ' + Math.round(inv).toLocaleString();
             document.getElementById('ads-ovl30-badge').textContent = 'OV L30: ' + Math.round(ov).toLocaleString();
             document.getElementById('ads-dil-badge').textContent = 'Dil: ' + dil + '%';
