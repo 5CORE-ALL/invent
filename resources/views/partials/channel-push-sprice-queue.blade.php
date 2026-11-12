@@ -632,9 +632,19 @@
                 });
                 return out;
             }
-            function chPushSpricePullAfterPush(skus) {
+            function chPushSpricePullAfterPush(skus, opts) {
                 if (!skus || !skus.length) return;
                 if (!CH_PUSH_SPRICE_CAN_PULL) return;
+                // /ebay2-tabulator-view: truncate ebay_2_metrics and re-pull every listing price from eBay.
+                // If that cannot start / fails, fall back to the per-SKU live price pull below.
+                if (CH_PUSH_SPRICE_CHANNEL === 'ebay2'
+                    && !(opts && opts.skipFresh)
+                    && typeof global.ebay2RefreshMetricsAfterPush === 'function') {
+                    global.ebay2RefreshMetricsAfterPush(skus, function() {
+                        chPushSpricePullAfterPush(skus, { skipFresh: true });
+                    });
+                    return;
+                }
                 clearTimeout(chPushSpricePullAfterPush._t);
                 const n = skus.length;
                 const expectedBySku = chPushSpriceExpectedBySku(skus);

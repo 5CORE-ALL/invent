@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Ebay2Metric;
 use App\Models\EbayTask;
 use App\Services\ChannelLivePriceSync;
+use App\Support\Marketplace\Ebay2MetricsRefresh;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -18,7 +19,7 @@ class FetchEbay2Metrics extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-ebay-two-metrics';
+    protected $signature = 'app:fetch-ebay-two-metrics {--fresh : Truncate ebay_2_metrics after the live report downloads, then re-pull every listing}';
 
     /**
      * The console command description.
@@ -42,6 +43,28 @@ class FetchEbay2Metrics extends Command
      * Execute the console command.
      */
     public function handle()
+    {
+        $fresh = (bool) $this->option('fresh');
+        if ($fresh) {
+            Ebay2MetricsRefresh::write('running', 'Downloading live eBay 2 listings…');
+        }
+
+        $code = $this->fetchMetrics($fresh);
+
+        if ($fresh) {
+            if ($code === 0) {
+                Ebay2MetricsRefresh::write('done', 'eBay 2 listings refreshed with new prices', false);
+            } else {
+                Ebay2MetricsRefresh::write('failed', $this->freshFailure ?: 'Refresh failed. ebay_2_metrics was not changed unless the pull got past the download step.', false);
+            }
+        }
+
+        return $code;
+    }
+
+    private ?string $freshFailure = null;
+
+    private function fetchMetrics(bool $fresh)
     {
         try {
             // Check database connection (without creating persistent connection)
@@ -75,6 +98,19 @@ class FetchEbay2Metrics extends Command
         
         // Delete the task after successful processing to prevent reuse
         $this->deleteTask($taskId);
+
+        if ($fresh) {
+            // Truncate only after the live report came back with rows: a failed / empty download must never
+            // leave ebay_2_metrics (and the whole /ebay2-tabulator-view table) empty.
+            if (empty($listingData)) {
+                $this->freshFailure = 'eBay returned no listings. ebay_2_metrics was left untouched.';
+                $this->error('❌ '.$this->freshFailure);
+                return 1;
+            }
+            Ebay2MetricsRefresh::write('running', 'Truncating ebay_2_metrics and re-pulling listings…');
+            Ebay2Metric::truncate();
+            $this->info('🧹 ebay_2_metrics truncated');
+        }
 
         // Save price + SKU mapping
         // We'll map itemId => [sku, sku, ...]
@@ -171,6 +207,7 @@ class FetchEbay2Metrics extends Command
             \App\Support\DilVsSbidAutoPush::afterDataChange('ebay2');
             return 0;
         } catch (\Exception $e) {
+            $this->freshFailure = 'Refresh failed: ' . $e->getMessage();
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
