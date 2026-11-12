@@ -50,6 +50,8 @@
         color: #721c24;
     }
 
+    .perm-search { max-width: 280px; }
+
     .edit-button {
         position: absolute;
         top: 20px;
@@ -64,7 +66,13 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body position-relative">
-                    <h4 class="header-title mb-4">Role Permissions Overview</h4>
+                    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+                        <h4 class="header-title mb-0 me-2">Role Permissions Overview</h4>
+                        <span class="badge bg-primary fs-6 px-3 py-2" id="permPageCount" title="Number of pages (modules) listed">
+                            Pages: <span id="permPageCountValue">{{ count($modules) }}</span>
+                        </span>
+                        <input type="search" id="permPageSearch" class="form-control perm-search" placeholder="Search pages…" autocomplete="off" aria-label="Search pages">
+                    </div>
                     
                     <a href="{{ route('permissions.edit') }}" class="btn btn-primary edit-button">
                         <i class="fas fa-edit me-1"></i> Edit Permissions
@@ -84,10 +92,10 @@
                             </thead>
                             <tbody>
                                 @foreach($modules as $module)
-                                    <tr class="module-header">
+                                    <tr class="module-header perm-row" data-module="{{ strtolower($module) }}">
                                         <td colspan="6">{{ ucfirst($module) }}</td>
                                     </tr>
-                                    <tr>
+                                    <tr class="perm-row" data-module="{{ strtolower($module) }}">
                                         <td>{{ ucfirst($module) }} Actions</td>
                                         @foreach(['viewer', 'user', 'manager', 'admin', 'superadmin'] as $role)
                                             <td>
@@ -115,6 +123,9 @@
                                         @endforeach
                                     </tr>
                                 @endforeach
+                                <tr id="permNoMatch" style="display:none;">
+                                    <td colspan="6" class="text-muted py-4">No pages match your search.</td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -123,4 +134,31 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('script')
+<script>
+    (function () {
+        var input = document.getElementById('permPageSearch');
+        var countEl = document.getElementById('permPageCountValue');
+        var noMatch = document.getElementById('permNoMatch');
+        if (!input || !countEl) return;
+        var total = parseInt(countEl.textContent, 10) || 0;
+
+        function apply() {
+            var q = input.value.trim().toLowerCase();
+            var shown = {};
+            document.querySelectorAll('tr.perm-row').forEach(function (row) {
+                var name = row.getAttribute('data-module') || '';
+                var match = q === '' || name.indexOf(q) !== -1;
+                row.style.display = match ? '' : 'none';
+                if (match) shown[name] = true;
+            });
+            var n = Object.keys(shown).length;
+            countEl.textContent = q === '' ? String(total) : n + ' of ' + total;
+            if (noMatch) noMatch.style.display = (q !== '' && n === 0) ? '' : 'none';
+        }
+        input.addEventListener('input', apply);
+    })();
+</script>
 @endsection
