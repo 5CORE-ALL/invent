@@ -310,6 +310,9 @@
                             <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPull" title="Pull from Temu: read the category and the item specifics of the ticked rows (or of the open tab) from the live Temu 1 products, exactly as Temu holds them">
                                 <i class="fas fa-cloud-download-alt"></i> Pull
                             </button>
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dAllFields" title="One time: fetch the fields Temu defines for every category the SKUs are in, and save the columns in the app">
+                                <i class="fas fa-columns"></i> All fields
+                            </button>
                         @else
                             @unless ($ebayCfg['main'])
                                 <button type="button" class="btn btn-sm btn-outline-dark" id="e1dSyncMain" title="Sync from eBay 1: bring item specifics, categories and added columns of every SKU in line with the eBay 1 page (app only, nothing is sent to {{ $ebayCfg['label'] }}; title and price are not copied)">
@@ -3784,9 +3787,10 @@
             // ---- Temu: load the attributes Temu defines for each category, so every category shows its columns ----
             let attrLoading = false;
             const attrFailed = new Set();
+            let allFieldsRunning = false;
             async function loadTemuAttributes(ids) {
                 ids = ids.filter(function (id) { return !attrFailed.has(id); });
-                if (attrLoading || !ids.length) return;
+                if (attrLoading || allFieldsRunning || !ids.length) return;
                 attrLoading = true;
                 const status = document.getElementById('e1dPullStatus');
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -3819,6 +3823,52 @@
                 status.textContent = 'Temu attributes: ' + done + ' of ' + ids.length + ' categories loaded' + (bad ? ', ' + bad + ' could not be read' : '') + '.';
                 if (bad) jobShow('Temu attributes: ' + bad + ' categor' + (bad === 1 ? 'y' : 'ies') + ' could not be read', ids.length, done, bad, false, problems);
                 if (done) await loadData();
+            }
+
+            // One time: fetch the fields of every category the SKUs are in and save the columns in the app.
+            async function runAllFields() {
+                if (allFieldsRunning) return;
+                if (!window.confirm('Fetch the fields of every Temu 1 category and save the columns in the app?\n\nIt reads each category from Temu once and keeps the columns, so every SKU of that category shows them. Nothing is changed on Temu. It takes about a second per category.')) return;
+                const btn = document.getElementById('e1dAllFields');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                allFieldsRunning = true;
+                btn.disabled = true;
+                const problems = [];
+                try {
+                    const listRes = await fetch(E1_BASE + '/category-field-targets', { headers: { Accept: 'application/json' } });
+                    const list = await listRes.json().catch(function () { return {}; });
+                    if (!listRes.ok || list.success === false) throw new Error(list.message || 'Could not read the categories');
+                    const cats = Array.isArray(list.categories) ? list.categories : [];
+                    if (!cats.length) {
+                        rowToast('No category to fetch yet. Pull a SKU first, so its Temu category is known.', false);
+                        return;
+                    }
+                    let done = 0, bad = 0, columns = 0;
+                    for (let i = 0; i < cats.length; i += 3) {
+                        const part = cats.slice(i, i + 3);
+                        jobShow('Fetching category fields…', cats.length, done, bad, true, problems);
+                        const res = await fetch(E1_BASE + '/load-attributes', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ category_ids: part.map(function (c) { return c.id; }) }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        if (!res.ok || json.success === false) throw new Error(json.message || ('HTTP ' + res.status));
+                        (json.results || []).forEach(function (r) {
+                            const cat = part.find(function (c) { return c.id === r.id; });
+                            const label = cat && cat.path ? cat.path : ('Category ' + r.id);
+                            if (r.ok) { done++; columns += r.columns || 0; }
+                            else { bad++; problems.push(label + ': ' + r.message); }
+                        });
+                    }
+                    jobShow('Category fields saved: ' + done + ' of ' + cats.length + ' (' + columns + ' columns)', cats.length, done, bad, false, problems);
+                    await loadData();
+                } catch (e) {
+                    jobShow('Category fields stopped', 1, 0, 1, false, [e.message || 'failed']);
+                } finally {
+                    allFieldsRunning = false;
+                    btn.disabled = false;
+                }
             }
 
             document.addEventListener('DOMContentLoaded', function () {
@@ -3890,6 +3940,8 @@
                 bindCatModal();
                 const pullBtn = document.getElementById('e1dPull');
                 if (pullBtn) pullBtn.addEventListener('click', runPull);
+                const allFieldsBtn = document.getElementById('e1dAllFields');
+                if (allFieldsBtn) allFieldsBtn.addEventListener('click', runAllFields);
                 const syncMainBtn = document.getElementById('e1dSyncMain');
                 if (syncMainBtn) {
                     syncMainBtn.addEventListener('click', async function () {

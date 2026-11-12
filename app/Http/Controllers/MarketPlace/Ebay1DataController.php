@@ -82,6 +82,15 @@ class Ebay1DataController extends Controller
         return $specifics;
     }
 
+    /**
+     * The eBay page fills Brand, MPN, Model and a few others with fixed values. A channel that shows the
+     * marketplace's own values (Temu) turns this off, or the fetched values would be overwritten on every load.
+     */
+    protected function fillsFixedValues(): bool
+    {
+        return true;
+    }
+
     /** Hook: extra keys of the rows answer. @return array<string, mixed> */
     protected function rowsExtra(): array
     {
@@ -221,12 +230,14 @@ class Ebay1DataController extends Controller
                 }
 
                 // Brand is always 5 Core, and Durability Guarantee is always 30, as on Technical Specifications.
-                foreach (array_keys($specifics) as $specName) {
-                    $aspect = $this->aspectKey((string) $specName);
-                    if ($aspect === 'brand') {
-                        $specifics[$specName] = '5 Core';
-                    } elseif ($aspect === 'durabilityguarantee') {
-                        $specifics[$specName] = '30';
+                if ($this->fillsFixedValues()) {
+                    foreach (array_keys($specifics) as $specName) {
+                        $aspect = $this->aspectKey((string) $specName);
+                        if ($aspect === 'brand') {
+                            $specifics[$specName] = '5 Core';
+                        } elseif ($aspect === 'durabilityguarantee') {
+                            $specifics[$specName] = '30';
+                        }
                     }
                 }
 
@@ -315,6 +326,7 @@ class Ebay1DataController extends Controller
             $isBlank = static function (string $value): bool {
                 return in_array(strtolower(trim($value)), ['', 'does not apply', 'not applicable'], true);
             };
+            if ($this->fillsFixedValues()) {
             foreach ($data as $i => $entry) {
                 $hash = $this->categoryHash((string) $entry['category']);
                 $isMissingListing = ! in_array((string) $entry['listed'], ['Listed', 'Created'], true);
@@ -334,6 +346,7 @@ class Ebay1DataController extends Controller
                         $data[$i]['specifics'][$target] = $missingColumns[$k];
                     }
                 }
+            }
             }
 
             // push_cols: the item specifics Auto Push sends for the SKU. Those edited by hand and not pushed yet,
