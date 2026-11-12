@@ -388,9 +388,15 @@ class EbayTwoController extends Controller
 
         $money = static fn ($v) => (float) str_replace(['USD ', ','], '', (string) ($v ?? '0'));
 
-        $rows = Ebay2PriorityReport::where('report_range', 'L30')
-            ->orderBy('campaign_name')
-            ->get()
+        $l30 = Ebay2PriorityReport::where('report_range', 'L30')->orderBy('campaign_name')->get();
+
+        // Once `--meta-only` / a full pull has stamped funding_model on the live campaigns, rows still without one
+        // belong to campaigns eBay no longer lists (deleted/archived), so leave them out.
+        if ($l30->contains(fn ($r) => ! empty($r->funding_model))) {
+            $l30 = $l30->filter(fn ($r) => ! empty($r->funding_model));
+        }
+
+        $rows = $l30
             ->map(function ($r) use ($money) {
                 $fees = $money($r->cpc_ad_fees_payout_currency ?: $r->cpc_ad_fees_listingsite_currency);
                 $sales = $money($r->cpc_sale_amount_payout_currency ?: $r->cpc_sale_amount_listingsite_currency);
