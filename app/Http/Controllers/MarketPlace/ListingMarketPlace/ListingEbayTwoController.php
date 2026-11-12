@@ -67,30 +67,7 @@ class ListingEbayTwoController extends Controller
             false,
             \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
         );
-        // SKUs eBay no longer lists: a saved buyer/seller link must not bring them back as Listed.
-        $ebayEverStored = \App\Support\Marketplace\ListingCountsEngine::listedIdsFromColumn(
-            Ebay2Metric::class,
-            $skus,
-            'item_id'
-        );
-        // A listing deleted on eBay has its item id cleared (status MISSING), so the "ever stored" check above
-        // cannot see it. Add every SKU whose last portal status is ended / missing, otherwise an old saved
-        // buyer/seller link brings it back as Listed and Missing L never rises.
-        if (\Illuminate\Support\Facades\Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
-            Ebay2Metric::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(TRIM(listing_status))'), \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES)
-                ->pluck('sku')
-                ->each(function ($endedSku) use (&$ebayEverStored) {
-                    $key = strtolower(trim((string) $endedSku));
-                    if ($key !== '' && ! isset($ebayEverStored[$key])) {
-                        $ebayEverStored[$key] = 'ended';
-                    }
-                });
-        }
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics, $ebayEverStored) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -115,16 +92,10 @@ class ListingEbayTwoController extends Controller
                 ListingCountsEngine::lookupNrValue($nrValues, $childSku)
             );
 
-            // Listed / Not Listed from ebay_2_metrics.item_id, then the saved buyer/seller link.
+            // Listed / Not Listed from ebay_2_metrics.item_id only (what eBay returned as live). A saved
+            // buyer/seller link no longer counts: it kept SKUs Listed that eBay does not list, so this page
+            // showed fewer Missing L than /missing-listing and the Fetch listings window.
             $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayMetrics, $childSku);
-            $endedOnEbay = $itemId === ''
-                && \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayEverStored, $childSku) !== '';
-            if ($itemId === '' && ! $endedOnEbay) {
-                $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromLinks(
-                    $item->buyer_link,
-                    $item->seller_link
-                );
-            }
             $item->eBay_item_id = $itemId !== '' ? $itemId : null;
             $item->listed = $item->eBay_item_id ? 'Listed' : 'Pending';
 
