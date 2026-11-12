@@ -744,6 +744,26 @@ class FacebookAllAdsSheetController extends Controller
         // passes: pass 1 resolves columns with `sources`, pass 2 computes
         // columns with `formula = [num, den, decimals]` using the values
         // resolved in pass 1.
+        // Lifetime (all-time) spend / sales per campaign. Loaded up front because the
+        // Sbgt rule below bands on LIFETIME ACOS, and the Lifetime columns reuse it.
+        $lifetime = [];
+        if (Schema::hasTable('facebook_campaign_lifetime_stats')) {
+            $ltCids = [];
+            foreach ($merged as $mRow) {
+                $c = (string) ($mRow['_campaign_id'] ?? '');
+                if (preg_match('/^\d{6,}$/', $c)) {
+                    $ltCids[] = $c;
+                }
+            }
+            foreach (array_chunk(array_values(array_unique($ltCids)), 1000) as $chunk) {
+                foreach (DB::table('facebook_campaign_lifetime_stats')
+                    ->whereIn('campaign_id', $chunk)
+                    ->get(['campaign_id', 'spend', 'sales']) as $lt) {
+                    $lifetime[(string) $lt->campaign_id] = $lt;
+                }
+            }
+        }
+
         $projected = [];
         foreach ($merged as $cid => $row) {
             $clean = [
@@ -789,10 +809,17 @@ class FacebookAllAdsSheetController extends Controller
             foreach (self::MERGED_COLUMNS as $col) {
                 if (! isset($col['rule'])) continue;
                 if ($col['rule'] === 'acos_budget') {
+                    // Bands on LIFETIME ACOS (all-time spend ÷ all-time sales). The
+                    // Spend condition still reads the L30 spend. Campaigns with no
+                    // lifetime row yet fall back to L30 ACOS (`_sbgt_basis` says which).
+                    $lt = $lifetime[(string) ($clean['_campaign_id'] ?? '')] ?? null;
                     $match = $this->acosBudgetMatch(
                         $clean['SPEND'] ?? null,
-                        $clean['SALES'] ?? null
+                        $clean['SALES'] ?? null,
+                        $lt ? $lt->spend : null,
+                        $lt ? $lt->sales : null
                     );
+                    $clean['_sbgt_basis'] = $lt ? 'lifetime' : 'l30';
                     $clean[$col['title']] = $match['sbgt'];
                     // Hidden field — the JS Sbgt/Acos formatter paints
                     // the cell background with this colour so users
@@ -839,16 +866,7 @@ class FacebookAllAdsSheetController extends Controller
         // "Lifetime Acos" / "Lifetime Sales" columns. Raw numbers go on hidden
         // `_lt_spend` / `_lt_sales` fields so the page can total the visible rows
         // for its Lifetime badges. Campaigns Meta has no lifetime row for stay blank.
-        $lifetime = [];
-        if (! empty($cids) && Schema::hasTable('facebook_campaign_lifetime_stats')) {
-            foreach (array_chunk($cids, 1000) as $chunk) {
-                foreach (DB::table('facebook_campaign_lifetime_stats')
-                    ->whereIn('campaign_id', $chunk)
-                    ->get(['campaign_id', 'spend', 'sales']) as $lt) {
-                    $lifetime[(string) $lt->campaign_id] = $lt;
-                }
-            }
-        }
+        // ($lifetime was loaded before the projection — the Sbgt rule bands on it too.)
         foreach ($projected as &$row) {
             $lt = $lifetime[(string) ($row['CAMPAIGN ID'] ?? '')] ?? null;
             $row['_lt_spend']       = $lt ? (float) $lt->spend : null;
@@ -1114,22 +1132,28 @@ class FacebookAllAdsSheetController extends Controller
      *
      * @return array{sbgt: ?int, color: ?string, pause: bool}
      */
-    private function acosBudgetMatch($spend, $sales): array
+    private function acosBudgetMatch($spend, $sales, $ltSpend = null, $ltSales = null): array
     {
         $s = $this->parseNumeric($spend);
         $r = $this->parseNumeric($sales);
-        // Same edge cases as the Acos column. A campaign that spent with
-        // no sales is 100%, not an out-of-range sentinel, so a catch-all
-        // band whose ACOS To is 9999 can still match it.
+        // No L30 data for this campaign in the current export → no Sbgt
+        // (unchanged: lifetime data must not widen the set of rows the rule acts on).
         if ($s === null && $r === null) {
             return ['sbgt' => null, 'color' => null, 'pause' => false];
         }
-        if ($s === null || $s == 0.0) {
+        // ACOS the bands compare against: LIFETIME ACOS when we have a lifetime row,
+        // otherwise the L30 ACOS. Same edge cases as the Acos column — a campaign
+        // that spent with no sales is 100%, not an out-of-range sentinel, so a
+        // catch-all band whose ACOS To is 9999 can still match it.
+        $useLifetime = $ltSpend !== null || $ltSales !== null;
+        $as = $useLifetime ? $this->parseNumeric($ltSpend) : $s;
+        $ar = $useLifetime ? $this->parseNumeric($ltSales) : $r;
+        if ($as === null || $as == 0.0) {
             $acos = 0.0;
-        } elseif ($r === null || $r == 0.0) {
+        } elseif ($ar === null || $ar == 0.0) {
             $acos = 100.0;
         } else {
-            $acos = ($s / $r) * 100;
+            $acos = ($as / $ar) * 100;
         }
         $spendAmt = $s === null ? 0.0 : (float) $s;
 
@@ -1909,7 +1933,9 @@ class FacebookAllAdsSheetController extends Controller
     public function badgeHistory(Request $request)
     {
         $metric = strtolower((string) $request->input('metric', ''));
-        $days   = max(1, min(180, (int) $request->input('days', 32)));
+        // days=0 → "Lifetime" in the range dropdown (everything we have, capped at 3 years).
+        $reqDays = (int) $request->input('days', 30);
+        $days    = $reqDays === 0 ? 1095 : max(1, min(1095, $reqDays));
         $cidsCsv = (string) $request->input('campaign_ids', '');
         $cids = array_values(array_filter(array_map('trim', explode(',', $cidsCsv)), fn($v) => $v !== ''));
 
@@ -1940,6 +1966,75 @@ class FacebookAllAdsSheetController extends Controller
                 ];
             }
             return response()->json(['success' => true, 'today' => $today, 'prev' => $prev]);
+        }
+
+        // source=daily → one value PER DAY (what the Yesterday tiles are made of),
+        // from Meta's real daily insights, for the 'days' days ending yesterday (PDT).
+        // The default source (below) is the rolling-L30 snapshot history that the
+        // L30 badges use — a different series, so the two charts never mix.
+        if ($request->input('source') === 'daily') {
+            $dailyMetrics = ['impr', 'clk', 'spend', 'sales', 'sold', 'sbgt', 'acos', 'ctr', 'cvr', 'bid', 'cps'];
+            if (! in_array($metric, $dailyMetrics, true)) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => "Unknown metric '$metric'. Valid: " . implode(',', $dailyMetrics),
+                ], 422);
+            }
+            $tz   = 'America/Los_Angeles';
+            $to   = now($tz)->subDay()->toDateString();
+            $from = now($tz)->subDays($days)->toDateString();
+            $series = [];   // date => value
+
+            if ($metric === 'sbgt') {
+                // Budget isn't in insights — it is a per-day level kept in the snapshots.
+                $sq = DB::table('facebook_campaign_metric_snapshots')->whereBetween('snapshot_date', [$from, $to]);
+                if (! empty($cids)) {
+                    $sq->whereIn('campaign_id', $cids);
+                }
+                foreach ($sq->groupBy('snapshot_date')->orderBy('snapshot_date')
+                    ->selectRaw('snapshot_date AS d, SUM(sbgt) AS v')->get() as $r) {
+                    $series[substr((string) $r->d, 0, 10)] = round((float) $r->v, 2);
+                }
+            } elseif (Schema::hasTable('meta_insights_daily') && Schema::hasTable('meta_campaigns')) {
+                $q = DB::table('meta_insights_daily as mid')
+                    ->join('meta_campaigns as mc', function ($j) {
+                        $j->on('mc.id', '=', 'mid.entity_id')->where('mid.entity_type', 'campaign');
+                    })
+                    ->whereBetween('mid.date_start', [$from, $to])
+                    ->where('mid.breakdown_hash', md5(json_encode([])));
+                if (! empty($cids)) {
+                    $q->whereIn('mc.meta_id', $cids);
+                }
+                $rowsD = $q->groupBy('mid.date_start')->orderBy('mid.date_start')
+                    ->selectRaw('mid.date_start AS d, SUM(mid.impressions) AS impr, SUM(mid.clicks) AS clk,
+                        SUM(mid.spend) AS spend, SUM(mid.action_values) AS sales, SUM(mid.purchases) AS sold')
+                    ->get();
+                foreach ($rowsD as $r) {
+                    $impr = (float) $r->impr; $clk = (float) $r->clk; $spend = (float) $r->spend;
+                    $sales = (float) $r->sales; $sold = (float) $r->sold;
+                    switch ($metric) {
+                        case 'impr':  $v = $impr; break;
+                        case 'clk':   $v = $clk; break;
+                        case 'spend': $v = round($spend, 2); break;
+                        case 'sales': $v = round($sales, 2); break;
+                        case 'sold':  $v = $sold; break;
+                        case 'acos':  $v = $spend == 0.0 ? 0 : ($sales == 0.0 ? 100 : round(($spend / $sales) * 100, 1)); break;
+                        case 'ctr':   $v = $impr > 0 ? round(($clk / $impr) * 100, 1) : 0; break;
+                        case 'cvr':   $v = $clk > 0 ? round(($sold / $clk) * 100, 1) : 0; break;
+                        case 'bid':   $v = $clk > 0 ? round($spend / $clk, 2) : 0; break;
+                        case 'cps':   $v = $sold > 0 ? round($spend / $sold, 2) : 0; break;
+                        default:      $v = 0;
+                    }
+                    $series[substr((string) $r->d, 0, 10)] = $v;
+                }
+            }
+
+            $out = [];
+            foreach ($series as $d => $v) {
+                $out[] = ['date' => date('M d', strtotime($d)), 'full_date' => $d, 'value' => $v];
+            }
+            return response()->json(['success' => true, 'metric' => $metric, 'source' => 'daily',
+                                     'days' => $days, 'data' => $out]);
         }
 
         $allowed = ['impr', 'clk', 'spend', 'sales', 'sold', 'sbgt', 'acos', 'ctr', 'cvr'];
@@ -2132,6 +2227,10 @@ class FacebookAllAdsSheetController extends Controller
             'diag'           => $diag,
             'yesterday_date' => $yesterday,
             'yesterday'      => $perDay[$yesterday] ?? null,   // null when no insights for yesterday
+            // Day before yesterday — lets the Yesterday tiles paint their trend dot
+            // (yesterday vs previous day) without another request.
+            'day_before'     => $perDay[now($tz)->subDays(2)->toDateString()] ?? null,
+            'day_before_date' => now($tz)->subDays(2)->toDateString(),
             'l7'             => $perDay ? $l7 : null,
             'l7_days'        => count($perDay),
         ]);

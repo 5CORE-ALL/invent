@@ -146,7 +146,8 @@
             background: #fff; color: #111827; border: 1px solid #e5e7eb;
             transition: transform 0.1s ease;
         }
-        .faas-kpi-tile.badge-chart-link { cursor: pointer; }
+        .faas-kpi-tile.badge-chart-link, .faas-kpi-tile.faas-y-hist { cursor: pointer; }
+        .faas-kpi-tile.faas-y-hist:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15); }
         /* Trend dot: yellow = data updated but same as previous day (grey = not updated; green/red come from the layout). */
         .faas-kpi-tile .summary-trend-dot.same-updated { background: #eab308; }
         .faas-kpi-tile.badge-chart-link:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15); }
@@ -410,7 +411,13 @@
                             <div class="faas-card-title" id="faasYesterdayTitle">{{ $faasPeriodCards['yesterday']['title'] }}</div>
                             <div class="faas-card-tiles">
                                 @foreach ($faasPeriodItems as [$k, $label, $tip])
-                                    <span class="faas-kpi-tile" id="faasKpi_yesterday_{{ $k }}" data-period="yesterday" data-kpi="{{ $k }}" title="{{ $faasPeriodCards['yesterday']['tip'] }} · {{ $tip }}">Y {{ $label }}:<span class="faas-kpi-val">—</span></span>
+                                    @php
+                                        // Yesterday tile → metric key understood by badge-history?source=daily.
+                                        $faasHistMetric = ['clicks' => 'clk', 'bgt' => 'sbgt'][$k] ?? $k;
+                                    @endphp
+                                    <span class="faas-kpi-tile faas-y-hist" id="faasKpi_yesterday_{{ $k }}" data-period="yesterday" data-kpi="{{ $k }}"
+                                          data-hist="{{ $faasHistMetric }}" data-hist-label="Y {{ $label }}"
+                                          title="{{ $faasPeriodCards['yesterday']['tip'] }} · {{ $tip }} · Click for daily history">Y {{ $label }}:<span class="faas-kpi-val">—</span></span>
                                 @endforeach
                             </div>
                         </div>
@@ -507,7 +514,7 @@
                                 class="btn btn-sm btn-outline-primary"
                                 data-bs-toggle="modal"
                                 data-bs-target="#sbgtRuleModal"
-                                title="Edit ACOS → Sbgt brackets">
+                                title="Edit Lifetime ACOS → Sbgt brackets">
                             <i class="fas fa-sliders-h me-1"></i>Rule
                         </button>
 
@@ -879,7 +886,7 @@
         <div class="modal-content">
             <div class="modal-header" style="background:linear-gradient(135deg,#1877f2,#0d5cb6);color:#fff;">
                 <h5 class="modal-title" id="sbgtRuleModalLabel">
-                    <i class="fas fa-sliders-h me-2"></i>Sbgt Rule — ACOS % + Spend → Suggested Budget
+                    <i class="fas fa-sliders-h me-2"></i>Sbgt Rule — Lifetime ACOS % + Spend → Suggested Budget
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -887,9 +894,12 @@
                 <p class="small text-muted mb-3">
                     Each row is a band. Pick <strong>&gt;</strong>, <strong>&gt;=</strong>,
                     <strong>&lt;</strong>, <strong>&lt;=</strong>, or <strong>=</strong>
-                    on ACOS From, ACOS To, and Spend. Rows are checked
+                    on Lifetime ACOS From, Lifetime ACOS To, and Spend. Rows are checked
                     <strong>top to bottom</strong>; the first band whose three
                     comparisons all match the campaign gets its Sbgt.
+                    <strong>Lifetime ACOS</strong> = all-time spend ÷ all-time sales (the
+                    Lifetime Acos column); <strong>Spend</strong> is the L30 spend.
+                    A campaign with no lifetime data yet falls back to its L30 ACOS.
                     <strong>Sbgt 0</strong> pauses the campaign on Meta automatically.
                     <strong>AUDIT NOW</strong> shows in Audit Req when Spend is above $15
                     and ACOS is red (above 40%).
@@ -900,9 +910,9 @@
                     <thead class="table-light">
                         <tr>
                             <th style="width:40px;">#</th>
-                            <th style="width:110px;">ACOS%</th>
-                            <th style="min-width:180px;">ACOS From (%)</th>
-                            <th style="min-width:180px;">ACOS To (%)</th>
+                            <th style="width:110px;">Lifetime ACOS%</th>
+                            <th style="min-width:180px;">Lifetime ACOS From (%)</th>
+                            <th style="min-width:180px;">Lifetime ACOS To (%)</th>
                             <th style="min-width:170px;">Spend</th>
                             <th style="width:90px;">Sbgt</th>
                             <th style="width:120px;"></th>
@@ -1135,10 +1145,13 @@
                 <div class="ms-auto d-flex align-items-center gap-2">
                     <select id="badgeChartRange" class="form-select form-select-sm" style="width:120px;">
                         <option value="7">7 Days</option>
-                        <option value="14">14 Days</option>
-                        <option value="32" selected>32 Days</option>
+                        <option value="30" selected>30 Days</option>
+                        <option value="31">31 Days</option>
+                        <option value="32">32 Days</option>
+                        <option value="35">35 Days</option>
                         <option value="60">60 Days</option>
                         <option value="90">90 Days</option>
+                        <option value="0">Lifetime</option>
                     </select>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -2552,6 +2565,35 @@
             }, 300);
         }
 
+        // Trend dot on a Yesterday tile: yesterday vs the day before, same colour
+        // standard as the L30 badges — green improved, red worse (Bid / ACOS / CPS are
+        // lower-is-better), yellow = present both days but unchanged, grey = no prior day.
+        const FAAS_Y_EPS = { bgt: 0.5, bid: 0.005, cvr: 0.05, acos: 0.05, ctr: 0.05,
+                             impr: 0.5, clicks: 0.5, sold: 0.5, sales: 0.5, spend: 0.5, cps: 0.5 };
+        function faasPaintYesterdayDot(el, k, cur, prev, prevDate) {
+            let dot = el.querySelector('.summary-trend-dot');
+            if (!dot) {
+                dot = document.createElement('span');
+                dot.className = 'summary-trend-dot none';
+                el.insertBefore(dot, el.firstChild);
+            }
+            const ok = v => v !== null && v !== undefined && isFinite(v);
+            if (!ok(cur) || !ok(prev)) {
+                dot.className = 'summary-trend-dot none';
+                dot.title = 'No prior day to compare yet. Click for daily history.';
+                return;
+            }
+            const eps = FAAS_Y_EPS[k] ?? 0.5, diff = cur - prev;
+            let cls = diff > eps ? 'up' : (diff < -eps ? 'down' : 'same-updated');
+            if (!FAAS_KPI_HIGHER_BETTER[k]) {
+                if (cls === 'up') cls = 'down'; else if (cls === 'down') cls = 'up';
+            }
+            dot.className = 'summary-trend-dot ' + cls;
+            const word = diff > eps ? 'Up' : (diff < -eps ? 'Down' : 'Same');
+            dot.title = word + ' vs ' + (prevDate || 'prior day') + ' (' + faasFmtKpi(k, prev) + ' → '
+                + faasFmtKpi(k, cur) + '). Click for daily history.';
+        }
+
         function faasPaintPeriodCards() {
             const d = faasPeriodData;
             const l30 = faasL30Totals ? faasPeriodMetrics({
@@ -2577,6 +2619,8 @@
                 })() : null,
             };
             const ref = { yesterday: l30Daily, projected: l30 };
+            // Day before yesterday — for the Yesterday tiles' trend dots.
+            const prevY = d && d.day_before ? faasPeriodMetrics(d.day_before) : null;
 
             document.querySelectorAll('#faasSummaryCards .faas-kpi-tile[data-period]').forEach(el => {
                 const period = el.dataset.period, k = el.dataset.kpi;
@@ -2584,6 +2628,8 @@
                 const valEl = el.querySelector('.faas-kpi-val');
                 el.classList.remove('faas-cmp-better', 'faas-cmp-worse');
                 if (!valEl) return;
+                if (period === 'yesterday') faasPaintYesterdayDot(el, k, m ? m[k] : null, prevY ? prevY[k] : null,
+                    d ? d.day_before_date : null);
                 if (!m) { valEl.textContent = '—'; return; }
                 valEl.textContent = faasFmtKpi(k, m[k]);
                 const base = ref[period] ? ref[period][k] : null;
@@ -3535,14 +3581,14 @@
                 if (!isFinite(b.acos_from) || !isFinite(b.acos_to)
                     || !isFinite(b.spend_from)
                     || !isFinite(b.sbgt)) {
-                    errEl.textContent = 'Every band needs numeric ACOS From/To, Spend, and Sbgt.';
+                    errEl.textContent = 'Every band needs numeric Lifetime ACOS From/To, Spend, and Sbgt.';
                     errEl.classList.remove('d-none');
                     return;
                 }
                 const lower = b.acos_from_op === '>' || b.acos_from_op === '>=';
                 const upper = b.acos_to_op === '<' || b.acos_to_op === '<=';
                 if (lower && upper && b.acos_from > b.acos_to) {
-                    errEl.textContent = 'Each band needs ACOS From ≤ ACOS To when From is > or >= and To is < or <=.';
+                    errEl.textContent = 'Each band needs Lifetime ACOS From ≤ Lifetime ACOS To when From is > or >= and To is < or <=.';
                     errEl.classList.remove('d-none');
                     return;
                 }
@@ -3890,9 +3936,10 @@
         // ratio metrics, plain integers otherwise).
         function fmtBadgeValue(metric, v) {
             if (v === null || v === undefined || isNaN(v)) return '—';
-            if (metric === 'spend' || metric === 'sales') {
+            if (metric === 'spend' || metric === 'sales' || metric === 'sbgt' || metric === 'cps') {
                 return '$' + Math.round(v).toLocaleString('en-US');
             }
+            if (metric === 'bid') return '$' + Number(v).toFixed(2);
             if (metric === 'acos' || metric === 'ctr' || metric === 'cvr') {
                 return Number(v).toFixed(1) + '%';
             }
@@ -3904,21 +3951,33 @@
             el.addEventListener('click', function () {
                 const metric = this.dataset.metric;
                 const label  = this.dataset.label || metric.toUpperCase();
-                openBadgeChart(metric, label);
+                openBadgeChart(metric, label, 'l30');
             });
         });
+        // Yesterday tiles → the same chart, fed with one real value per day.
+        document.querySelectorAll('.faas-y-hist').forEach(el => {
+            el.addEventListener('click', function () {
+                openBadgeChart(this.dataset.hist, this.dataset.histLabel || this.dataset.hist.toUpperCase(), 'daily');
+            });
+        });
+
+        // 'l30' = rolling-L30 snapshot history (L30 badges); 'daily' = per-day values (Yesterday tiles).
+        let activeBadgeSource = 'l30';
+        // Range label per the history-chart standard: "Rolling L30", or "Lifetime" for 0.
+        function faasRangeLabel(days) { return days > 0 ? `Rolling L${days}` : 'Lifetime'; }
 
         // Range dropdown re-loads the chart with the new window length.
         document.getElementById('badgeChartRange')?.addEventListener('change', function () {
             if (activeBadgeMetric) loadBadgeChart(activeBadgeMetric, activeBadgeLabel);
         });
 
-        function openBadgeChart(metric, label) {
+        function openBadgeChart(metric, label, source) {
             activeBadgeMetric = metric;
             activeBadgeLabel  = label;
+            activeBadgeSource = source || 'l30';
             const titleEl = document.getElementById('badgeChartTitle');
-            const days    = parseInt(document.getElementById('badgeChartRange').value || '32', 10);
-            if (titleEl) titleEl.textContent = `${label} (Rolling L${days})`;
+            const days    = parseInt(document.getElementById('badgeChartRange').value || '30', 10);
+            if (titleEl) titleEl.textContent = `${label} (${faasRangeLabel(days)})`;
 
             const modalEl = document.getElementById('badgeChartModal');
             if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -3941,9 +4000,9 @@
         }
 
         function loadBadgeChart(metric, label) {
-            const days = parseInt(document.getElementById('badgeChartRange').value || '32', 10);
+            const days = parseInt(document.getElementById('badgeChartRange').value || '30', 10);
             const titleEl = document.getElementById('badgeChartTitle');
-            if (titleEl) titleEl.textContent = `${label} (Rolling L${days})`;
+            if (titleEl) titleEl.textContent = `${label} (${faasRangeLabel(days)})`;
             const req = ++badgeChartReq;
             // Drop the previous series before the request returns. A slow
             // response for the first graph must not paint over the second.
@@ -3960,6 +4019,7 @@
                 });
             }
             const params = new URLSearchParams({ metric, days: String(days) });
+            if (activeBadgeSource === 'daily') params.set('source', 'daily');
             if (cids.length) params.set('campaign_ids', cids.join(','));
 
             fetch(`${BADGE_HISTORY_URL}?${params.toString()}`, { credentials: 'same-origin' })
@@ -4029,7 +4089,7 @@
             // Per-day dot colours: green = improved vs prev day,
             // red = worse, grey = flat. Inverted for "lower is better"
             // metrics (Acos — same standard as /amazon-ads/all and the badge dots).
-            const invertedMetrics = ['acos'];
+            const invertedMetrics = ['acos', 'bid', 'cps'];
             const isInverted = invertedMetrics.includes(metric);
             const dotColors = values.map((v, i) => {
                 if (i === 0) return refGray;
