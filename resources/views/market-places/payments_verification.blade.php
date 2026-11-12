@@ -17,6 +17,12 @@
         .pv-dot { cursor: pointer; font-size: 9px; margin-left: 4px; }
         .pv-recd { font-weight: 700; }
         .pv-empty { color: #adb5bd; }
+        .pv-tri { display: inline-block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid #dc3545; margin-right: 5px; vertical-align: middle; }
+        .pv-pct { font-weight: 700; }
+        .pv-pct.low { color: #dc3545; }
+        .pv-pct.ok { color: #198754; }
+        #pv-low-badge { cursor: pointer; user-select: none; }
+        #pv-low-badge.active { outline: 3px solid #f1aeb5; }
         .pv-link-cell { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
         #payments-verification-table .tabulator-row .tabulator-cell { vertical-align: middle; }
         #pvHistoryChartWrap { position: relative; height: 260px; }
@@ -37,6 +43,9 @@
                         <span class="badge bg-primary fs-6 p-2" style="font-weight:bold;">CHANNELS: <span id="pv-count">0</span></span>
                         <span class="badge bg-success fs-6 p-2" style="font-weight:bold;" title="Sum of Sales (L30) for channels shown">SALES: <span id="pv-sales">$0</span></span>
                         <span class="badge bg-info fs-6 p-2" style="font-weight:bold;" title="Sum of PMT RECD for channels shown">PMT RECD: <span id="pv-recd">0</span></span>
+                        <span class="badge bg-danger fs-6 p-2" id="pv-low-badge" style="font-weight:bold;" title="Channels whose PMT RECD is under 70% of Sales. Click to show only these.">
+                            <span class="pv-tri" style="border-bottom-color:#fff;"></span>BELOW 70%: <span id="pv-low">0</span>
+                        </span>
                         <input type="search" id="pv-search" class="form-control form-control-sm ms-auto" style="max-width:260px;" placeholder="Search channel, bank account, link..." autocomplete="off">
                     </div>
                 </div>
@@ -158,8 +167,25 @@
         return table.getRows().find(function (r) { return r.getData().channel_key === key; });
     }
 
+    const LOW_PCT = 70;
+    let onlyLow = false;
+
+    // PMT RECD ÷ Sales (L30) as a percentage. Blank when nothing is entered or Sales is 0.
+    function pctOf(d) {
+        const recd = d.pmt_recd;
+        if (recd === null || recd === undefined || recd === '') return null;
+        const sales = num(d.sales);
+        if (sales <= 0) return null;
+        return (num(recd) / sales) * 100;
+    }
+    function isLow(d) {
+        const p = pctOf(d);
+        return p !== null && p < LOW_PCT;
+    }
+
     function updateBadges() {
         const rows = table ? table.getData('active') : [];
+        $('#pv-low').text((table ? table.getData() : []).filter(isLow).length.toLocaleString());
         $('#pv-count').text(rows.length.toLocaleString());
         $('#pv-sales').text(money(rows.reduce(function (s, r) { return s + num(r.sales); }, 0)));
         $('#pv-recd').text(rows.reduce(function (s, r) { return s + num(r.pmt_recd); }, 0).toLocaleString('en-US', { maximumFractionDigits: 2 }));
@@ -167,8 +193,10 @@
 
     function applySearch() {
         const q = ($('#pv-search').val() || '').trim().toLowerCase();
-        if (!q) { table.clearFilter(); updateBadges(); return; }
+        if (!q && !onlyLow) { table.clearFilter(); updateBadges(); return; }
         table.setFilter(function (d) {
+            if (onlyLow && !isLow(d)) return false;
+            if (!q) return true;
             return (String(d.channel) + ' ' + String(d.bank_account || '') + ' ' + String(d.link || '')).toLowerCase().indexOf(q) !== -1;
         });
         updateBadges();
@@ -197,7 +225,9 @@
             });
         },
         ajaxResponse: function (url, params, response) {
-            return (response && response.success && Array.isArray(response.data)) ? response.data : [];
+            const rows = (response && response.success && Array.isArray(response.data)) ? response.data : [];
+            rows.forEach(function (r) { r.pct = pctOf(r); });
+            return rows;
         },
         ajaxError: function (xhr) {
             $('#payments-verification-table .tabulator-placeholder-contents').text(errMsg(xhr, 'Could not load channels.'));
@@ -244,6 +274,23 @@
                 bottomCalcFormatter: function (c) { return '<strong>' + Number(c.getValue()).toLocaleString('en-US', { maximumFractionDigits: 2 }) + '</strong>'; },
             },
             {
+                title: 'Percentage', field: 'pct', width: 120, hozAlign: 'center',
+                headerTooltip: 'PMT RECD ÷ Sales (last 30 days). Red triangle when under 70%.',
+                sorter: function (a, b) {
+                    const x = (a === null || a === undefined) ? -Infinity : a;
+                    const y = (b === null || b === undefined) ? -Infinity : b;
+                    return x === y ? 0 : (x < y ? -1 : 1);
+                },
+                formatter: function (cell) {
+                    const p = cell.getValue();
+                    if (p === null || p === undefined) return '<span class="pv-empty" title="Enter PMT RECD (and Sales must be above 0)">—</span>';
+                    const low = p < LOW_PCT;
+                    const text = (Math.round(p * 10) / 10).toLocaleString('en-US') + '%';
+                    return (low ? '<span class="pv-tri" title="Under ' + LOW_PCT + '% of Sales"></span>' : '')
+                        + '<span class="pv-pct ' + (low ? 'low' : 'ok') + '">' + text + '</span>';
+                },
+            },
+            {
                 title: 'Bank Account', field: 'bank_account', minWidth: 180,
                 formatter: function (c) { const v = c.getValue(); return v ? esc(v) : '<span class="pv-empty">—</span>'; },
             },
@@ -285,9 +332,12 @@
         $.ajax({ url: urls.amount, method: 'POST', data: { _token: csrf, channel: current.channel, amount: amount } })
             .done(function (res) {
                 const row = rowFor(res.data.channel_key);
-                if (row) row.update({ pmt_recd: res.data.pmt_recd, history_count: res.data.history_count });
+                if (row) {
+                    const next = Object.assign({}, row.getData(), { pmt_recd: res.data.pmt_recd, history_count: res.data.history_count });
+                    row.update({ pmt_recd: next.pmt_recd, history_count: next.history_count, pct: pctOf(next) });
+                }
                 modal('pvAmountModal').hide();
-                updateBadges();
+                applySearch();
             })
             .fail(function (xhr) { $err.text(errMsg(xhr, 'Could not save.')).removeClass('d-none'); })
             .always(function () { $btn.prop('disabled', false); });
@@ -351,6 +401,11 @@
     }
 
     $('#pv-search').on('input', applySearch);
+    $('#pv-low-badge').on('click', function () {
+        onlyLow = !onlyLow;
+        $(this).toggleClass('active', onlyLow);
+        applySearch();
+    });
 })();
 </script>
 @endsection
