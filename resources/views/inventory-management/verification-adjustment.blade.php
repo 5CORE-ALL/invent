@@ -1625,8 +1625,8 @@
                             </div>
                             <div class="d-flex align-items-center va-controls-inner">
                                 <select id="statusFilter" class="form-control form-control-sm va-input-sm" title="Filter by Product Master status">
-                                    <option value="">Status</option>
-                                    <option value="active">&#128994; Active</option>
+                                    <option value="">All status</option>
+                                    <option value="active" selected>&#128994; Active</option>
                                     <option value="inactive">&#128308; Inactive</option>
                                     <option value="dc">&#128308; DC</option>
                                     <option value="coming">&#128993; Coming</option>
@@ -2427,7 +2427,7 @@
                     .removeClass('btn-success btn-warning btn-danger')
                     .addClass('btn-light');
 
-                filteredData = [...tableData];
+                filteredData = tableData.filter(item => itemMatchesStatusFilter(item));
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
@@ -2941,6 +2941,9 @@
 
                             currentSort.field = 'approved_at';
                             currentSort.direction = -1;
+
+                            // Status filter defaults to Active: apply it to the first render (keeps the sort above)
+                            filteredData = filteredData.filter(item => itemMatchesStatusFilter(item));
 
                             renderTable(filteredData);
                            
