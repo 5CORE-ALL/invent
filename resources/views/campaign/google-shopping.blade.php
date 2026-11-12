@@ -817,10 +817,10 @@
                                         <span id="gacKpi_l30_bgt_total" data-metric="l30_bgt_total" data-label="L30 Total BGT" data-kpi="l30_bgt_total"
                                             class="faas-stat-badge gac-trend-none badge-chart-link"
                                             title="Daily budgets summed over the last 30 days, all campaigns (Active, Paused, Removed …). Click for history."><i class="summary-trend-dot none" data-kpi-dot="l30_bgt_total" title="Click for history"></i>TOTAL BGT:<span class="gac-kpi-val">—</span></span>
-                                        {{-- N TARGET: negative keywords of the campaigns shown (total) + campaigns with none (M). Click = show only the M campaigns (same as the N Tgt filter). --}}
-                                        <span id="gacNTargetBadge" data-label="N Target" role="button" tabindex="0"
+                                        {{-- N TGT < 50: campaigns with fewer than 50 negative keywords (N Target column, includes the M ones). Click = show only those campaigns (same as the N Tgt "< 50" filter). --}}
+                                        <span id="gacNTargetBadge" data-label="N Target &lt; 50" role="button" tabindex="0"
                                             class="faas-stat-badge gac-fix-badge"
-                                            title="Negative keywords (N Target) of the campaigns shown. Click to show only the campaigns with none (M).">N TARGET:<span id="gacNTargetValue">—</span><span class="gac-util-pct" id="gacNTargetMissing" title="Campaigns with no negative keywords (M)"></span></span>
+                                            title="Campaigns with fewer than 50 negative keywords (N Target). Click to show only those campaigns.">N TGT &lt; 50:<span id="gacNTargetValue">—</span></span>
                                     @endif
                                 </div>
                             </div>
@@ -991,6 +991,7 @@
                                 <select id="gac-filter-ntarget" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by N Target (negative keyword count)">
                                     <option value="all" selected>All</option>
                                     <option value="m">M (none)</option>
+                                    <option value="lt50">&lt; 50</option>
                                     <option value="has">Has negatives</option>
                                 </select>
                             </div>
@@ -2754,15 +2755,13 @@
                 }
                 var ntEl = document.getElementById('gacNTargetValue');
                 if (ntEl) {
-                    var ntTotal = Number(s.n_target_total) || 0;
+                    var ntLow = Number(s.n_target_lt50) || 0;
                     var ntMissing = Number(s.n_target_missing) || 0;
                     var ntCamps = Number(s.n_target_campaigns) || 0;
-                    var ntMissEl = document.getElementById('gacNTargetMissing');
                     var ntBadge = document.getElementById('gacNTargetBadge');
-                    ntEl.textContent = ntTotal.toLocaleString();
-                    if (ntMissEl) ntMissEl.textContent = ntMissing ? ('· M ' + ntMissing.toLocaleString()) : '';
-                    if (ntBadge) ntBadge.title = ntTotal.toLocaleString() + ' negative keyword(s) across ' + ntCamps.toLocaleString() + ' campaign(s) shown; '
-                        + ntMissing.toLocaleString() + ' campaign(s) have none (M). Click to show only the M campaigns' + (ntBadge.classList.contains('is-on') ? ' (filter is ON — click to show all).' : '.');
+                    ntEl.textContent = ntLow.toLocaleString();
+                    if (ntBadge) ntBadge.title = ntLow.toLocaleString() + ' of ' + ntCamps.toLocaleString() + ' campaign(s) shown have fewer than 50 negative keywords (N Target), '
+                        + ntMissing.toLocaleString() + ' of them have none (M). Click to show only those campaigns' + (ntBadge.classList.contains('is-on') ? ' (filter is ON — click to show all).' : '.');
                 }
                 var needEl = document.getElementById('gacAdsNeededValue');
                 if (needEl) {
@@ -3257,11 +3256,11 @@
                     var nb = document.getElementById('gacNTargetBadge');
                     var sel = document.getElementById('gac-filter-ntarget');
                     if (!nb || !sel) return;
-                    var sync = function() { nb.classList.toggle('is-on', sel.value === 'm'); };
+                    var sync = function() { nb.classList.toggle('is-on', sel.value === 'lt50'); };
                     var toggle = function(ev) {
                         if (ev && ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
                         if (ev) ev.preventDefault();
-                        sel.value = (sel.value === 'm') ? 'all' : 'm';
+                        sel.value = (sel.value === 'lt50') ? 'all' : 'lt50';
                         sync();
                         sel.dispatchEvent(new Event('change', { bubbles: true }));
                     };

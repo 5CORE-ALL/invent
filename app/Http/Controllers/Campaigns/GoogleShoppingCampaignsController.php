@@ -30,6 +30,9 @@ use Illuminate\Support\Facades\Schema;
 
 class GoogleShoppingCampaignsController extends Controller
 {
+    /** N Target badge / "< 50" filter: campaigns with fewer negative keywords than this. */
+    private const N_TARGET_LOW_THRESHOLD = 50;
+
     public function __construct()
     {
         parent::__construct();
@@ -3873,7 +3876,8 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * N Target filter: "m" = campaigns with no negative keywords (the red M), "has" = at least one.
+     * N Target filter: "m" = campaigns with no negative keywords (the red M), "has" = at least one,
+     * "lt50" = fewer than {@see N_TARGET_LOW_THRESHOLD} negative keywords (includes the M campaigns).
      * Counts live in google_ads_negative_keywords, so like INV this runs in PHP. Shopping grid only.
      *
      * @param  \Illuminate\Support\Collection<int, mixed>  $collection
@@ -3882,7 +3886,7 @@ class GoogleShoppingCampaignsController extends Controller
     private function filterRawGridRowsByNegativeTargets($collection, mixed $value)
     {
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
-        if (! in_array($v, ['m', 'has'], true) || $this->channelKey() !== 'shopping') {
+        if (! in_array($v, ['m', 'has', 'lt50'], true) || $this->channelKey() !== 'shopping') {
             return $collection;
         }
         $ids = [];
@@ -3894,6 +3898,10 @@ class GoogleShoppingCampaignsController extends Controller
         return $collection->filter(static function ($row) use ($counts, $v) {
             $cid = trim((string) (is_object($row) ? ($row->campaign_id ?? '') : ($row['campaign_id'] ?? '')));
             $n = (int) ($counts[$cid] ?? 0);
+
+            if ($v === 'lt50') {
+                return $n < self::N_TARGET_LOW_THRESHOLD;
+            }
 
             return $v === 'm' ? $n === 0 : $n > 0;
         })->values();
@@ -4960,15 +4968,20 @@ class GoogleShoppingCampaignsController extends Controller
         }
         $counts = $this->negativeTargetCountsForPage($ids);
         $missing = 0;
+        $low = 0;
         foreach ($counts as $n) {
             if ((int) $n === 0) {
                 $missing++;
+            }
+            if ((int) $n < self::N_TARGET_LOW_THRESHOLD) {
+                $low++;
             }
         }
 
         return [
             'n_target_total' => (int) array_sum($counts),
             'n_target_missing' => $missing,
+            'n_target_lt50' => $low,
             'n_target_campaigns' => count($counts),
         ];
     }
