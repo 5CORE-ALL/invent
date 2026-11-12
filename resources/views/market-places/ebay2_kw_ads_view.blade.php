@@ -42,6 +42,14 @@
                 <input id="kw-search" type="search" class="form-control form-control-sm" style="width:200px;" placeholder="Search SKU / campaign">
             </div>
 
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 border rounded bg-light">
+                <button id="kw-pull-btn" type="button" class="btn btn-sm btn-primary">
+                    <i class="fa-solid fa-cloud-arrow-down me-1"></i> Pull Priority Reports from eBay API
+                </button>
+                <span id="kw-pull-state" class="small text-muted">Checking…</span>
+                <span id="kw-coverage" class="small ms-auto"></span>
+            </div>
+
             <div id="kw-empty" class="alert alert-warning d-none">
                 No KW ads data found. Source table: <code>ebay_2_priority_reports</code>
                 (RUNNING/PAUSED campaigns, report ranges L30 / L7 / L1 / yesterday / day-before).
@@ -80,6 +88,12 @@ document.addEventListener('DOMContentLoaded', function () {
             { title: 'Ad Sold', field: 'kw_ad_sold', hozAlign: 'center', sorter: 'number', width: 85 },
             { title: 'ACOS %', field: 'kw_acos', hozAlign: 'center', sorter: 'number', width: 85, formatter: c => num(c.getValue()).toFixed(2) + '%' },
             { title: 'CVR %', field: 'kw_cvr', hozAlign: 'center', sorter: 'number', width: 85, formatter: c => num(c.getValue()).toFixed(2) + '%' },
+            { title: 'Impr L30', field: 'kw_impressions', hozAlign: 'center', sorter: 'number', width: 90, formatter: c => num(c.getValue()).toLocaleString() },
+            { title: 'CTR %', field: 'kw_ctr', hozAlign: 'center', sorter: 'number', width: 80, formatter: c => num(c.getValue()).toFixed(2) + '%' },
+            { title: 'CPC L30', field: 'kw_cpc_l30', hozAlign: 'right', sorter: 'number', width: 85, formatter: c => money(c.getValue()) },
+            { title: 'Sales $ L30', field: 'kw_sales_amount', hozAlign: 'right', sorter: 'number', width: 100, formatter: c => money(c.getValue()) },
+            { title: 'ROAS', field: 'kw_roas', hozAlign: 'center', sorter: 'number', width: 75, formatter: c => num(c.getValue()).toFixed(2) },
+            { title: 'Avg Cost/Sale', field: 'kw_avg_cost_per_sale', hozAlign: 'right', sorter: 'number', width: 110, formatter: c => money(c.getValue()) },
             { title: 'Spend L7', field: 'kw_l7_spend', hozAlign: 'right', sorter: 'number', width: 90, formatter: c => money(c.getValue()) },
             { title: 'CPC L7', field: 'kw_l7_cpc', hozAlign: 'right', sorter: 'number', width: 85, formatter: c => money(c.getValue()) },
             { title: 'Spend L1', field: 'kw_l1_spend', hozAlign: 'right', sorter: 'number', width: 90, formatter: c => money(c.getValue()) },
@@ -120,8 +134,8 @@ document.addEventListener('DOMContentLoaded', function () {
         table.setSort([{ column: 'kw_spend_L30', dir: 'desc' }]);
     }
 
-    table.on('tableBuilt', function () {
-        fetch('/ebay2-data-json', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+    function loadData() {
+        return fetch('/ebay2-data-json', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(res => {
                 allRows = Array.isArray(res) ? res : (res && Array.isArray(res.data) ? res.data : []);
@@ -129,6 +143,59 @@ document.addEventListener('DOMContentLoaded', function () {
                 applyFilter();
             })
             .catch(err => { table.alert('Failed to load data: ' + err.message, 'error'); });
+    }
+
+    table.on('tableBuilt', function () {
+        loadData();
+        checkPull();
+    });
+
+    // ---- Pull Priority Reports from the eBay Marketing API ----
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const pullBtn = document.getElementById('kw-pull-btn');
+    const pullState = document.getElementById('kw-pull-state');
+    let pollTimer = null;
+    let wasRunning = false;
+
+    function renderCoverage(cov) {
+        const el = document.getElementById('kw-coverage');
+        el.innerHTML = (cov || []).map(c => {
+            const ok = c.campaigns > 0;
+            return '<span class="me-3" title="' + (c.last_updated || 'never') + '">' +
+                '<b>' + c.range + '</b>: ' +
+                '<span class="' + (ok ? 'kw-yes' : 'kw-no') + '">' + c.campaigns + '</span> campaigns' +
+                (ok ? ' (' + c.with_clicks + ' w/ clicks)' : '') + '</span>';
+        }).join('');
+    }
+
+    function checkPull() {
+        return fetch('{{ route('ebay2.kw.ads.pull.status') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(s => {
+                renderCoverage(s.coverage);
+                pullBtn.disabled = !!s.running;
+                pullState.textContent = s.running
+                    ? 'Pulling from eBay… (reports are polled every minute, this can take a while)'
+                    : 'Last sync: ' + (s.last_sync || 'never');
+                if (wasRunning && !s.running) { loadData(); }   // pull just finished
+                wasRunning = !!s.running;
+                if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);
+                if (!s.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            })
+            .catch(() => { pullState.textContent = 'Could not check pull status.'; });
+    }
+
+    pullBtn.addEventListener('click', function () {
+        if (!confirm('Pull all Promoted Listings priority reports (L90/L60/L30/L15/L7/L1 + yesterday) from the eBay 2 API?')) return;
+        pullBtn.disabled = true;
+        fetch('{{ route('ebay2.kw.ads.pull') }}', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            credentials: 'same-origin',
+        })
+            .then(r => r.json())
+            .then(res => { pullState.textContent = res.message || ''; return checkPull(); })
+            .catch(err => { pullBtn.disabled = false; pullState.textContent = 'Pull failed: ' + err.message; });
     });
 
     document.getElementById('kw-status').addEventListener('change', function () {

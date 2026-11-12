@@ -1282,7 +1282,9 @@
         // otherwise a task title containing "created" / "added" turned the reply into an
         // un-archivable system line.
         const botReplyCmds = { complete: 1, task: 1, assign: 1, deadline: 1, due: 1, overdue: 1, dar: 1, si: 1, help: 1, invent: 1 };
-        const systemBody = !botReplyCmds[m.command] && / created | added | deleted this /i.test(String(m.body || ''));
+        // Text sniffing is only a fallback for old notices saved without a command. Any bot message
+        // that has a command (task done, daily nudges, incentive notices, ...) is a normal, archivable message.
+        const systemBody = !m.command && !botReplyCmds[m.command] && / created | added | deleted this /i.test(String(m.body || ''));
         if (m.is_bot && (systemCmds[m.command] || systemBody)) {
             wrap.className += ' is-system';
             wrap.innerHTML = '<div class="slack-sys">' + (m.html || esc(m.body || '')) + '</div>';

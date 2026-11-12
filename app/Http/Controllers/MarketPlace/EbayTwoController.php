@@ -280,6 +280,102 @@ class EbayTwoController extends Controller
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }
 
+    // ---------- eBay 2 KW Ads: pull Promoted Listings (priority) reports from the eBay Marketing API ----------
+
+    /** Report ranges app:ebay2-campaign-reports stores in ebay_2_priority_reports. */
+    private const KW_PULL_RANGES = ['L90', 'L60', 'L30', 'L15', 'L7', 'L1'];
+
+    private function kwPullFlag(): string
+    {
+        return storage_path('app/ebay2_kw_pull.running');
+    }
+
+    private function kwPullRunning(): bool
+    {
+        $f = $this->kwPullFlag();
+
+        // The command polls eBay once a minute per report, so a full pull is long; a flag older than 3h is a crashed run.
+        return is_file($f) && (time() - (int) filemtime($f)) < 10800;
+    }
+
+    /**
+     * Coverage of ebay_2_priority_reports: row count, campaigns with spend and last update per report range.
+     */
+    private function kwPullCoverage(): array
+    {
+        if (! Schema::hasTable('ebay_2_priority_reports')) {
+            return [];
+        }
+
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $ranges = array_merge(self::KW_PULL_RANGES, [$yesterday]);
+
+        $stats = Ebay2PriorityReport::query()
+            ->whereIn('report_range', $ranges)
+            ->selectRaw('report_range, COUNT(*) AS campaigns, SUM(CASE WHEN cpc_clicks > 0 THEN 1 ELSE 0 END) AS with_clicks, MAX(updated_at) AS last_updated')
+            ->groupBy('report_range')
+            ->get()
+            ->keyBy('report_range');
+
+        return collect($ranges)->map(function ($range) use ($stats) {
+            $s = $stats->get($range);
+
+            return [
+                'range' => $range,
+                'campaigns' => (int) ($s->campaigns ?? 0),
+                'with_clicks' => (int) ($s->with_clicks ?? 0),
+                'last_updated' => $s->last_updated ?? null,
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * Run app:ebay2-campaign-reports (eBay Marketing API) in the background. The page polls kwPullStatus().
+     */
+    public function pullKwAdsReports(Request $request): \Illuminate\Http\JsonResponse
+    {
+        if ($this->kwPullRunning()) {
+            return response()->json(['success' => true, 'running' => true, 'message' => 'A pull is already running.']);
+        }
+
+        $only = strtoupper(trim((string) $request->input('range', '')));
+        if ($only !== '' && ! in_array($only, self::KW_PULL_RANGES, true)) {
+            return response()->json(['success' => false, 'message' => 'Unknown report range.'], 422);
+        }
+
+        $php = PHP_BINARY ?: 'php';
+        if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+            $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+            if ($cli !== '') {
+                $php = $cli;
+            }
+        }
+
+        $flag = $this->kwPullFlag();
+        @file_put_contents($flag, (string) time());
+        $log = storage_path('logs/ebay2_kw_pull.log');
+        $cmd = escapeshellarg($php).' '.escapeshellarg(base_path('artisan')).' app:ebay2-campaign-reports'
+            .($only !== '' ? ' --only='.escapeshellarg($only) : '');
+        exec('nohup sh -c '.escapeshellarg($cmd.'; rm -f '.escapeshellarg($flag)).' >> '.escapeshellarg($log).' 2>&1 &');
+
+        return response()->json([
+            'success' => true,
+            'running' => true,
+            'message' => 'Pulling Promoted Listings reports from eBay in the background.',
+        ]);
+    }
+
+    public function kwPullStatus(): \Illuminate\Http\JsonResponse
+    {
+        $coverage = $this->kwPullCoverage();
+
+        return response()->json([
+            'running' => $this->kwPullRunning(),
+            'coverage' => $coverage,
+            'last_sync' => collect($coverage)->pluck('last_updated')->filter()->max(),
+        ]);
+    }
+
     /**
      * Tabulator feed — same wrapper as /ebay-data-json, eBay 2 rows only.
      * Returns the row array and saves the daily snapshot after the response.
@@ -955,6 +1051,14 @@ class EbayTwoController extends Controller
                 $row['kw_acos'] = $kw_sales_l30 > 0 ? round(($kw_spend_l30 / $kw_sales_l30) * 100, 2) : ($kw_spend_l30 > 0 ? 100 : 0);
                 $row['kw_cvr'] = $kw_clicks_l30 > 0 ? round(($kw_ad_sold / $kw_clicks_l30) * 100, 2) : 0;
 
+                // Remaining L30 priority-report metrics (shown on /ebay2-kw-ads-view)
+                $row['kw_impressions'] = $matchedL30 ? (int) ($matchedL30->cpc_impressions ?? 0) : 0;
+                $row['kw_ctr'] = $matchedL30 ? round((float) ($matchedL30->cpc_ctr ?? 0), 2) : 0;
+                $row['kw_sales_amount'] = round($kw_sales_l30, 2);
+                $row['kw_roas'] = $matchedL30 ? round((float) ($matchedL30->cpc_return_on_ad_spend ?? 0), 2) : 0;
+                $row['kw_cpc_l30'] = $matchedL30 ? round((float) str_replace(['USD ', ','], '', $matchedL30->cost_per_click ?? '0'), 2) : 0;
+                $row['kw_avg_cost_per_sale'] = $matchedL30 ? round((float) str_replace(['USD ', ','], '', $matchedL30->cpc_avg_cost_per_sale ?? '0'), 2) : 0;
+
                 $row['kw_l7_spend'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cpc_ad_fees_payout_currency ?? '0'), 2) : 0;
                 $row['kw_l7_cpc'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cost_per_click ?? '0'), 2) : 0;
                 $row['kw_l1_spend'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cpc_ad_fees_payout_currency ?? '0'), 2) : 0;
@@ -972,6 +1076,12 @@ class EbayTwoController extends Controller
                 $row['kw_ad_sold'] = 0;
                 $row['kw_acos'] = 0;
                 $row['kw_cvr'] = 0;
+                $row['kw_impressions'] = 0;
+                $row['kw_ctr'] = 0;
+                $row['kw_sales_amount'] = 0;
+                $row['kw_roas'] = 0;
+                $row['kw_cpc_l30'] = 0;
+                $row['kw_avg_cost_per_sale'] = 0;
                 $row['kw_l7_spend'] = 0;
                 $row['kw_l7_cpc'] = 0;
                 $row['kw_l1_spend'] = 0;
@@ -1239,6 +1349,12 @@ class EbayTwoController extends Controller
                 $row['kw_ad_sold'] = 0;
                 $row['kw_acos'] = 0;
                 $row['kw_cvr'] = 0;
+                $row['kw_impressions'] = 0;
+                $row['kw_ctr'] = 0;
+                $row['kw_sales_amount'] = 0;
+                $row['kw_roas'] = 0;
+                $row['kw_cpc_l30'] = 0;
+                $row['kw_avg_cost_per_sale'] = 0;
                 $row['kw_l7_spend'] = 0;
                 $row['kw_l7_cpc'] = 0;
                 $row['kw_l1_spend'] = 0;

@@ -5477,6 +5477,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->whereIn('channel', ['ebay1', 'ebay2', 'ebay3'])->name('ebay.refresh.metrics.status');
     Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
     Route::get('/ebay2-kw-ads-view', fn () => view('market-places.ebay2_kw_ads_view'))->name('ebay2.kw.ads.view');
+    Route::post('/ebay2-kw-ads-view/pull', [EbayTwoController::class, 'pullKwAdsReports'])->name('ebay2.kw.ads.pull');
+    Route::get('/ebay2-kw-ads-view/pull-status', [EbayTwoController::class, 'kwPullStatus'])->name('ebay2.kw.ads.pull.status');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
     Route::get('/ebay2-data-json', [EbayTwoController::class, 'ebay2DataJson'])->name('ebay2.data.json');
