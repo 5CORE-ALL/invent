@@ -581,7 +581,7 @@
         #gacRawBgtRulesModal .gac-bgt-global-err { margin: 0 0 8px; }
 
         /* Rule cards are stacked as full-width horizontal rows (same look as the "Std prc vs dil" modal):
-           title + Add button on the left, the wide slab table in the middle, chart + legend on the right. */
+           title + Add button on the left, the wide slab table (with a No match row under it) on the right. */
         #gacRawBgtRulesModal .gac-bgt-cols {
             display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
             gap: 12px; width: 100%; min-width: 0; flex: 0 0 auto; padding-bottom: 4px;
@@ -590,11 +590,11 @@
             flex: 0 0 auto;
             min-width: 0; min-height: 0;
             display: grid;
-            grid-template-columns: 210px minmax(0, 1fr) minmax(240px, 360px);
+            grid-template-columns: 210px minmax(0, 1fr);
             grid-template-areas:
-                "head table chart"
-                "add  table chart"
-                "err  table chart";
+                "head table"
+                "add  table"
+                "err  table";
             grid-template-rows: auto auto 1fr;
             column-gap: 18px; align-items: start;
             border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff;
@@ -602,14 +602,13 @@
         }
         #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-col-head { grid-area: head; }
         #gacRawBgtRulesModal .gac-bgt-col > .table-responsive { grid-area: table; }
-        #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-chart { grid-area: chart; margin-bottom: 0; }
         #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-add { grid-area: add; }
         #gacRawBgtRulesModal .gac-bgt-col > p { grid-area: err; }
         #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { min-width: 0; }
         @media (max-width: 991.98px) {
             #gacRawBgtRulesModal .gac-bgt-col {
                 grid-template-columns: minmax(0, 1fr);
-                grid-template-areas: "head" "table" "add" "err" "chart";
+                grid-template-areas: "head" "table" "add" "err";
                 grid-template-rows: auto;
             }
         }
@@ -629,8 +628,6 @@
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-exp-btn { display: none; }
         #gacRawBgtRulesModal .gac-bgt-cols.is-expanded .gac-bgt-col:not(.is-max) { display: none; }
         #gacRawBgtRulesModal .gac-bgt-col.is-max { min-width: 0; max-width: none; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas { height: 240px; flex: 0 0 240px; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas canvas { height: 240px !important; }
         /* Minimized = a slim one-line bar (title + buttons) instead of a thin vertical strip. */
         #gacRawBgtRulesModal .gac-bgt-col.is-min { display: flex; padding: 8px 16px; cursor: pointer; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min > :not(.gac-bgt-col-head) { display: none !important; }
@@ -682,6 +679,9 @@
         #gacRawBgtRulesModal .gac-bgt-col > p.small { margin-top: 8px !important; }
         /* Count column: number of campaigns in the slab + a dot in the slab colour (like the Std prc vs dil cards). */
         #gacRawBgtRulesModal .gac-bgt-col .table td.gac-bgt-count { font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        /* "No match" row under each slab table: campaigns whose value falls in no slab. */
+        #gacRawBgtRulesModal .gac-bgt-col .table tfoot td { border-top: 1px solid #e2e8f0; padding-top: 8px; font-weight: 700; color: #64748b; font-size: 12px; }
+        #gacRawBgtRulesModal .gac-bgt-col .table tfoot td.gac-bgt-nomatch-count { color: #334155; font-variant-numeric: tabular-nums; white-space: nowrap; }
         #gacRawBgtRulesModal .gac-bgt-count-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 5px; vertical-align: middle; }
 
         /* Sum card: last card in the row (right-hand side), same look as the rule cards. Data only, no chart. */
@@ -1126,10 +1126,6 @@
                                 <div class="gac-bgt-title" title="Same ACOS → BGT ACOS brackets as /amazon-ads/all, matched on ACOS % only (no spend gate). Rows are checked top to bottom; the first range that contains the campaign's ACOS gets its BGT ACOS. Use 9999 on To for the catch-all highest band.">BGT Vs ACOS</div>
                                 <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="gac-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button></span>
                             </div>
-                            <div class="gac-bgt-chart">
-                                <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-acos"></canvas></div>
-                                <div class="gac-bgt-legend" id="gac-bgt-leg-acos"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
                                     <thead class="table-light">
@@ -1143,6 +1139,15 @@
                                         </tr>
                                     </thead>
                                     <tbody id="gac-sbgt-bands-body"></tbody>
+                                    <tfoot>
+                                        <tr class="gac-bgt-nomatch-row">
+                                            <td></td>
+                                            <td colspan="2">No match</td>
+                                            <td class="gac-bgt-nomatch-count">0</td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary gac-bgt-add" id="gac-sbgt-add-band-btn">Add band</button>
@@ -1154,10 +1159,6 @@
                                 <div class="gac-bgt-col-head">
                                     <div class="gac-bgt-title" title="{{ $card['hint'] }}">{{ $card['title'] }}</div>
                                     <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="gac-bgt-min-btn" title="Minimize {{ $card['title'] }}" aria-label="Minimize {{ $card['title'] }}">−</button></span>
-                                </div>
-                                <div class="gac-bgt-chart">
-                                    <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-{{ $card['key'] }}"></canvas></div>
-                                    <div class="gac-bgt-legend" id="gac-bgt-leg-{{ $card['key'] }}"></div>
                                 </div>
                                 <div class="table-responsive">
                                     <table class="table table-sm table-bordered align-middle mb-0">
@@ -1172,6 +1173,15 @@
                                             </tr>
                                         </thead>
                                         <tbody id="{{ $card['tbody'] }}"></tbody>
+                                        <tfoot>
+                                            <tr class="gac-bgt-nomatch-row">
+                                                <td></td>
+                                                <td colspan="2">No match</td>
+                                                <td class="gac-bgt-nomatch-count">0</td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-outline-primary gac-bgt-add" id="{{ $card['add'] }}">Add slab</button>
@@ -5780,8 +5790,11 @@
                         cell.innerHTML = items[i].n + '<span class="gac-bgt-count-dot" style="background:' + gacBgtEsc(items[i].color) + '"></span>';
                     });
                 }
-                if (t.unmatched > 0) items.push({ label: 'No match', n: t.unmatched, color: '#94a3b8' });
-                gacBgtDrawChart(key, items, t.total, false);
+                // "No match" row under the table: campaigns whose value falls in no slab.
+                if (panel) {
+                    var nm = panel.querySelector('td.gac-bgt-nomatch-count');
+                    if (nm) nm.innerHTML = t.unmatched + '<span class="gac-bgt-count-dot" style="background:#94a3b8"></span>';
+                }
             }
 
             function gacBgtAcosValueOfRow(row) {
