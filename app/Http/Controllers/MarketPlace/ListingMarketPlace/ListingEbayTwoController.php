@@ -73,6 +73,22 @@ class ListingEbayTwoController extends Controller
             $skus,
             'item_id'
         );
+        // A listing deleted on eBay has its item id cleared (status MISSING), so the "ever stored" check above
+        // cannot see it. Add every SKU whose last portal status is ended / missing, otherwise an old saved
+        // buyer/seller link brings it back as Listed and Missing L never rises.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ebay_2_metrics', 'listing_status')) {
+            Ebay2Metric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(TRIM(listing_status))'), \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES)
+                ->pluck('sku')
+                ->each(function ($endedSku) use (&$ebayEverStored) {
+                    $key = strtolower(trim((string) $endedSku));
+                    if ($key !== '' && ! isset($ebayEverStored[$key])) {
+                        $ebayEverStored[$key] = 'ended';
+                    }
+                });
+        }
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics, $ebayEverStored) {
             $childSku = (string) $item->sku;
