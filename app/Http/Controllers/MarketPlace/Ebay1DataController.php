@@ -1649,12 +1649,36 @@ class Ebay1DataController extends Controller
 
             if (Schema::hasTable($this->t('item_specifics'))) {
                 $hasId = Schema::hasColumn($this->t('item_specifics'), 'category_id');
+                // The SKU arrives in the new category without the item specifics of the old one. Only the pending
+                // eBay title and price (keys starting with __) stay, because they are not item specifics.
                 foreach (array_chunk($skus, 500) as $chunk) {
-                    $payload = ['category_path' => $path, 'updated_at' => $now];
-                    if ($hasId) {
-                        $payload['category_id'] = $categoryId;
+                    foreach (DB::table($this->t('item_specifics'))->whereIn('sku', $chunk)->get(['id', 'specifics']) as $row) {
+                        $decoded = json_decode((string) $row->specifics, true);
+                        $kept = [];
+                        foreach (is_array($decoded) ? $decoded : [] as $name => $value) {
+                            if (str_starts_with((string) $name, '__')) {
+                                $kept[$name] = $value;
+                            }
+                        }
+                        $payload = [
+                            'category_path' => $path,
+                            'specifics' => json_encode($kept, JSON_UNESCAPED_UNICODE),
+                            'updated_at' => $now,
+                        ];
+                        if ($hasId) {
+                            $payload['category_id'] = $categoryId;
+                        }
+                        DB::table($this->t('item_specifics'))->where('id', $row->id)->update($payload);
+                        $pulls++;
                     }
-                    $pulls += DB::table($this->t('item_specifics'))->whereIn('sku', $chunk)->update($payload);
+                }
+            }
+
+            // Old edits waiting for Auto Push belong to the old category, so they are dropped too.
+            if (Schema::hasTable($this->t('pending_specifics'))) {
+                $pendingSkus = array_map(fn ($sku) => $this->skuKey($sku), $skus);
+                foreach (array_chunk($pendingSkus, 500) as $chunk) {
+                    DB::table($this->t('pending_specifics'))->whereIn('sku', $chunk)->delete();
                 }
             }
         });
