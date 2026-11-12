@@ -39,11 +39,6 @@
                     <option value="NONE">Status: No campaign</option>
                     <option value="all">Status: All</option>
                 </select>
-                <select id="kw-filter" class="form-select form-select-sm" style="width:210px;">
-                    <option value="with" selected>Only SKUs with KW campaign</option>
-                    <option value="without">Only SKUs without KW data</option>
-                    <option value="all">All SKUs</option>
-                </select>
                 <input id="kw-search" type="search" class="form-control form-control-sm" style="width:200px;" placeholder="Search SKU / campaign">
             </div>
 
@@ -147,7 +142,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function applyFilter() {
-        const mode = document.getElementById('kw-filter').value;
         const q = document.getElementById('kw-search').value.trim().toLowerCase();
         const status = document.getElementById('kw-status').value;
         const rows = allRows.filter(r => {
@@ -155,8 +149,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 const s = String(r.kw_campaignStatus || '').toUpperCase();
                 if (status === 'NONE' ? hasKw(r) : s !== status) return false;
             }
-            if (mode === 'with' && !hasKw(r)) return false;
-            if (mode === 'without' && hasKw(r)) return false;
             if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q) || String(r.kw_campaign_name || '').toLowerCase().includes(q))) return false;
             return true;
         });
@@ -228,13 +220,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => { pullBtn.disabled = false; pullState.textContent = 'Pull failed: ' + err.message; });
     });
 
-    document.getElementById('kw-status').addEventListener('change', function () {
-        // "No campaign" only makes sense when SKUs without KW data are listed
-        if (this.value === 'NONE') document.getElementById('kw-filter').value = 'all';
-        else if (this.value !== 'all') document.getElementById('kw-filter').value = 'with';
-        applyFilter();
-    });
-    document.getElementById('kw-filter').addEventListener('change', applyFilter);
+    document.getElementById('kw-status').addEventListener('change', applyFilter);
     document.getElementById('kw-search').addEventListener('input', applyFilter);
 
     // ---- Campaigns view (one row per campaign, like Seller Hub > Advertising) ----
