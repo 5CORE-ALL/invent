@@ -3,6 +3,7 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Services\TemuApiService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -147,7 +148,15 @@ class Temu1DataService
         }
 
         $list = [];
-        $attrs = $this->api->callOpenApi('temu.local.product.attributes.get', ['catId' => $catId, 'language' => 'en'], 45);
+        // This shop's token is not allowed to call temu.local.product.attributes.get (3000032), so it is asked once a day
+        // at most; bg.local.goods.template.get below carries the attribute list.
+        $attrs = ['success' => false, 'message' => 'skipped (token has no access to this API)'];
+        if (! Cache::has('temu1data.attrs_denied')) {
+            $attrs = $this->api->callOpenApi('temu.local.product.attributes.get', ['catId' => $catId, 'language' => 'en'], 45);
+            if (! ($attrs['success'] ?? false) && preg_match('/3000032|access_token|api access/i', (string) ($attrs['message'] ?? ''))) {
+                Cache::put('temu1data.attrs_denied', true, now()->addDay());
+            }
+        }
         $result = is_array($attrs['result'] ?? null) ? $attrs['result'] : [];
         foreach (['attributeList', 'properties', 'propertyList', 'goodsProperties'] as $key) {
             if (is_array($result[$key] ?? null) && $result[$key] !== []) {
@@ -185,15 +194,17 @@ class Temu1DataService
                 'attrs_result_keys' => array_keys($result),
             ]);
             $errors = array_values(array_filter([
-                ! ($attrs['success'] ?? false) ? 'attributes: '.($attrs['message'] ?? 'failed') : '',
                 ! ($tpl['success'] ?? false) ? 'template: '.($tpl['message'] ?? 'failed') : '',
+                ! ($attrs['success'] ?? false) && ! str_starts_with((string) ($attrs['message'] ?? ''), 'skipped') ? 'attributes: '.($attrs['message'] ?? 'failed') : '',
             ]));
+            // Temu's own "internal system error" (4000000) is temporary: ask again in ten minutes, not tomorrow.
+            $temporary = (bool) preg_match('/4000000|internal system error/i', (string) ($tpl['message'] ?? ''));
             $this->lastError = $errors !== []
                 ? implode(' | ', $errors)
                 : 'Temu returned no attributes for category '.$catId.' (answer keys: '.implode(',', array_keys($result)).').';
             try {
                 // Remembered for a day so a category Temu cannot answer is not asked again on every page load.
-                Storage::disk('local')->put($file, json_encode(['at' => now()->timestamp, 'props' => []]));
+                Storage::disk('local')->put($file, json_encode(['at' => now()->timestamp - ($temporary ? 86400 - 600 : 0), 'props' => []]));
             } catch (\Throwable $e) {
                 // not remembered
             }
