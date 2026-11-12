@@ -5487,6 +5487,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2-kw-ads-view/pull', [EbayTwoController::class, 'pullKwAdsReports'])->name('ebay2.kw.ads.pull');
     Route::get('/ebay2-kw-ads-view/pull-status', [EbayTwoController::class, 'kwPullStatus'])->name('ebay2.kw.ads.pull.status');
     Route::get('/ebay2-kw-ads-view/campaigns', [EbayTwoController::class, 'kwCampaigns'])->name('ebay2.kw.ads.campaigns');
+    Route::get('/ebay2-kw-ads-view/total-sales', [EbayTwoController::class, 'kwTotalSales'])->name('ebay2.kw.ads.total.sales');
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
     Route::get('/ebay2-data-json', [EbayTwoController::class, 'ebay2DataJson'])->name('ebay2.data.json');

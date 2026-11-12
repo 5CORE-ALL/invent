@@ -377,6 +377,68 @@ class EbayTwoController extends Controller
     }
 
     /**
+     * Store-wide eBay 2 sales (all orders, not only ad sales) for the KW page's TACOS badges:
+     * Yesterday (L1), last 7 days (L7) and last 30 days (L30). Same per-order total as the eBay 2 page's
+     * Ads% (order total + eBay-collected tax, cancelled / fully refunded orders skipped).
+     */
+    public function kwTotalSales(): \Illuminate\Http\JsonResponse
+    {
+        $out = ['l1' => 0.0, 'l7' => 0.0, 'l30' => 0.0];
+
+        try {
+            if (! Schema::hasTable('ebay2_orders')) {
+                return response()->json($out);
+            }
+
+            $today = \Carbon\Carbon::today();
+            $yStart = \Carbon\Carbon::yesterday()->startOfDay();
+            $yEnd = \Carbon\Carbon::yesterday()->endOfDay();
+            $l7Start = $today->copy()->subDays(6)->startOfDay();
+            $l30Start = $today->copy()->subDays(30)->startOfDay();
+
+            Ebay2Order::where('order_date', '>=', $l30Start)
+                ->select(['id', 'order_date', 'total_amount', 'raw_data'])
+                ->chunkById(500, function ($orders) use (&$out, $yStart, $yEnd, $l7Start) {
+                    foreach ($orders as $order) {
+                        $raw = is_array($order->raw_data) ? $order->raw_data : json_decode((string) $order->raw_data, true);
+                        if (is_array($raw)) {
+                            if (($raw['cancelStatus']['cancelState'] ?? '') === 'CANCELED' || ($raw['orderPaymentStatus'] ?? '') === 'FULLY_REFUNDED') {
+                                continue;
+                            }
+                        }
+
+                        $total = (float) ($order->total_amount ?? 0);
+                        if (is_array($raw)) {
+                            $computed = (float) ($raw['pricingSummary']['total']['value'] ?? 0);
+                            foreach (($raw['lineItems'] ?? []) as $li) {
+                                foreach (($li['ebayCollectAndRemitTaxes'] ?? []) as $t) {
+                                    $computed += (float) ($t['amount']['value'] ?? 0);
+                                }
+                            }
+                            if ($computed > 0) {
+                                $total = $computed;
+                            }
+                        }
+                        $total = round($total, 2);
+
+                        $at = $order->order_date;
+                        $out['l30'] += $total;
+                        if ($at >= $l7Start) {
+                            $out['l7'] += $total;
+                        }
+                        if ($at >= $yStart && $at <= $yEnd) {
+                            $out['l1'] += $total;
+                        }
+                    }
+                });
+        } catch (\Throwable $e) {
+            Log::warning('kwTotalSales failed: '.$e->getMessage());
+        }
+
+        return response()->json(array_map(static fn ($v) => round($v, 2), $out));
+    }
+
+    /**
      * Campaign-level list (one row per Promoted Listings Priority campaign), like Seller Hub > Advertising > Campaigns.
      * Name / status / daily budget come from the campaigns API; clicks, sales and ad fees from the L30 report.
      */
@@ -513,6 +575,13 @@ class EbayTwoController extends Controller
             $row['kw_l7_cpc'] = $l7 ? round($money($l7->cost_per_click), 2) : 0;
             $row['kw_l1_spend'] = $l1 ? round($money($l1->cpc_ad_fees_payout_currency), 2) : 0;
             $row['kw_l1_cpc'] = $l1 ? round($money($l1->cost_per_click), 2) : 0;
+            // L7 / L1 volume (summary badges: Yesterday = L1, Projected = L7 ÷ 7 × 30)
+            $row['kw_l7_clicks'] = $l7 ? (int) ($l7->cpc_clicks ?? 0) : 0;
+            $row['kw_l7_sold'] = $l7 ? (int) ($l7->cpc_attributed_sales ?? 0) : 0;
+            $row['kw_l7_sales'] = $l7 ? round($money($l7->cpc_sale_amount_payout_currency), 2) : 0;
+            $row['kw_l1_clicks'] = $l1 ? (int) ($l1->cpc_clicks ?? 0) : 0;
+            $row['kw_l1_sold'] = $l1 ? (int) ($l1->cpc_attributed_sales ?? 0) : 0;
+            $row['kw_l1_sales'] = $l1 ? round($money($l1->cpc_sale_amount_payout_currency), 2) : 0;
         }
         unset($row);
 
@@ -1209,6 +1278,13 @@ class EbayTwoController extends Controller
                 $row['kw_l7_cpc'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cost_per_click ?? '0'), 2) : 0;
                 $row['kw_l1_spend'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cpc_ad_fees_payout_currency ?? '0'), 2) : 0;
                 $row['kw_l1_cpc'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cost_per_click ?? '0'), 2) : 0;
+                // L7 / L1 volume (summary badges: Yesterday = L1, Projected = L7 ÷ 7 × 30)
+                $row['kw_l7_clicks'] = $matchedL7 ? (int) ($matchedL7->cpc_clicks ?? 0) : 0;
+                $row['kw_l7_sold'] = $matchedL7 ? (int) ($matchedL7->cpc_attributed_sales ?? 0) : 0;
+                $row['kw_l7_sales'] = $matchedL7 ? round((float) str_replace(['USD ', ','], '', $matchedL7->cpc_sale_amount_payout_currency ?? '0'), 2) : 0;
+                $row['kw_l1_clicks'] = $matchedL1 ? (int) ($matchedL1->cpc_clicks ?? 0) : 0;
+                $row['kw_l1_sold'] = $matchedL1 ? (int) ($matchedL1->cpc_attributed_sales ?? 0) : 0;
+                $row['kw_l1_sales'] = $matchedL1 ? round((float) str_replace(['USD ', ','], '', $matchedL1->cpc_sale_amount_payout_currency ?? '0'), 2) : 0;
 
                 $row['kw_last_sbid'] = $lastSbidMap[$kwCampaignId] ?? '';
                 $row['kw_sbid_m'] = $sbidMMap[$kwCampaignId] ?? '';

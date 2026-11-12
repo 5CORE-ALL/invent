@@ -8,6 +8,29 @@
         .tabulator .tabulator-row .tabulator-cell { white-space: nowrap !important; }
         .kw-yes { color:#198754; font-weight:700; }
         .kw-no { color:#dc3545; font-weight:700; }
+
+        /* ── Summary cards (same look as /amazon-ads/all): yellow card + title + equal-size white tiles ── */
+        .ekc-cards { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:.5rem; align-items:start; margin-bottom:.75rem; }
+        .ekc-card { grid-column:span 4; min-width:0; border-radius:12px; padding:.55rem .6rem .65rem; background:#fef9c3; border:1px solid #facc15; box-shadow:0 1px 2px rgba(15,23,42,.06); }
+        .ekc-card-title { font-size:.68rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; line-height:1; margin:0 0 .35rem; color:#854d0e; }
+        .ekc-tiles { display:grid; gap:.4rem; align-items:stretch; grid-template-columns:repeat(3, minmax(0, 1fr)); }
+        .ekc-tile { display:inline-flex; flex-wrap:wrap; align-items:center; justify-content:center; text-align:center; column-gap:4px;
+            width:100%; min-width:0; min-height:36px; box-sizing:border-box; white-space:normal; overflow-wrap:anywhere;
+            font-size:clamp(.68rem, .62vw + .28rem, .78rem); font-weight:700; line-height:1.25; padding:.3rem .4rem; border-radius:.375rem;
+            background:#fff; color:#111827; border:1px solid #e5e7eb; }
+        .ekc-tile > .ekc-val { font-size:1.08em; font-weight:800; white-space:nowrap; }
+        .ekc-tile > .ekc-pct { white-space:nowrap; font-size:.75rem; font-weight:700; opacity:.95; }
+        .ekc-tile.ekc-better { background:#22c55e; color:#052e16; border-color:#16a34a; }
+        .ekc-tile.ekc-worse { background:#ef4444; color:#fff; border-color:#dc2626; }
+        .ekc-tile.ekc-campaign { background:#4c7ed8; color:#fff; border-color:#3b6cc4; }
+        .ekc-tile.ekc-active { background:#16a34a; color:#fff; border-color:#15803d; }
+        button.ekc-tile.ekc-flag { cursor:pointer; background:#f0fdf4; color:#166534; border-color:#86efac; }
+        button.ekc-tile.ekc-flag:hover { background:#dcfce7; }
+        button.ekc-tile.ekc-flag.is-active { background:#16a34a; color:#fff; border-color:#15803d; box-shadow:0 0 0 2px #86efac; }
+        button.ekc-tile.ekc-flag .fa-flag { color:#16a34a; }
+        button.ekc-tile.ekc-flag.is-active .fa-flag { color:#fff; }
+        @media (max-width:1399.98px) { .ekc-card { grid-column:span 6; } }
+        @media (max-width:991.98px) { .ekc-card { grid-column:span 12; } }
     </style>
 @endsection
 
@@ -23,6 +46,63 @@
             <div class="btn-group mb-3" role="group" aria-label="View">
                 <button type="button" id="view-sku-btn" class="btn btn-sm btn-primary">SKUs</button>
                 <button type="button" id="view-camp-btn" class="btn btn-sm btn-outline-primary">Campaigns</button>
+            </div>
+
+            @php
+                $ekcCards = [
+                    ['tag' => 'yesterday', 'title' => 'Yesterday', 'items' => [
+                        ['y_bgt', 'Y BGT', 'Daily budget of the campaigns shown (campaignBudgetAmount).'],
+                        ['y_util', 'Y UTIL', 'Yesterday utilization = yesterday spend ÷ daily budget.'],
+                        ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).'],
+                        ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.'],
+                        ['y_acos', 'Y ACOS%', 'Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.'],
+                        ['y_tacos', 'Y TACOS%', 'Yesterday TACOS% (Total ACOS) = yesterday ad spend ÷ yesterday TOTAL eBay 2 sales (all orders, not only ad sales).'],
+                        ['y_clicks', 'Y CLICKS', 'Yesterday clicks (L1 report).'],
+                        ['y_sold', 'Y SOLD', 'Yesterday units sold through ads (L1 report).'],
+                        ['y_sales', 'Y SALES', 'Yesterday ads sales (L1 report).'],
+                        ['y_spend', 'Y SPEND', 'Yesterday ad fees (L1 report).'],
+                    ]],
+                    ['tag' => 'l30', 'title' => 'L30', 'items' => [
+                        ['l30_bid', 'AVG BID', 'L30 avg bid = 30-day spend ÷ clicks (avg CPC).'],
+                        ['l30_cvr', 'CVR%', 'Ads CVR = ads sold ÷ ads clicks (L30).'],
+                        ['l30_acos', 'ACOS%', 'L30 ACOS% = 30-day spend ÷ 30-day ads sales.'],
+                        ['l30_clicks', 'CLICKS', 'Clicks (L30).'],
+                        ['l30_sold', 'SOLD', 'Sold through ads (L30).'],
+                        ['l30_sales', 'SALES', 'Ads sales (L30).'],
+                        ['l30_spend', 'SPEND', 'Ad fees (L30).'],
+                        ['l30_bgt_total', 'BGT × 30', 'Daily budget × 30.'],
+                    ]],
+                    ['tag' => 'projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
+                        ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).'],
+                        ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.'],
+                        ['p_acos', 'ACOS%', 'Projected ACOS% = projected spend ÷ projected ads sales.'],
+                        ['p_tacos', 'TACOS%', 'Projected TACOS% = projected spend ÷ projected TOTAL eBay 2 sales (L7 pace, all orders, not only ad sales).'],
+                        ['p_clicks', 'CLICKS', 'Projected clicks = L7 clicks ÷ 7 × 30.'],
+                        ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.'],
+                        ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.'],
+                        ['p_spend', 'SPEND', 'Projected spend = L7 spend ÷ 7 × 30.'],
+                        ['p_bgt_total', 'BGT × 30', 'Daily budget × 30.'],
+                    ]],
+                ];
+            @endphp
+            <div class="sku-only ekc-cards" id="ekcCards">
+                @foreach ($ekcCards as $card)
+                    <div class="ekc-card ekc-card--{{ $card['tag'] }}">
+                        <div class="ekc-card-title">{{ $card['title'] }}</div>
+                        <div class="ekc-tiles">
+                            @foreach ($card['items'] as [$key, $text, $tip])
+                                <span class="ekc-tile" data-kpi="{{ $key }}" title="{{ $tip }}">{{ $text }}:<span class="ekc-val">—</span></span>
+                            @endforeach
+                            @if ($card['tag'] === 'l30')
+                                <button type="button" id="ekcFlagBtn" class="ekc-tile ekc-flag" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below the SKU's GPFT% (campaigns with L30 spend only; PARENT rows have no GPFT% so they are not counted). Count covers the campaigns matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="ekc-val" id="ekcFlagCount">0</span></button>
+                            @endif
+                            @if ($card['tag'] === 'yesterday')
+                                <span class="ekc-tile ekc-campaign" title="Distinct KW campaigns matching the current filters.">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
+                                <span class="ekc-tile ekc-active" title="RUNNING campaigns out of the campaigns matching the current filters, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
             </div>
 
             <div class="sku-only d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -144,7 +224,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q) || String(r.kw_campaign_name || '').toLowerCase().includes(q))) return false;
             return true;
         });
-        table.setData(rows);
+        paintKpiCards(rows);
+        table.setData(ekcFlagOn ? rows.filter(isFlagged) : rows);
         table.setSort([{ column: 'kw_spend_L30', dir: 'desc' }]);
     }
 
@@ -161,6 +242,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     table.on('tableBuilt', function () {
         loadData();
+        loadTotalSales();
         checkPull();
     });
 
@@ -182,7 +264,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(s => {
                 pullBtn.disabled = !!s.running;
                 setPullInfo(s.running ? 'running on eBay, can take a while' : 'last sync: ' + (s.last_sync || 'never'), !!s.running);
-                if (wasRunning && !s.running) { loadData(); if (campTable) loadCampaigns(); }   // pull just finished
+                if (wasRunning && !s.running) { loadData(); loadTotalSales(); if (campTable) loadCampaigns(); }   // pull just finished
                 wasRunning = !!s.running;
                 if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);
                 if (!s.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -205,6 +287,122 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('kw-status').addEventListener('change', applyFilter);
     document.getElementById('kw-search').addEventListener('input', applyFilter);
+
+    // ---- Summary cards (Yesterday / L30 / Projected): same layout and formulas as /amazon-ads/all ----
+    // Windows: Yesterday = L1 report, L30 = L30 report, Projected = L7 report ÷ 7 × 30. Campaigns = the KW campaigns of the rows
+    // currently shown (deduped by campaign id). UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks,
+    // ACOS = spend ÷ ads sales, TACOS = spend ÷ total eBay 2 sales for the same window.
+    let ekcFlagOn = false;
+    let totalSales = { l1: null, l7: null, l30: null };
+    const KPI_KIND = {
+        bgt:       { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
+        bgt_total: { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
+        util:      { fmt: v => v.toFixed(1) + '%', lower: false },
+        bid:       { fmt: v => '$' + v.toFixed(2), lower: true },
+        cvr:       { fmt: v => v.toFixed(2) + '%', lower: false },
+        acos:      { fmt: v => Math.round(v) + '%', lower: true },
+        tacos:     { fmt: v => Math.round(v) + '%', lower: true },
+        clicks:    { fmt: v => Math.round(v).toLocaleString('en-US'), lower: false },
+        sold:      { fmt: v => Math.round(v).toLocaleString('en-US'), lower: false },
+        sales:     { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
+        spend:     { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
+    };
+    const KPI_FIELDS = {
+        l1:  { spend: 'kw_l1_spend', clicks: 'kw_l1_clicks', sold: 'kw_l1_sold', sales: 'kw_l1_sales' },
+        l7:  { spend: 'kw_l7_spend', clicks: 'kw_l7_clicks', sold: 'kw_l7_sold', sales: 'kw_l7_sales' },
+        l30: { spend: 'kw_spend_L30', clicks: 'kw_clicks', sold: 'kw_ad_sold', sales: 'kw_sales_amount' },
+    };
+    const isFlagged = r => hasKw(r) && num(r.kw_spend_L30) > 0 && num(r.kw_acos) < num(r['GPFT%']);
+
+    function kpiCampaigns(rows) {
+        const seen = new Map();
+        rows.forEach(r => { if (hasKw(r)) seen.set(String(r.kw_campaign_id), r); });
+        return Array.from(seen.values());
+    }
+
+    function kpiWindow(camps, key, days) {
+        const f = KPI_FIELDS[key];
+        const sum = field => camps.reduce((s, r) => s + num(r[field]), 0);
+        const bud = sum('kw_campaignBudgetAmount'), spend = sum(f.spend), clicks = sum(f.clicks), sold = sum(f.sold), sales = sum(f.sales);
+        const ts = totalSales[key];
+        return {
+            bgt: bud,
+            util: bud > 0 ? spend / (bud * days) * 100 : null,
+            bid: clicks > 0 ? spend / clicks : null,
+            cvr: clicks > 0 ? sold / clicks * 100 : null,
+            acos: sales > 0 ? spend / sales * 100 : (spend > 0 ? 100 : null),
+            tacos: (ts !== null && ts > 0) ? spend / ts * 100 : null,
+            clicks, sold, sales, spend,
+        };
+    }
+
+    function paintKpiCards(rows) {
+        const camps = kpiCampaigns(rows);
+        const y = kpiWindow(camps, 'l1', 1);
+        const l30 = kpiWindow(camps, 'l30', 30);
+        const p = kpiWindow(camps, 'l7', 7);
+        const proj = v => v === null ? null : v / 7 * 30;
+        const pv = {
+            bgt: p.bgt, util: p.util, bid: p.bid, cvr: p.cvr, acos: p.acos, tacos: p.tacos,
+            clicks: proj(p.clicks), sold: proj(p.sold), sales: proj(p.sales), spend: proj(p.spend),
+            bgt_total: p.bgt * 30,
+        };
+        l30.bgt_total = l30.bgt * 30;
+
+        const vals = {}, cmp = {}, base = {};
+        Object.keys(y).forEach(k => { vals['y_' + k] = y[k]; });
+        Object.keys(l30).forEach(k => { vals['l30_' + k] = l30[k]; });
+        Object.keys(pv).forEach(k => { vals['p_' + k] = pv[k]; });
+        // Yesterday and Projected vs L30: better = green, otherwise red (Yesterday volume tiles vs the L30 per-day average).
+        Object.keys(vals).forEach(key => {
+            if (key.indexOf('l30_') === 0) return;
+            const kind = key.replace(/^(y|p)_/, '');
+            let ref = l30[kind];
+            if (key.charAt(0) === 'y' && /^(clicks|sold|sales|spend)$/.test(kind) && ref !== null && ref !== undefined) ref = ref / 30;
+            const cur = vals[key];
+            if (cur === null || cur === undefined || ref === null || ref === undefined || !camps.length) return;
+            cmp[key] = (KPI_KIND[kind].lower ? cur < ref - 1e-9 : cur > ref + 1e-9) ? 'better' : 'worse';
+            base[key] = ref;
+        });
+
+        document.querySelectorAll('#ekcCards .ekc-tile[data-kpi]').forEach(el => {
+            const key = el.getAttribute('data-kpi');
+            const kind = key.replace(/^(y|p|l30)_/, '');
+            const v = vals[key];
+            const valEl = el.querySelector('.ekc-val');
+            const show = camps.length && v !== null && v !== undefined && KPI_KIND[kind];
+            if (valEl) valEl.textContent = show ? KPI_KIND[kind].fmt(v) : '—';
+            el.classList.remove('ekc-better', 'ekc-worse');
+            if (el.dataset.tip === undefined) el.dataset.tip = el.getAttribute('title') || '';
+            let tip = el.dataset.tip;
+            if (cmp[key]) {
+                el.classList.add(cmp[key] === 'better' ? 'ekc-better' : 'ekc-worse');
+                const refLbl = (key.charAt(0) === 'y' && /_(clicks|sold|sales|spend)$/.test(key)) ? 'L30 daily avg' : 'L30';
+                tip += ' · ' + (cmp[key] === 'better' ? 'Better' : 'Worse') + ' than ' + refLbl + ' (' + KPI_KIND[kind].fmt(base[key]) + ').';
+            }
+            el.setAttribute('title', tip);
+        });
+
+        const running = camps.filter(r => String(r.kw_campaignStatus || '').toUpperCase() === 'RUNNING').length;
+        document.getElementById('ekcCampaignCount').textContent = camps.length.toLocaleString('en-US');
+        document.getElementById('ekcActiveCount').textContent = camps.length ? running.toLocaleString('en-US') + ' / ' + camps.length.toLocaleString('en-US') : '—';
+        document.getElementById('ekcActivePct').textContent = camps.length ? Math.round(running / camps.length * 100) + '%' : '';
+        document.getElementById('ekcFlagCount').textContent = camps.filter(isFlagged).length.toLocaleString('en-US');
+    }
+
+    function loadTotalSales() {
+        return fetch('{{ route('ebay2.kw.ads.total.sales') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(t => { totalSales = { l1: num(t.l1), l7: num(t.l7), l30: num(t.l30) }; applyFilter(); })
+            .catch(() => {});   // TACOS tiles just stay "—"
+    }
+
+    document.getElementById('ekcFlagBtn').addEventListener('click', function () {
+        ekcFlagOn = !ekcFlagOn;
+        this.classList.toggle('is-active', ekcFlagOn);
+        this.setAttribute('aria-pressed', ekcFlagOn ? 'true' : 'false');
+        applyFilter();
+    });
 
     // ---- Campaigns view (one row per campaign, like Seller Hub > Advertising) ----
     let campRows = [];
