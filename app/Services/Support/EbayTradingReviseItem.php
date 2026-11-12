@@ -1401,6 +1401,7 @@ final class EbayTradingReviseItem
         string $authToken,
         array $getItemResponse,
         string|array $name,
+        bool $exactNames = false,
     ): array {
         $item = self::itemFromGetItem($getItemResponse);
         $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
@@ -1409,14 +1410,19 @@ final class EbayTradingReviseItem
         }
 
         // One name or several: a single ReviseItem drops all of them.
+        // $exactNames: only a specific spelled exactly like the name goes (case and spacing aside). "Type-" and "Type:"
+        // must not take the real "Type" with them, which eBay requires in many categories.
+        $nameKey = static fn (string $n): string => $exactNames
+            ? mb_strtolower(trim(preg_replace('/\s+/u', ' ', $n) ?? $n))
+            : self::aspectKey($n);
         $wanted = [];
         foreach ((array) $name as $candidate) {
-            $wanted[self::aspectKey((string) $candidate)] = true;
+            $wanted[$nameKey((string) $candidate)] = true;
         }
         $kept = [];
         $found = false;
         foreach (self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null) as $row) {
-            if (isset($wanted[self::aspectKey((string) ($row['name'] ?? ''))])) {
+            if (isset($wanted[$nameKey((string) ($row['name'] ?? ''))])) {
                 $found = true;
 
                 continue;
