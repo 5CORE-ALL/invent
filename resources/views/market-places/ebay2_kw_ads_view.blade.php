@@ -29,7 +29,6 @@
                 <span id="kw-badge-total" class="kw-badge bg-secondary text-white">SKUs: …</span>
                 <span id="kw-badge-running" class="kw-badge bg-primary text-white">Running: …</span>
                 <span id="kw-badge-paused" class="kw-badge bg-warning text-dark">Paused: …</span>
-                <span id="kw-badge-spend" class="kw-badge bg-info text-dark">KW Spend L30: …</span>
 
                 <select id="kw-status" class="form-select form-select-sm ms-auto" style="width:150px;" title="Filter by campaign Status">
                     <option value="RUNNING" selected>Status: Active</option>
@@ -133,7 +132,6 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('kw-badge-total').textContent = 'SKUs + parents: ' + kids.length;
         document.getElementById('kw-badge-running').textContent = 'Running: ' + kw.filter(r => st(r) === 'RUNNING').length;
         document.getElementById('kw-badge-paused').textContent = 'Paused: ' + kw.filter(r => st(r) === 'PAUSED').length;
-        document.getElementById('kw-badge-spend').textContent = 'KW Spend L30: ' + money(kw.reduce((s, r) => s + num(r.kw_spend_L30), 0));
         document.getElementById('kw-empty').classList.toggle('d-none', kw.length > 0);
     }
 
