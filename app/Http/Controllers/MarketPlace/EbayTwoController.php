@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\Ebay2GeneralReport;
+use App\Support\EbayCampaignReportRollup;
 use App\Support\EbayListingReportHistory;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay2PriorityReport;
@@ -458,9 +459,18 @@ class EbayTwoController extends Controller
             $l30 = $l30->filter(fn ($r) => ! empty($r->funding_model));
         }
 
-        // L7 / L1 report rows per campaign (summary badges: Projected = L7 ÷ 7 × 30, Yesterday = L1)
-        $byCampaign = static fn (string $range) => Ebay2PriorityReport::where('report_range', $range)->get()
+        // Metrics use the same rollup as /ebay2/campaign-ads badges: only the latest sync day of each range
+        // (EbayCampaignReportRollup), so stale leftovers never inflate the totals.
+        $snapshot = static fn (string $table, string $range) => EbayCampaignReportRollup::restrictToLatestSnapshot(
+            DB::table($table)->whereRaw('UPPER(TRIM(report_range)) = ?', [$range]),
+            $table,
+            $range
+        );
+
+        // L30 / L7 / L1 report rows per campaign (summary badges: Projected = L7 ÷ 7 × 30, Yesterday = L1)
+        $byCampaign = static fn (string $range) => $snapshot('ebay_2_priority_reports', $range)->get()
             ->keyBy(fn ($r) => (string) $r->campaign_id);
+        $l30Rows = $byCampaign('L30');
         $l7Rows = $byCampaign('L7');
         $l1Rows = $byCampaign('L1');
         $win = static function ($rep) use ($money): array {
@@ -480,7 +490,7 @@ class EbayTwoController extends Controller
         $std = [];
         if (Schema::hasTable('ebay_2_general_reports')) {
             foreach (['L30', 'L7', 'L1'] as $range) {
-                foreach (Ebay2GeneralReport::where('report_range', $range)->get(['campaign_id', 'impressions', 'clicks', 'ad_fees', 'sales', 'sale_amount']) as $g) {
+                foreach ($snapshot('ebay_2_general_reports', $range)->get(['campaign_id', 'impressions', 'clicks', 'ad_fees', 'sales', 'sale_amount']) as $g) {
                     $cid = (string) $g->campaign_id;
                     $a = $std[$cid][$range] ?? ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'impressions' => 0];
                     $a['spend'] += (float) $this->extractNumber($g->ad_fees);
@@ -495,16 +505,18 @@ class EbayTwoController extends Controller
         $emptyWin = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'impressions' => 0];
 
         $rows = $l30
-            ->map(function ($r) use ($money, $l7Rows, $l1Rows, $win, $std, $emptyWin) {
-                $fees = $money($r->cpc_ad_fees_payout_currency ?: $r->cpc_ad_fees_listingsite_currency);
-                $sales = $money($r->cpc_sale_amount_payout_currency ?: $r->cpc_sale_amount_listingsite_currency);
+            ->map(function ($r) use ($money, $l30Rows, $l7Rows, $l1Rows, $win, $std, $emptyWin) {
+                // $r only supplies name / status / budget; its metrics count only if it is in the latest L30 snapshot.
+                $m = $l30Rows->get((string) $r->campaign_id);
+                $fees = $m ? $money($m->cpc_ad_fees_payout_currency ?: $m->cpc_ad_fees_listingsite_currency) : 0.0;
+                $sales = $m ? $money($m->cpc_sale_amount_payout_currency ?: $m->cpc_sale_amount_listingsite_currency) : 0.0;
                 $w7 = $win($l7Rows->get((string) $r->campaign_id));
                 $w1 = $win($l1Rows->get((string) $r->campaign_id));
-                $impr = (int) ($r->cpc_impressions ?? 0);
-                $clicks = (int) ($r->cpc_clicks ?? 0);
-                $sold = (int) ($r->cpc_attributed_sales ?? 0);
-                $ctr = (float) ($r->cpc_ctr ?? 0);
-                $cvr = (float) ($r->cpc_conversion_rate ?? 0);
+                $impr = (int) ($m->cpc_impressions ?? 0);
+                $clicks = (int) ($m->cpc_clicks ?? 0);
+                $sold = (int) ($m->cpc_attributed_sales ?? 0);
+                $ctr = (float) ($m->cpc_ctr ?? 0);
+                $cvr = (float) ($m->cpc_conversion_rate ?? 0);
 
                 if ((string) $r->funding_model === 'COST_PER_SALE') {
                     $s30 = $std[(string) $r->campaign_id]['L30'] ?? $emptyWin;

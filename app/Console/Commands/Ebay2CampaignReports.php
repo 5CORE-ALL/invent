@@ -61,7 +61,9 @@ class Ebay2CampaignReports extends Command
         if ($this->option('meta-only')) {
             $updated = 0;
             foreach ($campaignsMap as $campaignId => $meta) {
-                $updated += Ebay2PriorityReport::where('campaign_id', (string) $campaignId)->update([
+                // Query builder on purpose: Eloquent update() would stamp updated_at on every row, and the eBay
+                // rollups pick "the latest sync day" by updated_at.
+                $updated += DB::table('ebay_2_priority_reports')->where('campaign_id', (string) $campaignId)->update([
                     'campaign_name' => $meta['name'],
                     'campaignStatus' => $meta['status'],
                     'campaignBudgetAmount' => $meta['daily_budget'],
