@@ -6109,8 +6109,62 @@
                         }
                     },
                     {
+                        title: "Total PFT",
+                        field: "Total PFT",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            // Calculate Total PFT from L30 Sales × NPFT%
+                            const rowData = cell.getRow().getData();
+                            const l30Sales = parseNumber(rowData['L30 Sales'] || 0);
+                            const npftPercent = parseNumber(rowData['N PFT'] || 0);
+                            const totalPft = (l30Sales * npftPercent) / 100;
+                            return `<span>$${totalPft.toFixed(0)}</span>`;
+                        }
+                    },
+                    {
+                        title: "COGS",
+                        field: "cogs",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            return `<span>$${value.toFixed(0)}</span>`;
+                        }
+                    },
+                    {
+                        title: "Sheet",
+                        field: "sheet_link",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            const link = cell.getValue();
+                            if (!link) return '-';
+                            return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
+                        }
+                    },
+                    {
+                        // Manual Compliance Count entered per channel in the Edit modal.
+                        title: "Compliance Count",
+                        field: "compliance_count",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Manual compliance count — set in the channel's Edit modal.",
+                        formatter: function(cell) {
+                            const raw = cell.getValue();
+                            if (raw === null || raw === undefined || raw === '' || isNaN(parseInt(raw))) {
+                                return '<span style="color:#adb5bd;">-</span>';
+                            }
+                            return `<span style="font-weight:600;">${parseInt(raw).toLocaleString('en-US')}</span>`;
+                        }
+                    },
+                    {
                         title: "Action",
                         field: "_action",
+                        frozen: true,
                         responsive: 0,
                         minWidth: 72,
                         hozAlign: "center",
@@ -6191,59 +6245,6 @@
                                 }
                                 return;
                             }
-                        }
-                    },
-                    {
-                        title: "Total PFT",
-                        field: "Total PFT",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            // Calculate Total PFT from L30 Sales × NPFT%
-                            const rowData = cell.getRow().getData();
-                            const l30Sales = parseNumber(rowData['L30 Sales'] || 0);
-                            const npftPercent = parseNumber(rowData['N PFT'] || 0);
-                            const totalPft = (l30Sales * npftPercent) / 100;
-                            return `<span>$${totalPft.toFixed(0)}</span>`;
-                        }
-                    },
-                    {
-                        title: "COGS",
-                        field: "cogs",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            return `<span>$${value.toFixed(0)}</span>`;
-                        }
-                    },
-                    {
-                        title: "Sheet",
-                        field: "sheet_link",
-                        hozAlign: "center",
-                        visible: true,
-                        formatter: function(cell) {
-                            const link = cell.getValue();
-                            if (!link) return '-';
-                            return `<a href="${link}" target="_blank" class="btn btn-sm btn-success">🔗</a>`;
-                        }
-                    },
-                    {
-                        // Manual Compliance Count entered per channel in the Edit modal.
-                        title: "Compliance Count",
-                        field: "compliance_count",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 110,
-                        headerTooltip: "Manual compliance count — set in the channel's Edit modal.",
-                        formatter: function(cell) {
-                            const raw = cell.getValue();
-                            if (raw === null || raw === undefined || raw === '' || isNaN(parseInt(raw))) {
-                                return '<span style="color:#adb5bd;">-</span>';
-                            }
-                            return `<span style="font-weight:600;">${parseInt(raw).toLocaleString('en-US')}</span>`;
                         }
                     },
                 ]
