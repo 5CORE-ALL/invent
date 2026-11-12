@@ -27,8 +27,6 @@
 
             <div class="sku-only d-flex flex-wrap align-items-center gap-2 mb-3">
                 <span id="kw-badge-total" class="kw-badge bg-secondary text-white">SKUs: …</span>
-                <span id="kw-badge-with" class="kw-badge bg-success text-white">With KW campaign: …</span>
-                <span id="kw-badge-without" class="kw-badge bg-danger text-white">No KW campaign: …</span>
                 <span id="kw-badge-running" class="kw-badge bg-primary text-white">Running: …</span>
                 <span id="kw-badge-paused" class="kw-badge bg-warning text-dark">Paused: …</span>
                 <span id="kw-badge-spend" class="kw-badge bg-info text-dark">KW Spend L30: …</span>
@@ -133,8 +131,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const kw = kids.filter(hasKw);
         const st = r => String(r.kw_campaignStatus || '').toUpperCase();
         document.getElementById('kw-badge-total').textContent = 'SKUs + parents: ' + kids.length;
-        document.getElementById('kw-badge-with').textContent = 'With KW campaign: ' + kw.length;
-        document.getElementById('kw-badge-without').textContent = 'No KW campaign: ' + (kids.length - kw.length);
         document.getElementById('kw-badge-running').textContent = 'Running: ' + kw.filter(r => st(r) === 'RUNNING').length;
         document.getElementById('kw-badge-paused').textContent = 'Paused: ' + kw.filter(r => st(r) === 'PAUSED').length;
         document.getElementById('kw-badge-spend').textContent = 'KW Spend L30: ' + money(kw.reduce((s, r) => s + num(r.kw_spend_L30), 0));
