@@ -94,6 +94,8 @@ final class GoogleShoppingBgtParts
         );
 
         $cfg = ($rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule())['sbgt'] ?? [];
+        // Set by the pause rules below (INV = 0 / price below / Dil above); the BGT Rules Sum card needs it to rebuild SBGT live.
+        $arr['sbgt_forced_zero'] = false;
         self::applyPriceCap($arr, $price, (float) ($cfg['max_pct_of_price'] ?? 10.0));
         self::applyInventoryGate($arr, $inv, (bool) ($cfg['pause_if_inv_zero'] ?? true));
         self::applyPricePause($arr, $price, (float) ($cfg['pause_price_below'] ?? 20.0));
@@ -111,6 +113,7 @@ final class GoogleShoppingBgtParts
         }
         if ($dil > $above) {
             $arr['sbgt'] = 0;
+            $arr['sbgt_forced_zero'] = true;
         }
     }
 
@@ -125,6 +128,7 @@ final class GoogleShoppingBgtParts
         }
         if ($price < $below) {
             $arr['sbgt'] = 0;
+            $arr['sbgt_forced_zero'] = true;
         }
     }
 
@@ -159,6 +163,7 @@ final class GoogleShoppingBgtParts
             : (is_numeric($fallbackInv) ? (float) $fallbackInv : null);
         if ($inv !== null && $inv <= 0) {
             $arr['sbgt'] = 0;
+            $arr['sbgt_forced_zero'] = true;
         }
     }
 

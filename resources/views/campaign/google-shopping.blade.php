@@ -2693,6 +2693,7 @@
                 if (response && response.summary && Array.isArray(response.summary.sbgt_dist)) {
                     window.gacRawSbgtDist = response.summary.sbgt_dist;
                     window.gacRawSbgtAcosDist = Array.isArray(response.summary.sbgt_acos_dist) ? response.summary.sbgt_acos_dist : null;
+                    window.gacRawSbgtPartsDist = Array.isArray(response.summary.sbgt_parts_dist) ? response.summary.sbgt_parts_dist : null;
                     if (typeof gacBgtPaintSum === 'function' && document.getElementById('gacRawBgtRulesModal')
                         && document.getElementById('gacRawBgtRulesModal').classList.contains('show')) {
                         gacBgtPaintSum();
@@ -5861,19 +5862,42 @@
                         if (liveFallback === null || b.from < liveFallback.from) liveFallback = b;
                     });
                     if (liveFallback === null && liveBands.length) liveFallback = liveBands[liveBands.length - 1];
-                    window.gacRawSbgtAcosDist.forEach(function(d) {
-                        var a = Number(d.acos);
-                        var c = Number(d.count) || 0;
-                        if (!isFinite(a) || c <= 0) return;
+                    var acosBandSbgt = function(a) {
                         var hit = null;
                         for (var i = 0; i < liveBands.length; i++) {
                             if (a >= liveBands[i].from && a <= liveBands[i].to) { hit = liveBands[i]; break; }
                         }
-                        var n = hit ? hit.sbgt : (liveFallback ? liveFallback.sbgt : 1);
-                        var k = String(n);
-                        byVal[k] = (byVal[k] || 0) + c;
-                        total += c;
-                    });
+                        return hit ? hit.sbgt : (liveFallback ? liveFallback.sbgt : 1);
+                    };
+                    if (Array.isArray(window.gacRawSbgtPartsDist)) {
+                        // Full SBGT per campaign, same as the grid: (ACOS band + Views + Cvr + PRC + DIL + ACOS LT), under 1 → 0,
+                        // capped at the max % of price; a pause rule (INV 0 / price below / Dil above) forces 0.
+                        window.gacRawSbgtPartsDist.forEach(function(d) {
+                            var a = Number(d.acos);
+                            var c = Number(d.count) || 0;
+                            if (!isFinite(a) || c <= 0) return;
+                            var n;
+                            if (d.forced) {
+                                n = 0;
+                            } else {
+                                n = acosBandSbgt(a) + (Number(d.rest) || 0);
+                                if (n < 1) n = 0;
+                                if (d.cap != null && isFinite(Number(d.cap)) && n > Number(d.cap)) n = Number(d.cap);
+                            }
+                            var k = String(n);
+                            byVal[k] = (byVal[k] || 0) + c;
+                            total += c;
+                        });
+                    } else {
+                        window.gacRawSbgtAcosDist.forEach(function(d) {
+                            var a = Number(d.acos);
+                            var c = Number(d.count) || 0;
+                            if (!isFinite(a) || c <= 0) return;
+                            var k = String(acosBandSbgt(a));
+                            byVal[k] = (byVal[k] || 0) + c;
+                            total += c;
+                        });
+                    }
                 } else if (Array.isArray(window.gacRawSbgtDist)) {
                     // Every campaign (all statuses), from the server.
                     window.gacRawSbgtDist.forEach(function(d) {

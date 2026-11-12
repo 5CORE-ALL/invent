@@ -1545,6 +1545,8 @@ class GoogleShoppingCampaignsController extends Controller
         $summary['sbgt_dist'] = $this->sbgtDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
         // Same campaigns bucketed by ACOS, so the Sum card can recompute live from the ACOS bands being edited.
         $summary['sbgt_acos_dist'] = $this->sbgtAcosDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
+        // Same campaigns with the non-ACOS SBGT parts + cap + pause flag, so the live Sum card matches the grid SBGT.
+        $summary['sbgt_parts_dist'] = $this->sbgtDistributionData($rawRule, $invResolver, $bgtResolver)['parts'];
         // "Ads Needed": SKUs with inventory whose ad is not running (all enabled campaigns).
         $adsNeeded = $this->channelKey() === 'shopping'
             ? $this->adsNeededAllCampaigns($invResolver)
@@ -4353,11 +4355,20 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * @return array{dist: list<array{value: float|int, count: int}>, acos: list<array{acos: float, count: int}>}
+     * @return array{dist: list<array{value: float|int, count: int}>, acos: list<array{acos: float, count: int}>, parts: list<array{acos: float, rest: int, cap: int|null, forced: bool, count: int}>}
      */
     private function sbgtDistributionData($rawRule, \Closure $invResolver, \Closure $bgtResolver): array
     {
-        $key = 'gads_sbgt_dist_v2:'.$this->channelKey().':'.$this->rawGridRowsCacheVersion().':'.sha1((string) json_encode($this->rawGridDateBoundaries()));
+        // The key includes a fingerprint of every saved rule, so saving a rule shows in the Sum card at once (not after the TTL).
+        $rulesFingerprint = sha1((string) json_encode([
+            $rawRule,
+            GoogleShoppingBgtViewsRule::resolvedRule(),
+            GoogleShoppingBgtCvrRule::resolvedRule(),
+            GoogleShoppingBgtPrcRule::resolvedRule(),
+            GoogleShoppingBgtDilRule::resolvedRule(),
+            GoogleShoppingBgtAcosLtRule::resolvedRule(),
+        ]));
+        $key = 'gads_sbgt_dist_v3:'.$this->channelKey().':'.$this->rawGridRowsCacheVersion().':'.sha1((string) json_encode($this->rawGridDateBoundaries())).':'.$rulesFingerprint;
 
         return Cache::remember($key, now()->addSeconds(60), function () use ($rawRule, $invResolver, $bgtResolver) {
             $empty = Request::create('/', 'GET');
@@ -4366,12 +4377,30 @@ class GoogleShoppingCampaignsController extends Controller
             $this->applyRawGridSort($query, $empty);
             $counts = [];
             $acosCounts = [];
+            $partsCounts = [];
             foreach ($this->rememberRawGridRows($empty, $query) as $row) {
                 $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
                 $a = $arr['acos_l30'] ?? null;
                 if ($a !== null && is_numeric($a) && is_finite((float) $a)) {
                     $ak = (string) round((float) $a, 6);
                     $acosCounts[$ak] = ($acosCounts[$ak] ?? 0) + 1;
+                    // Everything in SBGT except the ACOS part, so the Sum card can rebuild SBGT live while the ACOS bands are edited:
+                    // SBGT = (ACOS band + rest) (< 1 → 0), capped at "cap", or 0 when a pause rule forces it.
+                    if (array_key_exists('bgt_views', $arr)) {
+                        $rest = 0;
+                        foreach (['bgt_views', 'bgt_cvr', 'bgt_prc', 'bgt_dil', 'bgt_acos_lt'] as $part) {
+                            if (isset($arr[$part]) && is_numeric($arr[$part])) {
+                                $rest += (int) $arr[$part];
+                            }
+                        }
+                        $cap = isset($arr['sbgt_cap']) && is_numeric($arr['sbgt_cap']) ? (int) $arr['sbgt_cap'] : null;
+                        $forced = ! empty($arr['sbgt_forced_zero']);
+                        $pk = $ak.'|'.$rest.'|'.($cap ?? 'n').'|'.($forced ? 1 : 0);
+                        if (! isset($partsCounts[$pk])) {
+                            $partsCounts[$pk] = ['acos' => (float) $ak, 'rest' => $rest, 'cap' => $cap, 'forced' => $forced, 'count' => 0];
+                        }
+                        $partsCounts[$pk]['count']++;
+                    }
                 }
                 $v = $arr['sbgt'] ?? null;
                 if ($v === null || $v === '' || ! is_numeric($v)) {
@@ -4390,7 +4419,7 @@ class GoogleShoppingCampaignsController extends Controller
                 $acosOut[] = ['acos' => (float) $acos, 'count' => $count];
             }
 
-            return ['dist' => $out, 'acos' => $acosOut];
+            return ['dist' => $out, 'acos' => $acosOut, 'parts' => array_values($partsCounts)];
         });
     }
 
