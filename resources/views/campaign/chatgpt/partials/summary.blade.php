@@ -19,6 +19,7 @@
             }
             const cur = (d.account && d.account.currency) || 'USD';
             const acct = d.account || {};
+            if (typeof gptAdvertiserName !== 'undefined' && (acct.brand_name || acct.name)) gptAdvertiserName = acct.brand_name || acct.name;
             badge('bg-dark', 'Account: ' + (acct.name || acct.id || ''), 'Ad account ' + (acct.id || '') + ' · ' + (acct.status || '') + ' · ' + (acct.timezone || ''));
             badge('bg-secondary', 'Campaigns: ' + Number(d.campaigns || 0).toLocaleString(), 'Campaigns in the ad account');
             badge('bg-info text-dark', 'Impr L' + d.days + ': ' + Number(d.impressions || 0).toLocaleString(), 'Account impressions, last ' + d.days + ' days');

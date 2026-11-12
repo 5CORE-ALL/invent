@@ -46,6 +46,18 @@ abstract class AdsTabulatorController extends Controller
         ]);
     }
 
+    /** Extra product_master columns a channel needs (selected on top of the basic ones). @return list<string> */
+    protected function extraProductColumns(): array
+    {
+        return [];
+    }
+
+    /** Extra row fields for one product (only called with the columns from extraProductColumns()). @return array<string, mixed> */
+    protected function extraRowFields(ProductMaster $pm): array
+    {
+        return [];
+    }
+
     /**
      * One row per product master SKU (PARENT summary SKUs are left out).
      *
@@ -54,7 +66,7 @@ abstract class AdsTabulatorController extends Controller
     protected function baseRows(): array
     {
         $products = ProductMaster::query()
-            ->select(['id', 'parent', 'sku', 'Values', 'main_image'])
+            ->select(array_merge(['id', 'parent', 'sku', 'Values', 'main_image'], $this->extraProductColumns()))
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->where('sku', 'not like', 'PARENT %')
@@ -87,7 +99,7 @@ abstract class AdsTabulatorController extends Controller
                 'price' => $price > 0 ? round($price, 2) : null,
                 'lp' => isset($values['lp']) && $values['lp'] !== '' ? round((float) $values['lp'], 2) : null,
                 'ship' => isset($values['ship']) && $values['ship'] !== '' ? round((float) $values['ship'], 2) : null,
-            ];
+            ] + $this->extraRowFields($pm);
         }
 
         return $rows;

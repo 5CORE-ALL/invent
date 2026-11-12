@@ -273,6 +273,9 @@
                             + '</div>';
                     }
                 },
+                @if (!empty($adsRowActionColumnsView))
+                    @include($adsRowActionColumnsView)
+                @endif
                 {
                     title: 'INV',
                     field: 'inv',
@@ -399,7 +402,7 @@
         function classifyAdsColumn(field, title) {
             const f = String(field || '');
             const t = String(title || '').toLowerCase();
-            if (/^(parent|image_path|sku|inv|ov_l30|dil_percent)$/i.test(f)) return 'basic';
+            if (/^(parent|image_path|sku|inv|ov_l30|dil_percent|_preview)$/i.test(f)) return 'basic';
             if (/^(price|lp|ship)$/i.test(f) || /\b(price|prc|lp|ship|gpft|groi|nroi|pft)\b/i.test(t)) return 'price';
             if (/(spend|acos|roas|tacos|campaign|click|impr|ctr|cpc|cpm|budget|bgt|bid|ads?)/i.test(f)
                 || /\b(ads?|acos|roas|spend|campaign|clicks?|impr|ctr|cpc|cpm|bgt|bid)\b/i.test(t)) return 'ads';

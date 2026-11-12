@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Campaigns;
 
+use App\Models\ProductMaster;
 use App\Services\OpenAiAdsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -35,6 +36,28 @@ class ChatGptAdsController extends AdsTabulatorController
     protected function dataRouteName(): string
     {
         return 'chatgpt.ads.data';
+    }
+
+    protected function extraProductColumns(): array
+    {
+        return ['title60', 'title100', 'title150', 'bullet1', 'product_description'];
+    }
+
+    /**
+     * Ad copy used by the row Preview button. Limits are the ChatGPT chat_card limits: title 3-50, body max 100 chars.
+     *
+     * @return array<string, mixed>
+     */
+    protected function extraRowFields(ProductMaster $pm): array
+    {
+        $clean = fn ($v) => trim(preg_replace('/\s+/u', ' ', strip_tags((string) $v)));
+        $title = $clean($pm->title60) ?: ($clean($pm->title100) ?: $clean($pm->title150));
+        $body = $clean($pm->bullet1) ?: $clean($pm->product_description);
+
+        return [
+            'ad_title' => $title !== '' ? $title : null,
+            'ad_body' => $body !== '' ? $body : null,
+        ];
     }
 
     /** @return list<array<string, mixed>> */
@@ -90,6 +113,7 @@ class ChatGptAdsController extends AdsTabulatorController
             'account' => [
                 'id' => $account['id'] ?? null,
                 'name' => $account['account_name'] ?? $account['name'] ?? null,
+                'brand_name' => $account['brand_name'] ?? null,
                 'currency' => $account['currency_code'] ?? 'USD',
                 'timezone' => $account['timezone'] ?? null,
                 'status' => $account['status'] ?? null,
