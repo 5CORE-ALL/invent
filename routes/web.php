@@ -6284,6 +6284,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
     Route::post('/channels-master/toggle-flag', [ChannelMasterController::class, 'toggleCheckboxFlag']);
+    Route::post('/channels-master/variation-type', [\App\Http\Controllers\Channels\ChannelVariationTypeController::class, 'save'])->name('channels.master.variation.type');
     Route::post('/update-channel-type', [ChannelMasterController::class, 'updateType']);
     Route::post('/update-channel-percentage', [ChannelMasterController::class, 'updatePercentage']);
 

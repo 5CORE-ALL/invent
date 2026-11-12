@@ -325,6 +325,21 @@
             display: block !important;
         }
 
+        /* Variation / Single inline select */
+        .variation-single-select {
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 1px 4px;
+            height: 26px;
+            max-width: 112px;
+            cursor: pointer;
+            background: #fff;
+        }
+        .variation-single-select.is-variation { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+        .variation-single-select.is-single { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+
         /* Type labels — text + color only (no pill) */
         .type-badge {
             padding: 0;
@@ -3038,6 +3053,36 @@
                 }
             });
 
+            // Variation/Single per channel (key = channel name, letters and digits only).
+            const variationTypeMap = @json(\App\Models\ChannelVariationType::map());
+            function variationKeyOf(channel) {
+                return String(channel || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            }
+            function variationTypeFor(rowData) {
+                return variationTypeMap[variationKeyOf(rowData && rowData['Channel '])] || '';
+            }
+            $(document).on('change', '.variation-single-select', function() {
+                const $sel = $(this);
+                const channel = String($sel.data('channel') || '');
+                const key = variationKeyOf(channel);
+                const next = String($sel.val() || '');
+                const prev = variationTypeMap[key] || '';
+                $sel.prop('disabled', true);
+                $.ajax({
+                    url: '{{ route('channels.master.variation.type') }}',
+                    method: 'POST',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), channel: channel, value: next },
+                }).done(function() {
+                    if (next) variationTypeMap[key] = next; else delete variationTypeMap[key];
+                    $sel.removeClass('is-variation is-single').addClass(next === 'Variation' ? 'is-variation' : (next === 'Single' ? 'is-single' : ''));
+                    if (typeof showToast === 'function') showToast('success', channel + ': ' + (next || 'cleared'));
+                }).fail(function(xhr) {
+                    $sel.val(prev);
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || Object.values(xhr.responseJSON.errors || {}).flat().join(' '))) || 'Could not save Variation/Single.';
+                    if (typeof showToast === 'function') showToast('error', msg); else alert(msg);
+                }).always(function() { $sel.prop('disabled', false); });
+            });
+
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
@@ -3292,6 +3337,36 @@
                             }
                             const color = value === 'Yes' ? '#198754' : '#dc3545';
                             return `<span style="font-weight:600;color:${color};" title="Brand Authorisation">${value}</span>`;
+                        }
+                    },
+                    {
+                        // Variation / Single — editable inline; saved per channel.
+                        title: "Variation/Single",
+                        field: "variation_single",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 128,
+                        minWidth: 110,
+                        headerTooltip: "Does this channel list products as Variation or Single? Click to change.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const va = variationTypeFor(aRow.getData());
+                            const vb = variationTypeFor(bRow.getData());
+                            return va === vb ? 0 : (va < vb ? -1 : 1);
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const channel = String(rowData['Channel '] || '').trim();
+                            const value = variationTypeFor(rowData);
+                            const safeCh = channel.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            const cls = value === 'Variation' ? 'is-variation' : (value === 'Single' ? 'is-single' : '');
+                            return `<select class="variation-single-select ${cls}" data-channel="${safeCh}" aria-label="Variation or Single">
+                                <option value="" ${value === '' ? 'selected' : ''}>-</option>
+                                <option value="Variation" ${value === 'Variation' ? 'selected' : ''}>Variation</option>
+                                <option value="Single" ${value === 'Single' ? 'selected' : ''}>Single</option>
+                            </select>`;
+                        },
+                        cellClick: function(e) {
+                            if (e.target.classList.contains('variation-single-select')) e.stopPropagation();
                         }
                     },
                     {
@@ -7382,7 +7457,7 @@
 
             // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
             const COLUMN_MENU_GROUPS = [
-                { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation'] },
+                { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation', 'variation_single'] },
                 { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%', 'T GPFT%', 'T GROI%', 'T NPFT%', 'T NROI%'] },
                 { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%', 'Y Ads%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
