@@ -423,18 +423,14 @@ class TaskPolicy
      * Determine whether the user can update only the link/reference fields
      * (l1/l2/training/video/form/report/checklist/pl/process) on a task.
      *
-     * Granted to anyone who can do a full update plus the task's assignee(s),
-     * so assignees can attach proof links to make review/done verification
-     * easier. Title, group, dates, assignee and priority remain locked for
-     * assignees and must go through {@see update()}.
+     * Granted to every signed-in user, so anyone can attach reference / proof
+     * links to a task. Title, description, group, dates, assignee and priority
+     * stay locked for everyone except the assignor / president and must go
+     * through {@see update()}.
      */
     public function updateLinks(User $user, Task $task): bool
     {
-        if ($this->update($user, $task)) {
-            return true;
-        }
-
-        return $this->userIsAssignee($user, $task);
+        return true;
     }
 
     /**

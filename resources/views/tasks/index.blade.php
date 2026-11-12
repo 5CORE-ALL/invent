@@ -3167,8 +3167,8 @@
 
         <div id="task-form-assignee-note" class="alert alert-info py-2 px-2 mb-2" style="font-size: 11px; display: none;">
             <i class="mdi mdi-information-outline me-1"></i>
-            You're an assignee on this task. Group, task title, date and assignee stay locked —
-            but you can still attach reference / SOP / proof links below.
+            Group, task title, description, date and assignee are locked for you —
+            but you can attach reference / SOP / proof links below.
         </div>
 
         <form id="task-form" enctype="multipart/form-data">
@@ -3947,8 +3947,8 @@
                                 ${(() => {
                                     var aidEdit = task.assignor_id != null ? parseInt(task.assignor_id, 10) : NaN;
                                     var isOwnerEdit = canDeleteAnyTask || (!isNaN(aidEdit) && aidEdit === currentUserId);
-                                    var isAssigneeOnlyEdit = !isOwnerEdit && currentUserIsAssigneeOnTask(task);
-                                    if (!isOwnerEdit && !isAssigneeOnlyEdit) return '';
+                                    // Everyone who is not the assignor/president gets the links-only editor.
+                                    var isAssigneeOnlyEdit = !isOwnerEdit;
                                     if (isAssigneeOnlyEdit) {
                                         return '<button class="btn btn-sm btn-outline-secondary" title="Add reference / proof links" onclick="editTask(' + task.id + ')"><i class="mdi mdi-link-variant-plus"></i> Links</button>';
                                     }
@@ -4783,8 +4783,9 @@
                             // Assignees get an "Add Links" mode of the same edit page so they can attach
                             // proof / SOP / reference links to make review easier.
                             var isAssignor = currentUserIsAssignorOnTask(rowData);
-                            var isAssigneeOnly = !(canDeleteAnyTask || isAssignor) && currentUserIsAssigneeOnTask(rowData);
-                            var canEdit = canDeleteAnyTask || isAssignor || isAssigneeOnly;
+                            // Everyone else (not assignor/president) gets the links-only editor.
+                            var isAssigneeOnly = !(canDeleteAnyTask || isAssignor);
+                            var canEdit = true;
                             var canDelete = userCanDeleteTaskRow(rowData);
                             var wouldDeleteWithoutCa = canDeleteOthersTasks || isAssignor;
                             var canView = isAdmin || isAssignor || currentUserIsAssigneeOnTask(rowData);
@@ -7516,7 +7517,7 @@
                 // Permissions (mirror the actions-column logic).
                 var assignorId = parseInt(rowData.assignor_id, 10);
                 var isOwner = canDeleteAnyTask || (!isNaN(assignorId) && assignorId === currentUserId);
-                var isAssigneeOnly = (mode === 'edit') && !isOwner && currentUserIsAssigneeOnTask(rowData);
+                var isAssigneeOnly = (mode === 'edit') && !isOwner;
                 var lock = (mode === 'edit') && !isOwner; // assignee-only: lock everything except links
 
                 if (mode === 'add') {

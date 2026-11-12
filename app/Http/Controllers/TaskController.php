@@ -3652,18 +3652,26 @@ class TaskController extends Controller
 
             $assigneeEmailForNotify = $assigneeEmail;
         } else {
-            // Assignee can only change link fields. Everything else stays as-is.
-            $updateData = [
-                'link1' => $validated['l1'] ?? '',
-                'link2' => $validated['l2'] ?? '',
-                'link3' => $validated['training_link'] ?? '',
-                'link4' => $validated['video_link'] ?? '',
-                'link5' => $validated['form_link'] ?? '',
-                'link6' => $validated['form_report_link'] ?? '',
-                'link7' => $validated['checklist_link'] ?? '',
-                'link8' => $validated['pl'] ?? '',
-                'link9' => $validated['process'] ?? '',
+            // Anyone who is not the assignor/president can only change link fields
+            // (never the title / description / group / dates). Everything else stays as-is,
+            // and a link field that was not submitted keeps its current value.
+            $linkMap = [
+                'link1' => 'l1',
+                'link2' => 'l2',
+                'link3' => 'training_link',
+                'link4' => 'video_link',
+                'link5' => 'form_link',
+                'link6' => 'form_report_link',
+                'link7' => 'checklist_link',
+                'link8' => 'pl',
+                'link9' => 'process',
             ];
+            $updateData = [];
+            foreach ($linkMap as $column => $field) {
+                $updateData[$column] = $request->has($field)
+                    ? ($validated[$field] ?? '')
+                    : ($task->{$column} ?? '');
+            }
 
             $assigneeEmailForNotify = $task->assign_to;
         }
