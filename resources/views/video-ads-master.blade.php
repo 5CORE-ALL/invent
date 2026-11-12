@@ -331,28 +331,6 @@
             cursor: pointer;
         }
         .vam-creator-toggle:hover { border-color: #2c6ed5; }
-        .vam-creator-avatar {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            object-fit: cover;
-            flex: 0 0 auto;
-            background: #eef2ff;
-        }
-        .vam-creator-avatar--initial {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            color: #fff;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .vam-creator-toggle-label { flex-direction: row !important; flex-wrap: wrap; align-items: center !important; }
-        .vam-creator-toggle { min-width: 0 !important; }
-        .vam-creator-menu .vam-creator-menu-item-text,
-        .vam-creator-menu .vam-creator-menu-user { display: flex; flex-direction: row; align-items: center; gap: 8px; }
-        .vam-creator-menu .vam-creator-avatar { width: 22px; height: 22px; font-size: 11px; }
         .vam-creator-header-filter {
             width: 100%;
             padding: 3px 6px;
@@ -1065,26 +1043,18 @@
             function mergeCreatorOption(user) {
                 if (!user || !Number(user.id)) return;
                 if (creatorOptions.some(o => Number(o.id) === Number(user.id))) return;
-                creatorOptions.push({ id: Number(user.id), name: user.name, avatar_url: user.avatar_url || null });
+                creatorOptions.push({ id: Number(user.id), name: user.name });
             }
 
             function mergeCreatorOptionsFromRows(rows) {
                 (rows || []).forEach(row => {
-                    assignedCreators(row).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name, avatar_url: c.avatar_url }));
+                    assignedCreators(row).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name }));
                 });
             }
 
-            // Round profile image; falls back to the user's initial when there is no image.
-            function creatorAvatarHtml(user) {
-                const name = String((user && user.name) || '');
-                const initial = escapeHtml(name.trim().charAt(0).toUpperCase() || '?');
-                const url = user && user.avatar_url;
-                if (!url) return `<span class="vam-creator-avatar vam-creator-avatar--initial" title="${escapeHtml(name)}">${initial}</span>`;
-                return `<img class="vam-creator-avatar" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" loading="lazy" onerror="this.outerHTML='<span class=&quot;vam-creator-avatar vam-creator-avatar--initial&quot;>${initial}</span>'">`;
-            }
-
             function creatorEntryHtml(creator) {
-                return `<span class="vam-creator-entry">${creatorAvatarHtml(creator)}</span>`;
+                const name = escapeHtml(creator.name || '');
+                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span></span>`;
             }
 
             function creatorFormatter(cell) {
@@ -1112,7 +1082,7 @@
                 wrap.innerHTML = (creatorOptions || []).map(o => {
                     const current = byId.get(Number(o.id));
                     const on = current ? ' is-selected' : '';
-                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text">${creatorAvatarHtml(o)}<span>${escapeHtml(o.name)}</span></span></button>`;
+                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span></span></button>`;
                 }).join('');
             }
 
@@ -1123,7 +1093,7 @@
                 let options = (moreUserOptions || []).filter(o => !have.has(Number(o.id)));
                 if (q) options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
                 wrap.innerHTML = options.length
-                    ? options.map(o => `<button type="button" class="vam-creator-menu-user" data-user-id="${Number(o.id)}">${creatorAvatarHtml(o)}<span>${escapeHtml(o.name)}</span></button>`).join('')
+                    ? options.map(o => `<button type="button" class="vam-creator-menu-user" data-user-id="${Number(o.id)}">${escapeHtml(o.name)}</button>`).join('')
                     : '<div class="text-muted small px-1 py-2">No more users.</div>';
             }
 
@@ -1183,7 +1153,7 @@
                         return;
                     }
                     row.update({ creators: j.creators || [] });
-                    (j.creators || []).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name, avatar_url: c.avatar_url }));
+                    (j.creators || []).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name }));
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving creator', 'error'); });
             }
