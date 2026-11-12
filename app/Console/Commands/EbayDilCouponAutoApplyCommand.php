@@ -18,6 +18,7 @@ class EbayDilCouponAutoApplyCommand extends Command
         {channel=all : ebay1, ebay2, ebay3 or all}
         {--dry-run : Compute only. Do NOT call eBay}
         {--max= : Max SKUs sent to eBay per channel per run (default 120)}
+        {--strip-stacked : Also REMOVE the coupon from SKUs that are on a PRMT sale (default: leave their coupon alone)}
         {--respect-switch : Skip the run when the page Push on reload switch is off}';
 
     protected $description = 'Push the EL30 Dil % coupon for eBay 1/2/3 (saved switch + slabs, no stacking with PRMT) without the page open.';
@@ -49,7 +50,7 @@ class EbayDilCouponAutoApplyCommand extends Command
                 continue;
             }
 
-            $stats = $service->run($channel, $dryRun, fn (string $msg) => $this->line($msg), $max);
+            $stats = $service->run($channel, $dryRun, fn (string $msg) => $this->line($msg), $max, (bool) $this->option('strip-stacked'));
             foreach (array_slice($stats['errors'], 0, 10) as $err) {
                 $this->warn('  · '.$err);
             }

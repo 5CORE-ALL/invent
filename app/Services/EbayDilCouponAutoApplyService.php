@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\Log;
  *
  * Safety rules:
  *  - Switch Off = the job does nothing. It never removes coupons because the switch is off (the page does that).
- *  - No stacking: a SKU on a PRMT sale (live PEF_SALE_PCT or saved prmt_pct of 5+) gets no coupon. If it already has
- *    one, the coupon is removed.
+ *  - No stacking: a SKU on a PRMT sale (live PEF_SALE_PCT or saved prmt_pct of 5+) is never GIVEN a coupon. A coupon it
+ *    already has is left alone, unless $stripStacked is on (--strip-stacked), which removes it.
  *  - SKUs with no eBay item id or an ended listing are skipped (eBay can only answer "item_id not found").
  *  - At most MAX_PER_RUN SKUs per channel per run, so a first run cannot hammer eBay. The rest follow next run.
  *  - A SKU that fails is not retried for RETRY_MINUTES.
@@ -38,9 +38,9 @@ class EbayDilCouponAutoApplyService
 
     /**
      * @return array{skus:int,wanted_on:int,wanted_off:int,in_sync:int,sent:int,ok:int,failed:int,skipped_prmt:int,
-     *     skipped_no_listing:int,throttled:int,deferred:int,switch_off:bool,errors:list<string>}
+     *     skipped_no_listing:int,kept_stacked:int,throttled:int,deferred:int,switch_off:bool,errors:list<string>}
      */
-    public function run(string $channel, bool $dryRun = false, ?callable $logger = null, ?int $max = null): array
+    public function run(string $channel, bool $dryRun = false, ?callable $logger = null, ?int $max = null, bool $stripStacked = false): array
     {
         $channel = strtolower(trim($channel));
         if (! in_array($channel, EbayRuleSprice::CHANNELS, true)) {
@@ -58,6 +58,7 @@ class EbayDilCouponAutoApplyService
             'failed' => 0,
             'skipped_prmt' => 0,
             'skipped_no_listing' => 0,
+            'kept_stacked' => 0,
             'throttled' => 0,
             'deferred' => 0,
             'switch_off' => false,
@@ -114,13 +115,19 @@ class EbayDilCouponAutoApplyService
                     (int) round(max(0.0, (float) ($row['PEF_SALE_PCT'] ?? 0))),
                     (int) round(max(0.0, (float) ($row['prmt_pct'] ?? $row['_prmt_pct_applied'] ?? 0)))
                 );
+                $stored = strtoupper(trim((string) ($row['zero_sold_coupon_code'] ?? '')));
                 if ($pct >= 5 && $prmt >= 5) {
                     $stats['skipped_prmt']++;
+                    if ($stored !== '' && ! $stripStacked) {
+                        // Already has a coupon: leave it. Only --strip-stacked removes it.
+                        $stats['kept_stacked']++;
+
+                        continue;
+                    }
                     $pct = 0;
                 }
 
                 $want = $pct >= 5 ? $service->zeroSoldCouponCode($pct) : '';
-                $stored = strtoupper(trim((string) ($row['zero_sold_coupon_code'] ?? '')));
                 if (strtoupper($want) === $stored) {
                     $stats['in_sync']++;
 
@@ -194,7 +201,7 @@ class EbayDilCouponAutoApplyService
             }
 
             $log(sprintf(
-                '%s: %d SKUs; coupon on %d, off %d; sent %d (ok %d, failed %d); in sync %d, PRMT sale (no stacking) %d, no eBay item id %d, retry-throttled %d, deferred to next run %d.',
+                '%s: %d SKUs; coupon on %d, off %d; sent %d (ok %d, failed %d); in sync %d, PRMT sale (no new coupon) %d (kept existing coupon %d), no eBay item id %d, retry-throttled %d, deferred to next run %d.',
                 $channel,
                 $stats['skus'],
                 $stats['wanted_on'],
@@ -204,6 +211,7 @@ class EbayDilCouponAutoApplyService
                 $stats['failed'],
                 $stats['in_sync'],
                 $stats['skipped_prmt'],
+                $stats['kept_stacked'],
                 $stats['skipped_no_listing'],
                 $stats['throttled'],
                 $stats['deferred']
