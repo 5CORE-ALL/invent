@@ -331,6 +331,14 @@
             cursor: pointer;
         }
         .vam-creator-toggle:hover { border-color: #2c6ed5; }
+        .vam-creator-header-filter {
+            width: 100%;
+            padding: 3px 6px;
+            font-size: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: #fff;
+        }
         .vam-creator-toggle-label {
             display: flex;
             flex-direction: column;
@@ -1046,10 +1054,7 @@
 
             function creatorEntryHtml(creator) {
                 const name = escapeHtml(creator.name || '');
-                const date = creator.created_at
-                    ? `<span class="vam-creator-date">${escapeHtml(creator.created_at)}</span>`
-                    : '';
-                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span>${date}</span>`;
+                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span></span>`;
             }
 
             function creatorFormatter(cell) {
@@ -1058,7 +1063,7 @@
                     return `<button type="button" class="vam-creator-toggle"><span class="vam-creator-toggle-label is-empty">Select</span><i class="fas fa-chevron-down"></i></button>`;
                 }
                 const label = creators.map(creatorEntryHtml).join('');
-                const title = creators.map(c => [c.name, c.created_at].filter(Boolean).join(' · ')).join('\n');
+                const title = creators.map(c => c.name).filter(Boolean).join('\n');
                 return `<button type="button" class="vam-creator-toggle" title="${escapeHtml(title)}"><span class="vam-creator-toggle-label">${label}</span><i class="fas fa-chevron-down"></i></button>`;
             }
 
@@ -1077,10 +1082,7 @@
                 wrap.innerHTML = (creatorOptions || []).map(o => {
                     const current = byId.get(Number(o.id));
                     const on = current ? ' is-selected' : '';
-                    const date = current && current.created_at
-                        ? `<span class="vam-creator-menu-date">${escapeHtml(current.created_at)}</span>`
-                        : '';
-                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span>${date}</span></button>`;
+                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span></span></button>`;
                 }).join('');
             }
 
@@ -2691,6 +2693,20 @@
                             title: 'Creator', field: 'creators',
                             formatter: creatorFormatter,
                             headerSort: false,
+                            // Dropdown filter in the column header; stays in sync with the toolbar's Creator filter.
+                            headerFilter: function (cell, onRendered, success) {
+                                const sel = document.createElement('select');
+                                sel.className = 'vam-creator-header-filter';
+                                sel.title = 'Filter rows by creator';
+                                sel.addEventListener('click', (e) => e.stopPropagation());
+                                sel.addEventListener('change', () => {
+                                    selectedUser = sel.value;
+                                    applySearch();   // also refreshes the toolbar + header dropdowns
+                                });
+                                return sel;
+                            },
+                            headerFilterFunc: () => true,
+                            headerFilterLiveFilter: false,
                             editable: false,
                             cellClick: (e, cell) => {
                                 const toggle = e.target.closest('.vam-creator-toggle');
@@ -2922,6 +2938,11 @@
                     .join('');
                 if (sel.dataset.sig !== html) { sel.innerHTML = html; sel.dataset.sig = html; }
                 sel.value = selectedUser;
+                // Mirror into the Creator column-header filter(s).
+                document.querySelectorAll('.vam-creator-header-filter').forEach(h => {
+                    if (h.dataset.sig !== html) { h.innerHTML = html; h.dataset.sig = html; }
+                    h.value = selectedUser;
+                });
             }
 
             function searchText() {

@@ -1114,9 +1114,11 @@
                     </table>
                 </div>
 
-                <p class="small text-danger mb-0 mt-2 d-none" id="auditError"></p>
             </div>
             <div class="modal-footer py-2">
+                {{-- Lives in the footer (not at the bottom of the scrolling body) so a
+                     failed Save is always visible right next to the button. --}}
+                <p class="small text-danger fw-semibold mb-0 me-auto d-none" id="auditError" role="alert"></p>
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-sm btn-primary" id="auditSaveBtn">
                     <i class="fas fa-save me-1"></i>Save Audit
@@ -4300,6 +4302,7 @@
             document.getElementById('auditCampaignId').textContent   = cid;
             document.getElementById('auditError')?.classList.add('d-none');
             document.getElementById('auditComments').value = '';
+            document.getElementById('auditComments').classList.remove('is-invalid');
             auditCustomSeq = 0;
             const cl = document.getElementById('auditCustomLabel');
             const cw = document.getElementById('auditCustomWeight');
@@ -4528,12 +4531,22 @@
                 }
             });
             const comments = (document.getElementById('auditComments').value || '').trim();
-            if (!comments && customItems.length === 0) {
+            // An audit is valid with ticked checks, a custom check, or written details —
+            // only a completely empty form is refused (and the reason is shown by the button).
+            const anyTicked = Object.values(checks).some(Boolean);
+            if (!comments && customItems.length === 0 && !anyTicked) {
                 const e = document.getElementById('auditError');
-                e.textContent = 'Enter the audit details before saving.';
+                e.textContent = 'Tick at least one check or enter the audit details before saving.';
                 e.classList.remove('d-none');
+                const ta = document.getElementById('auditComments');
+                if (ta) {
+                    ta.classList.add('is-invalid');
+                    ta.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    ta.focus({ preventScroll: true });
+                }
                 return Promise.resolve();
             }
+            document.getElementById('auditComments')?.classList.remove('is-invalid');
             const btn = opts.button || null;
             const original = btn ? btn.innerHTML : '';
             if (btn) {
@@ -4567,7 +4580,14 @@
                     comments:      comments,
                 }),
             })
-                .then(r => r.json().then(j => ({ ok: r.ok, body: j })))
+                .then(r => r.json()
+                    .then(j => ({ ok: r.ok, body: j }))
+                    .catch(() => ({
+                        ok: false,
+                        body: { error: (r.status === 419 || r.status === 401)
+                            ? 'Your session expired — reload the page and log in again, then save.'
+                            : 'Server error (' + r.status + ') — the audit was not saved.' },
+                    })))
                 .then(({ ok, body }) => {
                     if (!ok || body.success === false) {
                         const e = document.getElementById('auditError');
