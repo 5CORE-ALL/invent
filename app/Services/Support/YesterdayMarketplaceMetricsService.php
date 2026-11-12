@@ -166,7 +166,58 @@ class YesterdayMarketplaceMetricsService
             'days' => $this->windowDays,
             'label' => $label,
             'rows' => $rows,
+            // Whether every marketplace has re-pulled this Pacific day after it closed
+            // (orders:settle-yesterday). False = numbers may still be provisional.
+            'settle' => $this->windowDays < 7 ? $this->settleStatus($date, $rows) : null,
         ];
+    }
+
+    /**
+     * Ledger status plus a data-quality cross-check. Once every pull is done, a channel whose
+     * yesterday is far below its own usual day (L30 ÷ 30) is flagged: re-pulling cannot fix a
+     * channel-specific problem (wrong date window, status handling, expired API token), so it must
+     * be visible instead of silently summed into the badge.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>|null
+     */
+    private function settleStatus(string $date, array $rows): ?array
+    {
+        try {
+            $status = \App\Support\Marketplace\YesterdaySettleLedger::status($date);
+            $status['anomalies'] = $status['settled'] ? $this->lowSalesChannels($rows) : [];
+
+            return $status;
+        } catch (\Throwable $e) {
+            Log::warning('Yesterday settle status failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{channel: string, sales: float, typical: float}>
+     */
+    private function lowSalesChannels(array $rows): array
+    {
+        $typicalByKey = [];
+        foreach (ChannelMasterCalculatedData::query()->get(['channel', 'l30_sales']) as $r) {
+            $typicalByKey[$this->key((string) $r->channel)] = (float) ($r->l30_sales ?? 0) / 30;
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $name = (string) ($row['channel'] ?? '');
+            $typical = $typicalByKey[$this->key($name)] ?? 0.0;
+            $sales = (float) ($row['sales'] ?? 0);
+            // Only channels that normally sell enough for "far below usual" to mean something.
+            if ($typical >= 50 && $sales < $typical * 0.25) {
+                $out[] = ['channel' => $name, 'sales' => round($sales, 2), 'typical' => round($typical, 2)];
+            }
+        }
+
+        return $out;
     }
 
     /**

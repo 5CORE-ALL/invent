@@ -13,7 +13,7 @@ class AmazonSpCampaignReports extends Command
 {
     use ProcessesUpdatesInChunks;
 
-    protected $signature = 'app:amazon-sp-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
+    protected $signature = 'app:amazon-sp-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)} {--yesterday-only : Re-fetch the Pacific yesterday daily rows even if already stored, then stop (used by orders:settle-yesterday)}';
     protected $description = 'Fetch and store Sponsored Products campaign reports (daily + L30/L15/L7)';
 
     public function handle()
@@ -45,6 +45,13 @@ class AmazonSpCampaignReports extends Command
             $this->fetchReport($profileId, $adType, $reportTypeId, $yesterday, $yesterday, $yesterday, true, true);
             $this->info("✅ Daily data fetched: {$yesterday} (L1 synced)");
             DB::connection()->disconnect();
+
+            if ($this->option('yesterday-only')) {
+                $this->backfillMissingDailyFromL30($profileId, $adType, $yesterday);
+                DB::connection()->disconnect();
+
+                return 0;
+            }
 
             // Summary ranges for table (L30, L15, L7)
             $dateRanges = $this->getDateRanges();

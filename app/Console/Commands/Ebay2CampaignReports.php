@@ -16,7 +16,7 @@ class Ebay2CampaignReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)} {--meta-only : Only refresh campaign name/status/budget/type (no reports)} {--force : Run the full pull even if it already completed today}';
+    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)} {--meta-only : Only refresh campaign name/status/budget/type (no reports)} {--force : Run the full pull even if it already completed today} {--yesterday-only : Re-fetch the Pacific yesterday daily rows even if already stored, then stop (used by orders:settle-yesterday)}';
 
     /**
      * The console command description.
@@ -44,7 +44,9 @@ class Ebay2CampaignReports extends Command
 
     public function handle()
     {
-        $isFullPull = ! $this->option('meta-only') && trim((string) $this->option('only')) === '';
+        // --yesterday-only is a small re-pull of one day: it neither counts as the daily full pull
+        // nor is skipped because one already ran today.
+        $isFullPull = ! $this->option('meta-only') && ! $this->option('yesterday-only') && trim((string) $this->option('only')) === '';
         if ($isFullPull && ! $this->option('force') && self::pulledToday()) {
             $this->info('eBay 2 campaign reports were already pulled today. Skipping (use --force to run again).');
 
@@ -100,17 +102,24 @@ class Ebay2CampaignReports extends Command
         // Fetch only yesterday's data for charts
         $yesterday = Carbon::yesterday()->toDateString();
 
+        $yesterdayOnly = (bool) $this->option('yesterday-only');
+
         if ($only === '' || $only === $yesterday) {
             $yesterdayExists = Ebay2PriorityReport::where('report_range', $yesterday)
                 ->exists();
 
-            if (!$yesterdayExists) {
-                $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+            // eBay's report for a day can still be growing when first pulled; --yesterday-only replaces it.
+            if ($yesterdayOnly || !$yesterdayExists) {
+                $this->info("📊 Fetching yesterday's report for charts: {$yesterday}");
                 $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
                 $this->info("✅ Yesterday's data fetched: {$yesterday}");
             } else {
                 $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
             }
+        }
+
+        if ($yesterdayOnly) {
+            return 0;
         }
 
         // L30 = last 31 calendar days including today — same window as Seller Hub "Past 31 days".

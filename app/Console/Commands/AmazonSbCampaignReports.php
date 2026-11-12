@@ -13,7 +13,7 @@ class AmazonSbCampaignReports extends Command
 {
     use ProcessesUpdatesInChunks;
 
-    protected $signature = 'app:amazon-sb-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
+    protected $signature = 'app:amazon-sb-campaign-reports {--chunk= : Override DB write chunk size (default from cron-monitor config)} {--yesterday-only : Re-fetch the Pacific yesterday daily rows even if already stored, then stop (used by orders:settle-yesterday)}';
     protected $description = 'Fetch and store Sponsored Brands campaign reports';
 
     public function handle()
@@ -49,11 +49,21 @@ class AmazonSbCampaignReports extends Command
                 ->where('report_date_range', $yesterday)
                 ->exists();
                 
-            if (!$yesterdayExists) {
+            $yesterdayOnly = (bool) $this->option('yesterday-only');
+
+            // Amazon finishes a day's report hours after the day ends, so an early pull can be partial.
+            // `--yesterday-only` always replaces the stored row instead of trusting the first pull.
+            if ($yesterdayOnly || !$yesterdayExists) {
                 $this->fetchReport($profileId, $adType, $reportTypeId, $yesterday, $yesterday, $yesterday, true);
                 $this->info("✅ Yesterday's data fetched: {$yesterday}");
             } else {
                 $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+            }
+
+            if ($yesterdayOnly) {
+                $this->backfillMissingDailyFromL30($profileId, $adType, $yesterday);
+
+                return 0;
             }
 
             // Always fetch summary ranges for backward compatibility with table data

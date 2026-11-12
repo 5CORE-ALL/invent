@@ -17,7 +17,7 @@ class EbayCampaignReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:ebay-campaign-reports';
+    protected $signature = 'app:ebay-campaign-reports {--yesterday-only : Re-fetch the Pacific yesterday daily rows even if already stored, then stop (used by orders:settle-yesterday)}';
 
     /**
      * The console command description.
@@ -65,12 +65,19 @@ class EbayCampaignReports extends Command
         $yesterdayExists = EbayPriorityReport::where('report_range', $yesterday)
             ->exists();
             
-        if (!$yesterdayExists) {
-            $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
+        $yesterdayOnly = (bool) $this->option('yesterday-only');
+
+        // eBay's report for a day can still be growing when first pulled; --yesterday-only replaces it.
+        if ($yesterdayOnly || !$yesterdayExists) {
+            $this->info("📊 Fetching yesterday's report for charts: {$yesterday}");
             $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
             $this->info("✅ Yesterday's data fetched: {$yesterday}");
         } else {
             $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
+        }
+
+        if ($yesterdayOnly) {
+            return 0;
         }
 
         // Always fetch summary ranges for backward compatibility with table data
