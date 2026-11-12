@@ -454,6 +454,7 @@ class EbayTwoController extends Controller
             $cid = (string) $r->campaign_id;
             $byName[$name][$cid]['meta'] = $byName[$name][$cid]['meta'] ?? [
                 'campaign_id' => $cid,
+                'name' => trim((string) $r->campaign_name),
                 'budget' => (float) ($r->campaignBudgetAmount ?? 0),
                 'status' => strtoupper((string) $r->campaignStatus),
             ];
@@ -494,6 +495,7 @@ class EbayTwoController extends Controller
             $sold = $l30 ? (int) ($l30->cpc_attributed_sales ?? 0) : 0;
 
             $row['kw_campaign_id'] = $c['meta']['campaign_id'];
+            $row['kw_campaign_name'] = $c['meta']['name'];
             $row['kw_campaignBudgetAmount'] = $c['meta']['budget'];
             $row['kw_campaignStatus'] = $c['meta']['status'];
             $row['kw_spend_L30'] = round($spend, 2);
@@ -868,6 +870,7 @@ class EbayTwoController extends Controller
                     if (! isset($kwCampaignBySku[$campaignName])) {
                         $kwCampaignBySku[$campaignName] = [
                             'campaign_id' => $campaignId,
+                            'campaign_name' => (string) ($report->campaign_name ?? ''),
                             'campaignBudgetAmount' => $report->campaignBudgetAmount ?? 0,
                             'campaignStatus' => $report->campaignStatus ?? '',
                             'L30' => null, 'L7' => null, 'L1' => null,
@@ -1175,6 +1178,7 @@ class EbayTwoController extends Controller
             if ($kwData) {
                 $kwCampaignId = $kwData['campaign_id'];
                 $row['kw_campaign_id'] = $kwCampaignId;
+                $row['kw_campaign_name'] = $kwData['campaign_name'] ?? '';
                 $row['kw_campaignBudgetAmount'] = (float) $kwData['campaignBudgetAmount'];
                 $row['kw_campaignStatus'] = $kwData['campaignStatus'];
 
@@ -1211,6 +1215,7 @@ class EbayTwoController extends Controller
                 $row['kw_apprSbid'] = $apprSbidMap[$kwCampaignId] ?? '';
             } else {
                 $row['kw_campaign_id'] = '';
+                $row['kw_campaign_name'] = '';
                 $row['kw_campaignBudgetAmount'] = 0;
                 $row['kw_campaignStatus'] = '';
                 $row['kw_spend_L30'] = 0;
@@ -1485,6 +1490,7 @@ class EbayTwoController extends Controller
 
                 // KW campaign defaults
                 $row['kw_campaign_id'] = '';
+                $row['kw_campaign_name'] = '';
                 $row['kw_campaignBudgetAmount'] = 0;
                 $row['kw_campaignStatus'] = '';
                 $row['kw_clicks'] = 0;

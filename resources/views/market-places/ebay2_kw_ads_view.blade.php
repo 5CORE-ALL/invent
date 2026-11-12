@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', function () {
             { title: 'SKU', field: SKU, frozen: true, width: 180, headerFilter: 'input' },
             { title: 'INV', field: 'INV', hozAlign: 'center', sorter: 'number', width: 70 },
             { title: 'E L30', field: 'eBay L30', hozAlign: 'center', sorter: 'number', width: 70 },
+            { title: 'Campaign', field: 'kw_campaign_name', width: 230, headerFilter: 'input' },
             { title: 'KW?', field: 'kw_campaign_id', hozAlign: 'center', width: 70,
               formatter: c => hasKw(c.getRow().getData()) ? '<span class="kw-yes">Yes</span>' : '<span class="kw-no">No</span>' },
             { title: 'Status', field: 'kw_campaignStatus', hozAlign: 'center', width: 95 },
@@ -156,7 +157,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (mode === 'with' && !hasKw(r)) return false;
             if (mode === 'without' && hasKw(r)) return false;
-            if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q))) return false;
+            if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q) || String(r.kw_campaign_name || '').toLowerCase().includes(q))) return false;
             return true;
         });
         table.setData(rows);
