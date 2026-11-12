@@ -1026,13 +1026,13 @@
                     <input type="text" id="channel-search" class="form-control form-control-sm"
                         placeholder="Search Channel..." style="width: 150px; display: inline-block;">
 
-                    <!-- Type Filter (hidden from UI) -->
-                    <select id="type-filter" class="form-select form-select-sm" style="width: auto; display: none;">
+                    <!-- Type Filter -->
+                    <select id="type-filter" class="form-select form-select-sm" style="width: auto;" title="Filter by Type" aria-label="Filter by Type">
                         <option value="all">All Types</option>
-                        <option value="B2C">🛒 B2C</option>
-                        <option value="B2B">🏢 B2B</option>
-                        <option value="Dropship">📦 DS</option>
-                        <option value="Wholesale">🏬 Wholesale</option>
+                        <option value="B2C">B2C</option>
+                        <option value="B2B">B2B</option>
+                        <option value="Dropship">DS (Dropship)</option>
+                        <option value="Wholesale">Wholesale</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
