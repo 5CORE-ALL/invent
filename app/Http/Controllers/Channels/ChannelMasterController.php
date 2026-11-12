@@ -211,7 +211,7 @@ class ChannelMasterController extends Controller
             'Tiktok Shop 2' => '/tiktok-2-pricing',
             'CJdropshipping' => '/listing-cjdropshipping',
             'Depop' => '/depop/pricing',
-            'Vinted' => '/vinted/pricing',
+            'Vinted' => '/vinted/analytics',
             'Shopify' => '/shopify-b2c-pricing',
             'Shopify B2C' => '/shopify-b2c-pricing',
             'ShopifyB2C' => '/shopify-b2c-pricing',

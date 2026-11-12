@@ -4685,7 +4685,7 @@ class AdvertisementMasterController extends Controller
             'reverb' => $this->namedHref('reverb.pricing'),
             'shein' => $this->namedHref('shein.pricing.view'),
             'topdawg' => $this->namedHref('topdawg.pricing'),
-            'vinted' => $this->namedHref('vinted.pricing'),
+            'vinted' => $this->namedHref('vinted.analytics'),
             'wayfair' => $this->namedHref('wayfair.pricing.view'),
             'pls' => $this->namedHref('pls.pricing'),
             'walmart' => $this->namedHref('walmart.sheet.upload'),

@@ -33,7 +33,7 @@
             <div class="card-body py-3">
                 <h4>Vinted Sales Data — Margin {{ number_format($vintedPercentage ?? 95, 0) }}%</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <a href="{{ route('vinted.pricing') }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ route('vinted.analytics') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fa fa-tags"></i> Analytics / Pricing
                     </a>
                     <button type="button" class="btn btn-sm btn-success" id="export-btn"><i class="fa fa-file-excel"></i> Export</button>

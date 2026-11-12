@@ -4475,19 +4475,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/depop/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\DepopController::class, 'setColumnVisibility'])->name('depop.pricing.column.set');
     Route::post('/depop/pricing/sop-sheet', [\App\Http\Controllers\MarketPlace\DepopController::class, 'saveSopSheet'])->name('depop.pricing.sop-sheet');
 
-    // Vinted Analytics — full pricing grid (GPFT/ROI/SPRICE filters) + CSV price import
-    Route::get('/vinted/pricing',         [\App\Http\Controllers\MarketPlace\VintedController::class, 'pricingView'])->name('vinted.pricing');
-    Route::get('/vinted/pricing/data',    [\App\Http\Controllers\MarketPlace\VintedController::class, 'getPricingData'])->name('vinted.pricing.data');
-    Route::get('/vinted/pricing/export',  [\App\Http\Controllers\MarketPlace\VintedController::class, 'exportCsv'])->name('vinted.pricing.export');
-    Route::get('/vinted/pricing/sample',  [\App\Http\Controllers\MarketPlace\VintedController::class, 'downloadPriceSample'])->name('vinted.pricing.sample');
-    Route::post('/vinted/pricing/import', [\App\Http\Controllers\MarketPlace\VintedController::class, 'importCsv'])->name('vinted.pricing.import');
-    Route::post('/vinted/pricing/save-sprice', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSprice'])->name('vinted.pricing.save.sprice');
-    Route::post('/vinted/pricing/save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSpriceTabulator'])->name('vinted.pricing.save.sprice.tabulator');
-    Route::post('/vinted/pricing/save-sprice-batch', [\App\Http\Controllers\MarketPlace\VintedController::class, 'saveSpriceUpdates'])->name('vinted.pricing.save.sprice.batch');
-    Route::post('/vinted/pricing/update-nr', [\App\Http\Controllers\MarketPlace\VintedController::class, 'updateNrReq'])->name('vinted.pricing.update.nr');
-    Route::post('/vinted/pricing/update-links', [\App\Http\Controllers\MarketPlace\VintedController::class, 'updateLinks'])->name('vinted.pricing.update.links');
-    Route::get('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'getColumnVisibility'])->name('vinted.pricing.column.get');
-    Route::post('/vinted/pricing/column-visibility', [\App\Http\Controllers\MarketPlace\VintedController::class, 'setColumnVisibility'])->name('vinted.pricing.column.set');
 
     // Vinted Analytics — Depop-style Tabulator + CSV template (parent, sku, price, l30)
     Route::get('/vinted/analytics', [\App\Http\Controllers\MarketPlace\VintedAnalyticsController::class, 'pricingView'])->name('vinted.analytics');

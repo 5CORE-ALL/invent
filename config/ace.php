@@ -66,7 +66,6 @@ return [
         'market-places.tiktok_tabulator_view' => [],
         'market-places.topdawg_tabulator_view' => [],
         'market-places.vinted_analytics' => [],
-        'market-places.vinted_pricing' => [],
         'market-places.walmart_sheet_upload_view' => ['url' => '/walmart-sheet-upload-data-json'],
         'market-places.walmart_tabulator_view' => [],
         'market-places.wayfair_pricing_view' => [],
