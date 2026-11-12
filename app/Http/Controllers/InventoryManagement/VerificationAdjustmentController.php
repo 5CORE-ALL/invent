@@ -384,6 +384,11 @@ class VerificationAdjustmentController extends Controller
 
             $item->IS_PARENT = stripos($sku, 'PARENT') === 0;
 
+            // Product Master STATUS (Active / Inactive / DC / Coming / 2BDC), same value CP master shows.
+            $statusValue = ProductMaster::statusValueFromValues($values);
+            $item->STATUS = $statusValue;
+            $item->STATUS_LABEL = ProductMaster::statusDisplayLabel($statusValue);
+
             if (!$item->IS_PARENT) {
                 $shopify = $shopifyData->get($item->sku);
                 $inv = $verifiedInventory[$sku] ?? null;
