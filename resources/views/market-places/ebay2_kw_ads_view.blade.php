@@ -40,8 +40,8 @@
             </div>
 
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 border rounded bg-light">
-                <button id="kw-pull-btn" type="button" class="btn btn-sm btn-primary">
-                    <i class="fa-solid fa-cloud-arrow-down me-1"></i> Pull Priority Reports from eBay API
+                <button id="kw-pull-btn" type="button" class="btn btn-sm btn-primary" title="Pull Priority Reports from eBay API" aria-label="Pull Priority Reports from eBay API">
+                    <i class="fa-solid fa-cloud-arrow-down"></i>
                 </button>
                 <span id="kw-pull-state" class="small text-muted">Checking…</span>
             </div>
