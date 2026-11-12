@@ -2398,6 +2398,9 @@
                             <a href="{{ route('google.shopping.campaigns.revised') }}">Revised (Neg KW)</a>
                         </li>
                         <li>
+                            <a href="{{ route('google.neg-targeting') }}">N Targeting</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.serp.campaigns') }}">Google SERP Campaigns</a>
                         </li>
                         <li>

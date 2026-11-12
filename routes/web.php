@@ -7601,6 +7601,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/audit/save', 'auditPageSave')->name('google.shopping.audit.save');
     });
 
+    // Google N Targeting (negative keywords) — KW cousins + push, same format as /amazon-ads/fbm-targeting
+    Route::controller(\App\Http\Controllers\Campaigns\GoogleNegTargetingController::class)->group(function () {
+        Route::get('/google/shopping/neg-targeting', 'index')->name('google.neg-targeting');
+        Route::get('/google/shopping/neg-targeting/data', 'data')->name('google.neg-targeting.data');
+        Route::post('/google/shopping/neg-targeting/push-check', 'pushCheck')->name('google.neg-targeting.push-check');
+        Route::post('/google/shopping/neg-targeting/push', 'push')->name('google.neg-targeting.push');
+    });
+
     // Missing Google SERP Ads — parent grid + Inv + manual campaign link (+ like /amazon-ads/missing)
     Route::controller(GoogleSerpAdsMissingController::class)->group(function () {
         Route::get('/google/shopping/google-serp/missing', 'index')->name('google.serp.ads.missing');
