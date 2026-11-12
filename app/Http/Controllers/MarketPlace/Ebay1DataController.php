@@ -230,14 +230,13 @@ class Ebay1DataController extends Controller
                 }
 
                 // Brand is always 5 Core, and Durability Guarantee is always 30, as on Technical Specifications.
-                if ($this->fillsFixedValues()) {
-                    foreach (array_keys($specifics) as $specName) {
-                        $aspect = $this->aspectKey((string) $specName);
-                        if ($aspect === 'brand') {
-                            $specifics[$specName] = '5 Core';
-                        } elseif ($aspect === 'durabilityguarantee') {
-                            $specifics[$specName] = '30';
-                        }
+                // A channel that shows the marketplace's own values (Temu) still has Brand fixed to 5 Core.
+                foreach (array_keys($specifics) as $specName) {
+                    $aspect = $this->aspectKey((string) $specName);
+                    if ($aspect === 'brand') {
+                        $specifics[$specName] = '5 Core';
+                    } elseif ($aspect === 'durabilityguarantee' && $this->fillsFixedValues()) {
+                        $specifics[$specName] = '30';
                     }
                 }
 
@@ -311,9 +310,10 @@ class Ebay1DataController extends Controller
             //  - Brand is always 5 Core and Durability Guarantee is always 30.
             //  - Manufacturer (5 Core), Condition (New) and Country of Origin (China) are always applied to a
             //    missing listing. A listed row keeps what it has and only gets them when the cell is blank.
-            $skuColumns = ['mpn' => 'MPN', 'model' => 'Model'];
-            $alwaysColumns = ['brand' => '5 Core', 'durabilityguarantee' => '30'];
-            $missingColumns = ['manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'];
+            // Temu keeps the marketplace's values; only Brand is fixed there.
+            $skuColumns = $this->fillsFixedValues() ? ['mpn' => 'MPN', 'model' => 'Model'] : [];
+            $alwaysColumns = $this->fillsFixedValues() ? ['brand' => '5 Core', 'durabilityguarantee' => '30'] : ['brand' => '5 Core'];
+            $missingColumns = $this->fillsFixedValues() ? ['manufacturer' => '5 Core', 'condition' => 'New', 'countryoforigin' => 'China'] : [];
             $present = [];
             foreach ($data as $entry) {
                 foreach (array_keys($entry['specifics']) as $specName) {
@@ -326,7 +326,6 @@ class Ebay1DataController extends Controller
             $isBlank = static function (string $value): bool {
                 return in_array(strtolower(trim($value)), ['', 'does not apply', 'not applicable'], true);
             };
-            if ($this->fillsFixedValues()) {
             foreach ($data as $i => $entry) {
                 $hash = $this->categoryHash((string) $entry['category']);
                 $isMissingListing = ! in_array((string) $entry['listed'], ['Listed', 'Created'], true);
@@ -346,7 +345,6 @@ class Ebay1DataController extends Controller
                         $data[$i]['specifics'][$target] = $missingColumns[$k];
                     }
                 }
-            }
             }
 
             // push_cols: the item specifics Auto Push sends for the SKU. Those edited by hand and not pushed yet,
