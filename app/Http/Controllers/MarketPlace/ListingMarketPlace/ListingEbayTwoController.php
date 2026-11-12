@@ -67,7 +67,16 @@ class ListingEbayTwoController extends Controller
             false,
             \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
         );
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics) {
+        // Live listings with quantity 0 (Seller Hub "Out of stock"): neither Listed nor Missing L.
+        $outOfStock = \App\Support\Marketplace\ListingCountsEngine::outOfStockIdsFromColumn(
+            Ebay2Metric::class,
+            $skus,
+            'item_id',
+            'ebay_stock',
+            \App\Support\Marketplace\ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
+        );
+
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $ebayMetrics, $outOfStock) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -98,6 +107,12 @@ class ListingEbayTwoController extends Controller
             $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayMetrics, $childSku);
             $item->eBay_item_id = $itemId !== '' ? $itemId : null;
             $item->listed = $item->eBay_item_id ? 'Listed' : 'Pending';
+            $item->out_of_stock = false;
+            if ($item->listed === 'Listed'
+                && \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($outOfStock, $childSku) !== '') {
+                $item->out_of_stock = true;
+                $item->listed = 'Out of stock';
+            }
 
             return $item;
         })->values();

@@ -1139,6 +1139,91 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
+     * Ask eBay (GetItem) whether a listing still exists, and, when a SKU is given, whether that SKU is on it.
+     *
+     * state: 'live' (active listing; for a multi-variation listing the SKU is one of its variations),
+     *        'sku_absent' (active multi-variation listing that no longer holds the SKU),
+     *        'ended' (ended / completed listing), 'not_found' (eBay no longer knows the item),
+     *        'error' (could not tell: auth, rate limit, network; never treated as gone).
+     *
+     * @return array{state: string, message: string, quantity: ?int}
+     */
+    public static function itemState(string $channelKey, string $itemId, string $sku = ''): array
+    {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return ['state' => 'error', 'message' => 'Missing ItemID.', 'quantity' => null];
+        }
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if (! ($ctx['configured'] ?? false)) {
+            return ['state' => 'error', 'message' => ($ctx['label'] ?? 'eBay').' API credentials are not configured.', 'quantity' => null];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('DetailLevel', 'ReturnAll');
+
+            $response = Http::timeout(60)
+                ->withHeaders(self::tradingHeaders($ctx, 'GetItem'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+
+            $xmlResp = simplexml_load_string($response->body());
+            if ($xmlResp === false) {
+                return ['state' => 'error', 'message' => 'Unreadable eBay response (HTTP '.$response->status().').', 'quantity' => null];
+            }
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = (string) ($data['Ack'] ?? 'Failure');
+
+            if ($ack !== 'Success' && $ack !== 'Warning') {
+                $errors = $data['Errors'] ?? [];
+                if (isset($errors['ErrorCode'])) {
+                    $errors = [$errors];
+                }
+                $codes = [];
+                $msg = '';
+                foreach ((array) $errors as $err) {
+                    $codes[] = (string) ($err['ErrorCode'] ?? '');
+                    $msg = $msg !== '' ? $msg : trim((string) ($err['LongMessage'] ?? $err['ShortMessage'] ?? ''));
+                }
+                // 17 = item cannot be accessed (deleted / not yours), 21 / 107 = invalid item id.
+                if (array_intersect($codes, ['17', '21', '107']) !== []) {
+                    return ['state' => 'not_found', 'message' => $msg !== '' ? $msg : 'Item not found on eBay.', 'quantity' => null];
+                }
+
+                return ['state' => 'error', 'message' => $msg !== '' ? $msg : 'GetItem failed.', 'quantity' => null];
+            }
+
+            $item = EbayTradingReviseItem::itemFromGetItem($data);
+            $status = strtolower(trim((string) ($item['SellingStatus']['ListingStatus'] ?? '')));
+            if (in_array($status, ['ended', 'completed'], true)) {
+                return ['state' => 'ended', 'message' => 'Listing is '.$status.' on eBay.', 'quantity' => null];
+            }
+            if ($status !== 'active') {
+                return ['state' => 'error', 'message' => 'Unexpected listing status "'.$status.'".', 'quantity' => null];
+            }
+
+            if ($sku !== '' && EbayTradingReviseItem::listingHasVariations($data)) {
+                $variation = EbayTradingReviseItem::findVariationForSku($data, $sku);
+                if ($variation === null) {
+                    return ['state' => 'sku_absent', 'message' => 'Active variation listing does not contain this SKU.', 'quantity' => null];
+                }
+                $qty = (int) ($variation['Quantity'] ?? 0) - (int) ($variation['SellingStatus']['QuantitySold'] ?? 0);
+
+                return ['state' => 'live', 'message' => 'Active (variation).', 'quantity' => $qty];
+            }
+
+            $qty = (int) ($item['Quantity'] ?? 0) - (int) ($item['SellingStatus']['QuantitySold'] ?? 0);
+
+            return ['state' => 'live', 'message' => 'Active.', 'quantity' => $qty];
+        } catch (\Throwable $e) {
+            return ['state' => 'error', 'message' => $e->getMessage(), 'quantity' => null];
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $ctx
      * @return array<string, string>
      */

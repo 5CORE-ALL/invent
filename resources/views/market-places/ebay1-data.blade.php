@@ -270,6 +270,7 @@
                             <option value="Listed">Listed</option>
                             <option value="Missing">Missing L</option>
                             <option value="Created">Created (not live yet)</option>
+                            <option value="Out of stock">Out of stock (live, qty 0)</option>
                         </select>
                         <select id="e1dNr" title="Required or not">
                             <option value="all">REQ + NRL</option>
@@ -650,7 +651,7 @@
             }
 
             function isMissing(row) {
-                return inStock(row) && row.nr_req !== 'NR' && row.listed !== 'Listed' && row.listed !== 'Created';
+                return inStock(row) && row.nr_req !== 'NR' && row.listed !== 'Listed' && row.listed !== 'Created' && row.listed !== 'Out of stock';
             }
 
             function passesControls(row) {
@@ -662,6 +663,7 @@
                 const listed = document.getElementById('e1dListed').value;
                 if (listed === 'Listed' && row.listed !== 'Listed') return false;
                 if (listed === 'Created' && row.listed !== 'Created') return false;
+                if (listed === 'Out of stock' && row.listed !== 'Out of stock') return false;
                 if (listed === 'Missing' && !isMissing(row)) return false;
                 const nr = document.getElementById('e1dNr').value;
                 if (nr === 'REQ' && row.nr_req === 'NR') return false;
@@ -1031,7 +1033,7 @@
                     if (!inStock(row)) return;
                     if (row.nr_req === 'NR') { nrl++; return; }
                     req++;
-                    if (row.listed === 'Created') return;
+                    if (row.listed === 'Created' || row.listed === 'Out of stock') return;
                     if (row.listed === 'Listed') listed++; else missing++;
                 });
                 document.getElementById('e1dBadges').innerHTML =
@@ -3059,13 +3061,14 @@
                         {
                             title: 'Listed', field: 'listed', 
                             sorter: function (a, b, aRow, bRow) {
-                                const rank = function (d) { return d.listed === 'Listed' ? 2 : (d.listed === 'Created' ? 1 : 0); };
+                                const rank = function (d) { return d.listed === 'Listed' ? 3 : (d.listed === 'Out of stock' ? 2 : (d.listed === 'Created' ? 1 : 0)); };
                                 return rank(aRow.getData()) - rank(bRow.getData());
                             },
                             formatter: function (cell) {
                                 const d = cell.getRow().getData();
                                 if (d.listed === 'Listed') return '<i class="fas fa-check-square e1d-tick green" title="Listed"></i>';
                                 if (d.listed === 'Created') return '<span class="e1d-pill amber">Created</span>';
+                                if (d.listed === 'Out of stock') return '<span class="e1d-pill amber" title="Live on eBay with quantity 0 (Seller Hub: Out of stock)">Out of stock</span>';
                                 return '<i class="fas fa-times e1d-tick red" title="Missing L"></i>';
                             },
                         },
@@ -3294,7 +3297,7 @@
                 if (def && def.specName) {
                     if (!value) return { skip: 'blank' };
                     const key = gKey(def.specName);
-                    const missing = ['Listed', 'Created'].indexOf(String(data.listed)) === -1;
+                    const missing = ['Listed', 'Created', 'Out of stock'].indexOf(String(data.listed)) === -1;
                     if (CS_LOCKED_ALWAYS.has(key) || (missing && CS_LOCKED_MISSING.has(key))) return { skip: 'locked' };
                     return { kind: 'col', column: def.specName, value: value };
                 }

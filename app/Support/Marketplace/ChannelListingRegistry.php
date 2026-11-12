@@ -66,6 +66,7 @@ class ChannelListingRegistry
                     'model' => EbayMetric::class,
                     'column' => 'item_id',
                     'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES,
+                    'stock_column' => 'ebay_stock',
                 ],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
@@ -74,7 +75,7 @@ class ChannelListingRegistry
             'ebaytwo' => [
                 'dataView' => \App\Models\EbayTwoDataView::class,
                 'status' => \App\Models\EbayTwoListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => Ebay2Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES],
+                'listed' => ['type' => 'column', 'model' => Ebay2Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES, 'stock_column' => 'ebay_stock'],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
@@ -82,7 +83,7 @@ class ChannelListingRegistry
             'ebaythree' => [
                 'dataView' => \App\Models\EbayThreeDataView::class,
                 'status' => \App\Models\EbayThreeListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => Ebay3Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES],
+                'listed' => ['type' => 'column', 'model' => Ebay3Metric::class, 'column' => 'item_id', 'hide_statuses' => self::EBAY_NOT_LIVE_STATUSES, 'stock_column' => 'ebay_stock'],
                 'id_field' => 'eBay_item_id',
                 'buyer_tpl' => 'https://www.ebay.com/itm/{id}',
                 'seller_tpl' => 'https://www.ebay.com/sh/lst/active?keyword={id}&action=search',
@@ -542,6 +543,33 @@ class ChannelListingRegistry
                 $skus
             ),
         };
+    }
+
+    /**
+     * SKUs that are live on the marketplace but have no stock (Seller Hub "Out of stock").
+     * Only channels whose listed config names a stock_column (eBay 1 / 2 / 3). Those SKUs are still
+     * in loadListedIds(), so publishing never creates a duplicate; listing pages show them as a
+     * separate state that counts as neither Listed nor Missing L.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string> sku_lower => listing id
+     */
+    public static function loadOutOfStockIds(array $cfg, array $skus): array
+    {
+        $listed = $cfg['listed'] ?? [];
+        $stock = (string) ($listed['stock_column'] ?? '');
+        if ($stock === '' || ($listed['type'] ?? '') !== 'column') {
+            return [];
+        }
+
+        return ListingCountsEngine::outOfStockIdsFromColumn(
+            (string) ($listed['model'] ?? ''),
+            $skus,
+            (string) ($listed['column'] ?? 'item_id'),
+            $stock,
+            (array) ($listed['hide_statuses'] ?? []),
+            (string) ($listed['status_column'] ?? 'listing_status')
+        );
     }
 
     /**
