@@ -39,6 +39,16 @@
     }
     .inv5c-app-btn:hover { text-decoration: underline; }
     .inv5c-note { max-width: 920px; }
+    /* Adjustment history: keep the column header (Date / Activity / Created by ...) visible while the list scrolls.
+       The modal body is the scroll area, so the wrapper must not be its own scroll container. */
+    #inv5cHistoryModal .table-responsive { overflow: visible; }
+    #inv5cHistoryModal thead th {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: #dbe8fb;
+        box-shadow: 0 1px 0 #c5d4ea;
+    }
 </style>
 @endsection
 
