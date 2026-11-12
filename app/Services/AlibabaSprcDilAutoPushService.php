@@ -741,7 +741,12 @@ class AlibabaSprcDilAutoPushService
         }
         $sprice = round((float) $computed['sprice'], 2);
         $attrs = ['sprice' => $sprice];
-        if ($this->hasMetaColumns()) {
+        // A SKU whose last push failed keeps its 'error' status when only the S PRC is re-saved. The page reads the red X
+        // reason (and hides a dead listing from the blue count) only for status 'error': overwriting it with 'applied' on
+        // every S PRC change turned a dead listing blue again and made the job retry it at once. A real push result
+        // ('pushed') still replaces it.
+        $keepError = $status === 'applied' && ! empty($row['push_error_at']);
+        if ($this->hasMetaColumns() && ! $keepError) {
             $now = now()->toDateTimeString();
             $attrs['sprice_status'] = $status;
             $attrs['sprice_status_at'] = $now;
