@@ -214,6 +214,70 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 
+    public function test_diff_boost_does_not_depend_on_the_live_price_so_a_push_cannot_flip_it(): void
+    {
+        // Dil 20 → slab 60%: base (20 × 1.60) ÷ 0.80 = 40.00. Std 100 is 150% above it (> 20%) → +10 points → 70%
+        // → (20 × 1.70) ÷ 0.80 = 42.50. Read against the live Price, 40.00 gave 42.50 and 42.50 gave 40.00 (a flip-flop).
+        $ctx = $this->dilContext() + ['diff_adj' => ['gt_pct' => 20.0, 'points' => 10.0]];
+
+        $before = $this->dilTarget($this->row(['dil' => 20, 'price' => 40.00]), $ctx);
+        $after = $this->dilTarget($this->row(['dil' => 20, 'price' => 42.50]), $ctx);
+
+        $this->assertNotNull($before);
+        $this->assertNotNull($after);
+        $this->assertSame(42.5, $before['sprice']);
+        $this->assertSame($before['sprice'], $after['sprice']);
+    }
+
+    public function test_diff_boost_is_off_when_std_is_within_the_threshold_of_the_unboosted_price(): void
+    {
+        $ctx = $this->dilContext() + ['diff_adj' => ['gt_pct' => 20.0, 'points' => 10.0]];
+
+        // Std 45 is 12.5% above the 40.00 base: no boost, whatever the live price is.
+        $low = $this->dilTarget($this->row(['dil' => 20, 'standard_price' => 45, 'price' => 30.00]), $ctx);
+        $high = $this->dilTarget($this->row(['dil' => 20, 'standard_price' => 45, 'price' => 44.00]), $ctx);
+
+        $this->assertNotNull($low);
+        $this->assertSame(40.0, $low['sprice']);
+        $this->assertSame(40.0, $high['sprice']);
+    }
+
+    public function test_diff_boost_needs_a_listed_price(): void
+    {
+        $ctx = $this->dilContext() + ['diff_adj' => ['gt_pct' => 20.0, 'points' => 10.0]];
+
+        $out = $this->dilTarget($this->row(['dil' => 20, 'price' => 0]), $ctx);
+
+        $this->assertNotNull($out);
+        $this->assertSame(40.0, $out['sprice']);
+    }
+
+    public function test_extreme_price_change_is_held_for_a_person(): void
+    {
+        $svc = new AlibabaSprcDilAutoPushService;
+
+        // A 5.67 listing cut to 0.57 is a pack listing priced from a single-unit cost, not a reprice.
+        $this->assertNotNull($svc->extremeChangeReason(['price' => 5.67], 0.57));
+        $this->assertStringContainsString('not pushed, check the listing', (string) $svc->extremeChangeReason(['price' => 5.67], 0.57));
+        $this->assertNotNull($svc->extremeChangeReason(['price' => 10.0], 30.0));
+
+        // Ordinary moves go out, including the big but real ones seen in production.
+        $this->assertNull($svc->extremeChangeReason(['price' => 29.59], 20.66));
+        $this->assertNull($svc->extremeChangeReason(['price' => 4.84], 9.15));
+        $this->assertNull($svc->extremeChangeReason(['price' => 10.0], 25.0));
+        $this->assertNull($svc->extremeChangeReason(['price' => 10.0], 4.0));
+        // No live price or no target: nothing to compare.
+        $this->assertNull($svc->extremeChangeReason(['price' => 0], 5.0));
+        $this->assertNull($svc->extremeChangeReason(['price' => 5.0], 0.0));
+    }
+
+    public function test_the_extreme_change_message_counts_as_permanent_so_the_page_does_not_show_blue(): void
+    {
+        $msg = (string) (new AlibabaSprcDilAutoPushService)->extremeChangeReason(['price' => 5.67], 0.57);
+
+        $this->assertTrue(\App\Support\AlibabaPushError::isPermanentMessage($msg));
+    }
+
     public function test_saved_sprice_target_is_used_when_the_rule_gives_no_price(): void
     {
         $svc = new AlibabaSprcDilAutoPushService;

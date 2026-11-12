@@ -33,9 +33,47 @@ class AlibabaPushedPricePullService
 
     private const CHANNEL = 'alibaba';
 
-    private static function stateKey(string $sku): string
+    /** State is per listing when a product id is known; the SKU-only key is the one used before listings were tracked. */
+    private static function stateKey(string $sku, string $productId = ''): string
     {
-        return 'alibaba-pull-state:'.md5(strtoupper(trim($sku)));
+        $productId = trim($productId);
+
+        return 'alibaba-pull-state:'.md5(strtoupper(trim($sku)).($productId !== '' ? '|'.$productId : ''));
+    }
+
+    /** Alibaba product ids pushed for a SKU inside the re-read window (a SKU can be live on several products). */
+    private static function listingsKey(string $sku): string
+    {
+        return 'alibaba-pull-listings:'.md5(strtoupper(trim($sku)));
+    }
+
+    /** @return list<string> */
+    private function listings(string $sku): array
+    {
+        try {
+            $v = Cache::get(self::listingsKey($sku));
+
+            return is_array($v) ? array_values(array_filter(array_map('strval', $v), static fn ($p) => $p !== '')) : [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function registerListing(string $sku, string $productId): void
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return;
+        }
+        try {
+            $ids = $this->listings($sku);
+            if (! in_array($productId, $ids, true)) {
+                $ids[] = $productId;
+            }
+            Cache::put(self::listingsKey($sku), $ids, now()->addHours(self::WINDOW_HOURS + 6));
+        } catch (Throwable $e) {
+            // Only decides which listings are re-read.
+        }
     }
 
     /**
@@ -43,16 +81,18 @@ class AlibabaPushedPricePullService
      *
      * @return array{success:bool,price:?float,matched:bool,message:string}
      */
-    public function afterPush(string $sku, float $pushed): array
+    public function afterPush(string $sku, float $pushed, string $productId = ''): array
     {
         $sku = trim($sku);
+        $productId = trim($productId);
         $out = ['success' => false, 'price' => null, 'matched' => false, 'message' => ''];
         if ($sku === '' || ! ($pushed > 0)) {
             return $out;
         }
 
-        $out = $this->pullOne($sku, $pushed);
-        $this->remember($sku, $out['matched'], 1, $this->pushedAtFor($sku));
+        $this->registerListing($sku, $productId);
+        $out = $this->pullOne($sku, $pushed, $productId);
+        $this->remember($sku, $out['matched'], 1, $this->pushedAtFor($sku), $productId);
 
         return $out;
     }
@@ -81,31 +121,36 @@ class AlibabaPushedPricePullService
         foreach ($rows as $row) {
             $pushed = (float) $row->sprice_pushed_value;
             $pushedAt = (string) $row->sprice_pushed_at;
-            $state = $this->state((string) $row->sku);
-            // Done for this push: Alibaba showed the pushed price.
-            if (($state['pushed_at'] ?? null) === $pushedAt && ! empty($state['matched'])) {
-                continue;
-            }
-            // Price column already is the pushed price.
-            if (PushedListingPrice::same((float) $row->price, $pushed)) {
-                continue;
-            }
-            $attempts = ($state['pushed_at'] ?? null) === $pushedAt ? (int) ($state['attempts'] ?? 0) : 0;
-            $wait = $attempts >= self::FAST_ATTEMPTS ? self::SLOW_RETRY_MINUTES : self::RETRY_MINUTES;
-            $last = ($state['pushed_at'] ?? null) === $pushedAt ? (int) ($state['last'] ?? 0) : 0;
-            if ($last > 0 && $last > now()->subMinutes($wait)->getTimestamp()) {
-                continue;
-            }
-            $due[] = [$row, $pushed, $attempts];
-            if (count($due) >= $limit) {
-                break;
+            // A SKU pushed to several listings is re-read per listing; a SKU-only push has one entry ('').
+            $productIds = $this->listings((string) $row->sku);
+            foreach ($productIds === [] ? [''] : $productIds as $productId) {
+                $state = $this->state((string) $row->sku, $productId);
+                // Done for this push: Alibaba showed the pushed price.
+                if (($state['pushed_at'] ?? null) === $pushedAt && ! empty($state['matched'])) {
+                    continue;
+                }
+                // Price column already is the pushed price. Only meaningful for a SKU-level read: with several listings
+                // the shared pricing row says nothing about one listing.
+                if ($productId === '' && PushedListingPrice::same((float) $row->price, $pushed)) {
+                    continue;
+                }
+                $attempts = ($state['pushed_at'] ?? null) === $pushedAt ? (int) ($state['attempts'] ?? 0) : 0;
+                $wait = $attempts >= self::FAST_ATTEMPTS ? self::SLOW_RETRY_MINUTES : self::RETRY_MINUTES;
+                $last = ($state['pushed_at'] ?? null) === $pushedAt ? (int) ($state['last'] ?? 0) : 0;
+                if ($last > 0 && $last > now()->subMinutes($wait)->getTimestamp()) {
+                    continue;
+                }
+                $due[] = [$row, $pushed, $attempts, $productId];
+                if (count($due) >= $limit) {
+                    break 2;
+                }
             }
         }
 
         $stats['due'] = count($due);
-        foreach ($due as [$row, $pushed, $attempts]) {
-            $res = $this->pullOne((string) $row->sku, $pushed);
-            $this->remember((string) $row->sku, $res['matched'], $attempts + 1, (string) $row->sprice_pushed_at);
+        foreach ($due as [$row, $pushed, $attempts, $productId]) {
+            $res = $this->pullOne((string) $row->sku, $pushed, $productId);
+            $this->remember((string) $row->sku, $res['matched'], $attempts + 1, (string) $row->sprice_pushed_at, $productId);
             if ($res['success']) {
                 $stats['pulled']++;
                 if ($res['matched']) {
@@ -125,11 +170,17 @@ class AlibabaPushedPricePullService
     /**
      * @return array{success:bool,price:?float,matched:bool,message:string}
      */
-    private function pullOne(string $sku, float $pushed): array
+    private function pullOne(string $sku, float $pushed, string $productId = ''): array
     {
         try {
+            $key = strtoupper(trim($sku));
             $row = app(ChannelPushedPricePullService::class)
-                ->pullSkus(self::CHANNEL, [$sku], [strtoupper(trim($sku)) => $pushed])[0] ?? null;
+                ->pullSkus(
+                    self::CHANNEL,
+                    [$sku],
+                    [$key => $pushed],
+                    trim($productId) !== '' ? [$key => trim($productId)] : []
+                )[0] ?? null;
         } catch (Throwable $e) {
             Log::warning('[AlibabaPushedPricePull] pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
 
@@ -162,10 +213,10 @@ class AlibabaPushedPricePullService
     }
 
     /** @return array<string, mixed> */
-    private function state(string $sku): array
+    private function state(string $sku, string $productId = ''): array
     {
         try {
-            $v = Cache::get(self::stateKey($sku));
+            $v = Cache::get(self::stateKey($sku, $productId));
 
             return is_array($v) ? $v : [];
         } catch (Throwable $e) {
@@ -173,10 +224,10 @@ class AlibabaPushedPricePullService
         }
     }
 
-    private function remember(string $sku, bool $matched, int $attempts, string $pushedAt): void
+    private function remember(string $sku, bool $matched, int $attempts, string $pushedAt, string $productId = ''): void
     {
         try {
-            Cache::put(self::stateKey($sku), [
+            Cache::put(self::stateKey($sku, $productId), [
                 'pushed_at' => $pushedAt,
                 'matched' => $matched,
                 'attempts' => $attempts,

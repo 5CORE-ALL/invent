@@ -463,41 +463,50 @@ class AlibabaAnalyticsController extends Controller
                 continue;
             }
 
-            $sheet = $this->sheetRowForPushSku($sku);
-            $productId = $sheet ? trim((string) $sheet->product_id) : '';
-            if ($productId === '' && Schema::hasTable('alibaba_metrics')) {
-                $productId = trim((string) AlibabaMetric::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                    ->value('product_id'));
+            // The listing(s) to push to. An explicit product id (the push job sends one per listing) pushes that listing
+            // only. Without one, every Alibaba listing of the SKU gets the price: the SKU alone used to resolve to ONE
+            // product, so a SKU live on two products kept the other at its old price (blue badge for ever).
+            $explicitPid = trim((string) ($update['product_id'] ?? ''));
+            if ($explicitPid !== '') {
+                if (! $this->isKnownAlibabaProductId($explicitPid)) {
+                    $failed++;
+                    $results[] = ['sku' => $sku, 'success' => false, 'product_id' => $explicitPid, 'message' => 'Unknown Alibaba product id for this SKU.'];
+                    continue;
+                }
+                $productIds = [$explicitPid];
+            } else {
+                $productIds = $this->productIdsForPushSku($sku);
             }
-            if ($productId === '') {
+            if ($productIds === []) {
                 $failed++;
                 $results[] = ['sku' => $sku, 'success' => false, 'message' => 'No Alibaba product id for this SKU.'];
                 continue;
             }
 
-            $result = $api->pushListedPrice($productId, $price, $sku);
-            if (empty($result['success'])) {
-                $failed++;
+            foreach ($productIds as $productId) {
+                $result = $api->pushListedPrice($productId, $price, $sku);
+                if (empty($result['success'])) {
+                    $failed++;
+                    $results[] = [
+                        'sku' => $sku,
+                        'success' => false,
+                        'product_id' => $productId,
+                        'message' => (string) ($result['message'] ?? 'Alibaba price update failed.'),
+                    ];
+                    continue;
+                }
+
+                // Alibaba reviews listing changes, so the Price column is not overwritten here. A live pull / sync does it.
+                $pushed++;
+                $lastPrice = $price;
+                $lastSku = $sku;
                 $results[] = [
                     'sku' => $sku,
-                    'success' => false,
+                    'success' => true,
                     'product_id' => $productId,
-                    'message' => (string) ($result['message'] ?? 'Alibaba price update failed.'),
+                    'price' => $price,
                 ];
-                continue;
             }
-
-            // Alibaba reviews listing changes, so the Price column is not overwritten here. A live pull / sync does it.
-            $pushed++;
-            $lastPrice = $price;
-            $lastSku = $sku;
-            $results[] = [
-                'sku' => $sku,
-                'success' => true,
-                'product_id' => $productId,
-                'price' => $price,
-            ];
         }
 
         if ($pushed === 0) {
@@ -523,6 +532,50 @@ class AlibabaAnalyticsController extends Controller
             'failed' => $failed,
             'results' => $results,
         ], $failed === 0 ? 200 : 422);
+    }
+
+    /** A product id the app already knows (sheet or metrics): keeps a pasted id from pushing to a foreign listing. */
+    protected function isKnownAlibabaProductId(string $productId): bool
+    {
+        if (AlibabaSheetPrice::query()->where('product_id', $productId)->exists()) {
+            return true;
+        }
+
+        return Schema::hasTable('alibaba_metrics')
+            && AlibabaMetric::query()->where('product_id', $productId)->exists();
+    }
+
+    /**
+     * Every Alibaba product id a SKU's price goes to. All listings whose sheet SKU is exactly this SKU; otherwise the one
+     * product sheetRowForPushSku() resolves (pack-suffix match), then the metrics row. Same single product as before
+     * for a SKU that is on one listing.
+     *
+     * @return list<string>
+     */
+    protected function productIdsForPushSku(string $sku): array
+    {
+        $want = strtoupper(trim($sku));
+        $exact = AlibabaSheetPrice::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$want])
+            ->pluck('product_id')
+            ->map(fn ($p) => trim((string) $p))
+            ->filter(fn ($p) => $p !== '')
+            ->unique()
+            ->values()
+            ->all();
+        if ($exact !== []) {
+            return $exact;
+        }
+
+        $sheet = $this->sheetRowForPushSku($sku);
+        $productId = $sheet ? trim((string) $sheet->product_id) : '';
+        if ($productId === '' && Schema::hasTable('alibaba_metrics')) {
+            $productId = trim((string) AlibabaMetric::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$want])
+                ->value('product_id'));
+        }
+
+        return $productId === '' ? [] : [$productId];
     }
 
     protected function sheetRowForPushSku(string $sku): ?AlibabaSheetPrice

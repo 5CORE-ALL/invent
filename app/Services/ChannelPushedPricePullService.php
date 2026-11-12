@@ -32,7 +32,7 @@ class ChannelPushedPricePullService
      * @param  array<string, float|int|string>  $expectedBySku
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string,skipped?:bool}>
      */
-    public function pullSkus(string $channel, array $skus, array $expectedBySku = []): array
+    public function pullSkus(string $channel, array $skus, array $expectedBySku = [], array $productIdBySku = []): array
     {
         $channel = strtolower(trim($channel));
         $skus = array_values(array_unique(array_filter(array_map(static function ($s) {
@@ -98,7 +98,16 @@ class ChannelPushedPricePullService
         }
 
         if ($channel === 'alibaba') {
-            return $this->pullAlibaba($skus, $expected);
+            // $productIdBySku: a SKU live on several Alibaba products is read per listing, not once per SKU.
+            $pids = [];
+            foreach ($productIdBySku as $k => $pid) {
+                $k = strtoupper(trim((string) $k));
+                if ($k !== '' && trim((string) $pid) !== '') {
+                    $pids[$k] = trim((string) $pid);
+                }
+            }
+
+            return $this->pullAlibaba($skus, $expected, $pids);
         }
 
         if ($channel === 'faire') {
@@ -424,18 +433,28 @@ class ChannelPushedPricePullService
      *
      * @param  list<string>  $skus
      * @param  array<string, float>  $expectedBySku
+     * @param  array<string, string>  $productIdBySku  upper-case SKU => Alibaba product id of the listing to read
      * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
      */
-    private function pullAlibaba(array $skus, array $expectedBySku = []): array
+    private function pullAlibaba(array $skus, array $expectedBySku = [], array $productIdBySku = []): array
     {
         $api = app(AlibabaApiService::class);
         $out = [];
         foreach ($skus as $sku) {
             try {
-                $sheet = AlibabaSheetPrice::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
-                    ->first();
-                $productId = $sheet ? trim((string) $sheet->product_id) : '';
+                $givenPid = trim((string) ($productIdBySku[strtoupper(trim($sku))] ?? ''));
+                if ($givenPid !== '') {
+                    // A specific listing: the sheet row of THAT product (matching the SKU, or the product's only row).
+                    // Looking the SKU up alone returns the first listing and left the others on their old Price.
+                    $onProduct = AlibabaSheetPrice::query()->where('product_id', $givenPid)->get();
+                    $sheet = $onProduct->first(static fn ($r) => strtoupper(trim((string) $r->sku)) === strtoupper(trim($sku)))
+                        ?? ($onProduct->count() === 1 ? $onProduct->first() : null);
+                } else {
+                    $sheet = AlibabaSheetPrice::query()
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                        ->first();
+                }
+                $productId = $givenPid !== '' ? $givenPid : ($sheet ? trim((string) $sheet->product_id) : '');
                 if ($productId === '' && \Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')) {
                     $productId = trim((string) AlibabaMetric::query()
                         ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
@@ -516,7 +535,14 @@ class ChannelPushedPricePullService
                 if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')) {
                     AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
                 }
-                if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')) {
+                // A SKU live on several Alibaba products has one pricing row but a different live price per listing: the
+                // Price the page shows comes from each listing's own sheet row (saved above), so the shared pricing row is
+                // not overwritten by whichever listing was read last.
+                $siblingListings = $givenPid !== '' && AlibabaSheetPrice::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$want])
+                    ->where('product_id', '!=', $productId)
+                    ->exists();
+                if (! $siblingListings && \Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')) {
                     // A pack listing is stored as "DM E9 GLD 9PCS" on the sheet but the product master (and the page row
                     // that carries INV) is "DM E9 GLD". Both pricing rows hold the live price: updating only the
                     // suffixed one left the INV row on its old price (blue badge stuck for ever, 56 SKUs).
@@ -535,7 +561,7 @@ class ChannelPushedPricePullService
                         })
                         ->update(['price' => $price]);
                 }
-                if ($sheet === null && $productId !== '') {
+                if ($sheet === null && $givenPid === '' && $productId !== '') {
                     // The sheet row can carry the pack suffix the SKU lookup did not match: keep its Price in step too.
                     AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
                 }

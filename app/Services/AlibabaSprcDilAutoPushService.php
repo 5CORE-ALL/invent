@@ -162,6 +162,11 @@ class AlibabaSprcDilAutoPushService
                         if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
                             $this->saveSprice($row, $computed, 'pushed');
                             $stats['applied']++;
+                        } elseif (! $dryRun && ! empty($row['push_error_at']) && (int) ($row['listings'] ?? 1) <= 1) {
+                            // The listing is at S PRC now (fixed on Alibaba, or pushed by hand): drop the stale failure so the
+                            // red X goes. Not for a SKU on several listings: the failure may belong to a sibling.
+                            \App\Support\AlibabaPushError::forget((string) $row['sku']);
+                            $this->saveSprice($row, $computed, 'pushed');
                         }
                         $stats['skipped_unchanged']++;
                         continue;
@@ -198,7 +203,7 @@ class AlibabaSprcDilAutoPushService
                         // Last push already equals the target. Refresh the live Alibaba Price column, no push.
                         // The blue catch-up handles a Price that stayed different.
                         if (! $dryRun && $canPush) {
-                            $pull = $this->pullLive((string) $row['sku']);
+                            $pull = $this->pullLive((string) $row['sku'], null, (string) ($row['product_id'] ?? ''));
                             if ($pull && ! empty($pull['success'])) {
                                 $stats['price_repaired']++;
                             }
@@ -229,7 +234,7 @@ class AlibabaSprcDilAutoPushService
                     if ($blueCatchUp) {
                         // Pull the live Alibaba price first: Alibaba may already be right and only the Price column
                         // stale. A matching live price is written, no push.
-                        $pull = $this->pullLive((string) $row['sku'], $sprice);
+                        $pull = $this->pullLive((string) $row['sku'], $sprice, (string) ($row['product_id'] ?? ''));
                         if ($sleepMs > 0) {
                             usleep($sleepMs * 1000);
                         }
@@ -239,6 +244,18 @@ class AlibabaSprcDilAutoPushService
                             $this->saveSprice($row, $computed, 'pushed');
                             continue;
                         }
+                    }
+
+                    $guard = $this->extremeChangeReason($row, $sprice);
+                    if ($guard !== null) {
+                        // A change this large is almost always a wrong pack size / unit price, not a real reprice:
+                        // never send it unattended. Shown on the red X, retried once a day.
+                        $stats['skipped']++;
+                        $stats['errors'][] = $row['sku'].': '.$guard;
+                        $this->log($logger, 'Skip '.$row['sku'].' ('.($row['product_id'] ?? '').'): '.$guard);
+                        \App\Support\AlibabaPushError::remember((string) $row['sku'], $guard);
+                        $this->savePushMeta((string) $row['sku'], 'error', null);
+                        continue;
                     }
 
                     $this->pushOne($row, $computed, $stats, $logger);
@@ -427,9 +444,21 @@ class AlibabaSprcDilAutoPushService
             );
         }
 
-        // Diff rule (same as eBay 1 / Faire): Diff = (Std Prc − Price) / Price above the saved % adds the saved points to the Target.
-        $diffPct = \App\Support\EbayRuleSprice::stdPriceDiffPct($std, (float) ($row['price'] ?? 0));
-        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+        // Diff rule: Diff = (Std Prc − reference) / reference above the saved % adds the saved points to the Target.
+        // The reference is the rule price WITHOUT the Diff points, never the live Alibaba Price (same as PLS, Amazon,
+        // Purchasing Power and Shein). Read against the live Price, the boosted price is pushed -> Diff drops under the
+        // threshold -> the boost is removed -> the lower price is pushed -> Diff rises -> the boost is back, so a SKU
+        // alternated between two prices on every run and its blue badge never cleared. A listed SKU (live Price > 0)
+        // and a Std Prc are still required.
+        if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+            $diffBase = AmazonDilGroiRule::suggestedPrice($lp, 0.0, $target, 0.0, $margin);
+            if ($diffBase !== null && $diffBase > 0) {
+                $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
+                    \App\Support\EbayRuleSprice::stdPriceDiffPct($std, $diffBase),
+                    $ctx['diff_adj'] ?? null
+                ), 2));
+            }
+        }
 
         $raw = round(($lp * (1 + $target / 100)) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {
@@ -532,13 +561,14 @@ class AlibabaSprcDilAutoPushService
 
         $out = [];
         $seen = [];
+        $perSku = [];
         foreach ($pageRows as $r) {
             if (! is_array($r) || ! empty($r['is_parent_summary']) || ! empty($r['is_parent_row']) || ! empty($r['is_parent'])) {
                 continue;
             }
             $sku = trim((string) ($r['sku'] ?? ''));
             $key = strtoupper($sku);
-            if ($sku === '' || isset($seen[$key]) || str_contains($key, 'PARENT')) {
+            if ($sku === '' || str_contains($key, 'PARENT')) {
                 continue;
             }
             if ($want !== null && ! isset($want[$key])) {
@@ -546,17 +576,28 @@ class AlibabaSprcDilAutoPushService
             }
             $inv = (float) ($r['INV'] ?? 0);
             $price = (float) ($r['price'] ?? 0);
+            $productId = trim((string) ($r['product_id'] ?? ''));
             // No listing price or no product id = not on Alibaba, so nothing to push to.
-            if (! ($inv > 0) || ! ($price > 0) || trim((string) ($r['product_id'] ?? '')) === '') {
+            if (! ($inv > 0) || ! ($price > 0) || $productId === '') {
                 continue;
             }
-            $seen[$key] = true;
+            // One row per LISTING (SKU + Alibaba product id), not per SKU. The same SKU can be live on several Alibaba
+            // products, each with its own price. Keeping only the first row per SKU left the other listings on their old
+            // price for ever: the kept row already equalled S PRC ("unchanged") and the page counted the rest as blue.
+            $listingKey = $key.'|'.$productId;
+            if (isset($seen[$listingKey])) {
+                continue;
+            }
+            $seen[$listingKey] = true;
+            $perSku[$key] = ($perSku[$key] ?? 0) + 1;
 
             $status = strtolower((string) ($r['SPRICE_STATUS'] ?? ''));
             $statusAt = $r['SPRICE_STATUS_UPDATED_AT'] ?? null;
 
             $out[] = [
                 'sku' => $sku,
+                'product_id' => $productId,
+                'listings' => 1,
                 'price' => $price,
                 'inv' => $inv,
                 // Same as the page Dil: raw (OV L30 / INV) × 100, not rounded before slab match.
@@ -581,9 +622,57 @@ class AlibabaSprcDilAutoPushService
             }
         }
 
-        usort($out, static fn ($a, $b) => strnatcasecmp($a['sku'], $b['sku']));
+        foreach ($out as &$o) {
+            $o['listings'] = (int) ($perSku[strtoupper($o['sku'])] ?? 1);
+            if ($o['listings'] > 1) {
+                // The push-meta columns are per SKU, so one listing's push would hold or "unchange" its siblings.
+                // A SKU on several listings uses the push time / value remembered for this listing alone.
+                $meta = $this->listingPushMeta($o['sku'], $o['product_id']);
+                $o['pushed_at'] = $meta['at'] ?? null;
+                $o['pushed_value'] = isset($meta['value']) ? (float) $meta['value'] : null;
+            }
+        }
+        unset($o);
+
+        usort($out, static function ($a, $b): int {
+            $c = strnatcasecmp($a['sku'], $b['sku']);
+
+            return $c !== 0 ? $c : strnatcasecmp((string) $a['product_id'], (string) $b['product_id']);
+        });
 
         return $out;
+    }
+
+    private static function listingMetaKey(string $sku, string $productId): string
+    {
+        return 'alibaba-listing-push:'.md5(strtoupper(trim($sku)).'|'.trim($productId));
+    }
+
+    /** @return array{at?:string,value?:float} */
+    protected function listingPushMeta(string $sku, string $productId): array
+    {
+        try {
+            $v = Cache::get(self::listingMetaKey($sku, $productId));
+
+            return is_array($v) ? $v : [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    protected function rememberListingPush(string $sku, string $productId, float $price): void
+    {
+        if (trim($productId) === '') {
+            return;
+        }
+        try {
+            Cache::put(self::listingMetaKey($sku, $productId), [
+                'at' => now()->toDateTimeString(),
+                'value' => $price,
+            ], now()->addDays(14));
+        } catch (Throwable $e) {
+            // Only spaces out re-pushes of a SKU that sits on several listings.
+        }
     }
 
     /**
@@ -595,6 +684,35 @@ class AlibabaSprcDilAutoPushService
     protected function isUnchanged(array $row, array $computed): bool
     {
         return PushedListingPrice::same($row['pushed_value'] ?? null, $computed['sprice']);
+    }
+
+    /** The live price may move to S PRC by at most this factor either way in one unattended push. */
+    public const MAX_CHANGE_FACTOR = 2.5;
+
+    /**
+     * Reason an unattended push must not go out, or null. A push that cuts the live price to under 1 / 2.5 of itself
+     * (or raises it more than 2.5 times) means the listing and the SKU's price are not the same thing (a pack listing
+     * priced from a single-unit cost, a wrong Price column). Needs a person to look; the message is on the red X.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public function extremeChangeReason(array $row, float $sprice): ?string
+    {
+        $live = (float) ($row['price'] ?? 0);
+        if (! ($live > 0) || ! ($sprice > 0)) {
+            return null;
+        }
+        $ratio = $sprice / $live;
+        if ($ratio >= 1 / self::MAX_CHANGE_FACTOR && $ratio <= self::MAX_CHANGE_FACTOR) {
+            return null;
+        }
+
+        return sprintf(
+            'Price change $%s to $%s is more than %sx, not pushed, check the listing (pack size / unit price) on Alibaba.',
+            number_format($live, 2),
+            number_format($sprice, 2),
+            rtrim(rtrim(number_format(self::MAX_CHANGE_FACTOR, 1), '0'), '.')
+        );
     }
 
     protected function withinCooldown(string $at, int $cooldownMinutes): bool
@@ -649,17 +767,20 @@ class AlibabaSprcDilAutoPushService
     protected function pushOne(array $row, array $computed, array &$stats, ?callable $logger): void
     {
         $sku = (string) $row['sku'];
+        $productId = trim((string) ($row['product_id'] ?? ''));
         $price = round((float) $computed['sprice'], 2);
-        $result = $this->pushPrice($sku, $price);
+        // Push to THIS listing's product id: the SKU alone resolves to one product only.
+        $result = $this->pushPrice($sku, $price, $productId);
 
         if (! empty($result['success'])) {
             $stats['pushed']++;
             $this->savePushMeta($sku, 'pushed', $price);
+            $this->rememberListingPush($sku, $productId, $price);
             \App\Support\AlibabaPushError::forget($sku);
             // Push and pull together, same as Amazon: read the live price now. Alibaba usually still shows the old
             // price while it reviews the change, so alibaba:pull-pushed-prices keeps re-reading it.
             try {
-                $pull = app(AlibabaPushedPricePullService::class)->afterPush($sku, $price);
+                $pull = app(AlibabaPushedPricePullService::class)->afterPush($sku, $price, $productId);
                 if (! empty($pull['success'])) {
                     $stats['pulled'] = ($stats['pulled'] ?? 0) + 1;
                 }
@@ -685,11 +806,16 @@ class AlibabaSprcDilAutoPushService
      *
      * @return array{success?:bool,price?:?float,message?:string}|null
      */
-    protected function pullLive(string $sku, ?float $expected = null): ?array
+    protected function pullLive(string $sku, ?float $expected = null, string $productId = ''): ?array
     {
         try {
             return app(ChannelPushedPricePullService::class)
-                ->pullSkus(self::CHANNEL, [$sku], $expected !== null ? [strtoupper(trim($sku)) => $expected] : [])[0] ?? null;
+                ->pullSkus(
+                    self::CHANNEL,
+                    [$sku],
+                    $expected !== null ? [strtoupper(trim($sku)) => $expected] : [],
+                    trim($productId) !== '' ? [strtoupper(trim($sku)) => trim($productId)] : []
+                )[0] ?? null;
         } catch (Throwable $e) {
             Log::warning('[AlibabaSprcDilAutoPush] live price pull failed', ['channel' => self::CHANNEL, 'sku' => $sku, 'error' => $e->getMessage()]);
 
@@ -698,11 +824,15 @@ class AlibabaSprcDilAutoPushService
     }
 
     /** @return array{success:bool,message?:string,price?:?float} */
-    protected function pushPrice(string $sku, float $price): array
+    protected function pushPrice(string $sku, float $price, string $productId = ''): array
     {
         try {
+            $update = ['sku' => $sku, 'price' => $price];
+            if (trim($productId) !== '') {
+                $update['product_id'] = trim($productId);
+            }
             $req = Request::create('/alibaba-analytics/push-price', 'POST', [
-                'updates' => [['sku' => $sku, 'price' => $price]],
+                'updates' => [$update],
             ]);
             $req->headers->set('Accept', 'application/json');
             $res = app(AlibabaAnalyticsController::class)->pushPrice($req, app(AlibabaApiService::class));

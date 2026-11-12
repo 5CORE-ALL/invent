@@ -154,6 +154,8 @@ class AlibabaPushError
             'was not found on the Alibaba listing',
             'Alibaba SKU id is missing',
             'SKU prices could not be read',
+            // AlibabaSprcDilAutoPushService::extremeChangeReason: the listing needs a person, not another retry.
+            'not pushed, check the listing',
         ] as $needle) {
             if (stripos($message, $needle) !== false) {
                 return true;
