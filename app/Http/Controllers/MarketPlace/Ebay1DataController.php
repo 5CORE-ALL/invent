@@ -398,24 +398,40 @@ class Ebay1DataController extends Controller
         @set_time_limit(300);
 
         // One or several columns: every SKU is changed once on eBay, whatever the number of columns.
+        // A column goes by its exact spelling (case and spacing aside). "Type-", "Type:" and "Type" are different
+        // columns here even though the page shows them together: deleting "Type-" must never take the real "Type"
+        // (required by eBay in many categories) off a listing.
+        $exactOf = static fn (string $n): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', $n) ?? $n));
         $names = [];
         foreach (array_merge((array) ($validated['names'] ?? []), isset($validated['name']) ? [$validated['name']] : []) as $candidate) {
             $candidate = trim((string) $candidate);
             if ($candidate !== '' && $this->aspectKey($candidate) !== '') {
-                $names[$this->aspectKey($candidate)] = $candidate;
+                $names[$exactOf($candidate)] = $candidate;
             }
         }
         if ($names === []) {
             return response()->json(['success' => false, 'message' => 'Choose a column.'], 422);
         }
-        $wantedKeys = array_keys($names);
+        $wantedExact = array_keys($names);
+        // Only a plain name (letters, digits and single spaces) owns the shared key tables (Source Data, edited cells).
+        // A spelling variant such as "Type-" leaves the key of the real column alone.
+        $plainKeys = [];
+        foreach ($wantedExact as $exact) {
+            if ($exact === trim(preg_replace('/\s+/u', ' ', preg_replace('/[^a-z0-9 ]+/i', '', $exact) ?? $exact) ?? $exact)) {
+                $plainKeys[] = $this->aspectKey($exact);
+            }
+        }
 
         // Columns added by hand to this category tab are dropped as well (the live listings below are separate).
         if (array_key_exists('category', $validated) && Schema::hasTable($this->t('extra_columns'))) {
             $hash = $this->categoryHash((string) $validated['category']);
-            DB::table($this->t('extra_columns'))->where('category_hash', $hash)->whereIn('name_key', $wantedKeys)->delete();
-            if (Schema::hasTable($this->t('column_sources'))) {
-                DB::table($this->t('column_sources'))->where('category_hash', $hash)->whereIn('column_key', $wantedKeys)->delete();
+            foreach (DB::table($this->t('extra_columns'))->where('category_hash', $hash)->get(['id', 'name']) as $extra) {
+                if (in_array($exactOf((string) $extra->name), $wantedExact, true)) {
+                    DB::table($this->t('extra_columns'))->where('id', $extra->id)->delete();
+                }
+            }
+            if ($plainKeys !== [] && Schema::hasTable($this->t('column_sources'))) {
+                DB::table($this->t('column_sources'))->where('category_hash', $hash)->whereIn('column_key', $plainKeys)->delete();
             }
             Cache::forget($this->cacheKey('column_options'));
         }
@@ -424,9 +440,9 @@ class Ebay1DataController extends Controller
         $results = [];
 
         // The app's own copy of the item specifics of a SKU loses the columns.
-        $dropStored = function (string $key) use ($wantedKeys): void {
-            if (Schema::hasTable($this->t('pending_specifics'))) {
-                DB::table($this->t('pending_specifics'))->where('sku', $key)->whereIn('name_key', $wantedKeys)->delete();
+        $dropStored = function (string $key) use ($wantedExact, $plainKeys, $exactOf): void {
+            if ($plainKeys !== [] && Schema::hasTable($this->t('pending_specifics'))) {
+                DB::table($this->t('pending_specifics'))->where('sku', $key)->whereIn('name_key', $plainKeys)->delete();
             }
             $stored = DB::table($this->t('item_specifics'))->where('sku', $key)->first();
             if (! $stored) {
@@ -435,7 +451,7 @@ class Ebay1DataController extends Controller
             $decoded = json_decode((string) $stored->specifics, true);
             $decoded = is_array($decoded) ? $decoded : [];
             foreach (array_keys($decoded) as $storedName) {
-                if (in_array($this->aspectKey((string) $storedName), $wantedKeys, true)) {
+                if (in_array($exactOf((string) $storedName), $wantedExact, true)) {
                     unset($decoded[$storedName]);
                 }
             }
@@ -480,7 +496,8 @@ class Ebay1DataController extends Controller
                     $ctx['siteId'],
                     $ctx['authToken'],
                     $item,
-                    array_values($names)
+                    array_values($names),
+                    true
                 );
             } catch (\Throwable $e) {
                 Log::warning('Ebay1Data: delete specific failed', ['sku' => $sku, 'names' => array_values($names), 'error' => $e->getMessage()]);
