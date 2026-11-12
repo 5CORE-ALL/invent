@@ -1553,6 +1553,8 @@ class GoogleShoppingCampaignsController extends Controller
         $summary['ads_needed_error'] = $adsNeeded['error'];
         $summary['fix_needed_total'] = $fixNeeded['total'];
         $summary['fix_needed_error'] = $fixNeeded['error'];
+        // N Target badge: negative keywords of the campaigns shown (total) + how many of them have none (the red M).
+        $summary = array_merge($summary, $this->negativeTargetSummary($collection));
 
         [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
         $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
@@ -4938,6 +4940,37 @@ class GoogleShoppingCampaignsController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * Totals for the N Target badge over the campaigns in the (filtered) grid result.
+     * Shopping only; other channels return nothing.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection
+     * @return array{n_target_total?: int, n_target_missing?: int, n_target_campaigns?: int}
+     */
+    private function negativeTargetSummary($collection): array
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return [];
+        }
+        $ids = [];
+        foreach ($collection as $row) {
+            $ids[] = (string) (is_object($row) ? ($row->campaign_id ?? '') : ($row['campaign_id'] ?? ''));
+        }
+        $counts = $this->negativeTargetCountsForPage($ids);
+        $missing = 0;
+        foreach ($counts as $n) {
+            if ((int) $n === 0) {
+                $missing++;
+            }
+        }
+
+        return [
+            'n_target_total' => (int) array_sum($counts),
+            'n_target_missing' => $missing,
+            'n_target_campaigns' => count($counts),
+        ];
     }
 
     /**

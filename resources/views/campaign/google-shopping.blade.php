@@ -817,6 +817,10 @@
                                         <span id="gacKpi_l30_bgt_total" data-metric="l30_bgt_total" data-label="L30 Total BGT" data-kpi="l30_bgt_total"
                                             class="faas-stat-badge gac-trend-none badge-chart-link"
                                             title="Daily budgets summed over the last 30 days, all campaigns (Active, Paused, Removed …). Click for history."><i class="summary-trend-dot none" data-kpi-dot="l30_bgt_total" title="Click for history"></i>TOTAL BGT:<span class="gac-kpi-val">—</span></span>
+                                        {{-- N TARGET: negative keywords of the campaigns shown (total) + campaigns with none (M). Click = show only the M campaigns (same as the N Tgt filter). --}}
+                                        <span id="gacNTargetBadge" data-label="N Target" role="button" tabindex="0"
+                                            class="faas-stat-badge gac-fix-badge"
+                                            title="Negative keywords (N Target) of the campaigns shown. Click to show only the campaigns with none (M).">N TARGET:<span id="gacNTargetValue">—</span><span class="gac-util-pct" id="gacNTargetMissing" title="Campaigns with no negative keywords (M)"></span></span>
                                     @endif
                                 </div>
                             </div>
@@ -2748,6 +2752,18 @@
                         if (fixBadge) fixBadge.title = (Number(s.fix_needed_total) || 0) + ' campaign(s) need a Fix (Item IDs on Google Ads differ from the SKUs with stock). Click to show only those rows' + (gacFixFilterOn ? ' (filter is ON — click to show all).' : '.');
                     }
                 }
+                var ntEl = document.getElementById('gacNTargetValue');
+                if (ntEl) {
+                    var ntTotal = Number(s.n_target_total) || 0;
+                    var ntMissing = Number(s.n_target_missing) || 0;
+                    var ntCamps = Number(s.n_target_campaigns) || 0;
+                    var ntMissEl = document.getElementById('gacNTargetMissing');
+                    var ntBadge = document.getElementById('gacNTargetBadge');
+                    ntEl.textContent = ntTotal.toLocaleString();
+                    if (ntMissEl) ntMissEl.textContent = ntMissing ? ('· M ' + ntMissing.toLocaleString()) : '';
+                    if (ntBadge) ntBadge.title = ntTotal.toLocaleString() + ' negative keyword(s) across ' + ntCamps.toLocaleString() + ' campaign(s) shown; '
+                        + ntMissing.toLocaleString() + ' campaign(s) have none (M). Click to show only the M campaigns' + (ntBadge.classList.contains('is-on') ? ' (filter is ON — click to show all).' : '.');
+                }
                 var needEl = document.getElementById('gacAdsNeededValue');
                 if (needEl) {
                     var needBadge = document.getElementById('gacAdsNeededBadge');
@@ -3235,6 +3251,24 @@
                     };
                     fb.addEventListener('click', toggle);
                     fb.addEventListener('keydown', toggle);
+                })();
+                // N TARGET badge: toggle the "N Tgt = M (none)" filter (drives the same select as the toolbar filter).
+                (function() {
+                    var nb = document.getElementById('gacNTargetBadge');
+                    var sel = document.getElementById('gac-filter-ntarget');
+                    if (!nb || !sel) return;
+                    var sync = function() { nb.classList.toggle('is-on', sel.value === 'm'); };
+                    var toggle = function(ev) {
+                        if (ev && ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
+                        if (ev) ev.preventDefault();
+                        sel.value = (sel.value === 'm') ? 'all' : 'm';
+                        sync();
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    };
+                    nb.addEventListener('click', toggle);
+                    nb.addEventListener('keydown', toggle);
+                    sel.addEventListener('change', sync);
+                    sync();
                 })();
                 // N Target number → Keyword Planner modal.
                 document.addEventListener('click', function (e) {
