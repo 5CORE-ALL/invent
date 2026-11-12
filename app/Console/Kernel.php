@@ -1521,6 +1521,19 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Headless Dil vs PRMT% for /ebay-tabulator-view, /ebay2-tabulator-view, /ebay3-tabulator-view. The page's own
+        // Dil→PRMT auto-apply is off on these pages (CH_STD_SERVER_OWNED), so without this job a Dil change never reached
+        // eBay. Per listing: listing Dil → PRMT% slab → saved prmt_pct → Push PRMT% (markdown sale) when eBay's % differs.
+        // Every 10 min, 24/7, page closed. Starts 1 min after each account's blue push so the tabulator rows load apart.
+        foreach (['ebay1' => '1-59/10', 'ebay2' => '4-59/10', 'ebay3' => '7-59/10'] as $ebayAccount => $ebayMinutes) {
+            $schedule->command('ebay:dil-prmt-auto-apply '.$ebayAccount.' --respect-switch')
+                ->cron($ebayMinutes.' * * * *')
+                ->name($ebayAccount.'-dil-prmt-auto-apply')
+                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // eBay 1 volume pricing (Buy 2/3/4 = Weight + Dil + Std NPFT) → eBay promotions. Only listings whose
         // discount changed are re-sent. /ebay-volume-pricing does not need to be open. Runs only when the
         // page has Rules On and Auto push On. Do NOT wrap 21:30 in $ist() — IST window ends at 20:00.
@@ -1989,15 +2002,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // PEF Dil vs PRMT → eBay1 Promotion API (always once/day, even if Dil/INV/rules unchanged).
-        // INV=0 forces PRMT%=0 (pause). Uses saved pef_dil_vs_prmt rules or first-time defaults.
-        $schedule->command('pef:dil-prmt-auto-apply')
-            ->dailyAt('00:00')
-            ->timezone('Asia/Kolkata')
-            ->name('pef-dil-prmt-auto-apply-midnight-ist')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // pef:dil-prmt-auto-apply (eBay1 only, once a day, per-SKU Dil) is no longer scheduled: it set PRMT% from
+        // each SKU's own Dil every midnight and fought the listing-level Dil→PRMT of ebay:dil-prmt-auto-apply
+        // (every 10 min, eBay 1/2/3), so listings flipped between two PRMT% values. Run it by hand only if needed.
 
         // Pull business5core.com price / sold / views into store_listing_prices.
         $schedule->command('store:sync-prices')
