@@ -377,6 +377,136 @@ class EbayTwoController extends Controller
     }
 
     /**
+     * Campaign-level list (one row per Promoted Listings Priority campaign), like Seller Hub > Advertising > Campaigns.
+     * Name / status / daily budget come from the campaigns API; clicks, sales and ad fees from the L30 report.
+     */
+    public function kwCampaigns(): \Illuminate\Http\JsonResponse
+    {
+        if (! Schema::hasTable('ebay_2_priority_reports')) {
+            return response()->json(['data' => []]);
+        }
+
+        $money = static fn ($v) => (float) str_replace(['USD ', ','], '', (string) ($v ?? '0'));
+
+        $rows = Ebay2PriorityReport::where('report_range', 'L30')
+            ->orderBy('campaign_name')
+            ->get()
+            ->map(function ($r) use ($money) {
+                $fees = $money($r->cpc_ad_fees_payout_currency ?: $r->cpc_ad_fees_listingsite_currency);
+                $sales = $money($r->cpc_sale_amount_payout_currency ?: $r->cpc_sale_amount_listingsite_currency);
+
+                return [
+                    'campaign_id' => (string) $r->campaign_id,
+                    'campaign_name' => (string) $r->campaign_name,
+                    'campaign_type' => 'Promoted Listings Priority',
+                    'status' => strtoupper((string) $r->campaignStatus),
+                    'daily_budget' => (float) ($r->campaignBudgetAmount ?? 0),
+                    'impressions' => (int) ($r->cpc_impressions ?? 0),
+                    'clicks' => (int) ($r->cpc_clicks ?? 0),
+                    'sold' => (int) ($r->cpc_attributed_sales ?? 0),
+                    'sales' => $sales,
+                    'ad_fees' => $fees,
+                    'roas' => $fees > 0 ? round($sales / $fees, 2) : 0.0,
+                    'ctr' => (float) ($r->cpc_ctr ?? 0),
+                    'cvr' => (float) ($r->cpc_conversion_rate ?? 0),
+                    'updated_at' => optional($r->updated_at)->toDateTimeString(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * KW campaigns on eBay 2 live at parent level ("PARENT X KW" and "PARENT X"), but getViewEbayData() builds
+     * PARENT rows without any KW data. Fill kw_* on PARENT rows from ebay_2_priority_reports (L30/L7/L1),
+     * preferring the "... KW" campaign, then a RUNNING one. Child rows are left untouched.
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array<int, mixed>
+     */
+    private function attachParentKwCampaigns(array $rows): array
+    {
+        $norm = static fn ($s) => strtoupper(trim((string) preg_replace('/\s+/u', ' ', (string) $s)));
+        $money = static fn ($v) => (float) str_replace(['USD ', ','], '', (string) ($v ?? '0'));
+
+        $reports = Ebay2PriorityReport::whereIn('report_range', ['L30', 'L7', 'L1'])
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'LIKE', 'PARENT%')
+            ->get();
+
+        // name => campaign_id => [meta..., ranges...]
+        $byName = [];
+        foreach ($reports as $r) {
+            $name = $norm($r->campaign_name);
+            $cid = (string) $r->campaign_id;
+            $byName[$name][$cid]['meta'] = $byName[$name][$cid]['meta'] ?? [
+                'campaign_id' => $cid,
+                'budget' => (float) ($r->campaignBudgetAmount ?? 0),
+                'status' => strtoupper((string) $r->campaignStatus),
+            ];
+            $byName[$name][$cid][$r->report_range] = $r;
+        }
+
+        $pick = static function (array $campaigns) {
+            usort($campaigns, static fn ($a, $b) => ($a['meta']['status'] === 'RUNNING' ? 0 : 1) <=> ($b['meta']['status'] === 'RUNNING' ? 0 : 1));
+
+            return $campaigns[0] ?? null;
+        };
+
+        foreach ($rows as &$row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = $norm($row['(Child) sku'] ?? '');
+            if (! str_starts_with($sku, 'PARENT') || ! empty($row['kw_campaign_id'])) {
+                continue;
+            }
+            $c = null;
+            foreach ([$sku.' KW', $sku] as $candidate) {
+                if (! empty($byName[$candidate])) {
+                    $c = $pick(array_values($byName[$candidate]));
+                    break;
+                }
+            }
+            if (! $c) {
+                continue;
+            }
+
+            $l30 = $c['L30'] ?? null;
+            $l7 = $c['L7'] ?? null;
+            $l1 = $c['L1'] ?? null;
+            $spend = $l30 ? $money($l30->cpc_ad_fees_payout_currency) : 0;
+            $sales = $l30 ? $money($l30->cpc_sale_amount_payout_currency) : 0;
+            $clicks = $l30 ? (int) ($l30->cpc_clicks ?? 0) : 0;
+            $sold = $l30 ? (int) ($l30->cpc_attributed_sales ?? 0) : 0;
+
+            $row['kw_campaign_id'] = $c['meta']['campaign_id'];
+            $row['kw_campaignBudgetAmount'] = $c['meta']['budget'];
+            $row['kw_campaignStatus'] = $c['meta']['status'];
+            $row['kw_spend_L30'] = round($spend, 2);
+            $row['kw_clicks'] = $clicks;
+            $row['kw_ad_sold'] = $sold;
+            $row['kw_acos'] = $sales > 0 ? round(($spend / $sales) * 100, 2) : ($spend > 0 ? 100 : 0);
+            $row['kw_cvr'] = $clicks > 0 ? round(($sold / $clicks) * 100, 2) : 0;
+            $row['kw_impressions'] = $l30 ? (int) ($l30->cpc_impressions ?? 0) : 0;
+            $row['kw_ctr'] = $l30 ? round((float) ($l30->cpc_ctr ?? 0), 2) : 0;
+            $row['kw_sales_amount'] = round($sales, 2);
+            $row['kw_roas'] = $l30 ? round((float) ($l30->cpc_return_on_ad_spend ?? 0), 2) : 0;
+            $row['kw_cpc_l30'] = $l30 ? round($money($l30->cost_per_click), 2) : 0;
+            $row['kw_avg_cost_per_sale'] = $l30 ? round($money($l30->cpc_avg_cost_per_sale), 2) : 0;
+            $row['kw_l7_spend'] = $l7 ? round($money($l7->cpc_ad_fees_payout_currency), 2) : 0;
+            $row['kw_l7_cpc'] = $l7 ? round($money($l7->cost_per_click), 2) : 0;
+            $row['kw_l1_spend'] = $l1 ? round($money($l1->cpc_ad_fees_payout_currency), 2) : 0;
+            $row['kw_l1_cpc'] = $l1 ? round($money($l1->cost_per_click), 2) : 0;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Tabulator feed — same wrapper as /ebay-data-json, eBay 2 rows only.
      * Returns the row array and saves the daily snapshot after the response.
      */
@@ -412,6 +542,7 @@ class EbayTwoController extends Controller
             $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
             $rows = app(\App\Services\ExcelCategoryLookupService::class)->attachToRows($rows, 'ebay2');
             $rows = $this->fillParentExcelCategory($rows);
+            $rows = $this->attachParentKwCampaigns($rows);
 
             array_walk_recursive($rows, static function (&$value) {
                 if (is_float($value) && ! is_finite($value)) {

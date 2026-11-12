@@ -20,7 +20,12 @@
 
     <div class="card">
         <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <div class="btn-group mb-3" role="group" aria-label="View">
+                <button type="button" id="view-sku-btn" class="btn btn-sm btn-primary">SKUs</button>
+                <button type="button" id="view-camp-btn" class="btn btn-sm btn-outline-primary">Campaigns</button>
+            </div>
+
+            <div class="sku-only d-flex flex-wrap align-items-center gap-2 mb-3">
                 <span id="kw-badge-total" class="kw-badge bg-secondary text-white">SKUs: …</span>
                 <span id="kw-badge-with" class="kw-badge bg-success text-white">With KW campaign: …</span>
                 <span id="kw-badge-without" class="kw-badge bg-danger text-white">No KW campaign: …</span>
@@ -50,12 +55,32 @@
                 <span id="kw-coverage" class="small ms-auto"></span>
             </div>
 
-            <div id="kw-empty" class="alert alert-warning d-none">
+            <div id="kw-empty" class="sku-only alert alert-warning d-none">
                 No KW ads data found. Source table: <code>ebay_2_priority_reports</code>
                 (RUNNING/PAUSED campaigns, report ranges L30 / L7 / L1 / yesterday / day-before).
             </div>
 
-            <div id="kw-table"></div>
+            <div id="kw-table" class="sku-only"></div>
+
+            <div id="camp-view" class="d-none">
+                <div class="row g-3 mb-3">
+                    <div class="col-6 col-md-3"><div class="border rounded p-3"><div class="text-muted small">Clicks (L30)</div><div id="camp-clicks" class="fs-3 fw-bold">0</div></div></div>
+                    <div class="col-6 col-md-3"><div class="border rounded p-3"><div class="text-muted small">Sales (L30)</div><div id="camp-sales" class="fs-3 fw-bold">$0.00</div></div></div>
+                    <div class="col-6 col-md-3"><div class="border rounded p-3"><div class="text-muted small">Ad fees (L30)</div><div id="camp-fees" class="fs-3 fw-bold">$0.00</div></div></div>
+                    <div class="col-6 col-md-3"><div class="border rounded p-3"><div class="text-muted small">ROAS</div><div id="camp-roas" class="fs-3 fw-bold">0.00</div></div></div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <select id="camp-status" class="form-select form-select-sm" style="width:150px;">
+                        <option value="all">Status: All</option>
+                        <option value="RUNNING" selected>Status: Active</option>
+                        <option value="PAUSED">Status: Paused</option>
+                        <option value="ENDED">Status: Ended</option>
+                    </select>
+                    <input id="camp-search" type="search" class="form-control form-control-sm" style="width:240px;" placeholder="Search campaign">
+                    <span id="camp-count" class="small text-muted ms-auto"></span>
+                </div>
+                <div id="camp-table"></div>
+            </div>
         </div>
     </div>
 @endsection
@@ -103,10 +128,10 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function updateBadges() {
-        const kids = allRows.filter(r => !isParent(r));
+        const kids = allRows;   // parents included: eBay 2 KW campaigns are parent-level ("PARENT X KW")
         const kw = kids.filter(hasKw);
         const st = r => String(r.kw_campaignStatus || '').toUpperCase();
-        document.getElementById('kw-badge-total').textContent = 'SKUs: ' + kids.length;
+        document.getElementById('kw-badge-total').textContent = 'SKUs + parents: ' + kids.length;
         document.getElementById('kw-badge-with').textContent = 'With KW campaign: ' + kw.length;
         document.getElementById('kw-badge-without').textContent = 'No KW campaign: ' + (kids.length - kw.length);
         document.getElementById('kw-badge-running').textContent = 'Running: ' + kw.filter(r => st(r) === 'RUNNING').length;
@@ -120,7 +145,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const q = document.getElementById('kw-search').value.trim().toLowerCase();
         const status = document.getElementById('kw-status').value;
         const rows = allRows.filter(r => {
-            if (isParent(r)) return false;
             if (status !== 'all') {
                 const s = String(r.kw_campaignStatus || '').toUpperCase();
                 if (status === 'NONE' ? hasKw(r) : s !== status) return false;
@@ -177,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 pullState.textContent = s.running
                     ? 'Pulling from eBay… (reports are polled every minute, this can take a while)'
                     : 'Last sync: ' + (s.last_sync || 'never');
-                if (wasRunning && !s.running) { loadData(); }   // pull just finished
+                if (wasRunning && !s.running) { loadData(); if (campTable) loadCampaigns(); }   // pull just finished
                 wasRunning = !!s.running;
                 if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);
                 if (!s.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -206,6 +230,78 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     document.getElementById('kw-filter').addEventListener('change', applyFilter);
     document.getElementById('kw-search').addEventListener('input', applyFilter);
+
+    // ---- Campaigns view (one row per campaign, like Seller Hub > Advertising) ----
+    let campRows = [];
+    let campTable = null;
+    const $ = id => document.getElementById(id);
+
+    function buildCampTable() {
+        campTable = new Tabulator('#camp-table', {
+            height: '65vh',
+            layout: 'fitDataFill',
+            placeholder: 'Loading…',
+            columns: [
+                { title: 'Campaign', field: 'campaign_name', width: 320, headerFilter: 'input' },
+                { title: 'Campaign type', field: 'campaign_type', width: 190 },
+                { title: 'Status', field: 'status', hozAlign: 'center', width: 100,
+                  formatter: c => { const v = String(c.getValue() || ''); return v === 'RUNNING' ? 'Active' : v.charAt(0) + v.slice(1).toLowerCase(); } },
+                { title: 'Target daily budget', field: 'daily_budget', hozAlign: 'right', sorter: 'number', width: 150, formatter: c => money(c.getValue()) },
+                { title: 'Clicks', field: 'clicks', hozAlign: 'center', sorter: 'number', width: 85 },
+                { title: 'Impr', field: 'impressions', hozAlign: 'center', sorter: 'number', width: 90, formatter: c => num(c.getValue()).toLocaleString() },
+                { title: 'Sold', field: 'sold', hozAlign: 'center', sorter: 'number', width: 80 },
+                { title: 'Sales', field: 'sales', hozAlign: 'right', sorter: 'number', width: 100, formatter: c => money(c.getValue()) },
+                { title: 'Ad fees', field: 'ad_fees', hozAlign: 'right', sorter: 'number', width: 100, formatter: c => money(c.getValue()) },
+                { title: 'ROAS', field: 'roas', hozAlign: 'center', sorter: 'number', width: 80, formatter: c => num(c.getValue()).toFixed(2) },
+                { title: 'CTR %', field: 'ctr', hozAlign: 'center', sorter: 'number', width: 80, formatter: c => num(c.getValue()).toFixed(2) + '%' },
+                { title: 'CVR %', field: 'cvr', hozAlign: 'center', sorter: 'number', width: 80, formatter: c => num(c.getValue()).toFixed(2) + '%' },
+                { title: 'Campaign ID', field: 'campaign_id', width: 130 },
+            ],
+        });
+    }
+
+    function applyCampFilter() {
+        const st = $('camp-status').value;
+        const q = $('camp-search').value.trim().toLowerCase();
+        const rows = campRows.filter(r => (st === 'all' || r.status === st) &&
+            (!q || String(r.campaign_name).toLowerCase().includes(q) || r.campaign_id.includes(q)));
+        const clicks = rows.reduce((s, r) => s + r.clicks, 0);
+        const sales = rows.reduce((s, r) => s + r.sales, 0);
+        const fees = rows.reduce((s, r) => s + r.ad_fees, 0);
+        $('camp-clicks').textContent = clicks.toLocaleString();
+        $('camp-sales').textContent = money(sales);
+        $('camp-fees').textContent = money(fees);
+        $('camp-roas').textContent = (fees > 0 ? sales / fees : 0).toFixed(2);
+        $('camp-count').textContent = rows.length + ' campaigns';
+        campTable.setData(rows);
+        campTable.setSort([{ column: 'ad_fees', dir: 'desc' }]);
+    }
+
+    function loadCampaigns() {
+        return fetch('{{ route('ebay2.kw.ads.campaigns') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(res => { campRows = res.data || []; applyCampFilter(); })
+            .catch(err => { campTable.alert('Failed to load campaigns: ' + err.message, 'error'); });
+    }
+
+    function showView(which) {
+        const camp = which === 'camp';
+        document.querySelectorAll('.sku-only').forEach(el => el.classList.toggle('d-none', camp));
+        $('camp-view').classList.toggle('d-none', !camp);
+        $('view-sku-btn').className = 'btn btn-sm ' + (camp ? 'btn-outline-primary' : 'btn-primary');
+        $('view-camp-btn').className = 'btn btn-sm ' + (camp ? 'btn-primary' : 'btn-outline-primary');
+        if (camp) {
+            if (!campTable) { buildCampTable(); campTable.on('tableBuilt', loadCampaigns); }
+            else { campTable.redraw(true); }
+        } else {
+            table.redraw(true);
+            updateBadges();   // restores kw-empty visibility
+        }
+    }
+    $('view-sku-btn').addEventListener('click', () => showView('sku'));
+    $('view-camp-btn').addEventListener('click', () => showView('camp'));
+    $('camp-status').addEventListener('change', applyCampFilter);
+    $('camp-search').addEventListener('input', applyCampFilter);
 });
 </script>
 @endsection
