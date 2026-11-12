@@ -76,6 +76,11 @@
                         <option value="PAUSED">Status: Paused</option>
                         <option value="ENDED">Status: Ended</option>
                     </select>
+                    <select id="camp-type" class="form-select form-select-sm" style="width:210px;">
+                        <option value="COST_PER_CLICK" selected>Type: Priority</option>
+                        <option value="COST_PER_SALE">Type: Standard</option>
+                        <option value="all">Type: All</option>
+                    </select>
                     <input id="camp-search" type="search" class="form-control form-control-sm" style="width:240px;" placeholder="Search campaign">
                     <span id="camp-count" class="small text-muted ms-auto"></span>
                 </div>
@@ -263,7 +268,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function applyCampFilter() {
         const st = $('camp-status').value;
         const q = $('camp-search').value.trim().toLowerCase();
-        const rows = campRows.filter(r => (st === 'all' || r.status === st) &&
+        const ty = $('camp-type').value;
+        const rows = campRows.filter(r => (st === 'all' || r.status === st) && (ty === 'all' || r.funding_model === ty) &&
             (!q || String(r.campaign_name).toLowerCase().includes(q) || r.campaign_id.includes(q)));
         const clicks = rows.reduce((s, r) => s + r.clicks, 0);
         const sales = rows.reduce((s, r) => s + r.sales, 0);
@@ -272,7 +278,8 @@ document.addEventListener('DOMContentLoaded', function () {
         $('camp-sales').textContent = money(sales);
         $('camp-fees').textContent = money(fees);
         $('camp-roas').textContent = (fees > 0 ? sales / fees : 0).toFixed(2);
-        $('camp-count').textContent = rows.length + ' campaigns';
+        const unknown = campRows.filter(r => !r.funding_model).length;
+        $('camp-count').textContent = rows.length + ' campaigns' + (unknown ? ' — ' + unknown + ' have no type yet: run  php artisan app:ebay2-campaign-reports --meta-only' : '');
         campTable.setData(rows);
         campTable.setSort([{ column: 'ad_fees', dir: 'desc' }]);
     }
@@ -301,6 +308,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('view-sku-btn').addEventListener('click', () => showView('sku'));
     $('view-camp-btn').addEventListener('click', () => showView('camp'));
     $('camp-status').addEventListener('change', applyCampFilter);
+    $('camp-type').addEventListener('change', applyCampFilter);
     $('camp-search').addEventListener('input', applyCampFilter);
 });
 </script>

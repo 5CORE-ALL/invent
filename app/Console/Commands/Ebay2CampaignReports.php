@@ -16,7 +16,7 @@ class Ebay2CampaignReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)}';
+    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)} {--meta-only : Only refresh campaign name/status/budget/type (no reports)}';
 
     /**
      * The console command description.
@@ -57,6 +57,21 @@ class Ebay2CampaignReports extends Command
         }
         $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
         
+        // Fast path: refresh campaign name / status / budget / type on existing rows without waiting for reports.
+        if ($this->option('meta-only')) {
+            $updated = 0;
+            foreach ($campaignsMap as $campaignId => $meta) {
+                $updated += Ebay2PriorityReport::where('campaign_id', (string) $campaignId)->update([
+                    'campaign_name' => $meta['name'],
+                    'campaignStatus' => $meta['status'],
+                    'campaignBudgetAmount' => $meta['daily_budget'],
+                    'funding_model' => $meta['funding_model'] ?? null,
+                ]);
+            }
+            $this->info("✅ Campaign details refreshed on {$updated} report rows.");
+            return 0;
+        }
+
         $only = strtoupper(trim((string) $this->option('only')));
 
         // Fetch only yesterday's data for charts
@@ -189,6 +204,7 @@ class Ebay2CampaignReports extends Command
                     'campaign_name' => $campaignName,
                     'campaignBudgetAmount' => $campaignBudget,
                     'campaignStatus' => $campaignStatus,
+                    'funding_model' => $campaignData['funding_model'] ?? null,
                     'cpc_impressions' => $hasReportData ? ($reportItem['cpc_impressions'] ?? 0) : 0,
                     'cpc_clicks' => $hasReportData ? ($reportItem['cpc_clicks'] ?? 0) : 0,
                     'cpc_attributed_sales' => $hasReportData ? ($reportItem['cpc_attributed_sales'] ?? 0) : 0,
@@ -719,6 +735,7 @@ class Ebay2CampaignReports extends Command
                     'status' => $c['campaignStatus'] ?? null,
                     'daily_budget' => $budgetValue,
                     'currency' => $budgetCurrency,
+                    'funding_model' => $c['fundingStrategy']['fundingModel'] ?? null,
                 ];
             }
 

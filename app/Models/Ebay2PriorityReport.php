@@ -19,6 +19,7 @@ class Ebay2PriorityReport extends Model
         'campaign_name',
         'campaignBudgetAmount',
         'campaignStatus',
+        'funding_model',
         'pink_dil_paused_at',
         'sbid_m',
         'cpc_impressions',

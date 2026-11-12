@@ -398,7 +398,12 @@ class EbayTwoController extends Controller
                 return [
                     'campaign_id' => (string) $r->campaign_id,
                     'campaign_name' => (string) $r->campaign_name,
-                    'campaign_type' => 'Promoted Listings Priority',
+                    'funding_model' => (string) ($r->funding_model ?? ''),
+                    'campaign_type' => match ((string) ($r->funding_model ?? '')) {
+                        'COST_PER_CLICK' => 'Promoted Listings Priority',
+                        'COST_PER_SALE' => 'Promoted Listings Standard',
+                        default => 'Unknown (refresh needed)',
+                    },
                     'status' => strtoupper((string) $r->campaignStatus),
                     'daily_budget' => (float) ($r->campaignBudgetAmount ?? 0),
                     'impressions' => (int) ($r->cpc_impressions ?? 0),
