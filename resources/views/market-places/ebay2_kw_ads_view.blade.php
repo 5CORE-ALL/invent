@@ -44,7 +44,6 @@
                     <i class="fa-solid fa-cloud-arrow-down me-1"></i> Pull Priority Reports from eBay API
                 </button>
                 <span id="kw-pull-state" class="small text-muted">Checking…</span>
-                <span id="kw-coverage" class="small ms-auto"></span>
             </div>
 
             <div id="kw-empty" class="sku-only alert alert-warning d-none">
@@ -173,22 +172,10 @@ document.addEventListener('DOMContentLoaded', function () {
     let pollTimer = null;
     let wasRunning = false;
 
-    function renderCoverage(cov) {
-        const el = document.getElementById('kw-coverage');
-        el.innerHTML = (cov || []).map(c => {
-            const ok = c.campaigns > 0;
-            return '<span class="me-3" title="' + (c.last_updated || 'never') + '">' +
-                '<b>' + c.range + '</b>: ' +
-                '<span class="' + (ok ? 'kw-yes' : 'kw-no') + '">' + c.campaigns + '</span> campaigns' +
-                (ok ? ' (' + c.with_clicks + ' w/ clicks)' : '') + '</span>';
-        }).join('');
-    }
-
     function checkPull() {
         return fetch('{{ route('ebay2.kw.ads.pull.status') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => r.json())
             .then(s => {
-                renderCoverage(s.coverage);
                 pullBtn.disabled = !!s.running;
                 pullState.textContent = s.running
                     ? 'Pulling from eBay… (reports are polled every minute, this can take a while)'
