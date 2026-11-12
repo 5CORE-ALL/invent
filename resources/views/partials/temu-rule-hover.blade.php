@@ -324,10 +324,7 @@
                     }
                 }
             };
-            const clrOnly = (typeof window.amzClearanceRuleApplies === 'function') && window.amzClearanceRuleApplies(d);
-            if (clrOnly) steps.push(temuRuleStep('info', 'Clearance rule applied', 'Clearance SKU: no other rule (CVR, Ageing, custom) is applied. Only the Dil slab and the Clearance points.'));
             ((typeof amzNroiOrder === 'function') ? amzNroiOrder() : ['cvr', 'age', 'clearance']).forEach(function(k, idx) {
-                if (clrOnly && k !== 'clearance') return;
                 if (k.indexOf('c_') === 0) {
                     // A custom rule card that adds points to the Target NROI.
                     const cr = (typeof window.amzCustomRuleById === 'function') ? window.amzCustomRuleById(k.slice(2)) : null;
@@ -380,8 +377,7 @@
                 }
                 n = steps.length + 1;
                 // Custom rule cards that change the price by a %, in the order they run (Seq). No LMP cap any more.
-                if (base > 0 && typeof window.amzPriceOrder === 'function'
-                    && !(typeof window.amzClearanceRuleApplies === 'function' && window.amzClearanceRuleApplies(d))) {
+                if (base > 0 && typeof window.amzPriceOrder === 'function') {
                     window.amzPriceOrder().forEach(function(k) {
                         if (k.indexOf('c_') !== 0) return;
                         const cr = window.amzCustomRuleById(k.slice(2));

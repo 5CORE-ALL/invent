@@ -323,13 +323,7 @@ class AmazonSprcDilAutoPushService
                 'diff' => ($std > 0 && (float) ($row['price'] ?? 0) > 0) ? (($std - (float) $row['price']) / (float) $row['price']) * 100 : null,
                 'inv' => $inv,
             ];
-            // Clearance rule applied (switch ON, clearance SKU, Sprc Dil): no other rule runs. Only the Dil slab Target NROI
-            // plus the Clearance points price the SKU (no CVR, Age, custom rule cards).
-            $clearanceApplied = $this->clearanceRuleApplies($row);
             foreach (AmazonDilGroiRule::ruleOrder($this->ruleSeqCfg, $this->customRulesCfg) as $step) {
-                if ($clearanceApplied && $step !== 'clearance') {
-                    continue;
-                }
                 // A custom rule card (Sprc Dil modal): its condition is met → its points are added to the Target NROI.
                 if (str_starts_with($step, 'c_')) {
                     $custom = $this->customRule(substr($step, 2));
@@ -386,10 +380,6 @@ class AmazonSprcDilAutoPushService
             $capped = (float) $dilPrice;
             $dilLmpCvrDisc = 0.0;
             foreach (AmazonDilGroiRule::priceOrder($this->ruleSeqCfg, $this->customRulesCfg) as $priceStep) {
-                // Clearance rule applied: no custom price rule changes the price either.
-                if ($clearanceApplied) {
-                    break;
-                }
                 if (str_starts_with($priceStep, 'c_')) {
                     // A custom rule card: its condition is met → the price changes by its % (negative = lower).
                     $custom = $this->customRule(substr($priceStep, 2));
@@ -551,19 +541,6 @@ class AmazonSprcDilAutoPushService
             'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
-    }
-
-    /**
-     * The Clearance rule is applied to this row: its switch is ON in the Sprc Dil modal, the active rule is Sprc Dil and the SKU is
-     * a Clearance SKU. Then no other rule (CVR, Age, custom cards) is applied to it.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    protected function clearanceRuleApplies(array $row): bool
-    {
-        return $this->dilRuleOn('clearance')
-            && \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil'
-            && (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row);
     }
 
     /** Why computeTarget() returned null for a row (diagnostics only). @param array<string, mixed> $row */

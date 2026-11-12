@@ -2571,10 +2571,7 @@
             const order = amzNroiOrder();
             let cur = Number(slabGroi) || 0;
             const out = { cvr: 0, age: 0, clearance: 0, order: order };
-            // Clearance rule applied to this SKU: no other rule runs. Only the Dil slab Target NROI plus the Clearance points.
-            const clrOnly = amzClearanceRuleApplies(d);
             order.forEach(function(k) {
-                if (clrOnly && k !== 'clearance') return;
                 if (k === 'cvr') {
                     out.cvr = amzDilGroiCvrAdj(d);
                     cur = Math.max(0, amzPefRound2(cur + out.cvr));
@@ -4614,15 +4611,6 @@
          */
         function amzClearanceDilActive(d) { return false; }
         function amzClearanceDilPrice(d) { return 0; }
-        /**
-         * The Clearance rule is applied to this SKU (switch ON, clearance SKU, Sprc Dil active). Then no other rule runs on it:
-         * no CVR, Ageing, custom rule cards (Target NROI or price %). Same as the server (AmazonSprcDilAutoPushService).
-         */
-        function amzClearanceRuleApplies(d) {
-            if (!d || !amzRuleIsOn('clearance') || !amzIsClearanceSku(d)) return false;
-            return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
-        }
-        window.amzClearanceRuleApplies = amzClearanceRuleApplies;
         /** Points the Clearance rule adds to the Target NROI of this SKU (0 for a SKU not on clearance, switch OFF, or not on Sprc Dil). */
         function amzClearanceAdjFor(d) {
             if (!amzRuleIsOn('clearance') || !amzIsClearanceSku(d)) return 0;
@@ -4665,9 +4653,8 @@
                 // The price rules (custom "change the S PRC by %" cards) run in the order of their sequence numbers.
                 // There is no LMP cap and no CVR up / down discount any more: Std Prc stays the maximum (amzFinalSpriceToSave).
                 let capped = raw;
-                const clrOnly = amzClearanceRuleApplies(d);
                 amzPriceOrder().forEach(function(step) {
-                    if (!(capped > 0) || clrOnly) return;
+                    if (!(capped > 0)) return;
                     if (step.indexOf('c_') === 0) {
                         // A custom rule card: its condition is met -> the price changes by its % (negative = lower).
                         const cr = amzCustomRuleById(step.slice(2));
