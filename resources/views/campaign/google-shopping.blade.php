@@ -580,19 +580,39 @@
         #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn:active { background: #239b8f; border-color: #239b8f; color: #fff; }
         #gacRawBgtRulesModal .gac-bgt-global-err { margin: 0 0 8px; }
 
-        /* All rule cards sit side by side in one row (scrolls sideways on narrow screens). */
+        /* Rule cards are stacked as full-width horizontal rows (same look as the "Std prc vs dil" modal):
+           title + Add button on the left, the wide slab table in the middle, chart + legend on the right. */
         #gacRawBgtRulesModal .gac-bgt-cols {
-            display: flex; flex-wrap: nowrap; align-items: stretch; align-content: flex-start;
-            gap: 12px; width: 100%; min-width: 0; flex: 1 1 auto; min-height: 0; overflow-x: auto; padding-bottom: 4px;
+            display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+            gap: 12px; width: 100%; min-width: 0; flex: 0 0 auto; padding-bottom: 4px;
         }
         #gacRawBgtRulesModal .gac-bgt-col {
-            flex: 1 1 0;
-            min-width: 230px; min-height: 0;
-            display: flex; flex-direction: column;
-            border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff;
-            overflow-x: hidden; overflow-y: auto;
+            flex: 0 0 auto;
+            min-width: 0; min-height: 0;
+            display: grid;
+            grid-template-columns: 210px minmax(0, 1fr) minmax(240px, 360px);
+            grid-template-areas:
+                "head table chart"
+                "add  table chart"
+                "err  table chart";
+            grid-template-rows: auto auto 1fr;
+            column-gap: 18px; align-items: start;
+            border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff;
+            overflow: visible;
         }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex: 1.35 1 0; min-width: 300px; }
+        #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-col-head { grid-area: head; }
+        #gacRawBgtRulesModal .gac-bgt-col > .table-responsive { grid-area: table; }
+        #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-chart { grid-area: chart; margin-bottom: 0; }
+        #gacRawBgtRulesModal .gac-bgt-col > .gac-bgt-add { grid-area: add; }
+        #gacRawBgtRulesModal .gac-bgt-col > p { grid-area: err; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { min-width: 0; }
+        @media (max-width: 991.98px) {
+            #gacRawBgtRulesModal .gac-bgt-col {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-areas: "head" "table" "add" "err" "chart";
+                grid-template-rows: auto;
+            }
+        }
         #gacRawBgtRulesModal .gac-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
         #gacRawBgtRulesModal .gac-bgt-title {
             font-weight: 700; font-size: 13px; color: #0f172a;
@@ -608,13 +628,13 @@
         #gacRawBgtRulesModal .gac-bgt-exp-btn:hover { background: #e2e8f0; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-exp-btn { display: none; }
         #gacRawBgtRulesModal .gac-bgt-cols.is-expanded .gac-bgt-col:not(.is-max) { display: none; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max { min-width: 0; max-width: none; }
         #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas { height: 240px; flex: 0 0 240px; }
         #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas canvas { height: 240px !important; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-min { flex: 0 0 40px; width: 40px; max-width: 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
+        /* Minimized = a slim one-line bar (title + buttons) instead of a thin vertical strip. */
+        #gacRawBgtRulesModal .gac-bgt-col.is-min { display: flex; padding: 8px 16px; cursor: pointer; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min > :not(.gac-bgt-col-head) { display: none !important; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-col-head { width: 100%; margin: 0; }
 
         #gacRawBgtRulesModal .gac-bgt-chart { display: flex; flex-direction: column; margin-bottom: 8px; flex: 0 0 auto; }
         #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 110px; flex: 0 0 110px; }
@@ -639,7 +659,7 @@
         #gacRawBgtRulesModal .gac-bgt-col .table td:first-child { display: none; }
         /* Boxed number inputs, same as the Std prc vs dil modal. */
         #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm {
-            width: 100%; min-width: 52px; max-width: 72px; height: 30px; margin: 0 auto; padding: 0 4px;
+            width: 100%; min-width: 70px; max-width: 150px; height: 32px; margin: 0 auto; padding: 0 6px;
             font-size: 13px; font-weight: 600; line-height: 24px; text-align: center; color: #0f172a;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; box-shadow: none;
             -moz-appearance: textfield; appearance: textfield;
@@ -655,16 +675,28 @@
         #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:focus { border: 0; background: #fee2e2; color: #b91c1c; box-shadow: none; }
         #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { border: 0; background: transparent; box-shadow: none; opacity: 0.35; }
         #gacRawBgtRulesModal .gac-bgt-add {
-            width: 100%; border-radius: 8px; font-weight: 600; padding: 4px 8px; font-size: 13px; margin-top: auto; border-style: dashed;
+            width: 100%; border-radius: 8px; font-weight: 600; padding: 4px 8px; font-size: 13px; margin-top: 0; border-style: dashed;
         }
         #gacRawBgtRulesModal .gac-bgt-col .table-responsive { margin-bottom: 0; flex: 0 0 auto; overflow: visible; }
-        #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 10px; }
+        #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 0; width: auto; justify-self: start; min-width: 130px; }
+        #gacRawBgtRulesModal .gac-bgt-col > p.small { margin-top: 8px !important; }
+        /* Count column: number of campaigns in the slab + a dot in the slab colour (like the Std prc vs dil cards). */
+        #gacRawBgtRulesModal .gac-bgt-col .table td.gac-bgt-count { font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #gacRawBgtRulesModal .gac-bgt-count-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 5px; vertical-align: middle; }
 
         /* Sum card: last card in the row (right-hand side), same look as the rule cards. Data only, no chart. */
         #gacRawBgtRulesModal .gac-bgt-opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 0 0 12px; padding: 8px 12px; background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; }
         #gacRawBgtRulesModal .gac-bgt-opt { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; color: #854d0e; cursor: pointer; }
         #gacRawBgtRulesModal .gac-bgt-opt input[type="number"] { width: 70px; text-align: center; font-weight: 700; }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--sum { flex: 1.4 1 0; min-width: 330px; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--sum {
+            grid-template-columns: 210px minmax(0, 1fr);
+            grid-template-areas: "head sum";
+            grid-template-rows: auto;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col--sum > .gac-bgt-sum-dist { grid-area: sum; max-width: 620px; }
+        @media (max-width: 991.98px) {
+            #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--sum { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "sum"; }
+        }
         #gacRawBgtRulesModal .gac-bgt-sum-dist-head {
             display: grid; grid-template-columns: minmax(0, 1fr) 62px 62px 42px; gap: 6px; padding: 7px 8px 7px 22px;
             background: #eaf1fb; border-radius: 8px 8px 0 0; color: #64748b; font-size: 10px; font-weight: 700;
@@ -1105,6 +1137,7 @@
                                             <th>#</th>
                                             <th>From</th>
                                             <th>To</th>
+                                            <th>Count</th>
                                             <th>SBGT</th>
                                             <th></th>
                                         </tr>
@@ -1133,6 +1166,7 @@
                                                 <th>#</th>
                                                 <th>From</th>
                                                 <th>To</th>
+                                                <th>Count</th>
                                                 <th>BGT</th>
                                                 <th></th>
                                             </tr>
@@ -4746,6 +4780,7 @@
                         + '<td><input type="number" step="0.1" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_to ?? '') + '" data-idx="' + i + '" data-field="acos_to"'
                         + ' placeholder="9999"></td>'
+                        + '<td class="gac-bgt-count"></td>'
                         + '<td><input type="number" step="1" class="form-control form-control-sm"'
                         + ' value="' + (band.sbgt ?? '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
                         + '<td class="text-center">'
@@ -5736,6 +5771,15 @@
                         color: b.color || GAC_BGT_FALLBACK_COLORS[i % GAC_BGT_FALLBACK_COLORS.length]
                     };
                 });
+                // Count column in the slab table: campaigns per slab + a dot in the slab colour.
+                var panel = document.querySelector('#gacRawBgtRulesModal [data-gac-bgt-panel="' + key + '"]');
+                if (panel) {
+                    panel.querySelectorAll('tbody tr').forEach(function(tr, i) {
+                        var cell = tr.querySelector('td.gac-bgt-count');
+                        if (!cell || !items[i]) return;
+                        cell.innerHTML = items[i].n + '<span class="gac-bgt-count-dot" style="background:' + gacBgtEsc(items[i].color) + '"></span>';
+                    });
+                }
                 if (t.unmatched > 0) items.push({ label: 'No match', n: t.unmatched, color: '#94a3b8' });
                 gacBgtDrawChart(key, items, t.total, false);
             }
@@ -5879,6 +5923,7 @@
                             + '<td class="text-muted small">' + (i + 1) + '</td>'
                             + '<td><input type="number" step="' + (opts.step || '1') + '" class="form-control form-control-sm" value="' + (band[fromKey] != null ? band[fromKey] : '') + '" data-idx="' + i + '" data-field="' + fromKey + '"></td>'
                             + '<td><input type="number" step="' + (opts.step || '1') + '" class="form-control form-control-sm" value="' + (band[toKey] != null ? band[toKey] : '') + '" data-idx="' + i + '" data-field="' + toKey + '"></td>'
+                            + '<td class="gac-bgt-count"></td>'
                             + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
                             + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '"' + (canDelete ? '' : ' disabled') + ' title="Delete this slab" aria-label="Delete slab"><i class="fas fa-trash"></i></button></td>';
                         tbody.appendChild(tr);
