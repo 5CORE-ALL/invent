@@ -21,5 +21,7 @@
         'adsPart' => 'script',
         'dataUrl' => $dataUrl,
         'channelKey' => $channelKey,
+        'adsExtraColumnsView' => 'campaign.chatgpt.partials.columns',
+        'adsAfterScriptView' => 'campaign.chatgpt.partials.summary',
     ])
 @endsection

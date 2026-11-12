@@ -335,7 +335,10 @@
                     sorterParams: { alignEmptyValues: 'bottom' },
                     headerTooltip: 'Shipping cost (product master)',
                     formatter: adsMoney
-                }
+                },
+                @if (!empty($adsExtraColumnsView))
+                    @include($adsExtraColumnsView)
+                @endif
             ]
         });
 
@@ -427,5 +430,9 @@
                 buildColumnDropdown();
             });
         });
+
+        @if (!empty($adsAfterScriptView))
+            @include($adsAfterScriptView)
+        @endif
     </script>
 @endif

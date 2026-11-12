@@ -7715,6 +7715,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ChatGptAdsController::class)->group(function () {
         Route::get('/chatgpt-ads', 'index')->name('chatgpt.ads');
         Route::get('/chatgpt-ads/data', 'data')->name('chatgpt.ads.data');
+        Route::get('/chatgpt-ads/summary', 'summary')->name('chatgpt.ads.summary');
     });
 
     Route::controller(RedditAdsController::class)->group(function () {

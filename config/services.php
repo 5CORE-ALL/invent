@@ -1196,6 +1196,13 @@ return [
     | AI Services
     |--------------------------------------------------------------------------
     */
+    // ChatGPT Ads — OpenAI Advertiser API (https://developers.openai.com/ads). The key is scoped to one ad account.
+    'openai_ads' => [
+        'api_key' => env('OPENAI_ADS_API_KEY'),
+        'account_id' => env('OPENAI_ADS_ACCOUNT_ID'),
+        'base_url' => env('OPENAI_ADS_BASE_URL', 'https://api.ads.openai.com/v1'),
+    ],
+
     'openai' => [
         'key' => \App\Support\OpenAiRequest::normalizeApiKey(env('OPENAI_API_KEY')),
         'packing_vision_model' => env('OPENAI_PACKING_VISION_MODEL', 'gpt-4o-mini'),
