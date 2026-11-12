@@ -1044,13 +1044,14 @@
         </div>
     </div>
 
-    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR, PRC and DIL. --}}
+    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR, PRC, DIL and ACOS LT. --}}
     @php
         $gacBgtSlabCards = [
             ['key' => 'views', 'title' => 'BGT Vs VIEWS', 'hint' => 'Inclusive Shopify View L7 range (parent = sum of children). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-views-bands-body', 'add' => 'gac-bgt-views-add-band-btn', 'err' => 'gacRawBgtViewsRuleErr'],
             ['key' => 'cvr', 'title' => 'BGT Vs CVR', 'hint' => 'Inclusive Google Shopping CVR L30 range (Sold ÷ Clicks × 100). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-cvr-bands-body', 'add' => 'gac-bgt-cvr-add-band-btn', 'err' => 'gacRawBgtCvrRuleErr'],
             ['key' => 'prc', 'title' => 'BGT PRC', 'hint' => 'Inclusive Shopify Price range (parent = average of children with price > 0). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-prc-bands-body', 'add' => 'gac-bgt-prc-add-band-btn', 'err' => 'gacRawBgtPrcRuleErr'],
             ['key' => 'dil', 'title' => 'BGT Vs DIL', 'hint' => 'Inclusive Dil% range (OV L30 ÷ INV × 100; parent = children total). First matching slab wins, top to bottom; the matching BGT is added to SBGT. Negative values are allowed. Default slabs add 0. Saved in a Google-only table.', 'tbody' => 'gac-bgt-dil-bands-body', 'add' => 'gac-bgt-dil-add-band-btn', 'err' => 'gacRawBgtDilRuleErr'],
+            ['key' => 'acoslt', 'title' => 'BGT Vs ACOS LT', 'hint' => 'Inclusive lifetime ACOS % range (all-time Spend ÷ all-time Sales × 100, every day the campaign has data; spend with no sales = 100). First matching slab wins, top to bottom; the matching BGT is added to SBGT. Negative values are allowed. Default slabs add 0. Saved in a Google-only table.', 'tbody' => 'gac-bgt-acoslt-bands-body', 'add' => 'gac-bgt-acoslt-add-band-btn', 'err' => 'gacRawBgtAcosLtRuleErr'],
         ];
     @endphp
     <div class="modal fade" id="gacRawBgtRulesModal" tabindex="-1" aria-labelledby="gacRawBgtRulesModalLabel" aria-hidden="true">
@@ -1059,7 +1060,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="gacRawBgtRulesModalLabel"><i class="fas fa-tags me-1"></i> BGT Rules</h5>
-                        <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price. SBGT 0 cannot be pushed (the campaign is paused). Negative numbers are allowed in every rule. Save and apply writes every rule, then refreshes the grid.</div>
+                        <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL + BGT ACOS LT, capped at the max % of price. SBGT 0 cannot be pushed (the campaign is paused). Negative numbers are allowed in every rule. Save and apply writes every rule, then refreshes the grid.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1146,7 +1147,7 @@
 
                         <div class="gac-bgt-col gac-bgt-col--sum" data-gac-bgt-panel="sum">
                             <div class="gac-bgt-col-head">
-                                <div class="gac-bgt-title" title="SBGT for ALL campaigns, every status (saved rules; not limited by the grid page or filters): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
+                                <div class="gac-bgt-title" title="SBGT for ALL campaigns, every status (saved rules; not limited by the grid page or filters): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL + BGT ACOS LT, capped at the max % of price; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
                                 <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
                             <div class="gac-bgt-sum-dist">
@@ -1436,6 +1437,8 @@
             const gacBgtPrcRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-prc-rule.save'));
             const gacBgtDilRuleGetUrl = @json(route('google.shopping.campaigns.bgt-dil-rule'));
             const gacBgtDilRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-dil-rule.save'));
+            const gacBgtAcosLtRuleGetUrl = @json(route('google.shopping.campaigns.bgt-acos-lt-rule'));
+            const gacBgtAcosLtRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-acos-lt-rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
@@ -1493,6 +1496,9 @@
                 bgt_dil_color: true,
                 bgt_dil_label: true,
                 bgt_dil_value: true,
+                bgt_acos_lt_color: true,
+                bgt_acos_lt_label: true,
+                bgt_acos_lt_value: true,
                 sbgt_cap: true,
                 ovl30: true,
                 lbid_green: true,
@@ -1932,8 +1938,9 @@
                 var acos = parseInt(row.bgt_acos, 10);
                 var prc = parseInt(row.bgt_prc, 10);
                 var dilp = parseInt(row.bgt_dil, 10);
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL';
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(dilp) ? dilp : 0);
+                var acoslt = parseInt(row.bgt_acos_lt, 10);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL + BGT ACOS LT';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(dilp) ? dilp : 0) + ' + ' + (isFinite(acoslt) ? acoslt : 0);
                 var pBelow = gacPausePriceBelow();
                 var rowPrice = parseFloat(row && row.price);
                 if (pBelow > 0 && isFinite(rowPrice) && rowPrice > 0 && rowPrice < pBelow) {
@@ -2043,6 +2050,16 @@
                     var label = String((row && row.bgt_dil_label) || '').trim();
                     var tip = 'BGT DIL from Dil%';
                     if (isFinite(dil)) tip += ' · Dil ' + Math.round(dil) + '%';
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
+            }
+            function gacRawBgtAcosLtFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_acos_lt_color', function(row) {
+                    var a = parseFloat(row && row.bgt_acos_lt_value);
+                    var label = String((row && row.bgt_acos_lt_label) || '').trim();
+                    var tip = 'BGT ACOS LT from lifetime ACOS%';
+                    if (isFinite(a)) tip += ' · ACOS LT ' + Math.round(a) + '%';
                     if (label) tip += ' · ' + label;
                     return tip;
                 });
@@ -3494,6 +3511,7 @@
                         bgt_cvr: 'Bgt Cvr',
                         bgt_prc: 'BGT PRC',
                         bgt_dil: 'BGT DIL',
+                        bgt_acos_lt: 'BGT ACOS LT',
                         sbgt: 'SBGT',
                         sbid: 'SBID',
                     };
@@ -3658,6 +3676,7 @@
                         bgt_cvr: true,
                         bgt_prc: true,
                         bgt_dil: true,
+                        bgt_acos_lt: true,
                         sbgt: true,
                         sbid: true,
                     };
@@ -3666,7 +3685,7 @@
                         metrics_clicks: true, ctr_l30: true, cpc_L30: true, cpc_L7: true, cpc_L2: true, cpc_L1: true,
                         ad_sold_L30: true, ad_sales_L30: true, acos_l30: true, price: true, cvr_l30: true,
                         ub7: true, ub2: true, ub1: true, bgt: true, bgt_acos: true, views_l30: true, views_l7: true,
-                        bgt_views: true, bgt_cvr: true, bgt_prc: true, bgt_dil: true, sbgt: true, sbid: true
+                        bgt_views: true, bgt_cvr: true, bgt_prc: true, bgt_dil: true, bgt_acos_lt: true, sbgt: true, sbid: true
                     };
                     defs.forEach(function(col) {
                         if (col.field === '__gac_select') {
@@ -3855,8 +3874,12 @@
                                 col.headerTooltip = 'Suggested budget from BGT Vs DIL — Dil% slabs (added to SBGT)';
                                 col.formatter = gacRawBgtDilFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 68);
+                            } else if (col.field === 'bgt_acos_lt') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs ACOS LT — lifetime ACOS% slabs (added to SBGT)';
+                                col.formatter = gacRawBgtAcosLtFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 78);
                             } else if (col.field === 'sbgt') {
-                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price. With the rule on, INV ≤ 0 zeros SBGT. SBGT 0 cannot be pushed — Push SBGT pauses the campaign.';
+                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL + BGT ACOS LT, capped at the max % of price. With the rule on, INV ≤ 0 zeros SBGT. SBGT 0 cannot be pushed — Push SBGT pauses the campaign.';
                                 col.formatter = gacRawSbgtCellFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
@@ -4141,7 +4164,7 @@
                 { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'ads_needed', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix', 'reason'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
-                { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'bgt_dil', 'sbgt', 'lbgt'] },
+                { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'bgt_dil', 'bgt_acos_lt', 'sbgt', 'lbgt'] },
                 { key: 'other', title: 'Other', fields: [] }
             ];
 
@@ -6012,6 +6035,23 @@
                 addBtnId: 'gac-bgt-dil-add-band-btn', errId: 'gacRawBgtDilRuleErr',
                 getUrl: gacBgtDilRuleGetUrl, saveUrl: gacBgtDilRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && row.bgt_dil_value); return isFinite(n) ? n : null; }
+            });
+            gacBgtBindSlab({
+                key: 'acoslt',
+                defaults: [
+                    { acos_lt_from: 0, acos_lt_to: 10, bgt: 0, label: 'Pink', color: '#e83e8c' },
+                    { acos_lt_from: 10, acos_lt_to: 20, bgt: 0, label: 'Green', color: '#28a745' },
+                    { acos_lt_from: 20, acos_lt_to: 30, bgt: 0, label: 'Blue', color: '#2563eb' },
+                    { acos_lt_from: 30, acos_lt_to: 40, bgt: 0, label: 'Yellow', color: '#ffc107' },
+                    { acos_lt_from: 40, acos_lt_to: 9999, bgt: 0, label: 'Red', color: '#a00211' }
+                ],
+                labels: ['Pink', 'Green', 'Blue', 'Yellow', 'Red', 'Purple'],
+                colors: ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211', '#7c3aed'],
+                fromKey: 'acos_lt_from', toKey: 'acos_lt_to', step: '0.01', minBgt: -100000,
+                tbodyId: 'gac-bgt-acoslt-bands-body',
+                addBtnId: 'gac-bgt-acoslt-add-band-btn', errId: 'gacRawBgtAcosLtRuleErr',
+                getUrl: gacBgtAcosLtRuleGetUrl, saveUrl: gacBgtAcosLtRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && row.bgt_acos_lt_value); return isFinite(n) ? n : null; }
             });
 
             // ---- Modal open: load every rule, then paint ----------------------------

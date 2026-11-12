@@ -9,6 +9,7 @@ use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\GoogleAdsSbidService;
+use App\Support\GoogleShoppingAcosLifetime;
 use App\Support\GoogleShoppingBgtParts;
 use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingCampaignNameMatcher;
@@ -292,7 +293,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                     isset($skuMetrics['price']) && is_numeric($skuMetrics['price']) ? (float) $skuMetrics['price'] : null,
                     $rawRule,
                     $inv,
-                    isset($skuMetrics['dil']) && is_numeric($skuMetrics['dil']) ? (float) $skuMetrics['dil'] : null
+                    isset($skuMetrics['dil']) && is_numeric($skuMetrics['dil']) ? (float) $skuMetrics['dil'] : null,
+                    GoogleShoppingAcosLifetime::forCampaign($campaignId)
                 );
 
                 $skipCounters['total_campaigns_processed']++;

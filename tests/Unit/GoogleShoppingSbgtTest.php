@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingAcosLifetime;
+use App\Support\GoogleShoppingBgtAcosLtRule;
 use App\Support\GoogleShoppingBgtDilRule;
 use App\Support\GoogleShoppingBgtPrcRule;
 use App\Support\GoogleShoppingBgtViewsRule;
@@ -105,6 +107,28 @@ class GoogleShoppingSbgtTest extends TestCase
                 ['dil_from' => 0, 'dil_to' => 100, 'bgt' => -4, 'label' => 'x', 'color' => '#000000'],
             ]])['bgt']
         );
+    }
+
+    public function test_acos_lt_part_is_summed_and_matches_slab(): void
+    {
+        $this->assertSame(5, GoogleShoppingSbgt::sumFromParts(1, 1, 2, 1, 0, 0));
+        $this->assertSame(7, GoogleShoppingSbgt::sumFromParts(1, 1, 2, 1, 0, 2));
+        $this->assertSame(3, GoogleShoppingSbgt::sumFromParts(1, 1, 2, 1, 0, -2));
+
+        $rule = ['bands' => [
+            ['acos_lt_from' => 0, 'acos_lt_to' => 20, 'bgt' => 2, 'label' => 'Good', 'color' => '#28a745'],
+            ['acos_lt_from' => 20, 'acos_lt_to' => 9999, 'bgt' => -1, 'label' => 'Bad', 'color' => '#a00211'],
+        ]];
+        $this->assertSame(2, GoogleShoppingBgtAcosLtRule::apply(15.0, $rule)['bgt']);
+        $this->assertSame(-1, GoogleShoppingBgtAcosLtRule::apply(55.0, $rule)['bgt']);
+        $this->assertNull(GoogleShoppingBgtAcosLtRule::apply(null, $rule)['bgt']);
+    }
+
+    public function test_lifetime_acos_formula_matches_l30_rounding(): void
+    {
+        $this->assertSame(50.0, GoogleShoppingAcosLifetime::acosFrom(100.4, 200.0));
+        $this->assertSame(100.0, GoogleShoppingAcosLifetime::acosFrom(30.0, 0.0));
+        $this->assertSame(0.0, GoogleShoppingAcosLifetime::acosFrom(0.0, 0.0));
     }
 
     public function test_price_below_threshold_zeros_sbgt(): void

@@ -10,7 +10,7 @@ final class GoogleShoppingBgtParts
 {
     /**
      * @param  array<string, mixed>  $arr
-     * @param  array{views_l7?: float|null, views_l30?: float|null, price?: float|null, inv?: float|null, ovl30?: float|null, dil?: float|null}  $skuMetrics
+     * @param  array{views_l7?: float|null, views_l30?: float|null, price?: float|null, inv?: float|null, ovl30?: float|null, dil?: float|null, acos_lt?: float|null}  $skuMetrics
      * @param  array{sbgt: array<string, mixed>, sbid: array<string, float>}|null  $rawRule
      */
     public static function applyToRow(array &$arr, array $skuMetrics, ?array $rawRule = null): void
@@ -74,12 +74,23 @@ final class GoogleShoppingBgtParts
         $arr['bgt_dil_label'] = $hitDil['label'];
         $arr['bgt_dil_value'] = $dil;
 
+        // BGT ACOS LT: lifetime ACOS% slab → budget part (default slabs add 0).
+        $acosLt = isset($skuMetrics['acos_lt']) && is_numeric($skuMetrics['acos_lt'])
+            ? (float) $skuMetrics['acos_lt']
+            : null;
+        $hitAcosLt = GoogleShoppingBgtAcosLtRule::apply($acosLt);
+        $arr['bgt_acos_lt'] = $hitAcosLt['bgt'];
+        $arr['bgt_acos_lt_color'] = $hitAcosLt['color'];
+        $arr['bgt_acos_lt_label'] = $hitAcosLt['label'];
+        $arr['bgt_acos_lt_value'] = $acosLt;
+
         $arr['sbgt'] = GoogleShoppingSbgt::sumFromParts(
             $arr['bgt_views'],
             $arr['bgt_cvr'],
             $arr['bgt_acos'],
             $arr['bgt_prc'],
-            $arr['bgt_dil']
+            $arr['bgt_dil'],
+            $arr['bgt_acos_lt']
         );
 
         $cfg = ($rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule())['sbgt'] ?? [];
@@ -158,7 +169,8 @@ final class GoogleShoppingBgtParts
         ?float $price,
         ?array $rawRule = null,
         ?float $inv = null,
-        ?float $dil = null
+        ?float $dil = null,
+        ?float $acosLt = null
     ): int {
         $row = [
             'acos_l30' => $acos,
@@ -172,6 +184,7 @@ final class GoogleShoppingBgtParts
             'price' => $price,
             'inv' => $inv,
             'dil' => $dil,
+            'acos_lt' => $acosLt,
         ], $rawRule);
 
         $sbgt = $row['sbgt'] ?? null;

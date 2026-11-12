@@ -12,6 +12,8 @@ use App\Services\GoogleShoppingLiveBidBgtService;
 use App\Support\GoogleShoppingLiveSyncStatus;
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingAcosLifetime;
+use App\Support\GoogleShoppingBgtAcosLtRule;
 use App\Support\GoogleShoppingBgtDilRule;
 use App\Support\GoogleShoppingBgtPrcRule;
 use App\Support\GoogleShoppingBgtSkuMetrics;
@@ -333,6 +335,21 @@ class GoogleShoppingCampaignsController extends Controller
             GoogleShoppingBgtPrcRule::class,
             'Could not save BGT PRC rule.',
             'BGT PRC saved. BGT PRC on the grid will use the new Price bands after reload.'
+        );
+    }
+
+    public function getBgtAcosLtRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtAcosLtRule::class);
+    }
+
+    public function saveBgtAcosLtRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtAcosLtRule::class,
+            'Could not save BGT Vs ACOS LT rule.',
+            'BGT Vs ACOS LT saved. BGT ACOS LT on the grid will use the new lifetime ACOS bands after reload.'
         );
     }
 
@@ -3757,6 +3774,8 @@ class GoogleShoppingCampaignsController extends Controller
             return;
         }
         $metrics = $resolver((string) ($arr['campaign_name'] ?? ''));
+        // Lifetime ACOS% (all-time Spend ÷ Sales) feeds the BGT Vs ACOS LT rule.
+        $metrics['acos_lt'] = GoogleShoppingAcosLifetime::forCampaign($arr['campaign_id'] ?? null);
         GoogleShoppingBgtParts::applyToRow($arr, $metrics, $rawRule);
     }
 
@@ -3984,6 +4003,7 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_views',
             'bgt_prc',
             'bgt_dil',
+            'bgt_acos_lt',
             'sbgt',
         ];
 
@@ -4827,6 +4847,7 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_cvr',
             'bgt_prc',
             'bgt_dil',
+            'bgt_acos_lt',
             'sbgt',
             'sbgt_cap',
             'sbgt_prev',
@@ -4843,6 +4864,9 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_dil_color',
             'bgt_dil_label',
             'bgt_dil_value',
+            'bgt_acos_lt_color',
+            'bgt_acos_lt_label',
+            'bgt_acos_lt_value',
             'ovl30',
             'sbid',
             'lbid',

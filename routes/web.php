@@ -7560,6 +7560,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/bgt-cvr-rule', 'saveBgtCvrRule')->name('google.shopping.campaigns.bgt-cvr-rule.save');
         Route::get('/google/shopping/google-shopping/bgt-prc-rule', 'getBgtPrcRule')->name('google.shopping.campaigns.bgt-prc-rule');
         Route::post('/google/shopping/google-shopping/bgt-prc-rule', 'saveBgtPrcRule')->name('google.shopping.campaigns.bgt-prc-rule.save');
+        Route::get('/google/shopping/google-shopping/bgt-acos-lt-rule', 'getBgtAcosLtRule')->name('google.shopping.campaigns.bgt-acos-lt-rule');
+        Route::post('/google/shopping/google-shopping/bgt-acos-lt-rule', 'saveBgtAcosLtRule')->name('google.shopping.campaigns.bgt-acos-lt-rule.save');
         Route::get('/google/shopping/google-shopping/bgt-dil-rule', 'getBgtDilRule')->name('google.shopping.campaigns.bgt-dil-rule');
         Route::post('/google/shopping/google-shopping/bgt-dil-rule', 'saveBgtDilRule')->name('google.shopping.campaigns.bgt-dil-rule.save');
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
