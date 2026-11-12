@@ -114,7 +114,7 @@ class MasterListingDetails
             if (strtoupper((string) ($row->nr_req ?? 'REQ')) === 'NR') {
                 continue;
             }
-            if (! empty($row->page_created) || (string) ($row->listed ?? '') === 'Listed') {
+            if (! empty($row->page_created) || ! empty($row->out_of_stock) || (string) ($row->listed ?? '') === 'Listed') {
                 continue;
             }
             $out[] = [

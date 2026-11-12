@@ -439,6 +439,7 @@
         .listing-auto-badge--listed { background-color: #28a745; }
         .listing-auto-badge--nrl,
         .listing-auto-badge--not-listed { background-color: #dc3545; }
+        .listing-auto-badge--oos { background-color: #f59e0b; color: #fff; }
 
         .listing-listed-tick {
             display: inline-flex;
@@ -553,6 +554,7 @@
                                 <option value="all" selected>Listed</option>
                                 <option value="Listed">Listed Only</option>
                                 <option value="Pending">Missing L</option>
+                                <option value="Out of stock">Out of stock (live, qty 0)</option>
                             </select>
                             <button type="button"
                                 class="btn btn-sm btn-primary listing-page-tools-btn"
@@ -681,7 +683,7 @@
                 const inv = parseFloat(item.INV) || 0;
                 // The server decides Listed (same Missing L total as /missing-listing).
                 // A saved buyer or seller link must not turn an ended listing back to Listed.
-                const serverDecided = item.listed === 'Listed' || item.listed === 'Pending' || item.listed === 'Created';
+                const serverDecided = item.listed === 'Listed' || item.listed === 'Pending' || item.listed === 'Created' || item.listed === 'Out of stock';
                 const itemId = serverDecided
                     ? (/^\d{6,}$/.test(String(item.eBay_item_id || '').trim()) ? String(item.eBay_item_id).trim() : '')
                     : listingItemId(item);
@@ -731,7 +733,7 @@
 
                 rows.forEach(item => {
                     if (!(item.is_parent || isParentSku(item.sku)) && parseFloat(item.INV) > 0) {
-                        const parked = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
+                        const parked = item.listed === 'Created' || item.listed === 'Incomplete' || item.listed === 'Out of stock' || !!item.page_created;
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
@@ -877,6 +879,10 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
+            // Live on eBay with quantity 0 (Seller Hub "Out of stock"): neither Listed nor Missing L
+            if (data.listed === 'Out of stock') {
+                return `<span class="listing-auto-badge listing-auto-badge--oos" title="Live on eBay with quantity 0 (Seller Hub: Out of stock). Not counted as Listed or Missing L.">Out of stock</span>`;
+            }
             // Missing Listing logic (same as /ebay2-tabulator-view): has eBay item id = Listed
             const itemId = String(data.eBay_item_id || '').trim();
             if (itemId) {

@@ -79,7 +79,7 @@ class AutomatedListingPage
                 continue;
             }
             $req++;
-            if (! empty($item->page_created)) {
+            if (! empty($item->page_created) || ! empty($item->out_of_stock)) {
                 continue;
             }
             if ((string) ($item->listed ?? '') === 'Listed') {
@@ -146,13 +146,15 @@ class AutomatedListingPage
             : collect();
 
         $listedMap = ChannelListingRegistry::loadListedIds($cfg, $skus);
+        // eBay: live listings with quantity 0 (Seller Hub "Out of stock") are a state of their own.
+        $outOfStockMap = ChannelListingRegistry::loadOutOfStockIds($cfg, $skus);
         $idField = (string) ($cfg['id_field'] ?? 'listing_id');
 
         // eBay 1: the seller-portal sync decides what is live (same as the Missing L total).
         // A saved buyer / seller link must not turn an ended, deleted or missing listing back to Listed.
         $trustLinks = empty(((array) ($cfg['listed'] ?? []))['hide_statuses']);
 
-        $rows = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField, $trustLinks) {
+        $rows = $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $outOfStockMap, $idField, $trustLinks) {
             $childSku = (string) $item->sku;
             $skuLower = strtolower(trim($childSku));
 
@@ -222,6 +224,12 @@ class AutomatedListingPage
             // EbayTwo-style blades historically read eBay_item_id for Missing L / links
             $item->eBay_item_id = $idOrNull;
             $item->listed = $item->page_created ? 'Created' : ($listingId !== '' ? 'Listed' : 'Pending');
+            $item->out_of_stock = false;
+            if ($item->listed === 'Listed' && $outOfStockMap !== []
+                && ListingCountsEngine::listingIdFromMap($outOfStockMap, $childSku) !== '') {
+                $item->out_of_stock = true;
+                $item->listed = 'Out of stock';
+            }
             if (! $item->buyer_link && $idOrNull && str_starts_with($idOrNull, 'http')) {
                 $item->buyer_link = $idOrNull;
             }

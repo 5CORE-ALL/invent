@@ -674,6 +674,16 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Once a day: a SKU that still holds an eBay item id although eBay no longer has the listing
+        // (zero quantity rows are asked about with GetItem) loses the id and shows on Missing L.
+        $schedule->command('ebay:purge-stale-item-ids --store=all')
+            ->dailyAt('04:45')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-purge-stale-item-ids')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Once a day: refresh listing data for every marketplace (same job as the
         // "Refresh listings" button on each listing page).
         $schedule->command('listing:refresh all')

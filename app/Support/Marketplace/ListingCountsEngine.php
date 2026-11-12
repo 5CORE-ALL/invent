@@ -953,6 +953,99 @@ class ListingCountsEngine
     }
 
     /**
+     * SKUs whose live listing has no stock: sku_lower → id for SKUs that have at least one live row
+     * (same rule as listedIdsFromColumn) and where every live row reports a stock of 0 or less.
+     * A row with unknown (NULL) stock counts as in stock, so a SKU is only reported when eBay says 0.
+     * Seller Hub shows such listings under "Out of stock", not under Active.
+     *
+     * @param  class-string  $modelClass
+     * @param  list<string>  $skus
+     * @param  list<string>  $hideStatuses
+     * @return array<string, string>
+     */
+    public static function outOfStockIdsFromColumn(string $modelClass, array $skus, string $column, string $stockColumn, array $hideStatuses = [], string $statusColumn = 'listing_status'): array
+    {
+        if ($modelClass === '' || ! class_exists($modelClass) || $skus === [] || $stockColumn === '') {
+            return [];
+        }
+        $table = (new $modelClass)->getTable();
+        if (! Schema::hasColumn($table, $stockColumn)) {
+            return [];
+        }
+        $wanted = self::wantedSkuKeySet($skus);
+        if ($wanted === []) {
+            return [];
+        }
+
+        $hide = [];
+        foreach ($hideStatuses as $status) {
+            $hide[str_replace([' ', '-'], '_', strtolower(trim((string) $status)))] = true;
+        }
+        $columns = ['sku', $column, $stockColumn];
+        $hasStatus = false;
+        if (Schema::hasColumn($table, $statusColumn) && $column !== $statusColumn) {
+            $columns[] = $statusColumn;
+            $hasStatus = true;
+        }
+
+        /** @var array<string, array{sku: string, id: string, in_stock: bool}> $groups */
+        $groups = [];
+        $modelClass::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->get($columns)
+            ->each(function ($row) use (&$groups, $column, $stockColumn, $wanted, $hasStatus, $hide, $statusColumn) {
+                $sku = trim((string) $row->sku);
+                $id = trim((string) ($row->{$column} ?? ''));
+                if ($sku === '' || $id === '') {
+                    return;
+                }
+                if ($hasStatus && self::listingStatusHidesId($row->{$statusColumn} ?? null, $id, $sku)) {
+                    return;
+                }
+                if ($hasStatus && $hide !== []) {
+                    $status = str_replace([' ', '-'], '_', strtolower(trim((string) ($row->{$statusColumn} ?? ''))));
+                    if (isset($hide[$status])) {
+                        return;
+                    }
+                }
+                $hit = false;
+                foreach (self::skuMatchKeys($sku) as $key) {
+                    if (isset($wanted[$key])) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if (! $hit) {
+                    return;
+                }
+
+                $stock = $row->{$stockColumn} ?? null;
+                $inStock = $stock === null || $stock === '' || (float) $stock > 0;
+                $group = strtoupper(ShopifySku::compactSkuForLookup($sku)) ?: strtoupper($sku);
+                if (! isset($groups[$group])) {
+                    $groups[$group] = ['sku' => $sku, 'id' => $id, 'in_stock' => $inStock];
+
+                    return;
+                }
+                if ($inStock) {
+                    $groups[$group]['in_stock'] = true;
+                }
+            });
+
+        $byKey = [];
+        foreach ($groups as $g) {
+            if (! $g['in_stock']) {
+                self::putListedForSku($byKey, $wanted, $g['sku'], $g['id']);
+            }
+        }
+
+        return self::listedMapForProductSkus($skus, $byKey);
+    }
+
+    /**
      * Listed when numeric price column > 0. Listing id = sku (presence marker).
      *
      * @param  class-string  $modelClass
