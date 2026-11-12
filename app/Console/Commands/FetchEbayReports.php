@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use App\Models\EbayMetric;
 use App\Models\EbayTask;
 use App\Services\ChannelLivePriceSync;
+use App\Support\Marketplace\EbayMetricsRefresh;
 use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
@@ -18,7 +19,7 @@ class FetchEbayReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-ebay-reports';
+    protected $signature = 'app:fetch-ebay-reports {--fresh : Truncate ebay_metrics after the live report downloads, then re-pull every listing}';
 
     /**
      * The console command description.
@@ -31,6 +32,28 @@ class FetchEbayReports extends Command
      * Execute the console command.
      */
     public function handle()
+    {
+        $fresh = (bool) $this->option('fresh');
+        if ($fresh) {
+            EbayMetricsRefresh::write('ebay1', 'running', 'Downloading live eBay 1 listings…');
+        }
+
+        $code = $this->fetchMetrics($fresh);
+
+        if ($fresh) {
+            if ($code === 0) {
+                EbayMetricsRefresh::write('ebay1', 'done', 'eBay 1 listings refreshed with new prices', false);
+            } else {
+                EbayMetricsRefresh::write('ebay1', 'failed', $this->freshFailure ?: 'eBay 1 refresh failed', false);
+            }
+        }
+
+        return $code;
+    }
+
+    private ?string $freshFailure = null;
+
+    private function fetchMetrics(bool $fresh)
     {
         try {
             // Check database connection (without creating persistent connection)
@@ -60,6 +83,19 @@ class FetchEbayReports extends Command
         
         // Delete the task after successful processing to prevent reuse
         $this->deleteTask($taskId);
+
+        if ($fresh) {
+            // Truncate only after the live report came back with rows: a failed / empty download must never
+            // leave ebay_metrics (and the whole eBay 1 tabulator table) empty.
+            if (empty($listingData)) {
+                $this->freshFailure = 'eBay returned no listings. ebay_metrics was left untouched.';
+                $this->error('❌ '.$this->freshFailure);
+                return 1;
+            }
+            EbayMetricsRefresh::write('ebay1', 'running', 'Truncating ebay_metrics and re-pulling listings…');
+            EbayMetric::truncate();
+            $this->info('🧹 ebay_metrics truncated');
+        }
 
         $this->info("📊 Total raw listings fetched: " . count($listingData));
         
@@ -281,6 +317,7 @@ class FetchEbayReports extends Command
             $this->info('✅ eBay Metrics updated');
             return 0;
         } catch (\Exception $e) {
+            $this->freshFailure = 'Refresh failed: ' . $e->getMessage();
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;

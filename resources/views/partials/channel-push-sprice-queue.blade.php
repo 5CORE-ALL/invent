@@ -632,15 +632,87 @@
                 });
                 return out;
             }
+            // eBay 1 / 2 / 3 tabulator views: after S PRC pushes finish, the server truncates that channel's metrics
+            // table (ebay_metrics / ebay_2_metrics / ebay_3_metrics) and re-pulls every listing (new prices) from eBay
+            // in the background; when it is done the table reloads. The old rows stay on screen meanwhile (the pull
+            // takes minutes), so the table is never blank.
+            const CH_PUSH_FRESH_EBAY = /^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            const CH_PUSH_FRESH_LABEL = ({ ebay1: 'eBay 1', ebay2: 'eBay 2', ebay3: 'eBay 3' })[CH_PUSH_SPRICE_CHANNEL] || 'eBay';
+            const CH_PUSH_FRESH_TABLE = ({ ebay1: 'ebay_metrics', ebay2: 'ebay_2_metrics', ebay3: 'ebay_3_metrics' })[CH_PUSH_SPRICE_CHANNEL] || '';
+            let chPushFreshBusy = false;
+            let chPushFreshAgain = false;
+            function chPushFreshReloadTable() {
+                const tbl = (typeof table !== 'undefined' && table) ? table : null;
+                if (!tbl || typeof tbl.replaceData !== 'function') return null;
+                // eBay 2 builds its feed URL (filters) in ebay2TableDataUrl(); eBay 1 / 3 re-fetch their ajaxURL.
+                return (CH_PUSH_SPRICE_CHANNEL === 'ebay2' && typeof ebay2TableDataUrl === 'function')
+                    ? tbl.replaceData(ebay2TableDataUrl())
+                    : tbl.replaceData();
+            }
+            function chPushFreshFinish(ok, msg, onFail) {
+                chPushFreshBusy = false;
+                if (ok) {
+                    const done = function() {
+                        chPushSpriceToast('success', msg || (CH_PUSH_FRESH_LABEL + ' listings refreshed with new prices'));
+                    };
+                    const p = chPushFreshReloadTable();
+                    if (p && typeof p.then === 'function') p.then(done, done); else done();
+                } else {
+                    chPushSpriceToast('error', msg || (CH_PUSH_FRESH_LABEL + ' refresh failed'));
+                    if (typeof onFail === 'function') onFail();
+                }
+                if (chPushFreshAgain) {
+                    chPushFreshAgain = false;
+                    // Another push finished while this run was in progress: it may have missed that price, run once more.
+                    setTimeout(function() { chPushFreshRefresh(onFail); }, 500);
+                }
+            }
+            function chPushFreshPoll(onFail) {
+                const startedAt = Date.now();
+                const timer = setInterval(function() {
+                    if (Date.now() - startedAt > 45 * 60 * 1000) {
+                        clearInterval(timer);
+                        chPushFreshFinish(false, CH_PUSH_FRESH_LABEL + ' refresh timed out', onFail);
+                        return;
+                    }
+                    $.ajax({
+                        url: '/ebay-refresh-metrics/' + encodeURIComponent(CH_PUSH_SPRICE_CHANNEL) + '/status',
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        timeout: 20000,
+                    }).done(function(st) {
+                        if (!st || st.running) return;
+                        clearInterval(timer);
+                        chPushFreshFinish(st.state === 'done', st.message, onFail);
+                    });
+                }, 5000);
+            }
+            function chPushFreshRefresh(onFail) {
+                if (chPushFreshBusy) {
+                    chPushFreshAgain = true;
+                    return;
+                }
+                chPushFreshBusy = true;
+                chPushFreshAgain = false;
+                chPushSpriceToast('success', 'Price updated. Truncating ' + CH_PUSH_FRESH_TABLE + ' and pulling new listing prices…');
+                $.ajax({
+                    url: '/ebay-refresh-metrics/' + encodeURIComponent(CH_PUSH_SPRICE_CHANNEL),
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
+                    data: { _token: chPushSpriceCsrf() },
+                    timeout: 30000,
+                }).done(function() {
+                    chPushFreshPoll(onFail);
+                }).fail(function(xhr) {
+                    chPushFreshFinish(false, (xhr.responseJSON && xhr.responseJSON.message) || ('Could not start the ' + CH_PUSH_FRESH_LABEL + ' refresh'), onFail);
+                });
+            }
             function chPushSpricePullAfterPush(skus, opts) {
                 if (!skus || !skus.length) return;
                 if (!CH_PUSH_SPRICE_CAN_PULL) return;
-                // /ebay2-tabulator-view: truncate ebay_2_metrics and re-pull every listing price from eBay.
-                // If that cannot start / fails, fall back to the per-SKU live price pull below.
-                if (CH_PUSH_SPRICE_CHANNEL === 'ebay2'
-                    && !(opts && opts.skipFresh)
-                    && typeof global.ebay2RefreshMetricsAfterPush === 'function') {
-                    global.ebay2RefreshMetricsAfterPush(skus, function() {
+                // If the fresh refresh cannot start / fails, fall back to the per-SKU live price pull below.
+                if (CH_PUSH_FRESH_EBAY && !(opts && opts.skipFresh)) {
+                    chPushFreshRefresh(function() {
                         chPushSpricePullAfterPush(skus, { skipFresh: true });
                     });
                     return;

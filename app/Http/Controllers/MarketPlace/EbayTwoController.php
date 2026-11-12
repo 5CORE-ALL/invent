@@ -281,29 +281,6 @@ class EbayTwoController extends Controller
     }
 
     /**
-     * After S PRC pushes: truncate ebay_2_metrics and re-pull every listing (new prices) from eBay in a
-     * background process. The page polls refreshMetricsStatus() and reloads the table when it is done.
-     */
-    public function refreshMetrics()
-    {
-        $result = \App\Support\Marketplace\Ebay2MetricsRefresh::start();
-        $ok = $result['started'] || $result['already_running'];
-
-        return response()->json([
-            'success' => $ok,
-            'already_running' => $result['already_running'],
-            'message' => $ok ? null : ($result['error'] ?? 'Could not start the refresh'),
-        ], $ok ? 200 : 500);
-    }
-
-    public function refreshMetricsStatus()
-    {
-        $status = \App\Support\Marketplace\Ebay2MetricsRefresh::status();
-
-        return response()->json($status ?? ['state' => 'idle', 'running' => false, 'message' => '']);
-    }
-
-    /**
      * Tabulator feed — same wrapper as /ebay-data-json, eBay 2 rows only.
      * Returns the row array and saves the daily snapshot after the response.
      */

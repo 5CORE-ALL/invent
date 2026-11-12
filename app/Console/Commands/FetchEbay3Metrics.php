@@ -6,6 +6,7 @@ use App\Models\Ebay3Metric;
 use App\Models\Ebay3DailyData;
 use App\Models\EbayTask;
 use App\Services\ChannelLivePriceSync;
+use App\Support\Marketplace\EbayMetricsRefresh;
 use App\Services\EbayThreeApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -15,7 +16,7 @@ use ZipArchive;
 
 class FetchEbay3Metrics extends Command
 {
-    protected $signature = 'app:fetch-ebay-three-metrics';
+    protected $signature = 'app:fetch-ebay-three-metrics {--fresh : Truncate ebay_3_metrics after the live report downloads, then re-pull every listing}';
     protected $description = 'Fetch eBay price, L30, L60 and views for all SKUs (variations)';
 
     /** @var array<string, float>|null */
@@ -30,6 +31,28 @@ class FetchEbay3Metrics extends Command
     }
 
     public function handle()
+    {
+        $fresh = (bool) $this->option('fresh');
+        if ($fresh) {
+            EbayMetricsRefresh::write('ebay3', 'running', 'Downloading live eBay 3 listings…');
+        }
+
+        $code = $this->fetchMetrics($fresh);
+
+        if ($fresh) {
+            if ($code === 0) {
+                EbayMetricsRefresh::write('ebay3', 'done', 'eBay 3 listings refreshed with new prices', false);
+            } else {
+                EbayMetricsRefresh::write('ebay3', 'failed', $this->freshFailure ?: 'eBay 3 refresh failed', false);
+            }
+        }
+
+        return $code;
+    }
+
+    private ?string $freshFailure = null;
+
+    private function fetchMetrics(bool $fresh)
     {
         try {
             // Check database connection (without creating persistent connection)
@@ -59,6 +82,19 @@ class FetchEbay3Metrics extends Command
         
         // Delete the task after successful processing to prevent reuse
         $this->deleteTask($taskId);
+
+        if ($fresh) {
+            // Truncate only after the live report came back with rows: a failed / empty download must never
+            // leave ebay_3_metrics (and the whole eBay 3 tabulator table) empty.
+            if (empty($listingData)) {
+                $this->freshFailure = 'eBay returned no listings. ebay_3_metrics was left untouched.';
+                $this->error('❌ '.$this->freshFailure);
+                return 1;
+            }
+            EbayMetricsRefresh::write('ebay3', 'running', 'Truncating ebay_3_metrics and re-pulling listings…');
+            Ebay3Metric::truncate();
+            $this->info('🧹 ebay_3_metrics truncated');
+        }
 
         // Save price + SKU mapping
         // We'll map itemId => [sku, sku, ...]
@@ -203,6 +239,7 @@ class FetchEbay3Metrics extends Command
             \App\Support\DilVsSbidAutoPush::afterDataChange('ebay3');
             return 0;
         } catch (\Exception $e) {
+            $this->freshFailure = 'Refresh failed: ' . $e->getMessage();
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;

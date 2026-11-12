@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Ebay2Metric;
 use App\Models\EbayTask;
 use App\Services\ChannelLivePriceSync;
-use App\Support\Marketplace\Ebay2MetricsRefresh;
+use App\Support\Marketplace\EbayMetricsRefresh;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -46,16 +46,16 @@ class FetchEbay2Metrics extends Command
     {
         $fresh = (bool) $this->option('fresh');
         if ($fresh) {
-            Ebay2MetricsRefresh::write('running', 'Downloading live eBay 2 listings…');
+            EbayMetricsRefresh::write('ebay2', 'running', 'Downloading live eBay 2 listings…');
         }
 
         $code = $this->fetchMetrics($fresh);
 
         if ($fresh) {
             if ($code === 0) {
-                Ebay2MetricsRefresh::write('done', 'eBay 2 listings refreshed with new prices', false);
+                EbayMetricsRefresh::write('ebay2', 'done', 'eBay 2 listings refreshed with new prices', false);
             } else {
-                Ebay2MetricsRefresh::write('failed', $this->freshFailure ?: 'Refresh failed. ebay_2_metrics was not changed unless the pull got past the download step.', false);
+                EbayMetricsRefresh::write('ebay2', 'failed', $this->freshFailure ?: 'eBay 2 refresh failed', false);
             }
         }
 
@@ -107,7 +107,7 @@ class FetchEbay2Metrics extends Command
                 $this->error('❌ '.$this->freshFailure);
                 return 1;
             }
-            Ebay2MetricsRefresh::write('running', 'Truncating ebay_2_metrics and re-pulling listings…');
+            EbayMetricsRefresh::write('ebay2', 'running', 'Truncating ebay_2_metrics and re-pulling listings…');
             Ebay2Metric::truncate();
             $this->info('🧹 ebay_2_metrics truncated');
         }
