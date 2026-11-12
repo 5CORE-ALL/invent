@@ -306,8 +306,11 @@ class AmazonSprcDilAutoPushService
         $dilRule = $this->dilRuleOn('dil') ? AmazonDilGroiRule::match($dil, $dilRules) : null;
         $dilPrice = null;
         $nroi = null;
-        if ($dilRule !== null && $lp > 0) {
-            $nroi = (float) ($dilRule['nroi'] ?? $dilRule['groi']);
+        // Clearance rule (Sprc Dil modal): a clearance SKU is priced from exactly the saved Clearance Target NROI%. The Dil slab,
+        // CVR overlay, Ageing and custom rule cards do not apply to it. Std Prc stays the maximum.
+        $clearanceExact = $this->clearanceExactNroi($row);
+        if (($dilRule !== null || $clearanceExact !== null) && $lp > 0) {
+            $nroi = $clearanceExact ?? (float) ($dilRule['nroi'] ?? $dilRule['groi']);
             $aL30 = (float) ($row['a_l30'] ?? 0);
             $sess30 = (float) ($row['sess30'] ?? $row['sessions_l30'] ?? 0);
             $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
@@ -324,6 +327,9 @@ class AmazonSprcDilAutoPushService
                 'inv' => $inv,
             ];
             foreach (AmazonDilGroiRule::ruleOrder($this->ruleSeqCfg, $this->customRulesCfg) as $step) {
+                if ($clearanceExact !== null) {
+                    break;
+                }
                 // A custom rule card (Sprc Dil modal): its condition is met → its points are added to the Target NROI.
                 if (str_starts_with($step, 'c_')) {
                     $custom = $this->customRule(substr($step, 2));
@@ -332,13 +338,8 @@ class AmazonSprcDilAutoPushService
                     }
                     continue;
                 }
-                // Clearance rule (Sprc Dil modal): a clearance SKU gets the saved points added to its Target NROI, in its Seq place.
+                // The Clearance step itself does nothing here: clearance SKUs never reach this loop (exact Clearance NROI above).
                 if ($step === 'clearance') {
-                    if ($this->dilRuleOn('clearance') && $this->clearanceAdjCfg !== null && abs($this->clearanceAdjCfg) > 0.0001
-                        && \App\Support\SpriceActiveRule::forChannel('amazon') === 'dil'
-                        && (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
-                        $nroi = max(0.0, round($nroi + $this->clearanceAdjCfg, 2));
-                    }
                     continue;
                 }
                 // CVR overlay switched OFF in the Sprc Dil modal: no points added (Dil slab Target NROI stays as is).
@@ -380,6 +381,10 @@ class AmazonSprcDilAutoPushService
             $capped = (float) $dilPrice;
             $dilLmpCvrDisc = 0.0;
             foreach (AmazonDilGroiRule::priceOrder($this->ruleSeqCfg, $this->customRulesCfg) as $priceStep) {
+                // Clearance SKU: priced from its exact Clearance NROI, no custom price rule changes it.
+                if ($clearanceExact !== null) {
+                    break;
+                }
                 if (str_starts_with($priceStep, 'c_')) {
                     // A custom rule card: its condition is met → the price changes by its % (negative = lower).
                     $custom = $this->customRule(substr($priceStep, 2));
@@ -541,6 +546,23 @@ class AmazonSprcDilAutoPushService
             'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
+    }
+
+    /**
+     * Clearance Target NROI% for a clearance SKU: the saved Clearance value of the Sprc Dil modal, when the Clearance switch is ON
+     * and the active rule is Sprc Dil. null = not a clearance SKU, switch OFF, nothing saved, or not on Sprc Dil.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function clearanceExactNroi(array $row): ?float
+    {
+        if ($this->clearanceAdjCfg === null || ! $this->dilRuleOn('clearance')
+            || \App\Support\SpriceActiveRule::forChannel('amazon') !== 'dil'
+            || ! (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+            return null;
+        }
+
+        return max(0.0, round($this->clearanceAdjCfg, 2));
     }
 
     /** Why computeTarget() returned null for a row (diagnostics only). @param array<string, mixed> $row */

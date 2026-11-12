@@ -1189,12 +1189,12 @@
                     <button type="button" class="amz-dg-del-btn" data-amz-del="clearance" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
                     <div class="amz-dg-side">
                     <div class="amz-dg-rules-title amz-dg-has-sw"><span class="amz-dg-seq" title="Sequence number: the order this rule changes the Target NROI of clearance SKUs (lowest first, after the Dil slab). Change it to change the order. Saved with Save Only / Save All and used by the server job too."><span class="amz-dg-seq-hash">Seq</span><input type="number" min="1" max="8" step="1" class="amz-dg-seq-in" data-amz-seq="clearance" value="8"></span><span>Clearance</span>
-                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = the Clearance rule no longer adds points to the Target NROI of clearance SKUs."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                            <label class="amz-dg-rule-sw" title="ON / OFF. OFF = clearance SKUs follow the normal rules again (Dil slab, CVR, Ageing)."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="clearance" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
                     </div>
                     </div>
                     <div class="amz-dg-clearance-wrap">
                         <div class="small text-muted mb-1">
-                            <strong>Clearance Rule:</strong> If Item is On Clearance Then <strong>add</strong> the points below to the Target <strong>NROI%</strong> (negative lowers it).
+                            <strong>Clearance Rule:</strong> If Item is On Clearance Then its Target <strong>NROI%</strong> is exactly the value below. The Dil slab, CVR, Ageing and custom rules do not apply to it. Std Prc stays the maximum.
                         </div>
                         <div id="amz-dg-clearance-block" class="amz-dg-clr">
                             <div class="amz-dg-clr-stats" title="INV &gt; 0 and Clearance Yes on Inv Days.">
@@ -1206,14 +1206,14 @@
                                     <span class="amz-dg-clr-lbl">INV</span>
                                     <span class="amz-dg-clearance-inv">0</span>
                                 </div>
-                                <div class="amz-dg-clr-stat" title="Points added to the Target NROI of clearance SKUs">
-                                    <span class="amz-dg-clr-lbl">ADJ</span>
+                                <div class="amz-dg-clr-stat" title="Target NROI% of clearance SKUs">
+                                    <span class="amz-dg-clr-lbl">NROI</span>
                                     <span class="amz-dg-clearance-nroi">0%</span>
                                 </div>
                             </div>
                             <div class="amz-dg-clr-input">
-                                <label class="amz-dg-clr-lbl mb-0" for="amz-dg-clearance-groi-input">Adj NROI (pts)</label>
-                                <input type="number" step="0.1" id="amz-dg-clearance-groi-input" class="form-control form-control-sm amz-dg-clearance-groi" value="0" title="Points added to the Target NROI of clearance SKUs (negative lowers it)">
+                                <label class="amz-dg-clr-lbl mb-0" for="amz-dg-clearance-groi-input">Target NROI %</label>
+                                <input type="number" step="0.1" min="0" id="amz-dg-clearance-groi-input" class="form-control form-control-sm amz-dg-clearance-groi" value="0" title="Exact Target NROI% of clearance SKUs (replaces the Dil slab, no other rule applies)">
                             </div>
                         </div>
                     </div>
@@ -1282,7 +1282,7 @@
                 'If the SKU\u2019s age (days) is inside an age band, add that band\u2019s points to the Target NROI (use a negative number to lower it). Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.',
             ],
             clearance: [
-                'If an item is on clearance, add the Clearance points to its Target NROI (negative lowers it), like the CVR overlay and the Ageing Rule. The price then follows the normal rules and Std Prc stays the maximum.',
+                'If an item is on clearance, its Target NROI is exactly the Clearance Target NROI% above (0 included). The Dil slab, CVR overlay, Ageing and custom rules do not apply to it. Std Prc stays the maximum.',
             ],
         };
         function amzDgRulesStore() {
@@ -2571,6 +2571,14 @@
             const order = amzNroiOrder();
             let cur = Number(slabGroi) || 0;
             const out = { cvr: 0, age: 0, clearance: 0, order: order };
+            // Clearance rule: a clearance SKU is priced from exactly the Clearance Target NROI. No other rule runs on it.
+            const exact = amzClearanceExactNroi(d);
+            if (exact !== null) {
+                out.clearance = exact;
+                out.exact = true;
+                out.nroi = exact;
+                return out;
+            }
             order.forEach(function(k) {
                 if (k === 'cvr') {
                     out.cvr = amzDilGroiCvrAdj(d);
@@ -2579,11 +2587,6 @@
                     const next = Math.max(0, amzPefRound2(cur + amzDilGroiAgeAdj(d)));
                     out.age = amzPefRound2(next - cur);
                     cur = next;
-                } else if (k === 'clearance') {
-                    // Clearance rule: a clearance SKU gets the saved points added to its Target NROI.
-                    const pts = amzClearanceAdjFor(d);
-                    out.clearance = pts;
-                    cur = Math.max(0, amzPefRound2(cur + pts));
                 } else if (k.indexOf('c_') === 0) {
                     // A custom rule card: its condition is met -> its points are added to the Target NROI.
                     const cr = amzCustomRuleById(k.slice(2));
@@ -3037,11 +3040,18 @@
         }
         function amzDilGroiMetaForRow(d) {
             if (!amzPefIsChildRow(d) || amzPefInv(d) <= 0) return null;
-            // Dil slabs switched OFF: no slab applies, so no Dil price (same as a Dil outside every slab).
-            if (!amzRuleIsOn('dil')) return null;
             const dil = amzPefDil(d);
-            const rule = amzDilGroiMatch(dil);
-            if (!rule) return null;
+            // A clearance SKU is priced from the exact Clearance Target NROI, so it needs no Dil slab (and ignores the Dil switch).
+            const clrExact = amzClearanceExactNroi(d);
+            let rule = null;
+            if (clrExact === null) {
+                // Dil slabs switched OFF: no slab applies, so no Dil price (same as a Dil outside every slab).
+                if (!amzRuleIsOn('dil')) return null;
+                rule = amzDilGroiMatch(dil);
+                if (!rule) return null;
+            } else {
+                rule = amzDilGroiMatch(dil) || { key: 'clearance', label: 'Clearance', nroi: clrExact };
+            }
             const slabNroi = (rule.nroi != null) ? rule.nroi : rule.groi;
             // The CVR / Age points are applied in the order of their sequence numbers (amzNroiChain).
             const chain = amzNroiChain(slabNroi, d);
@@ -3129,6 +3139,8 @@
         let amzClearanceNroi = 0;
         // True once the saved Sprc Dil modal (incl. the clearance Target NROI%) has been read from the server.
         let amzClearanceNroiLoaded = false;
+        // True once a Clearance Target NROI% exists (saved on the server, or typed in the modal). Nothing saved = clearance SKUs follow the normal rules.
+        let amzClearanceNroiSaved = false;
         function amzClearanceSkuKey(sku) {
             return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
@@ -3187,7 +3199,7 @@
         function amzPaintClearanceNroiText() {
             amzClearanceNroi = amzClearanceNroiNow();
             const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-nroi');
-            if (el) el.textContent = (amzClearanceNroi > 0 ? '+' : '') + amzDilGroiFmtNum(amzClearanceNroi);
+            if (el) el.textContent = amzDilGroiFmtNum(amzClearanceNroi) + '%';
         }
         /** The Clearance block sits outside the slab table (its own block, rule written above it): fill it from the saved NROI%. */
         function amzAppendClearanceSlabRow() {
@@ -3328,6 +3340,7 @@
                 amzPaintRuleSeq(res && res.rule_seq);
                 if (res && res.clearance_adj != null && res.clearance_adj !== '' && isFinite(Number(res.clearance_adj))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_adj));
+                    amzClearanceNroiSaved = true;
                 }
                 amzClearanceNroiLoaded = !!res;
                 renderAmzDilGroiModalTable();
@@ -3364,6 +3377,7 @@
             }).then(function(res) {
                 if (res && res.clearance_adj != null && res.clearance_adj !== '' && isFinite(Number(res.clearance_adj))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_adj));
+                    amzClearanceNroiSaved = true;
                 }
                 if (res && Array.isArray(res.rules)) {
                     const saved = amzNormalizeDilGroiList(res.rules);
@@ -4611,14 +4625,18 @@
          */
         function amzClearanceDilActive(d) { return false; }
         function amzClearanceDilPrice(d) { return 0; }
-        /** Points the Clearance rule adds to the Target NROI of this SKU (0 for a SKU not on clearance, switch OFF, or not on Sprc Dil). */
-        function amzClearanceAdjFor(d) {
-            if (!amzRuleIsOn('clearance') || !amzIsClearanceSku(d)) return 0;
-            if (typeof window.spriceActiveRule !== 'function' || window.spriceActiveRule() !== 'dil') return 0;
+        /**
+         * Exact Target NROI% of a clearance SKU: the Clearance value of the Sprc Dil modal. It replaces the Dil slab NROI and no
+         * other rule (CVR, Ageing, custom cards) runs on the SKU. null = not a clearance SKU, switch OFF, nothing saved yet,
+         * or Sprc Dil is not the active rule. Same as the server (AmazonSprcDilAutoPushService::clearanceExactNroi).
+         */
+        function amzClearanceExactNroi(d) {
+            if (!d || !amzClearanceNroiSaved || !amzRuleIsOn('clearance') || !amzIsClearanceSku(d)) return null;
+            if (typeof window.spriceActiveRule !== 'function' || window.spriceActiveRule() !== 'dil') return null;
             const v = amzClearanceNroiNow();
-            return isFinite(v) ? v : 0;
+            return isFinite(v) ? Math.max(0, v) : null;
         }
-        window.amzClearanceAdjFor = amzClearanceAdjFor;
+        window.amzClearanceExactNroi = amzClearanceExactNroi;
         window.amzClearanceDilActive = amzClearanceDilActive;
         window.amzClearanceDilPrice = amzClearanceDilPrice;
         function amzClearanceHasPrice(d) {
@@ -4653,8 +4671,10 @@
                 // The price rules (custom "change the S PRC by %" cards) run in the order of their sequence numbers.
                 // There is no LMP cap and no CVR up / down discount any more: Std Prc stays the maximum (amzFinalSpriceToSave).
                 let capped = raw;
+                const clrExact = amzClearanceExactNroi(d) !== null;
                 amzPriceOrder().forEach(function(step) {
-                    if (!(capped > 0)) return;
+                    // Clearance SKU: priced from its exact Clearance NROI, no custom price rule changes it.
+                    if (!(capped > 0) || clrExact) return;
                     if (step.indexOf('c_') === 0) {
                         // A custom rule card: its condition is met -> the price changes by its % (negative = lower).
                         const cr = amzCustomRuleById(step.slice(2));
@@ -6204,6 +6224,7 @@
             });
             $(document).off('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi')
                 .on('input.amzClearanceNroi change.amzClearanceNroi', '#amz-dg-clearance-block .amz-dg-clearance-groi', function() {
+                    amzClearanceNroiSaved = true;
                     amzPaintClearanceNroiText();
                 });
             $(document).off('input.amzDilGroi change.amzDilGroi', '#amz-dil-groi-tbody .amz-dil-groi-input')

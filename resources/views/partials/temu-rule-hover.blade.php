@@ -277,6 +277,14 @@
                 return null;
             }
             const dil = amzPefDil(d);
+            // Clearance rule: a clearance SKU's Target NROI is exactly the Clearance value. No slab, CVR, Ageing or custom rule applies.
+            const clrExact = (typeof window.amzClearanceExactNroi === 'function') ? window.amzClearanceExactNroi(d) : null;
+            if (clrExact !== null) {
+                steps.push(temuRuleStep('ok', '1 · Clearance rule',
+                    'Clearance SKU → Target NROI is exactly <b>' + clrExact + '%</b>. The Dil slab, CVR overlay, Ageing and custom rules do not apply.'));
+                steps.push(temuRuleStep('info', '2 · Target NROI', 'Final target <b>' + clrExact + '%</b>'));
+                return clrExact;
+            }
             const rule = amzDilGroiMatch(dil);
             if (!rule) {
                 steps.push(temuRuleStep('skip', 'Sprc Dil', 'No Dil slab matches this SKU, so there is no Target NROI.'));
@@ -312,15 +320,12 @@
                 },
                 clearance: function(no) {
                     const isClr = (typeof amzIsClearanceSku === 'function') && amzIsClearanceSku(d);
-                    const pts = (typeof window.amzClearanceAdjFor === 'function') ? Number(window.amzClearanceAdjFor(d)) || 0 : 0;
                     if (typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('clearance')) {
                         steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'The Clearance rule is OFF. No change.'));
                     } else if (!isClr) {
                         steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'This SKU is not on clearance. Not applied.'));
-                    } else if (!pts) {
-                        steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'Clearance SKU, but the Clearance points are 0. No change.'));
                     } else {
-                        steps.push(temuRuleStep('ok', no + ' · Clearance rule', 'Clearance SKU → <b>' + (pts > 0 ? '+' : '') + pts + '</b> to Target NROI'));
+                        steps.push(temuRuleStep('skip', no + ' · Clearance rule', 'No Clearance Target NROI is saved yet. Not applied.'));
                     }
                 }
             };
@@ -354,7 +359,7 @@
             let n = 1;
             // Dil slabs switched OFF: no slab, CVR, Ageing or Std step runs, so the rule sets no price.
             if (dilOn && typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('dil')
-                && !(typeof amzClearanceDilActive === 'function' && amzClearanceDilActive(d))) {
+                && !(typeof window.amzClearanceExactNroi === 'function' && window.amzClearanceExactNroi(d) !== null)) {
                 steps.push(temuRuleStep('skip', '1 · Dil slab',
                     'The Dil slabs switch is <b>OFF</b>. No slab sets a Target NROI, so Sprc Dil calculates no price for this SKU.'));
                 if (final > 0) notes.push('S PRC ' + temuRuleMoney(final) + ' is the last saved price. It stays until you switch the Dil slabs ON or set a price by hand.');
@@ -377,7 +382,8 @@
                 }
                 n = steps.length + 1;
                 // Custom rule cards that change the price by a %, in the order they run (Seq). No LMP cap any more.
-                if (base > 0 && typeof window.amzPriceOrder === 'function') {
+                if (base > 0 && typeof window.amzPriceOrder === 'function'
+                    && !(typeof window.amzClearanceExactNroi === 'function' && window.amzClearanceExactNroi(d) !== null)) {
                     window.amzPriceOrder().forEach(function(k) {
                         if (k.indexOf('c_') !== 0) return;
                         const cr = window.amzCustomRuleById(k.slice(2));
