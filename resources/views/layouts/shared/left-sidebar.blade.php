@@ -2428,6 +2428,9 @@
                             <a href="{{ route('chatgpt.ads') }}">ChatGPT Ads</a>
                         </li>
                         <li>
+                            <a href="{{ route('reddit.ads') }}">Reddit Ads</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
 

@@ -60,6 +60,7 @@ use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\PinterestAdsController;
 use App\Http\Controllers\Campaigns\ChatGptAdsController;
+use App\Http\Controllers\Campaigns\RedditAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\Tiktok1MissingAdsController;
 use App\Http\Controllers\Campaigns\Tiktok2MissingAdsController;
@@ -7714,6 +7715,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ChatGptAdsController::class)->group(function () {
         Route::get('/chatgpt-ads', 'index')->name('chatgpt.ads');
         Route::get('/chatgpt-ads/data', 'data')->name('chatgpt.ads.data');
+    });
+
+    Route::controller(RedditAdsController::class)->group(function () {
+        Route::get('/reddit-ads', 'index')->name('reddit.ads');
+        Route::get('/reddit-ads/data', 'data')->name('reddit.ads.data');
     });
 
     Route::controller(Tiktok1AdsRawDataController::class)->group(function () {
