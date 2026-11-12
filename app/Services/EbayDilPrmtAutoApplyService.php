@@ -36,7 +36,7 @@ class EbayDilPrmtAutoApplyService
     ) {}
 
     /**
-     * @return array{listings:int,children:int,saved:int,unchanged:int,queued:int,in_sync:int,below_min:int,throttled:int,errors:list<string>}
+     * @return array{listings:int,children:int,saved:int,unchanged:int,queued:int,in_sync:int,below_min:int,throttled:int,no_listing:int,errors:list<string>}
      */
     public function run(string $channel, bool $dryRun = false, ?callable $logger = null): array
     {
@@ -54,6 +54,7 @@ class EbayDilPrmtAutoApplyService
             'in_sync' => 0,
             'below_min' => 0,
             'throttled' => 0,
+            'no_listing' => 0,
             'errors' => [],
         ];
 
@@ -136,12 +137,19 @@ class EbayDilPrmtAutoApplyService
 
                     continue;
                 }
-                $seed = $active[0];
+                // Push through a SKU that has an eBay item id. A listing with no item id in the
+                // metrics table has nothing on eBay, so a push would only fail ("item_id not found").
+                $seed = null;
                 foreach ($active as $kid) {
                     if ($this->itemIdOf($kid) !== '') {
                         $seed = $kid;
                         break;
                     }
+                }
+                if ($seed === null) {
+                    $stats['no_listing']++;
+
+                    continue;
                 }
                 $throttleKey = 'ebay-dil-prmt-queued:'.$channel.':'.md5($groupKey).':'.$prmtInt;
                 if (! $dryRun && ! Cache::add($throttleKey, 1, now()->addMinutes(self::RETRY_MINUTES))) {
@@ -163,7 +171,7 @@ class EbayDilPrmtAutoApplyService
             }
 
             $log(sprintf(
-                '%s: %d listings (%d SKUs): PRMT saved on %d, unchanged %d; push queued %d, already on eBay %d, below 5%% %d, retry-throttled %d.',
+                '%s: %d listings (%d SKUs): PRMT saved on %d, unchanged %d; push queued %d, already on eBay %d, below 5%% %d, no eBay item id (skipped) %d, retry-throttled %d.',
                 $channel,
                 $stats['listings'],
                 $stats['children'],
@@ -172,6 +180,7 @@ class EbayDilPrmtAutoApplyService
                 $stats['queued'],
                 $stats['in_sync'],
                 $stats['below_min'],
+                $stats['no_listing'],
                 $stats['throttled']
             ));
 

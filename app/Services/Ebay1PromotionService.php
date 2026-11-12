@@ -1394,8 +1394,20 @@ class Ebay1PromotionService
         }
 
         $res = $this->markupListingsOnSale($token, $promoId, $detail, $removeIds, $removeItems);
-        $check = $this->getMarkdown($token, $promoId);
-        $stillOn = is_array($check) && $this->saleContainsSku($check, $sku, $itemId);
+        // eBay accepts the update (HTTP 200/204) but applies it a moment later. Re-read a few times
+        // before calling it a failure, otherwise a good remove is reported as "inventory replace accepted".
+        $stillOn = false;
+        $accepted = ! empty($res['success']);
+        for ($try = 0; $try < ($accepted ? 4 : 1); $try++) {
+            if ($try > 0) {
+                usleep(1_500_000);
+            }
+            $check = $this->getMarkdown($token, $promoId);
+            $stillOn = is_array($check) && $this->saleContainsSku($check, $sku, $itemId);
+            if (! $stillOn) {
+                break;
+            }
+        }
         Log::info($this->label.' sale remove via inventory replace', [
             'promotion_id' => $promoId,
             'still_on_sale' => $stillOn,
