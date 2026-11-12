@@ -36,22 +36,40 @@
                     <i class="fas fa-upload"></i> Push N Targeting
                 </button>
             </div>
-            <span class="small">Negative keywords from the stored Google Ads sync (same data as N Target). KW cousins are the groups of the Keyword Targeting page.</span>
+            <span class="small">Negative keywords from the stored Google Ads sync (same data as N Target). KW cousins are the same groups as on Keyword Targeting.</span>
         </div>
         <div class="card-body">
             <div class="mb-3 d-flex gap-1 flex-nowrap align-items-center" style="overflow-x:auto;">
+                <input type="text" id="gnt-search" class="form-control form-control-sm flex-shrink-0" style="width:200px;" placeholder="Search..." autocomplete="off"
+                       title="Type to search in the field chosen next to it">
+                <select id="gnt-in" class="form-select form-select-sm flex-shrink-0" style="width:auto;" title="Where to search">
+                    <option value="campaign">In: Campaign</option>
+                    <option value="parent">In: Parent</option>
+                    <option value="cousin">In: KW cousin</option>
+                    <option value="all">In: All</option>
+                </select>
                 <div class="btn-group btn-group-sm flex-shrink-0" id="gnt-status" title="Campaign status. Click several to combine.">
                     <button type="button" class="btn btn-primary active" data-status="">All</button>
                     <button type="button" class="btn btn-outline-primary" data-status="ENABLED">Enabled</button>
                     <button type="button" class="btn btn-outline-primary" data-status="PAUSED">Paused</button>
                 </div>
+                <select id="gnt-scope" class="form-select form-select-sm flex-shrink-0" style="width:auto;" title="Show PARENT campaigns or single-SKU campaigns">
+                    <option value="all">Parent + SKU</option>
+                    <option value="parent">Parent</option>
+                    <option value="sku">SKU</option>
+                </select>
                 <span class="text-muted small text-nowrap flex-shrink-0" id="gnt-count"></span>
                 <span class="badge bg-danger gnt-badge text-nowrap flex-shrink-0" role="button" data-f="m" id="gnt-b-m" title="M = Missing: campaigns with no negative keywords. Click to filter.">M N Target: 0</span>
                 <span class="badge bg-primary gnt-badge text-nowrap flex-shrink-0" role="button" data-f="low" id="gnt-b-low" title="Campaigns with fewer than 50 negative keywords. Click to filter.">N TGT &lt; 50: 0</span>
                 <span class="badge bg-danger gnt-badge text-nowrap flex-shrink-0" role="button" data-f="nocousin" id="gnt-b-nc" title="M = Missing: campaigns whose parent has no KW cousins. Click to filter.">M KW cousins: 0</span>
                 <span class="badge bg-success gnt-badge text-nowrap flex-shrink-0" role="button" data-f="cousin" id="gnt-b-c" title="Campaigns that have KW cousins. Click to filter.">With cousins: 0</span>
-                <a class="small text-nowrap ms-auto flex-shrink-0" href="{{ route('amazon.ads.fbm-targeting') }}" title="KW cousins are added and removed here">Manage cousins</a>
+                <span class="text-muted text-nowrap flex-shrink-0 ms-auto" style="font-size:.7rem;" id="gnt-sync" title="Last time the stored negative keywords were refreshed from Google Ads"></span>
+                <button type="button" id="gnt-pull" class="btn btn-sm btn-danger flex-shrink-0 text-nowrap"
+                        title="Refresh the stored negative keywords (campaign + ad group level) from Google Ads. Runs in the background.">
+                    <i class="fas fa-cloud-download-alt"></i> Pull N KW
+                </button>
             </div>
+            <div id="gnt-msg" class="small mb-2" style="display:none;"></div>
             <div id="gnt-table"></div>
         </div>
     </div>
@@ -77,13 +95,25 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small">Cousins share negative keywords. They come from the Keyword Targeting page, where they are added, removed and named.</p>
-                <div class="fw-semibold mb-2" id="gnt-cz-name"></div>
-                <div id="gnt-cz-list" style="max-height:300px;overflow-y:auto;"></div>
+                <p class="text-muted small mb-3">
+                    Cousins share the same negative keywords. These are the same cousin groups as on Keyword Targeting: a change here shows there too.
+                    Only parents that have an Amazon KW campaign can be linked.
+                </p>
+                <h6 class="mb-2">Cousin name</h6>
+                <div class="input-group input-group-sm mb-3">
+                    <input type="text" id="gnt-cz-nameinput" class="form-control" maxlength="191" placeholder="Name this cousin group (e.g. Cargo Straps)" autocomplete="off">
+                    <button type="button" id="gnt-cz-namesave" class="btn btn-primary"><i class="fas fa-save"></i> Save name</button>
+                </div>
+                <h6 class="mb-2">Current cousins <span class="text-muted small" id="gnt-cz-count"></span></h6>
+                <div id="gnt-cz-list" class="mb-3" style="max-height:200px;overflow-y:auto;"></div>
+                <h6 class="mb-2">Add parents as KW cousins <span class="text-muted small fw-normal">(all campaigns under a parent join automatically)</span></h6>
+                <input type="text" id="gnt-cz-search" class="form-control form-control-sm mb-2" placeholder="Type to filter parents..." autocomplete="off">
+                <div id="gnt-cz-results" class="mb-2" style="max-height:200px;overflow-y:auto;"></div>
+                <div id="gnt-cz-msg" class="small" style="display:none;"></div>
             </div>
             <div class="modal-footer py-2">
-                <a class="btn btn-sm btn-outline-primary" href="{{ route('amazon.ads.fbm-targeting') }}">Manage on Keyword Targeting</a>
                 <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="gnt-cz-add" class="btn btn-sm btn-success" disabled><i class="fas fa-plus"></i> Add (<span id="gnt-cz-sel">0</span>)</button>
             </div>
         </div>
     </div>
@@ -128,6 +158,12 @@
         negs: @json(route('google.shopping.campaigns.negatives')),
         check: @json(route('google.neg-targeting.push-check')),
         push: @json(route('google.neg-targeting.push')),
+        pull: @json(route('google.neg-targeting.pull')),
+        pullStatus: @json(route('google.neg-targeting.pull-status')),
+        czParents: @json(route('google.neg-targeting.cousins.parents')),
+        czAdd: @json(route('google.neg-targeting.cousins.add')),
+        czRemove: @json(route('google.neg-targeting.cousins.remove')),
+        czName: @json(route('google.neg-targeting.cousins.name')),
     };
     const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
     const $ = function (id) { return document.getElementById(id); };
@@ -156,6 +192,8 @@
         ajaxResponse: function (url, params, resp) {
             groups = (resp && resp.groups) || {};
             low = Number(resp && resp.low) || 50;
+            showSync(resp && resp.last_sync);
+            if (resp && resp.pulling) { pollPull(); }
             return (resp && resp.data) || [];
         },
         index: 'campaign_id',
@@ -205,9 +243,64 @@
         const n = Number(d.neg_count || 0), c = Number(d.cousin_count || 0);
         return quick === '' || (quick === 'm' && n === 0) || (quick === 'low' && n < low) || (quick === 'nocousin' && c === 0) || (quick === 'cousin' && c > 0);
     }
-    function applyFilters() {
-        table.setFilter(function (d) { return (statusSel.size === 0 || statusSel.has(d.status)) && inQuick(d); });
+    function inSearch(d) {
+        const q = $('gnt-search').value.trim().toLowerCase();
+        if (!q) return true;
+        const where = $('gnt-in').value;
+        const g = d.gid != null ? groups[d.gid] : null;
+        const has = function (s) { return String(s || '').toLowerCase().indexOf(q) >= 0; };
+        const cousin = function () { return has(d.cousin_name) || (g && g.parents.some(has)); };
+        if (where === 'campaign') return has(d.campaign_name);
+        if (where === 'parent') return has(d.parent);
+        if (where === 'cousin') return cousin();
+        return has(d.campaign_name) || has(d.parent) || cousin();
     }
+    function inScope(d) {
+        const s = $('gnt-scope').value;
+        return s === 'all' || (s === 'parent' ? !!d.is_parent : !d.is_parent);
+    }
+    function applyFilters() {
+        table.setFilter(function (d) { return (statusSel.size === 0 || statusSel.has(d.status)) && inQuick(d) && inScope(d) && inSearch(d); });
+    }
+    let searchTimer = null;
+    $('gnt-search').addEventListener('input', function () { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilters, 200); });
+    $('gnt-in').addEventListener('change', applyFilters);
+    $('gnt-scope').addEventListener('change', applyFilters);
+
+    // ---------- pull (refresh stored negatives from Google Ads, in the background) ----------
+    function flash(text, ok) {
+        const el = $('gnt-msg');
+        el.style.display = text ? '' : 'none';
+        el.className = 'small mb-2 ' + (ok ? 'text-success' : 'text-danger');
+        el.textContent = text || '';
+    }
+    function showSync(ts) { $('gnt-sync').textContent = ts ? 'Synced: ' + String(ts).replace('T', ' ').slice(0, 16) : ''; }
+    let pullTimer = null;
+    function pollPull() {
+        clearTimeout(pullTimer);
+        $('gnt-pull').disabled = true;
+        $('gnt-pull').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pulling…';
+        flash('Pulling negative keywords from Google Ads… this can take a few minutes.', true);
+        const tick = function () {
+            fetch(urls.pullStatus, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                .then(function (r) { return r.json(); }).then(function (s) {
+                    showSync(s.last_sync);
+                    if (s.running) { pullTimer = setTimeout(tick, 4000); return; }
+                    $('gnt-pull').disabled = false;
+                    $('gnt-pull').innerHTML = '<i class="fas fa-cloud-download-alt"></i> Pull N KW';
+                    flash('Negative keywords refreshed from Google Ads.', true);
+                    table.setData(urls.data);
+                }).catch(function () { pullTimer = setTimeout(tick, 6000); });
+        };
+        pullTimer = setTimeout(tick, 3000);
+    }
+    $('gnt-pull').addEventListener('click', function () {
+        if (!confirm('Refresh the stored negative keywords from Google Ads now? It runs in the background.')) return;
+        post(urls.pull, {}).then(function (r) {
+            if (!r.ok) { flash((r.body && r.body.message) || 'Could not start the pull.', false); return; }
+            pollPull();
+        }).catch(function (e) { flash('Could not start the pull: ' + e.message, false); });
+    });
     function updateCounts() {
         const rows = table.getData();
         let m = 0, lo = 0, nc = 0, wc = 0;
@@ -278,18 +371,94 @@
             }).catch(function () { body.innerHTML = '<span class="text-danger small">Failed to load negative keywords.</span>'; });
     }
 
-    // ---------- cousins (read-only: the groups of the Keyword Targeting page) ----------
-    function openCousins(row) {
-        const g = row.gid != null ? groups[row.gid] : null;
-        $('gnt-cz-title').textContent = row.campaign_name;
-        $('gnt-cz-name').textContent = g && g.name ? 'Cousin name: ' + g.name : '';
-        const own = String(row.parent || '').toUpperCase();
-        const list = g ? g.parents.filter(function (p) { return p !== own; }) : [];
+    // ---------- cousins (same groups as Keyword Targeting; changes are written to the same tables) ----------
+    const cz = { cid: '', parent: '', picks: new Set(), searchTimer: null, seq: 0 };
+    function czMsg(text, ok) {
+        const el = $('gnt-cz-msg');
+        el.style.display = text ? '' : 'none';
+        el.className = 'small ' + (ok ? 'text-success' : 'text-danger');
+        el.textContent = text || '';
+    }
+    function czUpdateAdd() {
+        $('gnt-cz-sel').textContent = cz.picks.size;
+        $('gnt-cz-add').disabled = cz.picks.size === 0 || !cz.parent;
+    }
+    function czRender(row) {
+        const g = row && row.gid != null ? groups[row.gid] : null;
+        $('gnt-cz-nameinput').value = g && g.name ? g.name : '';
+        const list = g ? g.parents.filter(function (p) { return p !== cz.parent; }) : [];
+        $('gnt-cz-count').textContent = list.length ? '(' + list.length + ')' : '';
         $('gnt-cz-list').innerHTML = list.length
-            ? list.map(function (p) { return '<div class="gnt-item">' + esc(p) + '</div>'; }).join('')
-            : '<span class="text-muted small">No cousins yet (parent ' + esc(own || '-') + ').</span>';
+            ? list.map(function (p) {
+                return '<div class="gnt-item"><span class="flex-grow-1">' + esc(p) + '</span>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger py-0 gnt-cz-rm" data-p="' + esc(p) + '" title="Remove cousin">&times;</button></div>';
+            }).join('')
+            : '<span class="text-muted small">' + (cz.parent ? 'No cousins yet.' : 'No parent could be found for this campaign, so it cannot have cousins.') + '</span>';
+        czLoadParents();
+    }
+    function czLoadParents() {
+        cz.picks = new Set(); czUpdateAdd();
+        const mine = ++cz.seq;
+        if (!cz.parent) { $('gnt-cz-results').innerHTML = ''; return; }
+        $('gnt-cz-results').innerHTML = '<span class="text-muted small">Loading…</span>';
+        fetch(urls.czParents + '?parent=' + encodeURIComponent(cz.parent) + '&q=' + encodeURIComponent($('gnt-cz-search').value.trim()), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); }).then(function (resp) {
+                if (mine !== cz.seq) return;
+                if (resp.has_amazon === false) { $('gnt-cz-results').innerHTML = '<span class="text-warning small">This parent has no Amazon KW campaign yet, so it cannot be linked. Create it on Keyword Targeting first.</span>'; return; }
+                const list = resp.parents || [];
+                $('gnt-cz-results').innerHTML = list.length ? list.map(function (p) {
+                    return '<label class="gnt-item bg-white mb-1" style="cursor:pointer;"><input type="checkbox" class="gnt-cz-pick" data-p="' + esc(p.parent) + '"> ' +
+                        '<span class="flex-grow-1">' + esc(p.parent) + '</span>' +
+                        '<span class="text-muted small" title="Google campaigns / Amazon KW campaigns under this parent">G ' + p.google + ' · A ' + p.campaigns + '</span></label>';
+                }).join('') : '<span class="text-muted small">No parents to add.</span>';
+            }).catch(function () { if (mine === cz.seq) $('gnt-cz-results').innerHTML = '<span class="text-danger small">Failed to load parents.</span>'; });
+    }
+    function openCousins(row) {
+        cz.cid = String(row.campaign_id); cz.parent = String(row.parent || '').toUpperCase();
+        $('gnt-cz-title').textContent = row.campaign_name + (cz.parent ? ' (' + cz.parent + ')' : '');
+        $('gnt-cz-search').value = '';
+        czMsg('', true);
+        czRender(row);
         modal('gntCousinModal', true);
     }
+    // Reload the grid (cousin counts changed) and redraw the open window from the fresh row.
+    function czRefresh() {
+        return table.setData(urls.data).then(function () {
+            const r = table.getRow(cz.cid);
+            czRender(r ? r.getData() : null);
+        });
+    }
+    function czSave(url, body, busyEl) {
+        busyEl.disabled = true;
+        czMsg('Saving…', true);
+        return post(url, body).then(function (r) {
+            busyEl.disabled = false;
+            const m = (r.body && (r.body.message || (r.body.errors && Object.values(r.body.errors)[0]))) || (r.ok ? 'Saved.' : 'Failed.');
+            czMsg(Array.isArray(m) ? m[0] : m, r.ok);
+            return r.ok ? czRefresh().then(function () { czMsg(Array.isArray(m) ? m[0] : m, true); }) : null;
+        }).catch(function (e) { busyEl.disabled = false; czMsg('Failed: ' + e.message, false); });
+    }
+    $('gnt-cz-search').addEventListener('input', function () { clearTimeout(cz.searchTimer); cz.searchTimer = setTimeout(czLoadParents, 250); });
+    $('gnt-cz-results').addEventListener('change', function (e) {
+        const t = e.target;
+        if (!t.classList.contains('gnt-cz-pick')) return;
+        const p = t.getAttribute('data-p');
+        t.checked ? cz.picks.add(p) : cz.picks.delete(p);
+        czUpdateAdd();
+    });
+    $('gnt-cz-add').addEventListener('click', function () {
+        czSave(urls.czAdd, { parent: cz.parent, parents: Array.from(cz.picks), name: $('gnt-cz-nameinput').value.trim() }, this);
+    });
+    $('gnt-cz-namesave').addEventListener('click', function () {
+        czSave(urls.czName, { parent: cz.parent, name: $('gnt-cz-nameinput').value.trim() }, this);
+    });
+    $('gnt-cz-list').addEventListener('click', function (e) {
+        const b = e.target.closest('.gnt-cz-rm');
+        if (!b) return;
+        const p = b.getAttribute('data-p');
+        if (!confirm('Remove ' + p + ' from this cousin group? Negative keywords already pushed stay.')) return;
+        czSave(urls.czRemove, { parent: cz.parent, cousin_parent: p }, b);
+    });
 
     // ---------- push ----------
     const gp = { rows: [], sel: new Set(), filter: '', batch: 3, busy: false };

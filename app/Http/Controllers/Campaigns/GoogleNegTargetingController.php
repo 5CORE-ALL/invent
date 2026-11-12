@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Campaigns;
 
+use App\Http\Controllers\AmazonAds\AmazonFbmTargetingController;
 use App\Http\Controllers\Controller;
 use App\Models\GoogleAdsNegativeKeyword;
 use App\Services\AmazonKwCousinLinkService;
@@ -9,6 +10,7 @@ use App\Services\GoogleAdsSbidService;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,7 +23,8 @@ use Illuminate\Support\Facades\Schema;
  *    keywords are mirrored back into it, exactly like the N Target modal on Google Shopping does);
  *  - campaigns: latest row per campaign in google_ads_campaigns (Shopping scope, like the Shopping grid);
  *  - cousins: the KW cousin groups of the Keyword Targeting page (amazon_kw_cousin_links / _names). A group is a set
- *    of parents, so it applies to Google campaigns of those parents as well. Cousins are managed on that page.
+ *    of parents, so it applies to Google campaigns of those parents as well. Adding / removing / naming cousins here
+ *    writes to those same tables (through the same link service), so both pages always show the same groups.
  */
 class GoogleNegTargetingController extends Controller
 {
@@ -60,6 +63,7 @@ class GoogleNegTargetingController extends Controller
                 'campaign_name' => $c['campaign_name'],
                 'status' => $c['status'],
                 'parent' => $c['parent'],
+                'is_parent' => str_starts_with(strtoupper($c['campaign_name']), 'PARENT'),
                 'gid' => $gid,
                 'cousin_name' => $group['name'] ?? '',
                 'cousin_count' => $group ? count($group['parents']) - 1 : 0,
@@ -67,7 +71,277 @@ class GoogleNegTargetingController extends Controller
             ];
         }
 
-        return response()->json(['data' => $rows, 'groups' => (object) $used, 'low' => self::LOW]);
+        return response()->json([
+            'data' => $rows,
+            'groups' => (object) $used,
+            'low' => self::LOW,
+            'last_sync' => $this->lastSync(),
+            'pulling' => $this->isPulling(),
+        ]);
+    }
+
+    protected function lastSync(): ?string
+    {
+        return Schema::hasTable('google_ads_negative_keywords')
+            ? (DB::table('google_ads_negative_keywords')->max('updated_at') ?: null)
+            : null;
+    }
+
+    // ---------- Pull (refresh the stored negatives from Google Ads) ----------
+
+    protected function pullFlag(): string
+    {
+        return storage_path('app/gads_neg_pull.running');
+    }
+
+    protected function isPulling(): bool
+    {
+        $f = $this->pullFlag();
+
+        return is_file($f) && (time() - (int) filemtime($f)) < 1800; // a flag older than 30 min is a crashed run
+    }
+
+    /**
+     * Run the existing app:fetch-google-ads-negative-keywords command in the background (campaign + ad group levels,
+     * which is what N Target counts). The page polls pullStatus().
+     */
+    public function pull(): JsonResponse
+    {
+        if ($this->isPulling()) {
+            return response()->json(['success' => true, 'running' => true, 'message' => 'A pull is already running.']);
+        }
+
+        $php = PHP_BINARY ?: 'php';
+        if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+            $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+            if ($cli !== '') {
+                $php = $cli;
+            }
+        }
+        $flag = $this->pullFlag();
+        @file_put_contents($flag, (string) time());
+        $log = storage_path('logs/gads_neg_pull.log');
+        $cmd = escapeshellarg($php).' '.escapeshellarg(base_path('artisan')).' app:fetch-google-ads-negative-keywords --level=campaign'
+            .' && '.escapeshellarg($php).' '.escapeshellarg(base_path('artisan')).' app:fetch-google-ads-negative-keywords --level=ad_group';
+        exec('nohup sh -c '.escapeshellarg($cmd.'; rm -f '.escapeshellarg($flag)).' >> '.escapeshellarg($log).' 2>&1 &');
+
+        return response()->json(['success' => true, 'running' => true, 'message' => 'Pulling negative keywords from Google Ads in the background.']);
+    }
+
+    public function pullStatus(): JsonResponse
+    {
+        return response()->json(['running' => $this->isPulling(), 'last_sync' => $this->lastSync()]);
+    }
+
+    // ---------- KW cousins (stored in the Keyword Targeting tables, so both pages always agree) ----------
+
+    /**
+     * Amazon KW campaign names per parent (upper-cased): the units the cousin links are made of.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function amazonNamesByParent(): array
+    {
+        $out = [];
+        foreach (app(AmazonFbmTargetingController::class)->campaignsGroupedByParent() as $c) {
+            $p = strtoupper(trim((string) $c['parent']));
+            if ($p !== '') {
+                $out[$p][] = (string) $c['campaign_name'];
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> every linked Amazon campaign name of the parent's cousin group (incl. its own) */
+    protected function groupNamesOf(string $parent, array $byParent): array
+    {
+        $svc = app(AmazonKwCousinLinkService::class);
+        $map = $svc->groupsMap();
+        $names = $byParent[$parent] ?? [];
+        foreach ($byParent[$parent] ?? [] as $n) {
+            foreach ($map[$svc->normalize($n)] ?? [] as $m) {
+                $names[] = $m;
+            }
+        }
+        $seen = [];
+        foreach ($names as $n) {
+            $seen[$svc->normalize((string) $n)] ??= trim((string) $n);
+        }
+        unset($seen['']);
+
+        return array_values($seen);
+    }
+
+    protected function setGroupName(array $names, string $name): void
+    {
+        if (! Schema::hasTable('amazon_kw_cousin_names')) {
+            return;
+        }
+        $svc = app(AmazonKwCousinLinkService::class);
+        $norms = array_values(array_filter(array_map(fn ($n) => $svc->normalize((string) $n), $names)));
+        $name = mb_substr(trim($name), 0, 191);
+        if ($name === '') {
+            if ($norms !== []) {
+                DB::table('amazon_kw_cousin_names')->whereIn('campaign_norm', $norms)->delete();
+            }
+
+            return;
+        }
+        $now = now();
+        $user = Auth::user()?->name;
+        foreach ($names as $n) {
+            $norm = $svc->normalize((string) $n);
+            if ($norm !== '') {
+                DB::table('amazon_kw_cousin_names')->updateOrInsert(
+                    ['campaign_norm' => $norm],
+                    ['campaign' => mb_substr(trim((string) $n), 0, 512), 'name' => $name, 'updated_by' => $user, 'updated_at' => $now, 'created_at' => $now]
+                );
+            }
+        }
+    }
+
+    protected function forgetCousinCaches(): void
+    {
+        Cache::forget(self::CACHE_COUSINS);
+        Cache::forget('amz_kw_targeting_badges_v3'); // the Keyword Targeting badges count cousins too
+    }
+
+    /** Parents that can be added as cousins of ?parent= (they need an Amazon KW campaign to link to). */
+    public function cousinParents(Request $request): JsonResponse
+    {
+        $own = strtoupper(trim((string) $request->query('parent', '')));
+        $q = mb_strtolower(trim((string) $request->query('q', '')));
+        $by = $this->amazonNamesByParent();
+        $cousins = $this->cousins();
+
+        $inGroup = [$own => true];
+        $gid = $cousins['parent_group'][$own] ?? null;
+        foreach ($gid !== null ? $cousins['groups'][$gid]['parents'] : [] as $p) {
+            $inGroup[$p] = true;
+        }
+        $google = [];
+        foreach ($this->campaigns() as $c) {
+            if ($c['parent'] !== '') {
+                $google[$c['parent']] = ($google[$c['parent']] ?? 0) + 1;
+            }
+        }
+
+        $out = [];
+        foreach ($by as $p => $names) {
+            $p = (string) $p;
+            if (isset($inGroup[$p]) || ($q !== '' && ! str_contains(mb_strtolower($p), $q))) {
+                continue;
+            }
+            $out[] = ['parent' => $p, 'campaigns' => count($names), 'google' => (int) ($google[$p] ?? 0)];
+        }
+        usort($out, static fn (array $a, array $b) => strnatcasecmp($a['parent'], $b['parent']));
+
+        return response()->json(['success' => true, 'parents' => array_slice($out, 0, 300), 'has_amazon' => isset($by[$own])]);
+    }
+
+    /** Add parents as cousins of a parent: all their campaigns join, the group stays one connected set. */
+    public function cousinAdd(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'parents' => ['required', 'array', 'min:1', 'max:100'],
+            'parents.*' => ['string', 'max:255'],
+            'name' => ['nullable', 'string', 'max:191'],
+        ]);
+        if (! Schema::hasTable('amazon_kw_cousin_links')) {
+            return response()->json(['success' => false, 'message' => 'Cousin table is missing. Run php artisan migrate.'], 500);
+        }
+
+        $own = strtoupper(trim($v['parent']));
+        $by = $this->amazonNamesByParent();
+        if (empty($by[$own])) {
+            return response()->json(['success' => false, 'message' => 'This parent has no Amazon KW campaign yet, so it cannot be linked. Create it on Keyword Targeting first.'], 422);
+        }
+
+        $names = $this->groupNamesOf($own, $by);
+        $picked = 0;
+        $skipped = 0;
+        foreach ($v['parents'] as $p) {
+            $p = strtoupper(trim($p));
+            if ($p === '' || $p === $own) {
+                continue;
+            }
+            if (isset($by[$p])) {
+                $names = array_merge($names, $by[$p], $this->groupNamesOf($p, $by));
+                $picked++;
+            } else {
+                $skipped++;
+            }
+        }
+        if ($picked === 0) {
+            return response()->json(['success' => false, 'message' => 'Pick at least one other parent that has an Amazon KW campaign.'], 422);
+        }
+
+        $svc = app(AmazonKwCousinLinkService::class);
+        $seen = [];
+        foreach ($names as $n) {
+            $seen[$svc->normalize((string) $n)] ??= trim((string) $n);
+        }
+        unset($seen['']);
+        $group = array_values($seen);
+
+        @set_time_limit(300);
+        $svc->syncFullyConnectedGroup($group, Auth::user()?->name ?? 'N/A');
+
+        $typed = trim((string) ($v['name'] ?? ''));
+        if ($typed === '' && Schema::hasTable('amazon_kw_cousin_names')) {
+            $typed = (string) (DB::table('amazon_kw_cousin_names')->whereIn('campaign_norm', array_keys($seen))->orderBy('id')->value('name') ?? '');
+        }
+        $this->setGroupName($group, $typed);
+        $this->forgetCousinCaches();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cousins saved ('.$picked.' parent'.($picked === 1 ? '' : 's').')'.($skipped ? ', '.$skipped.' skipped (no Amazon KW campaign)' : '').'.',
+        ]);
+    }
+
+    /** Remove one cousin parent (all of its campaigns) from the group of ?parent=. */
+    public function cousinRemove(Request $request): JsonResponse
+    {
+        $v = $request->validate(['parent' => ['required', 'string', 'max:255'], 'cousin_parent' => ['required', 'string', 'max:255']]);
+        if (! Schema::hasTable('amazon_kw_cousin_links')) {
+            return response()->json(['success' => false, 'message' => 'Cousin table is missing.'], 500);
+        }
+        $own = strtoupper(trim($v['parent']));
+        $gone = strtoupper(trim($v['cousin_parent']));
+        $by = $this->amazonNamesByParent();
+        if ($own === $gone || empty($by[$gone])) {
+            return response()->json(['success' => false, 'message' => 'Nothing to remove.'], 422);
+        }
+
+        @set_time_limit(300);
+        $svc = app(AmazonKwCousinLinkService::class);
+        $user = Auth::user()?->name ?? 'N/A';
+        foreach ($by[$gone] as $name) {
+            $svc->unlinkFromGroup($name, $this->groupNamesOf($own, $by), $user);
+        }
+        $this->setGroupName($by[$gone], ''); // campaigns that left no longer carry the group's name
+        $this->forgetCousinCaches();
+
+        return response()->json(['success' => true, 'message' => 'Cousin removed.']);
+    }
+
+    /** Name (or rename) the cousin group of ?parent=. */
+    public function cousinName(Request $request): JsonResponse
+    {
+        $v = $request->validate(['parent' => ['required', 'string', 'max:255'], 'name' => ['nullable', 'string', 'max:191']]);
+        $own = strtoupper(trim($v['parent']));
+        $group = $this->groupNamesOf($own, $this->amazonNamesByParent());
+        if ($group === []) {
+            return response()->json(['success' => false, 'message' => 'This parent has no Amazon KW campaign to name a group on.'], 422);
+        }
+        $name = trim((string) ($v['name'] ?? ''));
+        $this->setGroupName($group, $name);
+        $this->forgetCousinCaches();
+
+        return response()->json(['success' => true, 'message' => $name === '' ? 'Name removed.' : 'Name saved.']);
     }
 
     /**

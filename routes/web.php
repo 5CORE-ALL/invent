@@ -7607,6 +7607,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/neg-targeting/data', 'data')->name('google.neg-targeting.data');
         Route::post('/google/shopping/neg-targeting/push-check', 'pushCheck')->name('google.neg-targeting.push-check');
         Route::post('/google/shopping/neg-targeting/push', 'push')->name('google.neg-targeting.push');
+        Route::post('/google/shopping/neg-targeting/pull', 'pull')->name('google.neg-targeting.pull');
+        Route::get('/google/shopping/neg-targeting/pull-status', 'pullStatus')->name('google.neg-targeting.pull-status');
+        Route::get('/google/shopping/neg-targeting/cousins/parents', 'cousinParents')->name('google.neg-targeting.cousins.parents');
+        Route::post('/google/shopping/neg-targeting/cousins/add', 'cousinAdd')->name('google.neg-targeting.cousins.add');
+        Route::post('/google/shopping/neg-targeting/cousins/remove', 'cousinRemove')->name('google.neg-targeting.cousins.remove');
+        Route::post('/google/shopping/neg-targeting/cousins/name', 'cousinName')->name('google.neg-targeting.cousins.name');
     });
 
     // Missing Google SERP Ads — parent grid + Inv + manual campaign link (+ like /amazon-ads/missing)

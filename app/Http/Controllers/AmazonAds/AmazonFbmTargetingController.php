@@ -736,7 +736,7 @@ class AmazonFbmTargetingController extends Controller
      *
      * @return list<array{parent: string, status: string, is_parent: bool, campaign_id: string, campaign_name: string}>
      */
-    protected function campaignsGroupedByParent(): array
+    public function campaignsGroupedByParent(): array
     {
         return Cache::remember('amz_kw_targeting_campaigns_by_parent_v8', now()->addMinutes(5), function () {
             // Base = the Ads All report rows (summary rows L1 / L7 / L15 / L30; L30 status first).
