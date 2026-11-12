@@ -1054,7 +1054,10 @@
 
             function creatorEntryHtml(creator) {
                 const name = escapeHtml(creator.name || '');
-                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span></span>`;
+                const date = creator.created_at
+                    ? `<span class="vam-creator-date">${escapeHtml(creator.created_at)}</span>`
+                    : '';
+                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span>${date}</span>`;
             }
 
             function creatorFormatter(cell) {
@@ -1063,7 +1066,7 @@
                     return `<button type="button" class="vam-creator-toggle"><span class="vam-creator-toggle-label is-empty">Select</span><i class="fas fa-chevron-down"></i></button>`;
                 }
                 const label = creators.map(creatorEntryHtml).join('');
-                const title = creators.map(c => c.name).filter(Boolean).join('\n');
+                const title = creators.map(c => [c.name, c.created_at].filter(Boolean).join(' · ')).join('\n');
                 return `<button type="button" class="vam-creator-toggle" title="${escapeHtml(title)}"><span class="vam-creator-toggle-label">${label}</span><i class="fas fa-chevron-down"></i></button>`;
             }
 
@@ -1082,7 +1085,10 @@
                 wrap.innerHTML = (creatorOptions || []).map(o => {
                     const current = byId.get(Number(o.id));
                     const on = current ? ' is-selected' : '';
-                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span></span></button>`;
+                    const date = current && current.created_at
+                        ? `<span class="vam-creator-menu-date">${escapeHtml(current.created_at)}</span>`
+                        : '';
+                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span>${date}</span></button>`;
                 }).join('');
             }
 
