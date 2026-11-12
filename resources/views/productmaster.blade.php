@@ -995,6 +995,11 @@
                             </button>
                             <input type="text" id="parentSearch" class="form-control form-control-sm" placeholder="Search Parent" style="width: 160px;">
                             <input type="text" id="skuSearch" class="form-control form-control-sm" placeholder="Search SKU" style="width: 160px;">
+                            <select id="pmRowTypeSelect" class="form-select form-select-sm" style="width: 130px;" title="Show all rows, only Parent rows, or only SKU rows" aria-label="Row type">
+                                <option value="all">All</option>
+                                <option value="parent">Parents</option>
+                                <option value="sku">SKU</option>
+                            </select>
                             <span id="pmParentBadge" class="badge bg-primary pm-rowtype-badge" data-row-type="parent" role="button" tabindex="0" title="Click to show only Parent rows (click again to clear)" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">Parent 0</span>
                             <span id="pmSkuBadge" class="badge bg-success pm-rowtype-badge" data-row-type="sku" role="button" tabindex="0" title="Click to show only SKU rows (click again to clear)" style="font-size: 18px; padding: 9px 15px; white-space: nowrap;">SKU 0</span>
                         </div>
@@ -1776,6 +1781,8 @@
                 return rows;
             }
             function refreshRowTypeBadges() {
+                const rowTypeSelect = document.getElementById('pmRowTypeSelect');
+                if (rowTypeSelect) rowTypeSelect.value = pmRowTypeFilter || 'all';
                 document.querySelectorAll('.pm-rowtype-badge').forEach(b => {
                     const t = b.getAttribute('data-row-type');
                     b.classList.toggle('is-active', pmRowTypeFilter === t);
@@ -4892,6 +4899,15 @@
                     const badge = e.target.closest ? e.target.closest('.pm-rowtype-badge') : null;
                     if (badge) toggleRowTypeBadge(badge);
                 });
+                // All / Parents / SKU dropdown: the same filter the badges set
+                const rowTypeSelect = document.getElementById('pmRowTypeSelect');
+                if (rowTypeSelect) {
+                    rowTypeSelect.addEventListener('change', function () {
+                        pmRowTypeFilter = (this.value === 'parent' || this.value === 'sku') ? this.value : null;
+                        refreshRowTypeBadges();
+                        applyFilters();
+                    });
+                }
                 document.addEventListener('keydown', function (e) {
                     if (e.key !== 'Enter' && e.key !== ' ') return;
                     const badge = e.target.closest ? e.target.closest('.pm-rowtype-badge') : null;
