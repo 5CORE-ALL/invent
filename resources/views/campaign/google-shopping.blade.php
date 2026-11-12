@@ -489,13 +489,14 @@
         .gac-card-badges { display: grid; gap: 0.4rem; align-items: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); }
         .gac-card .faas-stat-badge {
             width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; justify-content: center; text-align: center;
-            font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem; white-space: nowrap;
+            font-size: calc(0.78rem * var(--gac-fit, 1)); line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem; white-space: nowrap;
+            overflow: hidden;
         }
         .gac-card .faas-stat-badge.faas-stat-badge--util-yellow { color: #713f12; }
         .faas-stat-badge--util-total { background: #8b5cf6; color: #fff; }   /* purple */
         .gac-card .faas-stat-badge.faas-stat-badge--util-total { color: #fff; }
-        .gac-card .faas-stat-badge > span { font-size: 0.85rem; }
-        .gac-card .faas-stat-badge > .gac-util-pct { font-size: 0.75rem; font-weight: 700; opacity: 0.95; margin-left: 5px; }
+        .gac-card .faas-stat-badge > span { font-size: calc(0.85rem * var(--gac-fit, 1)); }
+        .gac-card .faas-stat-badge > .gac-util-pct { font-size: calc(0.75rem * var(--gac-fit, 1)); font-weight: 700; opacity: 0.95; margin-left: 5px; }
         @media (max-width: 1399.98px) {
             .gac-card--yesterday, .gac-card--l30, .gac-card--projected, .gac-card--util { grid-column: span 6; }
             .gac-card--util .gac-card-badges { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -513,9 +514,9 @@
             .gac-card--yesterday, .gac-card--l30, .gac-card--projected, .gac-card--util { grid-column: auto; }
             .gac-card { padding: 0.5rem 0.4rem 0.55rem; }
             .gac-card .gac-card-badges { gap: 0.3rem; }
-            .gac-card .faas-stat-badge { font-size: 0.68rem; padding: 0.25rem 0.15rem; white-space: normal; }
-            .gac-card .faas-stat-badge > span { font-size: 0.74rem; }
-            .gac-card .faas-stat-badge > .gac-util-pct { font-size: 0.66rem; margin-left: 3px; }
+            .gac-card .faas-stat-badge { font-size: calc(0.68rem * var(--gac-fit, 1)); padding: 0.25rem 0.15rem; white-space: nowrap; }
+            .gac-card .faas-stat-badge > span { font-size: calc(0.74rem * var(--gac-fit, 1)); }
+            .gac-card .faas-stat-badge > .gac-util-pct { font-size: calc(0.66rem * var(--gac-fit, 1)); margin-left: 3px; }
             .gac-cards .summary-trend-dot { margin-right: 4px; }
         }
         /* KPI tiles take the dashboard trend colour (dot up = green, down = red, same = yellow, none = grey). */
@@ -6338,6 +6339,41 @@
                 if (gacBgtModalEl) {
                     gacBgtModalEl.addEventListener('show.bs.modal', function() { maxKey = null; paintMin(); });
                 }
+            })();
+
+            // ---- Summary badges: keep each tile on one line and shrink its text just enough to fit ----
+            (function() {
+                var host = document.getElementById('gacSummaryCards');
+                if (!host) return;
+                var pending = false;
+                function fit() {
+                    pending = false;
+                    var badges = host.querySelectorAll('.faas-stat-badge');
+                    badges.forEach(function(b) { b.style.removeProperty('--gac-fit'); });
+                    badges.forEach(function(b) {
+                        var cs = window.getComputedStyle(b);
+                        var avail = b.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+                        if (avail <= 0) return;
+                        var range = document.createRange();
+                        range.selectNodeContents(b);
+                        var scale = 1;
+                        // Range width = the real text width even when it overflows the tile.
+                        while (range.getBoundingClientRect().width > avail + 0.5 && scale > 0.5) {
+                            scale = Math.round((scale - 0.04) * 100) / 100;
+                            b.style.setProperty('--gac-fit', String(scale));
+                        }
+                    });
+                }
+                function schedule() {
+                    if (pending) return;
+                    pending = true;
+                    window.requestAnimationFrame(fit);
+                }
+                // Values are filled in after the data loads, so refit on every text change (style changes are not observed — no loop).
+                new MutationObserver(schedule).observe(host, { childList: true, characterData: true, subtree: true });
+                window.addEventListener('resize', schedule);
+                if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+                schedule();
             })();
         });
     </script>
