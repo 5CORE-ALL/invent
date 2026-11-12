@@ -424,18 +424,12 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
      */
     public static function salesL30BySku(): array
     {
-        if (! Schema::hasTable('vinted_sales_data')) {
+        // Same window as Active Channel Master and /vinted/pricing: 30 days ending Pacific yesterday.
+        $window = VintedController::l30Window();
+        if ($window === null) {
             return [];
         }
-
-        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
-        if (! $latestSaleDate) {
-            return [];
-        }
-
-        $latestCarbon = Carbon::parse($latestSaleDate);
-        $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
-        $l30End = $latestCarbon->format('Y-m-d');
+        [$l30Start, $l30End] = $window;
 
         $rows = VintedSalesData::query()
             ->whereNotNull('sku_code')

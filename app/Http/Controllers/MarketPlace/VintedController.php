@@ -18,22 +18,37 @@ class VintedController extends Controller
     private const DEFAULT_MARGIN_PCT = 95;
 
     /**
+     * Rolling 30 days ending Pacific yesterday. This is the window Active Channel Master uses
+     * for Vinted, so Sales and V L30 on the Analytics page match it. (It used to end on the
+     * latest sale date in the sheet, which gave a different 30 days whenever the last sale
+     * was not yesterday.)
+     *
+     * @return array{0: string, 1: string}|null  [start, end], or null when there is no sales data
+     */
+    public static function l30Window(): ?array
+    {
+        if (! Schema::hasTable('vinted_sales_data')) {
+            return null;
+        }
+        if (! VintedSalesData::whereNotNull('sale_date')->exists()) {
+            return null;
+        }
+
+        $end = \Carbon\Carbon::yesterday('America/Los_Angeles');
+
+        return [$end->copy()->subDays(29)->toDateString(), $end->toDateString()];
+    }
+
+    /**
      * @return array<string, int>
      */
     public static function salesL30BySku(): array
     {
-        if (! Schema::hasTable('vinted_sales_data')) {
+        $window = self::l30Window();
+        if ($window === null) {
             return [];
         }
-
-        $latestSaleDate = VintedSalesData::whereNotNull('sale_date')->max('sale_date');
-        if (! $latestSaleDate) {
-            return [];
-        }
-
-        $latestCarbon = \Carbon\Carbon::parse($latestSaleDate);
-        $l30Start = $latestCarbon->copy()->subDays(29)->format('Y-m-d');
-        $l30End = $latestCarbon->format('Y-m-d');
+        [$l30Start, $l30End] = $window;
 
         $raw = VintedSalesData::query()
             ->whereNotNull('sku_code')
