@@ -24,11 +24,6 @@
         .ekc-tile.ekc-worse { background:#ef4444; color:#fff; border-color:#dc2626; }
         .ekc-tile.ekc-campaign { background:#4c7ed8; color:#fff; border-color:#3b6cc4; }
         .ekc-tile.ekc-active { background:#16a34a; color:#fff; border-color:#15803d; }
-        button.ekc-tile.ekc-flag { cursor:pointer; background:#f0fdf4; color:#166534; border-color:#86efac; }
-        button.ekc-tile.ekc-flag:hover { background:#dcfce7; }
-        button.ekc-tile.ekc-flag.is-active { background:#16a34a; color:#fff; border-color:#15803d; box-shadow:0 0 0 2px #86efac; }
-        button.ekc-tile.ekc-flag .fa-flag { color:#16a34a; }
-        button.ekc-tile.ekc-flag.is-active .fa-flag { color:#fff; }
         @media (max-width:1399.98px) { .ekc-card { grid-column:span 6; } }
         @media (max-width:991.98px) { .ekc-card { grid-column:span 12; } }
     </style>
@@ -101,9 +96,6 @@
                             @foreach ($card['items'] as [$key, $text, $tip])
                                 <span class="ekc-tile" data-kpi="{{ $key }}" title="{{ $tip }}">{{ $text }}:<span class="ekc-val">—</span></span>
                             @endforeach
-                            @if ($card['tag'] === 'l30')
-                                <button type="button" id="ekcFlagBtn" class="ekc-tile ekc-flag" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below the SKU's GPFT% (needs a SKU row, so campaigns that match no SKU and PARENT rows are not counted; only campaigns with L30 spend). Count covers the SKU rows matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="ekc-val" id="ekcFlagCount">0</span></button>
-                            @endif
                             @if ($card['tag'] === 'yesterday')
                                 <span class="ekc-tile ekc-campaign" title="Campaigns (per the Summary cards selector, with or without a KW suffix) (all statuses).">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
                                 <span class="ekc-tile ekc-active" title="RUNNING campaigns out of all campaigns in the Summary cards selector, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
@@ -232,8 +224,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q) || String(r.kw_campaign_name || '').toLowerCase().includes(q))) return false;
             return true;
         });
-        paintFlagCount(rows);
-        table.setData(ekcFlagOn ? rows.filter(isFlagged) : rows);
+        table.setData(rows);
         table.setSort([{ column: 'kw_spend_L30', dir: 'desc' }]);
     }
 
@@ -305,7 +296,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // which sums every campaign). Spend / clicks / sold / sales are the latest-sync-day rollup done by the server, exactly like
     // /ebay2/campaign-ads. UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks (1 decimal),
     // ACOS = round(spend ÷ ads sales) (100 when there is spend but no sales, 0 when none), TACOS = spend ÷ total eBay 2 sales.
-    let ekcFlagOn = false;
     let totalSales = { l1: null, l7: null, l30: null };
     const KPI_KIND = {
         bgt:       { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
@@ -325,7 +315,6 @@ document.addEventListener('DOMContentLoaded', function () {
         l7:  { spend: 'l7_spend', clicks: 'l7_clicks', sold: 'l7_sold', sales: 'l7_sales' },
         l30: { spend: 'ad_fees', clicks: 'clicks', sold: 'sold', sales: 'sales' },
     };
-    const isFlagged = r => hasKw(r) && num(r.kw_spend_L30) > 0 && num(r.kw_acos) < num(r['GPFT%']);
 
     function kpiCampaigns() {
         const scope = document.getElementById('ekcScope').value;      // all / COST_PER_CLICK / COST_PER_SALE
@@ -405,26 +394,12 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('ekcActivePct').textContent = camps.length ? Math.round(running / camps.length * 100) + '%' : '';
     }
 
-    // Green flag = campaigns (matched to a SKU row, so a GPFT% exists) whose L30 ACOS% is below that SKU's GPFT%.
-    function paintFlagCount(rows) {
-        const ids = new Set();
-        rows.forEach(r => { if (isFlagged(r)) ids.add(String(r.kw_campaign_id)); });
-        document.getElementById('ekcFlagCount').textContent = ids.size.toLocaleString('en-US');
-    }
-
     function loadTotalSales() {
         return fetch('{{ route('ebay2.kw.ads.total.sales') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => r.json())
             .then(t => { totalSales = { l1: num(t.l1), l7: num(t.l7), l30: num(t.l30) }; paintKpiCards(); })
             .catch(() => {});   // TACOS tiles just stay "—"
     }
-
-    document.getElementById('ekcFlagBtn').addEventListener('click', function () {
-        ekcFlagOn = !ekcFlagOn;
-        this.classList.toggle('is-active', ekcFlagOn);
-        this.setAttribute('aria-pressed', ekcFlagOn ? 'true' : 'false');
-        applyFilter();
-    });
 
     // ---- Campaigns view (one row per campaign, like Seller Hub > Advertising) ----
     let campRows = [];
