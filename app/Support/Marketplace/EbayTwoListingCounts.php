@@ -43,15 +43,6 @@ class EbayTwoListingCounts
             ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
         );
 
-        // Live listings with quantity 0 (Seller Hub "Out of stock") are neither Listed nor Missing L.
-        $outOfStockIds = ListingCountsEngine::outOfStockIdsFromColumn(
-            Ebay2Metric::class,
-            $skus,
-            'item_id',
-            'ebay_stock',
-            ChannelListingRegistry::EBAY_NOT_LIVE_STATUSES
-        );
-
         $reqCount = 0;
         $nrlCount = 0;
         $listedCount = 0;
@@ -78,9 +69,6 @@ class EbayTwoListingCounts
             }
 
             $itemId = ListingCountsEngine::listingIdFromMap($listedIds, $sku);
-            if ($itemId !== '' && ListingCountsEngine::listingIdFromMap($outOfStockIds, $sku) !== '') {
-                continue; // out of stock on eBay: not Listed, not Missing L
-            }
             if ($itemId !== '') {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
