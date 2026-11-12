@@ -1031,6 +1031,7 @@
                                         <th>ID</th>
                                         <th>SKU</th>
                                         {{-- <th>Product Name</th> --}}
+                                        <th>Status</th>
                                         <th>Archived By</th>
                                         <th>Archived At</th>
                                         <th>Actions</th>
@@ -1595,6 +1596,23 @@
                         </div>
                     </div>
 
+                    <ul class="nav nav-tabs mb-2" id="pmStatusTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link active" data-pm-tab="active" role="tab">Active <span class="badge bg-success ms-1" id="pmTabCountActive">0</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link" data-pm-tab="dc" role="tab">DC <span class="badge bg-danger ms-1" id="pmTabCountDc">0</span></button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button type="button" class="nav-link" data-pm-tab="upcoming" role="tab">Coming <span class="badge bg-warning text-dark ms-1" id="pmTabCountUpcoming">0</span></button>
+                        </li>
+                        <li class="nav-item ms-auto align-self-center">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="pmOpenArchivedBtn" title="Products marked DC are archived here (app + Shopify). Restore brings them back as Active.">
+                                <i class="fas fa-box-archive me-1"></i> Archived (DC) / Restore
+                            </button>
+                        </li>
+                    </ul>
+
                     <div class="table-responsive">
                         <table id="row-callback-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
@@ -1775,6 +1793,65 @@
             function isParentRowItem(item) {
                 return !!(item && String(item.SKU || item.sku || '').toUpperCase().includes('PARENT'));
             }
+            // Status tabs: 'active' (default) | 'dc' | 'upcoming' (Coming)
+            let pmStatusTab = 'active';
+
+            function pmItemStatusKey(item) {
+                let raw = item && item.status;
+                if ((raw === null || raw === undefined || raw === '') && item && item.Values) {
+                    let V = item.Values;
+                    if (typeof V === 'string') { try { V = JSON.parse(V); } catch (e) { V = {}; } }
+                    raw = V && V.status;
+                }
+                const s = String(raw || '').trim();
+                const lower = s.toLowerCase();
+                if (lower === 'active') return 'active';
+                if (s.toUpperCase() === 'DC') return 'dc';
+                if (lower === 'upcoming') return 'upcoming';
+                return 'other';
+            }
+
+            // Which tab each parent belongs to is decided by its SKUs; a parent without
+            // SKUs falls back to its own status.
+            function pmParentTabMap(rows) {
+                const map = {};
+                (rows || []).forEach(item => {
+                    if (isParentRowItem(item) || !item.Parent) return;
+                    const k = pmItemStatusKey(item);
+                    (map[item.Parent] = map[item.Parent] || {})[k] = true;
+                });
+                return map;
+            }
+
+            function pmItemInTab(item, tab, parentMap) {
+                if (isParentRowItem(item)) {
+                    const kids = parentMap[item.Parent];
+                    if (kids) return !!kids[tab];
+                }
+                return pmItemStatusKey(item) === tab;
+            }
+
+            function applyStatusTabFilter(rows) {
+                const parentMap = pmParentTabMap(tableData);
+                return (rows || []).filter(item => pmItemInTab(item, pmStatusTab, parentMap));
+            }
+
+            function refreshStatusTabs() {
+                document.querySelectorAll('#pmStatusTabs [data-pm-tab]').forEach(b => {
+                    b.classList.toggle('active', b.getAttribute('data-pm-tab') === pmStatusTab);
+                });
+                const counts = { active: 0, dc: 0, upcoming: 0 };
+                (tableData || []).forEach(item => {
+                    if (isParentRowItem(item)) return;
+                    const k = pmItemStatusKey(item);
+                    if (counts[k] !== undefined) counts[k]++;
+                });
+                const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
+                set('pmTabCountActive', counts.active);
+                set('pmTabCountDc', counts.dc);
+                set('pmTabCountUpcoming', counts.upcoming);
+            }
+
             function applyRowTypeFilter(rows, rowType) {
                 if (rowType === 'parent') return rows.filter(isParentRowItem);
                 if (rowType === 'sku') return rows.filter(item => !isParentRowItem(item));
@@ -2101,7 +2178,16 @@
                 if (serverJson.parent_row) {
                     upsertProductMasterRow(serverJson.parent_row);
                 }
-                if (serverJson.data) {
+                if (serverJson.archived && serverJson.data) {
+                    // Marked DC: the server archived it, so it leaves the list (restore from Archived Products)
+                    const archivedSku = serverJson.data.SKU || serverJson.data.sku;
+                    const archivedId = serverJson.data.id != null ? String(serverJson.data.id) : '';
+                    tableData = tableData.filter(p => !(
+                        (archivedId && p.id != null && String(p.id) === archivedId)
+                        || (archivedSku && (p.SKU || p.sku) === archivedSku)
+                    ));
+                    if (archivedSku) productMap.delete(archivedSku);
+                } else if (serverJson.data) {
                     upsertProductMasterRow(serverJson.data, options);
                 }
                 sortTableDataLikeServer();
@@ -2127,7 +2213,10 @@
 
             // Modified renderTable function to respect column permissions
             function renderTable(data) {
-                
+                // Status tabs (Active / DC / Coming) decide which rows are listed
+                data = applyStatusTabFilter(data);
+                refreshStatusTabs();
+
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
@@ -2159,7 +2248,7 @@
                 // Combine search results and selected items (if in selection mode)
                 let displayItems = [...data];
                 if (selectionMode && Object.keys(selectedItems).length > 0) {
-                    const selectedItemsList = tableData.filter(item => selectedItems[item.SKU]);
+                    const selectedItemsList = applyStatusTabFilter(tableData.filter(item => selectedItems[item.SKU]));
                     const combinedItems = [...data];
 
                     selectedItemsList.forEach(item => {
@@ -4642,6 +4731,7 @@
                                 <tr>
                                     <td>${product.id}</td>
                                     <td>${product.sku}</td>
+                                    <td>${escapeHtml(getStatusDisplayLabel((product.Values && product.Values.status) || '') || '-')}</td>
                                     <td>${product.deleted_by_name || '-'}</td> 
                                     <td>${product.deleted_at ? new Date(product.deleted_at).toLocaleString() : '-'}</td>
                                     <td>
@@ -4686,6 +4776,10 @@
 
                 const modal = new bootstrap.Modal(document.getElementById('archivedProductsModal'));
                 modal.show();
+            });
+
+            $('#pmOpenArchivedBtn').on('click', function() {
+                $('#viewArchivedBtn').trigger('click');
             });
 
             // Live search for archived products
@@ -4898,6 +4992,16 @@
                 document.addEventListener('click', function (e) {
                     const badge = e.target.closest ? e.target.closest('.pm-rowtype-badge') : null;
                     if (badge) toggleRowTypeBadge(badge);
+                });
+                // Active / DC / Coming tabs
+                document.querySelectorAll('#pmStatusTabs [data-pm-tab]').forEach(btn => {
+                    btn.addEventListener('click', function () {
+                        const t = this.getAttribute('data-pm-tab');
+                        if (t === pmStatusTab) return;
+                        pmStatusTab = t;
+                        refreshStatusTabs();
+                        applyFilters();
+                    });
                 });
                 // All / Parents / SKU dropdown: the same filter the badges set
                 const rowTypeSelect = document.getElementById('pmRowTypeSelect');

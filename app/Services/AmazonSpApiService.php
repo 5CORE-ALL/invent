@@ -7393,6 +7393,74 @@ class AmazonSpApiService
     }
 
     /**
+     * Delete the seller's listing for a SKU (Listings Items API DELETE) on the US marketplace.
+     *
+     * @return array{success: bool, not_found?: bool, message: string}
+     */
+    public function deleteListingsItem(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Amazon SP-API is not connected.'];
+        }
+
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+        $token = $this->getAccessToken();
+        if (! $token || $sellerId === '') {
+            return ['success' => false, 'message' => 'Could not obtain Amazon access token.'];
+        }
+
+        $url = $this->endpoint.'/listings/2021-08-01/items/'
+            .rawurlencode($sellerId).'/'.rawurlencode($sku)
+            .'?marketplaceIds='.rawurlencode($marketplaceId)
+            .'&issueLocale=en_US';
+
+        try {
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $token,
+                'Accept' => 'application/json',
+            ])->timeout(60)->delete($url);
+
+            $json = $response->json();
+            $json = is_array($json) ? $json : [];
+            $status = strtoupper((string) ($json['status'] ?? ''));
+
+            if ($response->status() === 404) {
+                return ['success' => true, 'not_found' => true, 'message' => 'SKU is not an Amazon listing.'];
+            }
+            if ($response->successful() && ! in_array($status, ['INVALID', 'FAILED'], true)) {
+                return ['success' => true, 'message' => 'Amazon accepted the delete for '.$sku.'.'];
+            }
+
+            $issues = [];
+            foreach ($json['issues'] ?? [] as $issue) {
+                $msg = is_array($issue) ? trim((string) ($issue['message'] ?? $issue['code'] ?? '')) : '';
+                if ($msg !== '') {
+                    $issues[] = $msg;
+                }
+            }
+            if ($issues === [] && isset($json['errors'][0]) && is_array($json['errors'][0])) {
+                $issues[] = trim((string) ($json['errors'][0]['message'] ?? $json['errors'][0]['code'] ?? ''));
+            }
+
+            return [
+                'success' => false,
+                'message' => $issues !== []
+                    ? implode(' ', $issues)
+                    : ('Amazon did not delete '.$sku.' (HTTP '.$response->status().($status !== '' ? ' '.$status : '').').'),
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('AmazonSpApiService: deleteListingsItem failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string, sample_count?: int|null}
      */
     public function testConnection(): array
