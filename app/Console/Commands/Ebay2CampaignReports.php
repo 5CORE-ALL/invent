@@ -16,7 +16,7 @@ class Ebay2CampaignReports extends Command
      *
      * @var string
      */
-    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)} {--meta-only : Only refresh campaign name/status/budget/type (no reports)}';
+    protected $signature = 'app:ebay2-campaign-reports {--only= : Only this report_range (e.g. L30)} {--meta-only : Only refresh campaign name/status/budget/type (no reports)} {--force : Run the full pull even if it already completed today}';
 
     /**
      * The console command description.
@@ -28,8 +28,29 @@ class Ebay2CampaignReports extends Command
     /**
      * Execute the console command.
      */
+    /** Marker file holding the date (IST) of the last completed full pull. */
+    public static function lastFullPullFile(): string
+    {
+        return storage_path('app/ebay2_kw_pull.last');
+    }
+
+    /** True when a full pull already completed today (IST). The scheduler has several retry slots; this keeps it to one pull a day. */
+    public static function pulledToday(): bool
+    {
+        $f = self::lastFullPullFile();
+
+        return is_file($f) && trim((string) @file_get_contents($f)) === Carbon::now('Asia/Kolkata')->toDateString();
+    }
+
     public function handle()
     {
+        $isFullPull = ! $this->option('meta-only') && trim((string) $this->option('only')) === '';
+        if ($isFullPull && ! $this->option('force') && self::pulledToday()) {
+            $this->info('eBay 2 campaign reports were already pulled today. Skipping (use --force to run again).');
+
+            return 0;
+        }
+
         try {
             // Check database connection (without creating persistent connection)
             try {
@@ -111,6 +132,10 @@ class Ebay2CampaignReports extends Command
         }
 
             $this->info("✅ All campaign data processed.");
+            if ($isFullPull) {
+                @file_put_contents(self::lastFullPullFile(), Carbon::now('Asia/Kolkata')->toDateString());
+            }
+
             return 0;
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());

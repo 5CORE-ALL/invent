@@ -262,8 +262,10 @@ document.addEventListener('DOMContentLoaded', function () {
         return fetch('{{ route('ebay2.kw.ads.pull.status') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => r.json())
             .then(s => {
-                pullBtn.disabled = !!s.running;
-                setPullInfo(s.running ? 'running on eBay, can take a while' : 'last sync: ' + (s.last_sync || 'never'), !!s.running);
+                // One pull a day: after today's pull completed the button stays off.
+                pullBtn.disabled = !!s.running || !!s.pulled_today;
+                setPullInfo(s.running ? 'running on eBay, can take a while'
+                    : (s.pulled_today ? 'already pulled today (once a day), last sync: ' : 'last sync: ') + (s.last_sync || 'never'), !!s.running);
                 if (wasRunning && !s.running) { loadData(); loadTotalSales(); loadCampaigns(); }   // pull just finished
                 wasRunning = !!s.running;
                 if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);

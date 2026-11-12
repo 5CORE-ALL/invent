@@ -340,6 +340,9 @@ class EbayTwoController extends Controller
         }
 
         $only = strtoupper(trim((string) $request->input('range', '')));
+        if ($only === '' && \App\Console\Commands\Ebay2CampaignReports::pulledToday()) {
+            return response()->json(['success' => true, 'running' => false, 'already_today' => true, 'message' => 'Already pulled today. Reports are pulled once a day.']);
+        }
         if ($only !== '' && ! in_array($only, self::KW_PULL_RANGES, true)) {
             return response()->json(['success' => false, 'message' => 'Unknown report range.'], 422);
         }
@@ -372,6 +375,7 @@ class EbayTwoController extends Controller
 
         return response()->json([
             'running' => $this->kwPullRunning(),
+            'pulled_today' => \App\Console\Commands\Ebay2CampaignReports::pulledToday(),
             'coverage' => $coverage,
             'last_sync' => collect($coverage)->pluck('last_updated')->filter()->max(),
         ]);
