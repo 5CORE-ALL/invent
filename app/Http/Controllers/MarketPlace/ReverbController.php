@@ -1450,10 +1450,17 @@ class ReverbController extends Controller
                 ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
                 ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
                 ->values();
-            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored)) ?: $allLmpEntries->first();
+            // L1 = lowest NON-ignored competitor only (same as Amazon). Never fall back to an
+            // ignored entry: an ignored LMP must not feed the LMP column, the caps or the comparisons.
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored));
+            $lowestIgnored = $lowestLmp ? null : $allLmpEntries->first();
 
             $processedItem['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
                 ? floatval($lowestLmp->total_price)
+                : null;
+            // Only for display (struck through) when every competitor is ignored.
+            $processedItem['lmp_ignored_price'] = ($lowestIgnored && is_numeric($lowestIgnored->total_price ?? null))
+                ? floatval($lowestIgnored->total_price)
                 : null;
             $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
             $processedItem['lmp_item_id'] = $lowestLmp->item_id ?? null;
@@ -2291,7 +2298,8 @@ class ReverbController extends Controller
                 ->sortBy(fn ($comp) => (float) ($comp->total_price ?? 0))
                 ->values();
 
-            $lowest = $competitors->first(fn ($c) => empty($c->ignored)) ?: $competitors->first();
+            // Lowest non-ignored only; null when every competitor is ignored.
+            $lowest = $competitors->first(fn ($c) => empty($c->ignored));
 
             return response()->json([
                 'success' => true,

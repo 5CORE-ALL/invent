@@ -2531,6 +2531,7 @@
                     currentLmpData.competitors = comps;
                     currentLmpData.lowestPrice = response && response.lowest_price;
                     renderReverbCompetitorsList(comps, currentLmpData.lowestPrice);
+                    patchReverbGridLmp();
                 },
                 error: function() {
                     $('#lmpDataList').html(`
@@ -2638,6 +2639,25 @@
             }
             $('#lmpDataList').html(html);
         }
+        /** Push the modal's ignore state into the grid (LMP column, Price vs LMP triangles, caps, badges), like Amazon. */
+        function patchReverbGridLmp() {
+            if (!window.LmpIgnore || !currentLmpData.sku) return;
+            LmpIgnore.patchGrid({
+                table: typeof table !== 'undefined' ? table : null,
+                dataset: typeof allTableData !== 'undefined' ? allTableData : [],
+                sku: currentLmpData.sku,
+                linkedSkus: currentLmpData.linkedLmpSkus || [],
+                competitors: currentLmpData.competitors || []
+            });
+            try {
+                if (typeof table !== 'undefined' && table && table.getRows) {
+                    table.getRows('all').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } });
+                }
+            } catch (e) { /* ignore */ }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
+        }
         LmpIgnore.bind({
             marketplace: 'reverb',
             sku: function() { return currentLmpData.sku || ''; },
@@ -2647,6 +2667,7 @@
                 });
                 currentLmpData.lowestPrice = LmpIgnore.l1(currentLmpData.competitors);
                 renderReverbCompetitorsList(currentLmpData.competitors, currentLmpData.lowestPrice);
+                patchReverbGridLmp();
             }
         });
 
@@ -3214,12 +3235,23 @@
                             });
                             if (avgHtml !== null) return avgHtml;
                         }
-                        const lmpPrice = cell.getValue();
+                        // L1 = lowest NON-ignored competitor (same as Amazon). Ignored ones never count.
+                        const entries = Array.isArray(rowData.lmp_entries) ? rowData.lmp_entries : [];
+                        const hasIgnoreLib = !!(window.LmpIgnore && entries.length);
+                        const lmpPrice = hasIgnoreLib ? LmpIgnore.l1(entries) : cell.getValue();
                         const sku = rowData['(Child) sku'] || '';
-                        const totalCompetitors = rowData.lmp_entries_total || 0;
+                        const totalCompetitors = hasIgnoreLib ? LmpIgnore.activeCount(entries) : (rowData.lmp_entries_total || 0);
                         const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
                         const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
                         const rvPrice = parseFloat(rowData['RV Price']) || 0;
+                        const ignoredOnly = hasIgnoreLib ? LmpIgnore.ignoredPrice(entries) : (parseFloat(rowData.lmp_ignored_price) || 0);
+
+                        if (!lmpPrice && ignoredOnly > 0) {
+                            return `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                style="text-decoration: none; cursor: pointer;" title="Ignored LMP — not counted">
+                                <span style="text-decoration: line-through; color: #94a3b8; font-weight: 600;">$${Number(ignoredOnly).toFixed(2)}</span>
+                                <i class="fas fa-times" style="color:#dc3545;font-size:10px;margin-left:3px;"></i></a>`;
+                        }
 
                         if (!lmpPrice && totalCompetitors === 0) {
                             return `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
