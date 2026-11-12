@@ -1033,6 +1033,16 @@
 
             ebaythreeListingTable.on('dataProcessed', function () {
                 hideLoader();
+                // /listing-ebaythree?missing=1 (link from the Missing L counts) opens on the Missing L list.
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__ebayMissingApplied) {
+                    window.__ebayMissingApplied = true;
+                    $('#row-data-type').val('sku');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = true;
+                }
                 applyListingFilters();
             });
             ebaythreeListingTable.on('dataFiltered', function () {
