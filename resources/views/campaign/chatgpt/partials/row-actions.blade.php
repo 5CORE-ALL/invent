@@ -4,10 +4,10 @@
     field: '_preview',
     hozAlign: 'center',
     headerSort: false,
-    width: 80,
+    width: 56,
     headerTooltip: 'Show how this SKU looks as a ChatGPT sponsored ad.',
     formatter: function(cell) {
-        return '<button type="button" class="btn btn-sm btn-outline-primary gpt-preview-btn py-0 px-2" title="Preview as ChatGPT ad"><i class="fas fa-eye"></i> Preview</button>';
+        return '<button type="button" class="btn btn-sm btn-outline-primary gpt-preview-btn py-0 px-2" title="Preview as ChatGPT ad" aria-label="Preview as ChatGPT ad"><i class="fas fa-eye"></i></button>';
     },
     cellClick: function(e, cell) {
         e.stopPropagation();
