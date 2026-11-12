@@ -221,6 +221,47 @@ class Temu1DataService
     }
 
     /**
+     * Saves a category's attribute names as its columns (the channel's extra_columns table), so the fields stay with
+     * the category instead of only with the SKU that was pulled. Names already stored are left as they are.
+     *
+     * @param  list<string>  $names
+     */
+    public function saveCategoryColumns(string $itemTable, string $path, array $names): void
+    {
+        $path = trim($path);
+        $extra = preg_replace('/item_specifics$/', 'extra_columns', $itemTable);
+        if ($path === '' || $names === [] || $extra === null || $extra === $itemTable || ! Schema::hasTable($extra)) {
+            return;
+        }
+        $hash = sha1(mb_strtolower($path));
+        $have = [];
+        foreach (DB::table($extra)->where('category_hash', $hash)->pluck('name_key') as $key) {
+            $have[(string) $key] = true;
+        }
+        $now = now();
+        foreach ($names as $name) {
+            $name = trim((string) $name);
+            $key = self::key($name);
+            if ($name === '' || $key === '' || isset($have[$key])) {
+                continue;
+            }
+            try {
+                DB::table($extra)->insert([
+                    'category' => mb_substr($path, 0, 500),
+                    'category_hash' => $hash,
+                    'name' => mb_substr($name, 0, 191),
+                    'name_key' => mb_substr($key, 0, 191),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            } catch (\Throwable $e) {
+                // Another SKU of this category saved the same column a moment earlier.
+            }
+            $have[$key] = true;
+        }
+    }
+
+    /**
      * The item-specific columns of a category: every attribute that is not a variation option.
      *
      * @param  list<array<string, mixed>>  $tpl
@@ -432,6 +473,11 @@ class Temu1DataService
             DB::table($table)->where('sku', $key)->update($payload);
         } else {
             DB::table($table)->insert($payload + ['sku' => $key, 'created_at' => now()]);
+        }
+
+        // The category keeps the field list, so every SKU of it shows these columns, not only the one just pulled.
+        if ($tpl !== []) {
+            $this->saveCategoryColumns($table, $path, self::columnNames($tpl));
         }
 
         $filled = count(array_filter($specifics, static fn ($v, $k) => ! str_starts_with((string) $k, '__') && trim((string) $v) !== '', ARRAY_FILTER_USE_BOTH));

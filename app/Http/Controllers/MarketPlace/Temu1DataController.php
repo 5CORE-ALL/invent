@@ -81,6 +81,12 @@ class Temu1DataController extends Ebay1DataController
         return false;
     }
 
+    protected function fillsFixedValues(): bool
+    {
+        // Temu shows the values the pull saved. The eBay fixed values (Brand "5 Core", MPN = the SKU) must not replace them.
+        return false;
+    }
+
     protected function categoryMasterColumn(): string
     {
         return 'category_temu';
@@ -216,6 +222,11 @@ class Temu1DataController extends Ebay1DataController
         foreach ($data['category_ids'] as $id) {
             try {
                 $props = $service->template((int) $id, true);
+                $names = Temu1DataService::columnNames($props);
+                // Saved under the path the page shows for this category, so the columns land on that tab.
+                foreach ($this->pathsForCategory((int) $id) as $path) {
+                    $service->saveCategoryColumns($this->t('item_specifics'), $path, $names);
+                }
                 $results[] = [
                     'id' => (int) $id,
                     'ok' => $props !== [],
@@ -229,6 +240,65 @@ class Temu1DataController extends Ebay1DataController
         }
 
         return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * GET /temu1-item-data/category-field-targets
+     * Every Temu category the SKUs of this page belong to, so the All fields button can fetch each one once.
+     */
+    public function categoryFieldTargets()
+    {
+        $ids = [];
+        if (Schema::hasTable($this->t('item_specifics')) && Schema::hasColumn($this->t('item_specifics'), 'category_id')) {
+            foreach (DB::table($this->t('item_specifics'))->whereNotNull('category_id')->distinct()->pluck('category_id') as $id) {
+                if ((int) $id > 0) {
+                    $ids[(int) $id] = true;
+                }
+            }
+        }
+        if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_temu')) {
+            foreach (DB::table('category_masters')->whereNotNull('category_temu')->where('category_temu', '!=', '')->distinct()->pluck('category_temu') as $path) {
+                $id = $this->categoryIdForPath((string) $path);
+                if ($id > 0) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+
+        $categories = [];
+        foreach (array_keys($ids) as $id) {
+            $paths = $this->pathsForCategory($id);
+            $categories[] = ['id' => $id, 'path' => $paths[0] ?? ('Category '.$id)];
+        }
+        usort($categories, static fn ($a, $b) => strcasecmp($a['path'], $b['path']));
+
+        return response()->json(['success' => true, 'categories' => $categories]);
+    }
+
+    /**
+     * The category path the page shows for a Temu category id: the one stored with the pulled SKUs, else the tree path.
+     *
+     * @return list<string>
+     */
+    private function pathsForCategory(int $id): array
+    {
+        $paths = [];
+        if (Schema::hasTable($this->t('item_specifics'))) {
+            foreach (DB::table($this->t('item_specifics'))->where('category_id', (string) $id)->whereNotNull('category_path')->distinct()->pluck('category_path') as $path) {
+                $path = trim((string) $path);
+                if ($path !== '') {
+                    $paths[$path] = true;
+                }
+            }
+        }
+        if ($paths === []) {
+            $tree = TemuCategoryTree::path(Temu1DataService::SHOP, (string) $id);
+            if ($tree !== '') {
+                $paths[$tree] = true;
+            }
+        }
+
+        return array_keys($paths);
     }
 
     /**

@@ -5075,7 +5075,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu 1 Data: the same page for the Temu 1 shop (category and item specifics as Temu holds them). /temu1-data is another page.
     foreach ([
         '' => 'index', '/rows' => 'rows', '/column-options' => 'columnOptions', '/ebay-categories' => 'ebayCategories',
-        '/missing-history' => 'missingHistory',
+        '/missing-history' => 'missingHistory', '/category-field-targets' => 'categoryFieldTargets',
     ] as $temuPath => $temuMethod) {
         Route::get('/temu1-item-data'.$temuPath, [\App\Http\Controllers\MarketPlace\Temu1DataController::class, $temuMethod])->name('temu1.item.data'.str_replace('/', '.', $temuPath));
     }
