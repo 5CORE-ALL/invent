@@ -34,10 +34,10 @@
                 <span id="kw-badge-spend" class="kw-badge bg-info text-dark">KW Spend L30: …</span>
 
                 <select id="kw-status" class="form-select form-select-sm ms-auto" style="width:150px;" title="Filter by campaign Status">
-                    <option value="all" selected>Status: All</option>
-                    <option value="RUNNING">Status: Running</option>
+                    <option value="RUNNING" selected>Status: Active</option>
                     <option value="PAUSED">Status: Paused</option>
                     <option value="NONE">Status: No campaign</option>
+                    <option value="all">Status: All</option>
                 </select>
                 <select id="kw-filter" class="form-select form-select-sm" style="width:210px;">
                     <option value="with" selected>Only SKUs with KW campaign</option>
