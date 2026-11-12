@@ -73,9 +73,14 @@ class AlibabaAnalyticsController extends Controller
             ->get();
 
         $namesByProduct = $this->productNamesByProductId($sheetRows->pluck('product_id')->filter()->all());
+        // Product ids per stored sheet SKU, so a title-derived display SKU can never take another listing's identity.
+        $sheetPidsBySku = [];
+        foreach ($sheetRows as $row) {
+            $sheetPidsBySku[strtoupper(trim((string) $row->sku))][trim((string) $row->product_id)] = true;
+        }
         $displaySkus = [];
         foreach ($sheetRows as $row) {
-            $displaySkus[] = $this->skuWithPieceCount((string) $row->sku, $namesByProduct[trim((string) $row->product_id)] ?? '');
+            $displaySkus[] = $this->listingDisplaySku((string) $row->sku, trim((string) $row->product_id), $namesByProduct[trim((string) $row->product_id)] ?? '', $sheetPidsBySku);
         }
         $skus = array_values(array_unique(array_filter(array_merge(
             $sheetRows->pluck('sku')->filter()->all(),
@@ -111,7 +116,7 @@ class AlibabaAnalyticsController extends Controller
         $listedPm = [];
         foreach ($sheetRows as $row) {
             $stored = trim((string) $row->sku);
-            $disp = $this->skuWithPieceCount($stored, $namesByProduct[trim((string) $row->product_id)] ?? '');
+            $disp = $this->listingDisplaySku($stored, trim((string) $row->product_id), $namesByProduct[trim((string) $row->product_id)] ?? '', $sheetPidsBySku);
             $hit = $pmByNorm[$this->stdKey($disp)] ?? null;
             if ($hit === null && $disp === $stored) {
                 $hit = $pmByNorm[$this->stdKey($stored)] ?? null;
@@ -144,7 +149,7 @@ class AlibabaAnalyticsController extends Controller
         foreach ($listRows as $row) {
             $storedSku = trim((string) $row->sku);
             $productId = trim((string) $row->product_id);
-            $sku = $this->skuWithPieceCount($storedSku, $namesByProduct[$productId] ?? '');
+            $sku = $this->listingDisplaySku($storedSku, $productId, $namesByProduct[$productId] ?? '', $sheetPidsBySku);
             $skuKey = strtoupper($sku);
             $pmExact = $pmByNorm[$this->stdKey($sku)] ?? null;
             $pm = $pmExact ?? $pmByNorm[$this->stdKey($storedSku)] ?? null;
@@ -949,6 +954,30 @@ class AlibabaAnalyticsController extends Controller
         }
 
         return 'https://www.alibaba.com/product-detail/x_'.$productId.'.html';
+    }
+
+    /**
+     * The SKU the page (and so the S PRC rule and the push job) uses for one listing: the stored sheet SKU plus the pack
+     * size read from the product title. That title suffix can turn "GS EL" into "GS EL 6PCS", which is ANOTHER listing's
+     * own SKU (product …43390518). The listing then borrowed that SKU's S PRC and was pushed the wrong price, and
+     * flipped back and forth as the title text changed. A suffixed SKU that is already the stored SKU of a different
+     * Alibaba product is never used: the listing keeps its stored SKU.
+     *
+     * @param  array<string, array<string, bool>>  $sheetPidsBySku  UPPER(TRIM(sku)) => [product_id => true] over the sheet
+     */
+    protected function listingDisplaySku(string $stored, string $productId, string $hint, array $sheetPidsBySku): string
+    {
+        $stored = trim($stored);
+        $display = $this->skuWithPieceCount($stored, $hint);
+        if ($display === $stored) {
+            return $display;
+        }
+        $owners = $sheetPidsBySku[strtoupper($display)] ?? [];
+        if ($owners !== [] && ! isset($owners[trim($productId)])) {
+            return $stored;
+        }
+
+        return $display;
     }
 
     protected function skuWithPieceCount(string $sku, string $hint): string
