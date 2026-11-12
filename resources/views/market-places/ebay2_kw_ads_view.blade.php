@@ -43,7 +43,6 @@
                 <button id="kw-pull-btn" type="button" class="btn btn-sm btn-primary" title="Pull Priority Reports from eBay API" aria-label="Pull Priority Reports from eBay API">
                     <i class="fa-solid fa-cloud-arrow-down"></i>
                 </button>
-                <span id="kw-pull-state" class="small text-muted">Checking…</span>
             </div>
 
             <div id="kw-empty" class="sku-only alert alert-warning d-none">
@@ -168,7 +167,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---- Pull Priority Reports from the eBay Marketing API ----
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const pullBtn = document.getElementById('kw-pull-btn');
-    const pullState = document.getElementById('kw-pull-state');
+    const pullIcon = pullBtn.querySelector('i');
+    // No visible status text: feedback goes to the button tooltip and a spinning icon while a pull runs.
+    const setPullInfo = (msg, spinning) => {
+        pullBtn.title = 'Pull Priority Reports from eBay API' + (msg ? ' - ' + msg : '');
+        pullIcon.className = spinning ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-cloud-arrow-down';
+    };
     let pollTimer = null;
     let wasRunning = false;
 
@@ -177,15 +181,13 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(r => r.json())
             .then(s => {
                 pullBtn.disabled = !!s.running;
-                pullState.textContent = s.running
-                    ? 'Pulling from eBay… (reports are polled every minute, this can take a while)'
-                    : 'Last sync: ' + (s.last_sync || 'never');
+                setPullInfo(s.running ? 'running on eBay, can take a while' : 'last sync: ' + (s.last_sync || 'never'), !!s.running);
                 if (wasRunning && !s.running) { loadData(); if (campTable) loadCampaigns(); }   // pull just finished
                 wasRunning = !!s.running;
                 if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);
                 if (!s.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             })
-            .catch(() => { pullState.textContent = 'Could not check pull status.'; });
+            .catch(() => { setPullInfo('could not check pull status', false); });
     }
 
     pullBtn.addEventListener('click', function () {
@@ -197,8 +199,8 @@ document.addEventListener('DOMContentLoaded', function () {
             credentials: 'same-origin',
         })
             .then(r => r.json())
-            .then(res => { pullState.textContent = res.message || ''; return checkPull(); })
-            .catch(err => { pullBtn.disabled = false; pullState.textContent = 'Pull failed: ' + err.message; });
+            .then(res => { setPullInfo(res.message || '', !!res.running); return checkPull(); })
+            .catch(err => { pullBtn.disabled = false; setPullInfo('pull failed: ' + err.message, false); });
     });
 
     document.getElementById('kw-status').addEventListener('change', applyFilter);
