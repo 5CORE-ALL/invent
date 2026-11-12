@@ -329,6 +329,7 @@ class YesterdayMarketplaceMetricsService
                     ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
             })
             ->select(['o.amazon_order_id', 'i.sku', 'i.quantity', 'i.price as line_price'])
+            ->selectRaw(AmazonOrder::orderedProductSalesSql('i').' as effective_sales')
             ->get();
 
         $qty = 0;
@@ -348,6 +349,14 @@ class YesterdayMarketplaceMetricsService
             $qty += $quantity;
             if ($row->amazon_order_id) {
                 $orderIds[(string) $row->amazon_order_id] = true;
+            }
+            // Pending orders arrive from Amazon with a $0 item price until the next sync
+            // prices them. They add no sales, so charging their LP + shipping as a loss
+            // made yesterday's NPFT% / NROI% read low until the next day. Skip them for
+            // profit and COGS (like sales) so yesterday is not understated; they are
+            // counted once the price lands.
+            if ($linePrice <= 0 && (float) ($row->effective_sales ?? 0) <= 0) {
+                continue;
             }
             if ($sku !== '' && $quantity > 0) {
                 $skuLineSales += round($lineRevenue, 2);
@@ -687,6 +696,10 @@ class YesterdayMarketplaceMetricsService
             $quantity = (int) ($order->quantity ?? 1);
             $itemPrice = (float) ($order->item_price ?? 0);
             $totalPrice = (float) ($order->total_price ?? 0);
+            // Unpriced line (price not synced yet): no sales, so no cost/profit either.
+            if ($itemPrice <= 0 && $totalPrice <= 0) {
+                continue;
+            }
             $pm = $this->pm((string) $order->sku);
             $sales += $totalPrice;
             $qty += $quantity;
@@ -746,6 +759,10 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $unitPrice = (float) ($order->unit_price ?? 0);
+            // Unpriced line (price not synced yet): no sales, so no cost/profit either.
+            if ($unitPrice <= 0) {
+                continue;
+            }
             $saleAmount = $unitPrice * $quantity;
             $pm = $this->pm((string) $order->sku);
             $ship = $shipKey === 'ship_bb' ? $pm['ship_bb'] : $pm['ship'];
@@ -848,6 +865,10 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $unitPrice = (float) ($item->sale_price ?? 0);
+            // Unpriced line (price not synced yet): no sales, so no cost/profit either.
+            if ($unitPrice <= 0) {
+                continue;
+            }
             $pm = $this->pm((string) ($item->seller_sku ?? ''));
             $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $quantity);
             $sales += $unitPrice * $quantity;
@@ -893,7 +914,8 @@ class YesterdayMarketplaceMetricsService
         foreach ($rows as $row) {
             $quantity = (int) ($row->quantity ?? 0);
             $unitPrice = (float) ($row->unit_price ?? 0);
-            if ($quantity <= 0) {
+            // Unpriced line (price not synced yet): no sales, so no cost/profit either.
+            if ($quantity <= 0 || $unitPrice <= 0) {
                 continue;
             }
             $pm = $this->pm((string) ($row->sku ?? ''));
@@ -938,6 +960,10 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $unitPrice = (float) ($item->sale_price ?? 0);
+            // Unpriced line (price not synced yet): no sales, so no cost/profit either.
+            if ($unitPrice <= 0) {
+                continue;
+            }
             $pm = $this->pm((string) ($item->seller_sku ?? ''));
             $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $quantity);
             $sales += $unitPrice * $quantity;
