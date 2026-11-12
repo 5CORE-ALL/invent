@@ -319,6 +319,26 @@ class VerificationAdjustmentController extends Controller
         // Shopify rows keyed by product_master.sku (NBSP / unicode space safe)
         $shopifyData = ShopifySku::mapByProductSkus($originalSkus);
 
+        // The loose match above can pick a different shopify_skus row than CP master (for example a duplicate
+        // "ND-58" / "ND 58" row next to the real "ND.58"), so INV here differed from CP master. When a row
+        // with exactly the product SKU exists, use it, the same way CP master does (last row wins).
+        $exactRows = [];
+        foreach (ShopifySku::query()->whereIn('sku', $originalSkus)->orderBy('id')->get() as $exactRow) {
+            $exactRows[(string) $exactRow->sku] = $exactRow;
+        }
+        if ($exactRows !== []) {
+            $exactByProductSku = collect();
+            foreach ($originalSkus as $pmSku) {
+                if (isset($exactRows[$pmSku])) {
+                    $exactByProductSku->put($pmSku, $exactRows[$pmSku]);
+                }
+            }
+            ShopifySku::overlayOvL30FromOrders($exactByProductSku);
+            foreach ($exactByProductSku as $pmSku => $exactRow) {
+                $shopifyData->put($pmSku, $exactRow);
+            }
+        }
+
         // Fetch Amazon prices from amazon_datsheets table (gracefully handle if table doesn't exist)
         $amazonPrices = collect();
         try {
