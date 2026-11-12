@@ -120,6 +120,8 @@ class AppServiceProvider extends ServiceProvider
                         $userRole = Auth::user()->role;
                         $rolePermission = Permission::where('role', $userRole)->first();
                         $permissions = $rolePermission ? $rolePermission->permissions : [];
+                        // Add whatever was granted to this person by name (Permissions overview → Grant access).
+                        $permissions = \App\Helpers\PermissionHelper::mergeWithGrants(Auth::id(), is_array($permissions) ? $permissions : []);
                     }
                 } catch (\Throwable $e) {
                     // Never 500 the layout if file cache dirs are momentarily missing/unwritable.

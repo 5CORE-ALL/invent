@@ -129,6 +129,8 @@ class ProductMasterController extends Controller
             $userRole = auth()->user()->role;
             $rolePermission = Permission::where('role', $userRole)->first();
             $userPermissions = $rolePermission ? $rolePermission->permissions : [];
+            // Add whatever was granted to this person by name (Permissions overview → Grant access).
+            $userPermissions = \App\Helpers\PermissionHelper::mergeWithGrants(auth()->id(), is_array($userPermissions) ? $userPermissions : []);
 
             // Hardcoded full-access overrides for Product Master (same as president).
             // Grant every CRUD capability on cp_masters so edit/delete buttons render
