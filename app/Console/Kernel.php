@@ -455,6 +455,79 @@ class Kernel extends ConsoleKernel
     }
 
     /**
+     * Re-pull each marketplace's recent orders AFTER the Pacific day has closed, at fixed
+     * Pacific clock times, and again a few hours later so late-arriving data (pending Amazon
+     * orders getting priced, eBay/Temu/Shein status changes, delayed API batches) settles the
+     * same day instead of on the next day's run.
+     *
+     * Why Pacific clock: "Yesterday" on /all-marketplace-master is the Pacific calendar day.
+     * Pacific midnight is 12:30 IST during PDT and 13:30 IST during PST, so any job pinned to
+     * an IST time is either before the day closes (winter) or has to be padded (summer).
+     *
+     * Each channel runs at three passes (+~0:40 / +~3:00 / +~6:30 after Pacific midnight). All
+     * commands are idempotent upserts over a rolling window, so an extra run is harmless.
+     */
+    protected function schedulePacificDaySettlePasses(Schedule $schedule, string $log): void
+    {
+        $pt = 'America/Los_Angeles';
+
+        // Amazon: full-day pull of Pacific yesterday (CreatedBefore = end of day).
+        // One shared name = one shared mutex, so passes never overlap each other.
+        foreach (['00:40', '02:30', '06:00'] as $slot) {
+            $schedule->command('app:fetch-amazon-orders --close-yesterday --with-items')
+                ->dailyAt($slot)
+                ->timezone($pt)
+                ->name('amazon-close-yesterday')
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+        // Amazon: pending orders arrive with a $0 item price and are only priced on a later sync.
+        // LastUpdated refresh (last 48h) picks up the priced orders and cancellations.
+        foreach (['03:30', '07:00'] as $slot) {
+            $schedule->command('app:fetch-amazon-orders --incremental-only --with-items --incremental-lookback-hours=48')
+                ->dailyAt($slot)
+                ->timezone($pt)
+                ->name('amazon-settle-incremental')
+                ->withoutOverlapping(120)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+        // [slug => [command, [Pacific slots]]]. Slots are spread so heavy API pulls do not collide.
+        $passes = [
+            'ebay-orders' => ['app:fetch-ebay-orders', ['00:50', '03:10', '06:40']],
+            'ebay2-orders' => ['app:fetch-ebay2-orders', ['00:55', '03:15', '06:45']],
+            'ebay3-daily' => ['ebay3:daily --days=60', ['01:00', '03:20', '06:50']],
+            'temu-orders' => ['app:fetch-temu-orders', ['01:15', '03:35', '07:05']],
+            'temu2-orders' => ['app:fetch-temu2-orders --days=60', ['01:20', '03:40', '07:10']],
+            'temu3-orders' => ['app:fetch-temu3-orders --days=60', ['01:22', '03:42', '07:12']],
+            'wayfair-api' => ['sync:wayfair-l30-api', ['01:02', '03:02', '06:32']],
+            'wayfair-daily' => ['wayfair:daily --days=60', ['01:05', '03:05', '06:35']],
+            'mirakl-daily' => ['mirakl:daily --days=60', ['01:25', '03:45', '07:15']],
+            'doba-daily' => ['doba:daily --days=60', ['01:45', '04:05', '07:25']],
+            'shein-l30' => ['shein:fetch orders --days=30 --target=l30', ['01:30', '03:50', '07:20']],
+            'shein-l60' => ['shein:fetch orders --days=60 --target=l60', ['01:35', '03:55', '07:22']],
+            'tiktok-orders' => ['tiktok:fetch-orders --days=60 --prune', ['01:10', '04:10', '07:30']],
+            'tiktok2-orders' => ['tiktok:fetch-orders --channel=tiktok2 --days=60 --prune', ['01:12', '04:12', '07:32']],
+            'pls-sales' => ['app:fetch-pls-sales-data --days=90', ['02:00', '05:00']],
+        ];
+
+        foreach ($passes as $slug => [$command, $slots]) {
+            foreach ($slots as $slot) {
+                $schedule->command($command)
+                    ->dailyAt($slot)
+                    ->timezone($pt)
+                    ->name('pt-settle-'.$slug.'-'.str_replace(':', '', $slot))
+                    ->withoutOverlapping(90)
+                    ->runInBackground()
+                    ->appendOutputTo($log);
+            }
+        }
+    }
+
+    /**
      * Marketplace sales / orders / daily metrics. Registered first so they
      * start before price and ads jobs when several events are due together.
      */
@@ -469,15 +542,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // 13:10 IST = 00:40 PDT — Pacific yesterday has closed. Own mutex so the
-        // 35-day auto-sync cannot skip the full-day CreatedBefore=23:59 pull.
-        $ist($schedule->command('app:fetch-amazon-orders --close-yesterday --with-items')
-            ->dailyAt('13:10')
-            ->timezone('Asia/Kolkata')
-            ->name('amazon-close-yesterday')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Pacific-yesterday close / settle passes for Amazon, eBay, Temu, Wayfair, Shein,
+        // TikTok, Doba, Mirakl, PLS. These are scheduled in America/Los_Angeles (not a fixed
+        // IST clock) so they stay after Pacific midnight in both PDT and PST — a fixed
+        // "13:10 IST" is 00:40 PDT in summer but 23:40 PST in winter (before the day closes).
+        $this->schedulePacificDaySettlePasses($schedule, $log);
 
        
         $ist($schedule->command('app:fetch-fba-reports')
@@ -1151,7 +1220,8 @@ class Kernel extends ConsoleKernel
         // Do not wrap in $ist(). between(09:00, 20:00) is checked against the
         // clock when schedule:run starts, so cron:run-missed at 20:15 never
         // sees a skipped 15:10 slot and that day stays stale. Pacific yesterday
-        // closes at 12:30 IST; later slots cover a missed minute (schedule:run
+        // closes at 12:30 IST in PDT but 13:30 IST in PST (see schedulePacificDaySettlePasses(),
+        // which runs the Pacific-clock passes); later slots cover a missed minute (schedule:run
         // is overloaded and has skipped single daily slots).
         foreach (['13:20', '15:10', '19:40'] as $slot) {
             $schedule->command('shein:fetch orders --days=30 --target=l30')
