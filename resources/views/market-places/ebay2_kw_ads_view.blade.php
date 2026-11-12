@@ -51,7 +51,7 @@
             @php
                 $ekcCards = [
                     ['tag' => 'yesterday', 'title' => 'Yesterday', 'items' => [
-                        ['y_bgt', 'Y BGT', 'Daily budget of the campaigns shown (campaignBudgetAmount).'],
+                        ['y_bgt', 'Y BGT', 'Daily budget of the campaigns shown (campaignBudgetAmount). Standard campaigns have no daily budget.'],
                         ['y_util', 'Y UTIL', 'Yesterday utilization = yesterday spend ÷ daily budget.'],
                         ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).'],
                         ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.'],
@@ -85,6 +85,14 @@
                     ]],
                 ];
             @endphp
+            <div class="sku-only d-flex align-items-center gap-2 mb-2">
+                <span class="small text-muted">Summary cards cover:</span>
+                <select id="ekcScope" class="form-select form-select-sm" style="width:260px;" title="Which campaigns the Yesterday / L30 / Projected cards add up. Standard campaigns have no daily budget, so BGT and UTIL only use campaigns that have one.">
+                    <option value="all" selected>All campaigns (Priority + Standard)</option>
+                    <option value="COST_PER_CLICK">Priority only</option>
+                    <option value="COST_PER_SALE">Standard only</option>
+                </select>
+            </div>
             <div class="sku-only ekc-cards" id="ekcCards">
                 @foreach ($ekcCards as $card)
                     <div class="ekc-card ekc-card--{{ $card['tag'] }}">
@@ -97,8 +105,8 @@
                                 <button type="button" id="ekcFlagBtn" class="ekc-tile ekc-flag" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below the SKU's GPFT% (needs a SKU row, so campaigns that match no SKU and PARENT rows are not counted; only campaigns with L30 spend). Count covers the SKU rows matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="ekc-val" id="ekcFlagCount">0</span></button>
                             @endif
                             @if ($card['tag'] === 'yesterday')
-                                <span class="ekc-tile ekc-campaign" title="All Priority campaigns (with or without a KW suffix) matching the Status filter.">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
-                                <span class="ekc-tile ekc-active" title="RUNNING campaigns out of the Priority campaigns matching the Status filter, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
+                                <span class="ekc-tile ekc-campaign" title="Campaigns (per the Summary cards selector, with or without a KW suffix) matching the Status filter.">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
+                                <span class="ekc-tile ekc-active" title="RUNNING campaigns out of the campaigns matching the Status filter and the Summary cards selector, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
                             @endif
                         </div>
                     </div>
@@ -287,11 +295,13 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('kw-status').addEventListener('change', function () { paintKpiCards(); applyFilter(); });
+    document.getElementById('ekcScope').addEventListener('change', paintKpiCards);
     document.getElementById('kw-search').addEventListener('input', applyFilter);
 
     // ---- Summary cards (Yesterday / L30 / Projected): same layout and formulas as /amazon-ads/all ----
     // Windows: Yesterday = L1 report, L30 = L30 report, Projected = L7 report ÷ 7 × 30. Campaigns = EVERY Priority campaign from
-    // the campaign list (with or without a "KW" suffix, matched to a SKU row or not), filtered only by the Status dropdown. UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks,
+    // the campaign list (Priority + Standard, with or without a "KW" suffix, matched to a SKU row or not), filtered only by the
+    // Status dropdown and the "Summary cards cover" selector. UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks,
     // ACOS = spend ÷ ads sales, TACOS = spend ÷ total eBay 2 sales for the same window.
     let ekcFlagOn = false;
     let totalSales = { l1: null, l7: null, l30: null };
@@ -302,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function () {
         bid:       { fmt: v => '$' + v.toFixed(2), lower: true },
         cvr:       { fmt: v => v.toFixed(2) + '%', lower: false },
         acos:      { fmt: v => Math.round(v) + '%', lower: true },
-        tacos:     { fmt: v => Math.round(v) + '%', lower: true },
+        tacos:     { fmt: v => (v < 10 ? v.toFixed(2) : Math.round(v)) + '%', lower: true },   // eBay TACOS is small (spend ÷ total store sales), so keep decimals
         clicks:    { fmt: v => Math.round(v).toLocaleString('en-US'), lower: false },
         sold:      { fmt: v => Math.round(v).toLocaleString('en-US'), lower: false },
         sales:     { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
@@ -316,18 +326,24 @@ document.addEventListener('DOMContentLoaded', function () {
     const isFlagged = r => hasKw(r) && num(r.kw_spend_L30) > 0 && num(r.kw_acos) < num(r['GPFT%']);
 
     function kpiCampaigns() {
-        const st = document.getElementById('kw-status').value;   // RUNNING / PAUSED / NONE / all
-        return campRows.filter(r => r.funding_model === 'COST_PER_CLICK' && (st === 'all' || (st !== 'NONE' && r.status === st)));
+        const st = document.getElementById('kw-status').value;        // RUNNING / PAUSED / NONE / all
+        const scope = document.getElementById('ekcScope').value;      // all / COST_PER_CLICK / COST_PER_SALE
+        return campRows.filter(r => (scope === 'all' ? !!r.funding_model : r.funding_model === scope) &&
+            (st === 'all' || (st !== 'NONE' && r.status === st)));
     }
 
     function kpiWindow(camps, key, days) {
         const f = KPI_FIELDS[key];
         const sum = field => camps.reduce((s, r) => s + num(r[field]), 0);
-        const bud = sum('daily_budget'), spend = sum(f.spend), clicks = sum(f.clicks), sold = sum(f.sold), sales = sum(f.sales);
+        const spend = sum(f.spend), clicks = sum(f.clicks), sold = sum(f.sold), sales = sum(f.sales);
+        // Standard (cost-per-sale) campaigns have no daily budget: BGT / UTIL only use campaigns that have one.
+        const budCamps = camps.filter(r => num(r.daily_budget) > 0);
+        const bud = budCamps.reduce((a, r) => a + num(r.daily_budget), 0);
+        const budSpend = budCamps.reduce((a, r) => a + num(r[f.spend]), 0);
         const ts = totalSales[key];
         return {
             bgt: bud,
-            util: bud > 0 ? spend / (bud * days) * 100 : null,
+            util: bud > 0 ? budSpend / (bud * days) * 100 : null,
             bid: clicks > 0 ? spend / clicks : null,
             cvr: clicks > 0 ? sold / clicks * 100 : null,
             acos: sales > 0 ? spend / sales * 100 : (spend > 0 ? 100 : null),

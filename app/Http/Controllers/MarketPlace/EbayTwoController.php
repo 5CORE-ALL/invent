@@ -476,12 +476,48 @@ class EbayTwoController extends Controller
             ];
         };
 
+        // Standard (COST_PER_SALE) campaigns: metrics live per listing in ebay_2_general_reports; roll them up per campaign.
+        $std = [];
+        if (Schema::hasTable('ebay_2_general_reports')) {
+            foreach (['L30', 'L7', 'L1'] as $range) {
+                foreach (Ebay2GeneralReport::where('report_range', $range)->get(['campaign_id', 'impressions', 'clicks', 'ad_fees', 'sales', 'sale_amount']) as $g) {
+                    $cid = (string) $g->campaign_id;
+                    $a = $std[$cid][$range] ?? ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'impressions' => 0];
+                    $a['spend'] += (float) $this->extractNumber($g->ad_fees);
+                    $a['clicks'] += (int) $g->clicks;
+                    $a['sold'] += (int) $g->sales;
+                    $a['sales'] += (float) $this->extractNumber($g->sale_amount);
+                    $a['impressions'] += (int) $g->impressions;
+                    $std[$cid][$range] = $a;
+                }
+            }
+        }
+        $emptyWin = ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0, 'impressions' => 0];
+
         $rows = $l30
-            ->map(function ($r) use ($money, $l7Rows, $l1Rows, $win) {
+            ->map(function ($r) use ($money, $l7Rows, $l1Rows, $win, $std, $emptyWin) {
                 $fees = $money($r->cpc_ad_fees_payout_currency ?: $r->cpc_ad_fees_listingsite_currency);
                 $sales = $money($r->cpc_sale_amount_payout_currency ?: $r->cpc_sale_amount_listingsite_currency);
                 $w7 = $win($l7Rows->get((string) $r->campaign_id));
                 $w1 = $win($l1Rows->get((string) $r->campaign_id));
+                $impr = (int) ($r->cpc_impressions ?? 0);
+                $clicks = (int) ($r->cpc_clicks ?? 0);
+                $sold = (int) ($r->cpc_attributed_sales ?? 0);
+                $ctr = (float) ($r->cpc_ctr ?? 0);
+                $cvr = (float) ($r->cpc_conversion_rate ?? 0);
+
+                if ((string) $r->funding_model === 'COST_PER_SALE') {
+                    $s30 = $std[(string) $r->campaign_id]['L30'] ?? $emptyWin;
+                    $w7 = $std[(string) $r->campaign_id]['L7'] ?? $emptyWin;
+                    $w1 = $std[(string) $r->campaign_id]['L1'] ?? $emptyWin;
+                    $fees = round($s30['spend'], 2);
+                    $sales = round($s30['sales'], 2);
+                    $impr = $s30['impressions'];
+                    $clicks = $s30['clicks'];
+                    $sold = $s30['sold'];
+                    $ctr = $impr > 0 ? round($clicks / $impr * 100, 2) : 0.0;
+                    $cvr = $clicks > 0 ? round($sold / $clicks * 100, 2) : 0.0;
+                }
 
                 return [
                     'campaign_id' => (string) $r->campaign_id,
@@ -494,14 +530,14 @@ class EbayTwoController extends Controller
                     },
                     'status' => strtoupper((string) $r->campaignStatus),
                     'daily_budget' => (float) ($r->campaignBudgetAmount ?? 0),
-                    'impressions' => (int) ($r->cpc_impressions ?? 0),
-                    'clicks' => (int) ($r->cpc_clicks ?? 0),
-                    'sold' => (int) ($r->cpc_attributed_sales ?? 0),
+                    'impressions' => $impr,
+                    'clicks' => $clicks,
+                    'sold' => $sold,
                     'sales' => $sales,
                     'ad_fees' => $fees,
                     'roas' => $fees > 0 ? round($sales / $fees, 2) : 0.0,
-                    'ctr' => (float) ($r->cpc_ctr ?? 0),
-                    'cvr' => (float) ($r->cpc_conversion_rate ?? 0),
+                    'ctr' => $ctr,
+                    'cvr' => $cvr,
                     'l7_spend' => $w7['spend'], 'l7_clicks' => $w7['clicks'], 'l7_sold' => $w7['sold'], 'l7_sales' => $w7['sales'],
                     'l1_spend' => $w1['spend'], 'l1_clicks' => $w1['clicks'], 'l1_sold' => $w1['sold'], 'l1_sales' => $w1['sales'],
                     'updated_at' => optional($r->updated_at)->toDateTimeString(),
