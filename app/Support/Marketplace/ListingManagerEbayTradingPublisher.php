@@ -1139,10 +1139,93 @@ class ListingManagerEbayTradingPublisher
     }
 
     /**
+     * eBay user id of the account behind a store's token (GetUser), cached per request. '' when unknown.
+     */
+    public static function accountUserId(string $channelKey): string
+    {
+        static $cache = [];
+        $key = ListingChannelCounts::normalize($channelKey);
+        if (isset($cache[$key])) {
+            return $cache[$key];
+        }
+        $cache[$key] = '';
+        $ctx = self::context($key);
+        if (! ($ctx['configured'] ?? false)) {
+            return '';
+        }
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetUserRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $response = Http::timeout(60)
+                ->withHeaders(self::tradingHeaders($ctx, 'GetUser'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+            $xmlResp = simplexml_load_string($response->body());
+            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
+            if (in_array((string) ($data['Ack'] ?? ''), ['Success', 'Warning'], true)) {
+                $cache[$key] = trim((string) ($data['User']['UserID'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            // unknown account: callers skip the ownership check
+        }
+
+        return $cache[$key];
+    }
+
+    /**
+     * What eBay shows for one item id (GetItem), for diagnosing a SKU whose id looks wrong.
+     *
+     * @return array{ok: bool, message?: string, fields?: array<string, string>}
+     */
+    public static function itemInfo(string $channelKey, string $itemId): array
+    {
+        $itemId = trim($itemId);
+        $ctx = self::context(ListingChannelCounts::normalize($channelKey));
+        if ($itemId === '' || ! ($ctx['configured'] ?? false)) {
+            return ['ok' => false, 'message' => 'Missing ItemID or API credentials.'];
+        }
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+            $xml->addChild('ItemID', $itemId);
+            $xml->addChild('DetailLevel', 'ReturnAll');
+            $response = Http::timeout(60)
+                ->withHeaders(self::tradingHeaders($ctx, 'GetItem'))
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+            $xmlResp = simplexml_load_string($response->body());
+            $data = $xmlResp !== false ? (json_decode(json_encode($xmlResp), true) ?: []) : [];
+            if (! in_array((string) ($data['Ack'] ?? ''), ['Success', 'Warning'], true)) {
+                return ['ok' => false, 'message' => trim((string) ($data['Errors']['LongMessage'] ?? $data['Errors']['ShortMessage'] ?? 'GetItem failed.'))];
+            }
+            $item = EbayTradingReviseItem::itemFromGetItem($data);
+            $sellingStatus = (array) ($item['SellingStatus'] ?? []);
+
+            return ['ok' => true, 'fields' => [
+                'Title' => trim((string) ($item['Title'] ?? '')),
+                'Seller (owner of the listing)' => trim((string) ($item['Seller']['UserID'] ?? '')),
+                'This store account' => self::accountUserId($channelKey),
+                'Item SKU' => trim((string) ($item['SKU'] ?? '')),
+                'Listing status' => trim((string) ($sellingStatus['ListingStatus'] ?? '')),
+                'Quantity' => trim((string) ($item['Quantity'] ?? '')),
+                'Quantity sold' => trim((string) ($sellingStatus['QuantitySold'] ?? '')),
+                'Has variations' => EbayTradingReviseItem::listingHasVariations($data) ? 'yes' : 'no',
+                'Listing type' => trim((string) ($item['ListingType'] ?? '')),
+                'Started' => trim((string) ($item['ListingDetails']['StartTime'] ?? '')),
+                'Ends' => trim((string) ($item['ListingDetails']['EndTime'] ?? '')),
+                'Link' => trim((string) ($item['ListingDetails']['ViewItemURL'] ?? ('https://www.ebay.com/itm/'.$itemId))),
+            ]];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Ask eBay (GetItem) whether a listing still exists, and, when a SKU is given, whether that SKU is on it.
      *
      * state: 'live' (active listing; for a multi-variation listing the SKU is one of its variations),
      *        'sku_absent' (active multi-variation listing that no longer holds the SKU),
+     *        'foreign' (the item exists but belongs to another eBay seller, so it is not this store's listing),
      *        'ended' (ended / completed listing), 'not_found' (eBay no longer knows the item),
      *        'error' (could not tell: auth, rate limit, network; never treated as gone).
      *
@@ -1200,6 +1283,14 @@ class ListingManagerEbayTradingPublisher
             $status = strtolower(trim((string) ($item['SellingStatus']['ListingStatus'] ?? '')));
             if (in_array($status, ['ended', 'completed'], true)) {
                 return ['state' => 'ended', 'message' => 'Listing is '.$status.' on eBay.', 'quantity' => null];
+            }
+
+            // GetItem answers for any public item, including another seller's. An item id that belongs to a
+            // different account is not a listing of this store.
+            $seller = trim((string) ($item['Seller']['UserID'] ?? ''));
+            $own = self::accountUserId($channelKey);
+            if ($seller !== '' && $own !== '' && strcasecmp($seller, $own) !== 0) {
+                return ['state' => 'foreign', 'message' => 'Item belongs to eBay seller "'.$seller.'", not this store ("'.$own.'").', 'quantity' => null];
             }
             if ($status !== 'active') {
                 return ['state' => 'error', 'message' => 'Unexpected listing status "'.$status.'".', 'quantity' => null];

@@ -328,7 +328,7 @@ class Ebay1DataController extends Controller
             };
             foreach ($data as $i => $entry) {
                 $hash = $this->categoryHash((string) $entry['category']);
-                $isMissingListing = ! in_array((string) $entry['listed'], ['Listed', 'Created', 'Out of stock'], true);
+                $isMissingListing = ! in_array((string) $entry['listed'], ['Listed', 'Created'], true);
                 foreach ($present[$hash] ?? [] as $k => $columnName) {
                     $target = $columnName;
                     foreach (array_keys($entry['specifics']) as $specName) {
