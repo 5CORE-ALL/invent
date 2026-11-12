@@ -3913,7 +3913,9 @@ class Kernel extends ConsoleKernel
 
         // Every 30 minutes: fulfill leftover Shopify copies and push tracking to every channel.
         // Per-marketplace try/catch inside the command so one channel cannot stop the rest.
-        $schedule->command('mm:push-orders-tracking --days=14 --skip-fetch --skip-inventory --tracking-limit=150')
+        // --max-minutes (25, hard kill at 30) is kept below the 40 min lock so a run can never outlive its lock
+        // and stack copies on top of itself.
+        $schedule->command('mm:push-orders-tracking --days=14 --skip-fetch --skip-inventory --tracking-limit=150 --max-minutes=25')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
             ->name('mm-halfhourly-orders-tracking')
@@ -3922,7 +3924,8 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
-        $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory')
+        // --max-minutes 120 (hard kill at 125) stays below the 180 min lock.
+        $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory --max-minutes=120')
             ->dailyAt('06:30')
             ->timezone('Asia/Kolkata')
             ->name('mm-daily-orders-tracking')

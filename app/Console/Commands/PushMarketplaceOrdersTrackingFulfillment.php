@@ -19,12 +19,34 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
         {--days=7 : Order lookback days}
         {--skip-fetch : Skip marketplace order fetch; only import + fulfill + tracking}
         {--skip-inventory : Skip Shopify → marketplace inventory push}
-        {--tracking-limit=150 : Max orders per channel for tracking push}';
+        {--tracking-limit=150 : Max orders per channel for tracking push}
+        {--max-minutes=40 : Wall-clock limit. Remaining steps are skipped after this; the process is killed 5 min later if a step hangs}';
 
     protected $description = 'Push all marketplace orders to Shopify, auto-fulfill, and update tracking (no duplicates).';
 
+    /** Unix time after which no new step is started. */
+    protected int $deadline = 0;
+
     public function handle(): int
     {
+        // Runs used to pile up (46 copies, some >1 day old): under Shopify rate limiting each step keeps
+        // sleeping/retrying, the scheduler lock expired, and the next run started on top of it — which
+        // made the rate limiting worse. Bound every run so it always ends.
+        $maxMinutes = max(5, min(240, (int) $this->option('max-minutes')));
+        $this->deadline = time() + $maxMinutes * 60;
+        // Hard kill only when this is the top-level artisan process. When it is invoked via Artisan::call()
+        // from a queue job (FetchMarketplaceShopifyTrackingNowJob), exit() would take the worker down with it;
+        // the step-boundary time limit above still applies there.
+        $isTopLevel = (($_SERVER['argv'][1] ?? '') === 'mm:push-orders-tracking');
+        if ($isTopLevel && function_exists('pcntl_alarm') && function_exists('pcntl_signal')) {
+            pcntl_async_signals(true);
+            pcntl_signal(SIGALRM, function () {
+                Log::warning('mm:push-orders-tracking killed by hard time limit');
+                exit(self::FAILURE);
+            });
+            pcntl_alarm($maxMinutes * 60 + 300);
+        }
+
         $only = strtolower(trim((string) $this->option('marketplace')));
         $days = max(1, min(30, (int) $this->option('days')));
         $skipFetch = (bool) $this->option('skip-fetch');
@@ -118,6 +140,13 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
      */
     protected function runIsolated(string $command, array $params, array &$failed, string $label): void
     {
+        if ($this->deadline > 0 && time() >= $this->deadline) {
+            $this->warn('  ⏱ '.$label.' skipped: time limit reached');
+            $failed[] = $label.'(time-limit)';
+
+            return;
+        }
+
         $this->line('  → '.$label);
         $attempt = $params;
         for ($i = 0; $i < 6; $i++) {
