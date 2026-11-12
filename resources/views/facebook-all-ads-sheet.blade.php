@@ -467,6 +467,8 @@
                                       title="Lifetime Sales = all-time Meta purchase value of the visible campaigns">LT Sales:<span class="faas-kpi-val" id="faasLtSalesValue">$0</span></span>
                                 <span id="faasLtAcosBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
                                       title="Lifetime Acos = lifetime spend ÷ lifetime sales of the visible campaigns">LT Acos%:<span class="faas-kpi-val" id="faasLtAcosValue">0%</span></span>
+                                <span id="faasLtCtrBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="Lifetime CTR = lifetime clicks ÷ lifetime impressions of the visible campaigns">LT CTR:<span class="faas-kpi-val" id="faasLtCtrValue">0%</span></span>
                             </div>
                         </div>
 
@@ -1279,16 +1281,20 @@
         // flag colours (red < avg*0.80, magenta > avg*1.20, green in between).
         let faasAvgCtr = 0;
         let faasAvgCvr = 0;
+        let faasAvgLtCtr = 0;   // weighted LIFETIME CTR (Σ lifetime clicks ÷ Σ lifetime impressions)
 
         // Recompute the weighted averages from a raw row set (CTR = ΣCLK/ΣIMPR,
         // CVR = ΣSOLD/ΣCLK) — matches the toolbar CTR/CVR badge formulas.
         function faasComputeAverages(rows) {
-            let impr = 0, clk = 0, sold = 0;
+            let impr = 0, clk = 0, sold = 0, ltImpr = 0, ltClk = 0;
             (rows || []).forEach(function (r) {
                 impr += toNumber(r.IMPR);
                 clk  += toNumber(r.CLK);
                 sold += toNumber(r.SOLD);
+                ltImpr += Number(r._lt_impr) || 0;
+                ltClk  += Number(r._lt_clk)  || 0;
             });
+            faasAvgLtCtr = ltImpr > 0 ? (ltClk / ltImpr) * 100 : 0;
             faasAvgCtr = impr > 0 ? (clk / impr) * 100 : 0;
             faasAvgCvr = clk  > 0 ? (sold / clk) * 100 : 0;
         }
@@ -1860,7 +1866,7 @@
                         'Campaign name',
                         'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
-                        'Lifetime Acos', 'Lifetime Sales', 'Lifetime Spend',
+                        'Lifetime Acos', 'Lifetime CTR', 'Lifetime Sales', 'Lifetime Spend',
                     ]);
                     // Columns whose cell should be painted with the
                     // matched ACOS-band colour (Sbgt only — Acos uses
@@ -1919,6 +1925,15 @@
                     // CTR flag-coloured relative to the dataset average CTR.
                     function formatCtrCell(cell) {
                         return faasFlagRatioHtml(cell.getValue(), faasAvgCtr);
+                    }
+                    // Lifetime CTR: same flag colours as CTR, judged against the weighted
+                    // LIFETIME average; grey "—" when Meta has no lifetime row.
+                    function formatLifetimeCtrCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        return faasFlagRatioHtml(v, faasAvgLtCtr);
                     }
                     // Campaign name can be very long — truncate to 70
                     // chars in the cell but expose the full text on
@@ -2060,6 +2075,7 @@
                         }
                         let formatter = 'plaintext';
                         if (c.field === 'Acos' || c.field === 'Lifetime Acos') formatter = formatAcosCell;
+                        else if (c.field === 'Lifetime CTR')   formatter = formatLifetimeCtrCell;
                         else if (c.field === 'Lifetime Sales') formatter = formatLifetimeSalesCell;
                         else if (c.field === 'Lifetime Spend') formatter = formatLifetimeSpendCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
@@ -2089,7 +2105,7 @@
                         const NUMERIC = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR',
                             'SPEND','SALES','SOLD','CVR','CPS',
-                            'Lifetime Acos','Lifetime Sales','Lifetime Spend',
+                            'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                         ]);
                         const sorter = NUMERIC.has(c.field)
                             ? function (a, b) {
@@ -2110,7 +2126,7 @@
                         // layout fills any leftover horizontal space.
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
-                            'Lifetime Acos','Lifetime Sales','Lifetime Spend',
+                            'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
                                        : (c.field === 'Campaign name' ? 220
@@ -2656,6 +2672,7 @@
 
             let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0, bgtSum = 0;
             let ltSpendSum = 0, ltSalesSum = 0;   // lifetime totals of the visible rows
+            let ltImprSum = 0, ltClkSum = 0;
             let visibleCount = 0;
             let activeCount = 0;
             if (tabulator) {
@@ -2666,6 +2683,8 @@
                 rows.forEach(r => {
                     ltSpendSum += Number(r._lt_spend) || 0;
                     ltSalesSum += Number(r._lt_sales) || 0;
+                    ltImprSum  += Number(r._lt_impr)  || 0;
+                    ltClkSum   += Number(r._lt_clk)   || 0;
                     imprSum  += toNumber(r.IMPR);
                     clkSum   += toNumber(r.CLK);
                     spendSum += toNumber(r.SPEND);
@@ -2719,6 +2738,8 @@
                 ltAcosEl.textContent = (ltSpendSum <= 0 ? 0 : (ltSalesSum > 0 ? (ltSpendSum / ltSalesSum) * 100 : 100))
                     .toFixed(0) + '%';
             }
+            const ltCtrEl = document.getElementById('faasLtCtrValue');
+            if (ltCtrEl) ltCtrEl.textContent = divPct(ltClkSum, ltImprSum, 1);
 
             // Totals the Yesterday / Projected cards compare themselves against.
             faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,

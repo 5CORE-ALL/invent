@@ -758,7 +758,7 @@ class FacebookAllAdsSheetController extends Controller
             foreach (array_chunk(array_values(array_unique($ltCids)), 1000) as $chunk) {
                 foreach (DB::table('facebook_campaign_lifetime_stats')
                     ->whereIn('campaign_id', $chunk)
-                    ->get(['campaign_id', 'spend', 'sales']) as $lt) {
+                    ->get(['campaign_id', 'spend', 'sales', 'impr', 'clk']) as $lt) {
                     $lifetime[(string) $lt->campaign_id] = $lt;
                 }
             }
@@ -874,6 +874,10 @@ class FacebookAllAdsSheetController extends Controller
             $row['Lifetime Spend']  = $lt ? '$' . number_format((float) $lt->spend, 0) : null;
             $row['Lifetime Sales']  = $lt ? '$' . number_format((float) $lt->sales, 0) : null;
             $row['Lifetime Acos']   = $lt ? $this->acosPct($lt->spend, $lt->sales, 0) : null;
+            // Lifetime CTR = lifetime clicks ÷ lifetime impressions (1 dp, like the CTR column).
+            $row['_lt_impr']        = $lt ? (int) $lt->impr : null;
+            $row['_lt_clk']         = $lt ? (int) $lt->clk : null;
+            $row['Lifetime CTR']    = $lt ? ($this->divPct($lt->clk, $lt->impr, 1) ?? '0.0%') : null;
         }
         unset($row);
 
@@ -2937,6 +2941,7 @@ class FacebookAllAdsSheetController extends Controller
         ['title' => 'Lifetime Spend', 'sources' => []],
         ['title' => 'Lifetime Sales', 'sources' => []],
         ['title' => 'Lifetime Acos',  'sources' => []],
+        ['title' => 'Lifetime CTR',   'sources' => []],
         // Sbgt = suggested budget driven by the ACOS bracket — see
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".
