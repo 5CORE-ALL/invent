@@ -723,12 +723,6 @@
                             <a href="{{ route('incoming.view') }}">Incoming</a>
                         </li>
                         <li>
-                            <a href="{{ route('incoming.return.view') }}">Incoming Return</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('outgoing.view') }}">Outgoing</a>
-                        </li>
-                        <li>
                             <a href="{{ route('claim.reimbursement') }}">Claim & Reimbursement</a>
                         </li>
                     </ul>
