@@ -458,10 +458,30 @@ class EbayTwoController extends Controller
             $l30 = $l30->filter(fn ($r) => ! empty($r->funding_model));
         }
 
+        // L7 / L1 report rows per campaign (summary badges: Projected = L7 ÷ 7 × 30, Yesterday = L1)
+        $byCampaign = static fn (string $range) => Ebay2PriorityReport::where('report_range', $range)->get()
+            ->keyBy(fn ($r) => (string) $r->campaign_id);
+        $l7Rows = $byCampaign('L7');
+        $l1Rows = $byCampaign('L1');
+        $win = static function ($rep) use ($money): array {
+            if (! $rep) {
+                return ['spend' => 0.0, 'clicks' => 0, 'sold' => 0, 'sales' => 0.0];
+            }
+
+            return [
+                'spend' => $money($rep->cpc_ad_fees_payout_currency ?: $rep->cpc_ad_fees_listingsite_currency),
+                'clicks' => (int) ($rep->cpc_clicks ?? 0),
+                'sold' => (int) ($rep->cpc_attributed_sales ?? 0),
+                'sales' => $money($rep->cpc_sale_amount_payout_currency ?: $rep->cpc_sale_amount_listingsite_currency),
+            ];
+        };
+
         $rows = $l30
-            ->map(function ($r) use ($money) {
+            ->map(function ($r) use ($money, $l7Rows, $l1Rows, $win) {
                 $fees = $money($r->cpc_ad_fees_payout_currency ?: $r->cpc_ad_fees_listingsite_currency);
                 $sales = $money($r->cpc_sale_amount_payout_currency ?: $r->cpc_sale_amount_listingsite_currency);
+                $w7 = $win($l7Rows->get((string) $r->campaign_id));
+                $w1 = $win($l1Rows->get((string) $r->campaign_id));
 
                 return [
                     'campaign_id' => (string) $r->campaign_id,
@@ -482,6 +502,8 @@ class EbayTwoController extends Controller
                     'roas' => $fees > 0 ? round($sales / $fees, 2) : 0.0,
                     'ctr' => (float) ($r->cpc_ctr ?? 0),
                     'cvr' => (float) ($r->cpc_conversion_rate ?? 0),
+                    'l7_spend' => $w7['spend'], 'l7_clicks' => $w7['clicks'], 'l7_sold' => $w7['sold'], 'l7_sales' => $w7['sales'],
+                    'l1_spend' => $w1['spend'], 'l1_clicks' => $w1['clicks'], 'l1_sold' => $w1['sold'], 'l1_sales' => $w1['sales'],
                     'updated_at' => optional($r->updated_at)->toDateTimeString(),
                 ];
             })

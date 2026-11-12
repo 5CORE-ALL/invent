@@ -94,11 +94,11 @@
                                 <span class="ekc-tile" data-kpi="{{ $key }}" title="{{ $tip }}">{{ $text }}:<span class="ekc-val">—</span></span>
                             @endforeach
                             @if ($card['tag'] === 'l30')
-                                <button type="button" id="ekcFlagBtn" class="ekc-tile ekc-flag" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below the SKU's GPFT% (campaigns with L30 spend only; PARENT rows have no GPFT% so they are not counted). Count covers the campaigns matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="ekc-val" id="ekcFlagCount">0</span></button>
+                                <button type="button" id="ekcFlagBtn" class="ekc-tile ekc-flag" aria-pressed="false" title="Green flag: campaigns whose L30 ACOS% is below the SKU's GPFT% (needs a SKU row, so campaigns that match no SKU and PARENT rows are not counted; only campaigns with L30 spend). Count covers the SKU rows matching the current filters. Click to show only those rows, click again to clear."><i class="fas fa-flag"></i>ACOS%:<span class="ekc-val" id="ekcFlagCount">0</span></button>
                             @endif
                             @if ($card['tag'] === 'yesterday')
-                                <span class="ekc-tile ekc-campaign" title="Distinct KW campaigns matching the current filters.">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
-                                <span class="ekc-tile ekc-active" title="RUNNING campaigns out of the campaigns matching the current filters, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
+                                <span class="ekc-tile ekc-campaign" title="All Priority campaigns (with or without a KW suffix) matching the Status filter.">CAMPAIGN:<span class="ekc-val" id="ekcCampaignCount">0</span></span>
+                                <span class="ekc-tile ekc-active" title="RUNNING campaigns out of the Priority campaigns matching the Status filter, and the share that is active.">ACTIVE:<span class="ekc-val" id="ekcActiveCount">—</span><span class="ekc-pct" id="ekcActivePct"></span></span>
                             @endif
                         </div>
                     </div>
@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (q && !(String(r[SKU] || '').toLowerCase().includes(q) || String(r.kw_campaign_id || '').toLowerCase().includes(q) || String(r.kw_campaign_name || '').toLowerCase().includes(q))) return false;
             return true;
         });
-        paintKpiCards(rows);
+        paintFlagCount(rows);
         table.setData(ekcFlagOn ? rows.filter(isFlagged) : rows);
         table.setSort([{ column: 'kw_spend_L30', dir: 'desc' }]);
     }
@@ -243,6 +243,7 @@ document.addEventListener('DOMContentLoaded', function () {
     table.on('tableBuilt', function () {
         loadData();
         loadTotalSales();
+        loadCampaigns();
         checkPull();
     });
 
@@ -264,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(s => {
                 pullBtn.disabled = !!s.running;
                 setPullInfo(s.running ? 'running on eBay, can take a while' : 'last sync: ' + (s.last_sync || 'never'), !!s.running);
-                if (wasRunning && !s.running) { loadData(); loadTotalSales(); if (campTable) loadCampaigns(); }   // pull just finished
+                if (wasRunning && !s.running) { loadData(); loadTotalSales(); loadCampaigns(); }   // pull just finished
                 wasRunning = !!s.running;
                 if (s.running && !pollTimer) pollTimer = setInterval(checkPull, 15000);
                 if (!s.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -285,12 +286,12 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => { pullBtn.disabled = false; setPullInfo('pull failed: ' + err.message, false); });
     });
 
-    document.getElementById('kw-status').addEventListener('change', applyFilter);
+    document.getElementById('kw-status').addEventListener('change', function () { paintKpiCards(); applyFilter(); });
     document.getElementById('kw-search').addEventListener('input', applyFilter);
 
     // ---- Summary cards (Yesterday / L30 / Projected): same layout and formulas as /amazon-ads/all ----
-    // Windows: Yesterday = L1 report, L30 = L30 report, Projected = L7 report ÷ 7 × 30. Campaigns = the KW campaigns of the rows
-    // currently shown (deduped by campaign id). UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks,
+    // Windows: Yesterday = L1 report, L30 = L30 report, Projected = L7 report ÷ 7 × 30. Campaigns = EVERY Priority campaign from
+    // the campaign list (with or without a "KW" suffix, matched to a SKU row or not), filtered only by the Status dropdown. UTIL = spend ÷ (BGT × days), AVG BID = spend ÷ clicks, CVR = sold ÷ clicks,
     // ACOS = spend ÷ ads sales, TACOS = spend ÷ total eBay 2 sales for the same window.
     let ekcFlagOn = false;
     let totalSales = { l1: null, l7: null, l30: null };
@@ -308,22 +309,21 @@ document.addEventListener('DOMContentLoaded', function () {
         spend:     { fmt: v => '$' + Math.round(v).toLocaleString('en-US'), lower: false },
     };
     const KPI_FIELDS = {
-        l1:  { spend: 'kw_l1_spend', clicks: 'kw_l1_clicks', sold: 'kw_l1_sold', sales: 'kw_l1_sales' },
-        l7:  { spend: 'kw_l7_spend', clicks: 'kw_l7_clicks', sold: 'kw_l7_sold', sales: 'kw_l7_sales' },
-        l30: { spend: 'kw_spend_L30', clicks: 'kw_clicks', sold: 'kw_ad_sold', sales: 'kw_sales_amount' },
+        l1:  { spend: 'l1_spend', clicks: 'l1_clicks', sold: 'l1_sold', sales: 'l1_sales' },
+        l7:  { spend: 'l7_spend', clicks: 'l7_clicks', sold: 'l7_sold', sales: 'l7_sales' },
+        l30: { spend: 'ad_fees', clicks: 'clicks', sold: 'sold', sales: 'sales' },
     };
     const isFlagged = r => hasKw(r) && num(r.kw_spend_L30) > 0 && num(r.kw_acos) < num(r['GPFT%']);
 
-    function kpiCampaigns(rows) {
-        const seen = new Map();
-        rows.forEach(r => { if (hasKw(r)) seen.set(String(r.kw_campaign_id), r); });
-        return Array.from(seen.values());
+    function kpiCampaigns() {
+        const st = document.getElementById('kw-status').value;   // RUNNING / PAUSED / NONE / all
+        return campRows.filter(r => r.funding_model === 'COST_PER_CLICK' && (st === 'all' || (st !== 'NONE' && r.status === st)));
     }
 
     function kpiWindow(camps, key, days) {
         const f = KPI_FIELDS[key];
         const sum = field => camps.reduce((s, r) => s + num(r[field]), 0);
-        const bud = sum('kw_campaignBudgetAmount'), spend = sum(f.spend), clicks = sum(f.clicks), sold = sum(f.sold), sales = sum(f.sales);
+        const bud = sum('daily_budget'), spend = sum(f.spend), clicks = sum(f.clicks), sold = sum(f.sold), sales = sum(f.sales);
         const ts = totalSales[key];
         return {
             bgt: bud,
@@ -336,8 +336,8 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    function paintKpiCards(rows) {
-        const camps = kpiCampaigns(rows);
+    function paintKpiCards() {
+        const camps = kpiCampaigns();
         const y = kpiWindow(camps, 'l1', 1);
         const l30 = kpiWindow(camps, 'l30', 30);
         const p = kpiWindow(camps, 'l7', 7);
@@ -383,17 +383,23 @@ document.addEventListener('DOMContentLoaded', function () {
             el.setAttribute('title', tip);
         });
 
-        const running = camps.filter(r => String(r.kw_campaignStatus || '').toUpperCase() === 'RUNNING').length;
+        const running = camps.filter(r => r.status === 'RUNNING').length;
         document.getElementById('ekcCampaignCount').textContent = camps.length.toLocaleString('en-US');
         document.getElementById('ekcActiveCount').textContent = camps.length ? running.toLocaleString('en-US') + ' / ' + camps.length.toLocaleString('en-US') : '—';
         document.getElementById('ekcActivePct').textContent = camps.length ? Math.round(running / camps.length * 100) + '%' : '';
-        document.getElementById('ekcFlagCount').textContent = camps.filter(isFlagged).length.toLocaleString('en-US');
+    }
+
+    // Green flag = campaigns (matched to a SKU row, so a GPFT% exists) whose L30 ACOS% is below that SKU's GPFT%.
+    function paintFlagCount(rows) {
+        const ids = new Set();
+        rows.forEach(r => { if (isFlagged(r)) ids.add(String(r.kw_campaign_id)); });
+        document.getElementById('ekcFlagCount').textContent = ids.size.toLocaleString('en-US');
     }
 
     function loadTotalSales() {
         return fetch('{{ route('ebay2.kw.ads.total.sales') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => r.json())
-            .then(t => { totalSales = { l1: num(t.l1), l7: num(t.l7), l30: num(t.l30) }; applyFilter(); })
+            .then(t => { totalSales = { l1: num(t.l1), l7: num(t.l7), l30: num(t.l30) }; paintKpiCards(); })
             .catch(() => {});   // TACOS tiles just stay "—"
     }
 
@@ -455,8 +461,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function loadCampaigns() {
         return fetch('{{ route('ebay2.kw.ads.campaigns') }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-            .then(res => { campRows = res.data || []; applyCampFilter(); })
-            .catch(err => { campTable.alert('Failed to load campaigns: ' + err.message, 'error'); });
+            .then(res => { campRows = res.data || []; paintKpiCards(); if (campTable) applyCampFilter(); })
+            .catch(err => { if (campTable) campTable.alert('Failed to load campaigns: ' + err.message, 'error'); });
     }
 
     function showView(which) {
@@ -466,7 +472,7 @@ document.addEventListener('DOMContentLoaded', function () {
         $('view-sku-btn').className = 'btn btn-sm ' + (camp ? 'btn-outline-primary' : 'btn-primary');
         $('view-camp-btn').className = 'btn btn-sm ' + (camp ? 'btn-primary' : 'btn-outline-primary');
         if (camp) {
-            if (!campTable) { buildCampTable(); campTable.on('tableBuilt', loadCampaigns); }
+            if (!campTable) { buildCampTable(); campTable.on('tableBuilt', applyCampFilter); }
             else { campTable.redraw(true); }
         } else {
             table.redraw(true);
