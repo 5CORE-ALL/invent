@@ -206,15 +206,15 @@
         columns: [
             { formatter: 'rowSelection', titleFormatter: 'rowSelection', hozAlign: 'center', headerSort: false, width: 40,
               cellClick: function (e, cell) { cell.getRow().toggleSelect(); } },
-            { title: 'Campaign', field: 'campaign_name', headerFilter: 'input', widthGrow: 4, tooltip: true },
-            { title: 'Parent', field: 'parent', headerFilter: 'input', widthGrow: 2, tooltip: true },
+            { title: 'Campaign', field: 'campaign_name', widthGrow: 4, tooltip: true },
+            { title: 'Parent', field: 'parent', widthGrow: 2, tooltip: true },
             { title: 'Status', field: 'status', width: 80, hozAlign: 'center', headerHozAlign: 'center',
               formatter: function (c) {
                   const s = String(c.getValue() || '');
                   const col = s === 'ENABLED' ? '#16a34a' : (s === 'PAUSED' ? '#f59e0b' : '#94a3b8');
                   return '<span class="gnt-dot" style="background:' + col + '" title="' + esc(s || 'Unknown') + '"></span>';
               } },
-            { title: 'KWC Cousin', field: 'cousin_name', headerFilter: 'input', widthGrow: 2, tooltip: true },
+            { title: 'KWC Cousin', field: 'cousin_name', widthGrow: 2, tooltip: true },
             { title: 'KW cousins', field: 'cousin_count', width: 100, hozAlign: 'center', headerHozAlign: 'center', sorter: 'number',
               formatter: function (c) {
                   const n = Number(c.getValue() || 0);
