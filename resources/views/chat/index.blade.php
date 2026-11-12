@@ -1277,7 +1277,12 @@
         wrap.className = 'slack-msg' + (m.failed ? ' is-failed' : '') + (m.pending ? ' is-pending' : '');
         wrap.dataset.clientId = m.client_id || '';
         const systemCmds = { channel: 1, group: 1, member: 1, deleted: 1 };
-        const systemBody = / created | added | deleted this /i.test(String(m.body || ''));
+        // Bot REPLIES to a person (e.g. "Marked task #12 as Done — Item added to ...") must keep their
+        // action bar so they can be archived. Only real system notices may be sniffed by their text,
+        // otherwise a task title containing "created" / "added" turned the reply into an
+        // un-archivable system line.
+        const botReplyCmds = { complete: 1, task: 1, assign: 1, deadline: 1, due: 1, overdue: 1, dar: 1, si: 1, help: 1, invent: 1 };
+        const systemBody = !botReplyCmds[m.command] && / created | added | deleted this /i.test(String(m.body || ''));
         if (m.is_bot && (systemCmds[m.command] || systemBody)) {
             wrap.className += ' is-system';
             wrap.innerHTML = '<div class="slack-sys">' + (m.html || esc(m.body || '')) + '</div>';
