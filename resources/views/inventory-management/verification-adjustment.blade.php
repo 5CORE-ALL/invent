@@ -1623,6 +1623,17 @@
                                     <option value="magenta">Magenta</option>
                                 </select>
                             </div>
+                            <div class="d-flex align-items-center va-controls-inner">
+                                <select id="statusFilter" class="form-control form-control-sm va-input-sm" title="Filter by Product Master status">
+                                    <option value="">Status</option>
+                                    <option value="active">&#128994; Active</option>
+                                    <option value="inactive">&#128308; Inactive</option>
+                                    <option value="dc">&#128308; DC</option>
+                                    <option value="coming">&#128993; Coming</option>
+                                    <option value="2bdc">&#128309; 2BDC</option>
+                                    <option value="missing">No status</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="d-flex align-items-center va-controls-status flex-shrink-0">
                             <button class="btn btn-outline-info btn-sm py-1 px-2 mr-1" type="button" id="verifiedDateFilterBtn" data-toggle="modal" data-target="#verifiedDateFilterModal" title="Filter by last verified date">
@@ -1831,6 +1842,9 @@
                                                 SKU <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
+                                    </th>
+                                    <th data-field="STATUS" class="va-th-v" title="Product Master status">
+                                        <div class="va-th-v-inner">STATUS <span class="sort-arrow"></span></div>
                                     </th>
                                     <th data-field="r&a" class="hide-column va-th-v">
                                         <div class="va-th-v-inner">R&amp;A <span class="sort-arrow">↓</span></div>
@@ -2947,7 +2961,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-spinner fa-spin"></i></span><br>Loading data...</td></tr>');
                     return;
                 }
 
@@ -2957,7 +2971,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="27" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="28" class="text-center va-empty-state py-4"><span class="va-empty-state-icon"><i class="fas fa-inbox text-muted"></i></span><br>No matching records found</td></tr>');
                     return;
                 }
 
@@ -3139,6 +3153,9 @@
                         }
                     }
                     $row.append($skuCell);
+
+                    // STATUS column (Product Master status, same as CP master)
+                    $row.append($('<td>').addClass('va-status-col text-center').html(isParentRow ? '' : statusDotHtml(item.STATUS)));
 
                     // R&A column stays hidden (header has hide-column); play mode matches CP Master and does not inject an extra cell
                     $row.append($('<td>').addClass('va-inv-col').text(item.INV || 0));
@@ -3383,6 +3400,35 @@
                     return 'red';
                 }
                 return getDilColorClass(dil);
+            }
+
+            /** Product Master status → active | inactive | dc | coming | 2bdc | '' (aliases accepted). */
+            function normalizeStatusKey(raw) {
+                const s = String(raw || '').trim().toLowerCase();
+                if (s === '') return '';
+                if (s === 'upcoming' || s === 'coming' || s === 'comming') return 'coming';
+                return s;
+            }
+
+            function statusDotHtml(raw) {
+                const key = normalizeStatusKey(raw);
+                if (key === '') return '<span class="text-muted">-</span>';
+                const colors = { active: '#22c55e', inactive: '#dc2626', dc: '#dc2626', coming: '#eab308', '2bdc': '#2563eb' };
+                const labels = { active: 'Active', inactive: 'Inactive', dc: 'DC', coming: 'Coming', '2bdc': '2BDC' };
+                const color = colors[key] || '#9ca3af';
+                const label = labels[key] || String(raw).trim();
+                return '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;">'
+                    + '<span style="width:10px;height:10px;border-radius:50%;background:' + color + ';display:inline-block;"></span>'
+                    + escAttr(label) + '</span>';
+            }
+
+            function itemMatchesStatusFilter(item) {
+                const choice = $('#statusFilter').val();
+                if (!choice) return true;
+                if (isParentRow(item)) return false;
+                const key = normalizeStatusKey(item.STATUS);
+                if (choice === 'missing') return key === '';
+                return key === choice;
             }
 
             function itemMatchesDilFilter(item) {
@@ -4088,6 +4134,9 @@
 
                 // 6. DIL color filter (red, green, magenta)
                 tempData = tempData.filter(item => itemMatchesDilFilter(item));
+
+                // 6b. Product Master status filter (Active / Inactive / DC / Coming / 2BDC)
+                tempData = tempData.filter(item => itemMatchesStatusFilter(item));
                 
                 // 7. Verified filter (exclude parent rows from Verified/Unverified so count matches list)
                 const verifiedFilter = $('.verified-filter-btn.active').data('status');
@@ -6449,6 +6498,10 @@
                 });
 
                 $('#dilFilter').on('change', function() {
+                    applyAllFilters();
+                });
+
+                $('#statusFilter').on('change', function() {
                     applyAllFilters();
                 });
                 
