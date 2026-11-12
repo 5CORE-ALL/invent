@@ -454,9 +454,9 @@ class ShopifyAdsMasterController extends Controller
         }
 
         $dir = static function (float $cur, float $was, int $precision = 0): string {
-            $cur = round($cur, $precision);
-            $was = round($was, $precision);
-            if ($cur === $was) {
+            // Real values, not display-rounded ones: a sub-unit change is
+            // still a change, so the dot must not fall back to grey.
+            if (abs($cur - $was) < 1e-9) {
                 return 'flat';
             }
 
@@ -817,8 +817,9 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Direction of the last point vs the previous recorded point, rounded the
-     * way the chart displays it (the chart's dot uses the same rule).
+     * Direction of the last point vs the previous recorded point, using the
+     * real stored values (the chart's dot uses the same rule). $precision is
+     * kept for call-site compatibility only.
      *
      * @param  array<int, float|int|null>  $series
      */
@@ -840,9 +841,11 @@ class ShopifyAdsMasterController extends Controller
         if ($last === null || $prev === null) {
             return 'flat';
         }
-        $last = round($last, $precision);
-        $prev = round($prev, $precision);
-        if ($last === $prev) {
+        // Compare the stored series values as-is (already rounded when the
+        // series was built). Re-rounding to whole units here hid real changes
+        // such as $2,271.40 -> $2,271.33 and left the dot grey even though the
+        // chart's delta label showed the move.
+        if (abs($last - $prev) < 1e-9) {
             return 'flat';
         }
 

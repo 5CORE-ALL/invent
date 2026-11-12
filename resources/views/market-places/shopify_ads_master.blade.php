@@ -724,13 +724,12 @@
                 // Dot + label share one colour: green = improved vs the
                 // previous day, red = worse, grey = flat (including a day
                 // that only repeats the last snapshot). ACOS / TCOS invert.
+                // Compare the REAL stored values, not the rounded label text:
+                // a real change smaller than the label precision (e.g. $2,271.40
+                // -> $2,271.33, both shown as "$2,271") is still a change, and
+                // the delta label already reports it, so the dot must not stay grey.
                 const isInverted = (metric === 'acos' || metric === 'tcos');
-                const shown = (v) => {
-                    if (metric === 'acos' || metric === 'cvr' || metric === 'tcos') {
-                        return Math.round(v * 10) / 10;
-                    }
-                    return Math.round(v);
-                };
+                const EPS = 1e-9;
                 const prevValue = (i) => {
                     for (let j = i - 1; j >= 0; j--) {
                         if (values[j] !== null) return values[j];
@@ -740,8 +739,8 @@
                 const dotColors = values.map((v, i) => {
                     if (v === null) return refGray;
                     const prev = prevValue(i);
-                    if (prev === null || shown(v) === shown(prev)) return refGray;
-                    const improved = isInverted ? shown(v) < shown(prev) : shown(v) > shown(prev);
+                    if (prev === null || Math.abs(v - prev) < EPS) return refGray;
+                    const improved = isInverted ? v < prev : v > prev;
                     return improved ? '#28a745' : '#dc3545';
                 });
 
