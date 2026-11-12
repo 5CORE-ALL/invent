@@ -1534,21 +1534,29 @@ class VideoAdsMasterController extends Controller
             ->orderBy('id')
             ->get();
 
-        $names = User::withTrashed()
+        $users = User::withTrashed()
             ->whereIn('id', $assignments->pluck('user_id')->unique()->filter())
-            ->pluck('name', 'id');
+            ->get(['id', 'name', 'avatar'])
+            ->keyBy('id');
 
         $grouped = [];
         foreach ($assignments as $assignment) {
             $rowId = (int) $assignment->video_ads_master_id;
+            $user = $users->get($assignment->user_id);
             $grouped[$rowId][] = [
                 'user_id'    => (int) $assignment->user_id,
-                'name'       => $names[$assignment->user_id] ?? 'Unknown',
+                'name'       => $user->name ?? 'Unknown',
+                'avatar_url' => $this->avatarUrl($user->avatar ?? null),
                 'created_at' => $this->formatCreatorCreatedAt($assignment->created_at),
             ];
         }
 
         return $grouped;
+    }
+
+    private function avatarUrl($path): ?string
+    {
+        return !empty($path) ? asset('storage/' . ltrim((string) $path, '/')) : null;
     }
 
     private function formatCreatorCreatedAt($value): ?string
@@ -1571,7 +1579,7 @@ class VideoAdsMasterController extends Controller
             ->whereNotNull('name')
             ->where('name', '!=', '')
             ->orderBy('id')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'avatar']);
 
         $options = [];
         foreach (self::CREATOR_DROPDOWN_NAMES as $label) {
@@ -1581,8 +1589,9 @@ class VideoAdsMasterController extends Controller
                 continue;
             }
             $options[$match->id] = [
-                'id'   => (int) $match->id,
-                'name' => $label,
+                'id'         => (int) $match->id,
+                'name'       => $label,
+                'avatar_url' => $this->avatarUrl($match->avatar),
             ];
         }
 
@@ -1600,10 +1609,11 @@ class VideoAdsMasterController extends Controller
             ->whereNotNull('name')
             ->where('name', '!=', '')
             ->orderBy('name')
-            ->get(['id', 'name'])
+            ->get(['id', 'name', 'avatar'])
             ->map(fn ($user) => [
-                'id'   => (int) $user->id,
-                'name' => $user->name,
+                'id'         => (int) $user->id,
+                'name'       => $user->name,
+                'avatar_url' => $this->avatarUrl($user->avatar),
             ])
             ->values()
             ->all();
