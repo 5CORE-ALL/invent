@@ -466,7 +466,9 @@ class Kernel extends ConsoleKernel
      * Instead of ~60 fixed cron minutes (any of which can be skipped by an overloaded scheduler or
      * a restart), one cheap command runs every 10 minutes in Pacific time, reads a ledger of which
      * pulls for Pacific yesterday are done, and runs whatever is due but missing. Passes are due at
-     * +40 min / +3 h / +6.5 h after Pacific midnight (see YesterdaySettleLedger). It exits at once
+     * 00:40 / 02:00 / 05:00 Pacific (see YesterdaySettleLedger). Independent marketplaces run in
+     * parallel lanes, no new pull starts after 08:30 PT and anything still running at 09:00 PT is
+     * stopped, so the Yesterday badge is settled before the US business day starts. It exits at once
      * when nothing is pending.
      */
     protected function schedulePacificDaySettlePasses(Schedule $schedule, string $log): void
@@ -474,6 +476,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('orders:settle-yesterday')
             ->everyTenMinutes()
             ->timezone('America/Los_Angeles')
+            ->between('00:40', '09:00')
             ->name('orders-settle-yesterday')
             ->withoutOverlapping(240)
             ->runInBackground()

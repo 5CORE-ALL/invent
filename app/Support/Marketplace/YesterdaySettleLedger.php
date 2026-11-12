@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\File;
  *   - orders:settle-yesterday runs often, reads this ledger, and runs whatever is due but not done.
  *   - the page reads status() to show whether yesterday is settled or still provisional.
  *
+ * Everything must be finished before 09:00 Pacific (the start of the US business day): passes are
+ * due early enough, independent marketplaces run in parallel lanes, no new pull starts after
+ * START_CUTOFF_MINUTES, and anything still running at HARD_STOP_MINUTES is stopped.
+ *
  * It is stored in a JSON file (not the cache) so `php artisan optimize:clear` on deploy does not
  * erase it and trigger a full re-pull.
  */
@@ -25,72 +29,102 @@ class YesterdaySettleLedger
 
     /**
      * Minutes after Pacific midnight at which each pass becomes due:
-     * 0 = just after close, 1 = a few hours later, 2 = late (pending orders priced, status changes).
+     *   0 = 00:40 PT  just after close
+     *   1 = 02:00 PT  a few hours later (ad reports, delayed batches)
+     *   2 = 05:00 PT  late pass (pending Amazon orders priced, views, final recalculation);
+     *                 leaves ~4 h before the 09:00 PT deadline for the slowest (throttled) lane.
      *
      * @var list<int>
      */
-    public const PASS_OFFSET_MINUTES = [40, 180, 390];
+    public const PASS_OFFSET_MINUTES = [40, 120, 300];
+
+    /** No new pull is started after this many minutes past Pacific midnight (08:30 PT). */
+    public const START_CUTOFF_MINUTES = 510;
+
+    /** Anything still running at this point is stopped (09:00 PT). Unfinished tasks show as missed. */
+    public const HARD_STOP_MINUTES = 540;
 
     /** Give up on a task/pass after this many failed attempts (it is reported, not retried forever). */
     public const MAX_ATTEMPTS = 3;
 
+    /** How many lanes (independent marketplaces) run at the same time. */
+    public const DEFAULT_CONCURRENCY = 4;
+
+    /** Lane that runs last, after every other lane has finished. */
+    public const FINAL_LANE = '_final';
+
     /**
-     * Every command whose order data feeds the Yesterday badge.
-     * Quick API pulls first; Amazon (throttled order-items calls) last so it never delays the rest.
+     * Every command whose data feeds the Yesterday badge.
      *
+     * 'lane'    : tasks in one lane run one after another (they share an API / rate limit); different
+     *             lanes run in parallel. Order inside a lane = order in this array.
      * 'passes'  : which pass indexes (see PASS_OFFSET_MINUTES) this task takes part in.
      * 'timeout' : seconds before the subprocess is killed.
      *
-     * @return array<string, array{command: string, passes: list<int>, timeout: int}>
+     * @return array<string, array{command: string, lane: string, passes: list<int>, timeout: int}>
      */
     public static function tasks(): array
     {
         $all = [0, 1, 2];
+        $t = static fn (string $command, string $lane, array $passes, int $timeout = 1800): array => [
+            'command' => $command,
+            'lane' => $lane,
+            'passes' => $passes,
+            'timeout' => $timeout,
+        ];
 
         return [
-            'ebay' => ['command' => 'app:fetch-ebay-orders', 'passes' => $all, 'timeout' => 1800],
-            'ebay2' => ['command' => 'app:fetch-ebay2-orders', 'passes' => $all, 'timeout' => 1800],
-            'ebay3' => ['command' => 'ebay3:daily --days=60', 'passes' => $all, 'timeout' => 1800],
-            'temu' => ['command' => 'app:fetch-temu-orders', 'passes' => $all, 'timeout' => 1800],
-            'temu2' => ['command' => 'app:fetch-temu2-orders --days=60', 'passes' => $all, 'timeout' => 1800],
-            'temu3' => ['command' => 'app:fetch-temu3-orders --days=60', 'passes' => $all, 'timeout' => 1800],
-            'wayfair_api' => ['command' => 'sync:wayfair-l30-api', 'passes' => $all, 'timeout' => 1800],
-            'wayfair' => ['command' => 'wayfair:daily --days=60', 'passes' => $all, 'timeout' => 1800],
-            'mirakl' => ['command' => 'mirakl:daily --days=60', 'passes' => $all, 'timeout' => 1800],
-            'doba' => ['command' => 'doba:daily --days=60', 'passes' => $all, 'timeout' => 1800],
-            'shein_l30' => ['command' => 'shein:fetch orders --days=30 --target=l30', 'passes' => $all, 'timeout' => 1800],
-            'shein_l60' => ['command' => 'shein:fetch orders --days=60 --target=l60', 'passes' => $all, 'timeout' => 1800],
-            'tiktok' => ['command' => 'tiktok:fetch-orders --days=60 --prune', 'passes' => $all, 'timeout' => 1800],
-            'tiktok2' => ['command' => 'tiktok:fetch-orders --channel=tiktok2 --days=60 --prune', 'passes' => $all, 'timeout' => 1800],
-            'pls' => ['command' => 'app:fetch-pls-sales-data --days=90', 'passes' => [1, 2], 'timeout' => 1800],
+            // --- eBay: order pulls, then that day's ad report (re-pulled; the first pull can be partial)
+            'ebay' => $t('app:fetch-ebay-orders', 'ebay', $all),
+            'ebay2' => $t('app:fetch-ebay2-orders', 'ebay', $all),
+            'ebay3' => $t('ebay3:daily --days=60', 'ebay', $all),
             // Ad spend for Y Ads%. Amazon / eBay finish a day's report hours after the day ends and
             // the commands used to keep the FIRST pull ("yesterday row exists -> skip"), so an early,
             // partial pull stayed forever and Y Ads% fell back to the L30 rate or read low.
             // --yesterday-only replaces just that day's rows (small, idempotent upsert).
-            'ads_amazon_sp' => ['command' => 'app:amazon-sp-campaign-reports --yesterday-only', 'passes' => [1, 2], 'timeout' => 3600],
-            'ads_amazon_sb' => ['command' => 'app:amazon-sb-campaign-reports --yesterday-only', 'passes' => [1, 2], 'timeout' => 3600],
-            'ads_ebay' => ['command' => 'app:ebay-campaign-reports --yesterday-only', 'passes' => [1, 2], 'timeout' => 3600],
-            'ads_ebay2' => ['command' => 'app:ebay2-campaign-reports --yesterday-only', 'passes' => [1, 2], 'timeout' => 3600],
-            'ads_ebay3' => ['command' => 'app:ebay3-campaign-reports --yesterday-only', 'passes' => [1, 2], 'timeout' => 3600],
-            // Listing views for Y Views / Y CVR. The marketplace L1 columns are refreshed by these
+            'ads_ebay' => $t('app:ebay-campaign-reports --yesterday-only', 'ebay', [1, 2], 3600),
+            'ads_ebay2' => $t('app:ebay2-campaign-reports --yesterday-only', 'ebay', [1, 2], 3600),
+            'ads_ebay3' => $t('app:ebay3-campaign-reports --yesterday-only', 'ebay', [1, 2], 3600),
+
+            // --- Temu
+            'temu' => $t('app:fetch-temu-orders', 'temu', $all),
+            'temu2' => $t('app:fetch-temu2-orders --days=60', 'temu', $all),
+            'temu3' => $t('app:fetch-temu3-orders --days=60', 'temu', $all),
+
+            // --- Other marketplaces (each its own lane so one slow API never delays the rest)
+            'wayfair_api' => $t('sync:wayfair-l30-api', 'wayfair', $all),
+            'wayfair' => $t('wayfair:daily --days=60', 'wayfair', $all),
+            'shein_l30' => $t('shein:fetch orders --days=30 --target=l30', 'shein', $all),
+            'shein_l60' => $t('shein:fetch orders --days=60 --target=l60', 'shein', $all),
+            'tiktok' => $t('tiktok:fetch-orders --days=60 --prune', 'tiktok', $all),
+            'tiktok2' => $t('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune', 'tiktok', $all),
+            'mirakl' => $t('mirakl:daily --days=60', 'misc', $all),
+            'doba' => $t('doba:daily --days=60', 'misc', $all),
+            'pls' => $t('app:fetch-pls-sales-data --days=90', 'misc', [1, 2]),
+
+            // --- Amazon (throttled order-items API: one lane, never parallel with itself)
+            'ads_amazon_sp' => $t('app:amazon-sp-campaign-reports --yesterday-only', 'amazon', [1, 2], 3600),
+            'ads_amazon_sb' => $t('app:amazon-sb-campaign-reports --yesterday-only', 'amazon', [1, 2], 3600),
+            // Full Pacific-yesterday pull right after close and once more; the LastUpdated refresh
+            // (prices pending orders) only on the late pass — one throttled call per updated order.
+            'amazon_close' => $t('app:fetch-amazon-orders --close-yesterday --with-items', 'amazon', [0, 1], 5400),
+            'amazon_refresh' => $t('app:fetch-amazon-orders --incremental-only --with-items --incremental-lookback-hours=24', 'amazon', [2], 5400),
+
+            // --- Listing views for Y Views / Y CVR. The marketplace L1 columns are refreshed by these
             // fetches (once a day, shortly after Pacific midnight, so often a partial day); the late
             // pass re-reads them, then stores the dated one-day figures. Amazon traffic is only
             // complete ~3 days after a day ends, so its settled days are (re)collected too.
-            'views_ebay' => ['command' => 'app:fetch-ebay-reports', 'passes' => [2], 'timeout' => 3600],
-            'views_ebay2' => ['command' => 'app:fetch-ebay-two-metrics', 'passes' => [2], 'timeout' => 3600],
-            'views_ebay3' => ['command' => 'app:fetch-ebay-three-metrics', 'passes' => [2], 'timeout' => 3600],
-            'views_temu' => ['command' => 'app:fetch-temu-metrics', 'passes' => [2], 'timeout' => 3600],
-            'views_temu2' => ['command' => 'app:fetch-temu2-metrics', 'passes' => [2], 'timeout' => 3600],
-            'views_temu3' => ['command' => 'app:fetch-temu3-metrics', 'passes' => [2], 'timeout' => 3600],
-            'views_store' => ['command' => 'channel:collect-yesterday-views --skip-amazon', 'passes' => [2], 'timeout' => 3600],
-            'views_amazon_settled' => ['command' => 'channel:collect-yesterday-views --amazon-only --amazon-backfill=5', 'passes' => [2], 'timeout' => 7200],
-            // Amazon: full Pacific-yesterday pull right after close and once more; the LastUpdated
-            // refresh (prices pending orders) only on the late pass — it costs one throttled
-            // order-items call per updated order.
-            'amazon_close' => ['command' => 'app:fetch-amazon-orders --close-yesterday --with-items', 'passes' => [0, 1], 'timeout' => 7200],
-            'amazon_refresh' => ['command' => 'app:fetch-amazon-orders --incremental-only --with-items --incremental-lookback-hours=24', 'passes' => [2], 'timeout' => 7200],
-            // Rebuild the channel matrix from the freshly pulled orders (it also runs every 5 min).
-            'calculate' => ['command' => 'channel:calculate-data --force', 'passes' => $all, 'timeout' => 1800],
+            'views_ebay' => $t('app:fetch-ebay-reports', 'views', [2], 3600),
+            'views_ebay2' => $t('app:fetch-ebay-two-metrics', 'views', [2], 3600),
+            'views_ebay3' => $t('app:fetch-ebay-three-metrics', 'views', [2], 3600),
+            'views_temu' => $t('app:fetch-temu-metrics', 'views', [2], 3600),
+            'views_temu2' => $t('app:fetch-temu2-metrics', 'views', [2], 3600),
+            'views_temu3' => $t('app:fetch-temu3-metrics', 'views', [2], 3600),
+            'views_store' => $t('channel:collect-yesterday-views --skip-amazon', 'views', [2], 3600),
+            'views_amazon_settled' => $t('channel:collect-yesterday-views --amazon-only --amazon-backfill=5', 'amazon', [2], 3600),
+
+            // --- Rebuild the channel matrix from the freshly pulled data (also runs every 5 min).
+            'calculate' => $t('channel:calculate-data --force', self::FINAL_LANE, $all),
         ];
     }
 
@@ -101,14 +135,38 @@ class YesterdaySettleLedger
         return $now->copy()->subDay()->toDateString();
     }
 
+    /** Pacific midnight that closes $date (= 00:00 of the next day). */
+    public static function dayClose(string $date): Carbon
+    {
+        return Carbon::parse($date, self::TZ)->addDay()->startOfDay();
+    }
+
+    /** Minutes since $date closed in Pacific time (negative while the day is still open). */
+    public static function minutesSinceClose(string $date, ?Carbon $now = null): int
+    {
+        $now = ($now ?? Carbon::now(self::TZ))->copy()->setTimezone(self::TZ);
+
+        return (int) self::dayClose($date)->diffInMinutes($now, false);
+    }
+
+    /** True once no new pull may start for $date (08:30 PT). */
+    public static function pastStartCutoff(string $date, ?Carbon $now = null): bool
+    {
+        return self::minutesSinceClose($date, $now) >= self::START_CUTOFF_MINUTES;
+    }
+
+    /** True once running pulls must be stopped (09:00 PT). */
+    public static function pastHardStop(string $date, ?Carbon $now = null): bool
+    {
+        return self::minutesSinceClose($date, $now) >= self::HARD_STOP_MINUTES;
+    }
+
     /**
      * Highest pass index that is due for $date at $now (-1 when the day has not closed + 40 min yet).
      */
     public static function highestDuePass(string $date, ?Carbon $now = null): int
     {
-        $now = ($now ?? Carbon::now(self::TZ))->copy()->setTimezone(self::TZ);
-        $midnight = Carbon::parse($date, self::TZ)->addDay()->startOfDay();
-        $minutes = (int) $midnight->diffInMinutes($now, false);
+        $minutes = self::minutesSinceClose($date, $now);
 
         $hi = -1;
         foreach (self::PASS_OFFSET_MINUTES as $i => $offset) {
@@ -164,7 +222,7 @@ class YesterdaySettleLedger
      * Pass indexes of $task that are due, not done, and still allowed to retry.
      *
      * @param  array<string, mixed>  $ledger
-     * @param  array{command: string, passes: list<int>, timeout: int}  $task
+     * @param  array{command: string, lane: string, passes: list<int>, timeout: int}  $task
      * @return list<int>
      */
     public static function pendingPasses(array $ledger, string $key, array $task, int $hi): array
@@ -189,8 +247,10 @@ class YesterdaySettleLedger
 
     /**
      * Status for the page. `settled` is true only when the final pass is due and every task is done.
+     * After the 09:00 PT hard stop, anything not done is reported as failed ("missed"), because it
+     * will not be retried that day.
      *
-     * @return array{date: string, settled: bool, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string}
+     * @return array{date: string, settled: bool, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string, deadline_passed: bool}
      */
     public static function status(?string $date = null, ?Carbon $now = null): array
     {
@@ -198,6 +258,7 @@ class YesterdaySettleLedger
         $hi = self::highestDuePass($date, $now);
         $ledger = self::read($date);
         $total = count(self::PASS_OFFSET_MINUTES);
+        $deadlinePassed = self::pastHardStop($date, $now);
 
         $pending = [];
         $failed = [];
@@ -217,7 +278,8 @@ class YesterdaySettleLedger
                 if (isset($state['done'][(string) $p])) {
                     continue;
                 }
-                if ((int) ($state['attempts'][(string) $p] ?? 0) >= self::MAX_ATTEMPTS) {
+                $exhausted = (int) ($state['attempts'][(string) $p] ?? 0) >= self::MAX_ATTEMPTS;
+                if ($exhausted || $deadlinePassed) {
                     $failed[$key] = $key;
                 } else {
                     $pending[$key] = $key;
@@ -235,6 +297,7 @@ class YesterdaySettleLedger
             'pending' => array_values($pending),
             'failed' => array_values($failed),
             'settled_at' => $settled ? $latest : null,
+            'deadline_passed' => $deadlinePassed,
         ];
     }
 }
