@@ -110,3 +110,11 @@ Route::post('/permissions/store', [NewPermissionController::class, 'store'])->na
 Route::get('/permissions/edit', [NewPermissionController::class, 'edit'])->name('permissions.edit');
 
 Route::get('/permissions/view', [NewPermissionController::class, 'view'])->name('permissions.view');
+
+// Give extra access to named people (admin only)
+Route::get('/permissions/grant-users', [NewPermissionController::class, 'grantUsers'])
+    ->middleware(['auth', 'isAdmin'])
+    ->name('permissions.grant.users');
+Route::post('/permissions/grants', [NewPermissionController::class, 'grantStore'])
+    ->middleware(['auth', 'isAdmin'])
+    ->name('permissions.grant.store');

@@ -18,7 +18,10 @@ class Controller extends BaseController
     {
         if (Auth::check()) {
             $userRole = Auth::user()->role;
-            $this->userPermissions = Permission::where('role', $userRole)->value('permissions') ?? [];
+            $this->userPermissions = \App\Helpers\PermissionHelper::mergeWithGrants(
+                Auth::id(),
+                Permission::where('role', $userRole)->value('permissions') ?? []
+            );
         }
     }
 
