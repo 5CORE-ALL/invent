@@ -333,6 +333,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('payments.verification') }}" class="side-nav-link {{ request()->routeIs('payments.verification') ? 'active' : '' }}">
+                    <i class="ri-bank-line"></i>
+                    <span>Payments Verification</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('promotions') }}" class="side-nav-link {{ request()->routeIs('promotions') ? 'active' : '' }}">
                     <i class="ri-price-tag-3-line"></i>
                     <span>Promotions</span>

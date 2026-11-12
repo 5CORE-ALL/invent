@@ -4623,6 +4623,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/promotions/amazon-coupon/push/cancel', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponPushCancel'])->name('promotions.amazon.coupon.push.cancel');
     Route::post('/promotions/save-row', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'saveRow'])->name('promotions.save.row');
 
+    // Payments Verification — active channels with PMT RECD, bank account and link
+    Route::get('/payments-verification', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'index'])->name('payments.verification');
+    Route::get('/payments-verification/data', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'data'])->name('payments.verification.data');
+    Route::get('/payments-verification/history', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'history'])->name('payments.verification.history');
+    Route::post('/payments-verification/amount', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'saveAmount'])->name('payments.verification.amount');
+    Route::post('/payments-verification/details', [\App\Http\Controllers\MarketPlace\PaymentsVerificationController::class, 'saveDetails'])->name('payments.verification.details');
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
