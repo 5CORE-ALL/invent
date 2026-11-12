@@ -722,7 +722,10 @@ class ProductMasterController extends Controller
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Product updated successfully',
+                    'message' => $product->trashed()
+                        ? 'Product marked DC: archived in the app and being archived on Shopify.'
+                        : 'Product updated successfully',
+                    'archived' => $product->trashed(),
                     'data' => $this->buildProductMasterJsonRow($product),
                 ]);
             } else {
@@ -2214,13 +2217,22 @@ class ProductMasterController extends Controller
                 $ids = [$ids];
             }
 
-            ProductMaster::withTrashed()
-                ->whereIn('id', $ids)
-                ->update(['deleted_at' => null]);
+            // Per model so DC rows go back to Active here and on Shopify.
+            $restored = 0;
+            $reactivated = 0;
+            foreach (ProductMaster::onlyTrashed()->whereIn('id', $ids)->get() as $product) {
+                $wasDc = strtoupper(ProductMaster::statusValueFromValues($product->Values ?? [])) === 'DC';
+                $product->restoreFromArchive();
+                $restored++;
+                if ($wasDc) {
+                    $reactivated++;
+                }
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => count($ids).' product(s) restored successfully.',
+                'message' => $restored.' product(s) restored successfully.'
+                    .($reactivated > 0 ? " {$reactivated} DC product(s) set back to Active and being re-activated on Shopify." : ''),
             ]);
         } catch (\Exception $e) {
             Log::error('Error restoring products: '.$e->getMessage());

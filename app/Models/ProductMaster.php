@@ -292,6 +292,82 @@ class ProductMaster extends Model
                 $product->Values = $recalculated;
             }
         });
+
+        // Marking an existing SKU as DC archives it in the app and on Shopify.
+        static::saving(function (self $product) {
+            $key = spl_object_id($product);
+            unset(self::$pendingDcArchive[$key]);
+            if (! $product->exists || $product->trashed()) {
+                return;
+            }
+            $old = strtoupper(self::statusValueFromValues($product->getOriginal('Values')));
+            $new = strtoupper(self::statusValueFromValues($product->Values));
+            if ($new === 'DC' && $old !== 'DC') {
+                self::$pendingDcArchive[$key] = true;
+            }
+        });
+
+        static::saved(function (self $product) {
+            $key = spl_object_id($product);
+            if (empty(self::$pendingDcArchive[$key])) {
+                return;
+            }
+            unset(self::$pendingDcArchive[$key]);
+            $product->archiveBecauseDc();
+        });
+    }
+
+    /** @var array<int, bool> */
+    private static array $pendingDcArchive = [];
+
+    /**
+     * Soft-delete this row (the app's archive) and archive its Shopify product after the
+     * response is sent. The row keeps status DC so it can be found and restored later.
+     */
+    public function archiveBecauseDc(): void
+    {
+        if ($this->trashed()) {
+            return;
+        }
+
+        $sku = (string) $this->sku;
+        $this->forceFill(['deleted_by' => auth()->id()])->saveQuietly();
+        $this->delete();
+
+        \Illuminate\Support\Facades\Log::info('Product Master: SKU marked DC and archived', ['sku' => $sku, 'id' => $this->getKey()]);
+
+        // After the response: delete from Shopify, Amazon, eBay 1/2/3; anything that fails or is not
+        // connected becomes one task for ecomm2@5core.com (assigned by president@5core.com).
+        if ($sku !== '' && stripos($sku, 'PARENT') === false) {
+            \App\Services\Support\DcMarketplaceDelistService::queue($sku);
+        }
+    }
+
+    /**
+     * Recover an archived DC row: back to Active in the app and on Shopify.
+     * Rows archived for other reasons are only un-deleted (Shopify is left alone).
+     */
+    public function restoreFromArchive(): void
+    {
+        $wasDc = strtoupper(self::statusValueFromValues($this->Values ?? [])) === 'DC';
+
+        $this->restore();
+
+        if (! $wasDc) {
+            return;
+        }
+
+        $values = is_array($this->Values) ? $this->Values : (json_decode((string) $this->Values, true) ?: []);
+        $values['status'] = 'active';
+        $this->Values = $values;
+        $this->save(); // DC -> active, so the DC hook does not fire
+
+        $sku = (string) $this->sku;
+        if ($sku !== '' && stripos($sku, 'PARENT') === false) {
+            app()->terminating(function () use ($sku) {
+                app(\App\Services\Support\ShopifyProductArchiveService::class)->restore($sku);
+            });
+        }
     }
 
     /**
