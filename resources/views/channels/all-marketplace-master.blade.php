@@ -3325,6 +3325,7 @@
                     {
                         title: "BA",
                         field: "brand_authorisation",
+                        frozen: true,
                         hozAlign: "center",
                         width: 46,
                         minWidth: 42,
@@ -3343,6 +3344,7 @@
                         // Variation / Single — editable inline; saved per channel.
                         title: "Variation/Single",
                         field: "variation_single",
+                        frozen: true,
                         hozAlign: "center",
                         headerSort: true,
                         width: 128,
@@ -3375,6 +3377,7 @@
                         // "Blade page link" / missing_link used by the channel name).
                         title: "Channel",
                         field: "alias",
+                        frozen: true,
                         responsive: 0,
                         hozAlign: "center",
                         headerTooltip: "Channel alias — click to open this channel's view.",
