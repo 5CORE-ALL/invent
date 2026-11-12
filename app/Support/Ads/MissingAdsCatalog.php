@@ -102,7 +102,7 @@ class MissingAdsCatalog
         return $out;
     }
 
-    private static function imagePath(?ProductMaster $productMaster, ?ShopifySku $shopify): ?string
+    public static function imagePath(?ProductMaster $productMaster, ?ShopifySku $shopify): ?string
     {
         $values = is_array($productMaster?->Values)
             ? $productMaster->Values

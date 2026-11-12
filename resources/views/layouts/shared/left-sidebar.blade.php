@@ -2422,6 +2422,12 @@
                             <a href="{{ route('tiktok.ads.missing') }}">TikTok Missing Ads</a>
                         </li>
                         <li>
+                            <a href="{{ route('pinterest.ads') }}">Pinterest Ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('chatgpt.ads') }}">ChatGPT Ads</a>
+                        </li>
+                        <li>
                             <a href="{{ route('google.youtube.ads.audit') }}">Youtube Ads Audit</a>
                         </li>
 

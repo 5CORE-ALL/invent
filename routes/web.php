@@ -58,6 +58,8 @@ use App\Http\Controllers\Campaigns\GoogleYoutubeAdsMissingController;
 use App\Http\Controllers\Campaigns\TiktokAdsMissingController;
 use App\Http\Controllers\Campaigns\GoogleAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
+use App\Http\Controllers\Campaigns\PinterestAdsController;
+use App\Http\Controllers\Campaigns\ChatGptAdsController;
 use App\Http\Controllers\Campaigns\Tiktok1AdsRawDataController;
 use App\Http\Controllers\Campaigns\Tiktok1MissingAdsController;
 use App\Http\Controllers\Campaigns\Tiktok2MissingAdsController;
@@ -7702,6 +7704,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok/utilized/data', 'getUtilizedData')->name('tiktok.utilized.data');
         Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
         Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
+    });
+
+    Route::controller(PinterestAdsController::class)->group(function () {
+        Route::get('/pinterest-ads', 'index')->name('pinterest.ads');
+        Route::get('/pinterest-ads/data', 'data')->name('pinterest.ads.data');
+    });
+
+    Route::controller(ChatGptAdsController::class)->group(function () {
+        Route::get('/chatgpt-ads', 'index')->name('chatgpt.ads');
+        Route::get('/chatgpt-ads/data', 'data')->name('chatgpt.ads.data');
     });
 
     Route::controller(Tiktok1AdsRawDataController::class)->group(function () {
