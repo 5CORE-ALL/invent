@@ -71,6 +71,10 @@
                         <span class="badge bg-primary fs-6 px-3 py-2" id="permPageCount" title="Number of pages (modules) listed">
                             Pages: <span id="permPageCountValue">{{ count($modules) }}</span>
                         </span>
+                        <span class="badge bg-secondary fs-6 px-3 py-2" id="permSelectedBadge" title="Pages ticked in the first column">
+                            Selected: <span id="permSelectedCount">0</span>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="permClearSelection" style="display:none;">Clear</button>
                         <input type="search" id="permPageSearch" class="form-control perm-search" placeholder="Search pages…" autocomplete="off" aria-label="Search pages">
                     </div>
                     
@@ -82,6 +86,9 @@
                         <table class="table permission-table">
                             <thead>
                                 <tr>
+                                    <th style="width:44px;">
+                                        <input type="checkbox" id="permSelectAll" class="form-check-input" title="Select all listed pages" aria-label="Select all listed pages">
+                                    </th>
                                     <th>Module/Feature</th>
                                     <th>Viewer</th>
                                     <th>User</th>
@@ -93,9 +100,13 @@
                             <tbody>
                                 @foreach($modules as $module)
                                     <tr class="module-header perm-row" data-module="{{ strtolower($module) }}">
+                                        <td>
+                                            <input type="checkbox" class="form-check-input perm-select" value="{{ $module }}" aria-label="Select {{ $module }}">
+                                        </td>
                                         <td colspan="6">{{ ucfirst($module) }}</td>
                                     </tr>
                                     <tr class="perm-row" data-module="{{ strtolower($module) }}">
+                                        <td></td>
                                         <td>{{ ucfirst($module) }} Actions</td>
                                         @foreach(['viewer', 'user', 'manager', 'admin', 'superadmin'] as $role)
                                             <td>
@@ -124,7 +135,7 @@
                                     </tr>
                                 @endforeach
                                 <tr id="permNoMatch" style="display:none;">
-                                    <td colspan="6" class="text-muted py-4">No pages match your search.</td>
+                                    <td colspan="7" class="text-muted py-4">No pages match your search.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -157,8 +168,46 @@
             var n = Object.keys(shown).length;
             countEl.textContent = q === '' ? String(total) : n + ' of ' + total;
             if (noMatch) noMatch.style.display = (q !== '' && n === 0) ? '' : 'none';
+            syncSelection();
         }
         input.addEventListener('input', apply);
+
+        // ---- Multi select ----
+        var selectAll = document.getElementById('permSelectAll');
+        var selectedCount = document.getElementById('permSelectedCount');
+        var clearBtn = document.getElementById('permClearSelection');
+
+        function boxes() { return Array.prototype.slice.call(document.querySelectorAll('.perm-select')); }
+        function visibleBoxes() {
+            return boxes().filter(function (b) { return b.closest('tr').style.display !== 'none'; });
+        }
+        function syncSelection() {
+            var all = boxes();
+            var checked = all.filter(function (b) { return b.checked; });
+            selectedCount.textContent = String(checked.length);
+            clearBtn.style.display = checked.length ? '' : 'none';
+            var vis = visibleBoxes();
+            var visChecked = vis.filter(function (b) { return b.checked; }).length;
+            selectAll.checked = vis.length > 0 && visChecked === vis.length;
+            selectAll.indeterminate = visChecked > 0 && visChecked < vis.length;
+            all.forEach(function (b) { b.closest('tr').classList.toggle('table-active', b.checked); });
+        }
+        selectAll.addEventListener('change', function () {
+            // Only the pages currently shown (respects the search box)
+            visibleBoxes().forEach(function (b) { b.checked = selectAll.checked; });
+            syncSelection();
+        });
+        document.addEventListener('change', function (e) {
+            if (e.target.classList && e.target.classList.contains('perm-select')) syncSelection();
+        });
+        clearBtn.addEventListener('click', function () {
+            boxes().forEach(function (b) { b.checked = false; });
+            syncSelection();
+        });
+        // For the next step (bulk actions): window.permSelectedModules() → ['dashboard', ...]
+        window.permSelectedModules = function () {
+            return boxes().filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
+        };
     })();
 </script>
 @endsection
