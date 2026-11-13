@@ -109,6 +109,8 @@
                             <span class="badge bg-dark fs-6 p-2" id="dp-rows-count-badge" title="Rows after filters">Row: 0</span>
                             <span class="badge bg-primary fs-6 p-2" id="dp-total-sales-badge"
                                 title="Σ Vinted sheet Sale AMT (item price × qty) in last 30 sale days">Sales: $0</span>
+                            <span class="badge bg-warning text-dark fs-6 p-2" id="dp-total-vl30-badge"
+                                title="Σ V L30 (Vinted units sold in last 30 days) across visible rows">V L30: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="dp-avg-gpft-badge"
                                 title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − (LP × V L30). Price $0 is skipped (not −LP).">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2" id="dp-total-profit-badge"
@@ -707,11 +709,12 @@
             }
         }
 
-        let totalSales = 0, totalProfit = 0, totalCogs = 0, zeroSold = 0, moreSold = 0, visible = 0;
+        let totalSales = 0, totalProfit = 0, totalCogs = 0, zeroSold = 0, moreSold = 0, visible = 0, totalVl30 = 0;
         rows.forEach(function(row) {
             if (dpIsParentRow(row)) return;
             visible++;
             const al30 = dpSoldQty(row);
+            totalVl30 += al30;
             const sales = parseFloat(row.sales) || 0;
             const lp = parseFloat(row.lp) || 0;
             const ship = dpShip(row);
@@ -730,6 +733,7 @@
         const groi = totalCogs > 0 ? Math.round((totalProfit / totalCogs) * 100) : 0;
         $('#dp-rows-count-badge').text('Row: ' + visible.toLocaleString());
         $('#dp-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
+        $('#dp-total-vl30-badge').text('V L30: ' + totalVl30.toLocaleString());
         $('#dp-total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
         $('#dp-avg-gpft-badge').text('GPFT: ' + gpft + '%');
         $('#dp-avg-roi-badge').text('GROI: ' + groi + '%');
