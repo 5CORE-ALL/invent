@@ -476,6 +476,8 @@ class VerificationAdjustmentController extends Controller
                 // Eloquent serializes dynamic attributes with broken snake_case keys (e.g. TO_ADJUST -> t_o__a_d_j_u_s_t).
                 // Return a plain array with stable snake_case keys for the UI.
                 return array_merge($item->toArray(), [
+                    'status' => $statusValue,
+                    'status_label' => $item->STATUS_LABEL,
                     'to_adjust' => $ta,
                     'approved_at_ymd' => $approvedAtYmd,
                     'last_verified_at' => $lastVerifiedAt
@@ -504,7 +506,10 @@ class VerificationAdjustmentController extends Controller
             $item->IS_HIDE = 0;
             $item->is_hide = 0;
 
-            return $item->toArray();
+            return array_merge($item->toArray(), [
+                'status' => $statusValue,
+                'status_label' => $item->STATUS_LABEL,
+            ]);
         });
 
         return response()->json([

@@ -2872,6 +2872,7 @@
                                     SKU: (item.sku || item.SKU || '').toString().trim(), // Normalize SKU field (support both keys)
                                     SHOPIFY_SKU: (item.shopify_sku || item.SHOPIFY_SKU || '').toString().trim(),
                                     TITLE: item['TITLE'] || '', // Title field from the sheet
+                                    STATUS: (item.status ?? item.STATUS ?? '').toString().trim(), // Product Master status (Active / Inactive / DC / Coming / 2BDC)
 
                                     INV: INV, // Inventory
                                     L30: L30, // Last 30 Days 
