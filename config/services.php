@@ -477,6 +477,11 @@ return [
         'client_id'     => env('FEDEX_CLIENT_ID', ''),
         'client_secret' => env('FEDEX_CLIENT_SECRET', ''),
         'api_base'      => env('FEDEX_API_BASE', 'https://apis-sandbox.fedex.com'),
+        // Separate FedEx project used only by shipment tracking (Track API).
+        // Falls back to the FEDEX_* values above when the FEDEX_TRACKING_* ones are not set.
+        'tracking_client_id'     => env('FEDEX_TRACKING_CLIENT_ID') ?: env('FEDEX_CLIENT_ID', ''),
+        'tracking_client_secret' => env('FEDEX_TRACKING_CLIENT_SECRET') ?: env('FEDEX_CLIENT_SECRET', ''),
+        'tracking_api_base'      => env('FEDEX_TRACKING_API_BASE') ?: env('FEDEX_API_BASE', 'https://apis-sandbox.fedex.com'),
     ],
 
     /*

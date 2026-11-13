@@ -90,8 +90,8 @@ class ShipmentTrackingService
 
     public function hasFedex(): bool
     {
-        return trim((string) config('services.fedex.client_id')) !== ''
-            && trim((string) config('services.fedex.client_secret')) !== '';
+        return trim((string) config('services.fedex.tracking_client_id')) !== ''
+            && trim((string) config('services.fedex.tracking_client_secret')) !== '';
     }
 
     /**
@@ -921,7 +921,7 @@ class ShipmentTrackingService
             return [];
         }
 
-        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
+        $base = rtrim((string) config('services.fedex.tracking_api_base', 'https://apis-sandbox.fedex.com'), '/');
         $out = [];
 
         // FedEx Track API accepts batches; keep chunks small for reliability.
@@ -1048,14 +1048,17 @@ class ShipmentTrackingService
 
     protected function fedexAccessToken(): ?string
     {
-        $cached = Cache::get('fedex_oauth_access_token');
+        // Tracking uses its own FedEx project (FEDEX_TRACKING_*), falling back to FEDEX_*.
+        $id = trim((string) config('services.fedex.tracking_client_id'));
+        $secret = trim((string) config('services.fedex.tracking_client_secret'));
+        $base = rtrim((string) config('services.fedex.tracking_api_base', 'https://apis-sandbox.fedex.com'), '/');
+
+        // Keyed by project so a credential change never reuses the old project's token.
+        $cacheKey = 'fedex_tracking_oauth_'.md5($id.'|'.$base);
+        $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') {
             return $cached;
         }
-
-        $id = trim((string) config('services.fedex.client_id'));
-        $secret = trim((string) config('services.fedex.client_secret'));
-        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
 
         // A bad FEDEX_API_BASE (e.g. a broken .env line) must only lose FedEx lookups, not the whole batch.
         try {
@@ -1088,7 +1091,7 @@ class ShipmentTrackingService
         }
 
         $expiresIn = (int) ($resp->json('expires_in') ?: 3600);
-        Cache::put('fedex_oauth_access_token', $token, now()->addSeconds(max(60, $expiresIn - 60)));
+        Cache::put($cacheKey, $token, now()->addSeconds(max(60, $expiresIn - 60)));
 
         return $token;
     }
