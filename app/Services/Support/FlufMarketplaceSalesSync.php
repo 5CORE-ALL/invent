@@ -91,7 +91,7 @@ class FlufMarketplaceSalesSync
             })
             ->get();
 
-        $resolveSku = $this->skuResolver($lines);
+        $resolveSku = $this->skuResolver($lines, false, $channel);
 
         $keep = [];
         foreach ($lines as $line) {
@@ -195,8 +195,14 @@ class FlufMarketplaceSalesSync
      * @param  \Illuminate\Support\Collection<int, object>  $lines
      * @return \Closure(object): array{sku: string, source: string, line_sku: string, shopify_sku: string, catalog_sku: string, in_pm: bool}
      */
-    public function skuResolver($lines, bool $withSuggestions = false): \Closure
+    public function skuResolver($lines, bool $withSuggestions = false, string $channel = ''): \Closure
     {
+        // Manual fixes from config/marketplace_sku_overrides.php, keyed by order number ("#357951") or
+        // "order|line code" ("#357951|500W").
+        $overrides = [];
+        foreach ((array) config('marketplace_sku_overrides.'.$channel, []) as $key => $value) {
+            $overrides[strtoupper(preg_replace('/\s+/', '', (string) $key))] = trim((string) $value);
+        }
         $clean = static fn ($v) => trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', (string) $v));
 
         $pm = [];
@@ -301,7 +307,7 @@ class FlufMarketplaceSalesSync
                 $inter = count(array_intersect($a, $b));
                 $union = count($a) + count($b) - $inter;
                 $score = $union > 0 ? $inter / $union : 0;
-                if ($score >= 0.35 && $score > ($best[$sku] ?? 0)) {
+                if ($score >= 0.2 && $score > ($best[$sku] ?? 0)) {
                     $best[$sku] = $score;
                 }
             }
@@ -335,12 +341,24 @@ class FlufMarketplaceSalesSync
             return array_keys($found);
         };
 
-        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm, $byTitle, $suggest, $withSuggestions): array {
+        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm, $byTitle, $suggest, $withSuggestions, $overrides): array {
             $vid = (string) ($line->variant_id ?? '');
             $lineSku = $clean($line->sku ?? '');
             $sSku = $shopifySku[$vid] ?? '';
             $cSku = $catalogSku[$vid] ?? '';
             $base = ['line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'candidates' => []];
+
+            if ($overrides !== []) {
+                $order = strtoupper(preg_replace('/\s+/', '', (string) ($line->order_number ?? '')));
+                $order = '#'.ltrim($order, '#');
+                $code = strtoupper(preg_replace('/\s+/', '', $lineSku));
+                $fix = $overrides[$order.'|'.$code] ?? $overrides[$order] ?? ($overrides[ltrim($order, '#')] ?? null);
+                if ($fix !== null && $fix !== '') {
+                    $hit = $toPm($fix);
+
+                    return ['sku' => $hit ?? $fix, 'source' => 'manual override'.($hit === null ? ' (NOT a Product Master SKU)' : ''), 'in_pm' => $hit !== null] + $base;
+                }
+            }
 
             foreach (['order line' => $lineSku, 'shopify_skus' => $sSku, 'catalog variant' => $cSku] as $source => $cand) {
                 $hit = $toPm($cand);
@@ -359,13 +377,18 @@ class FlufMarketplaceSalesSync
                     return ['sku' => $cands[0], 'source' => 'matched by product title', 'in_pm' => true] + array_merge($base, ['candidates' => $cands]);
                 }
                 if (count($cands) > 1) {
-                    return ['sku' => $fallback, 'source' => 'ambiguous title ('.count($cands).' SKUs)', 'in_pm' => false] + array_merge($base, ['candidates' => $cands]);
+                    return ['sku' => $cands[0], 'source' => 'GUESSED: same title on '.count($cands).' SKUs, took the first', 'in_pm' => true] + array_merge($base, ['candidates' => $cands]);
                 }
             }
 
-            $base['suggestions'] = ($withSuggestions && $vid === '')
-                ? $suggest((string) ($line->product_title ?? ''), $lineSku)
-                : [];
+            // Last resort for variant-less lines: take the closest Product Master / Shopify title, even when
+            // the match is weak (the source column says "guessed" and shows the similarity).
+            $base['suggestions'] = $vid === '' ? $suggest((string) ($line->product_title ?? ''), $lineSku) : [];
+            if ($base['suggestions'] !== []) {
+                $topSku = (string) array_key_first($base['suggestions']);
+
+                return ['sku' => $topSku, 'source' => 'GUESSED by title ('.$base['suggestions'][$topSku].')', 'in_pm' => true] + $base;
+            }
 
             return ['sku' => $fallback, 'source' => 'no Product Master match', 'in_pm' => false] + $base;
         };
@@ -395,7 +418,7 @@ class FlufMarketplaceSalesSync
             ->filter(fn ($l) => self::channelFor($l->source_name ?? null, $l->tags ?? null) === $channel)
             ->values();
 
-        $resolve = $this->skuResolver($lines, true);
+        $resolve = $this->skuResolver($lines, true, $channel);
         $out = [];
         foreach ($lines as $l) {
             $r = $resolve($l);
