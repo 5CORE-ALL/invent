@@ -282,10 +282,7 @@ class SettleStatusAndAlertsTest extends SettleTestCase
         $this->seedAmazonBaseline(20); // nothing for DATE
         $this->writeLedger();
 
-        $v = new SettleVerifier;
-        $first = $v->run(self::DATE, true, ['amazon_close'], true, $this->now());
-        $this->assertSame([], $first['alerts'], 'a data-based failure is only alerted after it was confirmed (fix 6)');
-        $out = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:15'));
+        $out = (new SettleVerifier)->run(self::DATE, true, ['amazon_close'], true, $this->now());
 
         $alert = collect($out['alerts'])->firstWhere('task', 'amazon_close');
         $this->assertSame('missing_data', $alert['type']);
@@ -302,11 +299,9 @@ class SettleStatusAndAlertsTest extends SettleTestCase
         $this->writeLedger();
         $v = new SettleVerifier;
 
-        $unconfirmed = $v->run(self::DATE, true, ['amazon_close'], true, $this->now());
-        $first = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:15'));
-        $second = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:30'));
+        $first = $v->run(self::DATE, true, ['amazon_close'], true, $this->now());
+        $second = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:20'));
 
-        $this->assertSame([], $unconfirmed['alerts']);
         $this->assertNotEmpty($first['alerts']);
         $this->assertSame([], $second['alerts'], 'deduplicated within settle.alert_repeat_hours');
         $log = SettleAlertLog::query()->first();
@@ -315,7 +310,7 @@ class SettleStatusAndAlertsTest extends SettleTestCase
         $this->assertSame(1, SettleAlertLog::query()->where('task_key', 'amazon_close')->count());
 
         // after the repeat window it is sent again
-        $third = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:30')->addHours(13));
+        $third = $v->run(self::DATE, true, ['amazon_close'], true, $this->now('06:20')->addHours(13));
         $this->assertNotEmpty($third['alerts']);
     }
 

@@ -25,12 +25,7 @@ use Illuminate\Support\Facades\Schema;
  * spec keys:
  *   table, time_column, time_type ('datetime'|'date'), tz (timezone the column is stored in),
  *   key (natural key columns), price_column, status_column + exclude_statuses,
- *   items {table, fk, price}, group_by, mode ('window'|'table'), table_shrink, pending_prices,
- *   duplicates ('key' (default) | 'unit_rows' + order_column: one row per unit is legitimate, so
- *   the check is rows-per-order versus usual instead of a key-duplicate count).
- *
- * "Usual day" = lower of the 7-day median and the same-weekday median of the previous weeks (see
- * Baseline), so quiet weekends do not fail while a normally busy weekday still does.
+ *   items {table, fk, price}, group_by, mode ('window'|'table'), table_shrink, pending_prices.
  */
 final class OrdersWindowVerifier implements Verifier
 {
@@ -75,9 +70,6 @@ final class OrdersWindowVerifier implements Verifier
         return VerificationResult::fromChecks(array_values(array_filter($checks)), ['table_rows' => $rows]);
     }
 
-    /** @var array<string, array{total: int, groups: array<string, int>, latest: ?Carbon}> */
-    private array $statCache = [];
-
     private function verifyWindow(string $date, VerificationContext $ctx): VerificationResult
     {
         $table = (string) $this->spec['table'];
@@ -86,57 +78,42 @@ final class OrdersWindowVerifier implements Verifier
             $groupBy = null;
         }
         $isDatetime = ($this->spec['time_type'] ?? 'datetime') === 'datetime';
-        $this->statCache = [];
-
-        $recentDates = Baseline::recentDates($date, (int) $this->t('baseline_days'));
-        $weekdayDates = $this->coveredDates(Baseline::weekdayDates($date, (int) $this->t('baseline_dow_weeks')));
-        $minWeeks = (int) $this->t('baseline_dow_min_weeks');
+        $n = max(1, (int) $this->t('baseline_days'));
 
         $today = $this->dayStats($date, $groupBy);
-        $recent = array_map(fn ($d) => $this->dayStats($d, $groupBy), $recentDates);
-        $weekday = array_map(fn ($d) => $this->dayStats($d, $groupBy), $weekdayDates);
+        $baseline = [];
+        for ($i = 1; $i <= $n; $i++) {
+            $baseline[$i] = $this->dayStats(Carbon::parse($date, self::PACIFIC)->subDays($i)->toDateString(), $groupBy);
+        }
 
         $checks = [];
         $metrics = ['rows' => $today['total'], 'by_group' => $today['groups']];
 
-        // --- records present / volume (expected = lower of 7-day and same-weekday medians) ------
-        $groups = array_unique(array_merge(
-            array_keys($today['groups']),
-            ...array_map(fn ($b) => array_keys($b['groups']), $recent),
-            ...array_map(fn ($b) => array_keys($b['groups']), $weekday),
-        ));
+        // --- records present / volume ------------------------------------------------------
+        $groups = array_unique(array_merge(array_keys($today['groups']), ...array_map(fn ($b) => array_keys($b['groups']), $baseline)));
         sort($groups);
         $problems = [];
         $worst = 'pass';
         $summaryBits = [];
         foreach ($groups as $g) {
             $c = $today['groups'][$g] ?? 0;
-            $recentSeries = array_map(fn ($b) => (int) ($b['groups'][$g] ?? 0), $recent);
-            $weekdaySeries = array_map(fn ($b) => (int) ($b['groups'][$g] ?? 0), $weekday);
-            $exp = Baseline::expected($recentSeries, $weekdaySeries, $minWeeks);
-            $median = $exp['expected'];
-            $nonEmptyRecent = count(array_filter($recentSeries));
-            $nonEmptyWeekday = count(array_filter($weekdaySeries));
+            $series = array_map(fn ($b) => (int) ($b['groups'][$g] ?? 0), $baseline);
+            $median = $this->median($series);
+            $nonEmpty = count(array_filter($series));
             $label = $g === '_all' ? '' : ' ['.$g.']';
-            $basis = $exp['weekday_used']
-                ? sprintf('same weekday median %s, 7-day median %s', round($exp['median_weekday'], 1), round($exp['median_recent'], 1))
-                : sprintf('7-day median %s, no same-weekday history', round($exp['median_recent'], 1));
-            $summaryBits[] = ($g === '_all' ? '' : $g.': ').$c.' (usual ~'.round($median, 1).')';
-            $metrics['baseline'][$g] = $exp + ['non_empty_recent' => $nonEmptyRecent, 'non_empty_weekday' => $nonEmptyWeekday, 'series' => $recentSeries, 'weekday_series' => $weekdaySeries];
+            $summaryBits[] = ($g === '_all' ? '' : $g.': ').$c.' (usual ~'.round($median).')';
+            $metrics['baseline'][$g] = ['median' => $median, 'non_empty_days' => $nonEmpty, 'series' => $series];
 
             if ($c === 0) {
-                $enoughHistory = $exp['weekday_used']
-                    ? $nonEmptyWeekday >= $minWeeks
-                    : $nonEmptyRecent >= $this->t('baseline_min_days');
-                if ($median >= $this->t('zero_fail_min_median') && $enoughHistory) {
-                    $problems[] = ['fail', "0 records for the Pacific day{$label}, usual day has ~".round($median, 1)." ({$basis})"];
+                if ($median >= $this->t('zero_fail_min_median') && $nonEmpty >= $this->t('baseline_min_days')) {
+                    $problems[] = ['fail', "0 records for the Pacific day{$label}, usual day has ~".round($median)];
                 } else {
-                    $problems[] = ['warn', "0 records for the Pacific day{$label}; expected only ~".round($median, 1)." ({$basis}), too low or too thin to call it a failure — check that this is a genuinely quiet day"];
+                    $problems[] = ['warn', "0 records for the Pacific day{$label}; history is too small (median ".round($median).') to call it a failure'];
                 }
             } elseif ($median >= $this->t('low_volume_fail_min_median') && $c < $median * $this->t('low_volume_fail_ratio')) {
-                $problems[] = ['fail', "Only {$c} records{$label}, usual day has ~".round($median, 1)." ({$basis})"];
+                $problems[] = ['fail', "Only {$c} records{$label}, usual day has ~".round($median)];
             } elseif ($median >= $this->t('low_volume_warn_min_median') && $c < $median * $this->t('low_volume_warn_ratio')) {
-                $problems[] = ['warn', "Only {$c} records{$label}, usual day has ~".round($median, 1)." ({$basis})"];
+                $problems[] = ['warn', "Only {$c} records{$label}, usual day has ~".round($median)];
             }
         }
         if ($problems === []) {
@@ -154,8 +131,7 @@ final class OrdersWindowVerifier implements Verifier
 
         // --- latest record of the day (possible stopped pagination) -------------------------
         if ($isDatetime && $groupBy === null && $today['total'] > 0) {
-            $latestBase = count($weekday) >= $minWeeks ? $weekday : $recent;
-            $checks[] = $this->latestRecordCheck($today, $latestBase);
+            $checks[] = $this->latestRecordCheck($today, $baseline);
         }
 
         // --- duplicates ---------------------------------------------------------------------
@@ -184,18 +160,6 @@ final class OrdersWindowVerifier implements Verifier
      */
     private function dayStats(string $ymd, ?string $groupBy): array
     {
-        if (isset($this->statCache[$ymd])) {
-            return $this->statCache[$ymd];
-        }
-
-        return $this->statCache[$ymd] = $this->computeDayStats($ymd, $groupBy);
-    }
-
-    /**
-     * @return array{total: int, groups: array<string, int>, latest: ?Carbon}
-     */
-    private function computeDayStats(string $ymd, ?string $groupBy): array
-    {
         $q = $this->windowQuery($ymd);
         $table = (string) $this->spec['table'];
         $time = $this->wrap((string) $this->spec['time_column']);
@@ -219,27 +183,6 @@ final class OrdersWindowVerifier implements Verifier
         }
 
         return ['total' => $c, 'groups' => ['_all' => $c], 'latest' => $latest];
-    }
-
-    /**
-     * Keeps only the dates the table really reaches back to. A pruned / L30 table that starts later
-     * must not make an old weekday look like "0 records".
-     *
-     * @param  list<string>  $dates
-     * @return list<string>
-     */
-    private function coveredDates(array $dates): array
-    {
-        $table = (string) $this->spec['table'];
-        $col = (string) $this->spec['time_column'];
-        $raw = DB::table($table)->min($table.'.'.$col);
-        if ($raw === null) {
-            return [];
-        }
-        $tz = ($this->spec['time_type'] ?? 'datetime') === 'date' ? self::PACIFIC : (string) ($this->spec['tz'] ?? 'UTC');
-        $oldest = Carbon::parse((string) $raw, $tz)->setTimezone(self::PACIFIC);
-
-        return array_values(array_filter($dates, fn ($d) => $oldest->lte(Carbon::parse($d, self::PACIFIC)->startOfDay())));
     }
 
     private function windowQuery(string $ymd): Builder
@@ -306,9 +249,6 @@ final class OrdersWindowVerifier implements Verifier
     /** @param  array<string, mixed>  $metrics */
     private function duplicatesCheck(string $date, int $total, array &$metrics): ?array
     {
-        if (($this->spec['duplicates'] ?? 'key') === 'unit_rows') {
-            return $this->unitRowsCheck($date, $total, $metrics);
-        }
         $table = (string) $this->spec['table'];
         $cols = $this->spec['key'] ?? [];
         if ($cols === []) {
@@ -346,51 +286,6 @@ final class OrdersWindowVerifier implements Verifier
             sprintf('%d duplicate row(s) across %d key(s) of %s (%.1f%% of the day).', $extra, $groups, implode('+', $cols), $pct),
             ['extra_rows' => $extra, 'keys' => $groups, 'pct' => round($pct, 2)]
         );
-    }
-
-
-    /**
-     * Tables that store one row PER UNIT (Shein): identical keys are legitimate, so a key-duplicate
-     * count would fail every multi-quantity order. A real double import still shows up as rows per
-     * order jumping versus the usual day.
-     *
-     * @param  array<string, mixed>  $metrics
-     */
-    private function unitRowsCheck(string $date, int $total, array &$metrics): array
-    {
-        $table = (string) $this->spec['table'];
-        $orderCol = (string) ($this->spec['order_column'] ?? '');
-        if ($orderCol === '' || ! Schema::hasColumn($table, $orderCol)) {
-            return VerificationResult::check('duplicates', 'limited', "Duplicate check skipped: order column {$table}.{$orderCol} not found.");
-        }
-
-        $ratioOn = function (string $ymd) use ($table, $orderCol): ?float {
-            $r = $this->windowQuery($ymd)->selectRaw('COUNT(*) as n, COUNT(DISTINCT '.$this->wrap($orderCol).') as o')->first();
-            $n = (int) ($r->n ?? 0);
-            $o = (int) ($r->o ?? 0);
-
-            return ($n > 0 && $o > 0) ? $n / $o : null;
-        };
-
-        $today = $ratioOn($date);
-        $metrics['rows_per_order'] = $today === null ? null : round($today, 3);
-        $base = array_values(array_filter(array_map($ratioOn, Baseline::recentDates($date, (int) $this->t('baseline_days'))), fn ($v) => $v !== null));
-        if ($today === null) {
-            return VerificationResult::check('duplicates', 'limited', 'Rows-per-order check skipped: no order numbers for the day.');
-        }
-        if (count($base) < $this->t('baseline_min_days')) {
-            return VerificationResult::check('duplicates', 'limited', sprintf('Rows-per-order check skipped: only %d baseline day(s) (%.2f rows/order today).', count($base), $today));
-        }
-        $usual = Baseline::median($base);
-        $metrics['rows_per_order_usual'] = round($usual, 3);
-        if ($usual > 0 && $today >= $usual * $this->t('unit_rows_fail_ratio')) {
-            return VerificationResult::check('duplicates', 'fail', sprintf('%.2f rows per order vs usual %.2f — the day looks imported twice.', $today, $usual), ['today' => $today, 'usual' => $usual]);
-        }
-        if ($usual > 0 && $today >= $usual * $this->t('unit_rows_warn_ratio')) {
-            return VerificationResult::check('duplicates', 'warn', sprintf('%.2f rows per order vs usual %.2f — possible duplicate import.', $today, $usual), ['today' => $today, 'usual' => $usual]);
-        }
-
-        return VerificationResult::check('duplicates', 'pass', sprintf('%.2f rows per order (usual %.2f); several rows per order are expected, one per unit.', $today, $usual));
     }
 
     /** @param  array<string, mixed>  $metrics */
@@ -485,20 +380,14 @@ final class OrdersWindowVerifier implements Verifier
         return VerificationResult::check($code, 'pass', $msg);
     }
 
-    /**
-     * Table-size guard. The baseline is the size at the last verification that did NOT fail (or an
-     * operator-accepted baseline). A failed verification is never used as a baseline, so a shrunk
-     * table keeps failing until it recovers or is explicitly accepted (settle:verify --accept-baseline).
-     */
     private function shrinkCheck(VerificationContext $ctx, int $rows): ?array
     {
         $prev = null;
         try {
             $last = SettleVerification::query()
                 ->where('task_key', $ctx->taskKey)
-                ->whereIn('status', [VerificationResult::PASS, VerificationResult::WARN, VerificationResult::LIMITED, VerificationResult::LIMITED_BY_DESIGN, 'baseline'])
                 ->orderByDesc('id')
-                ->limit(20)
+                ->limit(10)
                 ->get(['metrics']);
             foreach ($last as $l) {
                 if (isset($l->metrics['table_rows'])) {
@@ -510,18 +399,18 @@ final class OrdersWindowVerifier implements Verifier
             return null;
         }
         if ($prev === null) {
-            return VerificationResult::check('table_shrunk', 'pass', "No earlier passing size to compare with ({$rows} rows now).");
+            return VerificationResult::check('table_shrunk', 'pass', "No earlier size to compare with ({$rows} rows now).");
         }
         if ($prev >= $this->t('table_shrink_min_rows') && $rows < $prev * $this->t('table_shrink_min_ratio')) {
             return VerificationResult::check(
                 'table_shrunk',
                 'fail',
-                "Table shrank from {$prev} rows (last passing check) to {$rows} (wiped or pruned after a failed fetch?). It stays failed until it recovers or the new size is accepted.",
+                "Table shrank from {$prev} to {$rows} rows since the last verification (wiped or pruned after a failed fetch?).",
                 ['previous' => $prev, 'now' => $rows]
             );
         }
 
-        return VerificationResult::check('table_shrunk', 'pass', "Table size {$rows} rows (last passing check: {$prev}).");
+        return VerificationResult::check('table_shrunk', 'pass', "Table size {$rows} rows (was {$prev}).");
     }
 
     private function t(string $key): float
@@ -542,7 +431,14 @@ final class OrdersWindowVerifier implements Verifier
     /** @param  list<int|float>  $values */
     private function median(array $values): float
     {
-        return Baseline::median($values);
+        if ($values === []) {
+            return 0.0;
+        }
+        sort($values);
+        $n = count($values);
+        $mid = intdiv($n, 2);
+
+        return $n % 2 ? (float) $values[$mid] : ($values[$mid - 1] + $values[$mid]) / 2;
     }
 
     private function hhmm(float $hours): string

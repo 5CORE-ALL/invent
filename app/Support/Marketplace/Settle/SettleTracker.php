@@ -23,35 +23,13 @@ use Illuminate\Support\Collection;
  *   retry_wait              failed, will be retried by a later orchestrator tick
  *   failed                  3 failed attempts, or still not done after 09:00 PT
  *   awaiting_verification   pulled OK (exit 0), data not verified yet
- *   verified                data checked and OK (pass)
- *   verified_warning        data checked, OK but something looks unusual (warn)
- *   limited                 a check was SKIPPED or UNAVAILABLE (no history, missing column, no verifier)
- *   limited_by_design       nothing to compare with by design (e.g. no dated table); not a warning
+ *   verified                data checked and OK (pass / warn)
+ *   limited                 data checked as far as possible (no dated source)
  *   verification_failed     pulled with exit 0 but the data is missing / incomplete / suspicious
- *
- * Dashboard level (see level()): Fully Settled / Settled with Warnings / Incomplete / Verification
- * Pending (plus "updating" while pulls are still in progress, the pre-existing badge state).
  */
 final class SettleTracker
 {
-    /** States that count as verified (the day may still be "Settled with Warnings"). */
-    public const VERIFIED_STATES = ['verified', 'verified_warning', 'limited', 'limited_by_design'];
-
-    /** Verified states that must be shown as warnings. */
-    public const WARNING_STATES = ['verified_warning', 'limited'];
-
-    /** Task state for a verification status. */
-    public static function stateFor(string $status): string
-    {
-        return match ($status) {
-            VerificationResult::PASS => 'verified',
-            VerificationResult::WARN => 'verified_warning',
-            VerificationResult::LIMITED => 'limited',
-            VerificationResult::LIMITED_BY_DESIGN => 'limited_by_design',
-            VerificationResult::FAIL, VerificationResult::ERROR => 'verification_failed',
-            default => 'awaiting_verification',
-        };
-    }
+    public const VERIFIED_STATES = ['verified', 'limited'];
 
     /**
      * Live per-task detail for $date plus the verification summary used by Ledger::status().
@@ -75,22 +53,9 @@ final class SettleTracker
         $verified = [];
         $failedVerification = [];
         $unverified = [];
-        $warnings = [];
-        $byDesign = [];
         foreach ($tasks as $key => $t) {
             if (in_array($t['state'], self::VERIFIED_STATES, true)) {
                 $verified[] = $key;
-                if (in_array($t['state'], self::WARNING_STATES, true)) {
-                    $warnings[] = [
-                        'key' => $key,
-                        'marketplace' => $t['marketplace'],
-                        'kind' => $t['kind'],
-                        'state' => $t['state'],
-                        'messages' => array_map(fn ($c) => $c['code'].': '.$c['message'], $t['verification']['checks'] ?? []),
-                    ];
-                } elseif ($t['state'] === 'limited_by_design') {
-                    $byDesign[] = $key;
-                }
 
                 continue;
             }
@@ -109,44 +74,8 @@ final class SettleTracker
                 'all_verified' => $available && $unverified === [],
                 'verification_failed' => $failedVerification,
                 'unverified' => $unverified,
-                'warnings' => $warnings,
-                'by_design' => $byDesign,
             ],
         ];
-    }
-
-    /**
-     * Dashboard level of the day.
-     *
-     *   incomplete  a pull failed for good, or a verification failed / errored
-     *   updating    pulls are still in progress (pre-existing "Updating" badge)
-     *   pending     every pull finished but verification is missing / not finished / unavailable
-     *   warnings    verified, with at least one warn / skipped check ("Settled with Warnings")
-     *   full        verified, every check passed or is limited by design ("Fully Settled")
-     *
-     * @param  array<string, mixed>  $summary  describe()['summary']
-     * @return array{level: string, label: string}
-     */
-    public static function level(bool $ledgerSettled, bool $hasFailedPull, bool $required, bool $available, array $summary): array
-    {
-        $labels = [
-            'incomplete' => 'Incomplete',
-            'updating' => 'Updating',
-            'pending' => 'Verification Pending',
-            'warnings' => 'Settled with Warnings',
-            'full' => 'Fully Settled',
-        ];
-        $level = match (true) {
-            $hasFailedPull => 'incomplete',
-            $required && $available && ($summary['verification_failed'] ?? []) !== [] => 'incomplete',
-            ! $ledgerSettled => 'updating',
-            ! $required => 'full',
-            ! $available, ($summary['unverified'] ?? []) !== [] => 'pending',
-            ($summary['warnings'] ?? []) !== [] => 'warnings',
-            default => 'full',
-        };
-
-        return ['level' => $level, 'label' => $labels[$level]];
     }
 
     /**
@@ -220,18 +149,12 @@ final class SettleTracker
                     'checks' => self::problemChecks($row->verification_checks ?? []),
                     'checked_at' => $row->verified_at?->setTimezone(Ledger::TZ)->toIso8601String(),
                 ];
-                $stateName = self::stateFor((string) $row->verification_status);
-                // A verification only stays valid for verification_max_age_minutes: if the verifier
-                // stopped running, the day cannot keep looking verified. (Limited-by-design tasks
-                // have nothing to re-check and never go stale.)
-                $maxAge = (int) config('settle.verification_max_age_minutes', 180);
-                if ($maxAge > 0 && $row->verified_at !== null
-                    && in_array($stateName, ['verified', 'verified_warning', 'limited'], true)
-                    && $row->verified_at->copy()->addMinutes($maxAge)->lt($now)) {
-                    $stateName = 'awaiting_verification';
-                    $verification['status'] = 'stale';
-                    $verification['checks'] = [];
-                }
+                $stateName = match ($row->verification_status) {
+                    VerificationResult::PASS, VerificationResult::WARN => 'verified',
+                    VerificationResult::LIMITED => 'limited',
+                    VerificationResult::FAIL, VerificationResult::ERROR => 'verification_failed',
+                    default => 'awaiting_verification',
+                };
             } elseif ($row !== null && $row->verification_status !== null) {
                 $verification = ['status' => 'stale', 'checks' => [], 'checked_at' => $row->verified_at?->setTimezone(Ledger::TZ)->toIso8601String()];
             }
@@ -335,9 +258,8 @@ final class SettleTracker
         $row->save();
     }
 
-    public static function saveVerification(string $date, string $key, VerificationResult $result, ?string $doneAt, int $durationMs, ?Carbon $at = null): void
+    public static function saveVerification(string $date, string $key, VerificationResult $result, ?string $doneAt, int $durationMs): void
     {
-        $at = ($at ?? Carbon::now(Ledger::TZ))->copy()->setTimezone(Ledger::TZ);
         SettleVerification::query()->create([
             'settle_date' => $date,
             'task_key' => $key,
@@ -346,7 +268,6 @@ final class SettleTracker
             'metrics' => $result->metrics,
             'ledger_done_at' => $doneAt,
             'duration_ms' => $durationMs,
-            'created_at' => $at,
         ]);
 
         $row = SettleTaskRun::query()->firstOrNew(['settle_date' => $date, 'task_key' => $key]);
@@ -360,32 +281,17 @@ final class SettleTracker
         $row->fill([
             'verification_status' => $result->status,
             'verification_checks' => $result->checks,
-            'verified_at' => $at,
+            'verified_at' => Carbon::now(Ledger::TZ),
             'verified_for_done_at' => $doneAt,
             'ledger_done_at' => $doneAt,
-            'state' => self::stateFor($result->status),
+            'state' => match ($result->status) {
+                VerificationResult::PASS, VerificationResult::WARN => 'verified',
+                VerificationResult::LIMITED => 'limited',
+                VerificationResult::FAIL, VerificationResult::ERROR => 'verification_failed',
+                default => 'awaiting_verification',
+            },
         ]);
         $row->save();
-    }
-
-    /**
-     * How many of the most recent verifications of this task, for the same pull (ledger "done"
-     * timestamp), failed in a row (fail / error), counting the newest first.
-     */
-    public static function consecutiveFailures(string $date, string $key, ?string $doneAt): int
-    {
-        $rows = SettleVerification::query()
-            ->where('settle_date', $date)->where('task_key', $key)
-            ->orderByDesc('id')->limit(12)->get(['status', 'ledger_done_at']);
-        $n = 0;
-        foreach ($rows as $r) {
-            if ($r->ledger_done_at !== $doneAt || ! in_array($r->status, [VerificationResult::FAIL, VerificationResult::ERROR], true)) {
-                break;
-            }
-            $n++;
-        }
-
-        return $n;
     }
 
     /** Output markers stored by the latest run of the task (null when no run was recorded). */

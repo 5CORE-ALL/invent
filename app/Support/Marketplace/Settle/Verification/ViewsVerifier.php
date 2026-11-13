@@ -27,9 +27,9 @@ final class ViewsVerifier implements Verifier
             $channels = $this->spec['channels'] ?? [];
             $amazon = ! empty($this->spec['amazon']);
             if ($channels === [] && ! $amazon) {
-                return new VerificationResult(VerificationResult::LIMITED_BY_DESIGN, [VerificationResult::check(
+                return new VerificationResult(VerificationResult::LIMITED, [VerificationResult::check(
                     'no_dated_source',
-                    'limited_by_design',
+                    'limited',
                     'This task has no dated one-day views table to compare with; it is verified from the command output only.'
                 )]);
             }

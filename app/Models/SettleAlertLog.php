@@ -18,7 +18,6 @@ class SettleAlertLog extends Model
     protected $casts = [
         'settle_date' => 'date:Y-m-d',
         'channels' => 'array',
-        'failed_channels' => 'array',
         'sent_at' => 'datetime',
     ];
 }
