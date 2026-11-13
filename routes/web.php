@@ -4464,6 +4464,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Vinted Sheet Routes (margin 0.87)
     Route::get('/vinted/sheet', [\App\Http\Controllers\Sales\VintedSalesController::class, 'index'])->name('vinted.sheet');
     Route::get('/vinted/sheet-data', [\App\Http\Controllers\Sales\VintedSalesController::class, 'getData'])->name('vinted.sheet.data');
+    Route::post('/vinted/sheet/save-sku', [\App\Http\Controllers\Sales\VintedSalesController::class, 'saveSku'])->name('vinted.sheet.save.sku');
 
     // Depop Pricing — editable Price / L30 per SKU, with CSV export/import round-trip
     Route::get('/depop/pricing',         [\App\Http\Controllers\MarketPlace\DepopController::class, 'pricingView'])->name('depop.pricing');

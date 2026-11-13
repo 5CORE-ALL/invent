@@ -63,6 +63,8 @@ class VintedSalesController extends Controller
                     'product_name' => $row->description ? substr(str_replace(["\r", "\n"], ' ', $row->description), 0, 120) : '',
                     'size' => $row->size,
                     'sku' => $row->sku_code ?? '',
+                    'sku_source' => $row->sku_source ?? null, // null = exact, 'guess', 'manual'
+                    'sku_in_pm' => $skuKey !== '' && $pmBySku->has($skuKey),
                     'quantity' => $quantity,
                     'price' => round($unitPrice, 2),
                     'sale_amount' => round($saleAmount, 2),
@@ -87,6 +89,69 @@ class VintedSalesController extends Controller
             Log::error('Vinted Sales Data Error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Edit the SKU of one sheet row. A typed SKU is marked "manual" so the hourly Shopify sync never
+     * overwrites it; an empty value hands the row back to the sync (next run fills it again).
+     */
+    public function saveSku(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'sku' => 'nullable|string|max:191',
+        ]);
+
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('vinted_sales_data', 'sku_source')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first (sku_source column is missing).'], 503);
+        }
+
+        $row = VintedSalesData::find((int) $request->input('id'));
+        if (! $row) {
+            return response()->json(['success' => false, 'message' => 'Row not found'], 404);
+        }
+
+        // Spaces / NBSP cleaned up; use Product Master spelling when the SKU matches one.
+        $sku = trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF"], ' ', (string) $request->input('sku', '')));
+        $sku = preg_replace('/\s+/', ' ', $sku);
+        $matched = null;
+        if ($sku !== '') {
+            $want = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $wantCompact = \App\Models\ShopifySku::compactSkuForLookup($sku);
+            foreach (ProductMaster::query()->whereNull('deleted_at')->whereNotNull('sku')->pluck('sku') as $pmSku) {
+                $pmSku = trim((string) $pmSku);
+                if ($pmSku === '' || stripos($pmSku, 'PARENT') === 0) {
+                    continue;
+                }
+                if (\App\Models\ShopifySku::normalizeSkuForShopifyLookup($pmSku) === $want) {
+                    $matched = $pmSku;
+                    break;
+                }
+                if ($matched === null && \App\Models\ShopifySku::compactSkuForLookup($pmSku) === $wantCompact) {
+                    $matched = $pmSku;
+                }
+            }
+        }
+
+        $row->sku_code = $sku === '' ? null : ($matched ?? $sku);
+        $row->sku_source = $sku === '' ? null : 'manual';
+        $row->save();
+
+        try {
+            VintedController::syncL30FromSales();
+        } catch (\Throwable $e) {
+            Log::warning('Vinted sheet SKU edit: L30 refresh failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'success' => true,
+            'sku' => $row->sku_code ?? '',
+            'sku_source' => $row->sku_source,
+            'sku_in_pm' => $sku === '' ? false : $matched !== null,
+            'message' => $sku === ''
+                ? 'SKU cleared; the next Shopify sync fills it again.'
+                : ($matched === null ? 'Saved, but this SKU is not in Product Master.' : 'SKU saved.'),
+        ]);
     }
 
     /**

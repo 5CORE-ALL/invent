@@ -47,6 +47,8 @@
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge">GPFT Total: $0</span>
                         <span class="badge fs-6 p-2" id="gpft-pct-badge" style="background-color: #6f42c1; color: white;">G PFT %: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge">COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="guessed-sku-badge" style="background-color:#ffc107;color:#212529;cursor:pointer;"
+                              title="Rows whose SKU was guessed from the product title. Click to show only these, click again to show all.">Guessed SKU: 0</span>
                     </div>
                 </div>
             </div>
@@ -92,7 +94,25 @@
                 { title: "Source", field: "source", width: 110 },
                 { title: "Product", field: "product_name", width: 280 },
                 { title: "Size", field: "size", width: 80 },
-                { title: "SKU", field: "sku", width: 120, cssClass: "text-primary fw-bold" },
+                {
+                    title: "SKU", field: "sku", width: 170, cssClass: "text-primary fw-bold",
+                    editor: "input", editorParams: { elementAttributes: { maxlength: "191" } },
+                    headerTooltip: "Double-click a SKU to edit it. Yellow ? = SKU guessed from the product title. A SKU you type is kept (the Shopify sync will not overwrite it).",
+                    formatter: function(cell) {
+                        var d = cell.getRow().getData();
+                        var v = String(cell.getValue() == null ? '' : cell.getValue()).replace(/</g, '&lt;');
+                        if (d.sku_source === 'guess') {
+                            return '<span style="background:#fff3cd;color:#664d03;padding:1px 6px;border-radius:4px;" title="Guessed from the product title - double-click to correct">' + v + ' <b>?</b></span>';
+                        }
+                        if (d.sku_source === 'manual') {
+                            return '<span title="Edited by hand">' + v + ' <i class="fa fa-pen text-success" style="font-size:10px;"></i></span>';
+                        }
+                        if (v !== '' && d.sku_in_pm === false) {
+                            return '<span style="color:#dc3545;" title="Not a Product Master SKU">' + v + '</span>';
+                        }
+                        return v;
+                    }
+                },
                 { title: "Qty", field: "quantity", width: 60, hozAlign: "center" },
                 { title: "Price", field: "price", width: 80, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
                 { title: "Sale AMT", field: "sale_amount", width: 90, hozAlign: "center", formatter: "money", formatterParams: { symbol: "$", precision: 2 } },
@@ -107,6 +127,21 @@
             ],
             dataLoaded: function() { updateSummary(); },
             ajaxError: function(e) { showToast("Error loading data", "error"); }
+        });
+        table.on('cellEdited', function(cell) {
+            if (cell.getField() !== 'sku') return;
+            var row = cell.getRow();
+            var data = row.getData();
+            $.post("{{ route('vinted.sheet.save.sku') }}", { id: data.id, sku: cell.getValue() })
+                .done(function(res) {
+                    row.update({ sku: res.sku, sku_source: res.sku_source, sku_in_pm: res.sku_in_pm });
+                    showToast(res.message || 'SKU saved.', res.sku_in_pm || !res.sku ? 'success' : 'info');
+                    updateSummary();
+                })
+                .fail(function(xhr) {
+                    cell.restoreOldValue();
+                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save SKU', 'error');
+                });
         });
         $('#sku-search').on('keyup', function() { table.setFilter("sku", "like", $(this).val()); setTimeout(updateSummary, 100); });
         function updateSummary() {
@@ -125,7 +160,16 @@
             $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
             $('#gpft-pct-badge').text('G PFT %: ' + gpftPct + '%');
             $('#total-cogs-badge').text('COGS: $' + Math.round(totalCogs).toLocaleString());
+            var guessed = table.getData().filter(function(r) { return r.sku_source === 'guess'; }).length;
+            $('#guessed-sku-badge').text('Guessed SKU: ' + guessed);
         }
+        var guessedOnly = false;
+        $('#guessed-sku-badge').on('click', function() {
+            guessedOnly = !guessedOnly;
+            if (guessedOnly) { table.setFilter("sku_source", "=", "guess"); } else { table.clearFilter(true); }
+            $(this).css('outline', guessedOnly ? '3px solid #212529' : 'none');
+            setTimeout(updateSummary, 100);
+        });
         table.on('dataProcessed', updateSummary);
         table.on('dataFiltered', updateSummary);
         $('#export-btn').on('click', function() { table.download("csv", "vinted_sheet_data.csv"); });

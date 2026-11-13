@@ -92,6 +92,7 @@ class FlufMarketplaceSalesSync
             ->get();
 
         $resolveSku = $this->skuResolver($lines, false, $channel);
+        $hasSkuSource = Schema::hasColumn($table, 'sku_source');
 
         $keep = [];
         foreach ($lines as $line) {
@@ -119,16 +120,25 @@ class FlufMarketplaceSalesSync
                 'quantity' => $qty,
                 'item_price' => round($net / $qty, 2),
                 'total' => $net,
-                'sku_code' => $resolveSku($line)['sku'] ?: null,
                 'source' => 'shopify',
                 'shopify_order_number' => $line->order_number ?: null,
             ];
+            $resolved = $resolveSku($line);
+            $skuFields = ['sku_code' => $resolved['sku'] ?: null];
+            if ($hasSkuSource) {
+                $skuFields['sku_source'] = str_starts_with((string) $resolved['source'], 'GUESSED') ? 'guess' : null;
+            }
+            $row += $skuFields;
             $key = ['shopify_order_id' => (int) $line->order_id, 'shopify_line_item_id' => (int) $line->line_item_id];
             $keep[$key['shopify_order_id'].':'.$key['shopify_line_item_id']] = true;
             $result['found']++;
 
-            $existing = DB::table($table)->where($key)->first(['id']);
+            $existing = DB::table($table)->where($key)->first($hasSkuSource ? ['id', 'sku_source'] : ['id']);
             if ($existing) {
+                if ($hasSkuSource && ($existing->sku_source ?? null) === 'manual') {
+                    // A SKU typed in on the sheet is final: the sync must not overwrite it.
+                    unset($row['sku_code'], $row['sku_source']);
+                }
                 DB::table($table)->where('id', $existing->id)->update($row + ['updated_at' => now()]);
                 $result['updated']++;
             } else {
