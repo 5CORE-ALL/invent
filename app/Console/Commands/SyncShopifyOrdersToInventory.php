@@ -194,7 +194,17 @@ class SyncShopifyOrdersToInventory extends Command
                 $params
             );
 
-            if (!$resp) break;
+            if (!$resp) {
+                // Never end quietly: a silent break here made "Sync complete" print after only part of the
+                // date range had been fetched (orders come newest first, so the oldest orders were lost).
+                if (!empty($batch)) {
+                    $this->upsertBatch($batch);
+                }
+                throw new \RuntimeException(sprintf(
+                    'Shopify did not answer page %d (rate limit or HTTP error). Fetched %d orders so far — the range is INCOMPLETE. Re-run the command.',
+                    $page, $this->fetched
+                ));
+            }
 
             $orders = $resp->json()['orders'] ?? [];
             $this->fetched += count($orders);
@@ -229,14 +239,24 @@ class SyncShopifyOrdersToInventory extends Command
     private function callWithRetry(string $url, array $params, int $maxTries = 5)
     {
         $wait = 1;
+        $rateLimited = 0;
         for ($try = 1; $try <= $maxTries; $try++) {
             try {
                 $resp = $this->httpClient()->retry(1, 500)->get($url, $params);
 
                 if ($resp->status() === 429) {
-                    $this->warn("  Rate-limit (429) — waiting {$wait}s…");
-                    sleep($wait);
+                    // Throttling is not a failure: other crons share the same Shopify API budget, so keep
+                    // waiting (honouring Retry-After) instead of giving up after a few tries.
+                    $rateLimited++;
+                    if ($rateLimited > 40) {
+                        return null;
+                    }
+                    $retryAfter = (float) $resp->header('Retry-After');
+                    $sleepFor = max($wait, (int) ceil($retryAfter));
+                    $this->warn("  Rate-limit (429) — waiting {$sleepFor}s…");
+                    sleep($sleepFor);
                     $wait = min($wait * 2, 16);
+                    $try--; // a 429 does not use up a normal retry
                     continue;
                 }
 
