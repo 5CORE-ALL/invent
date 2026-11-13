@@ -5867,7 +5867,6 @@
                                 amzAuditToast('Excel: building file ' + idx + ' / ' + rows.length + '...', true);
                                 if (idx < rows.length) { setTimeout(step, 0); return; }
                                 widths.forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-                                if (cols.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
                                 resolve(rows.length);
                             } catch (e) { reject(e); }
                         }
