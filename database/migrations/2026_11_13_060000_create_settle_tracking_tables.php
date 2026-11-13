@@ -25,7 +25,8 @@ return new class extends Migration
                 $table->string('kind', 16)->nullable();
                 $table->string('lane', 32)->nullable();
                 $table->string('command', 255)->nullable();
-                // pending | not_due | retry_wait | failed | awaiting_verification | verified | limited | verification_failed
+                // not_due | pending | retry_wait | failed | awaiting_verification | verification_failed
+                // | verified | verified_warning | limited | limited_by_design
                 $table->string('state', 32)->default('pending');
                 $table->unsignedSmallInteger('attempts')->default(0);
                 $table->unsignedSmallInteger('max_attempts')->default(3);
@@ -41,7 +42,8 @@ return new class extends Migration
                 $table->string('next_retry_note', 120)->nullable();
                 // Latest ledger "done" timestamp this row was last synced against.
                 $table->string('ledger_done_at', 40)->nullable();
-                $table->string('verification_status', 16)->nullable();
+                // pass | warn | limited | limited_by_design | pending | error | fail
+                $table->string('verification_status', 24)->nullable();
                 $table->json('verification_checks')->nullable();
                 $table->dateTime('verified_at')->nullable();
                 // Ledger done timestamp that the stored verification belongs to. A newer pull
@@ -60,7 +62,8 @@ return new class extends Migration
                 $table->id();
                 $table->date('settle_date');
                 $table->string('task_key', 64);
-                $table->string('status', 16);
+                // pass | warn | limited | limited_by_design | pending | error | fail | baseline (operator-accepted table size)
+                $table->string('status', 24);
                 $table->json('checks')->nullable();
                 $table->json('metrics')->nullable();
                 $table->string('ledger_done_at', 40)->nullable();
@@ -82,7 +85,11 @@ return new class extends Migration
                 $table->string('fingerprint', 191);
                 $table->string('title', 255);
                 $table->text('message');
+                // One row per delivery attempt: `channels` = delivered (log / mail / webhook),
+                // `failed_channels` = attempted but NOT delivered (e.g. "webhook:HTTP 500"). Only delivered
+                // channels suppress a repeat, so a log-only or failed alert is delivered later.
                 $table->json('channels')->nullable();
+                $table->json('failed_channels')->nullable();
                 $table->timestamp('sent_at')->nullable();
                 $table->timestamp('created_at')->nullable();
 

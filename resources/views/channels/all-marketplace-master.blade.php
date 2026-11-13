@@ -9851,60 +9851,88 @@
 
             // "Settled" = every marketplace re-pulled Pacific yesterday after it closed (and again later
             // for pending / late orders). Until then yesterday's numbers can still rise.
+            // Four verified levels (never "Settled" on unverified data):
+            //   full       -> Fully Settled           (green)
+            //   warnings   -> Settled with Warnings   (yellow, with the warning list in the tooltip)
+            //   incomplete -> Incomplete              (red)
+            //   pending    -> Verification Pending    (blue)
+            //   updating   -> Updating                (pulls still running; unchanged legacy badge)
+            const SETTLE_LEVEL_CLASS = {
+                full: 'bg-success text-white',
+                warnings: 'bg-warning text-dark',
+                incomplete: 'bg-danger text-white',
+                pending: 'bg-info text-dark',
+                updating: 'bg-warning text-dark'
+            };
+            const SETTLE_LEVEL_TEXT = {
+                full: 'Fully Settled',
+                warnings: 'Settled with Warnings',
+                incomplete: 'Incomplete',
+                pending: 'Verification Pending',
+                updating: 'Updating'
+            };
+
             function applyYesterdaySettleTag(settle) {
                 const $tag = $('#yesterdaySettleTag');
                 if (!$tag.length || !settle) { $tag.hide(); return; }
-                const low = settle.anomalies || [];
-                if (settle.settled && low.length) {
-                    $tag.removeClass('bg-success text-white').addClass('bg-warning text-dark')
-                        .text('Check ' + low.length)
-                        .attr('title', 'All pulls finished, but these channels are far below their usual day (L30 ÷ 30): '
-                            + low.map(function(a) { return a.channel + ' $' + Math.round(a.sales) + ' vs ~$' + Math.round(a.typical); }).join('; ')
-                            + '. Re-pulling will not fix this; check that channel\'s order sync.')
-                        .show();
-                    return;
-                }
-                if (settle.settled) {
-                    $tag.removeClass('bg-warning text-dark').addClass('bg-success text-white')
-                        .text('Settled')
-                        .attr('title', 'All marketplaces have re-pulled ' + settle.date + ' after the Pacific day closed.')
-                        .show();
-                    return;
-                }
+                const level = settle.level || (settle.settled ? 'full' : 'updating');
                 const pending = (settle.pending || []).length;
                 const failed = (settle.failed || []).length;
                 const tasks = settle.tasks || {};
                 const ver = settle.verification || null;
-                let text = 'Updating';
-                let cls = 'bg-warning text-dark';
-                let title = 'Yesterday (' + settle.date + ' PT) is still being re-pulled from the marketplaces (pass '
-                    + settle.passes_due + ' of ' + settle.passes_total + '). Numbers can still go up.';
-                if (settle.passes_due === 0) {
-                    title = 'The Pacific day has just closed. The first re-pull starts shortly; numbers can still go up.';
-                }
-                if (pending) { title += '\nWaiting on: ' + settleNames(settle.pending, tasks).join(', ') + '.'; }
-                if (failed) {
-                    text = 'Incomplete';
-                    // Exact failed marketplace + task, attempts, last error and retry info.
-                    title += '\nFailed (' + failed + '):\n' + settle.failed.map(function(k) { return ' • ' + settleTaskLine(tasks[k], k); }).join('\n');
-                } else if (settle.ledger_settled && ver) {
-                    // Every pull exited OK, but "Settled" also needs the stored data to be verified.
-                    if (!ver.available) {
-                        text = 'Unverified';
-                        title = 'All pulls finished, but the verification tables are not available yet (run the settle_* migration). Not marked Settled.';
-                    } else if ((ver.failed || []).length) {
-                        text = 'Verify failed ' + ver.failed.length;
-                        cls = 'bg-danger text-white';
-                        title = 'All pulls exited OK, but the stored data failed verification (' + ver.verified + '/' + ver.total + ' tasks verified):\n'
-                            + ver.failed.map(function(k) { return ' • ' + settleTaskLine(tasks[k], k); }).join('\n');
+                const low = settle.anomalies || [];
+                let text = SETTLE_LEVEL_TEXT[level] || 'Updating';
+                let cls = SETTLE_LEVEL_CLASS[level] || SETTLE_LEVEL_CLASS.updating;
+                let title = '';
+
+                if (level === 'full') {
+                    title = 'All marketplaces re-pulled ' + settle.date + ' after the Pacific day closed and every task passed verification.';
+                } else if (level === 'warnings') {
+                    const w = (ver && ver.warnings) || settle.warnings || [];
+                    title = 'Settled with warnings: all marketplaces re-pulled ' + settle.date + ' and the data is verified, but ' + w.length + ' task(s) need a look:\n'
+                        + w.map(function(x) {
+                            return ' \u2022 ' + x.marketplace + ' (' + x.kind + ') [' + x.key + '] \u2014 ' + (x.state === 'limited' ? 'a check was skipped / unavailable' : 'unusual but within limits')
+                                + (x.messages || []).map(function(m) { return '\n     ' + m; }).join('');
+                        }).join('\n');
+                } else if (level === 'incomplete') {
+                    if (failed) {
+                        // Exact failed marketplace + task, attempts, last error and retry info.
+                        title = 'Yesterday (' + settle.date + ' PT) is INCOMPLETE. Failed (' + failed + '):\n'
+                            + settle.failed.map(function(k) { return ' \u2022 ' + settleTaskLine(tasks[k], k); }).join('\n');
                     } else {
-                        text = 'Verifying';
-                        title = 'All pulls finished; verifying the stored data (' + ver.verified + '/' + ver.total + ' tasks verified). Waiting on: '
-                            + settleNames(ver.unverified || [], tasks).join(', ') + '.';
+                        const vf = (ver && ver.failed) || [];
+                        text = 'Incomplete (verify failed ' + vf.length + ')';
+                        title = 'All pulls exited OK, but the stored data failed verification (' + (ver ? ver.verified : 0) + '/' + (ver ? ver.total : 0) + ' tasks verified):\n'
+                            + vf.map(function(k) { return ' \u2022 ' + settleTaskLine(tasks[k], k); }).join('\n');
+                    }
+                } else if (level === 'pending') {
+                    if (ver && !ver.available) {
+                        title = 'All pulls finished, but the verification tables are not available yet (run the settle_* migration). Not marked Settled.';
+                    } else {
+                        title = 'All pulls finished; waiting for verification (' + (ver ? ver.verified : 0) + '/' + (ver ? ver.total : 0) + ' tasks verified). Waiting on: '
+                            + settleNames((ver && ver.unverified) || [], tasks).join(', ') + '.';
+                    }
+                } else {
+                    title = 'Yesterday (' + settle.date + ' PT) is still being re-pulled from the marketplaces (pass '
+                        + settle.passes_due + ' of ' + settle.passes_total + '). Numbers can still go up.';
+                    if (settle.passes_due === 0) {
+                        title = 'The Pacific day has just closed. The first re-pull starts shortly; numbers can still go up.';
+                    }
+                    if (pending) { title += '\nWaiting on: ' + settleNames(settle.pending, tasks).join(', ') + '.'; }
+                }
+
+                // Settled but a channel is far below its usual day: keep the pre-existing "Check N" hint.
+                if (settle.settled && low.length) {
+                    title += '\nCheck ' + low.length + ': these channels are far below their usual day (L30 \u00f7 30): '
+                        + low.map(function(a) { return a.channel + ' $' + Math.round(a.sales) + ' vs ~$' + Math.round(a.typical); }).join('; ')
+                        + '. Re-pulling will not fix this; check that channel\'s order sync.';
+                    if (level === 'full') {
+                        text = 'Check ' + low.length;
+                        cls = SETTLE_LEVEL_CLASS.warnings;
                     }
                 }
                 if (ver && Object.keys(tasks).length) { title += '\n(Click for per-marketplace details.)'; }
-                $tag.removeClass('bg-success text-white bg-warning text-dark bg-danger').addClass(cls)
+                $tag.removeClass('bg-success text-white bg-warning text-dark bg-danger bg-info').addClass(cls)
                     .text(text).attr('title', title).show();
                 applySettleTagClickable($tag, settle);
             }
@@ -9941,7 +9969,9 @@
 
             const SETTLE_STATE_STYLE = {
                 verified: ['bg-success text-white', 'Verified'],
-                limited: ['bg-info text-dark', 'Verified (limited)'],
+                verified_warning: ['bg-warning text-dark', 'Verified (warning)'],
+                limited: ['bg-warning text-dark', 'Check skipped / unavailable'],
+                limited_by_design: ['bg-info text-dark', 'Verified (limited by design)'],
                 verification_failed: ['bg-danger text-white', 'Verification failed'],
                 failed: ['bg-danger text-white', 'Failed'],
                 retry_wait: ['bg-warning text-dark', 'Retry pending'],
@@ -9952,12 +9982,12 @@
 
             function renderSettleModal(settle) {
                 const tasks = (settle && settle.tasks) ? settle.tasks : {};
-                const order = {failed: 0, verification_failed: 1, retry_wait: 2, pending: 3, awaiting_verification: 4, limited: 5, not_due: 6, verified: 7};
+                const order = {failed: 0, verification_failed: 1, retry_wait: 2, pending: 3, awaiting_verification: 4, limited: 5, verified_warning: 6, not_due: 7, limited_by_design: 8, verified: 9};
                 const list = Object.keys(tasks).map(function(k) { return tasks[k]; }).sort(function(a, b) {
                     return (order[a.state] - order[b.state]) || a.marketplace.localeCompare(b.marketplace);
                 });
                 const ver = settle.verification || {};
-                $('#settleStatusSummary').text('Pacific ' + settle.date + ' — ' + (settle.settled ? 'Settled' : 'Not settled')
+                $('#settleStatusSummary').text('Pacific ' + settle.date + ' — ' + (SETTLE_LEVEL_TEXT[settle.level] || (settle.settled ? 'Settled' : 'Not settled'))
                     + ' · verified ' + (ver.verified || 0) + '/' + (ver.total || list.length) + ' tasks'
                     + (settle.ledger_settled ? ' · all pulls finished' : ''));
                 const fmtTime = function(iso) {
@@ -9966,7 +9996,7 @@
                 $('#settleStatusBody').html(list.map(function(t) {
                     const st = SETTLE_STATE_STYLE[t.state] || ['bg-secondary text-white', t.state];
                     const checks = ((t.verification && t.verification.checks) || []).map(function(c) {
-                        return '<div><span class="badge ' + (c.status === 'fail' || c.status === 'error' ? 'bg-danger' : 'bg-warning text-dark') + '">' + yMpEsc(c.status) + '</span> <code>'
+                        return '<div><span class="badge ' + (c.status === 'fail' || c.status === 'error' ? 'bg-danger' : (c.status === 'limited_by_design' ? 'bg-info text-dark' : 'bg-warning text-dark')) + '">' + yMpEsc(c.status) + '</span> <code>'
                             + yMpEsc(c.code) + '</code> ' + yMpEsc(c.message) + '</div>';
                     }).join('');
                     const retry = t.next_retry_at ? 'Next retry ~' + fmtTime(t.next_retry_at) : (t.next_retry_note ? yMpEsc(t.next_retry_note) : '—');

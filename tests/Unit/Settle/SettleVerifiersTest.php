@@ -254,7 +254,7 @@ class SettleVerifiersTest extends SettleTestCase
         $this->assertSame(VerificationResult::PASS, $ok->status, json_encode($ok->checks));
     }
 
-    public function test_duplicate_campaign_rows_in_ads_are_detected(): void
+    public function test_repeated_amazon_campaign_rows_are_collapsed_like_the_dashboard_not_failed(): void
     {
         $this->makeSpTable();
         for ($i = 1; $i <= 7; $i++) {
@@ -265,8 +265,10 @@ class SettleVerifiersTest extends SettleTestCase
 
         $r = VerifierRegistry::for('ads_amazon_sp')->verify(self::DATE, $this->ctx('ads_amazon_sp'));
 
-        $this->assertSame(3, $r->metrics['duplicate_rows']);
-        $this->assertContains('duplicates', array_merge($this->codes($r->checks, 'warn'), $this->codes($r->checks, 'fail')));
+        $this->assertSame(VerificationResult::PASS, $r->status, json_encode($r->checks));
+        $this->assertSame(3, $r->metrics['collapsed_duplicate_rows']);
+        $this->assertSame(10, $r->metrics['rows'], 'distinct campaigns, MAX spend per campaign (amazonDistinctCampaignTotals)');
+        $this->assertEqualsWithDelta(50.0, $r->metrics['spend'], 0.01, 'repeats must not double the spend');
     }
 
     public function test_ebay_ads_spend_strings_are_summed(): void
@@ -327,14 +329,15 @@ class SettleVerifiersTest extends SettleTestCase
         $this->assertSame(VerificationResult::PASS, $ok->status);
     }
 
-    public function test_tasks_without_a_dated_source_are_only_limited_never_a_full_pass(): void
+    public function test_tasks_without_a_dated_source_are_limited_by_design_never_a_full_pass(): void
     {
         $r = VerifierRegistry::for('views_temu3')->verify(self::DATE, $this->ctx('views_temu3'));
-        $this->assertSame(VerificationResult::LIMITED, $r->status);
+        $this->assertSame(VerificationResult::LIMITED_BY_DESIGN, $r->status);
         $this->assertTrue($r->isVerified());
+        $this->assertFalse($r->isWarning(), 'by design is not a warning');
 
         $w = VerifierRegistry::for('wayfair_api')->verify(self::DATE, $this->ctx('wayfair_api'));
-        $this->assertSame(VerificationResult::LIMITED, $w->status);
+        $this->assertSame(VerificationResult::LIMITED_BY_DESIGN, $w->status);
     }
 
     // ---------------------------------------------------------------- output inspector (incomplete pagination / auth)

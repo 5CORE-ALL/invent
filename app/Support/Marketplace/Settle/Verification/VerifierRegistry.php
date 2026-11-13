@@ -8,7 +8,7 @@ namespace App\Support\Marketplace\Settle\Verification;
  * Timezones are the ones the existing code stores / reads the column in:
  *  - amazon_orders.order_date, mirakl / tiktok created_at : UTC (see YesterdayMarketplaceMetricsService)
  *  - ebay_orders.order_date                               : UTC (creationDate parsed from an ISO 'Z' string)
- *  - temu*, doba, ebay3 creation_date                     : Pacific wall clock
+ *  - temu*, temu3_api_orders, doba, ebay3 creation_date   : Pacific wall clock (Temu fetchers store Pacific)
  *  - shein_daily_data.order_processed_on                  : Asia/Shanghai
  *  - pls_sales.order_date                                 : the order's own (US Eastern) offset
  * A wrong timezone only shifts the window; every volume check compares with the same-shaped
@@ -36,10 +36,11 @@ final class VerifierRegistry
             return new CalculateVerifier;
         }
         if ($taskKey === 'wayfair_api') {
-            return new OutputOnlyVerifier('sync:wayfair-l30-api only updates product-sheet L30/L60 columns (no dated table); wayfair:daily is the data-level check for Wayfair.');
+            return new OutputOnlyVerifier('sync:wayfair-l30-api only updates product-sheet L30/L60 columns (no dated table); wayfair:daily is the data-level check for Wayfair.', true);
         }
 
-        return new OutputOnlyVerifier('No data-level verifier is defined for this task; verified from the command output only.');
+        // A task without a verifier is a SKIPPED check (shown as a warning), not "limited by design".
+        return new OutputOnlyVerifier('No data-level verifier is defined for this task; verified from the command output only.', false);
     }
 
     /** @return array<string, array<string, mixed>> */
@@ -55,6 +56,8 @@ final class VerifierRegistry
             'items' => ['table' => 'amazon_order_items', 'fk' => 'amazon_order_id', 'price' => 'price'],
             'pending_prices' => true,
         ];
+
+        $cancelledTemu = ['CANCELED', 'CANCELLED', 'Canceled', 'Cancelled'];
 
         return [
             'amazon_close' => $amazon,
@@ -76,14 +79,19 @@ final class VerifierRegistry
             'temu' => [
                 'table' => 'temu_orders', 'time_column' => 'parent_order_time', 'tz' => self::LA,
                 'key' => ['order_sn'], 'table_shrink' => true,
+                'status_column' => 'order_status_text', 'exclude_statuses' => $cancelledTemu,
             ],
             'temu2' => [
                 'table' => 'temu2_orders', 'time_column' => 'parent_order_time', 'tz' => self::LA,
                 'key' => ['order_sn'], 'price_column' => 'order_base_amount',
+                'status_column' => 'order_status_text', 'exclude_statuses' => $cancelledTemu,
             ],
+            // `app:fetch-temu3-orders` writes temu3_api_orders (FetchTemu3Orders -> Temu3ApiOrder), which is
+            // also what TemuShopifySalesService reads. The old temu3_orders sheet table is no longer fed.
             'temu3' => [
-                'table' => 'temu3_orders', 'time_column' => 'purchase_date', 'tz' => self::LA,
-                'key' => ['order_id', 'order_item_id'], 'price_column' => 'base_price_total',
+                'table' => 'temu3_api_orders', 'time_column' => 'parent_order_time', 'tz' => self::LA,
+                'key' => ['order_sn'], 'price_column' => 'order_base_amount',
+                'status_column' => 'order_status_text', 'exclude_statuses' => $cancelledTemu,
             ],
             'wayfair' => [
                 'table' => 'wayfair_daily_data', 'time_column' => 'po_date', 'time_type' => 'date',
@@ -92,7 +100,10 @@ final class VerifierRegistry
             // Shein rebuilds the whole table (delete + reinsert): also guard against a wipe.
             'shein_l30' => [
                 'table' => 'shein_daily_data', 'time_column' => 'order_processed_on', 'tz' => 'Asia/Shanghai',
+                // SheinApiService stores ONE ROW PER UNIT, so identical order/sku keys are legitimate:
+                // duplicates are judged by rows-per-order versus the usual day instead.
                 'key' => ['order_number', 'seller_sku', 'shein_sku'], 'price_column' => 'product_price',
+                'duplicates' => 'unit_rows', 'order_column' => 'order_number',
                 'table_shrink' => true,
             ],
             'shein_l60' => ['table' => 'shein_daily_data_l60', 'mode' => 'table', 'table_shrink' => true],
@@ -131,13 +142,18 @@ final class VerifierRegistry
             'ads_ebay' => $ebay('ebay_priority_reports'),
             'ads_ebay2' => $ebay('ebay_2_priority_reports'),
             'ads_ebay3' => $ebay('ebay_3_priority_reports'),
+            // YesterdayMarketplaceMetricsService::amazonDistinctCampaignTotals(): ONE row per campaign_id
+            // (MAX spend), because re-imported rows for the same campaign/day are normal. Repeated rows
+            // are therefore collapsed, not failed.
             'ads_amazon_sp' => [
                 'table' => 'amazon_sp_campaign_reports', 'date_column' => 'report_date_range',
-                'key' => ['campaign_id', 'profile_id'], 'spend' => ['type' => 'numeric', 'columns' => ['cost', 'spend']],
+                'key' => ['campaign_id'], 'aggregate' => 'max_per_key',
+                'spend' => ['type' => 'numeric', 'columns' => ['cost', 'spend']],
             ],
             'ads_amazon_sb' => [
                 'table' => 'amazon_sb_campaign_reports', 'date_column' => 'report_date_range',
-                'key' => ['campaign_id', 'profile_id'], 'spend' => ['type' => 'numeric', 'columns' => ['cost']],
+                'key' => ['campaign_id'], 'aggregate' => 'max_per_key',
+                'spend' => ['type' => 'numeric', 'columns' => ['cost']],
             ],
         ];
     }

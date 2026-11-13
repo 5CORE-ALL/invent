@@ -21,6 +21,7 @@ class SettleVerifyCommand extends Command
         {--only= : Comma-separated task keys to verify}
         {--force : Verify again even if the task is already verified for its current pull}
         {--no-alerts : Do not send alerts}
+        {--accept-baseline= : Operator action: accept the CURRENT table size of these tasks (comma separated) as the new passing baseline, e.g. after a deliberate prune}
         {--json : Print the full result as JSON}';
 
     protected $description = 'Read-only verification of yesterday\'s marketplace pulls (records, duplicates, zeros, pagination) + alerts';
@@ -30,6 +31,16 @@ class SettleVerifyCommand extends Command
         $now = Carbon::now(Ledger::TZ);
         $date = (string) ($this->option('date') ?: Ledger::pacificYesterday($now));
         $only = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('only')))));
+
+        $accept = array_values(array_filter(array_map('trim', explode(',', (string) $this->option('accept-baseline')))));
+        if ($accept !== []) {
+            foreach ($accept as $task) {
+                $r = $verifier->acceptBaseline($date, $task, $now);
+                $r['ok'] ? $this->info($r['message']) : $this->error($r['message']);
+            }
+
+            return self::SUCCESS;
+        }
 
         $out = $verifier->run($date, (bool) $this->option('force'), $only, ! $this->option('no-alerts'), $now);
 

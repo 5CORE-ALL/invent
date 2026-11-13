@@ -35,7 +35,7 @@ class SettleReportCommand extends Command
         $this->info(sprintf(
             'Pacific %s — %s (ledger %s, verified %d/%d%s)',
             $date,
-            $status['settled'] ? 'SETTLED' : 'NOT settled',
+            strtoupper((string) ($status['level_label'] ?? ($status['settled'] ? 'Settled' : 'Not settled'))),
             $status['ledger_settled'] ? 'settled' : 'not settled',
             $v['verified'],
             $v['total'],
@@ -44,7 +44,7 @@ class SettleReportCommand extends Command
 
         $rows = [];
         foreach ($status['tasks'] as $t) {
-            if ($this->option('problems') && in_array($t['state'], ['verified', 'limited'], true)) {
+            if ($this->option('problems') && in_array($t['state'], ['verified', 'limited_by_design'], true)) {
                 continue;
             }
             $problem = '';

@@ -251,10 +251,13 @@ class YesterdaySettleLedger
      * After the 09:00 PT hard stop, anything not done is reported as failed ("missed"), because it
      * will not be retried that day.
      *
-     * `settled` = every ledger pull is done AND every task is verified (see SettleTracker). The extra
-     * keys `ledger_settled`, `verification` and `tasks` are additive; all earlier keys are unchanged.
+     * `settled` = every ledger pull is done AND every task is verified (see SettleTracker). It is true
+     * for both "Fully Settled" and "Settled with Warnings"; `level` tells them apart:
+     * `full` | `warnings` | `incomplete` | `pending` | `updating` (pulls still running). The extra keys
+     * `ledger_settled`, `verification`, `tasks`, `level`, `level_label` and `warnings` are additive;
+     * all earlier keys are unchanged.
      *
-     * @return array{date: string, settled: bool, ledger_settled: bool, verification: array<string, mixed>, tasks: array<string, array<string, mixed>>, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string, deadline_passed: bool}
+     * @return array{date: string, settled: bool, level: string, level_label: string, warnings: list<array<string, mixed>>, ledger_settled: bool, verification: array<string, mixed>, tasks: array<string, array<string, mixed>>, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string, deadline_passed: bool}
      */
     public static function status(?string $date = null, ?Carbon $now = null): array
     {
@@ -305,8 +308,11 @@ class YesterdaySettleLedger
             'total' => count(self::tasks()),
             'failed' => [],
             'unverified' => [],
+            'warnings' => [],
+            'by_design' => [],
         ];
         $taskDetail = [];
+        $summary = ['verification_failed' => [], 'unverified' => [], 'warnings' => []];
         try {
             $described = SettleTracker::describe($date, $ledger, $hi, $deadlinePassed, $now);
             $taskDetail = $described['tasks'];
@@ -315,14 +321,21 @@ class YesterdaySettleLedger
             $verification['verified'] = $described['summary']['verified'];
             $verification['failed'] = $described['summary']['verification_failed'];
             $verification['unverified'] = $described['summary']['unverified'];
+            $verification['warnings'] = $described['summary']['warnings'];
+            $verification['by_design'] = $described['summary']['by_design'];
+            $summary = $described['summary'];
         } catch (\Throwable $e) {
             // keep the defaults: unverified
         }
         $settled = $ledgerSettled && (! $required || $verification['all_verified']);
+        $level = SettleTracker::level($ledgerSettled, $failed !== [], $required, $verification['available'], $summary);
 
         return [
             'date' => $date,
             'settled' => $settled,
+            'level' => $level['level'],
+            'level_label' => $level['label'],
+            'warnings' => $verification['warnings'],
             'ledger_settled' => $ledgerSettled,
             'verification' => $verification,
             'tasks' => $taskDetail,
