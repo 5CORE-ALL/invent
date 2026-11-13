@@ -167,6 +167,17 @@ final class EbayTradingReviseItem
         $tokenEsc = htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $nameEsc  = htmlspecialchars($pictureName, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $oauth = str_starts_with($authToken, 'v^');
+
+        // eBay's Trading UploadSiteHostedPictures answers HTTP 404 for these OAuth accounts.
+        // The Media API accepts the same token and returns an i.ebayimg.com address, so use it first.
+        $mediaNote = '';
+        if ($oauth) {
+            $mediaUrl = self::uploadImageViaMediaApi($authToken, $imageData, $contentType, $mediaNote);
+            if ($mediaUrl !== null) {
+                return ['success' => true, 'url' => $mediaUrl];
+            }
+        }
+
         $xmlPayload = '<?xml version="1.0" encoding="utf-8"?>'
             .'<UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">';
         if (! $oauth) {
@@ -218,7 +229,8 @@ final class EbayTradingReviseItem
                 $detail = trim(preg_replace('/\s+/', ' ', strip_tags(substr($respBody, 0, 300))) ?? '');
 
                 return ['success' => false, 'message' => 'Invalid EPS upload response (HTTP '.$response->status().' from '.$host
-                    .', '.strlen($imageData).' bytes sent as '.$contentType.'): '.($detail !== '' ? $detail : 'empty reply')];
+                    .', '.strlen($imageData).' bytes sent as '.$contentType.'): '.($detail !== '' ? $detail : 'empty reply')
+                    .($mediaNote !== '' ? ' | Media API: '.$mediaNote : '')];
             }
 
             $arr  = json_decode(json_encode($xmlResp), true);
@@ -249,10 +261,45 @@ final class EbayTradingReviseItem
                 $errMsg = '[eBay #'.$firstErr['ErrorCode'].'] '.$errMsg;
             }
 
-            return ['success' => false, 'message' => $errMsg];
+            return ['success' => false, 'message' => $errMsg.($mediaNote !== '' ? ' | Media API: '.$mediaNote : '')];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'EPS upload exception: '.$e->getMessage()];
         }
+    }
+
+    /**
+     * eBay Media API: copy an image onto eBay's servers (needs the sell.inventory OAuth scope).
+     */
+    private static function uploadImageViaMediaApi(string $token, string $imageData, string $contentType, string &$note): ?string
+    {
+        $base = 'https://apim.ebay.com/commerce/media/v1_beta/image';
+        $auth = ['Authorization' => 'Bearer '.$token, 'Accept' => 'application/json'];
+        try {
+            $ext = str_contains($contentType, 'png') ? 'png' : (str_contains($contentType, 'gif') ? 'gif' : 'jpg');
+            $response = Http::timeout(90)->withHeaders($auth)
+                ->attach('image', $imageData, 'photo.'.$ext, ['Content-Type' => $contentType])
+                ->post($base.'/create_image_from_file');
+            if ($response->successful()) {
+                $json = $response->json();
+                $found = is_array($json) ? trim((string) ($json['imageUrl'] ?? '')) : '';
+                if ($found === '') {
+                    $location = trim((string) $response->header('Location'));
+                    if ($location !== '') {
+                        $data = Http::timeout(30)->withHeaders($auth)->get($location)->json();
+                        $found = is_array($data) ? trim((string) ($data['imageUrl'] ?? '')) : '';
+                    }
+                }
+                if ($found !== '') {
+                    return $found;
+                }
+            }
+            $text = trim(preg_replace('/\s+/', ' ', strip_tags(substr((string) $response->body(), 0, 220))) ?? '');
+            $note = 'HTTP '.$response->status().($text !== '' ? ' '.$text : '');
+        } catch (\Throwable $e) {
+            $note = $e->getMessage();
+        }
+
+        return null;
     }
 
     /**

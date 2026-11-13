@@ -1118,17 +1118,31 @@ class MacysApiService
             return null;
         }
 
-        $prefix = trim((string) strtok($sku, ' '));
-        if ($prefix === '' || strlen($prefix) < 3) {
+        $tokens = array_values(array_filter(preg_split('/\s+/', trim($sku)) ?: [], static fn ($t) => $t !== ''));
+        if ($tokens === []) {
             return null;
         }
 
-        $rows = DB::table($table)
-            ->where('sku', 'like', $prefix.'%')
-            ->whereNotNull('category_code')
-            ->where('category_code', '!=', '')
-            ->limit(50)
-            ->pluck('category_code');
+        // Closest family first ("WF 10140"), then the brand/series prefix ("WF").
+        // A short prefix only matches when a space follows it, so "WF" never matches "WFA123".
+        $likes = [];
+        if (count($tokens) >= 2) {
+            $likes[] = $tokens[0].' '.$tokens[1].'%';
+        }
+        $likes[] = strlen($tokens[0]) >= 3 ? $tokens[0].'%' : $tokens[0].' %';
+
+        $rows = collect();
+        foreach (array_values(array_unique($likes)) as $like) {
+            $rows = DB::table($table)
+                ->where('sku', 'like', $like)
+                ->whereNotNull('category_code')
+                ->where('category_code', '!=', '')
+                ->limit(50)
+                ->pluck('category_code');
+            if ($rows->isNotEmpty()) {
+                break;
+            }
+        }
 
         if ($rows->isEmpty()) {
             return null;
