@@ -307,6 +307,11 @@
         #vamChecklistTable td { font-size: 12.5px; vertical-align: middle; }
         #vamChecklistTable td.vam-cl-point { font-weight: 600; }
         #vamChecklistTable tr.is-done td { background: #f0fdf4; }
+        .vam-cl-note-btn { border: 0; background: transparent; color: #9ca3af; font-size: 15px; cursor: pointer; padding: 2px 6px; }
+        .vam-cl-note-btn:hover { color: #2c6ed5; }
+        .vam-cl-note-btn.has-note { color: #d97706; }
+        #vamChecklistTable tr.vam-cl-note-row td { background: #fffbeb; padding: 6px 12px; }
+        #vamChecklistTable tr.vam-cl-note-row textarea { font-size: 12.5px; }
         #vamChecklistTable .vam-cl-box { width: 18px; height: 18px; cursor: pointer; }
         .vam-ad-box {
             width: 18px;
@@ -905,6 +910,7 @@
                                 <th style="width:190px;">Checkpoint</th>
                                 <th>What to Check</th>
                                 <th>Why It Matters</th>
+                                <th style="width:50px;" class="text-center">Note</th>
                             </tr>
                         </thead>
                         <tbody id="vamChecklistBody"></tbody>
@@ -1658,6 +1664,10 @@
                     if (b.checked) done++;
                     b.closest('tr').classList.toggle('is-done', b.checked);
                 });
+                document.querySelectorAll('#vamChecklistBody .vam-cl-note-input').forEach(t => {
+                    const btn = document.querySelector(`#vamChecklistBody .vam-cl-note-btn[data-no="${t.dataset.no}"]`);
+                    if (btn) btn.classList.toggle('has-note', t.value.trim() !== '');
+                });
                 document.getElementById('vamChecklistProgress').textContent = `${done} / ${boxes.length} completed`;
                 document.getElementById('vamChecklistAll').checked = boxes.length > 0 && done === boxes.length;
             }
@@ -1668,14 +1678,30 @@
                 checklistRow = row;
 
                 const ticked = new Set((Array.isArray(data.checklist) ? data.checklist : []).map(Number));
-                document.getElementById('vamChecklistBody').innerHTML = CHECKLIST_ITEMS.map(it => `
+                const notes = (data.checklist_notes && typeof data.checklist_notes === 'object') ? data.checklist_notes : {};
+                document.getElementById('vamChecklistBody').innerHTML = CHECKLIST_ITEMS.map(it => {
+                    const note = notes[it[0]] ? String(notes[it[0]]) : '';
+                    return `
                     <tr>
                         <td class="text-center"><input type="checkbox" class="form-check-input vam-cl-box" data-no="${it[0]}" ${ticked.has(it[0]) ? 'checked' : ''}></td>
                         <td class="text-center">${it[0]}</td>
                         <td class="vam-cl-point">${escapeHtml(it[1])}</td>
                         <td>${escapeHtml(it[2])}</td>
                         <td>${escapeHtml(it[3])}</td>
-                    </tr>`).join('');
+                        <td class="text-center">
+                            <button type="button" class="vam-cl-note-btn${note ? ' has-note' : ''}" data-no="${it[0]}" title="Add / edit note">
+                                <i class="fas fa-note-sticky"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr class="vam-cl-note-row" data-no="${it[0]}" style="${note ? '' : 'display:none;'}">
+                        <td></td>
+                        <td colspan="5">
+                            <textarea class="form-control form-control-sm vam-cl-note-input" data-no="${it[0]}" rows="2" maxlength="2000"
+                                      placeholder="Add a note for “${escapeHtml(it[1])}”…">${escapeHtml(note)}</textarea>
+                        </td>
+                    </tr>`;
+                }).join('');
 
                 const label = [data.name, data.target_value].filter(Boolean).join(' — ');
                 document.getElementById('vamChecklistSubtitle').textContent = label;
@@ -1689,6 +1715,11 @@
                 const data = row.getData();
                 const checked = Array.from(document.querySelectorAll('#vamChecklistBody .vam-cl-box:checked'))
                     .map(b => Number(b.dataset.no));
+                const notes = {};
+                document.querySelectorAll('#vamChecklistBody .vam-cl-note-input').forEach(t => {
+                    const v = t.value.trim();
+                    if (v) notes[t.dataset.no] = v;
+                });
 
                 const btn = document.getElementById('vamChecklistSave');
                 btn.disabled = true;
@@ -1700,7 +1731,7 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({ checklist: checked }),
+                    body: JSON.stringify({ checklist: checked, notes: notes }),
                 })
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
@@ -1708,7 +1739,7 @@
                         showToast((j && j.message) || 'Failed to save checklist', 'error');
                         return;
                     }
-                    row.update({ checklist: j.row.checklist || [] });
+                    row.update({ checklist: j.row.checklist || [], checklist_notes: j.row.checklist_notes || null });
                     row.reformat();
                     checklistModal.hide();
                     showToast('Checklist saved', 'success');
@@ -2566,6 +2597,19 @@
                 checklistModal      = new bootstrap.Modal(document.getElementById('vamChecklistModal'));
                 document.getElementById('vamChecklistSave').addEventListener('click', saveChecklist);
                 document.getElementById('vamChecklistBody').addEventListener('change', updateChecklistProgress);
+                document.getElementById('vamChecklistBody').addEventListener('input', (e) => {
+                    if (e.target.classList.contains('vam-cl-note-input')) updateChecklistProgress();
+                });
+                // Note icon: show / hide the note box under that checkpoint.
+                document.getElementById('vamChecklistBody').addEventListener('click', (e) => {
+                    const btn = e.target.closest('.vam-cl-note-btn');
+                    if (!btn) return;
+                    const noteRow = document.querySelector(`#vamChecklistBody tr.vam-cl-note-row[data-no="${btn.dataset.no}"]`);
+                    if (!noteRow) return;
+                    const show = noteRow.style.display === 'none';
+                    noteRow.style.display = show ? '' : 'none';
+                    if (show) noteRow.querySelector('textarea').focus();
+                });
                 document.getElementById('vamChecklistAll').addEventListener('change', (e) => {
                     document.querySelectorAll('#vamChecklistBody .vam-cl-box').forEach(b => { b.checked = e.target.checked; });
                     updateChecklistProgress();

@@ -586,6 +586,7 @@ class VideoAdsMasterController extends Controller
         $copy->redone_checked_by = null;
         $copy->redone_checked_at = null;
         $copy->checklist         = null;
+        $copy->checklist_notes   = null;
         $copy->save();
 
         return response()->json(['success' => true, 'row' => $this->presentRow($copy)]);
@@ -658,12 +659,25 @@ class VideoAdsMasterController extends Controller
         $data = $request->validate([
             'checklist'   => 'nullable|array',
             'checklist.*' => 'integer|min:1|max:20',
+            'notes'       => 'nullable|array',
+            'notes.*'     => 'nullable|string|max:2000',
         ]);
 
         $row = VideoAdsMaster::findOrFail($id);
 
         $items = collect($data['checklist'] ?? [])->map(fn ($n) => (int) $n)->unique()->sort()->values()->all();
         $row->checklist = $items;
+
+        // Keep only non-empty notes for checkpoints 1-20.
+        $notes = [];
+        foreach (($data['notes'] ?? []) as $no => $text) {
+            $no   = (int) $no;
+            $text = trim((string) $text);
+            if ($no >= 1 && $no <= 20 && $text !== '') {
+                $notes[$no] = $text;
+            }
+        }
+        $row->checklist_notes = $notes ?: null;
         $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);
