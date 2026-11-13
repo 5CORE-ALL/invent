@@ -248,9 +248,8 @@ class MeetingController extends Controller
             'agenda' => 'required|string|max:5000',
             'priority' => 'required|in:'.implode(',', array_keys(Meeting::PRIORITIES)),
             'room_slot' => 'required|integer|in:'.implode(',', array_keys(Meeting::ROOMS)),
-            'meeting_date' => 'required|date_format:Y-m-d',
-            'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i',
+            // Date and time are not asked: they are stamped automatically when the request is made.
+            'approx_minutes' => 'required|integer|min:5|max:720',
             'invitee_ids' => 'required|array|min:1|max:200',
             'invitee_ids.*' => 'integer|exists:users,id',
         ], [
@@ -260,7 +259,8 @@ class MeetingController extends Controller
             'room_slot.required' => 'Choose one of the four meeting rooms.',
             'room_slot.in' => 'Choose one of the four meeting rooms.',
         ]);
-        [$data['start'], $data['end']] = $this->scheduler->parseWindow($data['meeting_date'], $data['start_time'], $data['end_time']);
+        $data['start'] = now(\App\Casts\MeetingDateTime::timezone())->startOfMinute();
+        $data['end'] = $data['start']->copy()->addMinutes((int) $data['approx_minutes']);
 
         try {
             $result = $this->scheduler->create($data, Auth::user());

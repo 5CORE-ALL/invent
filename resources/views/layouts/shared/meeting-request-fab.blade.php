@@ -41,7 +41,12 @@
         --mq-hover: rgba(255, 255, 255, .06); --mq-sel: rgba(129, 140, 248, .16);
     }
     /* double the default modal-lg width (800px -> 1600px), never wider than the screen */
-    #mrqModal .modal-dialog.modal-lg { max-width: min(1600px, 96vw); }
+    #mrqModal .modal-dialog.modal-lg { max-width: min(1600px, 96vw); --bs-modal-margin: .75rem; }
+    /* full height: the dialog fills the screen; the body scrolls only if the content is taller than that */
+    #mrqModal .modal-dialog.modal-dialog-scrollable { height: calc(100vh - 1.5rem); height: calc(100dvh - 1.5rem); }
+    #mrqModal .modal-dialog-scrollable .modal-content { height: 100%; max-height: 100%; }
+    #mrqModal .modal-body { display: flex; flex-direction: column; }
+    #mrqModal #mrqStepForm { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
     #mrqModal.fade .modal-dialog { transform: translateY(26px) scale(.98); opacity: 0; transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .25s ease; }
     #mrqModal.show .modal-dialog { transform: none; opacity: 1; }
     body:has(#mrqModal.show) .modal-backdrop { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
@@ -82,13 +87,17 @@
     #mrqModal .mrq-form-grid {
         display: grid; gap: 20px 32px; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
         grid-template-areas: "title members" "agenda members" "prio members" "when when" "meta meta";
+        grid-template-rows: auto minmax(150px, 1fr) auto auto auto;
+        flex: 1 1 auto;
     }
+    #mrqModal .mrq-f-agenda { display: flex; flex-direction: column; }
+    #mrqModal .mrq-f-agenda textarea.form-control { flex: 1 1 auto; resize: none; }
     #mrqModal .mrq-f-title { grid-area: title; } #mrqModal .mrq-f-agenda { grid-area: agenda; }
     #mrqModal .mrq-f-members { grid-area: members; display: flex; flex-direction: column; min-width: 0; }
     #mrqModal .mrq-f-prio { grid-area: prio; } #mrqModal .mrq-f-meta { grid-area: meta; }
     #mrqModal .mrq-f-when { grid-area: when; background: var(--mq-surface); border: 1px solid var(--mq-border); border-radius: 16px; padding: 16px 18px; }
     @media (max-width: 991.98px) {
-        #mrqModal .mrq-form-grid { grid-template-columns: 1fr; grid-template-areas: "title" "agenda" "members" "prio" "when" "meta"; }
+        #mrqModal .mrq-form-grid { grid-template-columns: 1fr; grid-template-areas: "title" "agenda" "members" "prio" "when" "meta"; grid-template-rows: none; }
         #mrqModal .modal-body, #mrqModal .modal-header, #mrqModal .modal-footer { padding-left: 18px; padding-right: 18px; }
     }
 
@@ -118,7 +127,7 @@
     html[data-bs-theme="dark"] #mrqModal .mrq-note.mrq-note-info { color: #bfdbfe; }
 
     /* members picker */
-    #mrqModal .mrq-list { flex: 1 1 auto; min-height: 260px; max-height: 360px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
+    #mrqModal .mrq-list { flex: 1 1 0; min-height: 260px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
     #mrqModal .mrq-list label { display: flex; gap: 12px; align-items: center; padding: 8px 10px; margin: 0; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background .15s ease, box-shadow .15s ease; }
     #mrqModal .mrq-list label:hover { background: var(--mq-hover); }
     #mrqModal .mrq-list label:has(input:checked) { background: var(--mq-sel); box-shadow: inset 0 0 0 1px var(--mq-accent); }
@@ -149,8 +158,6 @@
     #mrqModal .mrq-room { background: var(--mq-sel); color: var(--mq-accent); border-radius: 8px; padding: 1px 8px; font-size: .74rem; font-weight: 600; }
 
     /* time row helpers */
-    #mrqModal #mrqNowBtn { text-decoration: none; font-weight: 600; font-size: .8rem; padding: 4px 14px; border-radius: 20px; background: var(--mq-sel); color: var(--mq-accent); transition: all .15s ease; }
-    #mrqModal #mrqNowBtn:hover { background: var(--mq-accent); color: #fff; }
     #mrqModal .mrq-f-meta small.text-muted { color: var(--mq-muted) !important; }
 
     /* review step */
@@ -241,9 +248,9 @@
                                         <option value="3">Meeting Room 3</option><option value="4">Meeting Room 4</option>
                                     </select>
                                 </div>
-                                <div class="col-md-4"><label class="form-label" for="mrqDate">Date <span class="text-danger">*</span></label><input type="date" id="mrqDate" class="form-control"></div>
-                                <div class="col-6 col-md-2"><label class="form-label" for="mrqStart">Start <span class="text-danger">*</span></label><input type="time" id="mrqStart" class="form-control"></div>
-                                <div class="col-6 col-md-2"><label class="form-label" for="mrqApprox">Approx time <span class="text-danger">*</span></label>
+                                {{-- Date & time are hidden: they are stamped automatically when the request is made and shown in "Requests for you". --}}
+                                <input type="hidden" id="mrqDate"><input type="hidden" id="mrqStart">
+                                <div class="col-md-4"><label class="form-label" for="mrqApprox">Approx time <span class="text-danger">*</span></label>
                                     <select id="mrqApprox" class="form-select" title="Approximate length of the meeting">
                                         <option value="15">~ 15 min</option><option value="30" selected>~ 30 min</option>
                                         <option value="45">~ 45 min</option><option value="60">~ 1 hr</option>
@@ -252,8 +259,7 @@
                                     </select></div>
                             </div>
                             <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
-                                <small class="text-muted">Times are in <strong id="mrqTz">Asia/Kolkata</strong>.</small>
-                                <button type="button" class="btn btn-link btn-sm" id="mrqNowBtn">Use now → +30 min</button>
+                                <small class="text-muted"><i class="ri-time-line me-1"></i>Date &amp; time are set automatically when you send the request (<strong id="mrqTz">Asia/Kolkata</strong>).</small>
                             </div>
                             <div class="small mt-2" id="mrqAvail"></div>
                         </div>
@@ -396,11 +402,9 @@
                 .formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
             return { date: p.year + '-' + p.month + '-' + p.day, time: p.hour + ':' + p.minute };
         }
-        $('mrqNowBtn').addEventListener('click', function () {
-            var a = nowIn(0), b = nowIn(30);
-            $('mrqDate').value = a.date; $('mrqStart').value = a.time; $('mrqApprox').value = '30';
-            checkAvail();
-        });
+        // Hidden date & time = "now". Refreshed whenever the modal opens and again at review (the server stamps the final value).
+        function stampNow() { var a = nowIn(0); $('mrqDate').value = a.date; $('mrqStart').value = a.time; }
+        stampNow();
         var availSeq = 0;
         function checkAvail() {
             var room = $('mrqRoom').value, date = $('mrqDate').value, box = $('mrqAvail');
@@ -452,14 +456,6 @@
 
         function showErr(id, msg) { var e = $(id); e.textContent = msg; e.classList.remove('mrq-hidden'); }
 
-        // End time = start + approx time (kept inside the same day).
-        function endFromApprox(start, minutes) {
-            if (!start) return '';
-            var parts = start.split(':'), total = Number(parts[0]) * 60 + Number(parts[1]) + Number(minutes || 30);
-            if (total > 23 * 60 + 59) total = 23 * 60 + 59;
-            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-            return pad(Math.floor(total / 60)) + ':' + pad(total % 60);
-        }
         function approxLabel() { var o = $('mrqApprox'); return o.options[o.selectedIndex].text.replace('~ ', ''); }
 
         function collect() {
@@ -470,9 +466,7 @@
                 invitee_ids: Object.keys(selected).map(Number),
                 priority: prio ? prio.value : 'normal',
                 room_slot: $('mrqRoom').value ? Number($('mrqRoom').value) : null,
-                meeting_date: $('mrqDate').value,
-                start_time: $('mrqStart').value,
-                end_time: endFromApprox($('mrqStart').value, $('mrqApprox').value)
+                approx_minutes: Number($('mrqApprox').value || 30)
             };
         }
 
@@ -481,8 +475,7 @@
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
             if (p.agenda.length < 1) return showErr('mrqError', 'Please add a meeting agenda.');
             if (!p.room_slot) return showErr('mrqError', 'Choose one of the four meeting rooms.');
-            if (!p.meeting_date || !p.start_time) return showErr('mrqError', 'Pick the date and start time.');
-            if (p.end_time <= p.start_time) return showErr('mrqError', 'Pick an earlier start time so the meeting fits in the same day.');
+
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
             lastPayload = p;
             $('mrqRvTitle').textContent = p.title;
@@ -491,7 +484,8 @@
             $('mrqRvRoom').textContent = 'Meeting Room ' + p.room_slot + (googleOk ? ' (Google Meet)' : ' (meeting-room link, created automatically)');
             $('mrqRvCount').textContent = p.invitee_ids.length;
             $('mrqRvMembers').textContent = Object.keys(selected).map(function (id) { return selected[id]; }).join(', ');
-            $('mrqRvWhen').textContent = p.meeting_date + ', ' + p.start_time + ' · approx ' + approxLabel() + ' (' + tz + ')';
+            stampNow();
+            $('mrqRvWhen').textContent = $('mrqDate').value + ', ' + $('mrqStart').value + ' (set automatically when sent) · approx ' + approxLabel() + ' (' + tz + ')';
             $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + (googleOk ? ' will get a Google Calendar invitation with the Google Meet link.' : ' will be notified and can join with the meeting-room link.');
             setStep('review');
         });
@@ -521,7 +515,7 @@
                 setStep('done');
                 hide('mrqBtnStart', !(d.meeting.join_url || d.meeting.meet_url));
                 // reset form for next time
-                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; $('mrqDate').value = ''; $('mrqStart').value = ''; $('mrqApprox').value = '30'; $('mrqAvail').innerHTML = '';
+                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; stampNow(); $('mrqApprox').value = '30'; $('mrqAvail').innerHTML = '';
                 renderChips(); renderMembers();
                 poll(false);
             }).catch(function () {
@@ -622,7 +616,7 @@
             var div = document.createElement('div'); div.className = 'mrq-req';
             div.innerHTML = '<h6>' + esc(r.title) + ' ' + prioBadge(r.priority) + (r.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
                 + '<div class="small text-muted mb-1">From <strong>' + esc(r.host || '—') + '</strong> &middot; '
-                + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + (r.room ? ' &middot; <span class="mrq-room">' + esc(r.room) + '</span>' : '')
+                + '<i class="ri-calendar-event-line"></i> <strong>Date &amp; time:</strong> ' + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + (r.room ? ' &middot; <span class="mrq-room">' + esc(r.room) + '</span>' : '')
                 + (r.requested_at ? ' &middot; requested ' + esc(r.requested_at) : '') + '</div>'
                 + (r.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
                 + '<div class="d-flex gap-2 flex-wrap" data-actions></div><div class="small mt-2" data-result></div>';
@@ -672,6 +666,7 @@
             setTab(t || 'new');
         }
         $('mrqModal').addEventListener('show.bs.modal', function (e) {
+            stampNow(); checkAvail();
             loadMembers();
             if (e.relatedTarget && e.relatedTarget.id === 'mrqFab') {
                 // Clicking the floating icon: go straight to pending requests if someone is waiting on you.
