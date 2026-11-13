@@ -1407,7 +1407,7 @@
                     // No link yet: if the checklist isn't fully done, say why in red.
                     const rowData = cell.getRow().getData();
                     if (rowData && rowData.id && !canEditLink(rowData)) {
-                        return `<span class="vam-link-locked" title="${escapeHtml(LINK_LOCKED_MSG)}">Complete checklist (${checklistDone(rowData)}/${LINK_MIN_POINTS})</span>`;
+                        return `<span class="vam-link-locked" title="${escapeHtml(LINK_LOCKED_MSG)}">Complete checklist (${checklistDone(rowData)}/${LINK_MIN_POINTS} needed)</span>`;
                     }
                     return '<span class="vam-dash">—</span>';
                 }
@@ -1656,9 +1656,9 @@
                 return Array.isArray(row.checklist) ? row.checklist.length : 0;
             }
 
-            // A link can only be added / changed once every checklist point is ticked.
-            const LINK_MIN_POINTS  = CHECKLIST_ITEMS.length;
-            const LINK_LOCKED_MSG  = `Complete all ${LINK_MIN_POINTS} checklist points before adding a link.`;
+            // A link can only be added / changed once this many checklist points are ticked.
+            const LINK_MIN_POINTS  = 17;
+            const LINK_LOCKED_MSG  = `Complete at least ${LINK_MIN_POINTS} of ${CHECKLIST_ITEMS.length} checklist points before adding a link.`;
 
             function canEditLink(rowData) {
                 return !!rowData && !!rowData.id && checklistDone(rowData) >= LINK_MIN_POINTS;
@@ -1689,7 +1689,7 @@
                     `${done} / ${boxes.length} completed `
                     + (unlocked
                         ? '<span class="badge bg-success ms-2"><i class="fas fa-lock-open me-1"></i>Link unlocked</span>'
-                        : `<span class="badge bg-secondary ms-2"><i class="fas fa-lock me-1"></i>Link locked — tick all ${LINK_MIN_POINTS} points</span>`);
+                        : `<span class="badge bg-secondary ms-2"><i class="fas fa-lock me-1"></i>Link locked — tick at least ${LINK_MIN_POINTS} points</span>`);
                 document.getElementById('vamChecklistAll').checked = boxes.length > 0 && done === boxes.length;
             }
 

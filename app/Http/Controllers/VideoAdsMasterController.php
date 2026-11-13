@@ -289,7 +289,7 @@ class VideoAdsMasterController extends Controller
             'video_upload' => 'nullable|string|max:64',
         ]);
 
-        // Adding / changing a link needs every checklist point ticked.
+        // Adding / changing a link needs at least CHECKLIST_LINK_MIN_POINTS checklist points ticked.
         // Clearing a link, or re-saving the same one, is always allowed.
         if (array_key_exists('link', $data)) {
             $newLink = trim((string) ($data['link'] ?? ''));
@@ -670,12 +670,13 @@ class VideoAdsMasterController extends Controller
         return response()->json(['success' => true, 'row' => $row]);
     }
 
-    /** Every checklist point must be ticked before a link can be added. */
+    /** Checklist points that must be ticked (out of CHECKLIST_TOTAL) before a link can be added. */
     private const CHECKLIST_TOTAL = 20;
+    private const CHECKLIST_LINK_MIN_POINTS = 17;
 
     private function linkUnlocked(VideoAdsMaster $row): bool
     {
-        return count($row->checklist ?? []) >= self::CHECKLIST_TOTAL;
+        return count($row->checklist ?? []) >= self::CHECKLIST_LINK_MIN_POINTS;
     }
 
     private function hasVideoUpload(Request $request): bool
@@ -687,7 +688,7 @@ class VideoAdsMasterController extends Controller
     {
         return response()->json([
             'success' => false,
-            'message' => 'Complete all ' . self::CHECKLIST_TOTAL . ' checklist points before adding a link.',
+            'message' => 'Complete at least ' . self::CHECKLIST_LINK_MIN_POINTS . ' of ' . self::CHECKLIST_TOTAL . ' checklist points before adding a link.',
         ], 422);
     }
 
@@ -1341,7 +1342,7 @@ class VideoAdsMasterController extends Controller
                     'hook_name'   => $get('hook_name'),
                     'hook'        => $get('hook'),
                     // Imported rows start with an empty checklist, so links are
-                    // not imported; add them after all 20 checklist points are ticked.
+                    // not imported; add them once enough checklist points are ticked.
                     'link'        => null,
                 ]);
                 $created++;
