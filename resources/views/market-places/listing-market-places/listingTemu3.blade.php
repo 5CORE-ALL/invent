@@ -949,7 +949,7 @@
                 };
 
                 rows.forEach(item => {
-                    if (item.is_parent || isParentSku(item.sku) || !(parseFloat(item.INV) > 0)) return;
+                    if (item.is_parent || isParentSku(item.sku) || ($('#inv-filter').val() === 'inv-only' && !(parseFloat(item.INV) > 0))) return;
                     metrics.invTotal += parseFloat(item.INV) || 0;
 
                     if (item.nr_req === 'REQ') {
@@ -1012,7 +1012,7 @@
                 if (linkFilter === 'with-link' && !hasItemLink) return false;
                 if (linkFilter === 'without-link' && hasItemLink) return false;
 
-                if (listedFilter === 'Pending' && !data.is_parent && !(parseFloat(data.INV) > 0)) return false;
+                if (listedFilter === 'Pending' && !data.is_parent && invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
                 if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
                 return true;

@@ -51,6 +51,12 @@ class ChannelListingRegistry
     public const EBAY_NOT_LIVE_STATUSES = ['inactive', 'ended', 'unsold', 'completed', 'sold', 'missing', 'not_listed'];
 
     /**
+     * Reverb listing states that are not a live listing. An ended or sold Reverb listing is Missing L again
+     * even while its old listing id is stored (drafts and review states are already excluded by the engine).
+     */
+    public const REVERB_NOT_LIVE_STATES = ['ended', 'sold'];
+
+    /**
      * @return array<string, array<string, mixed>>
      */
     public static function all(): array
@@ -1020,7 +1026,8 @@ class ChannelListingRegistry
             if (! $row) {
                 continue;
             }
-            if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? $row->state ?? null)) {
+            if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? $row->state ?? null)
+                || self::isReverbNotLiveState($row->listing_state ?? $row->state ?? null)) {
                 continue;
             }
 
@@ -1073,7 +1080,7 @@ class ChannelListingRegistry
             }
 
             $state = strtolower(trim((string) ($value['state'] ?? '')));
-            if (ListingCountsEngine::isPendingOrReviewListingState($state)) {
+            if (ListingCountsEngine::isPendingOrReviewListingState($state) || self::isReverbNotLiveState($state)) {
                 continue;
             }
             // Prefer live/published when duplicate status rows exist for one SKU.
@@ -1085,8 +1092,17 @@ class ChannelListingRegistry
         return $map;
     }
 
+    public static function isReverbNotLiveState(mixed $state): bool
+    {
+        $s = strtolower(trim((string) $state));
+        $s = preg_replace('/[\s\-]+/', '_', $s) ?? $s;
+
+        return $s !== '' && in_array($s, self::REVERB_NOT_LIVE_STATES, true);
+    }
+
     /**
-     * Shopify B2C listed = Admin API variant present on shopify_skus.
+     * Shopify B2C listed = Admin API variant present on shopify_skus, and its product is not archived / draft
+     * on Shopify (status from the synced shopify_catalog_products).
      *
      * @param  list<string>  $skus
      * @return array<string, string>
@@ -1100,6 +1116,7 @@ class ChannelListingRegistry
         $wanted = self::wantedNormalizedSkus($skus);
         $byKey = [];
         $shopifyData = ShopifySku::mapByProductSkus($skus);
+        $pairs = [];
         foreach ($skus as $sku) {
             $sku = trim((string) $sku);
             if ($sku === '') {
@@ -1110,10 +1127,67 @@ class ChannelListingRegistry
             if ($variantId === '' || $variantId === '0') {
                 continue;
             }
+            $pairs[] = [$sku, $variantId];
+        }
+        $notLive = self::shopifyNotLiveVariantIds(array_column($pairs, 1));
+        foreach ($pairs as [$sku, $variantId]) {
+            if (isset($notLive[$variantId])) {
+                continue;
+            }
             self::putListedId($byKey, $wanted, $sku, $variantId);
         }
 
         return self::listedMapFromByNorm($skus, $byKey);
+    }
+
+    /**
+     * Variant ids whose main-store Shopify product is archived or draft (not a live listing). Unknown variants
+     * and any lookup problem count as live, so a missing catalog never hides a listing.
+     *
+     * @param  list<string>  $variantIds
+     * @return array<string, true>
+     */
+    private static function shopifyNotLiveVariantIds(array $variantIds): array
+    {
+        $out = [];
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('shopify_catalog_variants')
+                || ! \Illuminate\Support\Facades\Schema::hasTable('shopify_catalog_products')) {
+                return [];
+            }
+            foreach (array_chunk(array_values(array_unique($variantIds)), 500) as $chunk) {
+                $hits = \Illuminate\Support\Facades\DB::table('shopify_catalog_variants as v')
+                    ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                    ->where('v.store', 'main')
+                    ->where('p.store', 'main')
+                    ->whereIn('v.shopify_variant_id', $chunk)
+                    ->whereRaw("LOWER(TRIM(COALESCE(p.status, ''))) IN ('archived', 'draft')")
+                    ->get(['v.shopify_variant_id', 'v.sku']);
+                if ($hits->isEmpty()) {
+                    continue;
+                }
+                // The same SKU on another, active product keeps the SKU live.
+                $activeSkus = \Illuminate\Support\Facades\DB::table('shopify_catalog_variants as v')
+                    ->join('shopify_catalog_products as p', 'p.id', '=', 'v.shopify_catalog_product_id')
+                    ->where('v.store', 'main')
+                    ->where('p.store', 'main')
+                    ->whereIn('v.sku', $hits->pluck('sku')->filter()->unique()->values()->all())
+                    ->whereRaw("LOWER(TRIM(COALESCE(p.status, ''))) = 'active'")
+                    ->pluck('v.sku')
+                    ->map(static fn ($s) => strtoupper(trim((string) $s)))
+                    ->flip();
+                foreach ($hits as $hit) {
+                    if (isset($activeSkus[strtoupper(trim((string) $hit->sku))])) {
+                        continue;
+                    }
+                    $out[trim((string) $hit->shopify_variant_id)] = true;
+                }
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return $out;
     }
 
     /**

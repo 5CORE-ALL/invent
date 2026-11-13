@@ -36,7 +36,7 @@ class ListingChannelRefresher
         $verify = fn (int $store): array => ['type' => 'ebay_verify', 'label' => 'eBay '.$store.' check every listed SKU on eBay', 'store' => $store];
         $catalog = fn (string $key, string $label): array => ['type' => 'catalog', 'label' => $label, 'channel' => $key];
 
-        return [
+        $plan = [
             'ebay' => [$ebay(1), $verify(1), $link('eBay 1 link map', 'ebay1:sync-link-map')],
             'ebaytwo' => [$ebay(2), $verify(2), $link('eBay 2 link map', 'ebay2:sync-link-map')],
             'ebaythree' => [$ebay(3), $verify(3), $link('eBay 3 link map', 'ebay3:sync-link-map')],
@@ -70,6 +70,28 @@ class ListingChannelRefresher
             'topdawg' => [$catalog('topdawg', 'TopDawg catalog')],
             'faire' => [$catalog('faire', 'Faire catalog')],
         ];
+
+        // Live check per marketplace: ask the marketplace API about the SKUs the app calls Listed and move
+        // the ones it no longer has to Missing L. Each class is the same "Fetch listings" step for one marketplace.
+        $ns = 'App\\Services\\MarketplaceManager\\StaleListing\\';
+        foreach ([
+            'amazon' => ['AmazonStaleListingVerifier', 'Amazon check every listed SKU'],
+            'walmart' => ['WalmartStaleListingVerifier', 'Walmart check every listed SKU'],
+            'doba' => ['DobaStaleListingVerifier', 'Doba check every listed SKU'],
+            'wayfair' => ['WayfairStaleListingVerifier', 'Wayfair check every listed SKU'],
+            'neweggb2c' => ['NeweggStaleListingVerifier', 'Newegg check every listed SKU'],
+            'neweggb2b' => ['NeweggStaleListingVerifier', 'Newegg check every listed SKU'],
+            'reverb' => ['ReverbStaleListingVerifier', 'Reverb check every listed SKU'],
+            'temu3' => ['Temu3StaleListingVerifier', 'Temu 3 check every listed SKU'],
+            'shein' => ['SheinStaleListingVerifier', 'Shein check every listed SKU'],
+            'shopifyb2c' => ['ShopifyB2cStaleListingVerifier', 'Shopify B2C check every listed SKU'],
+            'b5cb2b' => ['B5cB2bStaleListingVerifier', 'Business 5Core B2B check every listed SKU'],
+            'faire' => ['FaireStaleListingVerifier', 'Faire check every listed SKU'],
+        ] as $slug => [$class, $label]) {
+            $plan[$slug][] = ['type' => 'stale_verify', 'label' => $label, 'verifier' => $ns.$class];
+        }
+
+        return $plan;
     }
 
     public static function normalizeSlug(string $slug): string
@@ -194,6 +216,15 @@ class ListingChannelRefresher
                     $res = app(EbayStaleItemIdPurger::class)->purge((int) $step['store']);
 
                     return [(bool) $res['ok'], (string) $res['message']];
+
+                case 'stale_verify':
+                    $class = (string) $step['verifier'];
+                    if (! class_exists($class)) {
+                        return [false, 'Live check is not available for this marketplace yet.'];
+                    }
+                    $res = app($class)->verify();
+
+                    return [(bool) ($res['ok'] ?? false), (string) ($res['message'] ?? 'Done.')];
 
                 case 'catalog':
                     // Skip the 30-minute freshness cache: this refresh was asked for explicitly.

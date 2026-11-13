@@ -1346,6 +1346,96 @@ class SheinApiService
     }
 
     /**
+     * Stale-listing check: read-only look at one Shein skuCode (product/full-detail). Unlike getProductDetails()
+     * it never writes shein_metrics.
+     *
+     * live = Shein returned the product; off_shelf = it returned it and every shelf entry says isOnShelf false;
+     * gone = HTTP 200 with no product and the "invalid skuCode" answer; error = anything else
+     * (transport, HTTP error, rate limit, unreadable answer, a different skuCode in the answer).
+     *
+     * @return array{state: string, message: string, rate_limited: bool}
+     */
+    public function getSkuCodeState(string $skuCode): array
+    {
+        $skuCode = trim($skuCode);
+        $error = static fn (string $message, bool $rateLimited = false): array => ['state' => 'error', 'message' => $message, 'rate_limited' => $rateLimited];
+        if ($skuCode === '') {
+            return $error('skuCode is required.');
+        }
+        if (! $this->isConfigured()) {
+            return $error('Shein API credentials are not configured.');
+        }
+
+        $endpoint = '/open-api/openapi-business-backend/product/full-detail';
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(60)
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                ->asJson()
+                ->post($this->baseUrl.$endpoint, ['skuCodes' => [$skuCode]]);
+        } catch (\Throwable $e) {
+            return $error($e->getMessage());
+        }
+
+        if (! $response->successful()) {
+            return $error('HTTP '.$response->status().'.', $response->status() === 429);
+        }
+        $json = $response->json();
+        if (! is_array($json)) {
+            return $error('Unreadable answer.');
+        }
+
+        $answer = (string) ($json['msg'] ?? '').' '.(string) ($json['code'] ?? '');
+        $info = $json['info'] ?? null;
+        if (is_array($info) && $info !== []) {
+            if (! array_is_list($info)) {
+                return $error('Unexpected product list shape.');
+            }
+            $item = null;
+            foreach ($info as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $code = trim((string) ($row['skuCode'] ?? ''));
+                if (strcasecmp($code, $skuCode) === 0 || ($code === '' && count($info) === 1)) {
+                    $item = $row;
+                    break;
+                }
+            }
+            if ($item === null) {
+                return $error('Answer does not contain skuCode '.$skuCode.'.');
+            }
+
+            $shelves = $item['shelfDetails'] ?? null;
+            if (is_array($shelves) && $shelves !== []) {
+                $offShelf = 0;
+                foreach ($shelves as $shelf) {
+                    $flag = is_array($shelf) && array_key_exists('isOnShelf', $shelf)
+                        ? filter_var($shelf['isOnShelf'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                        : null;
+                    if ($flag === false) {
+                        $offShelf++;
+                    }
+                }
+                if ($offShelf === count($shelves)) {
+                    return ['state' => 'off_shelf', 'message' => 'Shein lists the product as off shelf.', 'rate_limited' => false];
+                }
+            }
+
+            return ['state' => 'live', 'message' => 'Shein returned the product.', 'rate_limited' => false];
+        }
+
+        if (str_contains($answer, 'openapi00006') || stripos($answer, 'rate limit') !== false) {
+            return $error('Shein rate limit.', true);
+        }
+        if (self::isDeadSkuCodeMessage($answer)) {
+            return ['state' => 'gone', 'message' => 'Shein says the skuCode is invalid.', 'rate_limited' => false];
+        }
+
+        return $error('No product and no invalid-skuCode answer ('.mb_substr(trim($answer), 0, 120).').');
+    }
+
+    /**
      * POST signed JSON to Shein Open API.
      *
      * @param  array<string, mixed>  $payload

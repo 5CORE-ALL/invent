@@ -435,6 +435,169 @@ class ShopifyCatalogSyncService
     }
 
     /**
+     * Every main-store variant Shopify has right now (any product status), read page by page without
+     * touching the local tables. `complete` is true only when the last page was read with no failed or
+     * malformed page, so a caller may treat "not in the index" as gone only then.
+     *
+     * @return array{complete: bool, message: string, products: array<int, string>, variants: array<int, array{product_id: int, sku: string}>}
+     */
+    public function liveMainVariantIndex(): array
+    {
+        $out = ['complete' => false, 'message' => '', 'products' => [], 'variants' => []];
+        [$domain, $token] = $this->credentials('main');
+        if (! $domain || ! $token) {
+            $out['message'] = 'Shopify credentials are not configured.';
+
+            return $out;
+        }
+        $domain = rtrim((string) preg_replace('#^https?://#', '', (string) $domain), '/');
+
+        $requestBase = Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ]);
+        if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+            $requestBase = $requestBase->withoutVerifying();
+        }
+
+        $pageInfo = null;
+        do {
+            $queryParams = ['limit' => 250, 'fields' => 'id,status,variants'];
+            if ($pageInfo) {
+                $queryParams['page_info'] = $pageInfo;
+            }
+
+            $response = null;
+            try {
+                for ($attempt = 1; $attempt <= 10; $attempt++) {
+                    $response = $requestBase->timeout(120)->get(
+                        "https://{$domain}/admin/api/2025-01/products.json",
+                        $queryParams
+                    );
+                    if ($response->status() === 429) {
+                        sleep(max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2))));
+
+                        continue;
+                    }
+                    break;
+                }
+            } catch (\Throwable $e) {
+                $out['message'] = 'Shopify product list failed: '.$e->getMessage();
+
+                return $out;
+            }
+
+            if (! $response || ! $response->successful()) {
+                $out['message'] = 'Shopify product list failed (HTTP '.($response ? $response->status() : 'none').').';
+
+                return $out;
+            }
+            $json = $response->json();
+            if (! is_array($json) || ! is_array($json['products'] ?? null)) {
+                $out['message'] = 'Shopify product list was unreadable.';
+
+                return $out;
+            }
+
+            foreach ($json['products'] as $product) {
+                $pid = (int) ($product['id'] ?? 0);
+                if ($pid <= 0) {
+                    continue;
+                }
+                $out['products'][$pid] = strtolower(trim((string) ($product['status'] ?? '')));
+                foreach ($product['variants'] ?? [] as $variant) {
+                    $vid = (int) ($variant['id'] ?? 0);
+                    if ($vid > 0) {
+                        $out['variants'][$vid] = ['product_id' => $pid, 'sku' => trim((string) ($variant['sku'] ?? ''))];
+                    }
+                }
+            }
+
+            $pageInfo = $this->nextPageInfo($response);
+            if ($pageInfo) {
+                usleep(700000); // stay under Shopify REST 2 req/s bucket
+            }
+        } while ($pageInfo);
+
+        $out['complete'] = true;
+        $out['message'] = count($out['products']).' product(s), '.count($out['variants']).' variant(s).';
+
+        return $out;
+    }
+
+    /**
+     * One main-store variant: "gone" only on HTTP 404 from variants/{id}.json, "live" on a 200 for that
+     * variant, anything else (timeout, 401/403, 429, 5xx, unreadable body) is "error".
+     *
+     * @return array{state: 'live'|'gone'|'error', product_id: ?int, message: string}
+     */
+    public function mainVariantState(string $variantId): array
+    {
+        $variantId = trim($variantId);
+        $out = ['state' => 'error', 'product_id' => null, 'message' => ''];
+        if ($variantId === '' || ! ctype_digit($variantId)) {
+            $out['message'] = 'Variant id is not numeric.';
+
+            return $out;
+        }
+        [$domain, $token] = $this->credentials('main');
+        if (! $domain || ! $token) {
+            $out['message'] = 'Shopify credentials are not configured.';
+
+            return $out;
+        }
+        $domain = rtrim((string) preg_replace('#^https?://#', '', (string) $domain), '/');
+
+        $requestBase = Http::withHeaders([
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+        ]);
+        if (config('filesystems.default') === 'local' || env('FILESYSTEM_DRIVER') === 'local') {
+            $requestBase = $requestBase->withoutVerifying();
+        }
+
+        try {
+            $response = null;
+            for ($attempt = 1; $attempt <= 5; $attempt++) {
+                usleep(600000); // stay under Shopify REST 2 req/s bucket
+                $response = $requestBase->timeout(30)->get("https://{$domain}/admin/api/2025-01/variants/{$variantId}.json");
+                if ($response->status() === 429 && $attempt < 5) {
+                    sleep(max(2, (int) ($response->header('Retry-After') ?: ($attempt * 2))));
+
+                    continue;
+                }
+                break;
+            }
+        } catch (\Throwable $e) {
+            $out['message'] = $e->getMessage();
+
+            return $out;
+        }
+
+        if ($response->status() === 404) {
+            $out['state'] = 'gone';
+            $out['message'] = 'Shopify returned 404 for variant '.$variantId.'.';
+
+            return $out;
+        }
+        if (! $response->successful()) {
+            $out['message'] = 'HTTP '.$response->status();
+
+            return $out;
+        }
+        $variant = $response->json('variant');
+        if (! is_array($variant) || (string) ($variant['id'] ?? '') !== $variantId) {
+            $out['message'] = 'Shopify variant response was unreadable.';
+
+            return $out;
+        }
+        $out['state'] = 'live';
+        $out['product_id'] = isset($variant['product_id']) ? (int) $variant['product_id'] : null;
+
+        return $out;
+    }
+
+    /**
      * @return array{0: ?string, 1: ?string}
      */
     private function credentials(string $store): array

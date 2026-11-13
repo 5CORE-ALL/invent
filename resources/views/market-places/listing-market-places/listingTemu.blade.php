@@ -987,7 +987,7 @@
                 };
 
                 rows.forEach(item => {
-                    if (item.is_parent || !(parseFloat(item.INV) > 0)) return;
+                    if (item.is_parent || ($('#inv-filter').val() === 'inv-only' && !(parseFloat(item.INV) > 0))) return;
                     // Incomplete / Created exist on Temu. They stay in REQ and out of Listed and Missing L.
                     const parked = item.listed === 'Incomplete' || item.listed === 'Created';
                     metrics.invTotal += parseFloat(item.INV) || 0;
@@ -1041,7 +1041,7 @@
                 if (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
                 // The Missing L dropdown is the same set as /missing-listing: in stock, REQ, not listed.
                 if (listedFilter === 'Pending') {
-                    if (!(parseFloat(data.INV) > 0)) return false;
+                    if (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0)) return false;
                     if (data.nr_req === 'NR') return false;
                     if (data.listed !== 'Pending' && data.listed) return false;
                     return true;

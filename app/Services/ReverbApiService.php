@@ -2013,6 +2013,79 @@ class ReverbApiService
         return is_array($json) ? $json : [];
     }
 
+    /**
+     * One listing looked up for the stale-listing check. Unlike getListing(), a missing listing (404 / 410) is told
+     * apart from every other failure (timeout, auth, rate limit, server error, unreadable body).
+     *
+     * @return array{status: string, state: string, sku: string, http: int, message: string}  status: found | not_found | error
+     */
+    public function lookupListingState(string $listingId): array
+    {
+        $listingId = trim($listingId);
+        $out = ['status' => 'error', 'state' => '', 'sku' => '', 'http' => 0, 'message' => ''];
+        if ($listingId === '') {
+            $out['message'] = 'empty listing id';
+
+            return $out;
+        }
+        $token = self::getReverbBearerToken();
+        if (! is_string($token) || $token === '') {
+            $out['message'] = 'no Reverb token configured';
+
+            return $out;
+        }
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $url = $apiBase.'/listings/'.rawurlencode($listingId);
+
+        $response = $this->reverbGetWithRateLimit($token, $url);
+        if ($response !== null && $response->status() === 401) {
+            self::forgetCachedReverbToken();
+            $refreshed = self::getReverbBearerToken(true);
+            if (is_string($refreshed) && $refreshed !== '') {
+                $response = $this->reverbGetWithRateLimit($refreshed, $url);
+            }
+        }
+        if ($response === null) {
+            $out['message'] = 'Reverb did not answer';
+
+            return $out;
+        }
+
+        $out['http'] = $response->status();
+        if (in_array($out['http'], [404, 410], true)) {
+            $out['status'] = 'not_found';
+            $out['message'] = 'Reverb has no listing '.$listingId.' (HTTP '.$out['http'].')';
+
+            return $out;
+        }
+        if (! $response->successful()) {
+            $out['message'] = 'HTTP '.$out['http'];
+
+            return $out;
+        }
+
+        $json = $response->json();
+        $listing = is_array($json) && isset($json['listing']) && is_array($json['listing']) ? $json['listing'] : $json;
+        if (! is_array($listing) || ! isset($listing['id'])) {
+            $out['message'] = 'unreadable listing response';
+
+            return $out;
+        }
+        $state = $this->normalizeListingState($listing);
+        if ($state === 'unknown') {
+            $out['message'] = 'listing response has no state';
+
+            return $out;
+        }
+
+        $out['status'] = 'found';
+        $out['state'] = $state;
+        $out['sku'] = trim((string) ($listing['sku'] ?? ''));
+        $out['message'] = 'listing '.$listingId.' is '.$state;
+
+        return $out;
+    }
+
     public function firstShippingProfileId(): string
     {
         $configured = trim((string) config('services.reverb.shipping_profile_id', ''));
