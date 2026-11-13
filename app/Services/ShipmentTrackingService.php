@@ -535,14 +535,20 @@ class ShipmentTrackingService
         $secret = trim((string) config('services.usps.consumer_secret'));
         $base = rtrim((string) config('services.usps.api_base', 'https://apis.usps.com'), '/');
 
-        $resp = Http::acceptJson()
-            ->asJson()
-            ->timeout($this->timeout)
-            ->post($base.'/oauth2/v3/token', [
-                'grant_type' => 'client_credentials',
-                'client_id' => $key,
-                'client_secret' => $secret,
-            ]);
+        try {
+            $resp = Http::acceptJson()
+                ->asJson()
+                ->timeout($this->timeout)
+                ->post($base.'/oauth2/v3/token', [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $key,
+                    'client_secret' => $secret,
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('ShipmentTracking: USPS OAuth request failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
 
         if (! $resp->successful()) {
             Log::warning('ShipmentTracking: USPS OAuth failed', [
@@ -701,13 +707,19 @@ class ShipmentTrackingService
         $secret = trim((string) config('services.ups.client_secret'));
         $base = rtrim((string) config('services.ups.api_base', 'https://onlinetools.ups.com'), '/');
 
-        $resp = Http::withBasicAuth($id, $secret)
-            ->asForm()
-            ->acceptJson()
-            ->timeout($this->timeout)
-            ->post($base.'/security/v1/oauth/token', [
-                'grant_type' => 'client_credentials',
-            ]);
+        try {
+            $resp = Http::withBasicAuth($id, $secret)
+                ->asForm()
+                ->acceptJson()
+                ->timeout($this->timeout)
+                ->post($base.'/security/v1/oauth/token', [
+                    'grant_type' => 'client_credentials',
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('ShipmentTracking: UPS OAuth request failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
 
         if (! $resp->successful()) {
             Log::warning('ShipmentTracking: UPS OAuth failed', [
@@ -908,14 +920,21 @@ class ShipmentTrackingService
         $secret = trim((string) config('services.fedex.client_secret'));
         $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
 
-        $resp = Http::asForm()
-            ->acceptJson()
-            ->timeout($this->timeout)
-            ->post($base.'/oauth/token', [
-                'grant_type' => 'client_credentials',
-                'client_id' => $id,
-                'client_secret' => $secret,
-            ]);
+        // A bad FEDEX_API_BASE (e.g. a broken .env line) must only lose FedEx lookups, not the whole batch.
+        try {
+            $resp = Http::asForm()
+                ->acceptJson()
+                ->timeout($this->timeout)
+                ->post($base.'/oauth/token', [
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $id,
+                    'client_secret' => $secret,
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('ShipmentTracking: FedEx OAuth request failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
 
         if (! $resp->successful()) {
             Log::warning('ShipmentTracking: FedEx OAuth failed', [

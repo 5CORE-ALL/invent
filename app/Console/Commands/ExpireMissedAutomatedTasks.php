@@ -61,7 +61,7 @@ class ExpireMissedAutomatedTasks extends Command
                 ->whereNotNull('start_date')
                 ->whereNotIn('status', ['Done', 'Archived', 'Missed'])
                 ->orderBy('id')
-                ->chunkById(100, function ($tasks) use ($now, $tz, $cutoffTime, $dryRun, $checklistAutomateTaskIds, &$expired, &$archived, &$failed) {
+                ->chunkById(100, function ($tasks) use ($now, $tz, $cutoffTime, $dryRun, $checklistAutomateTaskIds, $hasReportColumn, &$expired, &$archived, &$failed) {
                     foreach ($tasks as $task) {
                         try {
                             $cutoff = $this->cutoffFor($task, $tz, $cutoffTime);
