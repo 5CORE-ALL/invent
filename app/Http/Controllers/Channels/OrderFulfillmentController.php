@@ -397,7 +397,11 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             } catch (\Throwable) {
                 continue;
             }
-            $row['scan_alert'] = $placed->diffInMinutes($now, false) > $limitMinutes;
+            $minutes = $placed->diffInMinutes($now, false);
+            $row['scan_alert'] = $minutes > $limitMinutes;
+            if ($row['scan_alert']) {
+                $row['scan_alert_days'] = intdiv((int) $minutes, 1440);
+            }
         }
         unset($row);
 
