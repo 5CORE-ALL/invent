@@ -2453,6 +2453,12 @@
             function setFormLinkLocked(locked) {
                 const input = document.getElementById('vam_link');
                 input.disabled = !!locked;
+                // Uploading a video also sets the row's link, so it is locked the same way.
+                const videoInput = document.getElementById('vam_video');
+                if (videoInput) {
+                    videoInput.disabled = !!locked;
+                    if (locked) videoInput.value = '';
+                }
                 const note = document.getElementById('vam_link_note');
                 if (note) {
                     note.textContent = locked

@@ -250,8 +250,9 @@ class VideoAdsMasterController extends Controller
             'video_upload' => 'nullable|string|max:64',
         ]);
 
-        // A brand-new row has an empty checklist, so a typed link is not allowed yet.
-        if (trim((string) ($data['link'] ?? '')) !== '') {
+        // A brand-new row has an empty checklist, so neither a typed link nor an
+        // uploaded video (which becomes the row's link) is allowed yet.
+        if (trim((string) ($data['link'] ?? '')) !== '' || $this->hasVideoUpload($request)) {
             return $this->checklistLockedResponse();
         }
 
@@ -288,7 +289,7 @@ class VideoAdsMasterController extends Controller
             'video_upload' => 'nullable|string|max:64',
         ]);
 
-        // Adding / changing a link needs at least 70% of the checklist ticked.
+        // Adding / changing a link needs every checklist point ticked.
         // Clearing a link, or re-saving the same one, is always allowed.
         if (array_key_exists('link', $data)) {
             $newLink = trim((string) ($data['link'] ?? ''));
@@ -296,6 +297,10 @@ class VideoAdsMasterController extends Controller
             if ($newLink !== '' && $newLink !== $oldLink && ! $this->linkUnlocked($row)) {
                 return $this->checklistLockedResponse();
             }
+        }
+        // An uploaded video replaces the row's link, so it follows the same rule.
+        if ($this->hasVideoUpload($request) && ! $this->linkUnlocked($row)) {
+            return $this->checklistLockedResponse();
         }
 
         unset($data['video'], $data['video_upload']);
@@ -671,6 +676,11 @@ class VideoAdsMasterController extends Controller
     private function linkUnlocked(VideoAdsMaster $row): bool
     {
         return count($row->checklist ?? []) >= self::CHECKLIST_TOTAL;
+    }
+
+    private function hasVideoUpload(Request $request): bool
+    {
+        return $request->hasFile('video') || (string) $request->input('video_upload', '') !== '';
     }
 
     private function checklistLockedResponse()
@@ -1330,7 +1340,9 @@ class VideoAdsMasterController extends Controller
                     'audience'    => $get('audience'),
                     'hook_name'   => $get('hook_name'),
                     'hook'        => $get('hook'),
-                    'link'        => $get('link'),
+                    // Imported rows start with an empty checklist, so links are
+                    // not imported; add them after all 20 checklist points are ticked.
+                    'link'        => null,
                 ]);
                 $created++;
             } catch (\Throwable $e) {
