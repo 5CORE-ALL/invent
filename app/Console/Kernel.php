@@ -237,6 +237,15 @@ class Kernel extends ConsoleKernel
             ->name('tracking-sync-status-daily')
             ->appendOutputTo($log);
 
+        // /order-fulfillment/scan-pending: numbers with no status yet or still "Label Created / No Scan"
+        // are looked up again every 2 hours (the daily run above only revisits a number once a day).
+        $schedule->command('tracking:sync-status --scan-pending --catch-up --stale=120 --limit=1000 --only-open')
+            ->hourlyAt(40)
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->name('tracking-sync-status-scan-pending')
+            ->appendOutputTo($log);
+
         // Shopify Ads Master: keep the daily channel snapshot (trend chart + dots)
         // current even on days nobody opens /shopify-ads-master.
         $schedule->command('shopify-ads-master:snapshot')
