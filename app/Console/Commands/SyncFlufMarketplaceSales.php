@@ -102,6 +102,9 @@ class SyncFlufMarketplaceSales extends Command
                     $this->line(sprintf('%s %s | line_sku="%s" | shopify_skus="%s" | catalog="%s" | USED="%s" (%s) | variant=%s | %s',
                         $r['date'], $r['order'], $r['raw_line_sku'], $r['shopify_sku'], $r['catalog_sku'],
                         $r['sku'], $r['source'], $r['variant_id'] ?: '—', mb_substr($r['title'], 0, 50)));
+                    if (count($r['candidates']) > 1) {
+                        $this->line('     candidates by title: '.implode(' | ', array_slice($r['candidates'], 0, 12)));
+                    }
                 }
                 $this->line('Lines: '.count($rows).' | not matching any Product Master SKU: '.$bad);
             }

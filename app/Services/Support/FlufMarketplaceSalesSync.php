@@ -242,22 +242,74 @@ class FlufMarketplaceSalesSync
                 ?? null;
         };
 
-        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm): array {
+        // Product title -> Product Master SKUs, for lines Fluf created without a variant (custom items whose
+        // "SKU" is just the Vinted listing code, e.g. "500W - 5 Core 6" 2 Way Coaxial Car Door Speakers ...").
+        $titleKey = static fn ($t) => preg_replace('/[^a-z0-9]+/', '', strtolower((string) $t));
+        $titleSkus = [];
+        if (Schema::hasTable('shopify_skus')) {
+            foreach (DB::table('shopify_skus')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'product_title']) as $r) {
+                $k = $titleKey($r->product_title);
+                $pmSku = $toPm($clean($r->sku));
+                if ($k !== '' && $pmSku !== null) {
+                    $titleSkus[$k][$pmSku] = true;
+                }
+            }
+        }
+        $byTitle = static function (string $title, string $lineSku) use ($titleKey, $titleSkus): array {
+            $t = trim($title);
+            if ($lineSku !== '' && stripos($t, $lineSku) === 0) {
+                $t = ltrim(substr($t, strlen($lineSku)), " \t-–—:");
+            }
+            $k = $titleKey($t);
+            if ($k === '') {
+                return [];
+            }
+            if (isset($titleSkus[$k])) {
+                return array_keys($titleSkus[$k]);
+            }
+            // Titles are often shortened / edited on the listing: accept a long common start.
+            $probe = substr($k, 0, 45);
+            $found = [];
+            if (strlen($probe) >= 30) {
+                foreach ($titleSkus as $tk => $skus) {
+                    if (str_starts_with($tk, $probe)) {
+                        $found += $skus;
+                    }
+                }
+            }
+
+            return array_keys($found);
+        };
+
+        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm, $byTitle): array {
             $vid = (string) ($line->variant_id ?? '');
             $lineSku = $clean($line->sku ?? '');
             $sSku = $shopifySku[$vid] ?? '';
             $cSku = $catalogSku[$vid] ?? '';
+            $base = ['line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'candidates' => []];
 
             foreach (['order line' => $lineSku, 'shopify_skus' => $sSku, 'catalog variant' => $cSku] as $source => $cand) {
                 $hit = $toPm($cand);
                 if ($hit !== null) {
-                    return ['sku' => $hit, 'source' => $source, 'line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'in_pm' => true];
+                    return ['sku' => $hit, 'source' => $source, 'in_pm' => true] + $base;
                 }
             }
 
             $fallback = $lineSku !== '' ? $lineSku : ($sSku !== '' ? $sSku : $cSku);
 
-            return ['sku' => $fallback, 'source' => 'no Product Master match', 'line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'in_pm' => false];
+            // A variant-backed SKU that is simply not in Product Master (e.g. an open-box listing) is a real
+            // Shopify SKU: keep it. Only variant-less lines are guessed from the product title.
+            if ($vid === '' || $fallback === $lineSku && $sSku === '' && $cSku === '') {
+                $cands = $byTitle((string) ($line->product_title ?? ''), $lineSku);
+                if (count($cands) === 1) {
+                    return ['sku' => $cands[0], 'source' => 'matched by product title', 'in_pm' => true] + array_merge($base, ['candidates' => $cands]);
+                }
+                if (count($cands) > 1) {
+                    return ['sku' => $fallback, 'source' => 'ambiguous title ('.count($cands).' SKUs)', 'in_pm' => false] + array_merge($base, ['candidates' => $cands]);
+                }
+            }
+
+            return ['sku' => $fallback, 'source' => 'no Product Master match', 'in_pm' => false] + $base;
         };
     }
 
