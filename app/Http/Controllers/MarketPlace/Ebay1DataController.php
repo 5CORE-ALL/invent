@@ -338,7 +338,7 @@ class Ebay1DataController extends Controller
                         }
                     }
                     if (isset($skuColumns[$k])) {
-                        $data[$i]['specifics'][$target] = (string) $entry['sku'];
+                    $data[$i]['specifics'][$target] = (string) $entry['sku'];
                     } elseif (isset($alwaysColumns[$k])) {
                         $data[$i]['specifics'][$target] = $alwaysColumns[$k];
                     } elseif ($isMissingListing || $isBlank((string) ($entry['specifics'][$target] ?? ''))) {

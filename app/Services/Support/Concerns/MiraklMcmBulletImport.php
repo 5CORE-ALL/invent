@@ -1058,12 +1058,12 @@ trait MiraklMcmBulletImport
             return $cached;
         }
 
-        $query = array_merge($this->miraklMcmQueryParams(), [
-            'all_operator_attributes' => 'true',
-        ]);
-        if ($hierarchy !== null && $hierarchy !== '') {
-            $query['hierarchy'] = $hierarchy;
-        }
+            $query = array_merge($this->miraklMcmQueryParams(), [
+                'all_operator_attributes' => 'true',
+            ]);
+            if ($hierarchy !== null && $hierarchy !== '') {
+                $query['hierarchy'] = $hierarchy;
+            }
 
         $attributes = [];
         try {
@@ -1159,7 +1159,7 @@ trait MiraklMcmBulletImport
             $importId = (int) ($import['import_id'] ?? 0);
             $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
             if ($poll['success'] ?? false) {
-                return [
+            return [
                     'success' => true,
                     'message' => "{$label} product created via MCM P41 (import #{$importId}, category {$hierarchy}).",
                     'import_id' => $importId,
@@ -1229,9 +1229,9 @@ trait MiraklMcmBulletImport
         }
 
         $context = [
-            'title' => $title,
-            'description' => $description,
-            'bullets' => $bullets,
+                'title' => $title,
+                'description' => $description,
+                'bullets' => $bullets,
             'images' => $this->miraklMcmPublicImageUrls($images),
         ];
         $this->miraklMcmForceFillRequired = true;
@@ -1747,21 +1747,21 @@ trait MiraklMcmBulletImport
             }
 
             Log::info("{$label} MCM P41 {$what} row", [
-                'sku' => $sku,
-                'hierarchy' => $hierarchy,
+            'sku' => $sku,
+            'hierarchy' => $hierarchy,
                 'attempt' => $attempt,
                 'columns' => array_keys($row),
-            ]);
+        ]);
             $import = $this->importMiraklMcmProductsP41($this->miraklMcmRowToCsv($row), $updateOptions);
-            if (! ($import['success'] ?? false)) {
-                return $import;
-            }
-            $importId = (int) ($import['import_id'] ?? 0);
-            if ($importId <= 0) {
+        if (! ($import['success'] ?? false)) {
+            return $import;
+        }
+        $importId = (int) ($import['import_id'] ?? 0);
+        if ($importId <= 0) {
                 return ['success' => false, 'message' => "{$label} P41 {$what} import did not return an import_id."];
-            }
+        }
 
-            $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
+        $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
             if ($poll['success'] ?? false) {
                 $pending = (bool) ($poll['mcm_integration_pending'] ?? false);
                 $this->rememberMiraklMcmP41Success($sku, $row, $importId, $pending, $updateOptions);
@@ -4277,7 +4277,7 @@ trait MiraklMcmBulletImport
             }
         }
 
-        return null;
+            return null;
     }
 
     /**

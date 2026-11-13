@@ -499,21 +499,21 @@ class Temu3ListingPublishService
             // The parent already exists on the marketplace (chosen in the window, or found from its siblings):
             // never fall back to a separate listing with a different goods id.
             Log::warning('Temu3 publish: add SKU to the existing goods failed, nothing created', [
-                'parent' => $parentKey,
+                    'parent' => $parentKey,
                 'goods_id' => $existingGoodsId,
                 'chosen' => $targetGoodsId !== '',
-                'message' => $added['message'] ?? '',
-            ]);
+                    'message' => $added['message'] ?? '',
+                ]);
 
             if (! empty($added['pending'])) {
                 return ['success' => false, 'message' => $this->shopLabel().' parent goods '.$existingGoodsId.': '.trim((string) $added['message'])];
             }
 
-            return [
-                'success' => false,
+                return [
+                    'success' => false,
                 'message' => 'Could not add the variation(s) to the existing '.$this->shopLabel().' parent (goods '.$existingGoodsId.'). '
-                    .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
-            ];
+                        .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
+                ];
         }
 
         $outGoodsSn = $this->uniqueOutGoodsSn(
@@ -3873,7 +3873,7 @@ class Temu3ListingPublishService
                 $messages[$label] = 'Temu answered success but the new SKU is not on goods '.$goodsId;
                 Log::warning('Temu3 add SKU to existing goods: success was not real', [
                     'type' => $label,
-                    'goods_id' => $goodsId,
+                'goods_id' => $goodsId,
                     'response' => mb_substr((string) json_encode($data['result'] ?? $data), 0, 600),
                 ]);
 

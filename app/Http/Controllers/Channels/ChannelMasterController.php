@@ -1738,9 +1738,9 @@ class ChannelMasterController extends Controller
                 };
             } else {
                 $l30Sales = (float) $live['l30_sales'];
-                $row['L30 Sales'] = (int) round($l30Sales);
-                $row['L30 Orders'] = (int) $live['l30_orders'];
-                $row['Qty'] = (int) $live['qty'];
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) $live['l30_orders'];
+            $row['Qty'] = (int) $live['qty'];
             }
 
             if ($l60Sales > 0) {
@@ -4597,9 +4597,9 @@ class ChannelMasterController extends Controller
                 $row['N ROI'] = (int) $badge['groi'];
                 $row['sales_page_link'] = '/walmart/daily-sales';
             } else {
-                $row['L30 Sales'] = (int) round($l30Sales);
-                $row['L30 Orders'] = (int) ($l30->orders ?? 0);
-                $row['Qty'] = (int) ($l30->qty ?? 0);
+            $row['L30 Sales'] = (int) round($l30Sales);
+            $row['L30 Orders'] = (int) ($l30->orders ?? 0);
+            $row['Qty'] = (int) ($l30->qty ?? 0);
             }
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
@@ -4832,8 +4832,8 @@ class ChannelMasterController extends Controller
         }
         unset($row);
 
-        return $rows;
-    }
+            return $rows;
+        }
 
     /**
      * Overlay /topdawg/sales-dashboard L30, GPFT, and GROI onto the TopDawg row.
@@ -15407,7 +15407,7 @@ class ChannelMasterController extends Controller
         
         // Calculate growth: (L30 - L60) / L60 * 100 when L60 > 0
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0);
-
+        
         // Shein has no ads. The badge path already holds GPFT%. The fallback stores dollars.
         $nPft = $nPftIsBadge
             ? $nPftValue
@@ -16184,7 +16184,7 @@ class ChannelMasterController extends Controller
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         if (! $useBadge) {
-            $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         }
 
         // Channel data
@@ -16299,16 +16299,16 @@ class ChannelMasterController extends Controller
             $nPft = $gProfitPct;
             $nRoi = $gRoi;
         } else {
-            $l30Sales = $metrics->total_sales ?? 0;
-            $l30Orders = $metrics->total_orders ?? 0;
-            $totalQuantity = $metrics->total_quantity ?? 0;
-            $totalProfit = $metrics->total_pft ?? 0;
-            $totalCogs = $metrics->total_cogs ?? 0;
-            $gProfitPct = $metrics->pft_percentage ?? 0;
-            $gRoi = $metrics->roi_percentage ?? 0;
-            $nPftValue = $metrics->n_pft ?? $totalProfit;
-            $nRoi = $metrics->n_roi ?? $gRoi;
-            $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         }
         
         // Calculate growth
@@ -16428,17 +16428,17 @@ class ChannelMasterController extends Controller
             $nPft = $gProfitPct;
             $nRoi = $gRoi;
         } else {
-            $l30Sales = $metrics->total_sales ?? 0;
-            $l30Orders = $metrics->total_orders ?? 0;
-            $totalQuantity = $metrics->total_quantity ?? 0;
-            $totalProfit = $metrics->total_pft ?? 0;
-            $totalCogs = $metrics->total_cogs ?? 0;
-            $gProfitPct = $metrics->pft_percentage ?? 0;
-            $gRoi = $metrics->roi_percentage ?? 0;
-            $nPftValue = $metrics->n_pft ?? $totalProfit;
-            $nRoi = $metrics->n_roi ?? $gRoi;
-            // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-            $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        $l30Sales = $metrics->total_sales ?? 0;
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
+        $totalProfit = $metrics->total_pft ?? 0;
+        $totalCogs = $metrics->total_cogs ?? 0;
+        $gProfitPct = $metrics->pft_percentage ?? 0;
+        $gRoi = $metrics->roi_percentage ?? 0;
+        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $nRoi = $metrics->n_roi ?? $gRoi;
+        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
         }
         
         // Calculate growth
@@ -17201,7 +17201,7 @@ class ChannelMasterController extends Controller
         }
 
         $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2B')->latest('date')->first();
-
+        
         $l60Orders = (int) ($l60Live['orders'] ?? 0);
         $l60Sales = (int) ($l60Live['l30'] ?? 0);
 
@@ -17213,10 +17213,10 @@ class ChannelMasterController extends Controller
         $gProfitPct = (int) ($live['gpft'] ?? $metrics->pft_percentage ?? 0);
         $gRoi = (int) ($live['groi'] ?? $metrics->roi_percentage ?? 0);
         $nRoi = $gRoi;
-
+        
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-
+        
         // L60 profit percentage
         $gprofitL60 = 0;
         $gRoiL60 = 0;
