@@ -20,6 +20,12 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingCountsEngine
 {
+    /**
+     * No SKU is "not required" (NRL) on any marketplace listing page: every SKU counts as REQ.
+     * Set to false to read the stored NRL values again.
+     */
+    public const NRL_DISABLED = true;
+
     private static ?Collection $productMastersMemo = null;
 
     /** @var list<string>|null */
@@ -232,6 +238,9 @@ class ListingCountsEngine
      */
     public static function nrReqFromDataView(mixed $raw): string
     {
+        if (self::NRL_DISABLED) {
+            return 'REQ';
+        }
         if (is_string($raw)) {
             $trimmed = strtoupper(trim($raw));
             if (in_array($trimmed, ['NRL', 'NR'], true)) {

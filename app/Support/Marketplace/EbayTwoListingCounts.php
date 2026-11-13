@@ -95,6 +95,9 @@ class EbayTwoListingCounts
      */
     public static function nrReqFromDataView(mixed $raw): string
     {
+        if (ListingCountsEngine::NRL_DISABLED) {
+            return 'REQ';
+        }
         if (!is_array($raw)) {
             $raw = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
         }
