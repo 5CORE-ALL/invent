@@ -18644,6 +18644,33 @@ class ChannelMasterController extends Controller
             // daily history saved in badges_data_histories by channel:refresh-today-sales.
             // Y/T Orders, Views, CVR columns share the same table: per channel history is
             // stored under "amm-channel:{key}", all channels under all-marketplace-master.
+            // All-channel YNPFT% graph: use the same saved daily values as the Today Nprft%
+            // graph (t_npft_pct), so the same date shows the same number on both graphs.
+            // Today's own (still running) Pacific day is not a "yesterday" point, so it is dropped.
+            if ($isAll && $metric === 'y_npft_pct') {
+                $points = \App\Models\BadgeDataHistory::series(
+                    \App\Support\Marketplace\AmmColumnHistory::pageFor($channel),
+                    't_npft_pct',
+                    $days > 0 ? $days : 30
+                );
+                $todayLabel = now(\App\Models\BadgeDataHistory::TZ)->format('M j');
+                $points = array_values(array_filter(
+                    $points,
+                    static fn (array $p) => ($p['date'] ?? null) !== $todayLabel
+                ));
+
+                if ($points !== []) {
+                    return response()->json([
+                        'success' => true,
+                        'data' => array_map(
+                            static fn (array $p) => ['date' => $p['date'], 'value' => $p['value']],
+                            $points
+                        ),
+                    ]);
+                }
+                // No Today history saved yet: fall through to the snapshot-based chart below.
+            }
+
             $ammBadgeFields = array_merge(
                 \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS,
                 \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::PROJECTED_BADGE_FIELDS
