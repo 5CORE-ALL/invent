@@ -56,12 +56,13 @@
 
         /* Video Ads Master accents (kept from the previous version). */
         .vam-link-icon {
-            color: #2c6ed5;
+            color: #16a34a;
             font-size: 16px;
             text-decoration: none;
         }
-        .vam-link-icon:hover { color: #0a3d8f; }
+        .vam-link-icon:hover { color: #15803d; }
         .vam-dash { color: #adb5bd; }
+        .vam-link-locked { color: #dc2626; font-size: 11px; font-weight: 600; line-height: 1.2; display: inline-block; }
 
         /* Thumbnail column — the frame fills the cell, and hover lifts a larger
            copy out of the table so Tabulator's overflow does not clip it. */
@@ -1402,7 +1403,14 @@
 
             function linkFormatter(cell) {
                 const v = cell.getValue();
-                if (!v || !String(v).trim()) return '<span class="vam-dash">—</span>';
+                if (!v || !String(v).trim()) {
+                    // No link yet: if the checklist isn't fully done, say why in red.
+                    const rowData = cell.getRow().getData();
+                    if (rowData && rowData.id && !canEditLink(rowData)) {
+                        return `<span class="vam-link-locked" title="${escapeHtml(LINK_LOCKED_MSG)}">Complete checklist (${checklistDone(rowData)}/${LINK_MIN_POINTS})</span>`;
+                    }
+                    return '<span class="vam-dash">—</span>';
+                }
                 const url = playableLink(v);
                 if (!url) return '<span class="vam-dash">—</span>';
                 return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-link-icon" title="Open link"><i class="fas fa-link"></i></a>`;
@@ -1648,10 +1656,9 @@
                 return Array.isArray(row.checklist) ? row.checklist.length : 0;
             }
 
-            // A link can only be added / changed once this share of the checklist is ticked.
-            const LINK_MIN_PERCENT = 70;
-            const LINK_MIN_POINTS  = Math.ceil(CHECKLIST_ITEMS.length * LINK_MIN_PERCENT / 100);
-            const LINK_LOCKED_MSG  = `Complete at least ${LINK_MIN_PERCENT}% of the checklist (${LINK_MIN_POINTS} of ${CHECKLIST_ITEMS.length} points) before adding a link.`;
+            // A link can only be added / changed once every checklist point is ticked.
+            const LINK_MIN_POINTS  = CHECKLIST_ITEMS.length;
+            const LINK_LOCKED_MSG  = `Complete all ${LINK_MIN_POINTS} checklist points before adding a link.`;
 
             function canEditLink(rowData) {
                 return !!rowData && !!rowData.id && checklistDone(rowData) >= LINK_MIN_POINTS;
@@ -1682,7 +1689,7 @@
                     `${done} / ${boxes.length} completed `
                     + (unlocked
                         ? '<span class="badge bg-success ms-2"><i class="fas fa-lock-open me-1"></i>Link unlocked</span>'
-                        : `<span class="badge bg-secondary ms-2"><i class="fas fa-lock me-1"></i>Link locked — need ${LINK_MIN_POINTS} (${LINK_MIN_PERCENT}%)</span>`);
+                        : `<span class="badge bg-secondary ms-2"><i class="fas fa-lock me-1"></i>Link locked — tick all ${LINK_MIN_POINTS} points</span>`);
                 document.getElementById('vamChecklistAll').checked = boxes.length > 0 && done === boxes.length;
             }
 
@@ -2949,7 +2956,7 @@
                             editable: (cell) => canEditLink(cell.getRow().getData()),
                             cellClick: (e, cell) => {
                                 if (e.target.closest('a')) return;
-                                if (!canEditLink(cell.getRow().getData())) showToast(LINK_LOCKED_MSG, 'warning');
+                                if (!canEditLink(cell.getRow().getData())) showToast(LINK_LOCKED_MSG, 'error');
                             },
                             cellEdited: persistCell,
                         },

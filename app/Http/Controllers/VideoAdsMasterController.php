@@ -665,24 +665,19 @@ class VideoAdsMasterController extends Controller
         return response()->json(['success' => true, 'row' => $row]);
     }
 
-    /** Checklist points that must be ticked (70% of 20) before a link can be added. */
+    /** Every checklist point must be ticked before a link can be added. */
     private const CHECKLIST_TOTAL = 20;
-    private const CHECKLIST_LINK_MIN_PERCENT = 70;
 
     private function linkUnlocked(VideoAdsMaster $row): bool
     {
-        $needed = (int) ceil(self::CHECKLIST_TOTAL * self::CHECKLIST_LINK_MIN_PERCENT / 100);
-
-        return count($row->checklist ?? []) >= $needed;
+        return count($row->checklist ?? []) >= self::CHECKLIST_TOTAL;
     }
 
     private function checklistLockedResponse()
     {
-        $needed = (int) ceil(self::CHECKLIST_TOTAL * self::CHECKLIST_LINK_MIN_PERCENT / 100);
-
         return response()->json([
             'success' => false,
-            'message' => 'Complete at least ' . self::CHECKLIST_LINK_MIN_PERCENT . "% of the checklist ({$needed} of " . self::CHECKLIST_TOTAL . ' points) before adding a link.',
+            'message' => 'Complete all ' . self::CHECKLIST_TOTAL . ' checklist points before adding a link.',
         ], 422);
     }
 
