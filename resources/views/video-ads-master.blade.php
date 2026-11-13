@@ -714,7 +714,7 @@
                             <div class="col-12">
                                 <label class="form-label fw-semibold">Link</label>
                                 <input type="url" id="vam_link" class="form-control" placeholder="https://…">
-                                <div class="form-text">A link icon will be shown in the table when a URL is set.</div>
+                                <div class="form-text" id="vam_link_note">A link icon will be shown in the table when a URL is set.</div>
                             </div>
                         </div>
                     </form>
@@ -1648,6 +1648,15 @@
                 return Array.isArray(row.checklist) ? row.checklist.length : 0;
             }
 
+            // A link can only be added / changed once this share of the checklist is ticked.
+            const LINK_MIN_PERCENT = 70;
+            const LINK_MIN_POINTS  = Math.ceil(CHECKLIST_ITEMS.length * LINK_MIN_PERCENT / 100);
+            const LINK_LOCKED_MSG  = `Complete at least ${LINK_MIN_PERCENT}% of the checklist (${LINK_MIN_POINTS} of ${CHECKLIST_ITEMS.length} points) before adding a link.`;
+
+            function canEditLink(rowData) {
+                return !!rowData && !!rowData.id && checklistDone(rowData) >= LINK_MIN_POINTS;
+            }
+
             function checklistFormatter(cell) {
                 const done  = checklistDone(cell.getRow().getData());
                 const total = CHECKLIST_ITEMS.length;
@@ -1668,7 +1677,12 @@
                     const btn = document.querySelector(`#vamChecklistBody .vam-cl-note-btn[data-no="${t.dataset.no}"]`);
                     if (btn) btn.classList.toggle('has-note', t.value.trim() !== '');
                 });
-                document.getElementById('vamChecklistProgress').textContent = `${done} / ${boxes.length} completed`;
+                const unlocked = done >= LINK_MIN_POINTS;
+                document.getElementById('vamChecklistProgress').innerHTML =
+                    `${done} / ${boxes.length} completed `
+                    + (unlocked
+                        ? '<span class="badge bg-success ms-2"><i class="fas fa-lock-open me-1"></i>Link unlocked</span>'
+                        : `<span class="badge bg-secondary ms-2"><i class="fas fa-lock me-1"></i>Link locked — need ${LINK_MIN_POINTS} (${LINK_MIN_PERCENT}%)</span>`);
                 document.getElementById('vamChecklistAll').checked = boxes.length > 0 && done === boxes.length;
             }
 
@@ -2357,7 +2371,16 @@
                 })
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
-                    if (!ok || !j.success) { showToast((j && j.message) || 'Failed to save', 'error'); return; }
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to save', 'error');
+                        if (field === 'link') {
+                            // Server refused the link — put the previous value back.
+                            row.update({ link: cell.getOldValue() || null });
+                            ['_missing', '_thumb', 'link'].forEach(f => { const c = row.getCell(f); if (c) c.reformat(); });
+                            updateCount();
+                        }
+                        return;
+                    }
                     updateCount();
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving', 'error'); });
@@ -2373,8 +2396,10 @@
                 const updates = {};
                 const desiredHook = hook.hook || '';
                 const desiredLink = hook.link || '';
+                // The hook's default link only applies once the row's checklist unlocks links.
+                const linkAllowed = canEditLink(row.getData());
                 if (row.getCell('hook'))  updates.hook = desiredHook;
-                if (row.getCell('link'))  updates.link = desiredLink;
+                if (row.getCell('link') && linkAllowed) updates.link = desiredLink;
                 if (Object.keys(updates).length === 0) return;
 
                 // Push the values into the cells without triggering
@@ -2395,10 +2420,10 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({
-                        hook: desiredHook === '' ? null : desiredHook,
-                        link: desiredLink === '' ? null : desiredLink,
-                    }),
+                    body: JSON.stringify(Object.assign(
+                        { hook: desiredHook === '' ? null : desiredHook },
+                        linkAllowed ? { link: desiredLink === '' ? null : desiredLink } : {}
+                    )),
                 })
                 .catch(e => console.warn('Failed to sync hook defaults to row:', e));
             }
@@ -2413,7 +2438,21 @@
                 const hook = findHook(tags[0]);
                 if (!hook) return;
                 document.getElementById('vam_hook').value = hook.hook || '';
-                document.getElementById('vam_link').value = hook.link || '';
+                const linkInput = document.getElementById('vam_link');
+                if (!linkInput.disabled) linkInput.value = hook.link || '';
+            }
+
+            // The form's Link input follows the same 70% checklist rule as the table cell.
+            function setFormLinkLocked(locked) {
+                const input = document.getElementById('vam_link');
+                input.disabled = !!locked;
+                const note = document.getElementById('vam_link_note');
+                if (note) {
+                    note.textContent = locked
+                        ? '🔒 ' + LINK_LOCKED_MSG + ' Use the checklist icon in the table.'
+                        : 'A link icon will be shown in the table when a URL is set.';
+                    note.classList.toggle('text-danger', !!locked);
+                }
             }
 
             // Repopulates the CHANNEL <datalist>. Called on boot.
@@ -2445,6 +2484,7 @@
                 editingId = null;
                 resetForm();
                 document.getElementById('vamRowModalTitle').innerHTML = '<i class="fas fa-video me-2"></i>Add Video Ad';
+                setFormLinkLocked(true);   // a new row has no checklist yet
                 rowModal.show();
             }
 
@@ -2460,6 +2500,7 @@
                 rebuildHookSelect(parseTags(data.hook_name));
                 document.getElementById('vam_hook').value        = data.hook        || '';
                 document.getElementById('vam_link').value        = data.link        || '';
+                setFormLinkLocked(!canEditLink(data));
                 if (String(data.link || '').indexOf('/video-ads-master/file/') !== -1) {
                     const videoNote = document.getElementById('vam_video_note');
                     if (videoNote) videoNote.textContent = 'This row already has an uploaded video. Choose a new file only if you want to replace it.';
@@ -2904,7 +2945,21 @@
                             title: 'LINK', field: 'link', hozAlign: 'center',
                             formatter: linkFormatter,
                             editor: 'input',
+                            // Locked until 70% of the row's checklist is ticked.
+                            editable: (cell) => canEditLink(cell.getRow().getData()),
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('a')) return;
+                                if (!canEditLink(cell.getRow().getData())) showToast(LINK_LOCKED_MSG, 'warning');
+                            },
                             cellEdited: persistCell,
+                        },
+                        {
+                            title: 'CHECKLIST', field: '_checklist', hozAlign: 'center',
+                            headerSort: false,
+                            formatter: checklistFormatter,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-checklist-btn')) { openChecklist(cell.getRow()); }
+                            },
                         },
                         {
                             title: 'THUMB', field: '_thumb', hozAlign: 'center',
@@ -3006,14 +3061,6 @@
                             cellClick: (e, cell) => {
                                 const box = e.target.closest('.vam-redone-box');
                                 if (box) { toggleStamp(cell.getRow(), 'redone_checked', 'redone-check', box.checked, 'redone'); }
-                            },
-                        },
-                        {
-                            title: 'CHECKLIST', field: '_checklist', hozAlign: 'center',
-                            headerSort: false,
-                            formatter: checklistFormatter,
-                            cellClick: (e, cell) => {
-                                if (e.target.closest('.vam-checklist-btn')) { openChecklist(cell.getRow()); }
                             },
                         },
                         {

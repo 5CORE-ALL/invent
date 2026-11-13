@@ -250,6 +250,11 @@ class VideoAdsMasterController extends Controller
             'video_upload' => 'nullable|string|max:64',
         ]);
 
+        // A brand-new row has an empty checklist, so a typed link is not allowed yet.
+        if (trim((string) ($data['link'] ?? '')) !== '') {
+            return $this->checklistLockedResponse();
+        }
+
         unset($data['video'], $data['video_upload']);
         $row = VideoAdsMaster::create($data);
         $uploaded = $this->attachAssembledVideo($request, $row);
@@ -282,6 +287,16 @@ class VideoAdsMasterController extends Controller
             'video'        => 'nullable|file|max:204800',
             'video_upload' => 'nullable|string|max:64',
         ]);
+
+        // Adding / changing a link needs at least 70% of the checklist ticked.
+        // Clearing a link, or re-saving the same one, is always allowed.
+        if (array_key_exists('link', $data)) {
+            $newLink = trim((string) ($data['link'] ?? ''));
+            $oldLink = trim((string) $row->link);
+            if ($newLink !== '' && $newLink !== $oldLink && ! $this->linkUnlocked($row)) {
+                return $this->checklistLockedResponse();
+            }
+        }
 
         unset($data['video'], $data['video_upload']);
         $row->fill($data)->save();
@@ -648,6 +663,27 @@ class VideoAdsMasterController extends Controller
         $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /** Checklist points that must be ticked (70% of 20) before a link can be added. */
+    private const CHECKLIST_TOTAL = 20;
+    private const CHECKLIST_LINK_MIN_PERCENT = 70;
+
+    private function linkUnlocked(VideoAdsMaster $row): bool
+    {
+        $needed = (int) ceil(self::CHECKLIST_TOTAL * self::CHECKLIST_LINK_MIN_PERCENT / 100);
+
+        return count($row->checklist ?? []) >= $needed;
+    }
+
+    private function checklistLockedResponse()
+    {
+        $needed = (int) ceil(self::CHECKLIST_TOTAL * self::CHECKLIST_LINK_MIN_PERCENT / 100);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Complete at least ' . self::CHECKLIST_LINK_MIN_PERCENT . "% of the checklist ({$needed} of " . self::CHECKLIST_TOTAL . ' points) before adding a link.',
+        ], 422);
     }
 
     /**
