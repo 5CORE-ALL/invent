@@ -2840,6 +2840,49 @@
                 // Today badges: today's pace vs the L30 baseline (daily average for counts, L30 % for ratios).
                 t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1, t_cvr: 1, y_cvr: 1 };
             var yOrdersExact = null;
+            // YNPFT% badge = yesterday's saved Today Nprft% (same value the Today graph shows for
+            // that date). Loaded once from the graph endpoint; null until then (live value shown).
+            // Same for YGroi% / YNROI% (saved Today Groi% / NROI% of yesterday).
+            var yNpftSavedVal = null;
+            var yGroiSavedVal = null;
+            var yNroiSavedVal = null;
+            var ySavedPctLoading = {};
+            var ySavedPctMeta = {
+                y_npft_pct: { el: '#avg-y-npft', label: 'yNprft%', today: 'Today Nprft%' },
+                y_groi_pct: { el: '#avg-y-groi', label: 'YGroi%', today: 'Today Groi%' },
+                y_nroi_pct: { el: '#avg-y-nroi', label: 'YNROI%', today: 'Today NROI%' }
+            };
+            function ySavedPctTitle(metric, v) {
+                var m = ySavedPctMeta[metric];
+                return m.label + ' = yesterday\u2019s saved ' + m.today + ' (same as the ' + m.today + ' graph for that date). ' + v.toFixed(1) + '%';
+            }
+            function loadYSavedPct(metric) {
+                var m = ySavedPctMeta[metric];
+                if (!m || ySavedPctLoading[metric]) return;
+                if ((metric === 'y_npft_pct' && yNpftSavedVal !== null)
+                    || (metric === 'y_groi_pct' && yGroiSavedVal !== null)
+                    || (metric === 'y_nroi_pct' && yNroiSavedVal !== null)) return;
+                ySavedPctLoading[metric] = true;
+                $.ajax({
+                    url: '/channel-metric-chart-data',
+                    method: 'GET',
+                    data: { channel: 'all', metric: metric, days: 30 }
+                }).done(function(response) {
+                    var rows = response && response.success && Array.isArray(response.data) ? response.data : [];
+                    if (!rows.length) return;
+                    var v = Number(rows[rows.length - 1].value);
+                    if (!isFinite(v)) return;
+                    if (metric === 'y_npft_pct') yNpftSavedVal = v;
+                    else if (metric === 'y_groi_pct') yGroiSavedVal = v;
+                    else yNroiSavedVal = v;
+                    var $el = $(m.el);
+                    $el.text(v.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title', ySavedPctTitle(metric, v)).attr('data-exact-value', v);
+                }).always(function() {
+                    ySavedPctLoading[metric] = false;
+                });
+            }
+            function loadYNpftSaved() { loadYSavedPct('y_npft_pct'); }
             var yOrdersByChannel = null;
             var yCvrByChannel = null;
             var ySalesFooterBelowAvg = false;
@@ -7176,30 +7219,56 @@
                 })();
                 (function() {
                     const avgYNpft = totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0;
-                    const val = pct1(avgYNpft);
                     const $el = $('#avg-y-npft');
-                    $el.text(val.toFixed(1) + '%');
-                    $el.closest('.badge').attr('title',
-                        'yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), both measured for yesterday alone. ' + val.toFixed(1) + '%');
-                    setBadgeExact($el, val);
+                    if (yNpftSavedVal !== null) {
+                        // Saved Today Nprft% of yesterday — matches the Today graph for that date.
+                        const saved = pct1(yNpftSavedVal);
+                        $el.text(saved.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title',
+                            'yNprft% = yesterday\u2019s saved Today Nprft% (same as the Today Nprft% graph for that date). ' + saved.toFixed(1) + '%');
+                        setBadgeExact($el, saved);
+                    } else {
+                        const val = pct1(avgYNpft);
+                        $el.text(val.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title',
+                            'yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), both measured for yesterday alone. ' + val.toFixed(1) + '%');
+                        setBadgeExact($el, val);
+                        loadYNpftSaved();
+                    }
                 })();
                 (function() {
                     const avgYGroi = totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : 0;
-                    const val = pct1(avgYGroi);
                     const $el = $('#avg-y-groi');
-                    $el.text(val.toFixed(1) + '%');
-                    $el.closest('.badge').attr('title',
-                        'YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
-                    setBadgeExact($el, val);
+                    if (yGroiSavedVal !== null) {
+                        const saved = pct1(yGroiSavedVal);
+                        $el.text(saved.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title', ySavedPctTitle('y_groi_pct', saved));
+                        setBadgeExact($el, saved);
+                    } else {
+                        const val = pct1(avgYGroi);
+                        $el.text(val.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title',
+                            'YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
+                        setBadgeExact($el, val);
+                        loadYSavedPct('y_groi_pct');
+                    }
                 })();
                 (function() {
                     const avgYNroi = totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : 0;
-                    const val = pct1(avgYNroi);
                     const $el = $('#avg-y-nroi');
-                    $el.text(val.toFixed(1) + '%');
-                    $el.closest('.badge').attr('title',
-                        'YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
-                    setBadgeExact($el, val);
+                    if (yNroiSavedVal !== null) {
+                        const saved = pct1(yNroiSavedVal);
+                        $el.text(saved.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title', ySavedPctTitle('y_nroi_pct', saved));
+                        setBadgeExact($el, saved);
+                    } else {
+                        const val = pct1(avgYNroi);
+                        $el.text(val.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title',
+                            'YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
+                        setBadgeExact($el, val);
+                        loadYSavedPct('y_nroi_pct');
+                    }
                 })();
                 (function() {
                     const avgYAds = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0;
@@ -7260,11 +7329,11 @@
 
                 pinSummaryDot('y_sales', totalL30Sales / 30, totalYSales,
                     'Green when yesterday sales are above the L30 daily average (L30 Sales ÷ 30).');
-                pinSummaryDot('y_npft_pct', avgNpft, totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0,
+                pinSummaryDot('y_npft_pct', avgNpft, yNpftSavedVal !== null ? yNpftSavedVal : (totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0),
                     'Green when yesterday NPFT% is above the L30 NPFT%.');
-                pinSummaryDot('y_groi_pct', avgGroi, totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : 0,
+                pinSummaryDot('y_groi_pct', avgGroi, yGroiSavedVal !== null ? yGroiSavedVal : (totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : 0),
                     'Green when yesterday GROI% is above the L30 G ROI%.');
-                pinSummaryDot('y_nroi_pct', avgNroi, totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : 0,
+                pinSummaryDot('y_nroi_pct', avgNroi, yNroiSavedVal !== null ? yNroiSavedVal : (totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : 0),
                     'Green when yesterday NROI% is above the L30 NROI%.');
                 pinSummaryDot('y_ads_pct', avgAdsPercent, totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0,
                     'Green when yesterday Ads% is below the L30 Ads%.');
@@ -7280,9 +7349,15 @@
                 }
                 // Today % badges vs the matching Yesterday % badge: red when today is worse
                 // than yesterday (Ads% is inverted: higher is worse), green when better.
-                yesterdayPctVals.npft = totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : null;
-                yesterdayPctVals.groi = totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : null;
-                yesterdayPctVals.nroi = totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : null;
+                yesterdayPctVals.npft = yNpftSavedVal !== null
+                    ? yNpftSavedVal
+                    : (totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : null);
+                yesterdayPctVals.groi = yGroiSavedVal !== null
+                    ? yGroiSavedVal
+                    : (totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : null);
+                yesterdayPctVals.nroi = yNroiSavedVal !== null
+                    ? yNroiSavedVal
+                    : (totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : null);
                 yesterdayPctVals.ads = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : null;
                 pinSummaryDot('t_npft', yesterdayPctVals.npft, todayDotVals.t_npft,
                     'Green when today Nprft% is above yesterday’s Nprft%.');

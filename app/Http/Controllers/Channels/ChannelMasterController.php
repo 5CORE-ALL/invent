@@ -18647,10 +18647,15 @@ class ChannelMasterController extends Controller
             // All-channel YNPFT% graph: use the same saved daily values as the Today Nprft%
             // graph (t_npft_pct), so the same date shows the same number on both graphs.
             // Today's own (still running) Pacific day is not a "yesterday" point, so it is dropped.
-            if ($isAll && $metric === 'y_npft_pct') {
+            $yFromTodayMap = [
+                'y_npft_pct' => 't_npft_pct',
+                'y_groi_pct' => 't_groi_pct',
+                'y_nroi_pct' => 't_nroi_pct',
+            ];
+            if ($isAll && isset($yFromTodayMap[$metric])) {
                 $points = \App\Models\BadgeDataHistory::series(
                     \App\Support\Marketplace\AmmColumnHistory::pageFor($channel),
-                    't_npft_pct',
+                    $yFromTodayMap[$metric],
                     $days > 0 ? $days : 30
                 );
                 $todayLabel = now(\App\Models\BadgeDataHistory::TZ)->format('M j');
