@@ -2039,7 +2039,9 @@
                     groups.get(canon).push(name);
                 });
                 const chosen = [];
-                groups.forEach(function (names) {
+                groups.forEach(function (names, canon) {
+                    // An item specific called "SKU" would repeat the SKU column that is always on the left.
+                    if (canon === 'sku') return;
                     names.sort(function (a, b) {
                         return (counts.get(b) - counts.get(a)) || (a.length - b.length) || a.localeCompare(b);
                     });
