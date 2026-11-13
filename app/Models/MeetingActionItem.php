@@ -17,11 +17,21 @@ class MeetingActionItem extends Model
         'priority',
         'due_date',
         'task_id',
+        'status',
+        'completed_at',
+        'created_by',
+    ];
+
+    public const STATUSES = [
+        'pending' => ['Pending', 'warning'],
+        'in_progress' => ['In Progress', 'info'],
+        'completed' => ['Completed', 'success'],
     ];
 
     protected $casts = [
         'assignee_matched' => 'boolean',
         'due_date' => 'date',
+        'completed_at' => \App\Casts\MeetingDateTime::class,
     ];
 
     public function meeting(): BelongsTo

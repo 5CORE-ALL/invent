@@ -1286,6 +1286,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
 
+    // Restocking (Tabulator): refunded orders and the value recovered by restocking the item
+    Route::get('/customer-care/restocking', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'index'])
+        ->name('customer.care.restocking');
+    Route::get('/customer-care/restocking/data', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'list'])
+        ->name('customer.care.restocking.data');
+    Route::post('/customer-care/restocking', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'store'])
+        ->name('customer.care.restocking.store');
+    Route::put('/customer-care/restocking/{restocking}', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'update'])
+        ->name('customer.care.restocking.update');
+    Route::delete('/customer-care/restocking/{restocking}', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'destroy'])
+        ->name('customer.care.restocking.destroy');
+
     // FAQ / FFP Customers Page (with escalations)
     Route::get('/customer-care/faq-customers', [CustomerFaqController::class, 'index'])
         ->name('customer.care.faq.customers.index');
@@ -8013,6 +8025,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/meetings/{meeting}/minutes/regenerate', [\App\Http\Controllers\MeetingController::class, 'regenerate'])->name('meetings.minutes.regenerate');
     Route::delete('/meetings/{meeting}', [\App\Http\Controllers\MeetingController::class, 'destroy'])->name('meetings.destroy');
     Route::get('/meetings/{meeting}/recordings/{recording}', [\App\Http\Controllers\MeetingController::class, 'recordingFile'])->name('meetings.recording.file');
+
+    // Google Meet integration (same section): availability, President Summary, details, MOM, tasks, recordings, Google sync
+    Route::get('/meetings/availability', [\App\Http\Controllers\MeetingController::class, 'availability'])->name('meetings.availability');
+    Route::get('/meetings/overview', [\App\Http\Controllers\MeetingManageController::class, 'overview'])->name('meetings.overview');
+    Route::get('/meetings/google/connect', [\App\Http\Controllers\MeetingManageController::class, 'googleConnect'])->name('meetings.google.connect');
+    Route::get('/meetings/google/callback', [\App\Http\Controllers\MeetingManageController::class, 'googleCallback'])->name('meetings.google.callback');
+    Route::post('/meetings/google/disconnect', [\App\Http\Controllers\MeetingManageController::class, 'googleDisconnect'])->name('meetings.google.disconnect');
+    Route::get('/meetings/{meeting}', [\App\Http\Controllers\MeetingManageController::class, 'show'])->whereNumber('meeting')->name('meetings.show');
+    Route::put('/meetings/{meeting}', [\App\Http\Controllers\MeetingManageController::class, 'update'])->whereNumber('meeting')->name('meetings.update');
+    Route::post('/meetings/{meeting}/cancel', [\App\Http\Controllers\MeetingManageController::class, 'cancel'])->whereNumber('meeting')->name('meetings.cancel');
+    Route::post('/meetings/{meeting}/google-sync', [\App\Http\Controllers\MeetingManageController::class, 'googleSync'])->whereNumber('meeting')->name('meetings.google.sync');
+    Route::post('/meetings/{meeting}/time', [\App\Http\Controllers\MeetingManageController::class, 'saveTime'])->whereNumber('meeting')->name('meetings.time');
+    Route::post('/meetings/{meeting}/recording-links', [\App\Http\Controllers\MeetingManageController::class, 'addRecording'])->whereNumber('meeting')->name('meetings.recordings.add');
+    Route::delete('/meetings/{meeting}/recording-links/{recording}', [\App\Http\Controllers\MeetingManageController::class, 'deleteRecording'])->whereNumber('meeting')->name('meetings.recordings.delete');
+    Route::get('/meetings/{meeting}/recording-links/{recording}/file', [\App\Http\Controllers\MeetingManageController::class, 'recordingDownload'])->whereNumber('meeting')->name('meetings.recordings.download');
+    Route::post('/meetings/{meeting}/recordings/google-sync', [\App\Http\Controllers\MeetingManageController::class, 'syncGoogleRecordings'])->whereNumber('meeting')->name('meetings.recordings.google');
+    Route::put('/meetings/{meeting}/mom', [\App\Http\Controllers\MeetingManageController::class, 'saveMom'])->whereNumber('meeting')->name('meetings.mom.save');
+    Route::post('/meetings/{meeting}/tasks', [\App\Http\Controllers\MeetingManageController::class, 'addTask'])->whereNumber('meeting')->name('meetings.tasks.add');
+    Route::put('/meetings/{meeting}/tasks/{item}', [\App\Http\Controllers\MeetingManageController::class, 'updateTask'])->whereNumber('meeting')->name('meetings.tasks.update');
+    Route::delete('/meetings/{meeting}/tasks/{item}', [\App\Http\Controllers\MeetingManageController::class, 'deleteTask'])->whereNumber('meeting')->name('meetings.tasks.delete');
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');

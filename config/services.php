@@ -1269,6 +1269,34 @@ return [
         'minutes_model' => env('MEETING_MINUTES_MODEL', 'gpt-4o-mini'),
         // Storage disk (private) for recordings.
         'disk' => env('MEETING_RECORDING_DISK', 'local'),
+
+        /*
+        | Google Meet via the Google Calendar API (events.insert + conferenceData.createRequest).
+        |
+        | Two ways to authenticate (OAuth is preferred; if both are set, OAuth wins):
+        |  1. OAuth 2.0 (web client). Reuses GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET unless
+        |     MEETING_GOOGLE_CLIENT_ID / _SECRET are set. A manager clicks "Connect Google account"
+        |     on /meetings once; the refresh token is stored encrypted in google_meet_connections.
+        |     The redirect URI https://<your-domain>/meetings/google/callback must be listed as an
+        |     "Authorized redirect URI" on that OAuth client in Google Cloud Console.
+        |  2. Workspace service account with domain-wide delegation, impersonating one real user
+        |     (MEETING_GOOGLE_IMPERSONATE_EMAIL). A plain service account cannot create Meet links.
+        */
+        'google' => [
+            'client_id' => env('MEETING_GOOGLE_CLIENT_ID', env('GOOGLE_CLIENT_ID')),
+            'client_secret' => env('MEETING_GOOGLE_CLIENT_SECRET', env('GOOGLE_CLIENT_SECRET')),
+            'redirect' => env('MEETING_GOOGLE_REDIRECT_URI'),
+            'service_account_json' => env('MEETING_GOOGLE_SERVICE_ACCOUNT_JSON'),
+            'impersonate_email' => env('MEETING_GOOGLE_IMPERSONATE_EMAIL'),
+            'calendar_id' => env('MEETING_GOOGLE_CALENDAR_ID', 'primary'),
+            // Also ask for Google Meet REST API + Drive (Meet) read scopes so real recordings and the
+            // real start/end time of a conference can be read back. Needs Workspace + admin consent.
+            'recording_scopes' => (bool) env('MEETING_GOOGLE_RECORDING_SCOPES', false),
+            // How long to poll while Google is still generating the conference ("pending").
+            'conference_poll_attempts' => (int) env('MEETING_GOOGLE_POLL_ATTEMPTS', 6),
+            'conference_poll_sleep_ms' => (int) env('MEETING_GOOGLE_POLL_SLEEP_MS', 1000),
+            'max_attempts' => (int) env('MEETING_GOOGLE_MAX_ATTEMPTS', 3),
+        ],
     ],
 
     /*

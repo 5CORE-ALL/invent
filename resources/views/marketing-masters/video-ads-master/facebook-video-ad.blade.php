@@ -68,8 +68,8 @@
                         <option value="parent">🔸 Parent</option>
                     </select>
 
-                    <!-- Dil% Color Filter -->
-                    <select id="dil-color-filter" class="form-select border border-danger" style="width: 120px;">
+                    <!-- Dil% Color Filter (hidden: Dil% was based on the sheet's L30 sales) -->
+                    <select id="dil-color-filter" class="form-select border border-danger" style="width: 120px;" hidden>
                         <option value="">🎯 Dil%</option>
                         <option value="red">🔴 Red</option>
                         <option value="yellow">🟡 Yellow</option>
@@ -339,19 +339,6 @@
                     hozAlign: "center"
                 },
                 {
-                    title: "OV L30",
-                    field: "L30",
-                    headerSort: true,
-                    titleFormatter: function() {
-                        return `<div>
-                            OV L30<br>
-                            <span id="total-l30-header" style="font-size:13px;color:white;font-weight:600;"></span>
-                        </div>`;
-                    },
-                    formatter: "plaintext",
-                    hozAlign: "center"
-                },
-                {
                     title: "Meta Sales L30",
                     field: "meta_sales",
                     headerSort: true,
@@ -384,22 +371,6 @@
                     formatter: function(cell) {
                         const v = parseInt(cell.getValue(), 10);
                         return (isNaN(v) || v === 0) ? '<span class="text-muted">0</span>' : '<span class="fw-semibold">' + v + '</span>';
-                    }
-                },
-                {
-                    title: "Dil%",
-                    field: "Dil",
-                    formatter: function (cell) {
-                        const data = cell.getData();
-                        const l30 = parseFloat(data.L30);
-                        const inv = parseFloat(data.INV);
-
-                        if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
-                            const dilDecimal = (l30 / inv);
-                            const color = getDilColor(dilDecimal); 
-                            return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
-                        }
-                        return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                     }
                 },
                 {
@@ -701,10 +672,9 @@
             const data = table.getData("active");
 
             const totalINV = data.reduce((sum, row) => sum + (parseFloat(row["INV"]) || 0), 0);
-            const totalL30 = data.reduce((sum, row) => sum + (parseFloat(row["L30"]) || 0), 0);
 
-            document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
-            document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
+            const invEl = document.getElementById("total-inv-header");
+            if (invEl) invEl.textContent = totalINV.toLocaleString();
 
             // Parent rows already hold the sum of their children, so leave them out of the grand total.
             const childRows = data.filter(row => !row.is_parent);
