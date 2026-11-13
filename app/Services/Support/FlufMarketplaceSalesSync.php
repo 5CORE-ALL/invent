@@ -91,6 +91,8 @@ class FlufMarketplaceSalesSync
             })
             ->get();
 
+        $resolveSku = $this->skuResolver($lines);
+
         $keep = [];
         foreach ($lines as $line) {
             if (self::channelFor($line->source_name ?? null, $line->tags ?? null) !== $channel) {
@@ -117,7 +119,7 @@ class FlufMarketplaceSalesSync
                 'quantity' => $qty,
                 'item_price' => round($net / $qty, 2),
                 'total' => $net,
-                'sku_code' => trim((string) $line->sku) ?: null,
+                'sku_code' => $resolveSku($line)['sku'] ?: null,
                 'source' => 'shopify',
                 'shopify_order_number' => $line->order_number ?: null,
             ];
@@ -174,6 +176,129 @@ class FlufMarketplaceSalesSync
                     : '.'));
 
         return $result;
+    }
+
+    /**
+     * Builds a function that returns the exact SKU for an order line.
+     *
+     * The SKU printed on an order line is a snapshot taken when the order was created, and Fluf creates its
+     * own line items, so it can differ from the SKU the Shopify variant carries today (or be blank). The
+     * Shopify variant is the source of truth, so the candidates are tried in this order and the first one
+     * that is a real Product Master SKU wins (returned in Product Master spelling, so NBSP / hyphen / case
+     * differences no longer break the join):
+     *   1. the SKU on the order line
+     *   2. the variant's current SKU in shopify_skus (by variant_id)
+     *   3. the variant's current SKU in shopify_catalog_variants (by variant_id)
+     * If none is a Product Master SKU, the variant's current SKU is used when the line has none or it is
+     * unknown, otherwise the line SKU is kept.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $lines
+     * @return \Closure(object): array{sku: string, source: string, line_sku: string, shopify_sku: string, catalog_sku: string, in_pm: bool}
+     */
+    public function skuResolver($lines): \Closure
+    {
+        $clean = static fn ($v) => trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', (string) $v));
+
+        $pm = [];
+        $compact = [];
+        if (Schema::hasTable('product_master')) {
+            foreach (DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->pluck('sku') as $s) {
+                $s = trim((string) $s);
+                if ($s === '' || stripos($s, 'PARENT') === 0) {
+                    continue;
+                }
+                $pm[\App\Models\ShopifySku::normalizeSkuForShopifyLookup($s)] ??= $s;
+                $compact[\App\Models\ShopifySku::compactSkuForLookup($s)] ??= $s;
+            }
+        }
+
+        $variantIds = collect($lines)->pluck('variant_id')->filter()->map(fn ($v) => (string) $v)->unique()->values()->all();
+        $shopifySku = [];
+        $catalogSku = [];
+        foreach (array_chunk($variantIds, 1000) as $chunk) {
+            if (Schema::hasTable('shopify_skus')) {
+                foreach (DB::table('shopify_skus')->whereIn('variant_id', $chunk)->get(['variant_id', 'sku']) as $r) {
+                    if (trim((string) $r->sku) !== '') {
+                        $shopifySku[(string) $r->variant_id] = $clean($r->sku);
+                    }
+                }
+            }
+            if (Schema::hasTable('shopify_catalog_variants')) {
+                foreach (DB::table('shopify_catalog_variants')->whereIn('shopify_variant_id', $chunk)->get(['shopify_variant_id', 'sku']) as $r) {
+                    if (trim((string) $r->sku) !== '') {
+                        $catalogSku[(string) $r->shopify_variant_id] = $clean($r->sku);
+                    }
+                }
+            }
+        }
+
+        $toPm = static function (string $sku) use ($pm, $compact): ?string {
+            if ($sku === '') {
+                return null;
+            }
+
+            return $pm[\App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku)]
+                ?? $compact[\App\Models\ShopifySku::compactSkuForLookup($sku)]
+                ?? null;
+        };
+
+        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm): array {
+            $vid = (string) ($line->variant_id ?? '');
+            $lineSku = $clean($line->sku ?? '');
+            $sSku = $shopifySku[$vid] ?? '';
+            $cSku = $catalogSku[$vid] ?? '';
+
+            foreach (['order line' => $lineSku, 'shopify_skus' => $sSku, 'catalog variant' => $cSku] as $source => $cand) {
+                $hit = $toPm($cand);
+                if ($hit !== null) {
+                    return ['sku' => $hit, 'source' => $source, 'line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'in_pm' => true];
+                }
+            }
+
+            $fallback = $lineSku !== '' ? $lineSku : ($sSku !== '' ? $sSku : $cSku);
+
+            return ['sku' => $fallback, 'source' => 'no Product Master match', 'line_sku' => $lineSku, 'shopify_sku' => $sSku, 'catalog_sku' => $cSku, 'in_pm' => false];
+        };
+    }
+
+    /**
+     * Per Shopify order line of a channel: the SKU on the line, the variant's current Shopify SKU and what
+     * the sheet will use. Changes nothing.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function skuAudit(string $channel, int $days = 365): array
+    {
+        $channel = strtolower($channel);
+        if (! isset(self::CHANNELS[$channel]) || ! Schema::hasTable('shopify_raw_orders')) {
+            return [];
+        }
+        $from = Carbon::now()->subDays(max(1, $days))->toDateString();
+        $lines = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $from)
+            ->where(function ($q) use ($channel) {
+                $q->whereRaw('LOWER(COALESCE(source_name,"")) LIKE ?', ['%'.$channel.'%'])
+                    ->orWhereRaw('LOWER(COALESCE(tags,"")) LIKE ?', ['%'.$channel.'%']);
+            })
+            ->orderByDesc('order_date')
+            ->get()
+            ->filter(fn ($l) => self::channelFor($l->source_name ?? null, $l->tags ?? null) === $channel)
+            ->values();
+
+        $resolve = $this->skuResolver($lines);
+        $out = [];
+        foreach ($lines as $l) {
+            $r = $resolve($l);
+            $out[] = $r + [
+                'order' => (string) $l->order_number,
+                'date' => (string) $l->order_date,
+                'title' => (string) $l->product_title,
+                'variant_id' => (string) $l->variant_id,
+                'raw_line_sku' => (string) $l->sku,
+            ];
+        }
+
+        return $out;
     }
 
     /**

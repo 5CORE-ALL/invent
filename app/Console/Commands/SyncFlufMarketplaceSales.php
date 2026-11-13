@@ -14,6 +14,7 @@ class SyncFlufMarketplaceSales extends Command
                             {--check-duplicates : Only report sales entered twice on the sheet, change nothing}
                             {--inspect : Only list how Fluf/Vinted/Depop orders look in Shopify, change nothing}
                             {--find= : Only look up an order. Searches buyer name, email, SKU, order number and tags in shopify_raw_orders and both sheets, e.g. --find="neikae"}
+                            {--audit-skus : Only list each Shopify order line with the SKU on the line, the current Shopify SKU of the variant and the SKU the sheet will use, change nothing}
                             {--summary : Only print orders/lines/qty per month from shopify_raw_orders vs the sheet, change nothing}';
 
     protected $description = 'Copy Vinted and Depop sales (Shopify orders created by Fluf) into /vinted/sheet and /depop/sheet.';
@@ -84,6 +85,25 @@ class SyncFlufMarketplaceSales extends Command
                     $this->line(sprintf('  #%d %s | %s | %s x%d | $%s | %s | %s',
                         $r->id, $r->sale_date, $r->buyer, $r->sku_code, $r->quantity, $r->item_price, $r->source, $r->shopify_order_number));
                 }
+            }
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('audit-skus')) {
+            foreach ($channels as $channel) {
+                $rows = $sync->skuAudit($channel, $days);
+                $this->info('== '.$channel.' SKU audit (last '.$days.' days) ==');
+                $bad = 0;
+                foreach ($rows as $r) {
+                    if (! $r['in_pm']) {
+                        $bad++;
+                    }
+                    $this->line(sprintf('%s %s | line_sku="%s" | shopify_skus="%s" | catalog="%s" | USED="%s" (%s) | variant=%s | %s',
+                        $r['date'], $r['order'], $r['raw_line_sku'], $r['shopify_sku'], $r['catalog_sku'],
+                        $r['sku'], $r['source'], $r['variant_id'] ?: '—', mb_substr($r['title'], 0, 50)));
+                }
+                $this->line('Lines: '.count($rows).' | not matching any Product Master SKU: '.$bad);
             }
 
             return self::SUCCESS;

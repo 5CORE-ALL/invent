@@ -364,6 +364,10 @@ class SyncShopifyOrdersToInventory extends Command
                 $variantId = trim((string) ($line['variant_id'] ?? ''));
                 if ($variantId !== '') {
                     $sku = trim((string) DB::table('shopify_skus')->where('variant_id', $variantId)->value('sku'));
+                    if ($sku === '') {
+                        // Variant is not in shopify_skus (new / unsynced listing): use the synced catalog.
+                        $sku = trim((string) DB::table('shopify_catalog_variants')->where('shopify_variant_id', $variantId)->value('sku'));
+                    }
                 }
             }
 
