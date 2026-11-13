@@ -631,7 +631,7 @@ class Kernel extends ConsoleKernel
         }
 
         // Once a day: a SKU that still holds an eBay item id although eBay no longer has the listing
-        // (zero quantity rows are asked about with GetItem) loses the id and shows on Missing L.
+        // (every live item id is asked about with GetItem) loses the id and shows on Missing L.
         $schedule->command('ebay:purge-stale-item-ids --store=all')
             ->dailyAt('04:45')
             ->timezone('Asia/Kolkata')

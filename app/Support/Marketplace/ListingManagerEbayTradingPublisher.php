@@ -1242,22 +1242,33 @@ class ListingManagerEbayTradingPublisher
             return ['state' => 'error', 'message' => ($ctx['label'] ?? 'eBay').' API credentials are not configured.', 'quantity' => null];
         }
 
+        // Many SKUs share one variation listing: ask eBay about an item id once per run.
+        static $answers = [];
+        $answerKey = ListingChannelCounts::normalize($channelKey).'|'.$itemId;
+
         try {
-            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-            $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
-            $xml->addChild('ItemID', $itemId);
-            $xml->addChild('DetailLevel', 'ReturnAll');
+            if (isset($answers[$answerKey])) {
+                $data = $answers[$answerKey];
+            } else {
+                $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+                $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', (string) ($ctx['token'] ?? ''));
+                $xml->addChild('ItemID', $itemId);
+                $xml->addChild('DetailLevel', 'ReturnAll');
 
-            $response = Http::timeout(60)
-                ->withHeaders(self::tradingHeaders($ctx, 'GetItem'))
-                ->withBody($xml->asXML(), 'text/xml')
-                ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
+                $response = Http::timeout(60)
+                    ->withHeaders(self::tradingHeaders($ctx, 'GetItem'))
+                    ->withBody($xml->asXML(), 'text/xml')
+                    ->post((string) ($ctx['endpoint'] ?? 'https://api.ebay.com/ws/api.dll'));
 
-            $xmlResp = simplexml_load_string($response->body());
-            if ($xmlResp === false) {
-                return ['state' => 'error', 'message' => 'Unreadable eBay response (HTTP '.$response->status().').', 'quantity' => null];
+                $xmlResp = simplexml_load_string($response->body());
+                if ($xmlResp === false) {
+                    return ['state' => 'error', 'message' => 'Unreadable eBay response (HTTP '.$response->status().').', 'quantity' => null];
+                }
+                $data = json_decode(json_encode($xmlResp), true) ?: [];
+                if (count($answers) < 2000 && in_array((string) ($data['Ack'] ?? ''), ['Success', 'Warning'], true)) {
+                    $answers[$answerKey] = $data;
+                }
             }
-            $data = json_decode(json_encode($xmlResp), true) ?: [];
             $ack = (string) ($data['Ack'] ?? 'Failure');
 
             if ($ack !== 'Success' && $ack !== 'Warning') {
