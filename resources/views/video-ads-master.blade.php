@@ -283,6 +283,31 @@
             height: 18px;
             cursor: pointer;
         }
+        /* CHECKLIST column — icon button + progress, opens the checklist modal. */
+        .vam-checklist-btn {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            border: 0;
+            background: transparent;
+            color: #6b7280;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        .vam-checklist-btn:hover { color: #2c6ed5; }
+        .vam-checklist-btn small { font-size: 10px; font-weight: 700; color: #6b7280; }
+        .vam-checklist-btn.is-partial { color: #d97706; }
+        .vam-checklist-btn.is-complete { color: #16a34a; }
+        .vam-checklist-btn.is-partial small { color: #d97706; }
+        .vam-checklist-btn.is-complete small { color: #16a34a; }
+        #vamChecklistTable th { white-space: nowrap; background: #1e3a5f; color: #fff; font-size: 12px; position: sticky; top: 0; z-index: 1; }
+        #vamChecklistTable td { font-size: 12.5px; vertical-align: middle; }
+        #vamChecklistTable td.vam-cl-point { font-weight: 600; }
+        #vamChecklistTable tr.is-done td { background: #f0fdf4; }
+        #vamChecklistTable .vam-cl-box { width: 18px; height: 18px; cursor: pointer; }
         .vam-ad-box {
             width: 18px;
             height: 18px;
@@ -858,6 +883,42 @@
         </div>
     </div>
 
+    {{-- Modal: video quality checklist for a single row (20 checkpoints with checkboxes). --}}
+    <div class="modal fade" id="vamChecklistModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-list-check me-2"></i>Video Checklist
+                        <small class="text-muted ms-2" id="vamChecklistSubtitle"></small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <table class="table table-sm table-bordered mb-0" id="vamChecklistTable">
+                        <thead>
+                            <tr>
+                                <th style="width:50px;" class="text-center">
+                                    <input type="checkbox" class="form-check-input vam-cl-box" id="vamChecklistAll" title="Select / clear all">
+                                </th>
+                                <th style="width:50px;" class="text-center">No</th>
+                                <th style="width:190px;">Checkpoint</th>
+                                <th>What to Check</th>
+                                <th>Why It Matters</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vamChecklistBody"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto fw-semibold" id="vamChecklistProgress"></span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="vamChecklistSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Modal: check/uncheck audit trail for a single row. Populated on
          demand from GET /video-ads-master/{id}/check-history. --}}
     <div class="modal fade" id="vamCheckHistoryModal" tabindex="-1" aria-hidden="true">
@@ -902,6 +963,8 @@
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
+            let checklistModal     = null;   // bootstrap.Modal — video quality checklist
+            let checklistRow       = null;   // Tabulator row whose checklist is open
             let redoNoteModal      = null;   // bootstrap.Modal — note when marking REDO
             let redoNoteRow        = null;   // Tabulator row awaiting a redo note
             let redoNoteSaved      = false;  // true once Save was clicked (so hide doesn't revert)
@@ -1548,6 +1611,110 @@
                         </div>
                         ${meta}
                     </div>`;
+            }
+
+            // CHECKLIST column — icon button (with ticked/total) that opens the
+            // video checklist modal. Wired in the column's cellClick handler.
+            const CHECKLIST_ITEMS = [
+                [1,  'Thumbnail / Cover',      'Is the thumbnail or opening visual eye-catching and clear? Does it make the right audience want to watch?', 'Creates the first impression and can increase the chance of a click/view.'],
+                [2,  'Target Audience',        'Is it clear who this video is made for?', 'A focused video usually performs better than a generic one.'],
+                [3,  'Audience Match',         'Does the message, visuals and language match the target audience?', 'Improves relevance and conversion potential.'],
+                [4,  'Hook',                   'Are the first 1–3 seconds strong enough to stop scrolling?', 'A weak opening can lose viewers immediately.'],
+                [5,  'Message Clarity',        'Can viewers quickly understand the main message and what is being sold?', 'Confusion reduces watch time and sales.'],
+                [6,  'Product Visibility',     'Is the product shown clearly, properly and early enough?', 'Viewers need to clearly see and understand the product.'],
+                [7,  'Product Demonstration',  'Does the video show how the product works or why it is useful?', 'Demonstration can increase trust and purchase intent.'],
+                [8,  'Engagement',             'Is the video interesting enough to hold attention?', 'Engaging content can improve retention and ad performance.'],
+                [9,  'Watch Till End Potential', 'Does the video give viewers a reason to continue until the end?', 'Higher retention helps the message and CTA reach more viewers.'],
+                [10, 'Share Potential',        'Would someone have a reason to send or share this with another person?', 'Shares can increase reach and indicate strong relevance.'],
+                [11, 'Like / Reaction Potential', 'Does the video create enough interest, emotion or value to encourage reactions?', 'Positive engagement can indicate audience interest.'],
+                [12, 'Pacing',                 'Are there unnecessary pauses, slow sections or repetitive scenes?', 'Better pacing helps maintain attention.'],
+                [13, 'Visual Variety',         'Are there enough changes in visuals, angles, text or scenes to maintain interest?', 'Helps prevent viewers from getting bored.'],
+                [14, 'Text & Captions',        'Is text easy to read on mobile and are captions used where needed?', 'Improves understanding, especially when sound is off.'],
+                [15, 'Sound / Audio',          'Is the voice clear and is music balanced properly?', 'Poor audio can reduce understanding and professionalism.'],
+                [16, 'Call to Action',         'Is the CTA clear and does the viewer know exactly what to do next?', 'A clear CTA helps turn attention into action.'],
+                [17, 'Sales Potential',        'Does the video create a strong reason or desire to buy?', 'The ultimate goal of a performance ad is conversion.'],
+                [18, 'Video Length',           'Is the video between approximately 30–90 seconds, unless a shorter/longer format is strategically required?', 'Keeps the creative concise while allowing enough time to communicate the message.'],
+                [19, 'Mobile Friendly',        'Does the video work clearly on a small mobile screen?', 'Most Meta viewers consume ads on mobile.'],
+                [20, 'Overall Relevance',      'Does every scene support the message, audience or goal?', 'Removes unnecessary content and strengthens the ad.'],
+            ];
+
+            function checklistDone(row) {
+                return Array.isArray(row.checklist) ? row.checklist.length : 0;
+            }
+
+            function checklistFormatter(cell) {
+                const done  = checklistDone(cell.getRow().getData());
+                const total = CHECKLIST_ITEMS.length;
+                const cls   = done >= total ? ' is-complete' : (done > 0 ? ' is-partial' : '');
+                return `<button type="button" class="vam-checklist-btn${cls}" title="Open checklist (${done}/${total})">
+                            <i class="fas fa-list-check"></i><small>${done}/${total}</small>
+                        </button>`;
+            }
+
+            function updateChecklistProgress() {
+                const boxes = document.querySelectorAll('#vamChecklistBody .vam-cl-box');
+                let done = 0;
+                boxes.forEach(b => {
+                    if (b.checked) done++;
+                    b.closest('tr').classList.toggle('is-done', b.checked);
+                });
+                document.getElementById('vamChecklistProgress').textContent = `${done} / ${boxes.length} completed`;
+                document.getElementById('vamChecklistAll').checked = boxes.length > 0 && done === boxes.length;
+            }
+
+            function openChecklist(row) {
+                const data = row.getData();
+                if (!data.id) return;
+                checklistRow = row;
+
+                const ticked = new Set((Array.isArray(data.checklist) ? data.checklist : []).map(Number));
+                document.getElementById('vamChecklistBody').innerHTML = CHECKLIST_ITEMS.map(it => `
+                    <tr>
+                        <td class="text-center"><input type="checkbox" class="form-check-input vam-cl-box" data-no="${it[0]}" ${ticked.has(it[0]) ? 'checked' : ''}></td>
+                        <td class="text-center">${it[0]}</td>
+                        <td class="vam-cl-point">${escapeHtml(it[1])}</td>
+                        <td>${escapeHtml(it[2])}</td>
+                        <td>${escapeHtml(it[3])}</td>
+                    </tr>`).join('');
+
+                const label = [data.name, data.target_value].filter(Boolean).join(' — ');
+                document.getElementById('vamChecklistSubtitle').textContent = label;
+                updateChecklistProgress();
+                checklistModal.show();
+            }
+
+            function saveChecklist() {
+                if (!checklistRow) return;
+                const row = checklistRow;
+                const data = row.getData();
+                const checked = Array.from(document.querySelectorAll('#vamChecklistBody .vam-cl-box:checked'))
+                    .map(b => Number(b.dataset.no));
+
+                const btn = document.getElementById('vamChecklistSave');
+                btn.disabled = true;
+
+                fetch(`/video-ads-master/${data.id}/checklist`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ checklist: checked }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to save checklist', 'error');
+                        return;
+                    }
+                    row.update({ checklist: j.row.checklist || [] });
+                    row.reformat();
+                    checklistModal.hide();
+                    showToast('Checklist saved', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error while saving checklist', 'error'); })
+                .finally(() => { btn.disabled = false; });
             }
 
             // AD column — a checkbox reflecting ad_checked plus the user + time
@@ -2396,6 +2563,13 @@
                 audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
+                checklistModal      = new bootstrap.Modal(document.getElementById('vamChecklistModal'));
+                document.getElementById('vamChecklistSave').addEventListener('click', saveChecklist);
+                document.getElementById('vamChecklistBody').addEventListener('change', updateChecklistProgress);
+                document.getElementById('vamChecklistAll').addEventListener('change', (e) => {
+                    document.querySelectorAll('#vamChecklistBody .vam-cl-box').forEach(b => { b.checked = e.target.checked; });
+                    updateChecklistProgress();
+                });
 
                 // REDO note modal: Save persists the tick + note; any other close reverts the checkbox.
                 const redoNoteEl    = document.getElementById('vamRedoNoteModal');
@@ -2788,6 +2962,14 @@
                             cellClick: (e, cell) => {
                                 const box = e.target.closest('.vam-redone-box');
                                 if (box) { toggleStamp(cell.getRow(), 'redone_checked', 'redone-check', box.checked, 'redone'); }
+                            },
+                        },
+                        {
+                            title: 'CHECKLIST', field: '_checklist', hozAlign: 'center',
+                            headerSort: false,
+                            formatter: checklistFormatter,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-checklist-btn')) { openChecklist(cell.getRow()); }
                             },
                         },
                         {

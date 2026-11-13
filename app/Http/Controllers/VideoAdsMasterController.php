@@ -585,6 +585,7 @@ class VideoAdsMasterController extends Controller
         $copy->redone_checked    = false;
         $copy->redone_checked_by = null;
         $copy->redone_checked_at = null;
+        $copy->checklist         = null;
         $copy->save();
 
         return response()->json(['success' => true, 'row' => $this->presentRow($copy)]);
@@ -643,6 +644,26 @@ class VideoAdsMasterController extends Controller
         $row->ad_checked    = $newState;
         $row->ad_checked_by = $newState ? $username : null;
         $row->ad_checked_at = $newState ? $now : null;
+        $row->save();
+
+        return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /**
+     * Save the video-quality checklist for a row. The client sends the list
+     * of ticked checkpoint numbers (1-20).
+     */
+    public function saveChecklist(Request $request, $id)
+    {
+        $data = $request->validate([
+            'checklist'   => 'nullable|array',
+            'checklist.*' => 'integer|min:1|max:20',
+        ]);
+
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $items = collect($data['checklist'] ?? [])->map(fn ($n) => (int) $n)->unique()->sort()->values()->all();
+        $row->checklist = $items;
         $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);

@@ -4867,6 +4867,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');
     Route::put('/video-ads-master/{id}/ad-check',         [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleAdCheck'])->whereNumber('id')->name('video.ads.master.ad.check');
+    Route::put('/video-ads-master/{id}/checklist',        [\App\Http\Controllers\VideoAdsMasterController::class, 'saveChecklist'])->whereNumber('id')->name('video.ads.master.checklist');
     Route::put('/video-ads-master/{id}/redo-check',       [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleRedo'])->whereNumber('id')->name('video.ads.master.redo.check');
     Route::put('/video-ads-master/{id}/redone-check',     [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleRedone'])->whereNumber('id')->name('video.ads.master.redone.check');
     Route::put('/video-ads-master/{id}/creators',        [\App\Http\Controllers\VideoAdsMasterController::class, 'syncCreators'])->whereNumber('id')->name('video.ads.master.creators');

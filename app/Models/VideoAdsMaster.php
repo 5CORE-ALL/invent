@@ -33,6 +33,7 @@ class VideoAdsMaster extends Model
         'redone_checked',
         'redone_checked_by',
         'redone_checked_at',
+        'checklist',
     ];
 
     protected $hidden = [
@@ -49,6 +50,7 @@ class VideoAdsMaster extends Model
         'redone_checked'        => 'boolean',
         'redone_checked_at'     => 'datetime',
         'creators_initialized'  => 'boolean',
+        'checklist'             => 'array',
     ];
 
     public function checkHistory()
