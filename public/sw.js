@@ -3,7 +3,7 @@
  * Cache only safe static assets. Never cache HTML pages (CSRF), JSON APIs,
  * chat messages, unread, files, or other private user data.
  */
-const CACHE_NAME = 'invent-v6-network';
+const CACHE_NAME = 'invent-v7-network';
 
 const STATIC_ASSETS = [
   '/offline.html',
@@ -35,6 +35,16 @@ const PRIVATE_PREFIXES = [
   '/mfrg-progresses',
   '/ready-to-ship',
 ];
+
+// respondWith() must always receive a Response. caches.match() resolves to
+// undefined on a miss, which throws "Failed to convert value to 'Response'".
+function errorResponse() {
+  return new Response('Network error', {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
 
 function isPrivatePath(pathname) {
   return PRIVATE_PREFIXES.some(function (p) {
@@ -122,7 +132,9 @@ self.addEventListener('fetch', function (event) {
   if (request.mode === 'navigate' || request.destination === 'document' || accept.includes('text/html')) {
     event.respondWith(
       fetch(request, { cache: 'no-store' }).catch(function () {
-        return caches.match('/offline.html');
+        return caches.match('/offline.html').then(function (offline) {
+          return offline || errorResponse();
+        });
       })
     );
     return;
@@ -133,7 +145,9 @@ self.addEventListener('fetch', function (event) {
   if (request.destination === 'script' || request.destination === 'style') {
     event.respondWith(
       fetch(request, { cache: 'no-store' }).catch(function () {
-        return caches.match(request);
+        return caches.match(request).then(function (cached) {
+          return cached || errorResponse();
+        });
       })
     );
     return;
@@ -154,7 +168,7 @@ self.addEventListener('fetch', function (event) {
         }
         return response;
       }).catch(function () {
-        return cached;
+        return cached || errorResponse();
       });
       return cached || fetched;
     })
