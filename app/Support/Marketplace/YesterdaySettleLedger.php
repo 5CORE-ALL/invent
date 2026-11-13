@@ -2,7 +2,6 @@
 
 namespace App\Support\Marketplace;
 
-use App\Support\Marketplace\Settle\SettleTracker;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
 
@@ -251,10 +250,7 @@ class YesterdaySettleLedger
      * After the 09:00 PT hard stop, anything not done is reported as failed ("missed"), because it
      * will not be retried that day.
      *
-     * `settled` = every ledger pull is done AND every task is verified (see SettleTracker). The extra
-     * keys `ledger_settled`, `verification` and `tasks` are additive; all earlier keys are unchanged.
-     *
-     * @return array{date: string, settled: bool, ledger_settled: bool, verification: array<string, mixed>, tasks: array<string, array<string, mixed>>, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string, deadline_passed: bool}
+     * @return array{date: string, settled: bool, passes_due: int, passes_total: int, pending: list<string>, failed: list<string>, settled_at: ?string, deadline_passed: bool}
      */
     public static function status(?string $date = null, ?Carbon $now = null): array
     {
@@ -291,41 +287,11 @@ class YesterdaySettleLedger
             }
         }
 
-        $ledgerSettled = $hi === $total - 1 && $pending === [] && $failed === [];
-
-        // Phase 1/2: per-task detail and data verification. "Settled" additionally needs every task
-        // to be VERIFIED against the stored data (exit code 0 alone is not enough). If the tracking
-        // tables cannot be read the day is reported as unverified, never as settled.
-        $required = (bool) config('settle.require_verification', true);
-        $verification = [
-            'required' => $required,
-            'available' => false,
-            'all_verified' => false,
-            'verified' => 0,
-            'total' => count(self::tasks()),
-            'failed' => [],
-            'unverified' => [],
-        ];
-        $taskDetail = [];
-        try {
-            $described = SettleTracker::describe($date, $ledger, $hi, $deadlinePassed, $now);
-            $taskDetail = $described['tasks'];
-            $verification['available'] = $described['available'];
-            $verification['all_verified'] = $described['summary']['all_verified'];
-            $verification['verified'] = $described['summary']['verified'];
-            $verification['failed'] = $described['summary']['verification_failed'];
-            $verification['unverified'] = $described['summary']['unverified'];
-        } catch (\Throwable $e) {
-            // keep the defaults: unverified
-        }
-        $settled = $ledgerSettled && (! $required || $verification['all_verified']);
+        $settled = $hi === $total - 1 && $pending === [] && $failed === [];
 
         return [
             'date' => $date,
             'settled' => $settled,
-            'ledger_settled' => $ledgerSettled,
-            'verification' => $verification,
-            'tasks' => $taskDetail,
             'passes_due' => $hi + 1,
             'passes_total' => $total,
             'pending' => array_values($pending),

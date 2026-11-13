@@ -490,21 +490,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(240)
             ->runInBackground()
             ->appendOutputTo($log);
-
-        // NEW (read-only): verifies that each settled pull really stored complete data, mirrors the
-        // per-marketplace state into settle_task_runs and sends alerts. It never runs a marketplace
-        // pull and never writes to marketplace tables. Runs around the clock so late problems are
-        // still reported after the 09:00 PT settle window; exits fast when nothing needs checking.
-        // Disable with SETTLE_VERIFY_SCHEDULE=false. The entry above is unchanged.
-        if (config('settle.verify_schedule_enabled', true)) {
-            $schedule->command('settle:verify')
-                ->everyTenMinutes()
-                ->timezone('America/Los_Angeles')
-                ->name('settle-verify-yesterday')
-                ->withoutOverlapping(15)
-                ->runInBackground()
-                ->appendOutputTo($log);
-        }
     }
 
     /**
