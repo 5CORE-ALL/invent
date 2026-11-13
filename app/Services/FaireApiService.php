@@ -846,6 +846,70 @@ class FaireApiService
     }
 
     /**
+     * Stale-listing check: GET /products/{id} read that tells "Faire has no such product" (HTTP 404 with a JSON
+     * body) from every other failure. For a found product it returns the lifecycle state and the variant SKUs.
+     *
+     * state: found | not_found | error
+     *
+     * @return array{state: string, status: int, message: string, lifecycle: string, skus: list<string>}
+     */
+    public function getProductState(string $productId): array
+    {
+        $productId = trim($productId);
+        $out = static fn (string $state, int $status, string $message, string $lifecycle = '', array $skus = []): array => [
+            'state' => $state, 'status' => $status, 'message' => $message, 'lifecycle' => $lifecycle, 'skus' => $skus,
+        ];
+        if ($productId === '' || ! preg_match('/^[A-Za-z0-9_\-]+$/', $productId)) {
+            return $out('error', 0, 'Not a Faire product id.');
+        }
+        if (! $this->isConfigured()) {
+            return $out('error', 0, 'Faire API credentials missing.');
+        }
+
+        $res = $this->request('GET', '/products/'.$productId);
+        $status = (int) ($res['status'] ?? 0);
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return $out('error', $status, 'Blocked by Cloudflare.');
+        }
+        if ($status === 404 && is_array($res['json'] ?? null)) {
+            return $out('not_found', 404, $this->errorFromResponse($res));
+        }
+        if (empty($res['ok']) || ! is_array($res['json'] ?? null)) {
+            return $out('error', $status, $this->errorFromResponse($res));
+        }
+
+        $data = $res['json']['product'] ?? $res['json'];
+        if (! is_array($data)) {
+            return $out('error', $status, 'Unreadable product answer.');
+        }
+        $answeredId = trim((string) ($data['id'] ?? ''));
+        if ($answeredId !== '' && strcasecmp($answeredId, $productId) !== 0) {
+            return $out('error', $status, 'Answer is for product '.$answeredId.'.');
+        }
+
+        $skus = [];
+        $variants = $data['variants'] ?? $data['product_variants'] ?? [];
+        if (is_array($variants)) {
+            foreach ($variants as $variant) {
+                $sku = is_array($variant) ? trim((string) ($variant['sku'] ?? '')) : '';
+                if ($sku !== '') {
+                    $skus[] = $sku;
+                }
+            }
+        }
+        $topSku = trim((string) ($data['sku'] ?? ''));
+        if ($topSku !== '') {
+            $skus[] = $topSku;
+        }
+        $lifecycle = trim((string) ($data['lifecycle_state'] ?? $data['lifecycleState'] ?? $data['state'] ?? ''));
+        if ($answeredId === '' && $lifecycle === '' && $skus === []) {
+            return $out('error', $status, 'Product answer has no id, state or SKUs.');
+        }
+
+        return $out('found', $status, 'Faire returned the product.', $lifecycle, array_values(array_unique($skus)));
+    }
+
+    /**
      * @param  array<string, mixed>  $info
      * @return list<array{sku: string, product_id: string, inventory?: int|null, price?: float|null, product_name?: ?string}>
      */

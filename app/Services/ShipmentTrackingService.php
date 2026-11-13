@@ -90,8 +90,8 @@ class ShipmentTrackingService
 
     public function hasFedex(): bool
     {
-        return trim((string) config('services.fedex.client_id')) !== ''
-            && trim((string) config('services.fedex.client_secret')) !== '';
+        return trim((string) config('services.fedex.tracking_client_id')) !== ''
+            && trim((string) config('services.fedex.tracking_client_secret')) !== '';
     }
 
     /**
@@ -403,6 +403,143 @@ class ShipmentTrackingService
      * @return array<string, array{status: string, detail: ?string, provider: string}>
      */
     protected function trackUsps(array $shipments): array
+    {
+        // USPS_TRACKING_API=v3 switches back to the old one-number-per-call endpoint.
+        if (strtolower((string) config('services.usps.tracking_api', 'v3r2')) === 'v3') {
+            return $this->trackUspsLegacy($shipments);
+        }
+
+        $token = $this->uspsAccessToken();
+        if ($token === null) {
+            return [];
+        }
+
+        $base = rtrim((string) config('services.usps.api_base', 'https://apis.usps.com'), '/');
+        $out = [];
+        $quotaHit = false;
+
+        // Tracking API v3r2: POST /tracking/v3r2/tracking takes up to 35 numbers per request,
+        // so one hourly quota unit now covers 35 packages instead of 1.
+        foreach (array_chunk($shipments, 35) as $chunk) {
+            if ($quotaHit || ! $this->uspsCanRequest()) {
+                foreach ($chunk as $s) {
+                    $out[$s['number']] = $this->transientResult('usps', 'USPS hourly quota reserved — skipped this run');
+                }
+
+                continue;
+            }
+
+            $body = [];
+            foreach ($chunk as $s) {
+                $body[] = ['trackingNumber' => $s['number']];
+            }
+
+            try {
+                $this->uspsRecordRequest();
+                $resp = Http::withToken($token)
+                    ->acceptJson()
+                    ->asJson()
+                    ->timeout($this->timeout)
+                    ->post($base.'/tracking/v3r2/tracking', $body);
+            } catch (\Throwable $e) {
+                Log::error('ShipmentTracking: USPS v3r2 request failed', ['error' => $e->getMessage()]);
+                foreach ($chunk as $s) {
+                    $out[$s['number']] = $this->transientResult('usps', $e->getMessage(), 'request_failed');
+                }
+
+                continue;
+            }
+
+            $json = $resp->json();
+            $status = $resp->status();
+
+            if ($status !== 200 && $status !== 207) {
+                $errMsg = (string) (data_get($json, 'error.message') ?: mb_substr($resp->body(), 0, 240));
+                Log::warning('ShipmentTracking: USPS v3r2 HTTP error', [
+                    'status' => $status,
+                    'count' => count($chunk),
+                    'body' => mb_substr($resp->body(), 0, 400),
+                ]);
+
+                if ($this->isQuotaOrRateLimitError($status, $errMsg)) {
+                    $this->uspsMarkQuotaExhausted($errMsg);
+                    $quotaHit = true;
+                }
+                foreach ($chunk as $s) {
+                    // A 404 on a one-number request means that number is unknown to USPS.
+                    // Anything else (401/403/400/5xx, or 404 on a batch) says nothing about
+                    // the packages, so it must not be stored as a status.
+                    if ($status === 404 && count($chunk) === 1) {
+                        $out[$s['number']] = ['status' => self::STATUS_NOT_FOUND, 'detail' => $errMsg !== '' ? mb_substr($errMsg, 0, 480) : null, 'provider' => 'usps'];
+                    } else {
+                        $out[$s['number']] = $this->transientResult('usps', $errMsg !== '' ? $errMsg : 'USPS HTTP '.$status);
+                    }
+                }
+
+                continue;
+            }
+
+            $byNumber = [];
+            foreach ((array) $json as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $tn = strtoupper(preg_replace('/\s+/', '', (string) ($item['trackingNumber'] ?? '')) ?? '');
+                if ($tn !== '') {
+                    $byNumber[$tn] = $item;
+                }
+            }
+
+            foreach ($chunk as $s) {
+                $number = $s['number'];
+                $item = $byNumber[strtoupper((string) preg_replace('/\s+/', '', $number))] ?? null;
+                $out[$number] = $item === null
+                    ? $this->transientResult('usps', 'USPS returned no entry for this number', 'missing')
+                    : $this->uspsResultFromDetail($item);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * One element of a v3r2 response (TrackingDetail, or a FailureResponse inside a 207).
+     *
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    protected function uspsResultFromDetail(array $item): array
+    {
+        $code = (int) ($item['statusCode'] ?? 200);
+        if ($code >= 400) {
+            $msg = (string) (data_get($item, 'error.message') ?? data_get($item, 'error.errors.0.detail') ?? '');
+            if ($code === 404) {
+                return ['status' => self::STATUS_NOT_FOUND, 'detail' => $msg !== '' ? mb_substr($msg, 0, 480) : null, 'provider' => 'usps'];
+            }
+
+            return $this->transientResult('usps', $msg !== '' ? $msg : 'USPS error '.$code);
+        }
+
+        $category = (string) ($item['statusCategory'] ?? '');
+        $summary = (string) ($item['statusSummary'] ?? '');
+        $latest = (string) (data_get($item, 'trackingEvents.0.eventType') ?? '');
+        $statusText = $category !== '' ? $category : (string) ($item['status'] ?? $latest);
+        $detail = $summary !== '' ? $summary : $latest;
+
+        return [
+            'status' => $this->normalizeUspsStatus($statusText, $detail),
+            'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
+            'provider' => 'usps',
+        ];
+    }
+
+    /**
+     * Old v3 endpoint: one request (and one quota unit) per tracking number.
+     *
+     * @param  list<array{number: string, carrier: ?string}>  $shipments
+     * @return array<string, array<string, mixed>>
+     */
+    protected function trackUspsLegacy(array $shipments): array
     {
         $token = $this->uspsAccessToken();
         if ($token === null) {
@@ -784,7 +921,7 @@ class ShipmentTrackingService
             return [];
         }
 
-        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
+        $base = rtrim((string) config('services.fedex.tracking_api_base', 'https://apis-sandbox.fedex.com'), '/');
         $out = [];
 
         // FedEx Track API accepts batches; keep chunks small for reliability.
@@ -911,14 +1048,17 @@ class ShipmentTrackingService
 
     protected function fedexAccessToken(): ?string
     {
-        $cached = Cache::get('fedex_oauth_access_token');
+        // Tracking uses its own FedEx project (FEDEX_TRACKING_*), falling back to FEDEX_*.
+        $id = trim((string) config('services.fedex.tracking_client_id'));
+        $secret = trim((string) config('services.fedex.tracking_client_secret'));
+        $base = rtrim((string) config('services.fedex.tracking_api_base', 'https://apis-sandbox.fedex.com'), '/');
+
+        // Keyed by project so a credential change never reuses the old project's token.
+        $cacheKey = 'fedex_tracking_oauth_'.md5($id.'|'.$base);
+        $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') {
             return $cached;
         }
-
-        $id = trim((string) config('services.fedex.client_id'));
-        $secret = trim((string) config('services.fedex.client_secret'));
-        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
 
         // A bad FEDEX_API_BASE (e.g. a broken .env line) must only lose FedEx lookups, not the whole batch.
         try {
@@ -951,7 +1091,7 @@ class ShipmentTrackingService
         }
 
         $expiresIn = (int) ($resp->json('expires_in') ?: 3600);
-        Cache::put('fedex_oauth_access_token', $token, now()->addSeconds(max(60, $expiresIn - 60)));
+        Cache::put($cacheKey, $token, now()->addSeconds(max(60, $expiresIn - 60)));
 
         return $token;
     }

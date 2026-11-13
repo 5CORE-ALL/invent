@@ -53,6 +53,8 @@
             border: 0;
         }
         #of-channels-badge:hover { filter: brightness(1.12); }
+        .of-alert-wrap { display: inline-flex; align-items: center; gap: 6px; }
+        .of-alert-icon { color: #dc3545; font-size: 0.95rem; }
         #orderFulfillmentNav .of-nav-count {
             margin-left: 0.35rem;
             font-size: 0.65rem;
@@ -187,6 +189,10 @@
                         <button type="button" class="badge bg-secondary of-summary-badge" id="of-channels-badge" title="Show connected marketplaces">Channels: <span id="of-channel-count">0</span></button>
                         <span class="badge of-summary-badge" style="background:#d1e7dd; color:#0f5132;">Paid: <span id="of-paid-count">0</span></span>
                         <span class="badge of-summary-badge" style="background:#fff3cd; color:#856404;">Unpaid: <span id="of-unpaid-count">0</span></span>
+                        @if(!empty($ofScanPendingOnly))
+                            <span class="badge of-summary-badge" style="background:#f8d7da; color:#b02a37;" title="Rows with a tracking number and no carrier scan, over 36 hours after the order time"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Alerts: <span id="of-alert-count">0</span></span>
+                            <button type="button" class="badge of-summary-badge" id="of-days-badge" style="background:#dc3545; color:#fff; border:0; cursor:pointer;" title="Alert rows grouped by how many days old the order is">Days</button>
+                        @endif
                         <input type="date" id="of-date-from" class="form-control form-control-sm" style="width:140px;" value="{{ $ofDateFrom ?? '' }}" min="{{ $ofDateEarliest ?? '2026-09-15' }}" title="From date">
                         <input type="date" id="of-date-to" class="form-control form-control-sm" style="width:140px;" value="{{ $ofDateTo ?? '' }}" min="{{ $ofDateEarliest ?? '2026-09-15' }}" title="To date">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="of-apply-dates">Apply</button>
@@ -202,6 +208,12 @@
                         <select id="of-status-filter" class="form-select form-select-sm" style="width:220px;" title="Filter by status">
                             <option value="">All statuses</option>
                         </select>
+                        @if(!empty($ofScanPendingOnly))
+                            <select id="of-alert-filter" class="form-select form-select-sm" style="width:150px;" title="Show only rows with the red triangle alert (over 36 hours since the order time), or all rows">
+                                <option value="alert" selected>&#9650; Triangle alert</option>
+                                <option value="all">All</option>
+                            </select>
+                        @endif
                         <select id="of-paid-filter" class="form-select form-select-sm" style="width:130px;" title="Paid or unpaid">
                             <option value="">Paid / Unpaid</option>
                             <option value="Paid">Paid</option>
@@ -229,6 +241,28 @@
             </div>
         </div>
     </div>
+
+    @if(!empty($ofScanPendingOnly))
+    <div class="modal fade" id="of-days-modal" tabindex="-1" aria-labelledby="of-days-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="of-days-modal-label"><i class="fas fa-exclamation-triangle text-danger me-1" aria-hidden="true"></i>Alert rows by days</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th class="ps-3">Days</th><th class="text-end pe-3">Rows</th></tr>
+                        </thead>
+                        <tbody id="of-days-list"></tbody>
+                        <tfoot id="of-days-foot"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 
     <div class="modal fade" id="of-tracking-modal" tabindex="-1" aria-labelledby="of-tracking-modal-label" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -511,6 +545,11 @@
         : (unpaidOnly ? 'unpaid'
         : (pendingOnly ? 'pending' : 'orders')))));
     const statusStorageKey = 'of-status-filter:' + pageKey;
+    // Scan Pending lists the oldest orders first and can show only the red triangle alerts.
+    const defaultSortDir = scanPendingOnly ? 'asc' : 'desc';
+    function alertsOnly() {
+        return scanPendingOnly && String(document.getElementById('of-alert-filter')?.value || 'alert') === 'alert';
+    }
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     function escapeHtml(value) {
@@ -582,7 +621,11 @@
         setCount('of-channel-count', Object.keys(channels).length);
         setCount('of-paid-count', paid);
         setCount('of-unpaid-count', unpaid);
-        setNavCount(pageKey, rows.length);
+        if (scanPendingOnly) {
+            setCount('of-alert-count', (rows || []).filter(function (row) { return row.scan_alert; }).length);
+        }
+        // The sidebar count is every Scan Pending row, not just the alerts shown.
+        setNavCount(pageKey, alertsOnly() ? table.getData().length : rows.length);
     }
 
     function setNavCount(key, value) {
@@ -707,13 +750,15 @@
         const channel = String(document.getElementById('of-channel-filter')?.value || '').trim().toLowerCase();
         const paid = String(document.getElementById('of-paid-filter')?.value || '').trim();
         const statuses = selectedStatuses();
-        if (!q && !channel && !paid && statuses === null) {
+        const onlyAlerts = alertsOnly();
+        if (!q && !channel && !paid && statuses === null && !onlyAlerts) {
             table.clearFilter(true);
             countsFromRows(table.getData());
             return;
         }
         const words = q.split(/\s+/).filter(Boolean);
         table.setFilter(function (data) {
+            if (onlyAlerts && !data.scan_alert) return false;
             if (statuses && statuses.indexOf(statusLabel(data)) === -1) return false;
             if (paid && String(data.paid_label || '') !== paid) return false;
             if (channel && !String(data.channel || '').toLowerCase().includes(channel)) return false;
@@ -743,7 +788,7 @@
         index: 'id',
         layout: 'fitColumns',
         placeholder: 'Loading orders…',
-        initialSort: [{ column: 'order_date', dir: 'desc' }],
+        initialSort: [{ column: 'order_date', dir: defaultSortDir }],
         ajaxURL: @json(route('order.fulfillment.data')),
         ajaxConfig: 'GET',
         ajaxRequestFunc: function (url, config, params) {
@@ -782,6 +827,7 @@
             setCount('of-channel-count', response && response.channel_count);
             setCount('of-paid-count', response && response.paid_count);
             setCount('of-unpaid-count', response && response.unpaid_count);
+            setCount('of-alert-count', response && response.alert_count);
             navStatusCounts = (response && response.nav_status_counts) || null;
             setNavCounts(response && response.nav_counts);
             if (response && response.success === false) {
@@ -792,7 +838,7 @@
             return rows;
         },
         dataLoaded: function () {
-            table.setSort([{ column: 'order_date', dir: 'desc' }]);
+            table.setSort([{ column: 'order_date', dir: defaultSortDir }]);
             renderStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
@@ -850,7 +896,11 @@
                     if (!parts) return '—';
                     let html = '<span class="of-dt-cell"><span class="of-dt-date">' + escapeHtml(parts.date) + '</span>';
                     if (parts.time) html += '<span class="of-dt-time">' + escapeHtml(parts.time) + '</span>';
-                    return html + '</span>';
+                    html += '</span>';
+                    if (scanPendingOnly && cell.getRow().getData().scan_alert) {
+                        html = '<span class="of-alert-wrap"><i class="fas fa-exclamation-triangle of-alert-icon" title="Over 36 hours since the order time and still no carrier scan" aria-label="Alert"></i>' + html + '</span>';
+                    }
+                    return html;
                 },
             },
             {
@@ -997,7 +1047,7 @@
         refreshSavedNavCounts();
     });
 
-    ['of-search', 'of-channel-filter', 'of-paid-filter'].forEach(function (id) {
+    ['of-search', 'of-channel-filter', 'of-paid-filter', 'of-alert-filter'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('input', function () { applyFilters(table); });
         document.getElementById(id)?.addEventListener('change', function () { applyFilters(table); });
     });
@@ -1049,6 +1099,40 @@
     }
 
     document.getElementById('of-channels-badge')?.addEventListener('click', openChannelsModal);
+
+    // Red-alert rows only, grouped by whole days since the order time (36h+ is 1 day and up).
+    function openDaysModal() {
+        const byDays = {};
+        let total = 0;
+        rowsForCounts().forEach(function (row) {
+            if (!row.scan_alert) return;
+            const days = Number(row.scan_alert_days);
+            if (!isFinite(days)) return;
+            byDays[days] = (byDays[days] || 0) + 1;
+            total++;
+        });
+        const keys = Object.keys(byDays).map(Number).sort(function (a, b) { return a - b; });
+        const body = document.getElementById('of-days-list');
+        if (body) {
+            body.innerHTML = keys.length
+                ? keys.map(function (d) {
+                    return '<tr><td class="ps-3">' + d + (d === 1 ? ' day' : ' days') + '</td>'
+                        + '<td class="text-end pe-3">' + byDays[d].toLocaleString() + '</td></tr>';
+                }).join('')
+                : '<tr><td colspan="2" class="text-muted text-center py-3">No alert rows.</td></tr>';
+        }
+        const foot = document.getElementById('of-days-foot');
+        if (foot) {
+            foot.innerHTML = keys.length
+                ? '<tr class="fw-semibold"><td class="ps-3">Total</td><td class="text-end pe-3">' + total.toLocaleString() + '</td></tr>'
+                : '';
+        }
+        const el = document.getElementById('of-days-modal');
+        if (window.bootstrap && bootstrap.Modal && el) {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+        }
+    }
+    document.getElementById('of-days-badge')?.addEventListener('click', openDaysModal);
 
     document.getElementById('of-clear-dates')?.addEventListener('click', function () {
         const from = document.getElementById('of-date-from');

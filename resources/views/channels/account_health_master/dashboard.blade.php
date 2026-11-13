@@ -2101,7 +2101,7 @@
             const name = selectedMarketplace();
             const done = table.setData(originalChannelData);
             const applyFilter = function() {
-                table.setPageSize(50);
+            table.setPageSize(50);
                 if (name) table.setFilter('channel', '=', name);
             };
             if (done && typeof done.then === 'function') done.then(applyFilter);

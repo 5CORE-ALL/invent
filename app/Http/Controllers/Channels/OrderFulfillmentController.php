@@ -19,6 +19,7 @@ use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\VeeqoApiService;
+use App\Support\Marketplace\SofOrderCancelDetector;
 use App\Support\TrackingCarrierGuesser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -161,6 +162,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsScanPending($row)
                 ));
+                $rows = $this->markScanPendingAlerts($rows);
             } elseif (request()->boolean('unpaid')) {
                 $rows = array_values(array_filter(
                     $rows,
@@ -200,6 +202,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'channel_count' => count($channels),
                 'paid_count' => $paid,
                 'unpaid_count' => $unpaid,
+                'alert_count' => count(array_filter($rows, static fn (array $row) => ! empty($row['scan_alert']))),
                 'date_from' => $from->toDateString(),
                 'date_to' => $to->toDateString(),
                 'nav_counts' => $navCounts,
@@ -367,6 +370,45 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
+     * Scan Pending rows still unscanned more than this many hours after the order time get a red triangle.
+     */
+    protected const SCAN_ALERT_HOURS = 36;
+
+    /**
+     * Flag scan-pending rows whose order time is over SCAN_ALERT_HOURS old.
+     * order_date is already in the display timezone, so it is read in that zone.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function markScanPendingAlerts(array $rows): array
+    {
+        $now = \Carbon\Carbon::now($this->sofTimezone());
+        $limitMinutes = self::SCAN_ALERT_HOURS * 60;
+
+        foreach ($rows as &$row) {
+            $row['scan_alert'] = false;
+            $raw = trim((string) ($row['order_date'] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            try {
+                $placed = \Carbon\Carbon::parse($raw, $this->sofTimezone());
+            } catch (\Throwable) {
+                continue;
+            }
+            $minutes = $placed->diffInMinutes($now, false);
+            $row['scan_alert'] = $minutes > $limitMinutes;
+            if ($row['scan_alert']) {
+                $row['scan_alert_days'] = intdiv((int) $minutes, 1440);
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Still waiting to ship. Uses each marketplace's pending status and leaves
      * delivered, in-transit, and scan-pending rows on those pages.
      *
@@ -398,7 +440,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         return match (true) {
             in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) => $upper === 'NOT_STARTED',
             $slug === 'amazon' => $upper === 'UNSHIPPED',
-            $slug === 'newegg' => $raw === '0',
+            $slug === 'newegg' => $raw === '0' || $lower === 'unshipped',
             $slug === 'reverb' => $lower === 'paid',
             $slug === 'shein' => in_array($lower, ['pending', 'to be shipped'], true),
             in_array($slug, ['temu', 'temu2', 'temu3'], true) => in_array($upper, ['UN_SHIPPING', 'PENDING'], true),
@@ -1329,6 +1371,13 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         $query->select(array_map(static fn (string $column) => $table.'.'.$column, $keep));
 
+        // eBay keeps NOT_STARTED as the fulfillment status for orders cancelled before shipping.
+        // The cancel state lives in the payload, so read just those two values and not the whole JSON.
+        if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) && isset($have['raw_payload'])) {
+            $query->selectRaw("JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.cancelStatus.cancelState')) as ebay_cancel_state")
+                ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.orderPaymentStatus')), JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.paymentSummary.paymentStatus'))) as ebay_payment_status");
+        }
+
         if ($slug === 'amazon') {
             $query->with(['items' => function ($items): void {
                 $itemTable = $items->getModel()->getTable();
@@ -1346,6 +1395,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $n = $this->lightOrderFields($slug, $order);
         $paid = MarketplaceOrderPaidFilter::isPaid($slug, $order);
         $status = trim((string) ($n['status'] ?? ''));
+        if ($slug === 'newegg') {
+            $status = $this->neweggStatusLabel($status);
+        }
+        if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) && $this->ebayOrderIsCancelled($order)) {
+            $status = 'CANCELLED';
+        }
         $apiOrderId = trim((string) ($n['order_id'] ?? ''));
         $orderNumber = trim((string) ($n['order_number'] ?? ''));
         $displayOrderId = $orderNumber !== '' ? $orderNumber : $apiOrderId;
@@ -1407,6 +1462,41 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $base['sku'] = $this->inventoryLookupSku($sku);
 
         return [$base];
+    }
+
+    /**
+     * eBay cancelled (including cancelled before shipment) or fully refunded orders.
+     */
+    protected function ebayOrderIsCancelled(object $order): bool
+    {
+        $state = strtoupper(trim((string) ($order->ebay_cancel_state ?? '')));
+        if (in_array($state, ['CANCELED', 'CANCELLED'], true)) {
+            return true;
+        }
+
+        $payment = strtoupper(trim((string) ($order->ebay_payment_status ?? '')));
+
+        return in_array($payment, ['FULLY_REFUNDED', 'REFUNDED'], true)
+            || SofOrderCancelDetector::statusLooksCancelled((string) ($order->status ?? ''));
+    }
+
+    /**
+     * Newegg stores its order status as a number. Show the name Newegg uses
+     * (0 Unshipped, 1 Partially Shipped, 2 Shipped, 3 Invoiced, 4 Voided, 5 Payment Pending).
+     * Any other value is shown as it is. "Invoiced" means Newegg has shipped and billed the
+     * order; it is not a delivery status, so Delivered still comes from carrier tracking.
+     */
+    protected function neweggStatusLabel(string $status): string
+    {
+        return match (trim($status)) {
+            '0' => 'Unshipped',
+            '1' => 'Partially Shipped',
+            '2' => 'Shipped',
+            '3' => 'Invoiced',
+            '4' => 'Voided',
+            '5' => 'Payment Pending',
+            default => trim($status),
+        };
     }
 
     /**

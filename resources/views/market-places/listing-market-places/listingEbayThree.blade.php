@@ -725,7 +725,7 @@
                 };
 
                 rows.forEach(item => {
-                    if (!(item.is_parent || isParentSku(item.sku)) && parseFloat(item.INV) > 0) {
+                    if (!(item.is_parent || isParentSku(item.sku)) && ($('#inv-filter').val() !== 'inv-only' || parseFloat(item.INV) > 0)) {
                         const parked = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
@@ -794,7 +794,7 @@
                 if (linkFilter === 'without-link' && hasItemLink) return false;
 
                 if (listedFilter === 'Pending') {
-                    if (data.is_parent || isParentSku(data.sku) || !(parseFloat(data.INV) > 0)) return false;
+                    if (data.is_parent || isParentSku(data.sku) || (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0))) return false;
                     if (data.nr_req === 'NR' || data.listed === 'Created' || data.listed === 'Incomplete' || data.page_created) return false;
                     if (data.listed && data.listed !== 'Pending') return false;
                 } else if (listedFilter !== 'all' && data.listed !== listedFilter) return false;

@@ -27,10 +27,14 @@ class SyncShipmentTrackingStatus extends Command
         {--stale= : Skip numbers checked within the last N minutes (omit for auto ~2 passes/day)}
         {--carrier= : Optional carrier filter (USPS, UPS, FEDEX, GOFO, ...)}
         {--prefer-native : Prefer native carrier APIs over 17TRACK}
+        {--scan-pending : Only numbers with no status yet, Label Created / No Scan, Pending or Not Found (the Scan Pending page)}
         {--catch-up : Fast backlog mode (import channel trackings, larger batches, less sleep)}
         {--repair-quota : Reset NotFound rows that only contain quota/rate-limit error text}';
 
     protected $description = 'Fetch live shipment status from the tracking provider into carrier_tracking_statuses (channel trackings; no Shopify API)';
+
+    /** Set from --scan-pending: restrict every selection to numbers still waiting for a carrier scan. */
+    protected bool $scanPendingOnly = false;
 
     public function handle(ShipmentTrackingService $tracking): int
     {
@@ -47,6 +51,7 @@ class SyncShipmentTrackingStatus extends Command
             return self::FAILURE;
         }
 
+        $this->scanPendingOnly = (bool) $this->option('scan-pending');
         $catchUp = (bool) $this->option('catch-up');
         if ($catchUp || $this->option('repair-quota')) {
             // Always import channel trackings before a catch-up / repair pass.
@@ -747,6 +752,18 @@ class SyncShipmentTrackingStatus extends Command
         $query = DB::table('carrier_tracking_statuses')
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '');
+
+        if ($this->scanPendingOnly) {
+            $query->where(function ($q) {
+                $q->whereNull('shipment_status')
+                    ->orWhere('shipment_status', '')
+                    ->orWhereIn('shipment_status', [
+                        ShipmentTrackingService::STATUS_INFO_RECEIVED,
+                        ShipmentTrackingService::STATUS_PENDING,
+                        ShipmentTrackingService::STATUS_NOT_FOUND,
+                    ]);
+            });
+        }
 
         if ($carrierFilter !== '') {
             $this->applyCarrierFilter($query, $carrierFilter);

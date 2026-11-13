@@ -2329,6 +2329,83 @@ class NeweggApiService
     }
 
     /**
+     * Stale-listing check: does Newegg still have this Seller Part # (Get Item Inventory, type 1)?
+     *
+     * state "gone" only when Newegg answered every spelling of the SKU with a clear "not found" error.
+     * Cloudflare, timeouts, auth, rate limit, 5xx, unreadable or unrecognised answers are "unknown".
+     *
+     * @return array{state: string, message: string, item_number: string}  state: live | gone | unknown
+     */
+    public function sellerItemState(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['state' => 'unknown', 'message' => 'SKU is required.', 'item_number' => ''];
+        }
+        if (! $this->isConfigured()) {
+            return ['state' => 'unknown', 'message' => 'Newegg API credentials are not configured.', 'item_number' => ''];
+        }
+
+        $candidates = $this->neweggSkuCandidates($sku);
+        $gone = 0;
+        foreach ($candidates as $candidate) {
+            $inv = $this->getItemInventory($candidate, 1);
+            if (! empty($inv['blocked_by_cloudflare'])) {
+                return ['state' => 'unknown', 'message' => 'Blocked by Cloudflare (managed challenge).', 'item_number' => ''];
+            }
+            if (! empty($inv['error'])) {
+                return ['state' => 'unknown', 'message' => (string) $inv['error'], 'item_number' => ''];
+            }
+            $status = (int) ($inv['status'] ?? 0);
+            $json = $inv['json'] ?? null;
+            if (! is_array($json)) {
+                return ['state' => 'unknown', 'message' => 'HTTP '.$status.' without readable JSON.', 'item_number' => ''];
+            }
+
+            $itemNumber = self::itemNumberFromInventoryPayload($json);
+            if ($itemNumber !== '') {
+                return ['state' => 'live', 'message' => 'Newegg item '.$itemNumber.'.', 'item_number' => $itemNumber];
+            }
+            $isError = $this->neweggJsonLooksLikeError($json);
+            if (! $isError && ($this->extractBatchItemList($json) !== [] || $this->inventoryPayloadLooksListed($json))) {
+                return ['state' => 'live', 'message' => 'Newegg returned inventory for the SKU.', 'item_number' => ''];
+            }
+
+            if ($status === 0 || $status === 401 || $status === 403 || $status === 429 || $status >= 500) {
+                return ['state' => 'unknown', 'message' => 'HTTP '.$status.'.', 'item_number' => ''];
+            }
+            $message = $this->extractItemError($inv);
+            if ($isError && self::neweggMessageSaysNotFound($message)) {
+                $gone++;
+
+                continue;
+            }
+
+            Log::warning('Newegg stale check: unrecognised Get Item Inventory answer', [
+                'sku' => $candidate,
+                'status' => $status,
+                'body' => mb_substr((string) ($inv['raw'] ?? ''), 0, 300),
+            ]);
+
+            return ['state' => 'unknown', 'message' => 'Unrecognised answer ('.mb_substr($message, 0, 120).').', 'item_number' => ''];
+        }
+
+        if ($candidates !== [] && $gone === count($candidates)) {
+            return ['state' => 'gone', 'message' => 'Newegg says the Seller Part # does not exist.', 'item_number' => ''];
+        }
+
+        return ['state' => 'unknown', 'message' => 'No answer.', 'item_number' => ''];
+    }
+
+    private static function neweggMessageSaysNotFound(string $message): bool
+    {
+        return (bool) preg_match(
+            '/not\s+found|does\s*not\s+exist|doesn\'?t\s+exist|not\s+exist|no\s+(such\s+)?(item|record)|cannot\s+find|can\'?t\s+find|could\s+not\s+find|invalid\s+(seller\s*part|item\s*number)/i',
+            $message
+        );
+    }
+
+    /**
      * Create a Newegg listing (or attach an existing catalog item).
      *
      * @param  array<string, mixed>  $fields

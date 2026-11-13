@@ -237,6 +237,15 @@ class Kernel extends ConsoleKernel
             ->name('tracking-sync-status-daily')
             ->appendOutputTo($log);
 
+        // /order-fulfillment/scan-pending: numbers with no status yet or still "Label Created / No Scan"
+        // are looked up again every 2 hours (the daily run above only revisits a number once a day).
+        $schedule->command('tracking:sync-status --scan-pending --catch-up --stale=120 --limit=1000 --only-open')
+            ->hourlyAt(40)
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->name('tracking-sync-status-scan-pending')
+            ->appendOutputTo($log);
+
         // Shopify Ads Master: keep the daily channel snapshot (trend chart + dots)
         // current even on days nobody opens /shopify-ads-master.
         $schedule->command('shopify-ads-master:snapshot')
@@ -3925,6 +3934,17 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('mm-halfhourly-orders-tracking')
             ->withoutOverlapping(40)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Hourly: re-fetch recent marketplace orders only, so the Status and Tracking columns on
+        // /order-fulfillment (Pending / Scan Pending / Transit / Delivered) are at most about an hour old
+        // instead of waiting for the once-a-day catch-up. Lock (90) > --max-minutes (45) so a run cannot overlap itself.
+        $schedule->command('mm:push-orders-tracking --days=3 --fetch-only --max-minutes=45')
+            ->hourlyAt(45)
+            ->timezone('Asia/Kolkata')
+            ->name('mm-hourly-orders-refresh')
+            ->withoutOverlapping(90)
             ->runInBackground()
             ->appendOutputTo($log);
 

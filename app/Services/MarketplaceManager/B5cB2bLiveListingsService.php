@@ -215,6 +215,131 @@ class B5cB2bLiveListingsService
         return ['success' => true, 'message' => 'Pulled '.$sku.' from Business 5 Core B2B.'];
     }
 
+    /**
+     * Every listing the store API returns, read page by page without touching b5c_b2b_products.
+     * `complete` is true only when meta.last_page was present, every page was read and (when the store
+     * reports meta.total) the number of rows matches it; only then may "not in the index" mean gone.
+     *
+     * @return array{complete: bool, message: string, count: int, skus: array<string, true>, ids: array<string, true>}
+     */
+    public function liveListingIndex(int $perPage = 100): array
+    {
+        $out = ['complete' => false, 'message' => '', 'count' => 0, 'skus' => [], 'ids' => []];
+        if (! $this->api->isConfigured()) {
+            $out['message'] = 'Business 5 Core B2B API is not configured.';
+
+            return $out;
+        }
+
+        $page = 1;
+        $lastPage = 1;
+        $total = null;
+        try {
+            do {
+                $payload = $this->api->fetchListings($page, $perPage);
+                if (! is_array($payload['data'] ?? null) || ! isset($payload['meta']['last_page']) || ! is_numeric($payload['meta']['last_page'])) {
+                    $out['message'] = 'Store listings response was unreadable (page '.$page.').';
+
+                    return $out;
+                }
+                $lastPage = max(1, (int) $payload['meta']['last_page']);
+                if (isset($payload['meta']['total']) && is_numeric($payload['meta']['total'])) {
+                    $total = (int) $payload['meta']['total'];
+                }
+                foreach ($payload['data'] as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $out['count']++;
+                    $sku = trim((string) ($row['sku'] ?? ''));
+                    if ($sku !== '') {
+                        $out['skus'][self::skuKey($sku)] = true;
+                    }
+                    $id = trim((string) ($row['id'] ?? ''));
+                    if ($id !== '') {
+                        $out['ids'][$id] = true;
+                    }
+                }
+                $page++;
+            } while ($page <= $lastPage && $page <= 1000);
+        } catch (\Throwable $e) {
+            $out['message'] = $e->getMessage();
+
+            return $out;
+        }
+
+        if ($page <= $lastPage) {
+            $out['message'] = 'Store listings has more than '.($page - 1).' pages; read stopped early.';
+
+            return $out;
+        }
+        if ($total !== null && $total !== $out['count']) {
+            $out['message'] = 'Store reports '.$total.' listing(s) but '.$out['count'].' were read.';
+
+            return $out;
+        }
+
+        $out['complete'] = true;
+        $out['message'] = $out['count'].' listing(s) read.';
+
+        return $out;
+    }
+
+    /**
+     * Ask the store about one SKU on both /api/listings and /api/inventory (the same pair refreshSku() uses).
+     * "absent" only when both answers were well formed and neither holds the SKU (or the listing id);
+     * any API error or unreadable body is "error".
+     *
+     * @return array{state: 'live'|'absent'|'error', message: string}
+     */
+    public function probeSku(string $sku, ?string $listingId = null): array
+    {
+        $sku = trim($sku);
+        $listingId = trim((string) $listingId);
+        if ($sku === '') {
+            return ['state' => 'error', 'message' => 'SKU is empty.'];
+        }
+        $want = self::skuKey($sku);
+        if ($want === '') {
+            return ['state' => 'error', 'message' => 'SKU has no letters or digits.'];
+        }
+
+        try {
+            foreach ([
+                $this->api->fetchListings(1, 5, ['sku' => $sku]),
+                $this->api->fetchInventory(1, 5, ['sku' => $sku]),
+            ] as $payload) {
+                if (! is_array($payload['data'] ?? null)) {
+                    return ['state' => 'error', 'message' => 'Store response was unreadable.'];
+                }
+                foreach ($payload['data'] as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    if (self::skuKey((string) ($row['sku'] ?? '')) === $want
+                        || ($listingId !== '' && trim((string) ($row['id'] ?? '')) === $listingId)) {
+                        return ['state' => 'live', 'message' => 'Store still returns the SKU.'];
+                    }
+                    foreach (is_array($row['variants'] ?? null) ? $row['variants'] : [] as $variant) {
+                        if (is_array($variant) && self::skuKey((string) ($variant['sku'] ?? '')) === $want) {
+                            return ['state' => 'live', 'message' => 'Store still returns the SKU as a variant.'];
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            return ['state' => 'error', 'message' => $e->getMessage()];
+        }
+
+        return ['state' => 'absent', 'message' => 'Store returns no listing or stock row for this SKU.'];
+    }
+
+    /** SKU compared without case, spaces, dashes or other punctuation. */
+    public static function skuKey(string $sku): string
+    {
+        return strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '', $sku));
+    }
+
     protected function refreshFromApiIntoLocal(): void
     {
         $result = $this->refresh();

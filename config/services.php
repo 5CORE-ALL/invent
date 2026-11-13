@@ -441,6 +441,8 @@ return [
         'consumer_secret' => env('USPS_CONSUMER_SECRET', ''),
         'callback_url'    => env('USPS_CALLBACK_URL', 'http://127.0.0.1:8000/admin'),
         'api_base'        => env('USPS_API_BASE', 'https://apis.usps.com'),
+        // v3r2 = batched tracking (35 numbers per request); v3 = legacy one number per request.
+        'tracking_api'    => env('USPS_TRACKING_API', 'v3r2'),
         'max_per_hour'    => (int) env('USPS_MAX_PER_HOUR', 55),
         'min_interval_ms' => (int) env('USPS_MIN_INTERVAL_MS', 1000),
     ],
@@ -475,6 +477,11 @@ return [
         'client_id'     => env('FEDEX_CLIENT_ID', ''),
         'client_secret' => env('FEDEX_CLIENT_SECRET', ''),
         'api_base'      => env('FEDEX_API_BASE', 'https://apis-sandbox.fedex.com'),
+        // Separate FedEx project used only by shipment tracking (Track API).
+        // Falls back to the FEDEX_* values above when the FEDEX_TRACKING_* ones are not set.
+        'tracking_client_id'     => env('FEDEX_TRACKING_CLIENT_ID') ?: env('FEDEX_CLIENT_ID', ''),
+        'tracking_client_secret' => env('FEDEX_TRACKING_CLIENT_SECRET') ?: env('FEDEX_CLIENT_SECRET', ''),
+        'tracking_api_base'      => env('FEDEX_TRACKING_API_BASE') ?: env('FEDEX_API_BASE', 'https://apis-sandbox.fedex.com'),
     ],
 
     /*

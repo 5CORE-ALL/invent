@@ -7062,6 +7062,81 @@ class AmazonSpApiService
     }
 
     /**
+     * Uncached Listings Items check for seller SKUs (5 requests at a time, about 1 second apart).
+     * 'missing' is only an HTTP 404 answer. Throttling, auth errors, timeouts and unreadable
+     * bodies are 'unknown'. 'inactive' is a listing that exists but is closed with no stock.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, 'live'|'inactive'|'missing'|'unknown'>
+     */
+    public function listingsItemStatesLive(array $skus): array
+    {
+        $list = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $list[$sku] = true;
+            }
+        }
+        $list = array_map('strval', array_keys($list));
+        $out = array_fill_keys($list, 'unknown');
+        if ($list === [] || ! $this->isConfigured()) {
+            return $out;
+        }
+
+        try {
+            $token = $this->getAccessToken();
+        } catch (\Throwable $e) {
+            return $out;
+        }
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        if (! $token || $sellerId === '') {
+            return $out;
+        }
+
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+        foreach (array_chunk($list, 5) as $chunk) {
+            try {
+                $responses = Http::pool(function (Pool $pool) use ($chunk, $token, $sellerId, $marketplaceId) {
+                    foreach ($chunk as $i => $sku) {
+                        $url = $this->endpoint.'/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($sku)
+                            .'?marketplaceIds='.rawurlencode($marketplaceId)
+                            .'&includedData='.rawurlencode('summaries,fulfillmentAvailability');
+                        $pool->as((string) $i)
+                            ->withoutVerifying()
+                            ->timeout(20)
+                            ->withHeaders([
+                                'x-amz-access-token' => $token,
+                                'Content-Type' => 'application/json',
+                            ])
+                            ->get($url);
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::warning('Amazon SP-API live listing state pool failed', ['error' => $e->getMessage()]);
+                usleep(1100000);
+
+                continue;
+            }
+
+            foreach ($chunk as $i => $sku) {
+                $response = $responses[(string) $i] ?? null;
+                if (! $response instanceof Response) {
+                    continue;
+                }
+                $body = $response->json();
+                $out[$sku] = AmazonListingStatusHelper::sellerCentralListingState(
+                    is_array($body) ? $body : null,
+                    $response->status()
+                );
+            }
+            usleep(1100000);
+        }
+
+        return $out;
+    }
+
+    /**
      * Seller SKU as it exists on the US listings API, or null when Amazon has no offer.
      */
     public function resolveExistingSellerSku(string $sku): ?string
