@@ -2846,11 +2846,13 @@
             var yNpftSavedVal = null;
             var yGroiSavedVal = null;
             var yNroiSavedVal = null;
+            var yAdsSavedVal = null;
             var ySavedPctLoading = {};
             var ySavedPctMeta = {
                 y_npft_pct: { el: '#avg-y-npft', label: 'yNprft%', today: 'Today Nprft%' },
                 y_groi_pct: { el: '#avg-y-groi', label: 'YGroi%', today: 'Today Groi%' },
-                y_nroi_pct: { el: '#avg-y-nroi', label: 'YNROI%', today: 'Today NROI%' }
+                y_nroi_pct: { el: '#avg-y-nroi', label: 'YNROI%', today: 'Today NROI%' },
+                y_ads_pct: { el: '#avg-y-ads', label: 'Y Ads%', today: 'Today Ads%' }
             };
             function ySavedPctTitle(metric, v) {
                 var m = ySavedPctMeta[metric];
@@ -2861,7 +2863,8 @@
                 if (!m || ySavedPctLoading[metric]) return;
                 if ((metric === 'y_npft_pct' && yNpftSavedVal !== null)
                     || (metric === 'y_groi_pct' && yGroiSavedVal !== null)
-                    || (metric === 'y_nroi_pct' && yNroiSavedVal !== null)) return;
+                    || (metric === 'y_nroi_pct' && yNroiSavedVal !== null)
+                    || (metric === 'y_ads_pct' && yAdsSavedVal !== null)) return;
                 ySavedPctLoading[metric] = true;
                 $.ajax({
                     url: '/channel-metric-chart-data',
@@ -2874,7 +2877,8 @@
                     if (!isFinite(v)) return;
                     if (metric === 'y_npft_pct') yNpftSavedVal = v;
                     else if (metric === 'y_groi_pct') yGroiSavedVal = v;
-                    else yNroiSavedVal = v;
+                    else if (metric === 'y_nroi_pct') yNroiSavedVal = v;
+                    else yAdsSavedVal = v;
                     var $el = $(m.el);
                     $el.text(v.toFixed(1) + '%');
                     $el.closest('.badge').attr('title', ySavedPctTitle(metric, v)).attr('data-exact-value', v);
@@ -7274,7 +7278,15 @@
                     const avgYAds = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0;
                     const val = pct1(avgYAds);
                     const $el = $('#avg-y-ads');
+                    if (yAdsSavedVal !== null) {
+                        const saved = pct1(yAdsSavedVal);
+                        $el.text(saved.toFixed(1) + '%');
+                        $el.closest('.badge').attr('title', ySavedPctTitle('y_ads_pct', saved));
+                        setBadgeExact($el, saved);
+                        return;
+                    }
                     if (totalYAdSales > 0) {
+                        loadYSavedPct('y_ads_pct');
                         $el.text(val.toFixed(1) + '%');
                         setBadgeExact($el, val);
                     } else {
@@ -7335,7 +7347,7 @@
                     'Green when yesterday GROI% is above the L30 G ROI%.');
                 pinSummaryDot('y_nroi_pct', avgNroi, yNroiSavedVal !== null ? yNroiSavedVal : (totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : 0),
                     'Green when yesterday NROI% is above the L30 NROI%.');
-                pinSummaryDot('y_ads_pct', avgAdsPercent, totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0,
+                pinSummaryDot('y_ads_pct', avgAdsPercent, yAdsSavedVal !== null ? yAdsSavedVal : (totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0),
                     'Green when yesterday Ads% is below the L30 Ads%.');
                 l30DailyOrders = totalL30Orders / 30;
                 l30DailyViews = totalViews / 30;
@@ -7358,7 +7370,9 @@
                 yesterdayPctVals.nroi = yNroiSavedVal !== null
                     ? yNroiSavedVal
                     : (totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : null);
-                yesterdayPctVals.ads = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : null;
+                yesterdayPctVals.ads = yAdsSavedVal !== null
+                    ? yAdsSavedVal
+                    : (totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : null);
                 pinSummaryDot('t_npft', yesterdayPctVals.npft, todayDotVals.t_npft,
                     'Green when today Nprft% is above yesterday’s Nprft%.');
                 pinSummaryDot('t_groi', yesterdayPctVals.groi, todayDotVals.t_groi,

@@ -18651,6 +18651,7 @@ class ChannelMasterController extends Controller
                 'y_npft_pct' => 't_npft_pct',
                 'y_groi_pct' => 't_groi_pct',
                 'y_nroi_pct' => 't_nroi_pct',
+                'y_ads_pct' => 't_ads_pct',
             ];
             if ($isAll && isset($yFromTodayMap[$metric])) {
                 $points = \App\Models\BadgeDataHistory::series(
