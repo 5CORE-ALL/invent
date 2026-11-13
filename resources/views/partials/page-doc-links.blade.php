@@ -2,7 +2,9 @@
      Usage: @include('partials.page-doc-links', ['pageKey' => 'inactive-listings'])
      - No link yet: the icon opens a modal to add the link to the document.
      - Link added: the icon opens the document (view / edit) in a new tab; the pencil edits or removes the link.
-     Links are stored per page in page_doc_links (shared by all users). --}}
+     Links are stored per page in page_doc_links (shared by all users).
+     Optional: 'types' => ['sop'] shows only the SOP icon; 'sopIcon' => asset('...') swaps the SOP image
+     (e.g. the Automated Tasks icon assets/images/task-sop-icon.png). --}}
 @php
     $pdlKey = (string) ($pageKey ?? trim(request()->path(), '/'));
     $pdlLinks = \App\Support\PageDocLinks::forPage($pdlKey);
@@ -10,6 +12,8 @@
         'sop' => ['label' => 'SOP', 'title' => 'Standard Operating Procedure'],
         'checklist' => ['label' => 'Checklist', 'title' => 'Checklist'],
     ];
+    $pdlTypes = array_intersect_key($pdlTypes, array_flip((array) ($types ?? array_keys($pdlTypes))));
+    $pdlSopIcon = (string) ($sopIcon ?? asset('images/sop-icon.png'));
 @endphp
 
 <style>
@@ -43,7 +47,7 @@
                 title="{{ $url !== '' ? 'Open '.$meta['label'].' document' : 'Add '.$meta['label'].' link' }}"
                 aria-label="{{ $meta['label'] }}">
                 @if ($type === 'sop')
-                    <img src="{{ asset('images/sop-icon.png') }}" alt="SOP" class="no-img-hover" data-no-img-hover>
+                    <img src="{{ $pdlSopIcon }}" alt="SOP" class="no-img-hover" data-no-img-hover>
                 @else
                     <i class="ri-list-check-2" aria-hidden="true"></i>
                 @endif

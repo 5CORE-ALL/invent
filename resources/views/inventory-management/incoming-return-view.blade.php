@@ -159,7 +159,7 @@
 
         .incoming-sum-badges-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 0.5rem;
             flex: 1 1 0;
             min-width: 0;
@@ -195,14 +195,6 @@
         }
 
         .incoming-restock-cell {
-            text-align: center;
-        }
-
-        .incoming-restock-cell .incoming-restock-input.form-control {
-            width: 50%;
-            max-width: 50%;
-            margin-left: auto;
-            margin-right: auto;
             text-align: center;
         }
 
@@ -575,6 +567,18 @@
                 <div class="card-body">
 
 
+                    <!-- SOP icon (same icon as Automated Tasks): click to link the manual / SOP document -->
+                    <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-warning fw-semibold" id="incomingAuditBtn" data-bs-toggle="modal" data-bs-target="#incomingAuditModal" title="Audit: spot-check that claimed incentives are sufficient and legit">
+                            <i class="fas fa-clipboard-check me-1"></i>Audit
+                        </button>
+                        @include('partials.page-doc-links', [
+                            'pageKey' => 'incoming-return-view',
+                            'types' => ['sop'],
+                            'sopIcon' => asset('assets/images/task-sop-icon.png'),
+                        ])
+                    </div>
+
                     <!-- Toolbar: create + equal-width sums + warehouse + search (one row on lg+) -->
                     <div class="incoming-return-toolbar-row mb-3" role="region" aria-label="Incoming return actions and totals">
                         <button type="button" class="btn btn-primary incoming-toolbar-create" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
@@ -582,7 +586,7 @@
                         </button>
                         <div class="dataTables_length d-none" aria-hidden="true"></div>
 
-                        <div class="incoming-sum-badges-grid incoming-inventory-sum-badges" aria-label="Totals for visible rows in the last 30 calendar days, Pacific time" title="Loss, Restock, Recovered Cost, and Net include only rows whose date falls in the last 30 calendar days in California (America/Los_Angeles), among rows matching your warehouse and search filters. Recovered Cost is LP × qty for returned items.">
+                        <div class="incoming-sum-badges-grid incoming-inventory-sum-badges" aria-label="Totals for visible rows in the last 30 calendar days, Pacific time" title="Loss, Restock, Recovered Cost, Incentive, and Net include only rows whose date falls in the last 30 calendar days in California (America/Los_Angeles), among rows matching your warehouse and search filters. Recovered Cost is LP × qty for returned items.">
                             <span class="incoming-sum-badge-cell border border-danger bg-danger bg-opacity-10 text-danger" role="status">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Loss $</span>
                                 <span class="incoming-sum-value" id="incomingSumLoss">0</span>
@@ -594,6 +598,10 @@
                             <span class="incoming-sum-badge-cell bg-success text-white" role="status" title="LP × quantity for returned items">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Recovered Cost</span>
                                 <span class="incoming-sum-value" id="incomingSumRecovered">0</span>
+                            </span>
+                            <span class="incoming-sum-badge-cell text-white" style="background-color:#6f42c1;" role="status" title="Incentive: Recovered Cost $ amount = Rs. amount, rounded off (last 30 days)">
+                                <span class="incoming-sum-badge-label fw-semibold text-uppercase">Incentive Rs.</span>
+                                <span class="incoming-sum-value" id="incomingSumIncentive">0</span>
                             </span>
                             <span class="incoming-sum-badge-cell bg-primary text-white" role="status" id="incomingSumNetBadge">
                                 <span class="incoming-sum-badge-label fw-semibold text-uppercase">Net loss $</span>
@@ -1010,6 +1018,7 @@
                                     <th>CONDITION / REMARKS</th>
                                     <th>LOSS $</th>
                                     <th>RESTOCK $</th>
+                                    <th>RECOVERY</th>
                                     <th>RECOVERED COST</th>
                                     <th>NET LOSS $</th>
                                     <th>U Images</th>
@@ -1058,6 +1067,106 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Audit modal: checklist to spot-check claimed incentives + saved history -->
+    <div class="modal fade" id="incomingAuditModal" tabindex="-1" aria-labelledby="incomingAuditModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="incomingAuditModalLabel"><i class="fas fa-clipboard-check me-2"></i>Incentive Audit</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-3" role="tablist">
+                        <li class="nav-item"><button type="button" class="nav-link active" id="auditTabChecklistBtn" data-bs-toggle="tab" data-bs-target="#auditTabChecklist" role="tab">Checklist</button></li>
+                        <li class="nav-item"><button type="button" class="nav-link" id="auditTabHistoryBtn" data-bs-toggle="tab" data-bs-target="#auditTabHistory" role="tab">History</button></li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="auditTabChecklist" role="tabpanel">
+                            <div class="alert alert-light border small py-2" id="auditSummary">—</div>
+
+                            <div class="d-flex align-items-center mb-1">
+                                <span class="fw-semibold small text-uppercase">Random sample (last 30 days)</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="auditReshuffle"><i class="fas fa-shuffle me-1"></i>Reshuffle</button>
+                            </div>
+                            <div class="table-responsive mb-3">
+                                <table class="table table-sm table-bordered mb-0 small">
+                                    <thead class="table-light">
+                                        <tr><th>SKU</th><th>Type</th><th>Order ID</th><th>Channel</th><th class="text-end">Restock $</th><th class="text-end">Recovered Cost $</th></tr>
+                                    </thead>
+                                    <tbody id="auditSampleBody"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="fw-semibold small text-uppercase mb-1">Checklist <span class="text-muted fw-normal text-lowercase" id="auditCounter"></span></div>
+                            <div id="auditPoints" class="mb-2"></div>
+                            <div class="input-group input-group-sm mb-3">
+                                <input type="text" class="form-control" id="auditNewPoint" maxlength="1000" placeholder="Add a new audit point (description)…">
+                                <button type="button" class="btn btn-outline-primary" id="auditAddPoint"><i class="fas fa-plus me-1"></i>Add</button>
+                            </div>
+
+                            <label class="form-label small mb-1" for="auditRemarks">Remarks (optional)</label>
+                            <textarea class="form-control form-control-sm" id="auditRemarks" rows="2" maxlength="2000"></textarea>
+                            <div class="small text-danger mt-2 d-none" id="auditError"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="auditTabHistory" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>Date</th><th>Time</th><th>Audited by</th><th class="text-center">Passed</th><th class="text-end">Incentive Rs.</th><th></th></tr>
+                                    </thead>
+                                    <tbody id="auditHistoryBody"><tr><td colspan="6" class="text-center text-muted">Loading…</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2" id="auditFooter">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="auditSaveBtn"><i class="fas fa-save me-1"></i>Save audit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recovery modal: enter / edit Order ID, Channel and Restock Fees for one row -->
+    <div class="modal fade" id="incomingRecoveryModal" tabindex="-1" aria-labelledby="incomingRecoveryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form class="modal-content" id="incomingRecoveryForm" autocomplete="off" novalidate>
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="incomingRecoveryModalLabel">Recovery</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-3" id="incomingRecoverySku">—</div>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1" for="incomingRecoveryOrderId">Order ID</label>
+                        <input type="text" class="form-control" id="incomingRecoveryOrderId" maxlength="255">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small mb-1" for="incomingRecoveryChannel">Channel</label>
+                        <select class="form-select" id="incomingRecoveryChannel">
+                            <option value="">— Select channel —</option>
+                            @foreach($channels ?? [] as $ch)
+                                <option value="{{ $ch }}">{{ $ch }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text d-none" id="incomingRecoveryChannelNote">Channel applies to return records only.</div>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label small mb-1" for="incomingRecoveryRestock">Restock Fees ($)</label>
+                        <input type="number" class="form-control" id="incomingRecoveryRestock" min="0" step="1" inputmode="numeric" placeholder="0">
+                    </div>
+                    <div class="small text-danger mt-2 d-none" id="incomingRecoveryError"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-primary" id="incomingRecoverySave">Save</button>
+                </div>
+            </form>
         </div>
     </div>
 @endsection
@@ -2387,15 +2496,22 @@
                 return '<td class="text-end align-middle incoming-loss-cell"><span class="text-nowrap">' + f + '</span></td>';
             }
 
+            // Read-only: Restock fees are edited through the Recovery button / modal only.
             function buildRestockCell(item) {
+                const f = formatIncomingUsd(item.restock_fee_usd);
+                if (f === null) {
+                    return '<td class="text-center align-middle incoming-restock-cell"><span class="text-muted small">—</span></td>';
+                }
+                return '<td class="text-end align-middle incoming-restock-cell"><span class="text-nowrap">' + f + '</span></td>';
+            }
+
+            function buildRecoveryCell(item) {
                 const id = item.inventory_id;
-                const v = item.restock_fee_usd;
-                const val = v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v)) ? String(Math.round(parseFloat(v))) : '';
                 if (!id) {
                     return '<td class="text-center align-middle"><span class="text-muted small">—</span></td>';
                 }
-                return '<td class="align-middle incoming-restock-cell"><input type="number" class="form-control form-control-sm incoming-restock-input" data-inventory-id="' +
-                    String(id) + '" min="0" step="1" inputmode="numeric" value="' + escapeHtml(val) + '" placeholder="0" aria-label="Restock fee USD (whole dollars)"></td>';
+                return '<td class="text-center align-middle"><button type="button" class="btn btn-sm btn-outline-success incoming-recovery-btn" data-inventory-id="' +
+                    String(id) + '" title="Enter / edit Order ID, Channel and Restock Fees"><i class="fas fa-rotate-left me-1"></i>Recovery</button></td>';
             }
 
             function buildRecoveredCostCell(item) {
@@ -2445,6 +2561,9 @@
                 $('#incomingSumLoss').text(fmt(sumLoss));
                 $('#incomingSumRestock').text(fmt(sumRestock));
                 $('#incomingSumRecovered').text(fmt(sumRecovered));
+                // Incentive: Recovered Cost $ amount = Rs. amount, rounded off.
+                $('#incomingSumIncentive').text(Math.round(sumRecovered).toLocaleString('en-IN', { maximumFractionDigits: 0 }));
+                window.incomingLastSums = { recovered: sumRecovered, incentive: Math.round(sumRecovered) };
                 $('#incomingSumNet').text(fmt(sumNet));
                 const $nb = $('#incomingSumNetBadge');
                 if ($nb.length) {
@@ -2452,8 +2571,8 @@
                 }
             }
 
-            const incomingRestockPatchUrl = function (inventoryId) {
-                return @json(url('/incoming-return-row')) + '/' + inventoryId + '/restock';
+            const incomingRecoveryPatchUrl = function (inventoryId) {
+                return @json(url('/incoming-return-row')) + '/' + inventoryId + '/recovery';
             };
 
             function loadData() {
@@ -2484,7 +2603,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="17" class="text-center">No records found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="18" class="text-center">No records found</td></tr>';
                     updateIncomingFinancialSums([]);
                     return;
                 }
@@ -2504,6 +2623,7 @@
                     const voiceCell = buildVoiceNoteCell(item);
                     const lossCell = buildLossCell(item);
                     const restockCell = buildRestockCell(item);
+                    const recoveryCell = buildRecoveryCell(item);
                     const recoveredCell = buildRecoveredCostCell(item);
                     const netCell = buildNetCell(item);
                     row.innerHTML = `
@@ -2518,6 +2638,7 @@
                         <td>${escapeHtml(String(item.reason ?? '-'))}</td>
                         ${lossCell}
                         ${restockCell}
+                        ${recoveryCell}
                         ${recoveredCell}
                         ${netCell}
                         ${uImgCell}
@@ -3103,75 +3224,354 @@
                 }
             }
 
-            $(document).on('blur', '.incoming-restock-input', function () {
-                const $inp = $(this);
-                const id = parseInt($inp.data('inventory-id'), 10);
+            // ---- Audit: checklist (editable points, add / delete) + random sample + saved history ----
+            const auditUrls = {
+                points: @json(route('incoming.return.audit.points')),
+                history: @json(route('incoming.return.audit.history')),
+                store: @json(route('incoming.return.audit.store')),
+                pointBase: @json(url('/incoming-return-audit/points')),
+            };
+            const AUDIT_SAMPLE_SIZE = 5;
+            let auditSample = [];
+
+            function auditApi(url, method, body) {
+                return $.ajax({
+                    url: url,
+                    method: method,
+                    contentType: 'application/json',
+                    data: body === undefined ? undefined : JSON.stringify(body),
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+            }
+
+            function auditErrMsg(xhr, fallback) {
+                if (xhr && xhr.responseJSON) {
+                    if (xhr.responseJSON.errors) {
+                        return Object.values(xhr.responseJSON.errors).flat().join(' ');
+                    }
+                    if (xhr.responseJSON.message) {
+                        return xhr.responseJSON.message;
+                    }
+                }
+                return fallback;
+            }
+
+            function auditShowError(msg) {
+                $('#auditError').text(msg || '').toggleClass('d-none', !msg);
+            }
+
+            function auditUpdateCounter() {
+                const total = $('#auditPoints .audit-check').length;
+                const done = $('#auditPoints .audit-check:checked').length;
+                $('#auditCounter').text(total ? '(' + done + ' / ' + total + ' checked)' : '');
+            }
+
+            function auditPointRow(p) {
+                return '<div class="d-flex align-items-start gap-2 mb-2 audit-point" data-point-id="' + p.id + '">' +
+                    '<input type="checkbox" class="form-check-input mt-2 audit-check" aria-label="Checked">' +
+                    '<textarea class="form-control form-control-sm audit-desc" rows="2" maxlength="1000" data-saved="' + escapeHtml(p.description) + '">' +
+                    escapeHtml(p.description) + '</textarea>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger audit-del" title="Delete this point" aria-label="Delete point"><i class="fas fa-trash"></i></button>' +
+                    '</div>';
+            }
+
+            function auditLoadPoints() {
+                $('#auditPoints').html('<div class="text-muted small">Loading…</div>');
+                auditApi(auditUrls.points, 'GET').done(function (res) {
+                    const pts = (res && res.data) || [];
+                    $('#auditPoints').html(pts.length ? pts.map(auditPointRow).join('') : '<div class="text-muted small">No audit points yet. Add one below.</div>');
+                    auditUpdateCounter();
+                }).fail(function (xhr) {
+                    $('#auditPoints').html('<div class="text-danger small">' + escapeHtml(auditErrMsg(xhr, 'Could not load audit points.')) + '</div>');
+                });
+            }
+
+            function auditShuffleSample() {
+                const pool = (tableData || []).filter(function (r) {
+                    return r.inventory_id && incomingRowInFinancialSumWindow(r);
+                });
+                for (let i = pool.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+                }
+                auditSample = pool.slice(0, AUDIT_SAMPLE_SIZE).map(function (r) {
+                    return {
+                        sku: r.sku,
+                        record_type_label: r.record_type_label,
+                        order_id: r.order_id,
+                        channel: r.return_channel,
+                        restock_fee_usd: r.restock_fee_usd,
+                        recovered_cost_usd: r.recovered_cost_usd,
+                    };
+                });
+                const usd = function (v) { const f = formatIncomingUsd(v); return f === null ? '—' : f; };
+                const txt = function (v) { return v !== null && v !== undefined && String(v).trim() !== '' ? escapeHtml(String(v)) : '—'; };
+                $('#auditSampleBody').html(auditSample.length ? auditSample.map(function (r) {
+                    return '<tr><td>' + txt(r.sku) + '</td><td>' + txt(r.record_type_label) + '</td><td>' + txt(r.order_id) +
+                        '</td><td>' + txt(r.channel) + '</td><td class="text-end">' + usd(r.restock_fee_usd) +
+                        '</td><td class="text-end">' + usd(r.recovered_cost_usd) + '</td></tr>';
+                }).join('') : '<tr><td colspan="6" class="text-center text-muted">No rows in the last 30 days to sample.</td></tr>');
+            }
+
+            function auditRefreshSummary() {
+                const s = window.incomingLastSums || { recovered: 0, incentive: 0 };
+                $('#auditSummary').html('Claimed (last 30 days, current filters): Recovered Cost <strong>$' +
+                    Math.round(s.recovered).toLocaleString('en-US') + '</strong> → Incentive <strong>Rs. ' +
+                    Math.round(s.incentive).toLocaleString('en-IN') + '</strong>. Spot-check the sample below against the points.');
+            }
+
+            function auditLoadHistory() {
+                const $b = $('#auditHistoryBody');
+                $b.html('<tr><td colspan="6" class="text-center text-muted">Loading…</td></tr>');
+                auditApi(auditUrls.history, 'GET').done(function (res) {
+                    const rows = (res && res.data) || [];
+                    if (!rows.length) {
+                        $b.html('<tr><td colspan="6" class="text-center text-muted">No audits saved yet.</td></tr>');
+                        return;
+                    }
+                    $b.html(rows.map(function (a) {
+                        const allOk = a.total_count > 0 && a.passed_count === a.total_count;
+                        const badge = '<span class="badge ' + (allOk ? 'bg-success' : 'bg-warning text-dark') + '">' + a.passed_count + ' / ' + a.total_count + '</span>';
+                        const inc = a.incentive_rs !== null && a.incentive_rs !== undefined ? Math.round(a.incentive_rs).toLocaleString('en-IN') : '—';
+                        const items = (a.items || []).map(function (i) {
+                            return '<li>' + (i.checked ? '<i class="fas fa-check-circle text-success me-1"></i>' : '<i class="fas fa-times-circle text-danger me-1"></i>') + escapeHtml(i.description) + '</li>';
+                        }).join('');
+                        const sample = (a.sample || []).map(function (r) {
+                            return '<li>' + escapeHtml([r.sku, r.order_id, r.channel].filter(function (x) { return x; }).join(' · ') || '—') + '</li>';
+                        }).join('');
+                        const detail = '<ul class="list-unstyled mb-2">' + items + '</ul>' +
+                            (a.remarks ? '<div class="mb-2"><strong>Remarks:</strong> ' + escapeHtml(a.remarks) + '</div>' : '') +
+                            (sample ? '<div><strong>Sample checked:</strong><ul class="mb-0">' + sample + '</ul></div>' : '');
+                        return '<tr><td>' + escapeHtml(a.date) + '</td><td>' + escapeHtml(a.time) + '</td><td>' + escapeHtml(a.user_name) +
+                            '</td><td class="text-center">' + badge + '</td><td class="text-end">' + inc +
+                            '</td><td class="text-end"><button type="button" class="btn btn-sm btn-link audit-toggle">Details</button></td></tr>' +
+                            '<tr class="d-none audit-detail"><td colspan="6" class="bg-light small">' + detail + '</td></tr>';
+                    }).join(''));
+                }).fail(function (xhr) {
+                    $b.html('<tr><td colspan="6" class="text-center text-danger">' + escapeHtml(auditErrMsg(xhr, 'Could not load history.')) + '</td></tr>');
+                });
+            }
+
+            function auditResetForm() {
+                $('#auditPoints .audit-check').prop('checked', false);
+                $('#auditRemarks').val('');
+                auditShowError('');
+                auditUpdateCounter();
+            }
+
+            $('#incomingAuditModal').on('show.bs.modal', function () {
+                auditRefreshSummary();
+                auditShuffleSample();
+                auditLoadPoints();
+                auditShowError('');
+                $('#auditRemarks').val('');
+                bootstrap.Tab.getOrCreateInstance(document.getElementById('auditTabChecklistBtn')).show();
+            });
+            $('#auditTabHistoryBtn').on('shown.bs.tab', function () { $('#auditFooter .btn-primary').addClass('d-none'); auditLoadHistory(); });
+            $('#auditTabChecklistBtn').on('shown.bs.tab', function () { $('#auditFooter .btn-primary').removeClass('d-none'); });
+            $('#auditReshuffle').on('click', auditShuffleSample);
+
+            $(document).on('change', '#auditPoints .audit-check', auditUpdateCounter);
+            $(document).on('click', '.audit-toggle', function () {
+                $(this).closest('tr').next('.audit-detail').toggleClass('d-none');
+            });
+
+            // edit a point's description (saved when the field loses focus)
+            $(document).on('change', '#auditPoints .audit-desc', function () {
+                const $t = $(this);
+                const id = $t.closest('.audit-point').data('point-id');
+                const val = String($t.val() || '').trim();
+                if (!val) {
+                    $t.val($t.attr('data-saved'));
+                    auditShowError('A point needs a description. To remove it use the delete button.');
+                    return;
+                }
+                auditShowError('');
+                auditApi(auditUrls.pointBase + '/' + id, 'PUT', { description: val }).done(function (res) {
+                    $t.val(res.point.description).attr('data-saved', res.point.description);
+                }).fail(function (xhr) {
+                    $t.val($t.attr('data-saved'));
+                    auditShowError(auditErrMsg(xhr, 'Could not save the point.'));
+                });
+            });
+
+            $(document).on('click', '#auditPoints .audit-del', function () {
+                const $row = $(this).closest('.audit-point');
+                if (!confirm('Delete this audit point?')) {
+                    return;
+                }
+                auditApi(auditUrls.pointBase + '/' + $row.data('point-id'), 'DELETE').done(function () {
+                    $row.remove();
+                    if (!$('#auditPoints .audit-point').length) {
+                        $('#auditPoints').html('<div class="text-muted small">No audit points yet. Add one below.</div>');
+                    }
+                    auditUpdateCounter();
+                }).fail(function (xhr) {
+                    auditShowError(auditErrMsg(xhr, 'Could not delete the point.'));
+                });
+            });
+
+            function auditAddPoint() {
+                const val = String($('#auditNewPoint').val() || '').trim();
+                if (!val) {
+                    auditShowError('Type a description for the new point.');
+                    return;
+                }
+                auditShowError('');
+                auditApi(auditUrls.points, 'POST', { description: val }).done(function (res) {
+                    if (!$('#auditPoints .audit-point').length) {
+                        $('#auditPoints').empty();
+                    }
+                    $('#auditPoints').append(auditPointRow(res.point));
+                    $('#auditNewPoint').val('').focus();
+                    auditUpdateCounter();
+                }).fail(function (xhr) {
+                    auditShowError(auditErrMsg(xhr, 'Could not add the point.'));
+                });
+            }
+            $('#auditAddPoint').on('click', auditAddPoint);
+            $('#auditNewPoint').on('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    auditAddPoint();
+                }
+            });
+
+            $('#auditSaveBtn').on('click', function () {
+                const items = $('#auditPoints .audit-point').map(function () {
+                    return {
+                        point_id: $(this).data('point-id'),
+                        description: String($(this).find('.audit-desc').val() || '').trim(),
+                        checked: $(this).find('.audit-check').is(':checked'),
+                    };
+                }).get();
+                if (!items.length) {
+                    auditShowError('Add at least one audit point before saving.');
+                    return;
+                }
+                const sums = window.incomingLastSums || { recovered: 0, incentive: 0 };
+                const $btn = $(this).prop('disabled', true);
+                auditShowError('');
+                auditApi(auditUrls.store, 'POST', {
+                    items: items,
+                    remarks: String($('#auditRemarks').val() || '').trim() || null,
+                    recovered_usd: sums.recovered,
+                    incentive_rs: sums.incentive,
+                    sample: auditSample,
+                }).done(function (res) {
+                    if (res && res.success) {
+                        showIncomingToast('Audit saved to history.');
+                        auditResetForm();
+                        bootstrap.Tab.getOrCreateInstance(document.getElementById('auditTabHistoryBtn')).show();
+                    }
+                }).fail(function (xhr) {
+                    auditShowError(auditErrMsg(xhr, 'Could not save the audit.'));
+                }).always(function () {
+                    $btn.prop('disabled', false);
+                });
+            });
+
+            // ---- Recovery modal: Order ID, Channel and Restock Fees (the only place restock fees are edited) ----
+            let incomingRecoveryInventoryId = null;
+
+            function showIncomingToast(message) {
+                const el = document.getElementById('incomingToast');
+                const body = document.getElementById('incomingToastBody');
+                if (el && body && window.bootstrap) {
+                    body.textContent = message;
+                    el.className = 'toast align-items-center text-bg-success border-0';
+                    bootstrap.Toast.getOrCreateInstance(el, { delay: 2500 }).show();
+                }
+            }
+
+            $(document).on('click', '.incoming-recovery-btn', function () {
+                const id = parseInt($(this).data('inventory-id'), 10);
+                const item = tableData.find(function (r) { return parseInt(r.inventory_id, 10) === id; });
+                if (!item) {
+                    return;
+                }
+                incomingRecoveryInventoryId = id;
+                const isReturn = item.record_type === 'incoming_return';
+                const channel = String(item.edit_channel || '').trim();
+
+                $('#incomingRecoverySku').text('SKU: ' + String(item.sku || '—') + ' · ' + String(item.record_type_label || ''));
+                $('#incomingRecoveryOrderId').val(item.edit_order_id || '');
+
+                const $ch = $('#incomingRecoveryChannel');
+                // keep a saved channel selectable even if it is no longer in the active list
+                $ch.find('option[data-extra="1"]').remove();
+                if (channel && !$ch.find('option').filter(function () { return this.value === channel; }).length) {
+                    $ch.append($('<option>').val(channel).text(channel).attr('data-extra', '1'));
+                }
+                $ch.val(isReturn ? channel : '').prop('disabled', !isReturn);
+                $('#incomingRecoveryChannelNote').toggleClass('d-none', isReturn);
+
+                const rf = item.edit_restock_fee_usd;
+                $('#incomingRecoveryRestock').val(rf !== null && rf !== undefined && rf !== '' ? String(Math.round(parseFloat(rf))) : '');
+                $('#incomingRecoveryError').addClass('d-none').text('');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('incomingRecoveryModal')).show();
+            });
+
+            $('#incomingRecoveryForm').on('submit', function (ev) {
+                ev.preventDefault();
+                const id = incomingRecoveryInventoryId;
                 if (!id) {
                     return;
                 }
-                const raw = $inp.val();
-                let num = null;
-                if (raw !== '' && raw !== null && raw !== undefined) {
-                    const parsed = parseFloat(raw);
+                const $err = $('#incomingRecoveryError');
+                const rawFee = String($('#incomingRecoveryRestock').val() || '').trim();
+                let fee = null;
+                if (rawFee !== '') {
+                    const parsed = parseFloat(rawFee);
                     if (isNaN(parsed) || parsed < 0) {
-                        alert('Enter a valid restock amount (≥ 0).');
+                        $err.text('Enter a valid restock fee (0 or more).').removeClass('d-none');
                         return;
                     }
-                    num = Math.round(parsed);
+                    fee = Math.round(parsed);
                 }
-                const idx = tableData.findIndex(function (r) {
-                    return parseInt(r.inventory_id, 10) === id;
-                });
-                if (idx === -1) {
-                    return;
+
+                const payload = {
+                    order_id: String($('#incomingRecoveryOrderId').val() || '').trim() || null,
+                    restock_fee_usd: fee,
+                };
+                if (!$('#incomingRecoveryChannel').prop('disabled')) {
+                    payload.channel = $('#incomingRecoveryChannel').val() || null;
                 }
-                const prev = tableData[idx].restock_fee_usd;
-                const prevNum = prev !== null && prev !== undefined && prev !== '' ? Math.round(parseFloat(prev)) : null;
-                if (prevNum === num || (prevNum === null && num === null)) {
-                    return;
-                }
-                const token = $('meta[name="csrf-token"]').attr('content');
+
+                const $save = $('#incomingRecoverySave').prop('disabled', true);
                 $.ajax({
-                    url: incomingRestockPatchUrl(id),
+                    url: incomingRecoveryPatchUrl(id),
                     method: 'PATCH',
                     contentType: 'application/json',
-                    data: JSON.stringify({ restock_fee_usd: num }),
+                    data: JSON.stringify(payload),
                     headers: {
-                        'X-CSRF-TOKEN': token,
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                 }).done(function (res) {
-                    if (res.success) {
-                        Object.assign(tableData[idx], {
-                            restock_fee_usd: res.restock_fee_usd,
-                            loss_usd: res.loss_usd,
-                            net_loss_usd: res.net_loss_usd,
-                            amazon_unit_price: res.amazon_unit_price,
-                            recovered_cost_usd: res.recovered_cost_usd,
-                        });
-                        if (res.restock_fee_usd !== null && res.restock_fee_usd !== undefined) {
-                            $inp.val(String(Math.round(parseFloat(res.restock_fee_usd))));
-                        } else {
-                            $inp.val('');
-                        }
-                        applyMainTableFilters();
-                        const el = document.getElementById('incomingToast');
-                        const body = document.getElementById('incomingToastBody');
-                        if (el && body && window.bootstrap) {
-                            body.textContent = 'Restock fee saved.';
-                            el.className = 'toast align-items-center text-bg-success border-0';
-                            bootstrap.Toast.getOrCreateInstance(el, { delay: 2500 }).show();
-                        }
+                    if (res && res.success) {
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('incomingRecoveryModal')).hide();
+                        showIncomingToast('Recovery saved.');
+                        // Reload so grouped return rows, Net loss $ and the badges are recalculated server-side.
+                        loadData();
                     }
                 }).fail(function (xhr) {
-                    const pv = prevNum !== null && !isNaN(prevNum) ? String(prevNum) : '';
-                    $inp.val(pv);
-                    let msg = 'Could not save restock fee.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        msg = xhr.responseJSON.message;
+                    let msg = 'Could not save recovery.';
+                    if (xhr.responseJSON) {
+                        if (xhr.responseJSON.errors) {
+                            msg = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                        } else if (xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
                     }
-                    alert(msg);
+                    $err.text(msg).removeClass('d-none');
+                }).always(function () {
+                    $save.prop('disabled', false);
                 });
             });
 

@@ -1418,6 +1418,10 @@ class IncomingController extends Controller
                 'reason' => $item->reason,
                 'return_channel' => null,
                 'order_id' => $hasOrderIdCol ? ($item->order_id ?? null) : null,
+                // Values for the row's own inventory record, used to prefill the Recovery modal.
+                'edit_order_id' => $hasOrderIdCol ? ($item->order_id ?? null) : null,
+                'edit_channel' => null,
+                'edit_restock_fee_usd' => $hasFinancialCols && $item->restock_fee_usd !== null ? (float) round((float) $item->restock_fee_usd, 0) : null,
                 'returns' => $hasReturnsCol ? ($item->returns ?? null) : null,
                 'warehouse_id' => $item->warehouse_id,
                 'warehouse_name' => $item->warehouse->name ?? '',
@@ -1491,6 +1495,10 @@ class IncomingController extends Controller
                 'reason' => implode(' | ', $reasonParts),
                 'return_channel' => $channelDisplay,
                 'order_id' => $orderIdDisplay,
+                // Values for the representative inventory record (the one the Recovery modal edits).
+                'edit_order_id' => $hasOrderIdCol ? ($rep->order_id ?? null) : null,
+                'edit_channel' => $returnChannelByInventoryId->get($rep->id),
+                'edit_restock_fee_usd' => $hasFinancialCols && $rep->restock_fee_usd !== null ? (float) round((float) $rep->restock_fee_usd, 0) : null,
                 'returns' => $returnsMerged !== '' ? $returnsMerged : null,
                 'warehouse_id' => $rep->warehouse_id,
                 'warehouse_name' => $rep->warehouse->name ?? '',
@@ -1588,48 +1596,46 @@ class IncomingController extends Controller
         ];
     }
 
-    public function updateIncomingReturnRowRestock(Request $request, Inventory $inventory)
+    /**
+     * Recovery modal on the Incoming Return page: edits Order ID, Channel and Restock Fees for one inventory row.
+     * Restock Fees are only editable through this endpoint (the table cell is read-only).
+     */
+    public function updateIncomingReturnRowRecovery(Request $request, Inventory $inventory)
     {
         if (! in_array($inventory->type, ['incoming', 'incoming_return'], true)) {
             abort(404);
         }
 
-        if (! Schema::hasColumn('inventories', 'restock_fee_usd')) {
-            return response()->json(['success' => false, 'message' => 'Restock column not available.'], 400);
-        }
-
-        if ($request->input('restock_fee_usd') === '') {
-            $request->merge(['restock_fee_usd' => null]);
+        foreach (['order_id', 'channel', 'restock_fee_usd'] as $key) {
+            if ($request->input($key) === '') {
+                $request->merge([$key => null]);
+            }
         }
 
         $validated = $request->validate([
+            'order_id' => 'nullable|string|max:255',
+            'channel' => 'nullable|string|max:255',
             'restock_fee_usd' => 'nullable|numeric|min:0',
         ]);
 
-        $v = $validated['restock_fee_usd'] ?? null;
-        $inventory->restock_fee_usd = $v === null ? null : (float) round((float) $v, 0);
+        if (Schema::hasColumn('inventories', 'order_id') && $request->has('order_id')) {
+            $orderId = trim((string) ($validated['order_id'] ?? ''));
+            $inventory->order_id = $orderId !== '' ? $orderId : null;
+        }
+
+        if (Schema::hasColumn('inventories', 'restock_fee_usd') && $request->has('restock_fee_usd')) {
+            $v = $validated['restock_fee_usd'] ?? null;
+            $inventory->restock_fee_usd = $v === null ? null : (float) round((float) $v, 0);
+        }
+
         $inventory->save();
 
-        $skuU = strtoupper(trim((string) ($inventory->sku ?? '')));
-        $amazonByUpper = $this->batchAmazonSellPriceRowsByUpperSku(collect([$inventory->sku]));
-        $amz = $amazonByUpper->get($skuU);
-        $unit = $amz && $amz->price !== null && $amz->price !== ''
-            ? (float) $amz->price
-            : null;
-        $qty = (float) ($inventory->verified_stock ?? 0);
-        $payload = $this->packIncomingReturnFinancialsFromAmazon($unit, $qty, $inventory->restock_fee_usd, true);
-        $payload['inventory_id'] = (int) $inventory->id;
-        $payload['recovered_cost_usd'] = $inventory->type === 'incoming_return'
-            ? ProductMaster::recoveredCostUsd(
-                ProductMaster::query()
-                    ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower(trim((string) ($inventory->sku ?? '')))])
-                    ->first(),
-                $qty,
-                0
-            )
-            : null;
+        // Channel lives in its own table and only applies to returns.
+        if ($inventory->type === 'incoming_return' && $request->has('channel')) {
+            $this->syncIncomingReturnChannelRow((int) $inventory->id, $validated['channel'] ?? null);
+        }
 
-        return response()->json(['success' => true] + $payload);
+        return response()->json(['success' => true, 'inventory_id' => (int) $inventory->id]);
     }
 
     /**

@@ -277,6 +277,14 @@ class GoogleMeetService
                 $client->setSubject((string) config('services.meetings.google.impersonate_email'));
                 $token = $client->fetchAccessTokenWithAssertion();
             }
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            // Google answered with an error (HTTP 400/401 for revoked or invalid credentials, 5xx for outages).
+            $status = $e->getResponse()?->getStatusCode();
+            $payload = $e->getResponse() ? (json_decode((string) $e->getResponse()->getBody(), true) ?: []) : [];
+            if ($status === null || $status >= 500) {
+                throw new GoogleMeetException('Could not reach Google to sign in. Please retry in a moment.', 'network', true, $e);
+            }
+            $token = ['error' => (string) ($payload['error'] ?? 'invalid_request'), 'error_description' => $payload['error_description'] ?? null];
         } catch (GuzzleException $e) {
             throw new GoogleMeetException('Could not reach Google to sign in. Please retry in a moment.', 'network', true, $e);
         } catch (\Throwable $e) {
@@ -471,7 +479,7 @@ class GoogleMeetService
         // 1. We already know the event (or a previous attempt may have created it): read it first.
         $existing = null;
         try {
-            $existing = $this->withRetry(fn () => $service->events->get($calendarId, $eventId, ['conferenceDataVersion' => 1]));
+            $existing = $this->withRetry(fn () => $service->events->get($calendarId, $eventId));
         } catch (GoogleServiceException $e) {
             if (! in_array((int) $e->getCode(), [404, 410], true)) {
                 throw $e;
@@ -504,7 +512,7 @@ class GoogleMeetService
         } catch (GoogleServiceException $e) {
             if ((int) $e->getCode() === 409) {
                 // The earlier attempt did create it. Adopt it instead of creating a duplicate.
-                $adopted = $this->withRetry(fn () => $service->events->get($calendarId, $eventId, ['conferenceDataVersion' => 1]));
+                $adopted = $this->withRetry(fn () => $service->events->get($calendarId, $eventId));
 
                 return $this->patchEvent($service, $meeting, $calendarId, $adopted);
             }
@@ -674,7 +682,7 @@ class GoogleMeetService
             if ($sleepMs > 0) {
                 usleep($sleepMs * 1000);
             }
-            $event = $this->withRetry(fn () => $service->events->get($calendarId, $event->getId(), ['conferenceDataVersion' => 1]));
+            $event = $this->withRetry(fn () => $service->events->get($calendarId, $event->getId()));
         }
 
         return $event;

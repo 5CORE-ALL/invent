@@ -46,6 +46,22 @@
     #mrqModal .mrq-req { border: 1px solid #e5e9f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
     #mrqModal .mrq-req h6 { font-weight: 700; margin: 0 0 2px; }
     #mrqModal .mrq-success-icon { font-size: 54px; color: #16a34a; line-height: 1; }
+    #mrqModal .mrq-prio { display: inline-flex; align-items: center; gap: 5px; border-radius: 12px; padding: 1px 9px 1px 7px; font-size: .74rem; font-weight: 700; }
+    #mrqModal .mrq-prio i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    #mrqModal .mrq-prio.urgent { background: #fee2e2; color: #991b1b; } #mrqModal .mrq-prio.urgent i { background: #dc2626; }
+    #mrqModal .mrq-prio.immediate { background: #ffedd5; color: #9a3412; } #mrqModal .mrq-prio.immediate i { background: #f97316; }
+    #mrqModal .mrq-prio.normal { background: #dcfce7; color: #166534; } #mrqModal .mrq-prio.normal i { background: #16a34a; }
+    #mrqModal .mrq-room { background: #eef2ff; color: #3730a3; border-radius: 8px; padding: 1px 8px; font-size: .74rem; font-weight: 600; }
+    #mrqModal .mrq-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    #mrqModal .mrq-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    #mrqModal .mrq-popt { position: relative; margin: 0; }
+    #mrqModal .mrq-popt input { position: absolute; opacity: 0; }
+    #mrqModal .mrq-popt span { display: inline-flex; align-items: center; gap: 6px; border: 2px solid #e2e8f0; border-radius: 20px; padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: .86rem; }
+    #mrqModal .mrq-popt span i { width: 10px; height: 10px; border-radius: 50%; }
+    #mrqModal .mrq-popt.urgent span i { background: #dc2626; } #mrqModal .mrq-popt.immediate span i { background: #f97316; } #mrqModal .mrq-popt.normal span i { background: #16a34a; }
+    #mrqModal .mrq-popt input:checked + span { border-color: #2563eb; background: #eff6ff; }
+    #mrqModal .mrq-gmeet { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+    #mrqModal .mrq-gmeet:hover { background: #1557b0; color: #fff; }
 </style>
 
 <button type="button" id="mrqFab" data-bs-toggle="modal" data-bs-target="#mrqModal" title="Request a meeting" aria-label="Request a meeting">
@@ -90,18 +106,32 @@
                         <div class="mrq-chips" id="mrqChips"></div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold d-block">When</label>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="mrqWhen" id="mrqWhenNow" value="now" checked>
-                            <label class="form-check-label" for="mrqWhenNow">Start now</label>
+                        <label class="form-label fw-semibold d-block">Priority <span class="text-danger">*</span></label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <label class="mrq-popt urgent"><input type="radio" name="mrqPrio" value="urgent"><span><i></i>🔴 Urgent</span></label>
+                            <label class="mrq-popt immediate"><input type="radio" name="mrqPrio" value="immediate"><span><i></i>🟠 Immediate</span></label>
+                            <label class="mrq-popt normal"><input type="radio" name="mrqPrio" value="normal" checked><span><i></i>🟢 Normal</span></label>
                         </div>
-                        <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="mrqWhen" id="mrqWhenLater" value="later">
-                            <label class="form-check-label" for="mrqWhenLater">Schedule for later</label>
-                        </div>
-                        <input type="datetime-local" id="mrqWhenAt" class="form-control mt-2 mrq-hidden" style="max-width:260px">
                     </div>
-                    <div class="mrq-note"><i class="ri-record-circle-line me-1"></i>Every meeting is <strong>recorded</strong>. AI writes the minutes and creates follow-up tasks afterwards.</div>
+                    <div class="row g-2 mb-1">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Meeting room <span class="text-danger">*</span></label>
+                            <select id="mrqRoom" class="form-select">
+                                <option value="">Select room…</option>
+                                <option value="1">Meeting Room 1</option><option value="2">Meeting Room 2</option>
+                                <option value="3">Meeting Room 3</option><option value="4">Meeting Room 4</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4"><label class="form-label fw-semibold">Date <span class="text-danger">*</span></label><input type="date" id="mrqDate" class="form-control"></div>
+                        <div class="col-6 col-md-2"><label class="form-label fw-semibold">Start <span class="text-danger">*</span></label><input type="time" id="mrqStart" class="form-control"></div>
+                        <div class="col-6 col-md-2"><label class="form-label fw-semibold">End <span class="text-danger">*</span></label><input type="time" id="mrqEnd" class="form-control"></div>
+                    </div>
+                    <div class="d-flex justify-content-between flex-wrap mb-1">
+                        <small class="text-muted">Times are in <strong id="mrqTz">Asia/Kolkata</strong>.</small>
+                        <button type="button" class="btn btn-link btn-sm p-0" id="mrqNowBtn">Use now → +30 min</button>
+                    </div>
+                    <div class="small mb-3" id="mrqAvail"></div>
+                    <div class="mrq-note" style="background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a"><i class="ri-vidicon-fill me-1"></i>A real <strong>Google Meet</strong> link is created through Google Calendar and every member gets a Google Calendar invitation.</div>
                 </div>
 
                 {{-- STEP 2: review & confirm --}}
@@ -111,10 +141,12 @@
                     <dl class="mrq-review mb-3">
                         <dt>Title</dt><dd id="mrqRvTitle"></dd>
                         <dt>Agenda</dt><dd id="mrqRvAgenda"></dd>
+                        <dt>Priority</dt><dd id="mrqRvPrio"></dd>
+                        <dt>Meeting room</dt><dd id="mrqRvRoom"></dd>
                         <dt>Members (<span id="mrqRvCount">0</span>)</dt><dd id="mrqRvMembers"></dd>
                         <dt>When</dt><dd id="mrqRvWhen"></dd>
                     </dl>
-                    <div class="mrq-note"><span id="mrqRvNotify"></span> They can accept or decline from the meeting icon. The meeting will be recorded.</div>
+                    <div class="mrq-note"><span id="mrqRvNotify"></span> They can accept or decline from the meeting icon.</div>
                 </div>
 
                 {{-- STEP 3: sent --}}
@@ -122,6 +154,7 @@
                     <div class="mrq-success-icon"><i class="ri-checkbox-circle-fill"></i></div>
                     <h5 class="mt-2 mb-1" id="mrqDoneTitle">Meeting request sent</h5>
                     <p class="text-muted mb-2" id="mrqDoneText"></p>
+                    <div class="alert alert-warning py-2 small mrq-hidden text-start" id="mrqDoneWarn"></div>
                     <div id="mrqDoneInvitees" class="d-flex flex-wrap justify-content-center gap-1"></div>
                     <div class="small text-muted mt-2">Track their answers under the <strong>Sent by you</strong> tab.</div>
                 </div>
@@ -141,7 +174,7 @@
                 <button type="button" class="btn btn-outline-secondary mrq-hidden" id="mrqBtnBack">Back</button>
                 <button type="button" class="btn btn-primary" id="mrqBtnReview">Review request</button>
                 <button type="button" class="btn btn-success mrq-hidden" id="mrqBtnConfirm"><i class="ri-send-plane-fill me-1"></i>Confirm &amp; send</button>
-                <a class="btn btn-success mrq-hidden" id="mrqBtnStart" href="#"><i class="ri-vidicon-line me-1"></i>Start meeting now</a>
+                <a class="btn mrq-gmeet mrq-hidden" id="mrqBtnStart" href="#" target="_blank" rel="noopener noreferrer"><i class="ri-vidicon-fill me-1"></i>Join Google Meet</a>
                 <a class="btn btn-outline-primary mrq-hidden" id="mrqBtnLobby" href="#">View meetings</a>
                 <button type="button" class="btn btn-light mrq-hidden" id="mrqBtnClose" data-bs-dismiss="modal">Close</button>
             </div>
@@ -159,12 +192,13 @@
             members: @json(route('meetings.members')),
             request: @json(route('meetings.request')),
             requests: @json(route('meetings.requests')),
-            sent: @json(route('meetings.sent'))
+            sent: @json(route('meetings.sent')),
+            availability: @json(route('meetings.availability'))
         };
         var CSRF = @json(csrf_token());
         var $ = function (id) { return document.getElementById(id); };
         var hide = function (id, h) { $(id).classList.toggle('mrq-hidden', h !== false); };
-        var members = null, selected = {}, step = 'form', tab = 'new', lastPayload = null;
+        var members = null, selected = {}, step = 'form', tab = 'new', lastPayload = null, googleOk = true, tz = 'Asia/Kolkata';
 
         function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
         function call(method, url, body) {
@@ -184,8 +218,19 @@
             if (members) return;
             call('GET', URLS.members).then(function (res) {
                 members = (res.data && res.data.members) || [];
+                if (res.data && res.data.google && res.data.google.ok === false) {
+                    googleOk = false;
+                    showErr('mrqError', res.data.google.message || 'Google Meet is not configured.');
+                    $('mrqBtnReview').disabled = true;
+                }
+                if (res.data && res.data.timezone) { tz = res.data.timezone; $('mrqTz').textContent = tz; }
                 renderMembers();
             }).catch(function () { $('mrqMembers').innerHTML = '<div class="text-danger small py-2">Could not load team members.</div>'; });
+        }
+        function avatar(m) {
+            // photo when the employee has one; initials otherwise (also when the photo fails to load)
+            return '<span class="mrq-av" style="background:' + esc(m.colour || '#64748b') + '">' + esc(m.initials || '?')
+                + (m.avatar ? '<img src="' + esc(m.avatar) + '" alt="" loading="lazy" onerror="this.remove()">' : '') + '</span>';
         }
         function renderMembers() {
             var q = $('mrqSearch').value.trim().toLowerCase();
@@ -194,7 +239,7 @@
                 var hay = (m.name + ' ' + m.designation).toLowerCase();
                 if (q && hay.indexOf(q) === -1) return;
                 html += '<label><input type="checkbox" value="' + m.id + '"' + (selected[m.id] ? ' checked' : '') + '>'
-                    + '<span>' + esc(m.name) + ' <small>' + esc(m.designation) + '</small></span></label>';
+                    + avatar(m) + '<span>' + esc(m.name) + ' <small>' + esc(m.designation) + '</small></span></label>';
             });
             $('mrqMembers').innerHTML = html || '<div class="text-muted small py-2">No members match.</div>';
         }
@@ -216,9 +261,38 @@
             renderChips();
         });
         $('mrqSearch').addEventListener('input', renderMembers);
-        document.querySelectorAll('input[name="mrqWhen"]').forEach(function (r) {
-            r.addEventListener('change', function () { hide('mrqWhenAt', $('mrqWhenNow').checked); });
+        function nowIn(plusMin) {
+            var d = new Date(Date.now() + (plusMin || 0) * 60000), p = {};
+            new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+                .formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+            return { date: p.year + '-' + p.month + '-' + p.day, time: p.hour + ':' + p.minute };
+        }
+        $('mrqNowBtn').addEventListener('click', function () {
+            var a = nowIn(0), b = nowIn(30);
+            $('mrqDate').value = a.date; $('mrqStart').value = a.time; $('mrqEnd').value = b.date === a.date ? b.time : '23:59';
+            checkAvail();
         });
+        var availSeq = 0;
+        function checkAvail() {
+            var room = $('mrqRoom').value, date = $('mrqDate').value, box = $('mrqAvail');
+            if (!room || !date) { box.innerHTML = ''; return; }
+            var my = ++availSeq;
+            call('GET', URLS.availability + '?room_slot=' + encodeURIComponent(room) + '&meeting_date=' + encodeURIComponent(date)).then(function (res) {
+                if (my !== availSeq || !res.ok) return;
+                var busy = res.data.busy || [];
+                box.innerHTML = busy.length
+                    ? '<span class="text-danger"><i class="ri-error-warning-line"></i> ' + esc(res.data.room) + ' is already booked:</span> ' + busy.map(function (b) { return '<span class="badge bg-light text-dark border">' + esc(b.from) + ' – ' + esc(b.to) + '</span>'; }).join(' ')
+                    : '<span class="text-success"><i class="ri-checkbox-circle-line"></i> ' + esc(res.data.room) + ' is free all day.</span>';
+            });
+        }
+        $('mrqRoom').addEventListener('change', checkAvail);
+        $('mrqDate').addEventListener('change', checkAvail);
+        var PRIO = { urgent: ['🔴', 'Urgent'], immediate: ['🟠', 'Immediate'], normal: ['🟢', 'Normal'] };
+        function prioBadge(p) {
+            p = p || { label: 'Normal', hex: '#16a34a' };
+            var key = String(p.label || 'Normal').toLowerCase();
+            return '<span class="mrq-prio ' + esc(key) + '"><i></i>' + esc(p.label || 'Normal') + '</span>';
+        }
 
         // ---------- steps ----------
         function setStep(s) {
@@ -250,56 +324,67 @@
         function showErr(id, msg) { var e = $(id); e.textContent = msg; e.classList.remove('mrq-hidden'); }
 
         function collect() {
+            var prio = document.querySelector('input[name="mrqPrio"]:checked');
             return {
                 title: $('mrqTitleInput').value.trim(),
                 agenda: $('mrqAgenda').value.trim(),
                 invitee_ids: Object.keys(selected).map(Number),
-                when: $('mrqWhenNow').checked ? 'now' : 'later',
-                // exact instant, so the time is right whatever timezone the browser / server are in
-                scheduled_at: $('mrqWhenAt').value ? new Date($('mrqWhenAt').value).toISOString() : null
+                priority: prio ? prio.value : 'normal',
+                room_slot: $('mrqRoom').value ? Number($('mrqRoom').value) : null,
+                meeting_date: $('mrqDate').value,
+                start_time: $('mrqStart').value,
+                end_time: $('mrqEnd').value
             };
         }
 
         $('mrqBtnReview').addEventListener('click', function () {
+            if (!googleOk) return showErr('mrqError', 'Google Meet is not configured. A manager must connect the Google account first.');
             var p = collect();
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
             if (p.agenda.length < 1) return showErr('mrqError', 'Please add a meeting agenda.');
+            if (!p.room_slot) return showErr('mrqError', 'Choose one of the four meeting rooms.');
+            if (!p.meeting_date || !p.start_time || !p.end_time) return showErr('mrqError', 'Pick the date, start time and end time.');
+            if (p.end_time <= p.start_time) return showErr('mrqError', 'The end time must be after the start time.');
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
-            if (p.when === 'later') {
-                if (!p.scheduled_at) return showErr('mrqError', 'Pick a date and time, or choose "Start now".');
-                if (new Date(p.scheduled_at).getTime() < Date.now() - 5 * 60000) return showErr('mrqError', 'The meeting time cannot be in the past.');
-            }
             lastPayload = p;
             $('mrqRvTitle').textContent = p.title;
             $('mrqRvAgenda').textContent = p.agenda;
+            $('mrqRvPrio').textContent = PRIO[p.priority][0] + ' ' + PRIO[p.priority][1];
+            $('mrqRvRoom').textContent = 'Meeting Room ' + p.room_slot + ' (Google Meet)';
             $('mrqRvCount').textContent = p.invitee_ids.length;
             $('mrqRvMembers').textContent = Object.keys(selected).map(function (id) { return selected[id]; }).join(', ');
-            $('mrqRvWhen').textContent = p.when === 'now' ? 'Start now (you join the room immediately)'
-                : new Date(p.scheduled_at).toLocaleString([], { dateStyle: 'full', timeStyle: 'short' });
-            $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + ' will get this request.';
+            $('mrqRvWhen').textContent = p.meeting_date + ', ' + p.start_time + ' – ' + p.end_time + ' (' + tz + ')';
+            $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + ' will get a Google Calendar invitation with the Google Meet link.';
             setStep('review');
         });
         $('mrqBtnBack').addEventListener('click', function () { setStep('form'); });
 
         $('mrqBtnConfirm').addEventListener('click', function () {
-            var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+            var btn = this; btn.disabled = true; btn.textContent = 'Creating Google Meet…';
+            var reset = function () { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill me-1"></i>Confirm &amp; send'; };
             call('POST', URLS.request, lastPayload).then(function (res) {
-                btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill me-1"></i>Confirm &amp; send';
+                reset();
                 if (!res.ok || !res.data.ok) return showErr('mrqError2', firstError(res));
                 var d = res.data;
-                $('mrqDoneText').textContent = d.when === 'now'
-                    ? d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been notified. Start the meeting and they can join when they accept.'
-                    : '"' + d.meeting.title + '" is scheduled for ' + d.meeting.scheduled_at + '. ' + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been notified.';
-                $('mrqBtnStart').href = d.room_url; $('mrqBtnLobby').href = d.meetings_url;
+                $('mrqDoneTitle').textContent = d.meeting.meet_url ? 'Google Meet created' : 'Meeting saved';
+                $('mrqDoneText').textContent = '"' + d.meeting.title + '" · ' + d.meeting.room + ' · ' + d.meeting.scheduled_at + '. '
+                    + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been invited through Google Calendar.';
+                var warn = $('mrqDoneWarn');
+                warn.classList.toggle('mrq-hidden', !d.google_error);
+                warn.textContent = d.google_error ? 'Google Meet link not ready: ' + d.google_error : '';
+                $('mrqBtnStart').href = d.meeting.meet_url || d.details_url;
+                $('mrqBtnLobby').href = d.details_url;
+                $('mrqBtnLobby').textContent = 'Open meeting details';
                 var inv = $('mrqDoneInvitees'); inv.innerHTML = '';
                 (d.meeting.invitees || []).forEach(function (n) { var b = document.createElement('span'); b.className = 'badge bg-warning text-dark'; b.textContent = n + ' · waiting for reply'; inv.appendChild(b); });
                 setStep('done');
-                hide('mrqBtnStart', d.when !== 'now');
+                hide('mrqBtnStart', !d.meeting.meet_url);
                 // reset form for next time
-                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqWhenAt').value = '';
-                $('mrqWhenNow').checked = true; hide('mrqWhenAt', true); renderChips(); renderMembers();
+                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; $('mrqDate').value = ''; $('mrqStart').value = ''; $('mrqEnd').value = ''; $('mrqAvail').innerHTML = '';
+                renderChips(); renderMembers();
+                poll(false);
             }).catch(function () {
-                btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill me-1"></i>Confirm &amp; send';
+                reset();
                 showErr('mrqError2', 'Network problem. Your request was not sent — please try again.');
             });
         });
@@ -324,12 +409,15 @@
                         var st = STATUS[i.status] || STATUS.pending;
                         return '<span class="badge ' + st[1] + ' me-1 mb-1" style="font-size:.78rem">' + esc(i.name) + ' &middot; ' + st[0] + '</span>';
                     }).join('');
-                    div.innerHTML = '<h6>' + esc(m.title) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
-                        + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'Start now / no time set')) + '</div>'
+                    var join = m.meet_url
+                        ? '<a class="btn btn-sm mrq-gmeet" target="_blank" rel="noopener noreferrer" href="' + esc(m.meet_url) + '"><i class="ri-vidicon-fill"></i> Join Google Meet</a> '
+                        : (m.google ? '<span class="badge bg-warning text-dark">Google Meet link ' + (m.google_status === 'failed' ? 'not created' : 'pending') + '</span> ' : '');
+                    div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
+                        + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'No time set')) + (m.room ? ' &middot; <span class="mrq-room">' + esc(m.room) + '</span>' : '') + '</div>'
                         + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')
                         + '<div class="small mb-1"><strong>' + counts.accepted + '</strong> accepted &middot; <strong>' + counts.declined + '</strong> declined &middot; <strong>' + counts.pending + '</strong> waiting</div>'
                         + '<div class="mb-2">' + (chips || '<span class="text-muted small">No members invited.</span>') + '</div>'
-                        + '<a class="btn btn-sm ' + (m.live ? 'btn-success' : 'btn-primary') + '" href="' + esc(m.room_url) + '">' + (m.live ? 'Join meeting' : 'Start meeting') + '</a>';
+                        + join + '<a class="btn btn-sm btn-light" href="' + esc(m.details_url || m.room_url) + '">Details</a>';
                     box.appendChild(div);
                 });
             }).catch(function () { box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; });
@@ -389,9 +477,10 @@
 
         function requestCard(r) {
             var div = document.createElement('div'); div.className = 'mrq-req';
-            div.innerHTML = '<h6>' + esc(r.title) + (r.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
+            div.innerHTML = '<h6>' + esc(r.title) + ' ' + prioBadge(r.priority) + (r.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
                 + '<div class="small text-muted mb-1">From <strong>' + esc(r.host || '—') + '</strong> &middot; '
-                + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + '</div>'
+                + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + (r.room ? ' &middot; <span class="mrq-room">' + esc(r.room) + '</span>' : '')
+                + (r.requested_at ? ' &middot; requested ' + esc(r.requested_at) : '') + '</div>'
                 + (r.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
                 + '<div class="d-flex gap-2 flex-wrap" data-actions></div><div class="small mt-2" data-result></div>';
             var actions = div.querySelector('[data-actions]'), result = div.querySelector('[data-result]');
@@ -408,8 +497,10 @@
                     actions.innerHTML = '';
                     if (resp === 'accepted') {
                         result.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> You accepted.</span>'
-                            + ' <a class="btn btn-success btn-sm ms-2" href="' + esc(res.data.room_url) + '"><i class="ri-vidicon-line"></i> Join meeting</a>'
-                            + (res.data.live ? '' : '<div class="text-muted mt-1">Not started yet — you can join once the host starts it.</div>');
+                            + (r.meet_url
+                                ? ' <a class="btn btn-sm mrq-gmeet ms-2" target="_blank" rel="noopener noreferrer" href="' + esc(r.meet_url) + '"><i class="ri-vidicon-fill"></i> Join Google Meet</a>'
+                                : ' <a class="btn btn-success btn-sm ms-2" href="' + esc(res.data.room_url) + '"><i class="ri-vidicon-line"></i> Meeting details</a>')
+                            + (r.google || res.data.live ? '' : '<div class="text-muted mt-1">Not started yet — you can join once the host starts it.</div>');
                     } else {
                         result.innerHTML = '<span class="text-secondary"><i class="ri-close-circle-fill"></i> You declined.</span>';
                     }
@@ -420,7 +511,12 @@
                 });
             }
             // Join is always offered (joining counts as accepting); Accept only while unanswered.
-            btn('<i class="ri-vidicon-line"></i> Join meeting', 'btn-primary', function () { window.location.href = r.room_url; });
+            if (r.meet_url) {
+                var j = document.createElement('a'); j.className = 'btn btn-sm mrq-gmeet'; j.target = '_blank'; j.rel = 'noopener noreferrer'; j.href = r.meet_url;
+                j.innerHTML = '<i class="ri-vidicon-fill"></i> Join Google Meet'; actions.appendChild(j);
+            } else {
+                btn('<i class="ri-vidicon-line"></i> ' + (r.google ? 'Meeting details' : 'Join meeting'), 'btn-primary', function () { window.location.href = r.room_url; });
+            }
             if (r.rsvp !== 'accepted') btn('<i class="ri-check-line"></i> Accept', 'btn-success', function () { answer('accepted'); });
             btn('<i class="ri-close-line"></i> Decline', 'btn-outline-danger', function () { answer('declined'); });
             return div;

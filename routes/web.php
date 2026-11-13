@@ -1285,19 +1285,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/shipping/followups', [ShippingController::class, 'followupsStore'])->name('customer.care.shipping.followups.store');
     Route::post('/customer-care/shipping/followups/{shipping_followup}/resolve', [ShippingController::class, 'followupsResolve'])->name('customer.care.shipping.followups.resolve');
     Route::get('/customer-care/refunds', [RefundController::class, 'index'])->name('customer.care.refunds');
-
-    // Restocking (Tabulator): refunded orders and the value recovered by restocking the item
-    Route::get('/customer-care/restocking', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'index'])
-        ->name('customer.care.restocking');
-    Route::get('/customer-care/restocking/data', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'list'])
-        ->name('customer.care.restocking.data');
-    Route::post('/customer-care/restocking', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'store'])
-        ->name('customer.care.restocking.store');
-    Route::put('/customer-care/restocking/{restocking}', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'update'])
-        ->name('customer.care.restocking.update');
-    Route::delete('/customer-care/restocking/{restocking}', [\App\Http\Controllers\CustomerCare\RestockingController::class, 'destroy'])
-        ->name('customer.care.restocking.destroy');
-
     // FAQ / FFP Customers Page (with escalations)
     Route::get('/customer-care/faq-customers', [CustomerFaqController::class, 'index'])
         ->name('customer.care.faq.customers.index');
@@ -3448,7 +3435,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/incoming-return-merged-list', [IncomingController::class, 'listIncomingReturnViewMerged'])->name('incoming.return.merged.list');
     Route::get('/incoming-return-view', [IncomingController::class, 'incomingReturnIndex'])->name('incoming.return.view');
     Route::post('/incoming-return-store', [IncomingController::class, 'storeReturn'])->name('incoming.return.store');
-    Route::patch('/incoming-return-row/{inventory}/restock', [IncomingController::class, 'updateIncomingReturnRowRestock'])->name('incoming.return.row.restock');
+    Route::patch('/incoming-return-row/{inventory}/recovery', [IncomingController::class, 'updateIncomingReturnRowRecovery'])->name('incoming.return.row.recovery');
+
+    // Audit checklist (spot-check that claimed incentives are sufficient and legit) + history
+    Route::prefix('incoming-return-audit')->name('incoming.return.audit.')->group(function () {
+        $c = \App\Http\Controllers\InventoryManagement\IncomingReturnAuditController::class;
+        Route::get('/points', [$c, 'points'])->name('points');
+        Route::post('/points', [$c, 'storePoint'])->name('points.store');
+        Route::put('/points/{point}', [$c, 'updatePoint'])->name('points.update');
+        Route::delete('/points/{point}', [$c, 'destroyPoint'])->name('points.destroy');
+        Route::get('/history', [$c, 'history'])->name('history');
+        Route::post('/', [$c, 'store'])->name('store');
+    });
     Route::get('/incoming-return-history-list', [IncomingController::class, 'listReturnHistory']);
     Route::get('/incoming-return-sku-suggest', [IncomingController::class, 'suggestSkusForReturn'])->name('incoming.return.sku.suggest');
     Route::get('/incoming-return-grid-inventory', [IncomingController::class, 'getIncomingReturnGridInventory']);

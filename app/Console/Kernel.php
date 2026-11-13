@@ -4288,6 +4288,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Google Meet meetings: retry failed/pending Google Calendar syncs, close overdue meetings and pull
+        // real recordings / call times from Google when that is authorised.
+        $schedule->command('meetings:google-sync')
+            ->everyFiveMinutes()
+            ->name('meetings-google-sync')
+            ->withoutOverlapping(10)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup only. The reliable fire is /etc/cron.d/cron-run-missed,
         // because this slot is itself skipped when schedule:run is late.
         // Must NOT use $ist() (06:15 is before the window; 20:15 is after).

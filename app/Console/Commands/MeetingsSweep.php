@@ -58,7 +58,10 @@ class MeetingsSweep extends Command
             ]);
 
         // 2. Empty live rooms -> ended.
-        Meeting::query()->where('status', Meeting::STATUS_LIVE)->get()->each(function (Meeting $m) {
+        // (Google Meet meetings are not tracked by heartbeats; meetings:google-sync handles them.)
+        Meeting::query()->where('status', Meeting::STATUS_LIVE)
+            ->where(fn ($q) => $q->whereNull('provider')->orWhere('provider', Meeting::PROVIDER_JITSI))
+            ->get()->each(function (Meeting $m) {
             $inRoom = $m->participants()->whereNotNull('joined_at')->whereNull('left_at')->exists();
             if ($inRoom) {
                 return;
@@ -90,6 +93,7 @@ class MeetingsSweep extends Command
         // 3. Ended meetings -> minutes.
         $ready = Meeting::query()
             ->where('status', Meeting::STATUS_ENDED)
+            ->where(fn ($q) => $q->whereNull('provider')->orWhere('provider', Meeting::PROVIDER_JITSI))
             ->where('minutes_status', Meeting::MINUTES_PENDING)
             ->where('ended_at', '<=', now()->subSeconds(self::UPLOAD_GRACE_SECONDS))
             ->orderBy('ended_at')

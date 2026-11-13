@@ -703,10 +703,6 @@
                             <a href="{{ route('customer.care.refunds') }}">Refunds</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.restocking') }}"
-                               class="{{ request()->routeIs('customer.care.restocking*') ? 'active' : '' }}">Restocking</a>
-                        </li>
-                        <li>
                             <a href="{{ route('customer.care.faq.customers.index') }}"
                                class="{{ request()->routeIs('customer.care.faq.customers.*') ? 'active' : '' }}">
                                 FAQ / FFP Customers
