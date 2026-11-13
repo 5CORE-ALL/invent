@@ -2,7 +2,6 @@
 
 namespace App\Support\Marketplace\Settle;
 
-use App\Models\SettleVerification;
 use App\Support\Marketplace\Settle\Verification\VerificationContext;
 use App\Support\Marketplace\Settle\Verification\VerificationResult;
 use App\Support\Marketplace\Settle\Verification\VerifierRegistry;
@@ -21,14 +20,6 @@ final class SettleVerifier
 {
     /** Check codes that mean "data is missing" (alert type missing_data). */
     private const MISSING_CODES = ['records_present', 'ads_all_zero', 'table_not_empty', 'views_missing', 'calculated_rows', 'order_items', 'table_shrunk'];
-
-    /**
-     * Failures that come from the command output / schema and cannot be a transient race with a
-     * sibling task, so they are alerted at once. Every other (data-based) failure is only alerted
-     * after it was seen in alert_confirm_failures consecutive verifications and the pull is older
-     * than alert_grace_minutes.
-     */
-    private const DETERMINISTIC_CODES = ['auth_failure', 'incomplete_pagination', 'command_timeout', 'table_missing', 'column_missing'];
 
     public function __construct(private ?SettleAlerter $alerter = null)
     {
@@ -81,12 +72,12 @@ final class SettleVerifier
                 $result = VerificationResult::error('verifier_exception', 'Verification crashed: '.mb_substr($e->getMessage(), 0, 300));
             }
             $result = $result->withChecks(SettleOutputInspector::checks(SettleTracker::lastMarkers($date, $key)));
-            SettleTracker::saveVerification($date, $key, $result, $t['ledger_done_at'], (int) round((microtime(true) - $started) * 1000), $now);
+            SettleTracker::saveVerification($date, $key, $result, $t['ledger_done_at'], (int) round((microtime(true) - $started) * 1000));
             $results[$key] = $result;
         }
 
         $final = SettleTracker::describe($date, $ledger, $hi, $deadline, $now);
-        $events = $this->events($date, $final['tasks'], $results, $now);
+        $events = $this->events($date, $final['tasks'], $results);
         $sent = ($alerts && config('settle.alerts_enabled', true)) ? $this->alerter->dispatch($date, $events, $now) : [];
 
         return [
@@ -97,37 +88,24 @@ final class SettleVerifier
             'tasks' => $final['tasks'],
             'alerts' => $sent,
             'events' => count($events),
-            'awaiting_confirmation' => $this->unconfirmed,
         ];
     }
 
     /**
-     * Which tasks to (re-)verify now:
-     *  - never verified for the current pull ................... always
-     *  - verification failed ................................... every reverify_after_minutes
-     *  - verified / warning / limited .......................... every reverify_verified_after_minutes,
-     *    so deletes / prunes / data changes made AFTER the first check invalidate it
-     *  - limited by design (nothing to compare with) ........... never
-     *
      * @param  array<string, mixed>  $t
      */
     private function needsVerification(array $t, Carbon $now, int $reverifyMinutes): bool
     {
-        $at = $t['verification']['checked_at'] ?? null;
-        switch ($t['state']) {
-            case 'awaiting_verification':
-                return true;
-            case 'verification_failed':
-                return $at === null || Carbon::parse($at)->lte($now->copy()->subMinutes($reverifyMinutes));
-            case 'verified':
-            case 'verified_warning':
-            case 'limited':
-                $every = (int) config('settle.reverify_verified_after_minutes', 60);
-
-                return $every > 0 && ($at === null || Carbon::parse($at)->lte($now->copy()->subMinutes($every)));
-            default:
-                return false;
+        if ($t['state'] === 'awaiting_verification') {
+            return true; // never verified for this pull (or only "pending" so far)
         }
+        if ($t['state'] === 'verification_failed') {
+            $at = $t['verification']['checked_at'] ?? null;
+
+            return $at === null || Carbon::parse($at)->lte($now->copy()->subMinutes($reverifyMinutes));
+        }
+
+        return false; // verified / limited for the current pull
     }
 
     /**
@@ -145,60 +123,6 @@ final class SettleVerifier
         return true;
     }
 
-    /** @var list<string> tasks whose failure is waiting for confirmation (not alerted yet) */
-    private array $unconfirmed = [];
-
-    /**
-     * @param  array<string, mixed>  $t
-     * @param  list<string>  $codes
-     */
-    private function confirmed(string $date, string $key, array $t, array $codes, Carbon $now): bool
-    {
-        if ($codes !== [] && array_diff($codes, self::DETERMINISTIC_CODES) === []) {
-            return true;
-        }
-        $needed = max(1, (int) config('settle.alert_confirm_failures', 2));
-        $grace = max(0, (int) config('settle.alert_grace_minutes', 10));
-        $doneAt = $t['ledger_done_at'] ?? null;
-        if ($doneAt !== null && $grace > 0 && Carbon::parse($doneAt)->addMinutes($grace)->gt($now)) {
-            return false; // a sibling task may still be writing the same tables
-        }
-
-        return SettleTracker::consecutiveFailures($date, $key, $doneAt) >= $needed;
-    }
-
-    /**
-     * Operator action (settle:verify --accept-baseline=TASK): records the CURRENT table size of a
-     * pruned / rebuilt table as the new passing baseline, e.g. after a deliberate prune. Only writes
-     * a row to settle_verifications; a failed verification never becomes a baseline by itself.
-     *
-     * @return array{ok: bool, message: string, table_rows?: int}
-     */
-    public function acceptBaseline(string $date, string $taskKey, ?Carbon $now = null): array
-    {
-        $now = ($now ?? Carbon::now(Ledger::TZ))->copy()->setTimezone(Ledger::TZ);
-        if (! isset(Ledger::tasks()[$taskKey])) {
-            return ['ok' => false, 'message' => "Unknown task {$taskKey}."];
-        }
-        $ctx = new VerificationContext($taskKey, Ledger::tasks()[$taskKey], true, null, $now, fn () => true);
-        $result = VerifierRegistry::for($taskKey)->verify($date, $ctx);
-        $rows = $result->metrics['table_rows'] ?? null;
-        if ($rows === null) {
-            return ['ok' => false, 'message' => "Task {$taskKey} has no table-size baseline (or its table could not be read)."];
-        }
-        SettleVerification::query()->create([
-            'settle_date' => $date,
-            'task_key' => $taskKey,
-            'status' => 'baseline',
-            'checks' => [],
-            'metrics' => ['table_rows' => (int) $rows, 'accepted' => true],
-            'ledger_done_at' => null,
-            'duration_ms' => 0,
-        ]);
-
-        return ['ok' => true, 'message' => "Accepted {$rows} rows as the passing baseline for {$taskKey}.", 'table_rows' => (int) $rows];
-    }
-
     /**
      * Alert events: failed tasks (retries exhausted / deadline) and failed verifications.
      *
@@ -206,10 +130,8 @@ final class SettleVerifier
      * @param  array<string, VerificationResult>  $results  results produced in this run
      * @return list<array<string, mixed>>
      */
-    public function events(string $date, array $tasks, array $results, ?Carbon $now = null): array
+    public function events(string $date, array $tasks, array $results): array
     {
-        $now = ($now ?? Carbon::now(Ledger::TZ))->copy();
-        $this->unconfirmed = [];
         $events = [];
         foreach ($tasks as $key => $t) {
             $label = SettleCatalog::label($key);
@@ -241,11 +163,6 @@ final class SettleVerifier
                 continue;
             }
             $codes = $r->failedCodes();
-            if (! $this->confirmed($date, $key, $t, $codes, $now)) {
-                $this->unconfirmed[] = $key;
-
-                continue;
-            }
             $type = in_array('auth_failure', $codes, true)
                 ? 'auth_failure'
                 : (array_intersect($codes, self::MISSING_CODES) !== [] ? 'missing_data' : 'verification_failed');

@@ -20,11 +20,6 @@ abstract class SettleTestCase extends TestCase
 
     protected function setUp(): void
     {
-        // Booting the app parses the very large routes/web.php (~105 MB on its own); give the settle
-        // suite headroom so it does not depend on the machine's php.ini.
-        if ((int) ini_get('memory_limit') !== -1 && (int) ini_get('memory_limit') < 512) {
-            ini_set('memory_limit', '512M');
-        }
         parent::setUp();
         config([
             'database.default' => 'settle_test',
@@ -47,10 +42,7 @@ abstract class SettleTestCase extends TestCase
     protected function tearDown(): void
     {
         @unlink(Ledger::path(self::DATE));
-        Carbon::setTestNow();
-        DB::purge('settle_test');
         parent::tearDown();
-        gc_collect_cycles(); // keep the whole settle suite under the default 128M php memory_limit
     }
 
     protected function ctx(string $key = 'amazon_close', bool $finalPassDone = true, ?string $doneAt = null, ?callable $taskDone = null): VerificationContext

@@ -5,16 +5,13 @@ namespace App\Support\Marketplace\Settle\Verification;
 /**
  * Outcome of verifying one settle task against the data it should have produced.
  *
- * Status precedence (worst first): fail > error > pending > warn > limited > limited_by_design > pass.
- *  - pass              : every check passed.
- *  - limited_by_design : nothing to compare with BY DESIGN (e.g. a task with no dated table). Counts
- *                        as verified and does not downgrade "Fully Settled".
- *  - limited           : a check was SKIPPED or UNAVAILABLE (missing key column, no history, no
- *                        verifier). Counts as verified but is shown as a warning.
- *  - warn              : verified, but something looks unusual (shown as a warning).
- *  - pending           : waiting on another task; NOT verified yet.
- *  - error             : the verifier could not run (missing table / exception); NOT verified.
- *  - fail              : the data is missing / incomplete / suspicious; NOT verified.
+ * Status precedence (worst first): fail > error > pending > warn > limited > pass.
+ *  - pass    : every check passed.
+ *  - warn    : verified, but something looks unusual (shown, does not block Settled).
+ *  - limited : verified only as far as possible (no dated source to compare with).
+ *  - pending : waiting on another task; NOT verified yet.
+ *  - error   : the verifier could not run (missing table / exception); NOT verified.
+ *  - fail    : the data is missing / incomplete / suspicious; NOT verified.
  */
 final class VerificationResult
 {
@@ -24,8 +21,6 @@ final class VerificationResult
 
     public const LIMITED = 'limited';
 
-    public const LIMITED_BY_DESIGN = 'limited_by_design';
-
     public const PENDING = 'pending';
 
     public const ERROR = 'error';
@@ -34,12 +29,11 @@ final class VerificationResult
 
     private const RANK = [
         self::PASS => 0,
-        self::LIMITED_BY_DESIGN => 1,
-        self::LIMITED => 2,
-        self::WARN => 3,
-        self::PENDING => 4,
-        self::ERROR => 5,
-        self::FAIL => 6,
+        self::LIMITED => 1,
+        self::WARN => 2,
+        self::PENDING => 3,
+        self::ERROR => 4,
+        self::FAIL => 5,
     ];
 
     /**
@@ -84,16 +78,10 @@ final class VerificationResult
         return self::fromChecks(array_merge($this->checks, $extra), $this->metrics);
     }
 
-    /** Verified = safe to count towards "Settled" (warn / limited still show as warnings). */
+    /** Verified = safe to count towards "Settled". */
     public function isVerified(): bool
     {
-        return in_array($this->status, [self::PASS, self::LIMITED_BY_DESIGN, self::LIMITED, self::WARN], true);
-    }
-
-    /** Verified, but must be shown as "Settled with Warnings" rather than "Fully Settled". */
-    public function isWarning(): bool
-    {
-        return in_array($this->status, [self::LIMITED, self::WARN], true);
+        return in_array($this->status, [self::PASS, self::WARN, self::LIMITED], true);
     }
 
     public function isFailure(): bool

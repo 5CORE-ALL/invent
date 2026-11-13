@@ -31,18 +31,6 @@ return [
     'reverify_after_minutes' => (int) env('SETTLE_REVERIFY_MINUTES', 10),
 
     /*
-     * A task that is already verified is checked again after this many minutes (while the day is
-     * still being watched), so later deletes / prunes / data changes can invalidate the old result.
-     */
-    'reverify_verified_after_minutes' => (int) env('SETTLE_REVERIFY_VERIFIED_MINUTES', 60),
-
-    /*
-     * A stored verification older than this is treated as stale (task goes back to "awaiting
-     * verification"), so a stopped scheduler can never leave a day looking Fully Settled.
-     */
-    'verification_max_age_minutes' => (int) env('SETTLE_VERIFICATION_MAX_AGE_MINUTES', 180),
-
-    /*
      * Alerts. The log is always written. E-mail and webhook are optional.
      *   SETTLE_ALERT_EMAILS=ops@example.com,dev@example.com
      *   SETTLE_ALERT_WEBHOOK=https://hooks.slack.com/services/...   (Slack-compatible {"text": ...})
@@ -52,14 +40,6 @@ return [
     'alert_emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('SETTLE_ALERT_EMAILS', ''))))),
     'alert_webhook' => env('SETTLE_ALERT_WEBHOOK'),
     'alert_repeat_hours' => (int) env('SETTLE_ALERT_REPEAT_HOURS', 12),
-    // Data-based verification failures are only alerted after this many CONSECUTIVE failed
-    // verifications of the same pull, and not earlier than alert_grace_minutes after the pull
-    // finished (a sibling task may still be writing the same tables).
-    'alert_confirm_failures' => (int) env('SETTLE_ALERT_CONFIRM_FAILURES', 2),
-    'alert_grace_minutes' => (int) env('SETTLE_ALERT_GRACE_MINUTES', 10),
-    // A channel (mail / webhook) that failed is retried at most this often, and at most this many times.
-    'alert_retry_minutes' => (int) env('SETTLE_ALERT_RETRY_MINUTES', 10),
-    'alert_max_delivery_attempts' => (int) env('SETTLE_ALERT_MAX_ATTEMPTS', 6),
 
     /*
      * Verification thresholds. "fail" blocks Settled, "warn" is shown but does not block.
@@ -67,23 +47,12 @@ return [
      * does not block settlement; tune them once real production numbers are known.
      */
     'thresholds' => [
-        // Previous Pacific days (recent trend) and previous SAME WEEKDAYS (weekly pattern) used as
-        // the "usual day". The expected value is the LOWER of the two medians, so a quiet weekend
-        // is not compared with weekday volume (no false failures) while a channel that
-        // normally sells on that weekday is still caught.
+        // Previous Pacific days used as the "usual day" baseline.
         'baseline_days' => 7,
-        'baseline_dow_weeks' => 4,
-        // Same-weekday history needs at least this many covered weeks, otherwise only the 7-day
-        // median is used.
-        'baseline_dow_min_weeks' => 2,
-        // Zero records is a FAILURE only when the expected volume for that weekday is at least
-        // this high (a Poisson day at 8 orders is empty ~0.03% of the time; at 3 it is 5%). Below
-        // it, zero records is a WARNING (shown as "Settled with Warnings"), never silently accepted.
-        'zero_fail_min_median' => 8,
+        // Zero records is a failure only when the channel normally has at least this many
+        // records per day (median) on at least baseline_min_days of the baseline days.
+        'zero_fail_min_median' => 3,
         'baseline_min_days' => 3,
-        // Whole-day duplicate-unit rows (Shein stores one row per unit): rows per order versus usual.
-        'unit_rows_warn_ratio' => 1.4,
-        'unit_rows_fail_ratio' => 1.8,
         // Volume vs the baseline median.
         'low_volume_warn_ratio' => 0.25,
         'low_volume_warn_min_median' => 10,

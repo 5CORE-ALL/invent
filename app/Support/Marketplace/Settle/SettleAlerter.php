@@ -10,23 +10,15 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Sends settle alerts to the log (always) and, when configured, by e-mail (SETTLE_ALERT_EMAILS) and
- * webhook (SETTLE_ALERT_WEBHOOK). Alerts never throw into the caller.
- *
- * Delivery is tracked PER CHANNEL. Every attempt is one settle_alert_logs row holding the channels
- * that were really DELIVERED (`channels`) and those that were attempted but failed
- * (`failed_channels`, e.g. "webhook: HTTP 500"). An alert is suppressed (settle.alert_repeat_hours)
- * only for channels that already delivered it, so:
- *  - an HTTP 4xx/5xx webhook answer or a mail error is never recorded as delivered and is retried
- *    (at most every alert_retry_minutes, at most alert_max_delivery_attempts times);
- *  - a log-only alert (no mail / webhook configured at the time) does not block a later mail /
- *    webhook delivery once one is configured.
+ * Sends settle alerts: always to the log, optionally by e-mail (SETTLE_ALERT_EMAILS) and webhook
+ * (SETTLE_ALERT_WEBHOOK). The same alert (type + date + task + check codes) is not repeated
+ * within settle.alert_repeat_hours. Alerts never throw into the caller.
  */
 final class SettleAlerter
 {
     /**
      * @param  list<array<string, mixed>>  $events  from SettleVerifier::events()
-     * @return list<array<string, mixed>> the events that were newly delivered on at least one channel
+     * @return list<array<string, mixed>> the events that were actually sent
      */
     public function dispatch(string $date, array $events, ?Carbon $now = null): array
     {
@@ -35,84 +27,57 @@ final class SettleAlerter
         }
         $now = ($now ?? Carbon::now(Ledger::TZ))->copy();
         $hours = max(1, (int) config('settle.alert_repeat_hours', 12));
-        $retryMinutes = max(1, (int) config('settle.alert_retry_minutes', 10));
-        $maxAttempts = max(1, (int) config('settle.alert_max_delivery_attempts', 6));
 
-        $emails = (array) config('settle.alert_emails', []);
-        $hook = config('settle.alert_webhook');
-        $hook = is_string($hook) && $hook !== '' ? $hook : null;
-        $required = array_values(array_filter(['log', $emails !== [] ? 'mail' : null, $hook !== null ? 'webhook' : null]));
-
-        // Which channels still have to deliver each event?
-        $todo = [];
+        $fresh = [];
         foreach ($events as $e) {
             $fp = self::fingerprint($date, $e);
-            $e['fingerprint'] = $fp;
-            $delivered = [];
-            $failedAttempts = 0;
-            $lastFailure = null;
             try {
-                $rows = SettleAlertLog::query()
+                $recent = SettleAlertLog::query()
                     ->where('fingerprint', $fp)
-                    ->where('created_at', '>=', $now->copy()->subHours($hours))
-                    ->get(['channels', 'failed_channels', 'created_at']);
-                foreach ($rows as $r) {
-                    $delivered = array_merge($delivered, (array) ($r->channels ?? []));
-                    if (! empty($r->failed_channels)) {
-                        $failedAttempts++;
-                        if ($lastFailure === null || $r->created_at->gt($lastFailure)) {
-                            $lastFailure = $r->created_at;
-                        }
-                    }
-                }
+                    ->where('sent_at', '>=', $now->copy()->subHours($hours))
+                    ->exists();
             } catch (\Throwable $ex) {
                 Log::warning('[settle-alert] alert log unavailable: '.$ex->getMessage());
+                $recent = false;
             }
-
-            $pending = array_values(array_diff($required, $delivered));
-            if ($pending === []) {
-                continue; // every configured channel already has it
+            if (! $recent) {
+                $e['fingerprint'] = $fp;
+                $fresh[] = $e;
             }
-            if (! in_array('log', $pending, true)) {
-                // Only mail / webhook are left (they failed earlier, or were configured later): retry
-                // them at a calm pace.
-                if ($lastFailure !== null && $lastFailure->copy()->addMinutes($retryMinutes)->gt($now)) {
-                    continue;
-                }
-                if ($failedAttempts >= $maxAttempts) {
-                    continue;
-                }
-            }
-            $todo[] = ['event' => $e, 'pending' => $pending];
         }
-        if ($todo === []) {
+        if ($fresh === []) {
             return [];
         }
 
-        // One message per channel, with the events that still need that channel.
-        $outcome = []; // channel => ['ok' => bool, 'reason' => string]
-        foreach (['log', 'mail', 'webhook'] as $channel) {
-            $batch = array_values(array_filter($todo, fn ($t) => in_array($channel, $t['pending'], true)));
-            if ($batch === []) {
-                continue;
+        $subject = sprintf('[Yesterday settle %s] %d alert(s): %s', $date, count($fresh), implode(', ', array_unique(array_map(fn ($e) => SettleCatalog::marketplace((string) $e['task']), $fresh))));
+        $body = $subject."\n\n".implode("\n\n", array_map(fn ($e) => '['.$e['type'].'] '.$e['title']."\n".$e['message'], $fresh));
+
+        $channels = ['log'];
+        Log::error('[settle-alert] '.$body);
+
+        $emails = (array) config('settle.alert_emails', []);
+        if ($emails !== []) {
+            try {
+                Mail::raw($body, function ($m) use ($emails, $subject) {
+                    $m->to($emails)->subject($subject);
+                });
+                $channels[] = 'mail';
+            } catch (\Throwable $ex) {
+                Log::warning('[settle-alert] mail failed: '.$ex->getMessage());
             }
-            $list = array_map(fn ($t) => $t['event'], $batch);
-            $subject = sprintf('[Yesterday settle %s] %d alert(s): %s', $date, count($list), implode(', ', array_unique(array_map(fn ($e) => SettleCatalog::marketplace((string) $e['task']), $list))));
-            $body = $subject."\n\n".implode("\n\n", array_map(fn ($e) => '['.$e['type'].'] '.$e['title']."\n".$e['message'], $list));
-            $outcome[$channel] = $this->send($channel, $subject, $body, $emails, $hook);
         }
 
-        $sent = [];
-        foreach ($todo as $t) {
-            $delivered = [];
-            $failed = [];
-            foreach ($t['pending'] as $channel) {
-                if (! isset($outcome[$channel])) {
-                    continue;
-                }
-                $outcome[$channel]['ok'] ? $delivered[] = $channel : $failed[] = $channel.': '.$outcome[$channel]['reason'];
+        $hook = config('settle.alert_webhook');
+        if (is_string($hook) && $hook !== '') {
+            try {
+                Http::timeout(5)->post($hook, ['text' => mb_substr($body, 0, 3500)]);
+                $channels[] = 'webhook';
+            } catch (\Throwable $ex) {
+                Log::warning('[settle-alert] webhook failed: '.$ex->getMessage());
             }
-            $e = $t['event'];
+        }
+
+        foreach ($fresh as $e) {
             try {
                 SettleAlertLog::query()->create([
                     'settle_date' => $date,
@@ -122,54 +87,15 @@ final class SettleAlerter
                     'fingerprint' => $e['fingerprint'],
                     'title' => mb_substr((string) $e['title'], 0, 255),
                     'message' => (string) $e['message'],
-                    'channels' => $delivered,
-                    'failed_channels' => $failed === [] ? null : $failed,
-                    'sent_at' => $delivered === [] ? null : $now,
-                    'created_at' => $now,
+                    'channels' => $channels,
+                    'sent_at' => $now,
                 ]);
             } catch (\Throwable $ex) {
                 Log::warning('[settle-alert] could not store alert log: '.$ex->getMessage());
             }
-            if ($delivered !== []) {
-                $sent[] = $e;
-            }
         }
 
-        return $sent;
-    }
-
-    /**
-     * @param  list<string>  $emails
-     * @return array{ok: bool, reason: string}
-     */
-    private function send(string $channel, string $subject, string $body, array $emails, ?string $hook): array
-    {
-        try {
-            if ($channel === 'log') {
-                Log::error('[settle-alert] '.$body);
-
-                return ['ok' => true, 'reason' => ''];
-            }
-            if ($channel === 'mail') {
-                Mail::raw($body, function ($m) use ($emails, $subject) {
-                    $m->to($emails)->subject($subject);
-                });
-
-                return ['ok' => true, 'reason' => ''];
-            }
-            $response = Http::timeout(5)->post((string) $hook, ['text' => mb_substr($body, 0, 3500)]);
-            if (! $response->successful()) {
-                Log::warning('[settle-alert] webhook answered HTTP '.$response->status());
-
-                return ['ok' => false, 'reason' => 'HTTP '.$response->status()];
-            }
-
-            return ['ok' => true, 'reason' => ''];
-        } catch (\Throwable $ex) {
-            Log::warning("[settle-alert] {$channel} failed: ".$ex->getMessage());
-
-            return ['ok' => false, 'reason' => mb_substr(class_basename($ex).': '.$ex->getMessage(), 0, 160)];
-        }
+        return $fresh;
     }
 
     /** @param  array<string, mixed>  $e */
