@@ -19,8 +19,8 @@ class EbayPurgeStaleItemIds extends Command
     protected $signature = 'ebay:purge-stale-item-ids
         {--store=2 : eBay store 1, 2, 3 or all}
         {--sku=* : Only these SKUs (checked even when they have stock)}
-        {--all : Check every live item id, not only rows with quantity 0}
-        {--limit=400 : Maximum item ids to check per store}
+        {--zero-only : Only check rows whose eBay quantity is 0 (default: every live item id)}
+        {--limit=1500 : Maximum rows to check per store (an item id shared by many SKUs is asked once)}
         {--dry-run : Report what would be cleared without changing anything}';
 
     protected $description = 'Clear eBay item ids that eBay no longer has (GetItem), so the SKU shows in Missing L and lists as new';
@@ -76,7 +76,7 @@ class EbayPurgeStaleItemIds extends Command
                     $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$sku]);
                 }
             });
-        } elseif (! $this->option('all') && $hasStock) {
+        } elseif ($this->option('zero-only') && $hasStock) {
             $query->whereNotNull('ebay_stock')->where('ebay_stock', '<=', 0);
         }
 
