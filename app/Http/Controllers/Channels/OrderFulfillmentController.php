@@ -19,6 +19,7 @@ use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use App\Services\SheinApiService;
 use App\Services\ShipmentTrackingService;
 use App\Services\VeeqoApiService;
+use App\Support\Marketplace\SofOrderCancelDetector;
 use App\Support\TrackingCarrierGuesser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1329,6 +1330,13 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         $query->select(array_map(static fn (string $column) => $table.'.'.$column, $keep));
 
+        // eBay keeps NOT_STARTED as the fulfillment status for orders cancelled before shipping.
+        // The cancel state lives in the payload, so read just those two values and not the whole JSON.
+        if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) && isset($have['raw_payload'])) {
+            $query->selectRaw("JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.cancelStatus.cancelState')) as ebay_cancel_state")
+                ->selectRaw("COALESCE(JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.orderPaymentStatus')), JSON_UNQUOTE(JSON_EXTRACT({$table}.raw_payload, '$.paymentSummary.paymentStatus'))) as ebay_payment_status");
+        }
+
         if ($slug === 'amazon') {
             $query->with(['items' => function ($items): void {
                 $itemTable = $items->getModel()->getTable();
@@ -1348,6 +1356,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $status = trim((string) ($n['status'] ?? ''));
         if ($slug === 'newegg') {
             $status = $this->neweggStatusLabel($status);
+        }
+        if (in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) && $this->ebayOrderIsCancelled($order)) {
+            $status = 'CANCELLED';
         }
         $apiOrderId = trim((string) ($n['order_id'] ?? ''));
         $orderNumber = trim((string) ($n['order_number'] ?? ''));
@@ -1410,6 +1421,22 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $base['sku'] = $this->inventoryLookupSku($sku);
 
         return [$base];
+    }
+
+    /**
+     * eBay cancelled (including cancelled before shipment) or fully refunded orders.
+     */
+    protected function ebayOrderIsCancelled(object $order): bool
+    {
+        $state = strtoupper(trim((string) ($order->ebay_cancel_state ?? '')));
+        if (in_array($state, ['CANCELED', 'CANCELLED'], true)) {
+            return true;
+        }
+
+        $payment = strtoupper(trim((string) ($order->ebay_payment_status ?? '')));
+
+        return in_array($payment, ['FULLY_REFUNDED', 'REFUNDED'], true)
+            || SofOrderCancelDetector::statusLooksCancelled((string) ($order->status ?? ''));
     }
 
     /**
