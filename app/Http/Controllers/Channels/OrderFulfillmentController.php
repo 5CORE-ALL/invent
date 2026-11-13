@@ -162,6 +162,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                     $rows,
                     fn (array $row) => $this->fulfillmentRowIsScanPending($row)
                 ));
+                $rows = $this->markScanPendingAlerts($rows);
             } elseif (request()->boolean('unpaid')) {
                 $rows = array_values(array_filter(
                     $rows,
@@ -201,6 +202,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'channel_count' => count($channels),
                 'paid_count' => $paid,
                 'unpaid_count' => $unpaid,
+                'alert_count' => count(array_filter($rows, static fn (array $row) => ! empty($row['scan_alert']))),
                 'date_from' => $from->toDateString(),
                 'date_to' => $to->toDateString(),
                 'nav_counts' => $navCounts,
@@ -365,6 +367,41 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
 
         return $tracking === ''
             || in_array($tracking, ['label created / no scan', 'pending scan'], true);
+    }
+
+    /**
+     * Scan Pending rows still unscanned more than this many hours after the order time get a red triangle.
+     */
+    protected const SCAN_ALERT_HOURS = 36;
+
+    /**
+     * Flag scan-pending rows whose order time is over SCAN_ALERT_HOURS old.
+     * order_date is already in the display timezone, so it is read in that zone.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function markScanPendingAlerts(array $rows): array
+    {
+        $now = \Carbon\Carbon::now($this->sofTimezone());
+        $limitMinutes = self::SCAN_ALERT_HOURS * 60;
+
+        foreach ($rows as &$row) {
+            $row['scan_alert'] = false;
+            $raw = trim((string) ($row['order_date'] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            try {
+                $placed = \Carbon\Carbon::parse($raw, $this->sofTimezone());
+            } catch (\Throwable) {
+                continue;
+            }
+            $row['scan_alert'] = $placed->diffInMinutes($now, false) > $limitMinutes;
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
