@@ -117,6 +117,38 @@
     </div>
 </div>
 
+{{-- Shopify "Performance by marketing campaign" report (same numbers as Shopify Analytics > Reports) --}}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <h5 class="mb-0 me-2"><i class="fab fa-shopify me-1 text-success"></i> Shopify Campaign Sales
+                        <small class="text-muted fs-6">Performance by marketing campaign</small>
+                    </h5>
+                    <select id="shopify-campaign-days" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="7">Last 7 days</option>
+                        <option value="30" selected>Last 30 days</option>
+                        <option value="60">Last 60 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                    <select id="shopify-campaign-channel" class="form-select form-select-sm" style="width: 150px;">
+                        <option value="meta" selected>Meta / Facebook only</option>
+                        <option value="all">All channels</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-success" id="shopify-campaign-refresh">
+                        <i class="fas fa-sync-alt me-1"></i> Fetch from Shopify
+                    </button>
+                    <span class="text-muted small ms-auto" id="shopify-campaign-status"></span>
+                </div>
+                <div id="shopify-campaign-summary" class="d-flex flex-wrap gap-3 mb-3"></div>
+                <div id="shopify-campaign-error" class="alert alert-danger py-2 small" style="display:none;"></div>
+                <div id="shopify-campaign-table"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
@@ -998,3 +1030,91 @@
     });
 
     </script>
+<script>
+    // Shopify "Performance by marketing campaign" — loaded from ShopifyQL via /facebook-video-ads/shopify-campaigns
+    document.addEventListener('DOMContentLoaded', function () {
+        const daysEl = document.getElementById('shopify-campaign-days');
+        const channelEl = document.getElementById('shopify-campaign-channel');
+        const refreshBtn = document.getElementById('shopify-campaign-refresh');
+        const statusEl = document.getElementById('shopify-campaign-status');
+        const errorEl = document.getElementById('shopify-campaign-error');
+        const summaryEl = document.getElementById('shopify-campaign-summary');
+
+        const money = (v) => v === null || v === undefined ? '' : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const num = (v) => v === null || v === undefined ? '' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+        const pct = (v) => v === null || v === undefined ? '' : (Number(v) * 100).toFixed(2) + '%';   // ShopifyQL returns rates as fractions
+        const channelDot = (cell) => {
+            const v = cell.getValue() || '';
+            const color = /meta/i.test(v) ? '#c4509e' : (/facebook/i.test(v) ? '#4a6fd4' : '#9ca3af');
+            return v ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>${v}` : '';
+        };
+
+        const campaignTable = new Tabulator('#shopify-campaign-table', {
+            layout: 'fitColumns',
+            height: '420px',
+            placeholder: 'Click "Fetch from Shopify" to load campaign sales.',
+            columns: [
+                { title: 'Marketing campaign', field: 'marketing_campaign', minWidth: 190, headerFilter: 'input' },
+                { title: 'Marketing channel', field: 'marketing_channel', minWidth: 140, formatter: channelDot, headerFilter: 'input' },
+                { title: 'Traffic type', field: 'traffic_type', width: 110 },
+                { title: 'Total sales', field: 'total_sales', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
+                { title: 'Sessions', field: 'sessions', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
+                { title: 'Orders', field: 'orders', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
+                { title: 'Conv. rate', field: 'conversion_rate', hozAlign: 'right', formatter: (c) => pct(c.getValue()) },
+                { title: 'Ad spend', field: 'ad_spend', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
+                { title: 'ROAS', field: 'roas', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
+                { title: 'Clicks', field: 'clicks', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
+                { title: 'AOV', field: 'average_order_value', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
+            ],
+            initialSort: [{ column: 'total_sales', dir: 'desc' }],
+        });
+
+        function renderSummary(t) {
+            const card = (label, value) => `<div class="border rounded px-3 py-2"><div class="text-muted small">${label}</div><div class="fw-semibold fs-5">${value}</div></div>`;
+            summaryEl.innerHTML = card('Campaigns', num(t.campaigns))
+                + card('Total sales', money(t.total_sales))
+                + card('Sessions', num(t.sessions))
+                + card('Orders', num(t.orders))
+                + card('Conversion rate', (t.conversion_rate || 0) + '%');
+        }
+
+        function load(refresh) {
+            errorEl.style.display = 'none';
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Fetching...';
+            statusEl.textContent = '';
+
+            const qs = new URLSearchParams({ days: daysEl.value, channel: channelEl.value });
+            if (refresh) qs.set('refresh', '1');
+
+            fetch('/facebook-video-ads/shopify-campaigns?' + qs.toString(), { headers: { 'Accept': 'application/json' } })
+                .then(r => r.json().catch(() => ({ success: false, message: 'Unexpected response from server.' })))
+                .then(res => {
+                    if (!res.success) {
+                        campaignTable.clearData();
+                        summaryEl.innerHTML = '';
+                        errorEl.textContent = res.message || 'Failed to fetch Shopify campaign data.';
+                        errorEl.style.display = 'block';
+                        return;
+                    }
+                    campaignTable.setData(res.rows);
+                    renderSummary(res.totals || {});
+                    statusEl.textContent = (res.cached ? 'Cached (≤15 min) · ' : 'Live from Shopify · ') + res.rows.length + ' rows';
+                })
+                .catch(e => {
+                    console.error(e);
+                    errorEl.textContent = 'Network error while contacting the server.';
+                    errorEl.style.display = 'block';
+                })
+                .finally(() => {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Fetch from Shopify';
+                });
+        }
+
+        refreshBtn.addEventListener('click', () => load(true));
+        daysEl.addEventListener('change', () => load(false));
+        channelEl.addEventListener('change', () => load(false));
+        load(false);
+    });
+</script>

@@ -7028,6 +7028,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/facebook-video-ad', 'facebookVideoAdView')->name('facebook.ads.master');
         Route::get('/facebook-video-ads', 'getFacebookVideoAdsData');
+        Route::get('/facebook-video-ads/shopify-campaigns', 'getFacebookShopifyCampaignSales')->name('facebook.video.ads.shopify.campaigns');
         Route::post('/facebook-video-ads/save', 'saveFacebookVideoAds')->name('facebook_video_ads.save');
 
         // Facebook Video Ads Groups and Categories (using Group Master's groups/categories)

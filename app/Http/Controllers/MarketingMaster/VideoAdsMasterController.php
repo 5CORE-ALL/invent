@@ -16,6 +16,7 @@ use App\Models\ShopifySku;
 use App\Models\TiktokVideoAd;
 use App\Models\YoutubeShortsAd;
 use App\Models\YoutubeVideoAd;
+use App\Services\ShopifyMarketingReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -174,6 +175,20 @@ class VideoAdsMasterController extends Controller
             'data' => $processedData,
             'status' => 200
         ]);
+    }
+
+    /**
+     * Shopify "Performance by marketing campaign" report (campaign / channel /
+     * traffic type with sales, sessions, orders, ...) pulled through ShopifyQL.
+     */
+    public function getFacebookShopifyCampaignSales(Request $request, ShopifyMarketingReportService $service)
+    {
+        $days    = (int) $request->query('days', 30);
+        $channel = $request->query('channel', 'meta') === 'all' ? 'all' : 'meta';
+
+        $result = $service->campaignPerformance($days, $channel, $request->boolean('refresh'));
+
+        return response()->json($result, $result['success'] ? 200 : 502);
     }
 
     public function saveFacebookVideoAds(Request $request){
