@@ -55,6 +55,66 @@ class ShopifyMarketingReportService
         ];
     }
 
+    /**
+     * Sales and orders per SKU that came from Meta (Facebook / Instagram) traffic,
+     * straight from Shopify (ShopifyQL `sales` dataset).
+     *
+     * @param  string  $traffic  'paid' (ads only) or 'all' (paid + organic)
+     * @return array{success: bool, skus: array<string, array{sales: float, orders: int}>, message: ?string}
+     */
+    public function metaSalesBySku(int $days = 30, string $traffic = 'paid', bool $refresh = false): array
+    {
+        $days = max(1, min(365, $days));
+        $key  = "shopify_meta_sales_by_sku:{$traffic}:{$days}";
+
+        if (! $refresh && Cache::has($key)) {
+            return Cache::get($key);
+        }
+
+        $domain  = config('services.shopify.store_url');
+        $token   = config('services.shopify.access_token');
+        $version = config('services.shopify.api_version', '2025-01');
+        if (empty($domain) || empty($token)) {
+            return ['success' => false, 'skus' => [], 'message' => 'Shopify credentials are missing (SHOPIFY_STORE_URL / SHOPIFY_ACCESS_TOKEN).'];
+        }
+
+        $skus = [];
+        try {
+            foreach (['facebook', 'instagram'] as $source) {
+                $rows = $this->runShopifyQl($domain, $token, $version,
+                    'FROM sales SHOW total_sales, orders GROUP BY product_variant_sku, traffic_type'
+                    ." WHERE referring_channel = '{$source}'"
+                    ." SINCE -{$days}d UNTIL today ORDER BY total_sales DESC LIMIT 5000");
+
+                foreach ($rows as $r) {
+                    $sku = trim((string) ($r['product_variant_sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    if ($traffic === 'paid' && strtolower((string) ($r['traffic_type'] ?? '')) !== 'paid') {
+                        continue;
+                    }
+                    $skus[$sku]['sales']  = ($skus[$sku]['sales'] ?? 0) + (float) ($r['total_sales'] ?? 0);
+                    $skus[$sku]['orders'] = ($skus[$sku]['orders'] ?? 0) + (int) ($r['orders'] ?? 0);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyMarketingReportService: metaSalesBySku failed', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'skus' => [], 'message' => 'Shopify request failed: '.$e->getMessage()];
+        }
+
+        foreach ($skus as &$v) {
+            $v['sales'] = round($v['sales'], 2);
+        }
+        unset($v);
+
+        $result = ['success' => true, 'skus' => $skus, 'message' => null];
+        Cache::put($key, $result, now()->addMinutes(15));
+
+        return $result;
+    }
+
     private function fetch(int $days): array
     {
         $domain  = config('services.shopify.store_url');

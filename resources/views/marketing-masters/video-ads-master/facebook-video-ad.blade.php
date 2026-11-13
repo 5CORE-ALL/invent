@@ -111,6 +111,7 @@
                     </button>
 
                 </div>
+                <div id="shopify-sales-warning" class="alert alert-warning py-2 small" style="display:none;"></div>
                 <div id="facebook-video-ads"></div>
             </div>
         </div>
@@ -351,6 +352,41 @@
                     hozAlign: "center"
                 },
                 {
+                    title: "Meta Sales L30",
+                    field: "meta_sales",
+                    headerSort: true,
+                    sorter: "number",
+                    hozAlign: "right",
+                    titleFormatter: function() {
+                        return `<div title="Sales from Meta ads traffic, last 30 days (Shopify)">
+                            Meta Sales L30<br>
+                            <span id="total-meta-sales-header" style="font-size:13px;color:white;font-weight:600;"></span>
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (isNaN(v) || v === 0) return '<span class="text-muted">$0.00</span>';
+                        return '<span class="fw-semibold" style="color:#16a34a;">$' + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>';
+                    }
+                },
+                {
+                    title: "Meta Orders L30",
+                    field: "meta_orders",
+                    headerSort: true,
+                    sorter: "number",
+                    hozAlign: "center",
+                    titleFormatter: function() {
+                        return `<div title="Orders from Meta ads traffic, last 30 days (Shopify)">
+                            Meta Orders L30<br>
+                            <span id="total-meta-orders-header" style="font-size:13px;color:white;font-weight:600;"></span>
+                        </div>`;
+                    },
+                    formatter: function(cell) {
+                        const v = parseInt(cell.getValue(), 10);
+                        return (isNaN(v) || v === 0) ? '<span class="text-muted">0</span>' : '<span class="fw-semibold">' + v + '</span>';
+                    }
+                },
+                {
                     title: "Dil%",
                     field: "Dil",
                     formatter: function (cell) {
@@ -460,6 +496,16 @@
             ajaxResponse: function (url, params, response) {
                 // Handle different response formats
                 let rows = [];
+
+                const warnEl = document.getElementById('shopify-sales-warning');
+                if (warnEl) {
+                    if (response && response.shopify_sales_error) {
+                        warnEl.textContent = 'Shopify sales/orders could not be loaded: ' + response.shopify_sales_error;
+                        warnEl.style.display = 'block';
+                    } else {
+                        warnEl.style.display = 'none';
+                    }
+                }
                 
                 if (Array.isArray(response)) {
                     // If response is already an array
@@ -660,6 +706,14 @@
             document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
             document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
 
+            // Parent rows already hold the sum of their children, so leave them out of the grand total.
+            const childRows = data.filter(row => !row.is_parent);
+            const totalMetaSales = childRows.reduce((sum, row) => sum + (parseFloat(row["meta_sales"]) || 0), 0);
+            const totalMetaOrders = childRows.reduce((sum, row) => sum + (parseInt(row["meta_orders"], 10) || 0), 0);
+            const salesEl = document.getElementById("total-meta-sales-header");
+            const ordersEl = document.getElementById("total-meta-orders-header");
+            if (salesEl) salesEl.textContent = '$' + totalMetaSales.toLocaleString(undefined, {maximumFractionDigits: 0});
+            if (ordersEl) ordersEl.textContent = totalMetaOrders.toLocaleString();
         }
 
         // Play/Pause Controls

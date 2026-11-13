@@ -118,8 +118,15 @@ class VideoAdsMasterController extends Controller
         return view('marketing-masters.video-ads-master.facebook-video-ad');
     }
 
-    public function getFacebookVideoAdsData()
+    public function getFacebookVideoAdsData(ShopifyMarketingReportService $marketing)
     {
+        // Sales + orders (last 30 days, paid Meta traffic) per SKU, straight from Shopify.
+        $metaSales = $marketing->metaSalesBySku(30, 'paid');
+        $metaBySku = [];
+        foreach (($metaSales['skus'] ?? []) as $metaSku => $metaRow) {
+            $metaBySku[strtolower(trim($metaSku))] = $metaRow;
+        }
+
         $productMasterRows = ProductMaster::all()->keyBy('sku');
 
         $skus = $productMasterRows->keys()->toArray();
@@ -167,13 +174,36 @@ class VideoAdsMasterController extends Controller
                 $processedItem['L30'] = 0;
             }
 
+            // Sales + orders from Shopify (Meta paid traffic, last 30 days). Parent rows are filled below.
+            $meta = $metaBySku[strtolower(trim($sku))] ?? null;
+            $processedItem['meta_sales']  = $isParent ? 0 : round((float) ($meta['sales'] ?? 0), 2);
+            $processedItem['meta_orders'] = $isParent ? 0 : (int) ($meta['orders'] ?? 0);
+
             $processedData[] = $processedItem;
         }
+
+        // A parent row shows the total of its child SKUs.
+        $parentTotals = [];
+        foreach ($processedData as $item) {
+            if ($item['is_parent'] || empty($item['Parent'])) {
+                continue;
+            }
+            $parentTotals[$item['Parent']]['sales']  = ($parentTotals[$item['Parent']]['sales'] ?? 0) + $item['meta_sales'];
+            $parentTotals[$item['Parent']]['orders'] = ($parentTotals[$item['Parent']]['orders'] ?? 0) + $item['meta_orders'];
+        }
+        foreach ($processedData as &$item) {
+            if ($item['is_parent'] && isset($parentTotals[$item['Parent']])) {
+                $item['meta_sales']  = round($parentTotals[$item['Parent']]['sales'], 2);
+                $item['meta_orders'] = $parentTotals[$item['Parent']]['orders'];
+            }
+        }
+        unset($item);
 
         return response()->json([
             'message' => 'Video data fetched successfully',
             'data' => $processedData,
-            'status' => 200
+            'status' => 200,
+            'shopify_sales_error' => ($metaSales['success'] ?? false) ? null : ($metaSales['message'] ?? 'Shopify sales unavailable'),
         ]);
     }
 
