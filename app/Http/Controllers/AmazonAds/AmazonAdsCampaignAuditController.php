@@ -56,6 +56,19 @@ class AmazonAdsCampaignAuditController extends Controller
     }
 
     /**
+     * Full stored reports for the given campaigns (Excel export of the grid).
+     */
+    public function reports(Request $request, AmazonAdsCampaignAuditService $service): JsonResponse
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn ($v): string => trim((string) $v), (array) $request->input('ids', [])),
+            static fn (string $v): bool => $v !== ''
+        )));
+
+        return response()->json(['ok' => true, 'reports' => (object) $service->reports(array_slice($ids, 0, 400))]);
+    }
+
+    /**
      * The stored report behind the dot.
      */
     public function report(Request $request, AmazonAdsCampaignAuditService $service): JsonResponse

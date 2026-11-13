@@ -120,6 +120,37 @@ class AmazonAdsCampaignAuditService
     }
 
     /**
+     * Everything the report modal shows, for many campaigns at once (used by the Excel export).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array<string, mixed>>
+     */
+    public function reports(array $campaignIds): array
+    {
+        if ($campaignIds === [] || ! Schema::hasTable(AmazonAdsCampaignAudit::TABLE)) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk($campaignIds, 200) as $chunk) {
+            $rows = AmazonAdsCampaignAudit::query()
+                ->whereIn('campaign_id', $chunk)
+                ->orderBy('updated_at')
+                ->get(['channel', 'campaign_id', 'campaign_name', 'status', 'severity', 'summary', 'report', 'facts', 'provider', 'requested_by', 'error', 'started_at', 'finished_at']);
+            foreach ($rows as $r) {
+                $out[(string) $r->campaign_id] = [
+                    'status' => $this->statusPayload($r),
+                    'report' => $r->report,
+                    'signals' => $r->facts['signals'] ?? [],
+                    'provider' => $r->provider,
+                    'requested_by' => $r->requested_by,
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @return array{channel: string, status: string, severity: ?string, verdict: ?string, at: ?string, error: ?string, aspects: ?array<string, string>}
      */
     public function statusPayload(AmazonAdsCampaignAudit $r): array

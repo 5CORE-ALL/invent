@@ -3905,6 +3905,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-ads/campaign-skus', [AmazonAdsController::class, 'campaignSkus'])->name('amazon.ads.campaign-skus');
     Route::post('/amazon-ads/campaign-audit/run', [\App\Http\Controllers\AmazonAds\AmazonAdsCampaignAuditController::class, 'run'])->name('amazon.ads.campaign-audit.run');
     Route::post('/amazon-ads/campaign-audit/statuses', [\App\Http\Controllers\AmazonAds\AmazonAdsCampaignAuditController::class, 'statuses'])->name('amazon.ads.campaign-audit.statuses');
+    Route::post('/amazon-ads/campaign-audit/reports', [\App\Http\Controllers\AmazonAds\AmazonAdsCampaignAuditController::class, 'reports'])->name('amazon.ads.campaign-audit.reports');
     Route::get('/amazon-ads/campaign-audit/report', [\App\Http\Controllers\AmazonAds\AmazonAdsCampaignAuditController::class, 'report'])->name('amazon.ads.campaign-audit.report');
     Route::post('/amazon-ads/sb-ads/products', [AmazonAdsController::class, 'addSbAdProducts'])->name('amazon.ads.sb-ads.products.add');
     Route::post('/amazon-ads/sb-ads/products/remove', [AmazonAdsController::class, 'removeSbAdProducts'])->name('amazon.ads.sb-ads.products.remove');

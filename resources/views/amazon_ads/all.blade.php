@@ -2357,6 +2357,7 @@
             var campaignAuditRunUrl = @json(route('amazon.ads.campaign-audit.run'));
             var campaignAuditStatusesUrl = @json(route('amazon.ads.campaign-audit.statuses'));
             var campaignAuditReportUrl = @json(route('amazon.ads.campaign-audit.report'));
+            var campaignAuditReportsUrl = @json(route('amazon.ads.campaign-audit.reports'));
             var sbAdAddUrl = @json(route('amazon.ads.sb-ads.products.add'));
             var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
@@ -5577,6 +5578,7 @@
                     var cs = el ? window.getComputedStyle(el) : null;
                     var ts = titleEl ? window.getComputedStyle(titleEl) : null;
                     out.push({
+                        audit: def.field === 'audit' ? 'summary' : (AMZ_AUDIT_ASPECT_BY_FIELD[def.field] ? 'aspect' : null),
                         col: col, def: def, field: def.field, title: title,
                         bg: (cs && amzCssColorToArgb(cs.backgroundColor)) || 'FFDBEAFE',
                         fg: (ts && amzCssColorToArgb(ts.color)) || 'FF1E293B'
@@ -5615,6 +5617,105 @@
                     });
                 }
                 return nextPage(1).then(function (all) { return amzApplyAcosDrivenBgt(all); });
+            }
+            // ---- Audit dot data (the report modal) for the Excel export ----
+            var amzExportAuditMap = {};
+            var AMZ_AUDIT_EXPORT_FILL = { ok: 'FF16A34A', low: 'FFEAB308', medium: 'FFF97316', high: 'FFDC2626', failed: 'FF111827', none: 'FFCBD5E1' };
+            function amzExportFetchAudits(rows) {
+                var ids = [];
+                var seen = {};
+                rows.forEach(function (d) {
+                    var cid = d && d.campaign_id != null ? String(d.campaign_id).trim() : '';
+                    if (cid !== '' && !seen[cid]) { seen[cid] = true; ids.push(cid); }
+                });
+                amzExportAuditMap = {};
+                var chunks = [];
+                for (var i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+                function next(k) {
+                    if (k >= chunks.length) return Promise.resolve();
+                    amzAuditToast('Excel: loading audit reports ' + Math.min((k + 1) * 200, ids.length) + ' / ' + ids.length + '...', true);
+                    return fetch(campaignAuditReportsUrl, {
+                        method: 'POST', credentials: 'same-origin', headers: amzAuditHeaders(), body: JSON.stringify({ ids: chunks[k] })
+                    }).then(function (res) { return res.json(); }).then(function (json) {
+                        var map = (json && json.reports) || {};
+                        Object.keys(map).forEach(function (cid) { amzExportAuditMap[cid] = map[cid]; });
+                        return next(k + 1);
+                    });
+                }
+                return next(0);
+            }
+            function amzExportAuditLevel(entry) {
+                if (!entry) return 'none';
+                var st = entry.status || {};
+                if (st.status === 'failed') return 'failed';
+                if (st.status === 'running') return 'none';
+                var rep = entry.report || {};
+                return AMZ_AUDIT_SEVERITY_LABEL[rep.severity] ? rep.severity : (AMZ_AUDIT_SEVERITY_LABEL[st.severity] ? st.severity : 'medium');
+            }
+            // Same content as the modal opened from the dot, as plain text.
+            function amzExportAuditReportText(entry) {
+                if (!entry) return '';
+                var st = entry.status || {};
+                if (st.status === 'failed') return 'Audit failed: ' + (st.error || 'Unknown error.');
+                if (st.status === 'running') return 'Audit running...';
+                var rep = entry.report || {};
+                var sev = amzExportAuditLevel(entry);
+                var lines = [AMZ_AUDIT_SEVERITY_LABEL[sev] || sev];
+                if (rep.verdict) lines.push(rep.verdict);
+                var reasons = Array.isArray(rep.reasons) ? rep.reasons : [];
+                if (reasons.length) {
+                    lines.push('', 'POSSIBLE REASONS FOR NOT ENOUGH CLICKS');
+                    reasons.forEach(function (r, i) {
+                        var cat = r.category && AMZ_AUDIT_ASPECTS[r.category] ? ' [' + AMZ_AUDIT_ASPECTS[r.category].name + ']' : '';
+                        lines.push((i + 1) + '. [' + String(r.impact || 'medium').toUpperCase() + ']' + cat + ' ' + (r.title || ''));
+                        if (r.evidence) lines.push('   Data: ' + r.evidence);
+                        if (r.fix) lines.push('   Fix: ' + r.fix);
+                    });
+                }
+                var steps = Array.isArray(rep.next_steps) ? rep.next_steps : [];
+                if (steps.length) {
+                    lines.push('', 'NEXT STEPS');
+                    steps.forEach(function (x) { lines.push('- ' + x); });
+                }
+                var signals = Array.isArray(entry.signals) ? entry.signals : [];
+                if (signals.length) {
+                    lines.push('', 'NUMBERS THE AI WAS GIVEN');
+                    signals.forEach(function (x) { lines.push('- ' + x); });
+                }
+                var when = st.at ? new Date(st.at).toLocaleString() : '';
+                var foot = (when ? 'Audited ' + when : '') + (entry.provider ? ' \u00B7 ' + entry.provider : '') + (entry.requested_by ? ' \u00B7 by ' + entry.requested_by : '');
+                if (foot) lines.push('', foot);
+                return lines.join('\n');
+            }
+            function amzExportAuditCell(colInfo, data) {
+                var cid = data && data.campaign_id != null ? String(data.campaign_id).trim() : '';
+                var entry = cid !== '' ? amzExportAuditMap[cid] : null;
+                var result = { value: '', bg: null, font: null, rich: null };
+                if (colInfo.audit === 'report') {
+                    result.value = amzExportAuditReportText(entry);
+                    return result;
+                }
+                var level = amzExportAuditLevel(entry);
+                if (colInfo.audit === 'summary') {
+                    if (level === 'none') { result.value = cid === '' ? '' : (entry && entry.status && entry.status.status === 'running' ? 'Running' : 'Not audited'); }
+                    else if (level === 'failed') result.value = 'Failed';
+                    else result.value = AMZ_AUDIT_SEVERITY_LABEL[level] || level;
+                } else {
+                    var aspect = AMZ_AUDIT_ASPECT_BY_FIELD[colInfo.field];
+                    var aspects = entry && entry.status ? entry.status.aspects : null;
+                    if (level === 'failed') { level = 'failed'; result.value = 'Failed'; }
+                    else if (level === 'none' || !aspects) { level = 'none'; result.value = cid === '' ? '' : 'Not audited'; }
+                    else {
+                        level = aspects[aspect] || 'ok';
+                        result.value = AMZ_AUDIT_ASPECT_LEVEL_LABEL[level] || level;
+                    }
+                }
+                if (result.value !== '') {
+                    result.bg = AMZ_AUDIT_EXPORT_FILL[level] || null;
+                    var dark = level === 'low' || level === 'none';
+                    result.font = { name: 'Calibri', size: 11, bold: true, color: { argb: dark ? 'FF1F2937' : 'FFFFFFFF' } };
+                }
+                return result;
             }
             // Off-screen copy of a grid cell inside #amz-ads-raw-wrap, so the page's own CSS decides every colour.
             var amzExportHost = null;
@@ -5751,6 +5852,7 @@
                 return runs;
             }
             function amzExportCellOf(colInfo, data) {
+                if (colInfo.audit) return amzExportAuditCell(colInfo, data);
                 var def = colInfo.def;
                 var value = data ? data[colInfo.field] : undefined;
                 var result = { value: value === undefined || value === null ? '' : value, bg: null, font: null, rich: null };
@@ -5818,6 +5920,18 @@
                 if (btn) btn.disabled = true;
                 if (icon) icon.className = 'fas fa-spinner fa-spin';
                 var cols = amzExportColumns();
+                var withAudit = false;
+                try { withAudit = !!table.getColumn('audit'); } catch (e) {}
+                if (withAudit) {
+                    var lastAudit = -1;
+                    cols.forEach(function (c, i) { if (c.audit) lastAudit = i; });
+                    var base = cols.filter(function (c) { return c.field === 'audit'; })[0];
+                    var reportCol = {
+                        audit: 'report', col: null, def: { hozAlign: 'left' }, field: '__auditReport', title: 'Audit Report',
+                        bg: base ? base.bg : 'FFDBEAFE', fg: base ? base.fg : 'FF1E293B', fixedWidth: 90, wrap: true
+                    };
+                    cols.splice(lastAudit === -1 ? cols.length : lastAudit + 1, 0, reportCol);
+                }
                 amzAuditToast('Excel: loading all rows...', true);
                 var exceljsReady = amzEnsureExcelJs();
                 var started = Date.now();
@@ -5826,11 +5940,13 @@
                 }).then(function (rows) {
                     return exceljsReady.then(function () { return rows; });
                 }).then(function (rows) {
+                    return withAudit ? amzExportFetchAudits(rows).then(function () { return rows; }) : rows;
+                }).then(function (rows) {
                     var wb = new ExcelJS.Workbook();
                     var ws = wb.addWorksheet('Amazon Ads', { views: [{ state: 'frozen', xSplit: Math.max(1, cols.findIndex(function (c) { return c.field === 'campaignName'; }) + 1), ySplit: 1 }] });
                     var thin = { style: 'thin', color: { argb: 'FFCBD5E1' } };
                     var border = { top: thin, left: thin, bottom: thin, right: thin };
-                    var widths = cols.map(function (c) { return Math.min(40, Math.max(8, c.title.length + 3)); });
+                    var widths = cols.map(function (c) { return c.fixedWidth || Math.min(40, Math.max(8, c.title.length + 3)); });
                     ws.columns = cols.map(function (c, i) { return { header: c.title, key: 'c' + i, width: widths[i] }; });
                     var head = ws.getRow(1);
                     head.height = 32;
@@ -5856,12 +5972,14 @@
                                         var cell = wsRow.getCell(i + 1);
                                         cell.value = r.rich ? { richText: r.rich } : amzExcelCellValue(r.value);
                                         var left = c.field === 'campaignName' || (c.def.hozAlign === 'left');
-                                        cell.alignment = { horizontal: left ? 'left' : 'center', vertical: 'middle' };
+                                        cell.alignment = c.wrap
+                                            ? { horizontal: 'left', vertical: 'top', wrapText: true }
+                                            : { horizontal: left ? 'left' : 'center', vertical: 'middle' };
                                         cell.border = border;
                                         if (r.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: r.bg } };
                                         if (r.font) cell.font = r.font;
                                         var len = String(r.value == null ? '' : r.value).length;
-                                        if (len + 2 > widths[i]) widths[i] = Math.min(50, len + 2);
+                                        if (!c.fixedWidth && len + 2 > widths[i]) widths[i] = Math.min(50, len + 2);
                                     });
                                 }
                                 amzAuditToast('Excel: building file ' + idx + ' / ' + rows.length + '...', true);
