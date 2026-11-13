@@ -29,6 +29,8 @@
     }
     @media (max-width: 991.98px) { .mrq-toast { right: 72px; bottom: 150px; } }
 
+    /* Double the default modal-lg width (800px -> 1600px), never wider than the screen */
+    #mrqModal .modal-dialog.modal-lg { max-width: min(1600px, 96vw); }
     #mrqModal .mrq-tabs { display: flex; gap: 6px; border-bottom: 1px solid #e5e9f0; margin: -4px 0 14px; }
     #mrqModal .mrq-tab { border: 0; background: none; padding: 8px 12px; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; }
     #mrqModal .mrq-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
