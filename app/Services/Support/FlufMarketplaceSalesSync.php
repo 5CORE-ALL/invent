@@ -195,7 +195,7 @@ class FlufMarketplaceSalesSync
      * @param  \Illuminate\Support\Collection<int, object>  $lines
      * @return \Closure(object): array{sku: string, source: string, line_sku: string, shopify_sku: string, catalog_sku: string, in_pm: bool}
      */
-    public function skuResolver($lines): \Closure
+    public function skuResolver($lines, bool $withSuggestions = false): \Closure
     {
         $clean = static fn ($v) => trim(str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xE2\x80\x87", "\xE2\x80\x8B"], ' ', (string) $v));
 
@@ -246,15 +246,69 @@ class FlufMarketplaceSalesSync
         // "SKU" is just the Vinted listing code, e.g. "500W - 5 Core 6" 2 Way Coaxial Car Door Speakers ...").
         $titleKey = static fn ($t) => preg_replace('/[^a-z0-9]+/', '', strtolower((string) $t));
         $titleSkus = [];
-        if (Schema::hasTable('shopify_skus')) {
-            foreach (DB::table('shopify_skus')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'product_title']) as $r) {
-                $k = $titleKey($r->product_title);
-                $pmSku = $toPm($clean($r->sku));
-                if ($k !== '' && $pmSku !== null) {
-                    $titleSkus[$k][$pmSku] = true;
+        $titleRows = []; // [title, sku] pairs for the fuzzy suggestions
+        $addTitle = function ($title, $pmSku) use ($titleKey, &$titleSkus, &$titleRows): void {
+            $k = $titleKey($title);
+            if ($k !== '' && $pmSku !== null) {
+                $titleSkus[$k][$pmSku] = true;
+                $titleRows[$k.'|'.$pmSku] = [(string) $title, $pmSku];
+            }
+        };
+        {
+            if (Schema::hasTable('shopify_skus')) {
+                foreach (DB::table('shopify_skus')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'product_title']) as $r) {
+                    $addTitle($r->product_title, $toPm($clean($r->sku)));
+                }
+            }
+            // Product Master carries its own listing titles too (title150 / 100 / 80 / 75 / 60).
+            if (Schema::hasTable('product_master')) {
+                $titleCols = array_values(array_filter(
+                    ['title150', 'title100', 'title80', 'title75', 'title60'],
+                    fn ($c) => Schema::hasColumn('product_master', $c)
+                ));
+                if ($titleCols !== []) {
+                    foreach (DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->get(array_merge(['sku'], $titleCols)) as $r) {
+                        $pmSku = $toPm($clean($r->sku));
+                        foreach ($titleCols as $c) {
+                            $addTitle($r->{$c}, $pmSku);
+                        }
+                    }
                 }
             }
         }
+        $stripCode = static function (string $title, string $lineSku): string {
+            $t = trim($title);
+            if ($lineSku !== '' && stripos($t, $lineSku) === 0) {
+                $t = ltrim(substr($t, strlen($lineSku)), " \t-–—:");
+            }
+
+            return $t;
+        };
+        $words = static function (string $t): array {
+            $stop = ['5core', 'core', '5', 'the', 'and', 'for', 'with', 'w', 'inch', 'in'];
+            $w = preg_split('/[^a-z0-9]+/', strtolower($t), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            return array_values(array_unique(array_diff($w, $stop)));
+        };
+        $suggest = static function (string $title, string $lineSku) use ($titleRows, $stripCode, $words): array {
+            $a = $words($stripCode($title, $lineSku));
+            if (count($a) < 3) {
+                return [];
+            }
+            $best = [];
+            foreach ($titleRows as [$t, $sku]) {
+                $b = $words($t);
+                $inter = count(array_intersect($a, $b));
+                $union = count($a) + count($b) - $inter;
+                $score = $union > 0 ? $inter / $union : 0;
+                if ($score >= 0.35 && $score > ($best[$sku] ?? 0)) {
+                    $best[$sku] = $score;
+                }
+            }
+            arsort($best);
+
+            return array_slice(array_map(fn ($s) => round($s * 100).'%', $best), 0, 5, true);
+        };
         $byTitle = static function (string $title, string $lineSku) use ($titleKey, $titleSkus): array {
             $t = trim($title);
             if ($lineSku !== '' && stripos($t, $lineSku) === 0) {
@@ -281,7 +335,7 @@ class FlufMarketplaceSalesSync
             return array_keys($found);
         };
 
-        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm, $byTitle): array {
+        return function ($line) use ($clean, $shopifySku, $catalogSku, $toPm, $byTitle, $suggest, $withSuggestions): array {
             $vid = (string) ($line->variant_id ?? '');
             $lineSku = $clean($line->sku ?? '');
             $sSku = $shopifySku[$vid] ?? '';
@@ -308,6 +362,10 @@ class FlufMarketplaceSalesSync
                     return ['sku' => $fallback, 'source' => 'ambiguous title ('.count($cands).' SKUs)', 'in_pm' => false] + array_merge($base, ['candidates' => $cands]);
                 }
             }
+
+            $base['suggestions'] = ($withSuggestions && $vid === '')
+                ? $suggest((string) ($line->product_title ?? ''), $lineSku)
+                : [];
 
             return ['sku' => $fallback, 'source' => 'no Product Master match', 'in_pm' => false] + $base;
         };
@@ -337,7 +395,7 @@ class FlufMarketplaceSalesSync
             ->filter(fn ($l) => self::channelFor($l->source_name ?? null, $l->tags ?? null) === $channel)
             ->values();
 
-        $resolve = $this->skuResolver($lines);
+        $resolve = $this->skuResolver($lines, true);
         $out = [];
         foreach ($lines as $l) {
             $r = $resolve($l);
