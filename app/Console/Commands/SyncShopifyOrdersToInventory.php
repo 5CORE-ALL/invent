@@ -40,6 +40,7 @@ class SyncShopifyOrdersToInventory extends Command
     private int $inserted = 0;
     private int $updated  = 0;
     private int $skipped  = 0;   // line items skipped (no SKU / PARENT SKU)
+    private int $keptBlankMarketplace = 0; // Vinted/Depop lines with no SKU that are now kept
 
     // ── Shopify credentials ────────────────────────────────────────────────
     private string $storeUrl;
@@ -371,10 +372,19 @@ class SyncShopifyOrdersToInventory extends Command
                 }
             }
 
-            // Skip blank SKUs and bundle-parent placeholders
+            // Skip blank SKUs and bundle-parent placeholders ...
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-                $this->skipped++;
-                continue;
+                // ... except on Vinted / Depop orders. Fluf creates those lines as custom items that often
+                // have no SKU, and dropping them silently removed whole sales (the order never reached
+                // shopify_raw_orders, so /vinted/sheet showed far less than Shopify). They are kept with an
+                // empty SKU; the Vinted/Depop sheet sync works the SKU out from the product title.
+                $isMarketplaceOrder = $sku === ''
+                    && preg_match('/vinted|depop/i', (string) ($order['tags'] ?? '').' '.(string) ($order['source_name'] ?? '')) === 1;
+                if (! $isMarketplaceOrder) {
+                    $this->skipped++;
+                    continue;
+                }
+                $this->keptBlankMarketplace++;
             }
 
             $price    = round((float) ($line['price']    ?? 0), 2);
@@ -539,6 +549,7 @@ class SyncShopifyOrdersToInventory extends Command
         $this->info("  Orders fetched    : {$this->fetched}");
         $this->info("  Rows upserted     : {$this->inserted}");
         $this->info("  Line items skipped: {$this->skipped}  (blank SKU / PARENT)");
+        $this->info("  Vinted/Depop lines kept without SKU: {$this->keptBlankMarketplace}");
         $this->info('  ─────────────────────────────────────────────');
         $this->info("  Total rows in DB  : {$total}");
         $this->info("  DB date range     : {$min} → {$max}");

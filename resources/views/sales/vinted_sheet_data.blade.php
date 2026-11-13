@@ -46,6 +46,8 @@
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white;">Sales: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge">GPFT Total: $0</span>
                         <span class="badge fs-6 p-2" id="gpft-pct-badge" style="background-color: #6f42c1; color: white;">G PFT %: 0%</span>
+                        <span class="badge fs-6 p-2" id="groi-pct-badge" style="background-color: #fd7e14; color: white;"
+                              title="G ROI % = GPFT Total ÷ COGS (LP × qty), for the rows shown">G ROI %: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge">COGS: $0</span>
                         <span class="badge fs-6 p-2" id="guessed-sku-badge" style="background-color:#ffc107;color:#212529;cursor:pointer;"
                               title="Rows whose SKU was guessed from the product title. Click to show only these, click again to show all.">Guessed SKU: 0</span>
@@ -159,6 +161,8 @@
             $('#total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
             $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
             $('#gpft-pct-badge').text('G PFT %: ' + gpftPct + '%');
+            var groiPct = totalCogs > 0 ? ((totalPft / totalCogs) * 100).toFixed(1) : '0';
+            $('#groi-pct-badge').text('G ROI %: ' + groiPct + '%');
             $('#total-cogs-badge').text('COGS: $' + Math.round(totalCogs).toLocaleString());
             var guessed = table.getData().filter(function(r) { return r.sku_source === 'guess'; }).length;
             $('#guessed-sku-badge').text('Guessed SKU: ' + guessed);

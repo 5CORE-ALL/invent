@@ -128,16 +128,16 @@ class SyncFlufMarketplaceSales extends Command
 
                     continue;
                 }
-                $tot = ['orders' => 0, 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0, 'sheet_rows' => 0];
+                $tot = ['orders' => 0, 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0, 'sheet_rows' => 0, 'net' => 0, 'order_total' => 0, 'no_sku' => 0, 'sheet_amt' => 0];
                 foreach ($rows as $r) {
-                    $this->line(sprintf('%s  orders=%d lines=%d qty=%d refunded/cancelled_lines=%d | sheet rows=%d',
-                        $r['month'], $r['orders'], $r['lines'], $r['qty'], $r['not_a_sale'], $r['sheet_rows']));
+                    $this->line(sprintf('%s  orders=%d lines=%d (no SKU %d) qty=%d refunded/cancelled_lines=%d | Shopify net=$%.2f order totals incl. shipping/tax=$%.2f | sheet rows=%d sheet sales=$%.2f',
+                        $r['month'], $r['orders'], $r['lines'], $r['no_sku'], $r['qty'], $r['not_a_sale'], $r['net'], $r['order_total'], $r['sheet_rows'], $r['sheet_amt']));
                     foreach ($tot as $k => $_) {
                         $tot[$k] += $r[$k];
                     }
                 }
-                $this->line(sprintf('TOTAL     orders=%d lines=%d qty=%d refunded/cancelled_lines=%d | sheet rows=%d',
-                    $tot['orders'], $tot['lines'], $tot['qty'], $tot['not_a_sale'], $tot['sheet_rows']));
+                $this->line(sprintf('TOTAL     orders=%d lines=%d (no SKU %d) qty=%d refunded/cancelled_lines=%d | Shopify net=$%.2f order totals=$%.2f | sheet rows=%d sheet sales=$%.2f',
+                    $tot['orders'], $tot['lines'], $tot['no_sku'], $tot['qty'], $tot['not_a_sale'], $tot['net'], $tot['order_total'], $tot['sheet_rows'], $tot['sheet_amt']));
             }
 
             return self::SUCCESS;

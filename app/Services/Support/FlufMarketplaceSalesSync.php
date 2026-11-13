@@ -506,7 +506,7 @@ class FlufMarketplaceSalesSync
                 $q->whereRaw('LOWER(COALESCE(source_name,"")) LIKE ?', ['%'.$channel.'%'])
                     ->orWhereRaw('LOWER(COALESCE(tags,"")) LIKE ?', ['%'.$channel.'%']);
             })
-            ->get(['order_id', 'order_date', 'quantity', 'source_name', 'tags', 'financial_status']);
+            ->get(['order_id', 'order_date', 'quantity', 'source_name', 'tags', 'financial_status', 'net_sales', 'order_total', 'sku']);
 
         $byMonth = [];
         foreach ($lines as $line) {
@@ -514,22 +514,32 @@ class FlufMarketplaceSalesSync
                 continue;
             }
             $month = substr((string) $line->order_date, 0, 7);
-            $byMonth[$month] ??= ['orders' => [], 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0];
+            $byMonth[$month] ??= ['orders' => [], 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0, 'net' => 0.0, 'order_total' => 0.0, 'no_sku' => 0];
+            if (! isset($byMonth[$month]['orders'][$line->order_id])) {
+                // order_total repeats on every line of an order: count it once.
+                $byMonth[$month]['order_total'] += (float) ($line->order_total ?? 0);
+            }
             $byMonth[$month]['orders'][$line->order_id] = true;
             $byMonth[$month]['lines']++;
+            if (trim((string) $line->sku) === '') {
+                $byMonth[$month]['no_sku']++;
+            }
             $status = strtolower(trim((string) ($line->financial_status ?? '')));
             if (in_array($status, self::NOT_A_SALE_STATUS, true) || str_contains(strtolower((string) $line->tags), 'cancel')) {
                 $byMonth[$month]['not_a_sale']++;
             } else {
                 $byMonth[$month]['qty'] += max(1, (int) $line->quantity);
+                $byMonth[$month]['net'] += (float) ($line->net_sales ?? 0);
             }
         }
 
         $sheetByMonth = [];
+        $sheetAmtByMonth = [];
         if (Schema::hasTable($cfg['table'])) {
-            foreach (DB::table($cfg['table'])->where('sale_date', '>=', $from)->get(['sale_date']) as $r) {
+            foreach (DB::table($cfg['table'])->where('sale_date', '>=', $from)->get(['sale_date', 'quantity', 'item_price']) as $r) {
                 $m = substr((string) $r->sale_date, 0, 7);
                 $sheetByMonth[$m] = ($sheetByMonth[$m] ?? 0) + 1;
+                $sheetAmtByMonth[$m] = ($sheetAmtByMonth[$m] ?? 0) + ((float) $r->item_price * max(1, (int) $r->quantity));
             }
         }
 
@@ -539,6 +549,8 @@ class FlufMarketplaceSalesSync
             $out[] = [
                 'channel' => $channel, 'month' => $month, 'orders' => count($v['orders']), 'lines' => $v['lines'],
                 'qty' => $v['qty'], 'not_a_sale' => $v['not_a_sale'], 'sheet_rows' => $sheetByMonth[$month] ?? 0,
+                'net' => round($v['net'], 2), 'order_total' => round($v['order_total'], 2), 'no_sku' => $v['no_sku'],
+                'sheet_amt' => round($sheetAmtByMonth[$month] ?? 0, 2),
             ];
         }
 
