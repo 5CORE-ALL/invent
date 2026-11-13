@@ -2882,6 +2882,8 @@
                     var $el = $(m.el);
                     $el.text(v.toFixed(1) + '%');
                     $el.closest('.badge').attr('title', ySavedPctTitle(metric, v)).attr('data-exact-value', v);
+                    // Dot = last graph point vs the day before (same as the graph's own colour).
+                    syncAllBadgeDotWithChart(metric, rows.map(function(r) { return Number(r.value); }));
                 }).always(function() {
                     ySavedPctLoading[metric] = false;
                 });
