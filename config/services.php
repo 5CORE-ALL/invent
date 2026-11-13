@@ -441,6 +441,8 @@ return [
         'consumer_secret' => env('USPS_CONSUMER_SECRET', ''),
         'callback_url'    => env('USPS_CALLBACK_URL', 'http://127.0.0.1:8000/admin'),
         'api_base'        => env('USPS_API_BASE', 'https://apis.usps.com'),
+        // v3r2 = batched tracking (35 numbers per request); v3 = legacy one number per request.
+        'tracking_api'    => env('USPS_TRACKING_API', 'v3r2'),
         'max_per_hour'    => (int) env('USPS_MAX_PER_HOUR', 55),
         'min_interval_ms' => (int) env('USPS_MIN_INTERVAL_MS', 1000),
     ],
