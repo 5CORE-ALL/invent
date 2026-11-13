@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Support\Marketplace\Settle\SettleTracker;
 use App\Support\Marketplace\YesterdaySettleLedger as Ledger;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -151,6 +153,7 @@ class SettleYesterdayOrders extends Command
                 foreach ($running as $job) {
                     $job['proc']->stop(5);
                     $this->recordResult($job['key'], $job['passes'], false, 'stopped at the 09:00 PT deadline');
+                    $this->trackRun($job, false, 'stopped at the 09:00 PT deadline', (int) round(microtime(true) - $job['started']));
                     $this->warn("[{$this->date}] {$job['key']}: stopped at the 09:00 PT deadline");
                     $failed++;
                 }
@@ -292,6 +295,34 @@ class SettleYesterdayOrders extends Command
             }
         }
         $this->recordResult($job['key'], $job['passes'], $ok, $error);
+        $this->trackRun($job, $ok, $error, $seconds);
+    }
+
+    /**
+     * Phase 1/2 tracking: keep the last error, command output markers (auth / pagination text that
+     * did not change the exit code) and timings in the new settle_task_runs table. Purely
+     * observational: any failure here is logged and ignored, the ledger and the run are unaffected.
+     *
+     * @param  array{proc: Process, key: string, passes: list<int>, started: float}  $job
+     */
+    private function trackRun(array $job, bool $ok, string $error, int $seconds): void
+    {
+        try {
+            $proc = $job['proc'];
+            SettleTracker::recordRun(
+                $this->date,
+                $job['key'],
+                Ledger::tasks()[$job['key']] ?? null,
+                $ok,
+                $error,
+                trim($proc->getOutput()."\n".$proc->getErrorOutput()),
+                $seconds,
+                $proc->getExitCode(),
+                Carbon::createFromTimestamp((int) $job['started'], Ledger::TZ)
+            );
+        } catch (\Throwable $e) {
+            Log::warning('[settle] could not record task run for '.$job['key'].': '.$e->getMessage());
+        }
     }
 
     /**

@@ -1589,6 +1589,44 @@
         </div>
     </div>
 
+    <!-- Yesterday settle: per-marketplace pull / verification status (read-only) -->
+    <div class="modal fade" id="settleStatusModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background: linear-gradient(135deg, #6c757d, #343a40);">
+                    <h6 class="modal-title text-white mb-0">
+                        <i class="fas fa-clipboard-check me-2"></i>
+                        Yesterday settle by marketplace
+                        <span class="fw-normal" id="settleStatusSummary" style="opacity:.9;"></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0 text-center align-middle" id="settleStatusTable">
+                            <thead>
+                                <tr>
+                                    <th class="text-start">Marketplace / task</th>
+                                    <th>Status</th>
+                                    <th>Attempts</th>
+                                    <th class="text-start">Last error</th>
+                                    <th class="text-start">Next retry</th>
+                                    <th class="text-start">Last run</th>
+                                    <th class="text-start">Verification</th>
+                                </tr>
+                            </thead>
+                            <tbody id="settleStatusBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted px-1 pt-2" style="font-size:11px;">
+                        Read-only. "Verified" means the stored records were checked (not only that the command exited 0).
+                        "Verified (limited)" means no dated source exists to compare with. Next-retry times are estimates.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Projected by marketplace -->
     <div class="modal fade" id="projectedMpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -9835,17 +9873,126 @@
                 }
                 const pending = (settle.pending || []).length;
                 const failed = (settle.failed || []).length;
+                const tasks = settle.tasks || {};
+                const ver = settle.verification || null;
                 let text = 'Updating';
+                let cls = 'bg-warning text-dark';
                 let title = 'Yesterday (' + settle.date + ' PT) is still being re-pulled from the marketplaces (pass '
                     + settle.passes_due + ' of ' + settle.passes_total + '). Numbers can still go up.';
                 if (settle.passes_due === 0) {
                     title = 'The Pacific day has just closed. The first re-pull starts shortly; numbers can still go up.';
                 }
-                if (pending) { title += ' Waiting on: ' + settle.pending.join(', ') + '.'; }
-                if (failed) { text = 'Incomplete'; title += ' Gave up after retries: ' + settle.failed.join(', ') + '.'; }
-                $tag.removeClass('bg-success text-white').addClass('bg-warning text-dark')
+                if (pending) { title += '\nWaiting on: ' + settleNames(settle.pending, tasks).join(', ') + '.'; }
+                if (failed) {
+                    text = 'Incomplete';
+                    // Exact failed marketplace + task, attempts, last error and retry info.
+                    title += '\nFailed (' + failed + '):\n' + settle.failed.map(function(k) { return ' • ' + settleTaskLine(tasks[k], k); }).join('\n');
+                } else if (settle.ledger_settled && ver) {
+                    // Every pull exited OK, but "Settled" also needs the stored data to be verified.
+                    if (!ver.available) {
+                        text = 'Unverified';
+                        title = 'All pulls finished, but the verification tables are not available yet (run the settle_* migration). Not marked Settled.';
+                    } else if ((ver.failed || []).length) {
+                        text = 'Verify failed ' + ver.failed.length;
+                        cls = 'bg-danger text-white';
+                        title = 'All pulls exited OK, but the stored data failed verification (' + ver.verified + '/' + ver.total + ' tasks verified):\n'
+                            + ver.failed.map(function(k) { return ' • ' + settleTaskLine(tasks[k], k); }).join('\n');
+                    } else {
+                        text = 'Verifying';
+                        title = 'All pulls finished; verifying the stored data (' + ver.verified + '/' + ver.total + ' tasks verified). Waiting on: '
+                            + settleNames(ver.unverified || [], tasks).join(', ') + '.';
+                    }
+                }
+                if (ver && Object.keys(tasks).length) { title += '\n(Click for per-marketplace details.)'; }
+                $tag.removeClass('bg-success text-white bg-warning text-dark bg-danger').addClass(cls)
                     .text(text).attr('title', title).show();
+                applySettleTagClickable($tag, settle);
             }
+
+            // ---- Settle details: tooltip text + per-marketplace modal (read-only) ----
+            function settleNames(keys, tasks) {
+                return (keys || []).map(function(k) {
+                    const t = tasks && tasks[k];
+                    return t ? (t.marketplace + ' ' + t.kind + ' [' + k + ']') : k;
+                });
+            }
+
+            function settleTaskLine(t, key) {
+                if (!t) { return key; }
+                let s = t.marketplace + ' (' + t.kind + ') [' + t.key + '] — attempts ' + t.attempts + '/' + t.max_attempts;
+                if (t.error_class) { s += ', ' + t.error_class + ' error'; }
+                if (t.last_error) { s += ', last error: ' + String(t.last_error).substring(0, 140); }
+                const checks = (t.verification && t.verification.checks) ? t.verification.checks : [];
+                checks.forEach(function(c) { s += '\n     ' + c.status + ' ' + c.code + ': ' + c.message; });
+                if (t.next_retry_at) {
+                    s += '; next retry ~' + new Date(t.next_retry_at).toLocaleTimeString('en-US', {timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit'}) + ' PT';
+                } else if (t.next_retry_note) {
+                    s += '; ' + t.next_retry_note;
+                }
+                return s;
+            }
+
+            function applySettleTagClickable($tag, settle) {
+                window.__yesterdaySettle = settle;
+                if (settle && settle.tasks && Object.keys(settle.tasks).length) {
+                    $tag.css('cursor', 'pointer').attr('data-bs-toggle-settle', '1');
+                }
+            }
+
+            const SETTLE_STATE_STYLE = {
+                verified: ['bg-success text-white', 'Verified'],
+                limited: ['bg-info text-dark', 'Verified (limited)'],
+                verification_failed: ['bg-danger text-white', 'Verification failed'],
+                failed: ['bg-danger text-white', 'Failed'],
+                retry_wait: ['bg-warning text-dark', 'Retry pending'],
+                pending: ['bg-warning text-dark', 'Queued'],
+                awaiting_verification: ['bg-warning text-dark', 'Awaiting verification'],
+                not_due: ['bg-secondary text-white', 'Not due yet']
+            };
+
+            function renderSettleModal(settle) {
+                const tasks = (settle && settle.tasks) ? settle.tasks : {};
+                const order = {failed: 0, verification_failed: 1, retry_wait: 2, pending: 3, awaiting_verification: 4, limited: 5, not_due: 6, verified: 7};
+                const list = Object.keys(tasks).map(function(k) { return tasks[k]; }).sort(function(a, b) {
+                    return (order[a.state] - order[b.state]) || a.marketplace.localeCompare(b.marketplace);
+                });
+                const ver = settle.verification || {};
+                $('#settleStatusSummary').text('Pacific ' + settle.date + ' — ' + (settle.settled ? 'Settled' : 'Not settled')
+                    + ' · verified ' + (ver.verified || 0) + '/' + (ver.total || list.length) + ' tasks'
+                    + (settle.ledger_settled ? ' · all pulls finished' : ''));
+                const fmtTime = function(iso) {
+                    return iso ? new Date(iso).toLocaleString('en-US', {timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) + ' PT' : '—';
+                };
+                $('#settleStatusBody').html(list.map(function(t) {
+                    const st = SETTLE_STATE_STYLE[t.state] || ['bg-secondary text-white', t.state];
+                    const checks = ((t.verification && t.verification.checks) || []).map(function(c) {
+                        return '<div><span class="badge ' + (c.status === 'fail' || c.status === 'error' ? 'bg-danger' : 'bg-warning text-dark') + '">' + yMpEsc(c.status) + '</span> <code>'
+                            + yMpEsc(c.code) + '</code> ' + yMpEsc(c.message) + '</div>';
+                    }).join('');
+                    const retry = t.next_retry_at ? 'Next retry ~' + fmtTime(t.next_retry_at) : (t.next_retry_note ? yMpEsc(t.next_retry_note) : '—');
+                    return '<tr>'
+                        + '<td class="text-start fw-semibold">' + yMpEsc(t.marketplace) + '<div class="text-muted" style="font-size:10px;">' + yMpEsc(t.kind) + ' · ' + yMpEsc(t.key) + '</div></td>'
+                        + '<td><span class="badge ' + st[0] + '">' + yMpEsc(st[1]) + '</span></td>'
+                        + '<td>' + t.attempts + '/' + t.max_attempts + '</td>'
+                        + '<td class="text-start" style="max-width:260px;word-break:break-word;">'
+                            + (t.last_error ? '<span class="text-danger">' + yMpEsc(String(t.last_error).substring(0, 300)) + '</span>' : '—')
+                            + (t.error_class ? ' <span class="badge bg-secondary">' + yMpEsc(t.error_class) + '</span>' : '') + '</td>'
+                        + '<td class="text-start" style="font-size:11px;">' + retry + '</td>'
+                        + '<td class="text-start" style="font-size:11px;">' + fmtTime(t.last_run_at) + '</td>'
+                        + '<td class="text-start" style="font-size:11px;max-width:380px;">' + (checks || '—') + '</td>'
+                        + '</tr>';
+                }).join('') || '<tr><td colspan="7" class="text-center text-muted py-3">No task detail available</td></tr>');
+            }
+
+            $(document).on('click', '#yesterdaySettleTag', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const settle = window.__yesterdaySettle;
+                const el = document.getElementById('settleStatusModal');
+                if (!settle || !settle.tasks || typeof bootstrap === 'undefined' || !el) return;
+                renderSettleModal(settle);
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            });
 
             $.get('/yesterday-marketplace-metrics').done(function(res) {
                 const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
