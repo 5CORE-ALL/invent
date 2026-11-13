@@ -182,6 +182,10 @@ class MeetingController extends Controller
         $meeting = $result['meeting'];
         $redirect = redirect()->route('meetings.show', $meeting);
 
+        if (! $meeting->isGoogleMeet()) {
+            return $redirect->with('success', 'Meeting scheduled in '.$meeting->roomLabel().' and the meeting-room link was created automatically. Members can join from Requests for you.');
+        }
+
         return $result['google_error']
             ? $redirect->with('error', 'Meeting saved, but Google Meet is not ready: '.$result['google_error'])
             : $redirect->with('success', 'Meeting scheduled in '.$meeting->roomLabel().' and the Google Meet link was created. Invitations were sent by Google Calendar.');
@@ -279,6 +283,11 @@ class MeetingController extends Controller
                 'room' => $meeting->roomLabel(),
                 'scheduled_at' => $meeting->scheduled_at?->format('D, d M Y · h:i A').' – '.$meeting->scheduled_end_at?->format('h:i A').' '.\App\Casts\MeetingDateTime::timezone(),
                 'meet_url' => $meeting->hasMeetLink() ? $meeting->google_meet_url : null,
+                'is_google' => $meeting->isGoogleMeet(),
+                // Google Meet link when Google is connected, otherwise the automatic in-app meeting-room link.
+                'join_url' => $meeting->hasMeetLink()
+                    ? $meeting->google_meet_url
+                    : (! $meeting->isGoogleMeet() ? route('meetings.room', $meeting) : null),
                 'invited' => $meeting->participants()->where('is_invited', true)->count(),
                 'invitees' => $meeting->participants()->where('is_invited', true)->with('user:id,name')->get()
                     ->map(fn (MeetingParticipant $mp) => (string) ($mp->user?->name ?? 'Unknown'))->sort()->values(),

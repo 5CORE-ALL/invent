@@ -29,39 +29,154 @@
     }
     @media (max-width: 991.98px) { .mrq-toast { right: 72px; bottom: 150px; } }
 
-    /* Double the default modal-lg width (800px -> 1600px), never wider than the screen */
+    /* =====================  Meeting modal — next-gen UI  ===================== */
+    #mrqModal {
+        --mq-bg: #ffffff; --mq-surface: #f8fafc; --mq-border: #e2e8f0; --mq-text: #0f172a; --mq-muted: #64748b;
+        --mq-accent: #4f46e5; --mq-accent-2: #2563eb; --mq-ring: rgba(79, 70, 229, .18);
+        --mq-hover: #f1f5f9; --mq-sel: #eef2ff;
+    }
+    html[data-bs-theme="dark"] #mrqModal {
+        --mq-bg: #131a2a; --mq-surface: #1a2236; --mq-border: rgba(255, 255, 255, .12); --mq-text: #e6eaf5; --mq-muted: #9aa7c2;
+        --mq-accent: #818cf8; --mq-accent-2: #60a5fa; --mq-ring: rgba(129, 140, 248, .25);
+        --mq-hover: rgba(255, 255, 255, .06); --mq-sel: rgba(129, 140, 248, .16);
+    }
+    /* double the default modal-lg width (800px -> 1600px), never wider than the screen */
     #mrqModal .modal-dialog.modal-lg { max-width: min(1600px, 96vw); }
-    #mrqModal .mrq-tabs { display: flex; gap: 6px; border-bottom: 1px solid #e5e9f0; margin: -4px 0 14px; }
-    #mrqModal .mrq-tab { border: 0; background: none; padding: 8px 12px; font-weight: 600; color: #64748b; border-bottom: 3px solid transparent; }
-    #mrqModal .mrq-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
-    #mrqModal .mrq-tab .badge { margin-left: 4px; }
+    #mrqModal.fade .modal-dialog { transform: translateY(26px) scale(.98); opacity: 0; transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .25s ease; }
+    #mrqModal.show .modal-dialog { transform: none; opacity: 1; }
+    body:has(#mrqModal.show) .modal-backdrop { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+    #mrqModal .modal-content {
+        border: 0; border-radius: 22px; overflow: hidden; background: var(--mq-bg); color: var(--mq-text);
+        box-shadow: 0 40px 90px -25px rgba(30, 41, 90, .55), 0 0 0 1px rgba(255, 255, 255, .06);
+    }
+    #mrqModal .modal-header {
+        position: relative; border: 0; padding: 20px 30px; color: #fff; overflow: hidden;
+        background: linear-gradient(120deg, #4338ca 0%, #2563eb 55%, #06b6d4 100%);
+    }
+    #mrqModal .modal-header::after {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(420px 160px at 90% -30%, rgba(255, 255, 255, .28), transparent 70%);
+    }
+    #mrqModal .modal-title { position: relative; z-index: 1; display: flex; align-items: center; gap: 14px; font-weight: 700; letter-spacing: -.01em; color: #fff; }
+    #mrqModal .modal-title small { display: block; font-size: .78rem; font-weight: 400; opacity: .85; letter-spacing: 0; }
+    #mrqModal .mrq-hico {
+        display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 14px; font-size: 24px;
+        background: rgba(255, 255, 255, .18); border: 1px solid rgba(255, 255, 255, .28);
+        backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    }
+    #mrqModal .modal-header .btn-close { position: relative; z-index: 1; filter: invert(1) grayscale(100%) brightness(200%); opacity: .85; }
+    #mrqModal .modal-header .btn-close:hover { opacity: 1; }
+    #mrqModal .modal-body { padding: 24px 30px; background: var(--mq-bg); }
+    #mrqModal .modal-footer { border-top: 1px solid var(--mq-border); padding: 14px 30px; background: var(--mq-surface); gap: 8px; }
+
+    /* segmented tabs */
+    #mrqModal .mrq-tabs { display: inline-flex; gap: 4px; background: var(--mq-surface); border: 1px solid var(--mq-border); border-radius: 14px; padding: 4px; margin: 0 0 22px; }
+    #mrqModal .mrq-tab { border: 0; background: transparent; padding: 8px 18px; border-radius: 10px; font-weight: 600; font-size: .9rem; color: var(--mq-muted); transition: all .2s ease; }
+    #mrqModal .mrq-tab:hover { color: var(--mq-text); }
+    #mrqModal .mrq-tab.active { background: var(--mq-bg); color: var(--mq-accent); box-shadow: 0 2px 10px rgba(15, 23, 42, .14); }
+    #mrqModal .mrq-tab .badge { margin-left: 6px; border-radius: 10px; }
     #mrqModal .mrq-hidden { display: none !important; }
-    #mrqModal .mrq-list { max-height: 210px; overflow-y: auto; border: 1px solid #e5e9f0; border-radius: 8px; padding: 4px 10px; }
-    #mrqModal .mrq-list label { display: flex; gap: 8px; align-items: center; padding: 4px 0; margin: 0; cursor: pointer; font-weight: 400; }
-    #mrqModal .mrq-list small { color: #94a3b8; }
-    #mrqModal .mrq-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 8px; }
-    #mrqModal .mrq-chip { display: inline-flex; align-items: center; gap: 5px; background: #e0ecff; color: #1e40af; border-radius: 14px; padding: 2px 6px 2px 10px; font-size: .8rem; }
-    #mrqModal .mrq-chip button { border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; padding: 0 2px; cursor: pointer; }
-    #mrqModal .mrq-note { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; border-radius: 8px; padding: 8px 12px; font-size: .84rem; }
-    #mrqModal .mrq-review dt { color: #64748b; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; margin-top: 10px; }
-    #mrqModal .mrq-review dd { margin: 2px 0 0; color: #0f172a; white-space: pre-line; }
-    #mrqModal .mrq-req { border: 1px solid #e5e9f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
-    #mrqModal .mrq-req h6 { font-weight: 700; margin: 0 0 2px; }
-    #mrqModal .mrq-success-icon { font-size: 54px; color: #16a34a; line-height: 1; }
+
+    /* form layout: two columns on wide screens */
+    #mrqModal .mrq-form-grid {
+        display: grid; gap: 20px 32px; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        grid-template-areas: "title members" "agenda members" "prio members" "when when" "meta meta";
+    }
+    #mrqModal .mrq-f-title { grid-area: title; } #mrqModal .mrq-f-agenda { grid-area: agenda; }
+    #mrqModal .mrq-f-members { grid-area: members; display: flex; flex-direction: column; min-width: 0; }
+    #mrqModal .mrq-f-prio { grid-area: prio; } #mrqModal .mrq-f-meta { grid-area: meta; }
+    #mrqModal .mrq-f-when { grid-area: when; background: var(--mq-surface); border: 1px solid var(--mq-border); border-radius: 16px; padding: 16px 18px; }
+    @media (max-width: 991.98px) {
+        #mrqModal .mrq-form-grid { grid-template-columns: 1fr; grid-template-areas: "title" "agenda" "members" "prio" "when" "meta"; }
+        #mrqModal .modal-body, #mrqModal .modal-header, #mrqModal .modal-footer { padding-left: 18px; padding-right: 18px; }
+    }
+
+    /* fields */
+    #mrqModal .form-label { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mq-muted); margin-bottom: 6px; }
+    #mrqModal .form-label small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 4px; }
+    #mrqModal .form-control, #mrqModal .form-select {
+        background-color: var(--mq-surface); border: 1px solid var(--mq-border); border-radius: 12px; padding: .65rem .9rem; color: var(--mq-text);
+        transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    }
+    #mrqModal .form-control::placeholder { color: var(--mq-muted); opacity: .65; }
+    #mrqModal .form-control:focus, #mrqModal .form-select:focus { background-color: var(--mq-bg); border-color: var(--mq-accent); box-shadow: 0 0 0 4px var(--mq-ring); outline: 0; }
+    #mrqModal .form-control-sm { padding: .45rem .8rem; border-radius: 10px; }
+    #mrqModal .mrq-f-when .form-control, #mrqModal .mrq-f-when .form-select { background-color: var(--mq-bg); }
+    #mrqModal textarea.form-control { resize: vertical; min-height: 120px; }
+
+    /* alerts + notes */
+    #mrqModal .alert { border: 0; border-radius: 14px; padding: 12px 16px; font-size: .86rem; margin-bottom: 18px; }
+    #mrqModal .alert-danger { background: rgba(239, 68, 68, .1); color: #b91c1c; box-shadow: inset 4px 0 0 #ef4444; }
+    #mrqModal .alert-warning { background: rgba(245, 158, 11, .12); color: #92400e; box-shadow: inset 4px 0 0 #f59e0b; }
+    html[data-bs-theme="dark"] #mrqModal .alert-danger { color: #fca5a5; }
+    html[data-bs-theme="dark"] #mrqModal .alert-warning { color: #fcd34d; }
+    #mrqError::before, #mrqError2::before { content: '\26A0'; margin-right: 8px; }
+    #mrqModal .mrq-note { background: rgba(239, 68, 68, .08); border: 1px solid rgba(239, 68, 68, .25); color: #b91c1c; border-radius: 14px; padding: 12px 16px; font-size: .85rem; }
+    html[data-bs-theme="dark"] #mrqModal .mrq-note { color: #fca5a5; }
+    #mrqModal .mrq-note.mrq-note-info { background: linear-gradient(135deg, rgba(37, 99, 235, .1), rgba(6, 182, 212, .1)); border-color: rgba(37, 99, 235, .25); color: #1e3a8a; }
+    html[data-bs-theme="dark"] #mrqModal .mrq-note.mrq-note-info { color: #bfdbfe; }
+
+    /* members picker */
+    #mrqModal .mrq-list { flex: 1 1 auto; min-height: 260px; max-height: 360px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
+    #mrqModal .mrq-list label { display: flex; gap: 12px; align-items: center; padding: 8px 10px; margin: 0; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background .15s ease, box-shadow .15s ease; }
+    #mrqModal .mrq-list label:hover { background: var(--mq-hover); }
+    #mrqModal .mrq-list label:has(input:checked) { background: var(--mq-sel); box-shadow: inset 0 0 0 1px var(--mq-accent); }
+    #mrqModal .mrq-list input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--mq-accent); flex-shrink: 0; }
+    #mrqModal .mrq-list small { color: var(--mq-muted); margin-left: 4px; }
+    #mrqModal .mrq-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; min-height: 8px; }
+    #mrqModal .mrq-chip { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #6366f1, #2563eb); color: #fff; border-radius: 20px; padding: 4px 6px 4px 12px; font-size: .8rem; font-weight: 600; box-shadow: 0 4px 10px -4px rgba(79, 70, 229, .6); }
+    #mrqModal .mrq-chip button { border: 0; background: rgba(255, 255, 255, .22); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 13px; line-height: 1; padding: 0; cursor: pointer; }
+    #mrqModal .mrq-chip button:hover { background: rgba(255, 255, 255, .4); }
+    #mrqModal .mrq-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; color: #fff; font-size: 12px; font-weight: 700; flex-shrink: 0; box-shadow: 0 0 0 2px var(--mq-bg), 0 2px 6px rgba(15, 23, 42, .2); }
+    #mrqModal .mrq-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+    /* priority */
+    #mrqModal .mrq-popt { position: relative; margin: 0; }
+    #mrqModal .mrq-popt input { position: absolute; opacity: 0; }
+    #mrqModal .mrq-popt span { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--mq-border); background: var(--mq-surface); border-radius: 12px; padding: 9px 18px; cursor: pointer; font-weight: 600; font-size: .88rem; transition: all .18s ease; }
+    #mrqModal .mrq-popt span i { display: none; }
+    #mrqModal .mrq-popt span:hover { transform: translateY(-1px); border-color: var(--mq-muted); }
+    #mrqModal .mrq-popt.urgent input:checked + span { border-color: #ef4444; background: rgba(239, 68, 68, .1); box-shadow: 0 0 0 4px rgba(239, 68, 68, .14); }
+    #mrqModal .mrq-popt.immediate input:checked + span { border-color: #f97316; background: rgba(249, 115, 22, .1); box-shadow: 0 0 0 4px rgba(249, 115, 22, .14); }
+    #mrqModal .mrq-popt.normal input:checked + span { border-color: #22c55e; background: rgba(34, 197, 94, .1); box-shadow: 0 0 0 4px rgba(34, 197, 94, .14); }
+    #mrqModal .mrq-popt input:focus-visible + span { outline: 2px solid var(--mq-accent); outline-offset: 2px; }
     #mrqModal .mrq-prio { display: inline-flex; align-items: center; gap: 5px; border-radius: 12px; padding: 1px 9px 1px 7px; font-size: .74rem; font-weight: 700; }
     #mrqModal .mrq-prio i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     #mrqModal .mrq-prio.urgent { background: #fee2e2; color: #991b1b; } #mrqModal .mrq-prio.urgent i { background: #dc2626; }
     #mrqModal .mrq-prio.immediate { background: #ffedd5; color: #9a3412; } #mrqModal .mrq-prio.immediate i { background: #f97316; }
     #mrqModal .mrq-prio.normal { background: #dcfce7; color: #166534; } #mrqModal .mrq-prio.normal i { background: #16a34a; }
-    #mrqModal .mrq-room { background: #eef2ff; color: #3730a3; border-radius: 8px; padding: 1px 8px; font-size: .74rem; font-weight: 600; }
-    #mrqModal .mrq-av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; }
-    #mrqModal .mrq-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    #mrqModal .mrq-popt { position: relative; margin: 0; }
-    #mrqModal .mrq-popt input { position: absolute; opacity: 0; }
-    #mrqModal .mrq-popt span { display: inline-flex; align-items: center; gap: 6px; border: 2px solid #e2e8f0; border-radius: 20px; padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: .86rem; }
-    #mrqModal .mrq-popt span i { width: 10px; height: 10px; border-radius: 50%; }
-    #mrqModal .mrq-popt.urgent span i { background: #dc2626; } #mrqModal .mrq-popt.immediate span i { background: #f97316; } #mrqModal .mrq-popt.normal span i { background: #16a34a; }
-    #mrqModal .mrq-popt input:checked + span { border-color: #2563eb; background: #eff6ff; }
+    #mrqModal .mrq-room { background: var(--mq-sel); color: var(--mq-accent); border-radius: 8px; padding: 1px 8px; font-size: .74rem; font-weight: 600; }
+
+    /* time row helpers */
+    #mrqModal #mrqNowBtn { text-decoration: none; font-weight: 600; font-size: .8rem; padding: 4px 14px; border-radius: 20px; background: var(--mq-sel); color: var(--mq-accent); transition: all .15s ease; }
+    #mrqModal #mrqNowBtn:hover { background: var(--mq-accent); color: #fff; }
+    #mrqModal .mrq-f-meta small.text-muted { color: var(--mq-muted) !important; }
+
+    /* review step */
+    #mrqModal .mrq-review { display: grid; grid-template-columns: 180px minmax(0, 1fr); background: var(--mq-surface); border: 1px solid var(--mq-border); border-radius: 16px; padding: 6px 20px; }
+    #mrqModal .mrq-review dt { color: var(--mq-muted); font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--mq-border); }
+    #mrqModal .mrq-review dd { margin: 0; padding: 12px 0; color: var(--mq-text); white-space: pre-line; border-bottom: 1px solid var(--mq-border); }
+    #mrqModal .mrq-review dt:nth-last-of-type(1), #mrqModal .mrq-review dd:last-of-type { border-bottom: 0; }
+    @media (max-width: 767.98px) { #mrqModal .mrq-review { grid-template-columns: 1fr; } #mrqModal .mrq-review dt { border-bottom: 0; padding-bottom: 0; } }
+
+    /* sent / inbox cards */
+    #mrqModal .mrq-req { border: 1px solid var(--mq-border); background: var(--mq-surface); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; transition: box-shadow .2s ease, transform .2s ease; }
+    #mrqModal .mrq-req:hover { box-shadow: 0 10px 26px -14px rgba(15, 23, 42, .35); transform: translateY(-1px); }
+    #mrqModal .mrq-req h6 { font-weight: 700; margin: 0 0 2px; color: var(--mq-text); }
+
+    /* success */
+    #mrqModal .mrq-success-icon { font-size: 64px; color: #16a34a; line-height: 1; animation: mrqPop .5s cubic-bezier(.2, 1.4, .4, 1) both; }
+    @keyframes mrqPop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+    /* footer buttons */
+    #mrqModal .modal-footer .btn { border-radius: 12px; padding: .55rem 1.3rem; font-weight: 600; transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
+    #mrqModal .modal-footer .btn:hover:not(:disabled) { transform: translateY(-1px); }
+    #mrqModal .modal-footer .btn-primary { border: 0; background: linear-gradient(135deg, #4f46e5, #2563eb); box-shadow: 0 10px 22px -10px rgba(79, 70, 229, .8); }
+    #mrqModal .modal-footer .btn-success { border: 0; background: linear-gradient(135deg, #059669, #10b981); box-shadow: 0 10px 22px -10px rgba(5, 150, 105, .8); }
+    #mrqModal .modal-footer .btn:disabled { opacity: .55; }
+    #mrqModal .modal-footer .btn-light { background: var(--mq-bg); border: 1px solid var(--mq-border); color: var(--mq-text); }
+    #mrqModal .modal-footer .btn-outline-secondary, #mrqModal .modal-footer .btn-outline-primary { border-width: 1.5px; }
     #mrqModal .mrq-gmeet { background: #1a73e8; border-color: #1a73e8; color: #fff; }
     #mrqModal .mrq-gmeet:hover { background: #1557b0; color: #fff; }
 </style>
@@ -76,64 +191,76 @@
     <div class="modal-dialog modal-dialog-scrollable modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="mrqTitle"><i class="ri-vidicon-line me-1"></i>Meeting</h5>
+                <h5 class="modal-title" id="mrqTitle"><span class="mrq-hico"><i class="ri-vidicon-line"></i></span><span>Meeting<small>Plan it, invite your team and get a Google Meet link</small></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="mrq-tabs" id="mrqTabs">
-                    <button type="button" class="mrq-tab active" data-tab="new">Request a meeting</button>
-                    <button type="button" class="mrq-tab" data-tab="sent">Sent by you</button>
-                    <button type="button" class="mrq-tab" data-tab="inbox">Requests for you <span class="badge bg-danger mrq-hidden" id="mrqTabBadge">0</span></button>
+                    <button type="button" class="mrq-tab active" data-tab="new"><i class="ri-add-circle-line me-1"></i>Request a meeting</button>
+                    <button type="button" class="mrq-tab" data-tab="sent"><i class="ri-send-plane-line me-1"></i>Sent by you</button>
+                    <button type="button" class="mrq-tab" data-tab="inbox"><i class="ri-inbox-line me-1"></i>Requests for you <span class="badge bg-danger mrq-hidden" id="mrqTabBadge">0</span></button>
                 </div>
 
                 {{-- STEP 1: form --}}
                 <div id="mrqStepForm">
                     <div class="alert alert-danger py-2 mrq-hidden" id="mrqError"></div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Meeting title <span class="text-danger">*</span></label>
-                        <input type="text" id="mrqTitleInput" class="form-control" maxlength="255" placeholder="e.g. Amazon ads budget review">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Agenda <span class="text-danger">*</span>
-                            <small class="text-muted fw-normal">what do you want to discuss / decide?</small></label>
-                        <textarea id="mrqAgenda" class="form-control" rows="4" maxlength="5000"
-                                  placeholder="1. Review last week's ACOS&#10;2. Decide budget for next week&#10;3. Assign owners"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label fw-semibold mb-0">Add members <span class="text-danger">*</span></label>
-                            <input type="search" id="mrqSearch" class="form-control form-control-sm" style="width:210px" placeholder="Search name / designation">
+                    <div class="mrq-form-grid">
+                        <div class="mrq-f-title">
+                            <label class="form-label" for="mrqTitleInput">Meeting title <span class="text-danger">*</span></label>
+                            <input type="text" id="mrqTitleInput" class="form-control" maxlength="255" placeholder="e.g. Amazon ads budget review">
                         </div>
-                        <div class="mrq-list" id="mrqMembers"><div class="text-muted small py-2">Loading team…</div></div>
-                        <div class="mrq-chips" id="mrqChips"></div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold d-block">Priority <span class="text-danger">*</span></label>
-                        <div class="d-flex flex-wrap gap-2">
-                            <label class="mrq-popt urgent"><input type="radio" name="mrqPrio" value="urgent"><span><i></i>🔴 Urgent</span></label>
-                            <label class="mrq-popt immediate"><input type="radio" name="mrqPrio" value="immediate"><span><i></i>🟠 Immediate</span></label>
-                            <label class="mrq-popt normal"><input type="radio" name="mrqPrio" value="normal" checked><span><i></i>🟢 Normal</span></label>
+                        <div class="mrq-f-agenda">
+                            <label class="form-label" for="mrqAgenda">Agenda <span class="text-danger">*</span>
+                                <small class="text-muted">what do you want to discuss / decide?</small></label>
+                            <textarea id="mrqAgenda" class="form-control" rows="5" maxlength="5000"
+                                      placeholder="1. Review last week's ACOS&#10;2. Decide budget for next week&#10;3. Assign owners"></textarea>
+                        </div>
+                        <div class="mrq-f-members">
+                            <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
+                                <label class="form-label mb-0">Add members <span class="text-danger">*</span></label>
+                                <input type="search" id="mrqSearch" class="form-control form-control-sm" style="width:220px" placeholder="Search name / designation">
+                            </div>
+                            <div class="mrq-list" id="mrqMembers"><div class="text-muted small py-2 px-2">Loading team…</div></div>
+                            <div class="mrq-chips" id="mrqChips"></div>
+                        </div>
+                        <div class="mrq-f-prio">
+                            <label class="form-label d-block">Priority <span class="text-danger">*</span></label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="mrq-popt urgent"><input type="radio" name="mrqPrio" value="urgent"><span><i></i>🔴 Urgent</span></label>
+                                <label class="mrq-popt immediate"><input type="radio" name="mrqPrio" value="immediate"><span><i></i>🟠 Immediate</span></label>
+                                <label class="mrq-popt normal"><input type="radio" name="mrqPrio" value="normal" checked><span><i></i>🟢 Normal</span></label>
+                            </div>
+                        </div>
+                        <div class="mrq-f-when">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="mrqRoom">Meeting room <span class="text-danger">*</span></label>
+                                    <select id="mrqRoom" class="form-select">
+                                        <option value="">Select room…</option>
+                                        <option value="1">Meeting Room 1</option><option value="2">Meeting Room 2</option>
+                                        <option value="3">Meeting Room 3</option><option value="4">Meeting Room 4</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4"><label class="form-label" for="mrqDate">Date <span class="text-danger">*</span></label><input type="date" id="mrqDate" class="form-control"></div>
+                                <div class="col-6 col-md-2"><label class="form-label" for="mrqStart">Start <span class="text-danger">*</span></label><input type="time" id="mrqStart" class="form-control"></div>
+                                <div class="col-6 col-md-2"><label class="form-label" for="mrqApprox">Approx time <span class="text-danger">*</span></label>
+                                    <select id="mrqApprox" class="form-select" title="Approximate length of the meeting">
+                                        <option value="15">~ 15 min</option><option value="30" selected>~ 30 min</option>
+                                        <option value="45">~ 45 min</option><option value="60">~ 1 hr</option>
+                                        <option value="90">~ 1.5 hr</option><option value="120">~ 2 hr</option>
+                                        <option value="180">~ 3 hr</option>
+                                    </select></div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
+                                <small class="text-muted">Times are in <strong id="mrqTz">Asia/Kolkata</strong>.</small>
+                                <button type="button" class="btn btn-link btn-sm" id="mrqNowBtn">Use now → +30 min</button>
+                            </div>
+                            <div class="small mt-2" id="mrqAvail"></div>
+                        </div>
+                        <div class="mrq-f-meta">
+                            <div class="mrq-note mrq-note-info" id="mrqProviderNote"><i class="ri-vidicon-fill me-1"></i>A real <strong>Google Meet</strong> link is created through Google Calendar and every member gets a Google Calendar invitation.</div>
                         </div>
                     </div>
-                    <div class="row g-2 mb-1">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Meeting room <span class="text-danger">*</span></label>
-                            <select id="mrqRoom" class="form-select">
-                                <option value="">Select room…</option>
-                                <option value="1">Meeting Room 1</option><option value="2">Meeting Room 2</option>
-                                <option value="3">Meeting Room 3</option><option value="4">Meeting Room 4</option>
-                            </select>
-                        </div>
-                        <div class="col-md-4"><label class="form-label fw-semibold">Date <span class="text-danger">*</span></label><input type="date" id="mrqDate" class="form-control"></div>
-                        <div class="col-6 col-md-2"><label class="form-label fw-semibold">Start <span class="text-danger">*</span></label><input type="time" id="mrqStart" class="form-control"></div>
-                        <div class="col-6 col-md-2"><label class="form-label fw-semibold">End <span class="text-danger">*</span></label><input type="time" id="mrqEnd" class="form-control"></div>
-                    </div>
-                    <div class="d-flex justify-content-between flex-wrap mb-1">
-                        <small class="text-muted">Times are in <strong id="mrqTz">Asia/Kolkata</strong>.</small>
-                        <button type="button" class="btn btn-link btn-sm p-0" id="mrqNowBtn">Use now → +30 min</button>
-                    </div>
-                    <div class="small mb-3" id="mrqAvail"></div>
-                    <div class="mrq-note" style="background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a"><i class="ri-vidicon-fill me-1"></i>A real <strong>Google Meet</strong> link is created through Google Calendar and every member gets a Google Calendar invitation.</div>
                 </div>
 
                 {{-- STEP 2: review & confirm --}}
@@ -176,7 +303,7 @@
                 <button type="button" class="btn btn-outline-secondary mrq-hidden" id="mrqBtnBack">Back</button>
                 <button type="button" class="btn btn-primary" id="mrqBtnReview">Review request</button>
                 <button type="button" class="btn btn-success mrq-hidden" id="mrqBtnConfirm"><i class="ri-send-plane-fill me-1"></i>Confirm &amp; send</button>
-                <a class="btn mrq-gmeet mrq-hidden" id="mrqBtnStart" href="#" target="_blank" rel="noopener noreferrer"><i class="ri-vidicon-fill me-1"></i>Join Google Meet</a>
+                <a class="btn mrq-gmeet mrq-hidden" id="mrqBtnStart" href="#" target="_blank" rel="noopener noreferrer"><i class="ri-vidicon-fill me-1"></i><span id="mrqBtnStartLbl">Join Google Meet</span></a>
                 <a class="btn btn-outline-primary mrq-hidden" id="mrqBtnLobby" href="#">View meetings</a>
                 <button type="button" class="btn btn-light mrq-hidden" id="mrqBtnClose" data-bs-dismiss="modal">Close</button>
             </div>
@@ -221,9 +348,9 @@
             call('GET', URLS.members).then(function (res) {
                 members = (res.data && res.data.members) || [];
                 if (res.data && res.data.google && res.data.google.ok === false) {
+                    // Not connected: no blocking error. The server creates the meeting-room link automatically.
                     googleOk = false;
-                    showErr('mrqError', res.data.google.message || 'Google Meet is not configured.');
-                    $('mrqBtnReview').disabled = true;
+                    $('mrqProviderNote').innerHTML = '<i class="ri-link-m me-1"></i>A <strong>meeting-room link is created automatically</strong> when you send the request, and every member can join it from <strong>Requests for you</strong>. (Google Meet links are used once a manager connects the Google account.)';
                 }
                 if (res.data && res.data.timezone) { tz = res.data.timezone; $('mrqTz').textContent = tz; }
                 renderMembers();
@@ -271,7 +398,7 @@
         }
         $('mrqNowBtn').addEventListener('click', function () {
             var a = nowIn(0), b = nowIn(30);
-            $('mrqDate').value = a.date; $('mrqStart').value = a.time; $('mrqEnd').value = b.date === a.date ? b.time : '23:59';
+            $('mrqDate').value = a.date; $('mrqStart').value = a.time; $('mrqApprox').value = '30';
             checkAvail();
         });
         var availSeq = 0;
@@ -325,6 +452,16 @@
 
         function showErr(id, msg) { var e = $(id); e.textContent = msg; e.classList.remove('mrq-hidden'); }
 
+        // End time = start + approx time (kept inside the same day).
+        function endFromApprox(start, minutes) {
+            if (!start) return '';
+            var parts = start.split(':'), total = Number(parts[0]) * 60 + Number(parts[1]) + Number(minutes || 30);
+            if (total > 23 * 60 + 59) total = 23 * 60 + 59;
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            return pad(Math.floor(total / 60)) + ':' + pad(total % 60);
+        }
+        function approxLabel() { var o = $('mrqApprox'); return o.options[o.selectedIndex].text.replace('~ ', ''); }
+
         function collect() {
             var prio = document.querySelector('input[name="mrqPrio"]:checked');
             return {
@@ -335,54 +472,56 @@
                 room_slot: $('mrqRoom').value ? Number($('mrqRoom').value) : null,
                 meeting_date: $('mrqDate').value,
                 start_time: $('mrqStart').value,
-                end_time: $('mrqEnd').value
+                end_time: endFromApprox($('mrqStart').value, $('mrqApprox').value)
             };
         }
 
         $('mrqBtnReview').addEventListener('click', function () {
-            if (!googleOk) return showErr('mrqError', 'Google Meet is not configured. A manager must connect the Google account first.');
             var p = collect();
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
             if (p.agenda.length < 1) return showErr('mrqError', 'Please add a meeting agenda.');
             if (!p.room_slot) return showErr('mrqError', 'Choose one of the four meeting rooms.');
-            if (!p.meeting_date || !p.start_time || !p.end_time) return showErr('mrqError', 'Pick the date, start time and end time.');
-            if (p.end_time <= p.start_time) return showErr('mrqError', 'The end time must be after the start time.');
+            if (!p.meeting_date || !p.start_time) return showErr('mrqError', 'Pick the date and start time.');
+            if (p.end_time <= p.start_time) return showErr('mrqError', 'Pick an earlier start time so the meeting fits in the same day.');
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
             lastPayload = p;
             $('mrqRvTitle').textContent = p.title;
             $('mrqRvAgenda').textContent = p.agenda;
             $('mrqRvPrio').textContent = PRIO[p.priority][0] + ' ' + PRIO[p.priority][1];
-            $('mrqRvRoom').textContent = 'Meeting Room ' + p.room_slot + ' (Google Meet)';
+            $('mrqRvRoom').textContent = 'Meeting Room ' + p.room_slot + (googleOk ? ' (Google Meet)' : ' (meeting-room link, created automatically)');
             $('mrqRvCount').textContent = p.invitee_ids.length;
             $('mrqRvMembers').textContent = Object.keys(selected).map(function (id) { return selected[id]; }).join(', ');
-            $('mrqRvWhen').textContent = p.meeting_date + ', ' + p.start_time + ' – ' + p.end_time + ' (' + tz + ')';
-            $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + ' will get a Google Calendar invitation with the Google Meet link.';
+            $('mrqRvWhen').textContent = p.meeting_date + ', ' + p.start_time + ' · approx ' + approxLabel() + ' (' + tz + ')';
+            $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + (googleOk ? ' will get a Google Calendar invitation with the Google Meet link.' : ' will be notified and can join with the meeting-room link.');
             setStep('review');
         });
         $('mrqBtnBack').addEventListener('click', function () { setStep('form'); });
 
         $('mrqBtnConfirm').addEventListener('click', function () {
-            var btn = this; btn.disabled = true; btn.textContent = 'Creating Google Meet…';
+            var btn = this; btn.disabled = true; btn.textContent = 'Creating meeting link…';
             var reset = function () { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill me-1"></i>Confirm &amp; send'; };
             call('POST', URLS.request, lastPayload).then(function (res) {
                 reset();
                 if (!res.ok || !res.data.ok) return showErr('mrqError2', firstError(res));
                 var d = res.data;
-                $('mrqDoneTitle').textContent = d.meeting.meet_url ? 'Google Meet created' : 'Meeting saved';
+                var isG = d.meeting.is_google !== false;
+                $('mrqDoneTitle').textContent = isG ? (d.meeting.meet_url ? 'Google Meet created' : 'Meeting saved') : 'Meeting link created';
                 $('mrqDoneText').textContent = '"' + d.meeting.title + '" · ' + d.meeting.room + ' · ' + d.meeting.scheduled_at + '. '
-                    + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + ' been invited through Google Calendar.';
+                    + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + (isG ? ' been invited through Google Calendar.' : ' been invited. They can join from "Requests for you".');
                 var warn = $('mrqDoneWarn');
                 warn.classList.toggle('mrq-hidden', !d.google_error);
                 warn.textContent = d.google_error ? 'Google Meet link not ready: ' + d.google_error : '';
-                $('mrqBtnStart').href = d.meeting.meet_url || d.details_url;
+                $('mrqBtnStart').href = d.meeting.join_url || d.meeting.meet_url || d.details_url;
+                $('mrqBtnStartLbl').textContent = isG ? 'Join Google Meet' : 'Open meeting room';
+                $('mrqBtnStart').setAttribute('target', isG ? '_blank' : '_self');
                 $('mrqBtnLobby').href = d.details_url;
                 $('mrqBtnLobby').textContent = 'Open meeting details';
                 var inv = $('mrqDoneInvitees'); inv.innerHTML = '';
                 (d.meeting.invitees || []).forEach(function (n) { var b = document.createElement('span'); b.className = 'badge bg-warning text-dark'; b.textContent = n + ' · waiting for reply'; inv.appendChild(b); });
                 setStep('done');
-                hide('mrqBtnStart', !d.meeting.meet_url);
+                hide('mrqBtnStart', !(d.meeting.join_url || d.meeting.meet_url));
                 // reset form for next time
-                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; $('mrqDate').value = ''; $('mrqStart').value = ''; $('mrqEnd').value = ''; $('mrqAvail').innerHTML = '';
+                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; $('mrqDate').value = ''; $('mrqStart').value = ''; $('mrqApprox').value = '30'; $('mrqAvail').innerHTML = '';
                 renderChips(); renderMembers();
                 poll(false);
             }).catch(function () {
@@ -413,7 +552,9 @@
                     }).join('');
                     var join = m.meet_url
                         ? '<a class="btn btn-sm mrq-gmeet" target="_blank" rel="noopener noreferrer" href="' + esc(m.meet_url) + '"><i class="ri-vidicon-fill"></i> Join Google Meet</a> '
-                        : (m.google ? '<span class="badge bg-warning text-dark">Google Meet link ' + (m.google_status === 'failed' ? 'not created' : 'pending') + '</span> ' : '');
+                        : (m.google
+                            ? '<span class="badge bg-warning text-dark">Google Meet link ' + (m.google_status === 'failed' ? 'not created' : 'pending') + '</span> '
+                            : '<a class="btn btn-sm btn-success" href="' + esc(m.room_url) + '"><i class="ri-vidicon-line"></i> Open meeting room</a> ');
                     div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
                         + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'No time set')) + (m.room ? ' &middot; <span class="mrq-room">' + esc(m.room) + '</span>' : '') + '</div>'
                         + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')

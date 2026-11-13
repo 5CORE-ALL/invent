@@ -18,7 +18,10 @@ use Illuminate\Validation\ValidationException;
  * Create / update / cancel Google Meet meetings booked into one of the four internal rooms.
  *
  * Order of operations (so a failure never leaves a fake meeting behind):
- *   1. Google must be configured, otherwise nothing is saved and a configuration message is raised.
+ *   1. When Google is connected the meeting becomes a real Google Meet. When it is NOT connected the meeting
+ *      is still created, with an automatic in-app meeting-room link (provider = jitsi), so nobody is blocked
+ *      waiting for a manager to connect the Google account. Connecting Google later switches new meetings
+ *      back to Google Meet automatically.
  *   2. Room availability is checked and the meeting row is written in ONE database transaction, under a
  *      per-room lock so two people cannot grab the same slot at the same moment.
  *   3. Google Calendar is called after the commit. If Google fails, the meeting is kept with
@@ -62,35 +65,38 @@ class MeetingScheduler
      * @param  array{title: string, agenda?: ?string, priority: string, room_slot: int, start: Carbon, end: Carbon, invitee_ids?: array<int>}  $data
      * @return array{meeting: Meeting, google_error: ?string}
      *
-     * @throws GoogleMeetException when Google is not configured (nothing is saved)
      * @throws ValidationException on room conflicts / unusable invitees
      */
     public function create(array $data, User $host): array
     {
-        $this->google->assertConfigured();
+        // Google connected -> real Google Meet. Not connected -> automatic in-app meeting-room link.
+        $useGoogle = $this->google->isConfigured();
 
         $inviteeIds = $this->normaliseInvitees($data['invitee_ids'] ?? [], $host);
-        $this->assertInviteesHaveEmail($inviteeIds, $host);
+        if ($useGoogle) {
+            $this->assertInviteesHaveEmail($inviteeIds, $host);
+        }
 
-        $meeting = $this->withRoomLock((int) $data['room_slot'], function () use ($data, $host, $inviteeIds) {
-            return DB::transaction(function () use ($data, $host, $inviteeIds) {
+        $meeting = $this->withRoomLock((int) $data['room_slot'], function () use ($data, $host, $inviteeIds, $useGoogle) {
+            return DB::transaction(function () use ($data, $host, $inviteeIds, $useGoogle) {
                 $this->assertRoomFree((int) $data['room_slot'], $data['start'], $data['end'], null);
 
                 $meeting = Meeting::create([
                     'title' => trim($data['title']),
                     'agenda' => $data['agenda'] ?? null,
-                    'room_name' => 'gm-'.Str::lower(Str::random(24)),
+                    'room_name' => ($useGoogle ? 'gm-' : 'mr-').Str::lower(Str::random(24)),
                     'host_user_id' => $host->id,
-                    'provider' => Meeting::PROVIDER_GOOGLE_MEET,
+                    'provider' => $useGoogle ? Meeting::PROVIDER_GOOGLE_MEET : Meeting::PROVIDER_JITSI,
                     'priority' => $data['priority'],
                     'room_slot' => (int) $data['room_slot'],
                     'scheduled_at' => $data['start'],
                     'scheduled_end_at' => $data['end'],
                     'status' => Meeting::STATUS_SCHEDULED,
                     'minutes_status' => Meeting::MINUTES_PENDING,
+                ] + ($useGoogle ? [
                     'google_request_id' => bin2hex(random_bytes(16)),
                     'google_sync_status' => Meeting::SYNC_PENDING,
-                ]);
+                ] : []));
 
                 MeetingParticipant::create([
                     'meeting_id' => $meeting->id, 'user_id' => $host->id, 'is_invited' => false,
@@ -104,7 +110,8 @@ class MeetingScheduler
             });
         });
 
-        return ['meeting' => $meeting, 'google_error' => $this->trySync($meeting)];
+        // In-app room meetings have nothing to sync: their link exists as soon as the meeting is saved.
+        return ['meeting' => $meeting, 'google_error' => $useGoogle ? $this->trySync($meeting) : null];
     }
 
     /**
