@@ -5616,36 +5616,194 @@
                 }
                 return nextPage(1).then(function (all) { return amzApplyAcosDrivenBgt(all); });
             }
-            function amzExportCellOf(colInfo, data, holder) {
+            // Off-screen copy of a grid cell inside #amz-ads-raw-wrap, so the page's own CSS decides every colour.
+            var amzExportHost = null;
+            var amzExportCellEl = null;
+            var amzExportSigCache = {};
+            function amzExportEnsureHost() {
+                if (amzExportHost) return;
+                var wrap = document.getElementById('amz-ads-raw-wrap') || document.body;
+                amzExportHost = document.createElement('div');
+                amzExportHost.className = 'tabulator';
+                amzExportHost.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;width:420px;height:auto;overflow:visible;';
+                var row = document.createElement('div');
+                row.className = 'tabulator-row';
+                row.style.cssText = 'position:relative;height:auto;';
+                amzExportCellEl = document.createElement('div');
+                amzExportCellEl.className = 'tabulator-cell';
+                row.appendChild(amzExportCellEl);
+                amzExportHost.appendChild(row);
+                wrap.appendChild(amzExportHost);
+                amzExportSigCache = {};
+            }
+            function amzExportDropHost() {
+                if (amzExportHost && amzExportHost.parentNode) amzExportHost.parentNode.removeChild(amzExportHost);
+                amzExportHost = null;
+                amzExportCellEl = null;
+                amzExportSigCache = {};
+            }
+            function amzExportResetCellEl(field) {
+                amzExportCellEl.className = 'tabulator-cell';
+                amzExportCellEl.removeAttribute('style');
+                amzExportCellEl.style.cssText = 'display:block;width:300px;';
+                amzExportCellEl.setAttribute('tabulator-field', field);
+                amzExportCellEl.innerHTML = '';
+            }
+            // Visible pieces of a rendered cell in document order: text, or an empty element that may be a dot / icon.
+            function amzExportWalk(root, out) {
+                for (var n = root.firstChild; n; n = n.nextSibling) {
+                    if (n.nodeType === 3) {
+                        if (String(n.nodeValue).replace(/\s+/g, ' ').trim() !== '') out.push({ kind: 'text', node: n });
+                    } else if (n.nodeType === 1) {
+                        var tag = n.tagName;
+                        if (tag === 'SCRIPT' || tag === 'STYLE') continue;
+                        if (!n.children.length && !String(n.textContent).trim()) out.push({ kind: 'mark', node: n });
+                        else amzExportWalk(n, out);
+                    }
+                }
+                return out;
+            }
+            function amzExportSignature(field, el, html) {
+                var h = ('>' + html + '<')
+                    .replace(/\s(?:title|data-[a-z0-9_-]+)="[^"]*"/gi, '')
+                    .replace(/>([^<]*)</g, function (m, t) { return String(t).trim() === '' ? '><' : '>x<'; });
+                return field + '|' + el.className + '|' + (el.getAttribute('style') || '') + '|' + h;
+            }
+            // Colours of one rendered cell, read from the live DOM (computed CSS). Cached per structure, not per value.
+            function amzExportMeasure(el, tokens) {
+                var cellCs = window.getComputedStyle(el);
+                var cellBg = amzCssColorToArgb(cellCs.backgroundColor);
+                var textLen = 0;
+                var perBg = [];
+                var info = tokens.map(function (tok) {
+                    if (tok.kind === 'text') {
+                        var pe = tok.node.parentElement || el;
+                        var cs = window.getComputedStyle(pe);
+                        var len = String(tok.node.nodeValue).replace(/\s+/g, ' ').trim().length;
+                        textLen += len;
+                        var bgEl = null;
+                        for (var x = pe; x && x !== el; x = x.parentElement) {
+                            if (amzCssColorToArgb(window.getComputedStyle(x).backgroundColor)) { bgEl = x; break; }
+                        }
+                        if (bgEl) {
+                            var rec = null;
+                            for (var q = 0; q < perBg.length; q++) { if (perBg[q].el === bgEl) { rec = perBg[q]; break; } }
+                            if (!rec) { rec = { el: bgEl, len: 0, argb: amzCssColorToArgb(window.getComputedStyle(bgEl).backgroundColor) }; perBg.push(rec); }
+                            rec.len += len;
+                        }
+                        return {
+                            kind: 'text', bgEl: bgEl, color: amzCssColorToArgb(cs.color) || 'FF000000',
+                            bold: (parseInt(cs.fontWeight, 10) || 400) >= 600, italic: cs.fontStyle === 'italic'
+                        };
+                    }
+                    var n = tok.node;
+                    var ms = window.getComputedStyle(n);
+                    if (/(^|\s)fa-star(\s|$)/.test(n.className || '')) {
+                        return { kind: 'glyph', glyph: '\u2605', color: amzCssColorToArgb(ms.color) || 'FF000000' };
+                    }
+                    var bg = amzCssColorToArgb(ms.backgroundColor);
+                    var rect = n.getBoundingClientRect();
+                    if (bg && rect.width > 0 && rect.width <= 22 && rect.height > 0 && rect.height <= 22) {
+                        return { kind: 'dot', color: bg };
+                    }
+                    return { kind: 'skip' };
+                });
+                // One background covering most of the text fills the whole Excel cell; a small badge only colours its own text.
+                var fillBg = cellBg;
+                var fillEl = null;
+                if (!fillBg) {
+                    perBg.forEach(function (r) {
+                        if (textLen > 0 && r.len / textLen >= 0.6 && (!fillEl || r.len > fillEl.len)) fillEl = r;
+                    });
+                    if (fillEl) fillBg = fillEl.argb;
+                }
+                info.forEach(function (t) {
+                    if (t.kind !== 'text' || !t.bgEl) return;
+                    if (fillEl && t.bgEl === fillEl.el) return;
+                    for (var q = 0; q < perBg.length; q++) {
+                        if (perBg[q].el === t.bgEl) {
+                            if (perBg[q].argb !== fillBg) { t.color = perBg[q].argb; t.bold = true; }
+                            break;
+                        }
+                    }
+                });
+                return { bg: fillBg, tokens: info.map(function (t) { return { kind: t.kind, color: t.color, bold: t.bold, italic: t.italic, glyph: t.glyph }; }) };
+            }
+            function amzExportRuns(tokens, styles) {
+                var runs = [];
+                function push(text, st) {
+                    if (text === '') return;
+                    var last = runs[runs.length - 1];
+                    if (last && last.color === st.color && last.bold === st.bold && last.italic === st.italic) last.text += text;
+                    else runs.push({ text: text, color: st.color, bold: !!st.bold, italic: !!st.italic });
+                }
+                for (var i = 0; i < tokens.length; i++) {
+                    var st = styles[i] || { kind: 'skip' };
+                    if (st.kind === 'text') push(String(tokens[i].node.nodeValue).replace(/\s+/g, ' '), st);
+                    else if (st.kind === 'dot') push('\u25CF ', st);
+                    else if (st.kind === 'glyph') push(st.glyph, st);
+                }
+                if (runs.length) {
+                    runs[0].text = runs[0].text.replace(/^\s+/, '');
+                    runs[runs.length - 1].text = runs[runs.length - 1].text.replace(/\s+$/, '');
+                    runs = runs.filter(function (r) { return r.text !== ''; });
+                }
+                return runs;
+            }
+            function amzExportCellOf(colInfo, data) {
                 var def = colInfo.def;
                 var value = data ? data[colInfo.field] : undefined;
-                var result = { value: value === undefined || value === null ? '' : value, bg: null, fg: null };
+                var result = { value: value === undefined || value === null ? '' : value, bg: null, font: null, rich: null };
                 try {
                     if (typeof def.accessorDownload === 'function') {
                         var a = def.accessorDownload(value, data, {}, def.accessorDownloadParams || {}, colInfo.col, null);
                         result.value = a === undefined || a === null ? '' : a;
                         return result;
                     }
-                    if (typeof def.formatter === 'function') {
-                        var el = document.createElement('div');
-                        var rowObj = {
-                            getData: function () { return data; }, isSelected: function () { return false; },
-                            getElement: function () { return holder; }, reformat: function () {}, getTable: function () { return table; },
-                            getCells: function () { return []; }, getCell: function () { return null; }, getPosition: function () { return 0; },
-                            getComponent: function () { return rowObj; }
-                        };
-                        var cell = {
-                            getValue: function () { return value; }, getData: function () { return data; }, getField: function () { return colInfo.field; },
-                            getRow: function () { return rowObj; }, getColumn: function () { return colInfo.col; }, getElement: function () { return el; },
-                            getTable: function () { return table; }, setValue: function () {}, getOldValue: function () { return value; },
-                            getInitialValue: function () { return value; }, isEdited: function () { return false; }, checkHeight: function () {}
-                        };
-                        var html = def.formatter(cell, def.formatterParams || {}, function () {});
-                        if (html && typeof html === 'object' && html.nodeType === 1) html = html.outerHTML;
-                        result.value = amzHtmlToText(html);
-                        if (el.style && el.style.backgroundColor) result.bg = amzCssColorToArgb(el.style.backgroundColor);
-                        if (el.style && el.style.color) result.fg = amzCssColorToArgb(el.style.color);
-                        if (result.value === '-' || result.value === '—') result.value = '';
+                    if (typeof def.formatter !== 'function') return result;
+                    amzExportEnsureHost();
+                    amzExportResetCellEl(colInfo.field);
+                    var el = amzExportCellEl;
+                    var rowObj = {
+                        getData: function () { return data; }, isSelected: function () { return false; },
+                        getElement: function () { return amzExportHost; }, reformat: function () {}, getTable: function () { return table; },
+                        getCells: function () { return []; }, getCell: function () { return null; }, getPosition: function () { return 0; },
+                        getComponent: function () { return rowObj; }
+                    };
+                    var cell = {
+                        getValue: function () { return value; }, getData: function () { return data; }, getField: function () { return colInfo.field; },
+                        getRow: function () { return rowObj; }, getColumn: function () { return colInfo.col; }, getElement: function () { return el; },
+                        getTable: function () { return table; }, setValue: function () {}, getOldValue: function () { return value; },
+                        getInitialValue: function () { return value; }, isEdited: function () { return false; }, checkHeight: function () {}
+                    };
+                    var html = def.formatter(cell, def.formatterParams || {}, function () {});
+                    if (html && typeof html === 'object' && html.nodeType === 1) html = html.outerHTML;
+                    html = html == null ? '' : String(html);
+                    var sig = amzExportSignature(colInfo.field, el, html);
+                    var entry = amzExportSigCache[sig];
+                    var tokens;
+                    if (entry) {
+                        var tmp = document.createElement('div');
+                        tmp.innerHTML = html;
+                        tokens = amzExportWalk(tmp, []);
+                    } else {
+                        el.innerHTML = html;
+                        tokens = amzExportWalk(el, []);
+                        entry = amzExportSigCache[sig] = amzExportMeasure(el, tokens);
+                    }
+                    var runs = amzExportRuns(tokens, entry.tokens);
+                    result.bg = entry.bg;
+                    var plain = runs.map(function (r) { return r.text; }).join('');
+                    if (plain === '-' || plain === '\u2014') { result.value = ''; return result; }
+                    if (runs.length === 0) { result.value = ''; return result; }
+                    if (runs.length === 1) {
+                        result.value = plain;
+                        result.font = { name: 'Calibri', size: 11, color: { argb: runs[0].color }, bold: runs[0].bold, italic: runs[0].italic };
+                    } else {
+                        result.value = plain;
+                        result.rich = runs.map(function (r) {
+                            return { text: r.text, font: { name: 'Calibri', size: 11, color: { argb: r.color }, bold: r.bold, italic: r.italic } };
+                        });
                     }
                 } catch (e) {
                     // A formatter that needs the live grid falls back to the raw value, like a plain table download.
@@ -5684,7 +5842,6 @@
                         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                         cell.border = border;
                     });
-                    var holder = document.createElement('div');
                     var idx = 0;
                     var CHUNK = 250;
                     return new Promise(function (resolve, reject) {
@@ -5695,14 +5852,14 @@
                                     var data = rows[idx];
                                     var wsRow = ws.getRow(idx + 2);
                                     cols.forEach(function (c, i) {
-                                        var r = amzExportCellOf(c, data, holder);
+                                        var r = amzExportCellOf(c, data);
                                         var cell = wsRow.getCell(i + 1);
-                                        cell.value = amzExcelCellValue(r.value);
+                                        cell.value = r.rich ? { richText: r.rich } : amzExcelCellValue(r.value);
                                         var left = c.field === 'campaignName' || (c.def.hozAlign === 'left');
                                         cell.alignment = { horizontal: left ? 'left' : 'center', vertical: 'middle' };
                                         cell.border = border;
                                         if (r.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: r.bg } };
-                                        if (r.fg) cell.font = { color: { argb: r.fg } };
+                                        if (r.font) cell.font = r.font;
                                         var len = String(r.value == null ? '' : r.value).length;
                                         if (len + 2 > widths[i]) widths[i] = Math.min(50, len + 2);
                                     });
@@ -5734,6 +5891,7 @@
                     amzAuditToast('Excel export failed: ' + (err && err.message ? err.message : err));
                 }).finally(function () {
                     amzExcelBusy = false;
+                    amzExportDropHost();
                     if (btn) btn.disabled = false;
                     if (icon) icon.className = 'fas fa-file-excel';
                 });
