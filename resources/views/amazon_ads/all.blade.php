@@ -3534,13 +3534,17 @@
                 var body = document.getElementById('amazonAdsAuditModalBody');
                 if (body && amzAuditModalCtx.json) body.innerHTML = amzAuditReportHtml(amzAuditModalCtx.json, '');
             });
-            function amzAuditLoadStatuses() {
+            // Tabulator fires "dataLoaded" BEFORE it builds the rows, so table.getRows() is still empty on the first load
+            // (and holds the previous page afterwards). The campaigns are read from the loaded data passed to the event instead.
+            function amzAuditLoadStatuses(loadedData) {
                 var ids = [];
+                var seen = {};
                 try {
                     if (!table.getColumn('audit')) return;
-                    table.getRows().forEach(function (r) {
-                        var d = r.getData();
-                        if (d && d.campaign_id != null && String(d.campaign_id).trim() !== '') ids.push(String(d.campaign_id).trim());
+                    var list = Array.isArray(loadedData) ? loadedData : (loadedData && Array.isArray(loadedData.data) ? loadedData.data : []);
+                    list.forEach(function (d) {
+                        var cid = d && d.campaign_id != null ? String(d.campaign_id).trim() : '';
+                        if (cid !== '' && !seen[cid]) { seen[cid] = true; ids.push(cid); }
                     });
                 } catch (e) { return; }
                 if (!ids.length) return;
