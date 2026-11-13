@@ -1317,6 +1317,12 @@ class ListingManagerEbayTradingPublisher
                 return ['state' => 'live', 'message' => 'Active (variation).', 'quantity' => $qty];
             }
 
+            // A single-SKU listing carries its own SKU: another SKU on it means this id belongs to a different product.
+            $itemSku = trim((string) ($item['SKU'] ?? ''));
+            if ($sku !== '' && $itemSku !== '' && ! \App\Services\MarketplaceManager\EbayLiveListingMapper::skuEquals($itemSku, $sku)) {
+                return ['state' => 'sku_absent', 'message' => 'Listing holds SKU "'.$itemSku.'", not this SKU.', 'quantity' => null];
+            }
+
             $qty = (int) ($item['Quantity'] ?? 0) - (int) ($item['SellingStatus']['QuantitySold'] ?? 0);
 
             return ['state' => 'live', 'message' => 'Active.', 'quantity' => $qty];

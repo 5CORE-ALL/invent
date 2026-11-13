@@ -33,12 +33,13 @@ class ListingChannelRefresher
             'type' => 'artisan', 'label' => $label, 'command' => $command, 'force' => $force,
         ];
         $ebay = fn (int $store): array => ['type' => 'ebay', 'label' => 'eBay '.$store.' listings (Active / Ended / Deleted)', 'store' => $store];
+        $verify = fn (int $store): array => ['type' => 'ebay_verify', 'label' => 'eBay '.$store.' check every listed SKU on eBay', 'store' => $store];
         $catalog = fn (string $key, string $label): array => ['type' => 'catalog', 'label' => $label, 'channel' => $key];
 
         return [
-            'ebay' => [$ebay(1), $link('eBay 1 link map', 'ebay1:sync-link-map')],
-            'ebaytwo' => [$ebay(2), $link('eBay 2 link map', 'ebay2:sync-link-map')],
-            'ebaythree' => [$ebay(3), $link('eBay 3 link map', 'ebay3:sync-link-map')],
+            'ebay' => [$ebay(1), $verify(1), $link('eBay 1 link map', 'ebay1:sync-link-map')],
+            'ebaytwo' => [$ebay(2), $verify(2), $link('eBay 2 link map', 'ebay2:sync-link-map')],
+            'ebaythree' => [$ebay(3), $verify(3), $link('eBay 3 link map', 'ebay3:sync-link-map')],
             'amazon' => [$link('Amazon link map', 'amazon:sync-link-map')],
             'walmart' => [['type' => 'artisan', 'label' => 'Walmart listed items', 'command' => 'walmart:fetch-listed-prices', 'force' => false]],
             'doba' => [$link('Doba link map', 'doba:sync-link-map', false)],
@@ -188,6 +189,11 @@ class ListingChannelRefresher
                     }
 
                     return $this->fromResult($result);
+
+                case 'ebay_verify':
+                    $res = app(EbayStaleItemIdPurger::class)->purge((int) $step['store']);
+
+                    return [(bool) $res['ok'], (string) $res['message']];
 
                 case 'catalog':
                     // Skip the 30-minute freshness cache: this refresh was asked for explicitly.
