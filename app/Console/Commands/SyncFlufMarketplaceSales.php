@@ -12,7 +12,8 @@ class SyncFlufMarketplaceSales extends Command
                             {--days=60 : How many days of Shopify orders to read}
                             {--replace-uploads : Also delete CSV-uploaded rows dated on/after the first Shopify sale (they would double count)}
                             {--check-duplicates : Only report sales entered twice on the sheet, change nothing}
-                            {--inspect : Only list how Fluf/Vinted/Depop orders look in Shopify, change nothing}';
+                            {--inspect : Only list how Fluf/Vinted/Depop orders look in Shopify, change nothing}
+                            {--summary : Only print orders/lines/qty per month from shopify_raw_orders vs the sheet, change nothing}';
 
     protected $description = 'Copy Vinted and Depop sales (Shopify orders created by Fluf) into /vinted/sheet and /depop/sheet.';
 
@@ -40,6 +41,30 @@ class SyncFlufMarketplaceSales extends Command
 
         $arg = strtolower(trim((string) $this->argument('channel')));
         $channels = $arg === 'all' ? array_keys(FlufMarketplaceSalesSync::CHANNELS) : [$arg];
+
+        if ($this->option('summary')) {
+            foreach ($channels as $channel) {
+                $rows = $sync->summary($channel, $days);
+                $this->info('== '.$channel.' (last '.$days.' days, shopify_raw_orders vs sheet) ==');
+                if ($rows === []) {
+                    $this->warn('No matching Shopify order lines.');
+
+                    continue;
+                }
+                $tot = ['orders' => 0, 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0, 'sheet_rows' => 0];
+                foreach ($rows as $r) {
+                    $this->line(sprintf('%s  orders=%d lines=%d qty=%d refunded/cancelled_lines=%d | sheet rows=%d',
+                        $r['month'], $r['orders'], $r['lines'], $r['qty'], $r['not_a_sale'], $r['sheet_rows']));
+                    foreach ($tot as $k => $_) {
+                        $tot[$k] += $r[$k];
+                    }
+                }
+                $this->line(sprintf('TOTAL     orders=%d lines=%d qty=%d refunded/cancelled_lines=%d | sheet rows=%d',
+                    $tot['orders'], $tot['lines'], $tot['qty'], $tot['not_a_sale'], $tot['sheet_rows']));
+            }
+
+            return self::SUCCESS;
+        }
 
         if ($this->option('check-duplicates')) {
             foreach ($channels as $channel) {

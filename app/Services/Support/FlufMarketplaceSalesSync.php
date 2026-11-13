@@ -218,6 +218,66 @@ class FlufMarketplaceSalesSync
     }
 
     /**
+     * Totals per channel and month straight from shopify_raw_orders (no 60-group cap, unlike inspect()),
+     * plus what the sheet table holds for the same month. Shows where sales are lost.
+     *
+     * @return list<array{channel: string, month: string, orders: int, lines: int, qty: int, not_a_sale: int, sheet_rows: int}>
+     */
+    public function summary(string $channel, int $days = 365): array
+    {
+        $cfg = self::CHANNELS[strtolower($channel)] ?? null;
+        if ($cfg === null || ! Schema::hasTable('shopify_raw_orders')) {
+            return [];
+        }
+        $channel = strtolower($channel);
+        $from = Carbon::now()->subDays(max(1, $days))->toDateString();
+
+        $lines = DB::table('shopify_raw_orders')
+            ->where('order_date', '>=', $from)
+            ->where(function ($q) use ($channel) {
+                $q->whereRaw('LOWER(COALESCE(source_name,"")) LIKE ?', ['%'.$channel.'%'])
+                    ->orWhereRaw('LOWER(COALESCE(tags,"")) LIKE ?', ['%'.$channel.'%']);
+            })
+            ->get(['order_id', 'order_date', 'quantity', 'source_name', 'tags', 'financial_status']);
+
+        $byMonth = [];
+        foreach ($lines as $line) {
+            if (self::channelFor($line->source_name ?? null, $line->tags ?? null) !== $channel) {
+                continue;
+            }
+            $month = substr((string) $line->order_date, 0, 7);
+            $byMonth[$month] ??= ['orders' => [], 'lines' => 0, 'qty' => 0, 'not_a_sale' => 0];
+            $byMonth[$month]['orders'][$line->order_id] = true;
+            $byMonth[$month]['lines']++;
+            $status = strtolower(trim((string) ($line->financial_status ?? '')));
+            if (in_array($status, self::NOT_A_SALE_STATUS, true) || str_contains(strtolower((string) $line->tags), 'cancel')) {
+                $byMonth[$month]['not_a_sale']++;
+            } else {
+                $byMonth[$month]['qty'] += max(1, (int) $line->quantity);
+            }
+        }
+
+        $sheetByMonth = [];
+        if (Schema::hasTable($cfg['table'])) {
+            foreach (DB::table($cfg['table'])->where('sale_date', '>=', $from)->get(['sale_date']) as $r) {
+                $m = substr((string) $r->sale_date, 0, 7);
+                $sheetByMonth[$m] = ($sheetByMonth[$m] ?? 0) + 1;
+            }
+        }
+
+        ksort($byMonth);
+        $out = [];
+        foreach ($byMonth as $month => $v) {
+            $out[] = [
+                'channel' => $channel, 'month' => $month, 'orders' => count($v['orders']), 'lines' => $v['lines'],
+                'qty' => $v['qty'], 'not_a_sale' => $v['not_a_sale'], 'sheet_rows' => $sheetByMonth[$month] ?? 0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Look for the same sale entered twice on a sheet, without changing anything.
      *
      * - upload_vs_shopify: a CSV-uploaded row and a Shopify row with the same date + SKU + quantity.

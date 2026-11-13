@@ -110,7 +110,7 @@
                             <span class="badge bg-primary fs-6 p-2" id="dp-total-sales-badge"
                                 title="Σ Vinted sheet Sale AMT (item price × qty) in last 30 sale days">Sales: $0</span>
                             <span class="badge bg-warning text-dark fs-6 p-2" id="dp-total-vl30-badge"
-                                title="Σ V L30 (Vinted units sold in last 30 days) across visible rows">V L30: 0</span>
+                                title="Σ quantity sold in the last 30 days (Pacific yesterday back 30 days) from /vinted/sheet, all rows">V L30: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="dp-avg-gpft-badge"
                                 title="L30 GPFT % = PFT ÷ Sales. PFT = (sheet sales × margin) − (LP × V L30). Price $0 is skipped (not −LP).">GPFT: 0%</span>
                             <span class="badge bg-success fs-6 p-2" id="dp-total-profit-badge"
@@ -382,6 +382,7 @@
     const DP_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
     let table = null;
     let allTableData = [];
+    let sheetL30Qty = null; // total L30 units from /vinted/sheet
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -733,7 +734,8 @@
         const groi = totalCogs > 0 ? Math.round((totalProfit / totalCogs) * 100) : 0;
         $('#dp-rows-count-badge').text('Row: ' + visible.toLocaleString());
         $('#dp-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
-        $('#dp-total-vl30-badge').text('V L30: ' + totalVl30.toLocaleString());
+        // Prefer the /vinted/sheet total (all rows in the L30 window); fall back to the visible rows.
+        $('#dp-total-vl30-badge').text('V L30: ' + (sheetL30Qty !== null ? sheetL30Qty : totalVl30).toLocaleString());
         $('#dp-total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
         $('#dp-avg-gpft-badge').text('GPFT: ' + gpft + '%');
         $('#dp-avg-roi-badge').text('GROI: ' + groi + '%');
@@ -771,6 +773,8 @@
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
                 allTableData = data;
+                sheetL30Qty = parseInt(response && response.sheet_l30_qty, 10) || 0;
+                $('#dp-total-vl30-badge').text('V L30: ' + sheetL30Qty.toLocaleString());
                 if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                 return data;
             },

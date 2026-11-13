@@ -99,8 +99,105 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
 
         $payload['data'] = $this->attachStoredOpSprice($payload['data']);
         $payload['data'] = $this->attachStandardPrice($payload['data']);
+        $payload['data'] = $this->applyLatestSheetPrice($payload['data']);
+        $payload['sheet_l30_qty'] = $this->sheetL30Qty();
 
         return response()->json($payload);
+    }
+
+    /**
+     * Most recent unit sale price per SKU on /vinted/sheet (latest sale_date, then newest row).
+     *
+     * @return array<string, float> keyed by uppercase SKU
+     */
+    private function latestSheetPriceBySku(): array
+    {
+        if (! Schema::hasTable('vinted_sales_data')) {
+            return [];
+        }
+
+        $out = [];
+        VintedSalesData::query()
+            ->whereNotNull('sku_code')
+            ->where('sku_code', '!=', '')
+            ->where('item_price', '>', 0)
+            ->orderByDesc('sale_date')
+            ->orderByDesc('id')
+            ->get(['sku_code', 'item_price'])
+            ->each(function ($row) use (&$out) {
+                $key = strtoupper(trim((string) $row->sku_code));
+                if ($key !== '' && ! isset($out[$key])) {
+                    $out[$key] = round((float) $row->item_price, 2);
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Price column: the latest sale price from /vinted/sheet when the SKU has one, otherwise the
+     * price already on the row (vinted_pricing). Profit / GPFT / GROI follow the price shown.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function applyLatestSheetPrice(array $rows): array
+    {
+        $latest = $this->latestSheetPriceBySku();
+        if ($latest === []) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $price = $latest[strtoupper(trim((string) ($row['sku'] ?? '')))] ?? null;
+            if ($price === null || $price <= 0) {
+                continue;
+            }
+
+            $lp = (float) ($row['lp'] ?? 0);
+            $margin = (float) ($row['_margin'] ?? static::marginFactor());
+            $ship = (float) ($row['ship'] ?? 0);
+            $profit = static::unitProfit($price, $lp, $margin, $ship);
+            $gpft = static::gpftPercent($price, $lp, $margin, $ship);
+            $groi = static::groiPercent($price, $lp, $margin, $ship);
+
+            $row['price'] = $price;
+            $row['price_source'] = 'sheet';
+            $row['profit'] = round($profit, 2);
+            $row['Profit'] = round($profit, 2);
+            $row['gpft'] = $gpft;
+            $row['GPFT%'] = $gpft;
+            $row['groi'] = $groi;
+            $row['ROI%'] = $groi;
+            $row['NROI'] = $groi;
+            $row['missing'] = '';
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Total units sold in the L30 window straight from /vinted/sheet (vinted_sales_data),
+     * every row counted — including rows with no SKU or a SKU missing from this table.
+     */
+    private function sheetL30Qty(): int
+    {
+        $window = VintedController::l30Window();
+        if ($window === null) {
+            return 0;
+        }
+        [$l30Start, $l30End] = $window;
+
+        $qty = 0;
+        VintedSalesData::query()
+            ->whereBetween('sale_date', [$l30Start, $l30End])
+            ->get(['quantity'])
+            ->each(function ($row) use (&$qty) {
+                $qty += max(1, (int) ($row->quantity ?: 1));
+            });
+
+        return $qty;
     }
 
     /**
