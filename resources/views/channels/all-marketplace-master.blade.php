@@ -1097,7 +1097,6 @@
                     <div class="amm-badge-block amm-badge-block--yesterday">
                         <div class="amm-badge-block-title">
                             <span>Yesterday</span>
-                            <span id="yesterdaySettleTag" class="badge" style="display:none; font-size:10px; font-weight:600; margin-left:6px; vertical-align:middle;"></span>
                             <button type="button" id="yesterdayMpViewBtn" class="btn btn-sm btn-outline-dark amm-yesterday-view-btn"
                                 title="Yesterday by marketplace" aria-lacrbel="Yesterday by marketplace">
                                 <i class="fas fa-eye" style="color: #000;"></i>
@@ -9902,47 +9901,10 @@
                 openYesterdayMarketplaceModal();
             });
 
-            // "Settled" = every marketplace re-pulled Pacific yesterday after it closed (and again later
-            // for pending / late orders). Until then yesterday's numbers can still rise.
-            function applyYesterdaySettleTag(settle) {
-                const $tag = $('#yesterdaySettleTag');
-                if (!$tag.length || !settle) { $tag.hide(); return; }
-                const low = settle.anomalies || [];
-                if (settle.settled && low.length) {
-                    $tag.removeClass('bg-success text-white').addClass('bg-warning text-dark')
-                        .text('Check ' + low.length)
-                        .attr('title', 'All pulls finished, but these channels are far below their usual day (L30 ÷ 30): '
-                            + low.map(function(a) { return a.channel + ' $' + Math.round(a.sales) + ' vs ~$' + Math.round(a.typical); }).join('; ')
-                            + '. Re-pulling will not fix this; check that channel\'s order sync.')
-                        .show();
-                    return;
-                }
-                if (settle.settled) {
-                    $tag.removeClass('bg-warning text-dark').addClass('bg-success text-white')
-                        .text('Settled')
-                        .attr('title', 'All marketplaces have re-pulled ' + settle.date + ' after the Pacific day closed.')
-                        .show();
-                    return;
-                }
-                const pending = (settle.pending || []).length;
-                const failed = (settle.failed || []).length;
-                let text = 'Updating';
-                let title = 'Yesterday (' + settle.date + ' PT) is still being re-pulled from the marketplaces (pass '
-                    + settle.passes_due + ' of ' + settle.passes_total + '). Numbers can still go up.';
-                if (settle.passes_due === 0) {
-                    title = 'The Pacific day has just closed. The first re-pull starts shortly; numbers can still go up.';
-                }
-                if (pending) { title += ' Waiting on: ' + settle.pending.join(', ') + '.'; }
-                if (failed) { text = 'Incomplete'; title += ' Gave up after retries: ' + settle.failed.join(', ') + '.'; }
-                $tag.removeClass('bg-success text-white').addClass('bg-warning text-dark')
-                    .text(text).attr('title', title).show();
-            }
-
             $.get('/yesterday-marketplace-metrics').done(function(res) {
                 const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
                 applyYViewsBadge(rows);
                 applyYOrdersBadge(rows);
-                applyYesterdaySettleTag(res && res.data ? res.data.settle : null);
             });
 
             $.get('/active-channel-npft-nroi').done(function(res) {
