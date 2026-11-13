@@ -5580,7 +5580,6 @@
                     out.push({
                         audit: def.field === 'audit' ? 'summary' : (AMZ_AUDIT_ASPECT_BY_FIELD[def.field] ? 'aspect' : null),
                         fixedWidth: def.field === 'audit' ? 70 : (AMZ_AUDIT_ASPECT_BY_FIELD[def.field] ? 45 : 0),
-                        wrap: def.field === 'audit' || !!AMZ_AUDIT_ASPECT_BY_FIELD[def.field],
                         col: col, def: def, field: def.field, title: title,
                         bg: (cs && amzCssColorToArgb(cs.backgroundColor)) || 'FFDBEAFE',
                         fg: (ts && amzCssColorToArgb(ts.color)) || 'FF1E293B'
@@ -5987,14 +5986,13 @@
                                 for (; idx < end; idx++) {
                                     var data = rows[idx];
                                     var wsRow = ws.getRow(idx + 2);
+                                    wsRow.height = 18; // one line per row; the full audit text stays in the cell (click it to read)
                                     cols.forEach(function (c, i) {
                                         var r = amzExportCellOf(c, data);
                                         var cell = wsRow.getCell(i + 1);
                                         cell.value = r.rich ? { richText: r.rich } : amzExcelCellValue(r.value);
                                         var left = c.field === 'campaignName' || (c.def.hozAlign === 'left');
-                                        cell.alignment = c.wrap
-                                            ? { horizontal: 'left', vertical: 'top', wrapText: true }
-                                            : { horizontal: left ? 'left' : 'center', vertical: 'middle' };
+                                        cell.alignment = { horizontal: (left || c.audit) ? 'left' : 'center', vertical: 'middle', wrapText: false };
                                         cell.border = border;
                                         if (r.bg) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: r.bg } };
                                         if (r.font) cell.font = r.font;
