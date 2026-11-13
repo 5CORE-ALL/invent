@@ -398,7 +398,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         return match (true) {
             in_array($slug, ['ebay1', 'ebay2', 'ebay3'], true) => $upper === 'NOT_STARTED',
             $slug === 'amazon' => $upper === 'UNSHIPPED',
-            $slug === 'newegg' => $raw === '0',
+            $slug === 'newegg' => $raw === '0' || $lower === 'unshipped',
             $slug === 'reverb' => $lower === 'paid',
             $slug === 'shein' => in_array($lower, ['pending', 'to be shipped'], true),
             in_array($slug, ['temu', 'temu2', 'temu3'], true) => in_array($upper, ['UN_SHIPPING', 'PENDING'], true),
@@ -1346,6 +1346,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $n = $this->lightOrderFields($slug, $order);
         $paid = MarketplaceOrderPaidFilter::isPaid($slug, $order);
         $status = trim((string) ($n['status'] ?? ''));
+        if ($slug === 'newegg') {
+            $status = $this->neweggStatusLabel($status);
+        }
         $apiOrderId = trim((string) ($n['order_id'] ?? ''));
         $orderNumber = trim((string) ($n['order_number'] ?? ''));
         $displayOrderId = $orderNumber !== '' ? $orderNumber : $apiOrderId;
@@ -1407,6 +1410,25 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $base['sku'] = $this->inventoryLookupSku($sku);
 
         return [$base];
+    }
+
+    /**
+     * Newegg stores its order status as a number. Show the name Newegg uses
+     * (0 Unshipped, 1 Partially Shipped, 2 Shipped, 3 Invoiced, 4 Voided, 5 Payment Pending).
+     * Any other value is shown as it is. "Invoiced" means Newegg has shipped and billed the
+     * order; it is not a delivery status, so Delivered still comes from carrier tracking.
+     */
+    protected function neweggStatusLabel(string $status): string
+    {
+        return match (trim($status)) {
+            '0' => 'Unshipped',
+            '1' => 'Partially Shipped',
+            '2' => 'Shipped',
+            '3' => 'Invoiced',
+            '4' => 'Voided',
+            '5' => 'Payment Pending',
+            default => trim($status),
+        };
     }
 
     /**
