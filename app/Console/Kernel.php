@@ -3913,6 +3913,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Hourly: re-fetch recent marketplace orders only, so the Status and Tracking columns on
+        // /order-fulfillment (Pending / Scan Pending / Transit / Delivered) are at most about an hour old
+        // instead of waiting for the once-a-day catch-up. Lock (90) > --max-minutes (45) so a run cannot overlap itself.
+        $schedule->command('mm:push-orders-tracking --days=3 --fetch-only --max-minutes=45')
+            ->hourlyAt(45)
+            ->timezone('Asia/Kolkata')
+            ->name('mm-hourly-orders-refresh')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
         // --max-minutes 120 (hard kill at 125) stays below the 180 min lock.
         $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory --max-minutes=120')

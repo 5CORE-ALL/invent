@@ -18,6 +18,7 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
         {--marketplace= : Only this MM slug (amazon, faire, …)}
         {--days=7 : Order lookback days}
         {--skip-fetch : Skip marketplace order fetch; only import + fulfill + tracking}
+        {--fetch-only : Only re-fetch marketplace orders (fresh status / tracking on /order-fulfillment), then stop}
         {--skip-inventory : Skip Shopify → marketplace inventory push}
         {--tracking-limit=150 : Max orders per channel for tracking push}
         {--max-minutes=40 : Wall-clock limit. Remaining steps are skipped after this; the process is killed 5 min later if a step hangs}';
@@ -79,6 +80,17 @@ class PushMarketplaceOrdersTrackingFulfillment extends Command
             }
         } else {
             $this->line('Skipping marketplace fetch.');
+        }
+
+        if ($this->option('fetch-only')) {
+            if ($failed !== []) {
+                $this->warn('Fetch finished with isolated failures: '.implode(', ', $failed));
+                Log::warning('mm:push-orders-tracking --fetch-only finished with failures', ['failed' => $failed]);
+            } else {
+                $this->info('Done. Marketplace orders refreshed.');
+            }
+
+            return self::SUCCESS;
         }
 
         $this->info('2/4 Queue Shopify imports for unpushed orders (duplicate-safe)…');
