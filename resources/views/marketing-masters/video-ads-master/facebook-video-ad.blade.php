@@ -1045,8 +1045,9 @@
         const pct = (v) => v === null || v === undefined ? '' : (Number(v) * 100).toFixed(2) + '%';   // ShopifyQL returns rates as fractions
         const channelDot = (cell) => {
             const v = cell.getValue() || '';
-            const color = /meta/i.test(v) ? '#c4509e' : (/facebook/i.test(v) ? '#4a6fd4' : '#9ca3af');
-            return v ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>${v}` : '';
+            const color = /instagram/i.test(v) ? '#c4509e' : (/facebook|meta/i.test(v) ? '#4a6fd4' : '#9ca3af');
+            const label = v ? v.charAt(0).toUpperCase() + v.slice(1) : '';
+            return v ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>${label}` : '';
         };
 
         const campaignTable = new Tabulator('#shopify-campaign-table', {
@@ -1054,16 +1055,14 @@
             height: '420px',
             placeholder: 'Click "Fetch from Shopify" to load campaign sales.',
             columns: [
-                { title: 'Marketing campaign', field: 'marketing_campaign', minWidth: 190, headerFilter: 'input' },
+                { title: 'Marketing campaign', field: 'marketing_campaign', minWidth: 190, headerFilter: 'input',
+                  formatter: (c) => c.getValue() || '<span class="text-muted">(no campaign)</span>' },
                 { title: 'Marketing channel', field: 'marketing_channel', minWidth: 140, formatter: channelDot, headerFilter: 'input' },
                 { title: 'Traffic type', field: 'traffic_type', width: 110 },
                 { title: 'Total sales', field: 'total_sales', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
                 { title: 'Sessions', field: 'sessions', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
                 { title: 'Orders', field: 'orders', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
-                { title: 'Conv. rate', field: 'conversion_rate', hozAlign: 'right', formatter: (c) => pct(c.getValue()) },
-                { title: 'Ad spend', field: 'ad_spend', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
-                { title: 'ROAS', field: 'roas', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
-                { title: 'Clicks', field: 'clicks', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
+                { title: 'Conv. rate', field: 'conversion_rate', hozAlign: 'right', sorter: 'number', formatter: (c) => pct(c.getValue()) },
                 { title: 'AOV', field: 'average_order_value', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
             ],
             initialSort: [{ column: 'total_sales', dir: 'desc' }],
