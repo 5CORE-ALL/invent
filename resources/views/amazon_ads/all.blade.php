@@ -5579,6 +5579,8 @@
                     var ts = titleEl ? window.getComputedStyle(titleEl) : null;
                     out.push({
                         audit: def.field === 'audit' ? 'summary' : (AMZ_AUDIT_ASPECT_BY_FIELD[def.field] ? 'aspect' : null),
+                        fixedWidth: def.field === 'audit' ? 70 : (AMZ_AUDIT_ASPECT_BY_FIELD[def.field] ? 45 : 0),
+                        wrap: def.field === 'audit' || !!AMZ_AUDIT_ASPECT_BY_FIELD[def.field],
                         col: col, def: def, field: def.field, title: title,
                         bg: (cs && amzCssColorToArgb(cs.backgroundColor)) || 'FFDBEAFE',
                         fg: (ts && amzCssColorToArgb(ts.color)) || 'FF1E293B'
@@ -5687,34 +5689,62 @@
                 if (foot) lines.push('', foot);
                 return lines.join('\n');
             }
+            // The audit dot columns carry what the modal shows when the dot is clicked, in the same cell.
+            function amzExportAuditAspectText(entry, aspect) {
+                var rep = entry && entry.report ? entry.report : {};
+                var name = AMZ_AUDIT_ASPECTS[aspect].name;
+                var reasons = (Array.isArray(rep.reasons) ? rep.reasons : []).filter(function (r) { return r && r.category === aspect; });
+                var lines = [];
+                if (!reasons.length) {
+                    lines.push('No ' + name.toLowerCase() + ' issue was found in this audit.');
+                } else {
+                    lines.push('ISSUES AND SOLUTIONS');
+                    reasons.forEach(function (r, i) {
+                        lines.push((i + 1) + '. [' + String(r.impact || 'medium').toUpperCase() + '] ' + (r.title || ''));
+                        if (r.evidence) lines.push('   Data: ' + r.evidence);
+                        if (r.fix) lines.push('   Fix: ' + r.fix);
+                    });
+                }
+                var st = entry && entry.status ? entry.status : {};
+                var when = st.at ? new Date(st.at).toLocaleString() : '';
+                if (when) lines.push('', 'Audited ' + when);
+                return lines.join('\n');
+            }
             function amzExportAuditCell(colInfo, data) {
                 var cid = data && data.campaign_id != null ? String(data.campaign_id).trim() : '';
                 var entry = cid !== '' ? amzExportAuditMap[cid] : null;
                 var result = { value: '', bg: null, font: null, rich: null };
-                if (colInfo.audit === 'report') {
-                    result.value = amzExportAuditReportText(entry);
-                    return result;
-                }
+                if (cid === '') return result;
                 var level = amzExportAuditLevel(entry);
+                var st = entry && entry.status ? entry.status : {};
+                var head;
+                var body = '';
                 if (colInfo.audit === 'summary') {
-                    if (level === 'none') { result.value = cid === '' ? '' : (entry && entry.status && entry.status.status === 'running' ? 'Running' : 'Not audited'); }
-                    else if (level === 'failed') result.value = 'Failed';
-                    else result.value = AMZ_AUDIT_SEVERITY_LABEL[level] || level;
+                    if (level === 'none') head = st.status === 'running' ? 'Running' : 'Not audited';
+                    else if (level === 'failed') { head = 'Audit failed'; body = amzExportAuditReportText(entry).replace(/^Audit failed:\s*/, ''); }
+                    else {
+                        head = AMZ_AUDIT_SEVERITY_LABEL[level] || level;
+                        body = amzExportAuditReportText(entry).split('\n').slice(1).join('\n');
+                    }
                 } else {
                     var aspect = AMZ_AUDIT_ASPECT_BY_FIELD[colInfo.field];
-                    var aspects = entry && entry.status ? entry.status.aspects : null;
-                    if (level === 'failed') { level = 'failed'; result.value = 'Failed'; }
-                    else if (level === 'none' || !aspects) { level = 'none'; result.value = cid === '' ? '' : 'Not audited'; }
+                    var aspects = st.aspects || null;
+                    if (level === 'failed') { head = 'Audit failed'; body = st.error || ''; }
+                    else if (level === 'none' || !aspects) { level = 'none'; head = 'Not audited'; }
                     else {
                         level = aspects[aspect] || 'ok';
-                        result.value = AMZ_AUDIT_ASPECT_LEVEL_LABEL[level] || level;
+                        head = AMZ_AUDIT_ASPECTS[aspect].name + ': ' + (AMZ_AUDIT_ASPECT_LEVEL_LABEL[level] || level);
+                        body = amzExportAuditAspectText(entry, aspect);
                     }
                 }
-                if (result.value !== '') {
-                    result.bg = AMZ_AUDIT_EXPORT_FILL[level] || null;
-                    var dark = level === 'low' || level === 'none';
-                    result.font = { name: 'Calibri', size: 11, bold: true, color: { argb: dark ? 'FF1F2937' : 'FFFFFFFF' } };
-                }
+                var color = AMZ_AUDIT_EXPORT_FILL[level] || 'FF1F2937';
+                if (level === 'none') color = 'FF6B7280';
+                var base = { name: 'Calibri', size: 11, color: { argb: 'FF1F2937' } };
+                var runs = [{ text: '\u25CF ' + head, font: { name: 'Calibri', size: 11, bold: true, color: { argb: color } } }];
+                if (body !== '') runs.push({ text: '\n' + body, font: base });
+                result.value = '\u25CF ' + head + (body !== '' ? '\n' + body : '');
+                if (runs.length > 1) result.rich = runs;
+                else result.font = runs[0].font;
                 return result;
             }
             // Off-screen copy of a grid cell inside #amz-ads-raw-wrap, so the page's own CSS decides every colour.
@@ -5922,16 +5952,6 @@
                 var cols = amzExportColumns();
                 var withAudit = false;
                 try { withAudit = !!table.getColumn('audit'); } catch (e) {}
-                if (withAudit) {
-                    var lastAudit = -1;
-                    cols.forEach(function (c, i) { if (c.audit) lastAudit = i; });
-                    var base = cols.filter(function (c) { return c.field === 'audit'; })[0];
-                    var reportCol = {
-                        audit: 'report', col: null, def: { hozAlign: 'left' }, field: '__auditReport', title: 'Audit Report',
-                        bg: base ? base.bg : 'FFDBEAFE', fg: base ? base.fg : 'FF1E293B', fixedWidth: 90, wrap: true
-                    };
-                    cols.splice(lastAudit === -1 ? cols.length : lastAudit + 1, 0, reportCol);
-                }
                 amzAuditToast('Excel: loading all rows...', true);
                 var exceljsReady = amzEnsureExcelJs();
                 var started = Date.now();
