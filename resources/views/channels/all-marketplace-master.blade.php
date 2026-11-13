@@ -359,6 +359,10 @@
             color: #4568dc;
         }
 
+        .type-c2c {
+            color: #8e44ad;
+        }
+
         .type-dropship {
             color: #f5576c;
         }
@@ -1031,6 +1035,7 @@
                         <option value="all">All Types</option>
                         <option value="B2C">B2C</option>
                         <option value="B2B">B2B</option>
+                        <option value="C2C">C2C</option>
                         <option value="Dropship">DS (Dropship)</option>
                         <option value="Wholesale">Wholesale</option>
                     </select>
@@ -1415,6 +1420,7 @@
                                 <option value="">Select Type</option>
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
+                                <option value="C2C">C2C</option>
                                 <option value="Dropship">DS</option>
                                 <option value="Wholesale">Wholesale</option>
                             </select>
@@ -1518,6 +1524,7 @@
                                 <option value="">Select Type</option>
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
+                                <option value="C2C">C2C</option>
                                 <option value="Dropship">DS</option>
                                 <option value="Wholesale">Wholesale</option>
                             </select>
@@ -3290,7 +3297,7 @@
                         hozAlign: "center",
                         width: 48,
                         minWidth: 44,
-                        headerTooltip: "Channel type (B2C, B2B, DS, Wholesale).",
+                        headerTooltip: "Channel type (B2C, B2B, C2C, DS, Wholesale).",
                         formatter: function(cell) {
                             const type = (cell.getValue() || '').toString().trim();
                             if (!type) {
@@ -3300,6 +3307,7 @@
                             const known = {
                                 b2c: 'type-b2c',
                                 b2b: 'type-b2b',
+                                c2c: 'type-c2c',
                                 dropship: 'type-dropship',
                                 ds: 'type-dropship',
                                 wholesale: 'type-wholesale',

@@ -8821,7 +8821,7 @@ class ChannelMasterController extends Controller
                 ->orderByRaw("CASE WHEN LOWER(REPLACE(REPLACE(REPLACE(channel, ' ', ''), '-', ''), '_', '')) = 'cjdropshipping' THEN 0 ELSE 1 END")
                 ->orderBy('l30_sales', 'desc');
             
-            if ($section && in_array($section, ['B2C', 'B2B', 'Dropship', 'Wholesale'], true)) {
+            if ($section && in_array($section, ['B2C', 'B2B', 'C2C', 'Dropship', 'Wholesale'], true)) {
                 $query->where('type', $section);
             }
 
