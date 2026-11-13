@@ -143,6 +143,8 @@ return [
         'run_days' => (int) env('ATTENDANCE_CHECKUP_RUN_DAYS', 2),
         // A single session this long with (almost) no break: machine left running / never clocked out.
         'marathon_hours' => (float) env('ATTENDANCE_CHECKUP_MARATHON_HOURS', 14),
+        // Silence between two heartbeats longer than this (sleep / app closed) ends the "unbroken" stretch.
+        'marathon_gap_seconds' => (int) env('ATTENDANCE_CHECKUP_MARATHON_GAP_SECONDS', 300),
         // Fewer screenshots than this share of the expected count: screen capture blocked or disabled.
         'min_screenshot_ratio' => (float) env('ATTENDANCE_CHECKUP_MIN_SCREENSHOT_RATIO', 0.4),
     ],

@@ -333,6 +333,8 @@ class AttendanceAiMisuseService
         $shotInterval = max(30, (int) config('attendance.screenshot_interval_seconds', 120));
 
         $heartbeatInterval = max(1, (int) config('attendance.heartbeat_interval_seconds', 15));
+        // Silence longer than this between two heartbeats ends a continuous stretch.
+        $gapSeconds = max($heartbeatInterval * 2, (int) ($cfg['marathon_gap_seconds'] ?? 300));
 
         foreach ($sessions as $session) {
             // Hours can be added or corrected by hand (manual sessions, corrected start / end / totals),
@@ -343,7 +345,11 @@ class AttendanceAiMisuseService
                 continue;
             }
             $coveredSeconds = (int) $session->heartbeat_count * $heartbeatInterval;
-            $coveredHours = $coveredSeconds / 3600;
+            $totalCoveredHours = $coveredSeconds / 3600;
+
+            // Only an unbroken stretch counts: a laptop that slept or an app that was closed for hours
+            // leaves a gap in the heartbeats, and the hours on either side of it are not one marathon.
+            $coveredHours = $this->longestHeartbeatRunSeconds($session, $heartbeatInterval, $gapSeconds) / 3600;
 
             // The agent was sending heartbeats for the whole stretch, with no break.
             if ($coveredHours >= $marathonHours && (int) $session->total_break_seconds < 3600) {
@@ -357,6 +363,8 @@ class AttendanceAiMisuseService
                     'evidence' => [
                         'session_id' => $session->id,
                         'heartbeat_covered_hours' => round($coveredHours, 2),
+                        'longest_unbroken_hours' => round($coveredHours, 2),
+                        'total_heartbeat_hours' => round($totalCoveredHours, 2),
                         'break_seconds' => (int) $session->total_break_seconds,
                     ],
                     'source' => 'rules',
@@ -390,6 +398,40 @@ class AttendanceAiMisuseService
         }
 
         return $flags;
+    }
+
+    /**
+     * Length of the longest stretch of heartbeats with no silence longer than $gapSeconds between
+     * two of them. Each heartbeat stands for $interval seconds of coverage.
+     */
+    private function longestHeartbeatRunSeconds(AttendanceSession $session, int $interval, int $gapSeconds): int
+    {
+        $longest = 0;
+        $runStart = null;
+        $previous = null;
+
+        $times = $session->activityLogs()
+            ->where('source', 'desktop')
+            ->orderBy('recorded_at')
+            ->pluck('recorded_at');
+
+        foreach ($times as $recordedAt) {
+            $at = \Illuminate\Support\Carbon::parse($recordedAt)->getTimestamp();
+
+            if ($previous !== null && ($at - $previous) > $gapSeconds) {
+                $longest = max($longest, ($previous - $runStart) + $interval);
+                $runStart = null;
+            }
+
+            $runStart ??= $at;
+            $previous = $at;
+        }
+
+        if ($previous !== null && $runStart !== null) {
+            $longest = max($longest, ($previous - $runStart) + $interval);
+        }
+
+        return (int) $longest;
     }
 
     /**
