@@ -98,6 +98,9 @@ class AmazonListingCounts
      */
     public static function nrReqFromDataView(mixed $raw): string
     {
+        if (ListingCountsEngine::NRL_DISABLED) {
+            return 'REQ';
+        }
         if (is_string($raw)) {
             $trimmed = strtoupper(trim($raw));
             if (in_array($trimmed, ['NRL', 'NR'], true)) {

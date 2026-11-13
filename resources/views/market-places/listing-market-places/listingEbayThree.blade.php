@@ -521,7 +521,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (every SKU not listed, REQ or NRL). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -739,9 +739,9 @@
                         if (item.nr_req === 'NR') {
                             metrics.nrlTotal++;
                         }
-                        if (!parked && item.nr_req !== 'NR') {
+                        if (!parked) {
                             if (item.listed === 'Listed') {
-                                metrics.listedTotal++;
+                                if (item.nr_req !== 'NR') metrics.listedTotal++;
                             } else if (item.listed === 'Pending' || !item.listed) {
                                 metrics.pendingTotal++;
                             }
@@ -795,7 +795,7 @@
 
                 if (listedFilter === 'Pending') {
                     if (data.is_parent || isParentSku(data.sku) || (invFilter === 'inv-only' && !(parseFloat(data.INV) > 0))) return false;
-                    if (data.nr_req === 'NR' || data.listed === 'Created' || data.listed === 'Incomplete' || data.page_created) return false;
+                    if (data.listed === 'Created' || data.listed === 'Incomplete' || data.page_created) return false;
                     if (data.listed && data.listed !== 'Pending') return false;
                 } else if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
@@ -1037,7 +1037,7 @@
                 if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__ebayMissingApplied) {
                     window.__ebayMissingApplied = true;
                     $('#row-data-type').val('sku');
-                    $('#nr-req-filter').val('REQ');
+                    $('#nr-req-filter').val('all');
                     $('#link-filter').val('all');
                     $('#listed-filter').val('Pending');
                     $('#missing-l-badge').addClass('is-active');
@@ -1066,7 +1066,7 @@
                 const $badge = $('#missing-l-badge');
                 if (missingLFilterActive) {
                     $('#row-data-type').val('sku');
-                    $('#nr-req-filter').val('REQ');
+                    $('#nr-req-filter').val('all');
                     $('#link-filter').val('all');
                     $('#listed-filter').val('Pending');
                     $badge.addClass('is-active');
@@ -1090,7 +1090,7 @@
                 if (!missingLFilterActive) return;
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
-                    $('#nr-req-filter').val() === 'REQ' &&
+                    $('#nr-req-filter').val() === 'all' &&
                     $('#row-data-type').val() === 'sku';
                 if (!stillMissing) {
                     missingLFilterActive = false;
