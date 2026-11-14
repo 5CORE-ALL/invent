@@ -259,6 +259,9 @@
         overflow: hidden;
         transition: all .15s;
     }
+    #claimModal .claim-shot-paste { border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 0 5px; font-size: 11px; line-height: 18px; cursor: pointer; }
+    #claimModal .claim-shot-paste:hover { background: #eaf2ff; border-color: #2563eb; }
+    #claimShotToast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 4000; max-width: 460px; background: #0f172a; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.25); display: none; text-align: center; }
     #claimModal .claim-shot:hover { border-color: #2563eb; color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .1); }
     #claimModal .claim-shot.has-shot { border-color: #22c55e; }
     #claimModal #claimTable tr.claim-drop-over > td,
@@ -599,7 +602,7 @@
                   <th class="col-num6">Amount</th>
                   <th class="col-reason" style="min-width: 240px;">Reason/Notes</th>
                   <th class="col-attach" title="Image (if any)"><i class="fas fa-paperclip"></i></th>
-                  <th class="col-shot">Screenshot</th>
+                  <th class="col-shot">Screenshot <button type="button" id="claimShotPasteBtn" class="claim-shot-paste" title="Paste a copied screenshot / snippet (or press Cmd/Ctrl+V)"><i class="fas fa-paste"></i></button></th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -1436,14 +1439,25 @@
             return modal && modal.classList.contains('show') && !(fieldset && fieldset.disabled);
         }
 
-        document.addEventListener('paste', function (e) {
-            if (!claimOpenAndEditable()) return;
-            const items = (e.clipboardData && e.clipboardData.items) ? Array.from(e.clipboardData.items) : [];
-            const imgItem = items.find(function (it) { return it.kind === 'file' && /^image\//.test(it.type); });
-            if (!imgItem) return; // plain text paste: leave it alone
+        let toastTimer = null;
+        function shotToast(msg) {
+            let t = document.getElementById('claimShotToast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'claimShotToast';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.style.display = 'block';
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { t.style.display = 'none'; }, 5000);
+        }
 
-            // Target: the camera under the mouse, else the row being edited, else the first empty row.
-            let label = hovered;
+        const MAC_HINT = 'No screenshot on the clipboard. On Mac press Cmd+Ctrl+Shift+4 (note the Ctrl) to copy a snippet instead of saving it to the Desktop, then paste again.';
+
+        // Target: the camera under the mouse, else the row being edited, else the first empty row.
+        function pasteTarget(useHover) {
+            let label = useHover ? hovered : null;
             if (!label && document.activeElement && document.activeElement.closest) {
                 const row = document.activeElement.closest('#claimTableBody tr');
                 if (row) label = row.querySelector('.claim-shot');
@@ -1452,14 +1466,74 @@
                 const all = Array.from(document.querySelectorAll('#claimTableBody .claim-shot'));
                 label = all.find(function (l) { return !l.classList.contains('has-shot'); }) || all[0];
             }
-            if (!label) return;
+            return label;
+        }
 
-            const blob = imgItem.getAsFile();
-            if (!blob) return;
+        function applyBlob(blob, useHover) {
+            const label = pasteTarget(useHover);
+            if (!label) return false;
+            const type = blob.type || 'image/png';
+            const ext = (type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+            setShotFile(label, new File([blob], 'snippet_' + Date.now() + '.' + ext, { type: type }));
+            shotToast('Screenshot added.');
+            return true;
+        }
+
+        document.addEventListener('paste', function (e) {
+            if (!claimOpenAndEditable()) return;
+            const cd = e.clipboardData;
+            let blob = null;
+            if (cd) {
+                const items = cd.items ? Array.from(cd.items) : [];
+                const imgItem = items.find(function (it) { return it.kind === 'file' && /^image\//.test(it.type); });
+                if (imgItem) blob = imgItem.getAsFile();
+                if (!blob && cd.files && cd.files.length) {
+                    blob = Array.from(cd.files).find(function (f) { return /^image\//.test(f.type); }) || null;
+                }
+            }
+
+            if (!blob) {
+                // Plain-text paste into a field is left alone; otherwise explain what to do.
+                const a = document.activeElement;
+                const typing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+                const overShot = !!hovered;
+                if (!typing || overShot) {
+                    const hasText = cd && cd.types && Array.prototype.indexOf.call(cd.types, 'text/plain') !== -1;
+                    if (!hasText || overShot) shotToast(MAC_HINT);
+                }
+                return;
+            }
+
             e.preventDefault();
-            const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-            setShotFile(label, new File([blob], 'snippet_' + Date.now() + '.' + ext, { type: blob.type }));
+            applyBlob(blob, true);
         });
+
+        // Header "paste" button: reads the clipboard directly (needs HTTPS/localhost + permission).
+        const pasteBtn = document.getElementById('claimShotPasteBtn');
+        if (pasteBtn) {
+            pasteBtn.addEventListener('click', async function (e) {
+                e.preventDefault();
+                if (!claimOpenAndEditable()) return;
+                if (!navigator.clipboard || !navigator.clipboard.read) {
+                    shotToast('Click on the page and press Cmd+V (Ctrl+V) to paste your screenshot. ' + 'On Mac copy the snippet with Cmd+Ctrl+Shift+4.');
+                    return;
+                }
+                try {
+                    const clipItems = await navigator.clipboard.read();
+                    for (const ci of clipItems) {
+                        const type = ci.types.find(function (t) { return /^image\//.test(t); });
+                        if (type) {
+                            const blob = await ci.getType(type);
+                            applyBlob(blob, false);
+                            return;
+                        }
+                    }
+                    shotToast(MAC_HINT);
+                } catch (err) {
+                    shotToast('Clipboard access was blocked. Press Cmd+V (Ctrl+V) to paste instead.');
+                }
+            });
+        }
 
         // Drag & drop: drop image(s) on a row's camera, anywhere on a row, or anywhere in the items area.
         // Extra images fill the following empty rows (new rows are added as needed).

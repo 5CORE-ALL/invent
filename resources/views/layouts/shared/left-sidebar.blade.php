@@ -3183,9 +3183,6 @@
                             <a href="{{ route('supplier.list') }}">Purchase Suppliers</a>
                         </li>
                         <li>
-                            <a href="{{ route('claim.reimbursement') }}">Purchase Claims & Reimbursements</a>
-                        </li>
-                        <li>
                             <a href="{{ route('forecast.analysis') }}">Purchase Forecast Analysis</a>
                         </li>
                         <li>

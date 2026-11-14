@@ -92,9 +92,6 @@
                                 <a href="{{ route('supplier.list') }}">Purchase Suppliers</a>
                             </li>
                             <li>
-                                <a href="{{ route('claim.reimbursement') }}">Purchase Claims & Reimbursements</a>
-                            </li>
-                            <li>
                                 <a href="{{ route('to.order.analysis') }}">Purchase Order</a>
                             </li>
                             <li>
