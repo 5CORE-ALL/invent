@@ -6523,8 +6523,17 @@ class ChannelMasterController extends Controller
     {
         $hist = \Cache::get('channel_master_inv_dil_hist', []);
         if (! is_array($hist)) {
-            return [];
+            $hist = [];
         }
+
+        // The cache copy is wiped by every cache:clear / optimize:clear on deploy, which left the
+        // band dots with a single day (always gray). badges_data_histories is the durable source
+        // of the same numbers, so fill every missing day / band from it.
+        foreach ($this->inventoryDilHistoryFromBadges() as $date => $row) {
+            $hist[$date] = array_merge($row, is_array($hist[$date] ?? null) ? $hist[$date] : []);
+        }
+        ksort($hist);
+
         $out = [];
         foreach ($hist as $date => $row) {
             if (! is_array($row)) {
@@ -6538,6 +6547,45 @@ class ChannelMasterController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Daily Inv@SP / Inv@LP $ per DIL band from badges_data_histories (all-channels page),
+     * shaped like the cache rows: date => ['zero_sp' => ..., 'zero_lp' => ..., 'red1_sp' => ...].
+     *
+     * @return array<string, array<string, float>>
+     */
+    private function inventoryDilHistoryFromBadges(int $days = 90): array
+    {
+        try {
+            if (! Schema::hasTable('badges_data_histories')) {
+                return [];
+            }
+            $fields = [];
+            foreach (array_keys($this->invDilBandDefs()) as $band) {
+                $fields['inv_sp_'.$band] = $band.'_sp';
+                $fields['inv_lp_'.$band] = $band.'_lp';
+            }
+            $since = now('America/Los_Angeles')->subDays($days)->toDateString();
+            $rows = \App\Models\BadgeDataHistory::query()
+                ->where('page_name', \App\Support\Marketplace\AmmColumnHistory::ALL_PAGE)
+                ->whereIn('field', array_keys($fields))
+                ->whereDate('snapshot_date', '>=', $since)
+                ->orderBy('snapshot_date')
+                ->get(['field', 'snapshot_date', 'value']);
+
+            $out = [];
+            foreach ($rows as $r) {
+                $date = $r->snapshot_date instanceof \Carbon\CarbonInterface
+                    ? $r->snapshot_date->toDateString()
+                    : substr((string) $r->snapshot_date, 0, 10);
+                $out[$date][$fields[$r->field]] = (float) $r->value;
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**

@@ -9019,9 +9019,6 @@
                                     + '<button type="button" class="amm-inv-row-hist-dot" data-chart="sp" data-band="' + d.key + '" '
                                     + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
                             },
-                            cellClick: function(e) {
-                                if (e.target.closest && e.target.closest('.amm-inv-row-hist-dot')) e.stopPropagation();
-                            },
                             bottomCalc: 'sum',
                             bottomCalcFormatter: function(cell) {
                                 return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
