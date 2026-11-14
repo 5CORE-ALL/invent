@@ -94,6 +94,36 @@ class ListingChannelRefresher
         return $plan;
     }
 
+    /**
+     * Every marketplace slug, quick ones first. The slow live checks (every listed SKU against the
+     * marketplace API, eBay GetItem) go last so a long one cannot hold up the rest of the queue.
+     *
+     * @return list<string>
+     */
+    public static function orderedSlugs(): array
+    {
+        $plan = self::plan();
+        $weight = static function (array $steps): int {
+            $w = 0;
+            foreach ($steps as $step) {
+                $type = (string) ($step['type'] ?? '');
+                if ($type === 'ebay' || $type === 'ebay_verify') {
+                    return 3;
+                }
+                if ($type === 'stale_verify') {
+                    $w = max($w, 2);
+                }
+            }
+
+            return $w;
+        };
+
+        $slugs = array_keys($plan);
+        usort($slugs, static fn (string $a, string $b): int => $weight($plan[$a]) <=> $weight($plan[$b]));
+
+        return $slugs;
+    }
+
     public static function normalizeSlug(string $slug): string
     {
         return strtolower(preg_replace('/[^a-z0-9]/i', '', $slug) ?? '');

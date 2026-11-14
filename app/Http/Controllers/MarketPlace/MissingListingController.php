@@ -78,6 +78,7 @@ class MissingListingController extends Controller
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
                     $cached['data'] = $this->overlayListingUrls($cached['data']);
+                    $cached['data'] = $this->overlayVariationTypes($cached['data']);
                     $cached['data'] = $this->withoutHiddenChannels($cached['data']);
                     $cached['data'] = $c2cOnly ? $this->onlyC2c($cached['data']) : $this->withoutC2c($cached['data']);
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
@@ -104,6 +105,7 @@ class MissingListingController extends Controller
                 $payload = $this->buildMinimalChannelPayload();
             }
             try {
+                $payload['data'] = $this->overlayVariationTypes($payload['data'] ?? []);
                 $payload['data'] = $this->overlayCsvListedCounts($payload['data'] ?? []);
                 $payload['data'] = $c2cOnly ? $this->onlyC2c($payload['data']) : $this->withoutC2c($payload['data']);
                 $payload['count'] = count($payload['data']);
@@ -808,6 +810,24 @@ class MissingListingController extends Controller
                 ? self::normalizeListingMode($master->listing_mode ?? null)
                 : null;
             $rows[$i]['type'] = $master ? $this->listingTypeFor($master) : '';
+        }
+
+        return $rows;
+    }
+
+    /**
+     * "Variation/Single" is the Active Channel Master column (channel_variation_types, one row per channel).
+     * Read on every request, so a change made on either page shows on the other without a cache rebuild.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayVariationTypes(array $rows): array
+    {
+        $map = \App\Models\ChannelVariationType::map();
+        foreach ($rows as $i => $row) {
+            $key = \App\Models\ChannelVariationType::keyFor((string) ($row['channel'] ?? ''));
+            $rows[$i]['variation_single'] = $key !== '' ? ($map[$key] ?? '') : '';
         }
 
         return $rows;

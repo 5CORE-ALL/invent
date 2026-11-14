@@ -120,6 +120,19 @@
         .ml-mode-select option[value="CSV"] { background: #cfe2ff; color: #084298; }
         .ml-mode-select option[value="Manual"] { background: #ffe5d0; color: #984c0c; }
         .ml-mode-select option[value="Semi"] { background: #e2d9f3; color: #432874; }
+        .variation-single-select {
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 1px 4px;
+            height: 26px;
+            max-width: 112px;
+            cursor: pointer;
+            background: #fff;
+        }
+        .variation-single-select.is-variation { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+        .variation-single-select.is-single { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
         .ml-source-api {
             color: #198754;
             font-weight: 700;
@@ -204,6 +217,13 @@
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
+                    @unless($c2c)
+                        <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Pull live listing data from every marketplace now and recount Missing L (the same refresh also runs automatically every day)">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh all Missing L now
+                        </button>
+                        <button type="button" class="btn btn-sm btn-link p-0" id="ml-refresh-all-details" data-bs-toggle="modal" data-bs-target="#mlRefreshAllModal">Details</button>
+                        <span class="small text-muted" id="ml-refresh-all-status"></span>
+                    @endunless
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -215,6 +235,26 @@
             </div>
         </div>
     </div>
+
+    @unless($c2c)
+    <div class="modal fade" id="mlRefreshAllModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title">Marketplace refresh status</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="p-2 small text-muted border-bottom" id="ml-refresh-all-summary"></div>
+                    <table class="table table-sm table-hover mb-0" style="font-size:12px;">
+                        <thead class="table-light"><tr><th>Marketplace</th><th>State</th><th class="text-end">Missing L</th><th>Last finished</th><th>Detail</th></tr></thead>
+                        <tbody id="ml-refresh-all-rows"><tr><td colspan="5" class="text-muted p-3">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endunless
 
     <div class="modal fade p-0" id="mlMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
@@ -851,6 +891,25 @@
                     },
                 }, shortList({ B2B: 'B2B', B2C: 'B2C', C2C: 'C2C', Dropship: 'Dropship', Wholesale: 'Wholesale' })),
                 Object.assign({
+                    // Same setting as the Variation/Single column on Active Channel Master (/all-marketplace-master).
+                    title: "Variation/Single",
+                    field: "variation_single",
+                    width: 140,
+                    hozAlign: "center",
+                    headerSort: true,
+                    headerTooltip: "Does this channel list products as Variation or Single? Shared with the Active Channel Master column.",
+                    formatter: function(cell) {
+                        const current = String(cell.getValue() || '').trim();
+                        const channel = String(cell.getRow().getData().channel || '').trim();
+                        const cls = current === 'Variation' ? 'is-variation' : (current === 'Single' ? 'is-single' : '');
+                        return `<select class="variation-single-select ${cls}" data-channel="${escapeHtml(channel)}" aria-label="Variation or Single">`
+                            + `<option value=""${current === '' ? ' selected' : ''}>-</option>`
+                            + `<option value="Variation"${current === 'Variation' ? ' selected' : ''}>Variation</option>`
+                            + `<option value="Single"${current === 'Single' ? ' selected' : ''}>Single</option>`
+                            + '</select>';
+                    },
+                }, shortList({ Variation: 'Variation', Single: 'Single' })),
+                Object.assign({
                     title: "Data Source",
                     field: "data_source",
                     width: 140,
@@ -1074,8 +1133,33 @@
             ],
         });
 
-        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select, #missing-listing-table .ml-type-select', function(e) {
+        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select, #missing-listing-table .ml-type-select, #missing-listing-table .variation-single-select', function(e) {
             e.stopPropagation();
+        });
+
+        // Saves to channel_variation_types — the same table the Active Channel Master column uses.
+        $(document).on('change', '#missing-listing-table .variation-single-select', function() {
+            const $select = $(this);
+            const channel = String($select.data('channel') || '');
+            const next = String($select.val() || '');
+            const row = table.getRows().find(function(r) { return String(r.getData().channel || '') === channel; });
+            const prev = row ? String(row.getData().variation_single || '') : '';
+            if (next === prev) return;
+            $select.prop('disabled', true);
+            $.ajax({
+                url: "{{ route('channels.master.variation.type') }}",
+                method: 'POST',
+                data: { channel: channel, value: next },
+                dataType: 'json',
+            }).done(function() {
+                $select.removeClass('is-variation is-single').addClass(next === 'Variation' ? 'is-variation' : (next === 'Single' ? 'is-single' : ''));
+                if (row) row.update({ variation_single: next });
+                showToast(channel + ': ' + (next || 'cleared'), 'success');
+            }).fail(function(xhr) {
+                $select.val(prev);
+                const msg = (xhr.responseJSON && (xhr.responseJSON.message || Object.values(xhr.responseJSON.errors || {}).flat().join(' '))) || 'Could not save Variation/Single.';
+                showToast(msg, 'error');
+            }).always(function() { $select.prop('disabled', false); });
         });
 
         $(document).on('change', '#missing-listing-table .ml-mode-select', function() {
@@ -1202,5 +1286,108 @@
         });
     });
 </script>
+@unless($c2c)
+<script>
+(function () {
+    const startUrl = @json(route('listing.refresh.all.start'));
+    const statusUrl = @json(route('listing.refresh.all.status'));
+    const csrf = @json(csrf_token());
+    let timer = null;
+    let lastDone = -1;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function ago(iso) {
+        if (!iso) return '—';
+        const t = new Date(iso).getTime();
+        if (isNaN(t)) return '—';
+        const m = Math.round((Date.now() - t) / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return m + ' min ago';
+        if (m < 2880) return Math.round(m / 60) + ' h ago';
+        return Math.round(m / 1440) + ' days ago';
+    }
+
+    function render(res) {
+        const s = res.summary || {};
+        const finished = (s.done || 0) + (s.failed || 0);
+        const line = s.running > 0
+            ? 'Refreshing ' + finished + ' / ' + s.total + ' marketplaces…'
+            : (s.total ? 'Refreshed ' + (s.done || 0) + ' of ' + s.total + (s.failed ? ', ' + s.failed + ' failed' : '')
+                + (s.stale ? ', ' + s.stale + ' not refreshed in 26 h' : '') : '');
+        $('#ml-refresh-all-status').text(line + (res.computed_at ? ' · counts built ' + ago(res.computed_at) : ''));
+        $('#ml-refresh-all-summary').text(
+            'Total Missing L ' + (res.total_missing_l != null ? Number(res.total_missing_l).toLocaleString('en-US') : '—')
+            + ' · counts built ' + ago(res.computed_at)
+            + ' · running ' + (s.running || 0) + ', done ' + (s.done || 0) + ', failed ' + (s.failed || 0)
+            + ', never run ' + (s.never || 0) + ', older than 26 h ' + (s.stale || 0));
+        const colors = { done: 'success', failed: 'danger', running: 'primary', idle: 'secondary' };
+        $('#ml-refresh-all-rows').html((res.rows || []).map(function (r) {
+            const detail = (r.failed_steps && r.failed_steps.length) ? r.failed_steps.join(' | ') : r.message;
+            return '<tr><td>' + esc(r.slug) + '</td>'
+                + '<td><span class="badge bg-' + (colors[r.state] || 'secondary') + '">' + esc(r.state === 'idle' ? 'never run' : r.state) + '</span></td>'
+                + '<td class="text-end">' + (r.missing_l != null ? Number(r.missing_l).toLocaleString('en-US') : '—') + '</td>'
+                + '<td>' + esc(ago(r.finished_at)) + '</td>'
+                + '<td style="max-width:360px;white-space:normal;">' + esc(detail) + '</td></tr>';
+        }).join('') || '<tr><td colspan="5" class="text-muted p-3">No marketplaces.</td></tr>');
+    }
+
+    function poll() {
+        $.getJSON(statusUrl).done(function (res) {
+            render(res);
+            const s = res.summary || {};
+            const finished = (s.done || 0) + (s.failed || 0);
+            // Each finished marketplace patches its row in the cached payload: reload the table when that grows.
+            if (finished !== lastDone && typeof table !== 'undefined' && table) {
+                lastDone = finished;
+                table.replaceData();
+            }
+            if ((s.running || 0) > 0) {
+                timer = setTimeout(poll, 5000);
+            } else {
+                timer = null;
+                $('#ml-refresh-all-btn').prop('disabled', false).html('<i class="fas fa-sync-alt me-1"></i>Refresh all Missing L now');
+            }
+        }).fail(function () {
+            timer = setTimeout(poll, 8000);
+        });
+    }
+
+    $('#ml-refresh-all-btn').on('click', function () {
+        const btn = $(this);
+        if (!confirm('Refresh live listing data for ALL marketplaces now? Quick ones finish in minutes; the slow live checks (eBay, Amazon, …) can take longer. You can leave this page open or close it.')) return;
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Queuing…');
+        $.ajax({ url: startUrl, method: 'POST', dataType: 'json', headers: { 'X-CSRF-TOKEN': csrf } })
+            .done(function (res) {
+                showToast('Queued ' + (res.queued || 0) + ' marketplace refresh(es)' + (res.already_running ? ', ' + res.already_running + ' already running' : '') + '.', 'success');
+                render(res);
+                lastDone = -1;
+                btn.html('<span class="spinner-border spinner-border-sm me-1"></span>Refreshing…');
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(poll, 4000);
+            })
+            .fail(function (xhr) {
+                btn.prop('disabled', false).html('<i class="fas fa-sync-alt me-1"></i>Refresh all Missing L now');
+                showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not start the refresh.', 'error');
+            });
+    });
+
+    $('#mlRefreshAllModal').on('show.bs.modal', function () { poll(); });
+
+    // Show the last-run state without a click, and resume the progress display if a refresh is already running.
+    $.getJSON(statusUrl).done(function (res) {
+        render(res);
+        if (((res.summary || {}).running || 0) > 0) {
+            $('#ml-refresh-all-btn').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Refreshing…');
+            timer = setTimeout(poll, 5000);
+        }
+    });
+})();
+</script>
+@endunless
 @include('partials.master-listing-form')
 @endsection

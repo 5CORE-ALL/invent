@@ -19,7 +19,7 @@ class RefreshListingChannels extends Command
     public function handle(ListingChannelRefresher $refresher): int
     {
         $arg = ListingChannelRefresher::normalizeSlug((string) $this->argument('channel'));
-        $slugs = $arg === 'all' ? array_keys(ListingChannelRefresher::plan()) : [$arg];
+        $slugs = $arg === 'all' ? ListingChannelRefresher::orderedSlugs() : [$arg];
         $manual = (bool) $this->option('force');
         $failed = 0;
 
