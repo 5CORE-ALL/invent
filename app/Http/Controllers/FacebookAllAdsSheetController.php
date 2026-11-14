@@ -741,6 +741,27 @@ class FacebookAllAdsSheetController extends Controller
         }
         $unmatched = $unmatchedFromOtherSheets;
 
+        // Live Shopify overlay (ShopifyQL, last 30 days, cached 15 min):
+        // SALES / SOLD / Sessions come straight from Shopify per campaign id
+        // (summed over Meta channels), so Acos / CVR / CPS / Sbgt below all
+        // calculate from live numbers. A campaign Shopify has no row for has
+        // really sold nothing → 0. If Shopify can't be reached ($liveShopify
+        // is null) the uploaded Shopify export values are kept as a fallback.
+        $liveShopify = $this->liveShopifyCampaignStats(30);
+        if ($liveShopify !== null) {
+            foreach ($merged as $cid => &$mRow) {
+                $key = (string) ($mRow['_campaign_id'] ?? $cid);
+                if (! preg_match('/^\d{6,}$/', $key)) {
+                    continue; // unresolved / non-id rows keep their uploaded values
+                }
+                $ls = $liveShopify[$key] ?? ['sales' => 0.0, 'orders' => 0, 'sessions' => 0];
+                $mRow['Total sales (last non-direct click)']  = (string) round($ls['sales'], 2);
+                $mRow['Orders (last non-direct click)']       = (string) $ls['orders'];
+                $mRow['Sessions']                             = (string) $ls['sessions'];
+            }
+            unset($mRow);
+        }
+
         // Project each merged row to the curated MERGED_COLUMNS set in two
         // passes: pass 1 resolves columns with `sources`, pass 2 computes
         // columns with `formula = [num, den, decimals]` using the values
@@ -879,22 +900,6 @@ class FacebookAllAdsSheetController extends Controller
             $row['_lt_impr']        = $lt ? (int) $lt->impr : null;
             $row['_lt_clk']         = $lt ? (int) $lt->clk : null;
             $row['Lifetime CTR']    = $lt ? ($this->divPct($lt->clk, $lt->impr, 1) ?? '0.0%') : null;
-        }
-        unset($row);
-
-        // Pass 4c — live Shopify sales / orders / sessions per campaign
-        // (ShopifyQL, last 30 days, cached 15 min). Stays blank when Shopify
-        // can't be reached; a campaign Shopify has no row for shows 0.
-        $liveShopify = $this->liveShopifyCampaignStats(30);
-        foreach ($projected as &$row) {
-            if ($liveShopify === null) {
-                $row['Shopify Sales'] = $row['Shopify Sold'] = $row['Sessions'] = null;
-                continue;
-            }
-            $ls = $liveShopify[(string) ($row['CAMPAIGN ID'] ?? '')] ?? ['sales' => 0.0, 'orders' => 0, 'sessions' => 0];
-            $row['Shopify Sales'] = '$' . number_format($ls['sales'], 2);
-            $row['Shopify Sold']  = (string) $ls['orders'];
-            $row['Sessions']      = (string) $ls['sessions'];
         }
         unset($row);
 
@@ -2987,12 +2992,10 @@ class FacebookAllAdsSheetController extends Controller
         // rendered with a "$" prefix. Mode "cps" skips the *100 and
         // the trailing "%" that `divPct()` adds.
         ['title' => 'CPS',           'formula' => ['SPEND', 'SOLD', 0, 'cps']],
-        // Live Shopify (ShopifyQL, last 30 days) per campaign, summed across
-        // Meta channels. Display-only: filled in Pass 4c and deliberately NOT
-        // used by Acos / Sbgt, which stay on the uploaded Shopify export.
-        ['title' => 'Shopify Sales', 'sources' => []],
-        ['title' => 'Shopify Sold',  'sources' => []],
-        ['title' => 'Sessions',      'sources' => []],
+        // Live Shopify sessions (last 30 days) per campaign — set by the live
+        // overlay in getMergedView(); blank if the Shopify pull failed and the
+        // uploaded export has no Sessions column.
+        ['title' => 'Sessions',      'sources' => ['Sessions']],
         // Lifetime (all-time) ACOS and SALES per campaign. Placeholders here —
         // the values are attached in "Pass 4b" from facebook_campaign_lifetime_stats
         // (filled by `facebook:sync-lifetime-stats` from Meta, date_preset=maximum).
