@@ -51,7 +51,7 @@
             outline: 1px solid #262626;
             background: #e0eaff;
         }
-
+    
         .tabulator-row:hover {
             background-color: #dbeafe !important;
         }

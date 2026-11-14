@@ -2908,14 +2908,15 @@
                 // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
                 // days somebody opened this page. This browser's own points only fill a day the server has no row for.
                 drawLocal();
-                $.ajax({ url: '/inv-days/clearance/count-history', method: 'GET', data: { days: 30 } }).done(function(res) {
+                // The graph is this page's own count (same as the Count in the modal), not the all-SKU total.
+                $.ajax({ url: '/inv-days/clearance/count-history', method: 'GET', data: { days: 30, channel: 'amazon' } }).done(function(res) {
                     const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
                     const byDate = {};
                     amzDgLocalHistory(storeKey).forEach(function(r) { if (r.clearance !== undefined) byDate[r.date] = { date: r.date, label: r.label, clearance: r.clearance }; });
                     server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, clearance: r.count, inv: r.inv }; });
                     const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
-                    // With server data every day (today included) comes from the same source, so the line has no jump at today.
-                    amzDgDrawHist(chart, band, server.length ? amzDgPadHistoryDays(merged, 30) : applyToday(merged));
+                    // Today is always the number the modal shows right now.
+                    amzDgDrawHist(chart, band, live && live.clearance != null ? applyToday(merged) : amzDgPadHistoryDays(merged, 30));
                 });
                 return;
             }
@@ -3174,6 +3175,33 @@
             });
             return { count: n, inv: Math.round(inv) };
         }
+        /**
+         * Save this page's Clearance count + INV on the server (one row per page per day, last write wins), so the graph shows the same
+         * number as the modal. Only a loaded table reports: a half-loaded one would save a wrong day.
+         */
+        let amzClearanceReportSig = '';
+        let amzClearanceReportTimer = null;
+        function amzClearanceReportCount(n, inv) {
+            try {
+                if (!amzClearanceYesSet) return;
+                let rowsSeen = 0;
+                amzDgEachInvChild(function() { rowsSeen++; });
+                if (!rowsSeen) return;
+                const sig = n + '|' + inv;
+                if (sig === amzClearanceReportSig) return;
+                clearTimeout(amzClearanceReportTimer);
+                amzClearanceReportTimer = setTimeout(function() {
+                    if (document.visibilityState === 'hidden') return;
+                    amzClearanceReportSig = sig;
+                    $.ajax({
+                        url: @json(route('inv.days.clearance.count-history.save')),
+                        method: 'POST',
+                        data: { channel: 'amazon', count: n, inv: inv, _token: $('meta[name="csrf-token"]').attr('content') },
+                        error: function() { amzClearanceReportSig = ''; },
+                    });
+                }, 2500);
+            } catch (e) { /* ignore */ }
+        }
         function amzPaintClearanceSlabCount() {
             const el = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-count');
             const invEl = document.querySelector('#amz-dg-clearance-block .amz-dg-clearance-inv');
@@ -3187,6 +3215,7 @@
             const clrTotals = amzClearanceYesTotals();
             el.textContent = String(clrTotals.count);
             if (invEl) invEl.textContent = clrTotals.inv.toLocaleString();
+            amzClearanceReportCount(clrTotals.count, clrTotals.inv);
             amzPaintClearanceNroiText();
             if ($('#amzDilGroiModal').hasClass('show')) amzDgSnapRuleCounts();
             amzPaintRuleHistDots();

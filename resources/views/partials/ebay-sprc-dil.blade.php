@@ -2715,14 +2715,15 @@
             if (chart === 'clearance') {
                 // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
                 // days somebody opened this page. This browser's own points only fill a day the server has no row for.
-                $.ajax({ url: @json(route('inv.days.clearance.count-history')), method: 'GET', data: { days: 30 } }).done(function(res) {
+                // The graph is this page's own count (same as the Count in the modal), not the all-SKU total.
+                $.ajax({ url: @json(route('inv.days.clearance.count-history')), method: 'GET', data: { days: 30, channel: EBAY_DIL_GROI_CHANNEL } }).done(function(res) {
                     const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
                     const byDate = {};
                     ebayDgLocalHistory(storeKey).forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count }; });
                     server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count, inv: r.inv }; });
                     const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
-                    // With server data every day (today included) comes from the same source, so the line has no jump at today.
-                    ebayDgDrawHist(chart, band, server.length ? ebayDgPadHistoryDays(merged, 30) : applyToday(merged));
+                    // Today is always the number the modal shows right now.
+                    ebayDgDrawHist(chart, band, live && live.count != null ? applyToday(merged) : ebayDgPadHistoryDays(merged, 30));
                 });
                 return;
             }
@@ -2842,6 +2843,33 @@
             const el = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-nroi');
             if (el) el.textContent = ebayDgFmtNum(ebayClearanceNroi) + '%';
         }
+        /**
+         * Save this page's Clearance count + INV on the server (one row per page per day, last write wins), so the graph shows the same
+         * number as the modal. Only a loaded page reports: a half-loaded table would save a wrong day.
+         */
+        let ebayClearanceReportSig = '';
+        let ebayClearanceReportTimer = null;
+        function ebayClearanceReportCount(n, inv) {
+            try {
+                if (window._ebayDilRulesLoaded !== true || !ebayClearanceYesSet) return;
+                let rowsSeen = 0;
+                ebayDgEachInvChild(function() { rowsSeen++; });
+                if (!rowsSeen) return;
+                const sig = n + '|' + inv;
+                if (sig === ebayClearanceReportSig) return;
+                clearTimeout(ebayClearanceReportTimer);
+                ebayClearanceReportTimer = setTimeout(function() {
+                    if (document.visibilityState === 'hidden') return;
+                    ebayClearanceReportSig = sig;
+                    $.ajax({
+                        url: @json(route('inv.days.clearance.count-history.save')),
+                        method: 'POST',
+                        data: { channel: EBAY_DIL_GROI_CHANNEL, count: n, inv: inv, _token: $('meta[name="csrf-token"]').attr('content') },
+                        error: function() { ebayClearanceReportSig = ''; },
+                    });
+                }, 2500);
+            } catch (e) { /* ignore */ }
+        }
         function ebayPaintClearanceSlabCount() {
             const el = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-count');
             const invEl = document.querySelector('#ebay-dg-clearance-block .ebay-dg-clearance-inv');
@@ -2857,7 +2885,8 @@
             const n = totals.count;
             el.textContent = String(n);
             if (invEl) invEl.textContent = totals.inv.toLocaleString();
-            ebayDgClearanceLiveCounts = { count: n };
+            ebayDgClearanceLiveCounts = { count: n, inv: totals.inv };
+            ebayClearanceReportCount(n, totals.inv);
             // Daily history dot (same graph as the slab counts). Only a loaded page counts: a half-loaded table would save a wrong day.
             if (window._ebayDilRulesLoaded === true) ebayDgSnapLocal(ebayDgHistKey('clr'), ebayDgClearanceLiveCounts);
             // The CVR / LMP rule counts wait for this list (they leave out clearance SKUs): save them once it is here.

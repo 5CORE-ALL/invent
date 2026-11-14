@@ -318,11 +318,31 @@ class InvDaysController extends Controller
     {
         $days = (int) $request->query('days', 30);
 
+        // With ?channel=<page> the graph shows that page's own count (same numbers as its modal); without it, the all-SKU total.
+        $channel = \App\Support\ClearanceHistory::normalizeChannel($request->query('channel'));
+
         return response()->json([
             'success' => true,
             'days' => $days,
-            'data' => \App\Support\ClearanceHistory::history($days),
+            'channel' => $channel,
+            'data' => $channel !== null
+                ? \App\Support\ClearanceHistory::channelHistory($channel, $days)
+                : \App\Support\ClearanceHistory::history($days),
         ]);
+    }
+
+    /** A Sprc Dil modal reports its page's Clearance count + INV (once its table is loaded). Body: channel, count, inv. */
+    public function saveClearanceCountHistory(Request $request)
+    {
+        $channel = \App\Support\ClearanceHistory::normalizeChannel($request->input('channel'));
+        $count = $request->input('count');
+        $inv = $request->input('inv', 0);
+        if ($channel === null || ! is_numeric($count) || ! is_numeric($inv)) {
+            return response()->json(['success' => false, 'message' => 'channel and count are required'], 422);
+        }
+        \App\Support\ClearanceHistory::saveChannel($channel, (int) $count, (int) round((float) $inv));
+
+        return response()->json(['success' => true, 'date' => \App\Support\ClearanceHistory::today()]);
     }
 
     public function clearanceHistory(Request $request)

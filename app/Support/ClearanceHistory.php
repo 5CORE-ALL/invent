@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbaySkuDailyData;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -201,6 +202,70 @@ final class ClearanceHistory
         }
 
         return $written;
+    }
+
+    private const CHANNEL_KEEP_DAYS = 400;
+
+    /** Page key as sent by the Sprc Dil modals (ebay1, amazon, temu3, ...). Null = not a usable key. */
+    public static function normalizeChannel(?string $channel): ?string
+    {
+        $channel = strtolower(trim((string) $channel));
+
+        return preg_match('/^[a-z0-9_]{2,60}$/', $channel) === 1 ? $channel : null;
+    }
+
+    private static function channelRowName(string $channel): string
+    {
+        return $channel.'_clearance_history';
+    }
+
+    /**
+     * Save today's Clearance count + INV of ONE page (the same numbers its Sprc Dil modal shows: SKUs in that page's table
+     * with Clearance = YES and INV > 0). Last write of the day wins. Same storage pattern as the EL30 CPN history.
+     */
+    public static function saveChannel(string $channel, int $count, int $inv): void
+    {
+        $today = self::today();
+        $name = self::channelRowName($channel);
+        DB::transaction(static function () use ($name, $today, $count, $inv): void {
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', $name)->lockForUpdate()->first();
+            $vis = $row && is_array($row->visibility) ? $row->visibility : [];
+            $days = is_array($vis['days'] ?? null) ? $vis['days'] : [];
+            $days[$today] = ['count' => max(0, $count), 'inv' => max(0, $inv)];
+            ksort($days);
+            if (count($days) > self::CHANNEL_KEEP_DAYS) {
+                $days = array_slice($days, -self::CHANNEL_KEEP_DAYS, null, true);
+            }
+            ChannelTabulatorColumnSetting::query()->updateOrCreate(
+                ['channel_name' => $name],
+                ['visibility' => ['days' => $days], 'column_order' => []]
+            );
+        });
+    }
+
+    /**
+     * Rows for one page's graph: only the days that page saved itself (its own count, not the all-SKU total).
+     *
+     * @return list<array{date:string,label:string,count:int,inv:int}>
+     */
+    public static function channelHistory(string $channel, int $days = 30): array
+    {
+        $days = max(7, min(90, $days));
+        $today = Carbon::now(self::TZ)->startOfDay();
+        $start = $today->copy()->subDays($days - 1)->toDateString();
+        $vis = ChannelTabulatorColumnSetting::query()->where('channel_name', self::channelRowName($channel))->first()?->visibility;
+        $saved = is_array($vis) && is_array($vis['days'] ?? null) ? $vis['days'] : [];
+        ksort($saved);
+        $out = [];
+        foreach ($saved as $date => $rec) {
+            $date = (string) $date;
+            if ($date < $start || $date > $today->toDateString() || ! is_array($rec)) {
+                continue;
+            }
+            $out[] = ['date' => $date, 'label' => substr($date, 5), 'count' => (int) ($rec['count'] ?? 0), 'inv' => (int) ($rec['inv'] ?? 0)];
+        }
+
+        return $out;
     }
 
     /**
