@@ -372,7 +372,8 @@ class ArrivedContainerController extends Controller
      */
     private function createPushArrivedTask(string $title, string $link, ?string $tabName, int $rowCount, string $purpose): array
     {
-        $assignorEmail = 'president@5core.com';
+        // Ritu's login is the inventory mailbox (same one used as the assignee).
+        $assignorEmail = 'inventory@5core.com';
         $assigneeEmail = 'inventory@5core.com';
 
         try {
