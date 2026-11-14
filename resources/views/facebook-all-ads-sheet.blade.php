@@ -280,10 +280,9 @@
         #facebook-all-ads-table .tabulator-cell[tabulator-field="Campaign name"] {
             overflow: hidden;
         }
-        /* Tighter cells. Columns still shrink to fit one screen when they can
-           (layout: fitColumns), but when the minimum widths add up to more
-           than the screen the table scrolls sideways instead of clipping
-           Sbgt / Audit Req / History off the right edge. */
+        /* Tighter cells. The table uses layout 'fitDataFill' (like the other
+           Tabulator pages), so it scrolls sideways when the columns are wider
+           than the card instead of clipping Sbgt / Audit Req / History. */
         #facebook-all-ads-table .tabulator-tableholder { overflow-x: auto !important; }
         #facebook-all-ads-table .tabulator-col-title { white-space: normal; font-size: 12px; }
         #facebook-all-ads-table .tabulator-cell { padding: 4px 4px; font-size: 12px; }
@@ -2185,6 +2184,10 @@
                             sorter:       sorter,
                         };
                         if (maxWidth) col.maxWidth = maxWidth;
+                        // fitDataFill sizes columns to their content, and the
+                        // campaign name text can be very long — give it a fixed
+                        // width (the dot popup shows the full name on hover).
+                        if (c.field === 'Campaign name') col.width = 260;
                         return col;
                     });
                     // Prepend the Ad Type + CH dropdown columns. (Row index
@@ -2293,7 +2296,13 @@
                     tabulator = new Tabulator('#facebook-all-ads-table', {
                         data:                   resp.data || [],
                         columns:                cols,
-                        layout:                 'fitColumns',
+                        // fitDataFill (same as the other Tabulator pages): columns
+                        // keep their natural width and the table scrolls sideways
+                        // when they don't fit; if they're narrower than the card
+                        // the last column stretches to fill it. 'fitColumns' used
+                        // to squeeze every column onto one screen, which clipped
+                        // Sbgt / Audit Req / History once Sessions was added.
+                        layout:                 'fitDataFill',
                         // Let the table fill #faas-table-wrapper which itself
                         // is sized to the viewport. Same pattern as
                         // /topdawg/sales-dashboard.
