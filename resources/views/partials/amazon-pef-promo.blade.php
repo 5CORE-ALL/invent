@@ -2905,14 +2905,13 @@
                 amzDgDrawHist(chart, band, applyToday(amzDgLocalHistory(storeKey)));
             };
             if (chart === 'rule' && band === 'clearance') {
-                // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
-                // days somebody opened this page. This browser's own points only fill a day the server has no row for.
-                drawLocal();
+                // Clearance history is this page's own daily count, saved on the server (amazon_clearance_history in
+                // channel_tabulator_column_settings) each time the page loads. Nothing is read from this browser.
                 // The graph is this page's own count (same as the Count in the modal), not the all-SKU total.
                 $.ajax({ url: '/inv-days/clearance/count-history', method: 'GET', data: { days: 30, channel: 'amazon' } }).done(function(res) {
                     const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
                     const byDate = {};
-                    amzDgLocalHistory(storeKey).forEach(function(r) { if (r.clearance !== undefined) byDate[r.date] = { date: r.date, label: r.label, clearance: r.clearance }; });
+                    // Server days only: this browser's old local points are unreliable (a half-loaded page saved 0 on some days).
                     server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, clearance: r.count, inv: r.inv }; });
                     const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
                     // Today is always the number the modal shows right now.

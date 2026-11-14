@@ -2711,15 +2711,15 @@
             const drawLocal = function() {
                 ebayDgDrawHist(chart, band, applyToday(ebayDgLocalHistory(storeKey)));
             };
-            drawLocal();
+            if (chart !== 'clearance') drawLocal();
             if (chart === 'clearance') {
-                // Clearance history is saved on the server every hour (clearance_daily_counts), so it has every day, not only the
-                // days somebody opened this page. This browser's own points only fill a day the server has no row for.
+                // Clearance history is this page's own daily count, saved on the server (<channel>_clearance_history in
+                // channel_tabulator_column_settings) each time the page loads. Nothing is read from this browser.
                 // The graph is this page's own count (same as the Count in the modal), not the all-SKU total.
                 $.ajax({ url: @json(route('inv.days.clearance.count-history')), method: 'GET', data: { days: 30, channel: EBAY_DIL_GROI_CHANNEL } }).done(function(res) {
                     const server = (res && res.success && Array.isArray(res.data)) ? res.data : [];
                     const byDate = {};
-                    ebayDgLocalHistory(storeKey).forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count }; });
+                    // Server days only: this browser's old local points are unreliable (a half-loaded page saved 0 on some days).
                     server.forEach(function(r) { byDate[r.date] = { date: r.date, label: r.label, count: r.count, inv: r.inv }; });
                     const merged = Object.keys(byDate).sort().map(function(k) { return byDate[k]; });
                     // Today is always the number the modal shows right now.
