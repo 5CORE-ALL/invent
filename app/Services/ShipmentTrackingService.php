@@ -534,6 +534,14 @@ class ShipmentTrackingService
                     $this->uspsMarkQuotaExhausted($errMsg);
                     $quotaHit = true;
                 }
+                // A 404 on a batch says nothing about each package (one unknown number can fail the whole
+                // request). Ask USPS one number at a time so every number gets its own answer.
+                if ($status === 404 && count($chunk) > 1 && ! $quotaHit) {
+                    $out = array_replace($out, $this->trackUspsLegacy($chunk));
+
+                    continue;
+                }
+
                 foreach ($chunk as $s) {
                     // A 404 on a one-number request means that number is unknown to USPS.
                     // Anything else (401/403/400/5xx, or 404 on a batch) says nothing about

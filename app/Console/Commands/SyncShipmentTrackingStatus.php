@@ -254,8 +254,10 @@ class SyncShipmentTrackingStatus extends Command
             }
 
             foreach ($rotateNumbers as $num => $rotateAt) {
+                // PHP turns an all-digit array key into an int. Compared with the text column, MySQL then
+                // casts every value to a number and fails on numbers like 1Z16D0H4YW84673904.
                 DB::table('carrier_tracking_statuses')
-                    ->where('tracking_number', $num)
+                    ->where('tracking_number', (string) $num)
                     ->update([
                         'shipment_checked_at' => $rotateAt,
                         'updated_at' => $now,
