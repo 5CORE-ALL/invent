@@ -9,7 +9,7 @@ class SyncChargebackOsizeCommand extends Command
 {
     protected $signature = 'veeqo:chargeback-osize';
 
-    protected $description = 'Fill Shipping Master O-Size Charge with each SKU\'s 12-month chargeback per unit sold (positive)';
+    protected $description = 'Fill Shipping Master O-Size Charge with each parent\'s 12-month chargeback per unit sold (applied to every SKU of the parent) (positive)';
 
     public function handle(ChargebackOsizeSync $sync): int
     {
@@ -19,7 +19,7 @@ class SyncChargebackOsizeCommand extends Command
 
             return self::SUCCESS;
         }
-        $this->info("SKUs with a figure: {$r['rows']}, updated {$r['updated']}, unchanged {$r['unchanged']}, not in Shipping Master {$r['missing']}, failed {$r['failed']}.");
+        $this->info("Parents with a figure: {$r['rows']}, updated {$r['updated']}, unchanged {$r['unchanged']}, not in Shipping Master {$r['missing']}, failed {$r['failed']}.");
 
         return $r['failed'] ? self::FAILURE : self::SUCCESS;
     }
