@@ -6,6 +6,7 @@ use App\Models\VeeqoChargeback;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shipping label charge exports from platforms with no label-billing API.
@@ -16,7 +17,13 @@ use Illuminate\Support\Facades\DB;
  * Temu "Transactions by custom date range" (Date, Transaction type, Order ID, Other, Total, ...):
  *   "Shipping label purchase adjustment" rows keyed by the label order (DO...). Totals are signed.
  *
- * Neither export has a transaction id, so rows are keyed by their content plus the occurrence
+ * Shippo "export_user_<id>_<hash>.csv" (Creation Date, Type, Description, Credit, Amount, Currency,
+ *   Transaction Object ID, Tracking Number, ..., Carrier, Order Number, Invoice Number, Paid, ...):
+ *   every row is a label surcharge / correction billed by the carrier (LABEL_SURCHARGE). Amounts are
+ *   positive charges; Credit = True marks a refund. Shippo's Order Number is usually empty, so the order
+ *   is found from the tracking number afterwards.
+ *
+ * None of these exports has a transaction id, so rows are keyed by their content plus the occurrence
  * number of identical rows in the file; re-importing the same or an overlapping file upserts.
  */
 class PlatformChargebackCsvImport
@@ -28,7 +35,10 @@ class PlatformChargebackCsvImport
         'temu3' => ['source' => 'temu3_csv', 'name' => 'Temu 3', 'required' => ['Date', 'Transaction type', 'Order ID', 'Total']],
         // UPS Billing Center invoice data (headers are matched ignoring case, spaces and punctuation).
         'ups' => ['source' => 'ups_csv', 'name' => 'UPS', 'required' => ['Charge Description', 'Net Amount', 'Tracking Number']],
+        'shippo' => ['source' => 'shippo_csv', 'name' => 'Shippo', 'required' => ['Creation Date', 'Type', 'Description', 'Amount', 'Tracking Number']],
     ];
+
+    public const SHIPPO_SURCHARGE = 'Shippo Label Surcharge';
 
     public const UPS_ADJUSTMENT = 'UPS Billing Adjustment';
 
@@ -90,6 +100,7 @@ class PlatformChargebackCsvImport
                 str_starts_with($platform, 'temu') => $this->temuRow($cfg, $r),
                 $platform === 'ups' && $upsAdjustments => $this->upsAdjustmentRow($r),
                 $platform === 'ups' => $this->upsRow($r),
+                $platform === 'shippo' => $this->shippoRow($r),
                 default => $this->shopifyRow($cfg, $r),
             };
             if ($row === null) {
@@ -120,9 +131,120 @@ class PlatformChargebackCsvImport
         if ($platform === 'shopify') {
             $this->fillAdjustmentCarriers($cfg['source']);
         }
+        if ($platform === 'shippo') {
+            $this->fillShippoOrders($cfg['source']);
+        }
         Cache::forget('veeqo_chargeback_component_types');
 
         return ['ok' => true, 'message' => 'Read '.number_format($rows).' rows; imported '.number_format($saved).' '.$cfg['name'].' shipping charges.', 'rows' => $rows, 'saved' => $saved];
+    }
+
+    /**
+     * Shippo transactions export. Amount is positive for a charge; Credit = True is a refund.
+     * The file's own wording ("Postage - Shipping Charge Correction: Billed Weight ...") stays in the stored row;
+     * the Reason column gets the short name ("Postage - Shipping Charge Correction", "Noncompliance Fee", ...).
+     *
+     * @param  array<string, mixed>  $r  row keyed by the file's header names
+     */
+    private function shippoRow(array $r): ?array
+    {
+        $amount = trim((string) ($r['Amount'] ?? ''));
+        $tracking = trim((string) ($r['Tracking Number'] ?? ''));
+        if ($amount === '' || ! is_numeric($amount)) {
+            return null;
+        }
+        $type = trim((string) ($r['Type'] ?? ''));
+        $description = trim((string) ($r['Description'] ?? ''));
+        $isCredit = strcasecmp(trim((string) ($r['Credit'] ?? '')), 'true') === 0;
+        $total = round($isCredit ? (float) $amount : -(float) $amount, 2);
+        $order = trim((string) ($r['Order Number'] ?? ''));
+        if (in_array(strtolower($order), ['', 'none', 'null', '0'], true)) {
+            $order = '';
+        }
+        $invoice = trim((string) ($r['Invoice Number'] ?? ''));
+        $paid = strtolower(trim((string) ($r['Paid'] ?? '')));
+        $created = trim((string) ($r['Creation Date'] ?? ''));
+
+        $reason = trim((string) preg_replace('/\s*(>|<|\d).*$/u', '', explode(':', $description, 2)[0]), " \t-");
+
+        return [
+            '_key' => implode('|', [$r['Transaction Object ID'] ?? '', $type, $description, $amount, $created, $tracking]),
+            'transaction_type' => $this->str($type !== '' ? $type : 'LABEL_SURCHARGE', 64),
+            'description' => strcasecmp($type, 'LABEL_SURCHARGE') === 0 || $type === ''
+                ? self::SHIPPO_SURCHARGE
+                : mb_substr('Shippo '.ucwords(strtolower(str_replace('_', ' ', $type))), 0, 100),
+            'reason' => $this->str($reason !== '' ? $reason : $description, 150),
+            'transaction_status' => $paid === 'true' ? 'Paid' : ($paid === 'false' ? 'Not paid yet' : null),
+            'posted_at' => $this->timestamp($created),
+            'order_number' => $this->str($order, 100),
+            'settlement_id' => $this->str($invoice, 64),
+            'total_amount' => $total,
+            'direction' => $total < 0 ? 'debit' : 'credit',
+            'carrier' => $this->str($r['Carrier'] ?? null, 100),
+            'service' => $this->str($r['Service Level'] ?? null, 150),
+            // Like the UPS sheet, the tracking number is kept here so the SKU and order can be found from it.
+            'item_types' => $this->str($tracking, 500),
+        ];
+    }
+
+    /** Full timestamp such as "2026-10-23 04:27:34.958208+00:00" in the app time zone; null when unreadable. */
+    private function timestamp(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Shippo rows carry no order number. Find it from the tracking number: the marketplace order the label was
+     * saved against (Order Fulfillment), else the Veeqo shipment with the same tracking number.
+     */
+    private function fillShippoOrders(string $source): void
+    {
+        $trackings = VeeqoChargeback::query()
+            ->where('source', $source)
+            ->where(fn ($q) => $q->whereNull('order_number')->orWhere('order_number', ''))
+            ->whereNotNull('item_types')->where('item_types', '!=', '')
+            ->distinct()->pluck('item_types')->map(fn ($t) => (string) $t)->all();
+        if ($trackings === []) {
+            return;
+        }
+
+        $orders = [];
+        foreach (array_chunk($trackings, 500) as $chunk) {
+            if (Schema::hasTable('order_fulfillment_trackings')) {
+                DB::table('order_fulfillment_trackings')
+                    ->whereIn('tracking_number', $chunk)
+                    ->whereNotNull('order_id')->where('order_id', '!=', '')
+                    ->get(['tracking_number', 'order_id'])
+                    ->each(function ($t) use (&$orders) {
+                        $orders[(string) $t->tracking_number] ??= (string) $t->order_id;
+                    });
+            }
+            if (Schema::hasTable('veeqo_billing_shipments')) {
+                DB::table('veeqo_billing_shipments')
+                    ->whereIn('tracking_number', $chunk)
+                    ->whereNotNull('order_number')->where('order_number', '!=', '')
+                    ->get(['tracking_number', 'order_number'])
+                    ->each(function ($t) use (&$orders) {
+                        $orders[(string) $t->tracking_number] ??= (string) $t->order_number;
+                    });
+            }
+        }
+
+        foreach ($orders as $tracking => $order) {
+            VeeqoChargeback::query()
+                ->where('source', $source)
+                ->where('item_types', (string) $tracking)
+                ->where(fn ($q) => $q->whereNull('order_number')->orWhere('order_number', ''))
+                ->update(['order_number' => mb_substr($order, 0, 100)]);
+        }
     }
 
     private function shopifyRow(array $cfg, array $r): ?array
