@@ -404,6 +404,7 @@
             #ebayDilGroiModal .modal-content { height: 100%; }
             #ebayDilGroiModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
             #ebayDilGroiModal .ebay-dg-pies { flex: 0 0 auto; }
+            #ebayDilGroiModal .ebay-dg-hist-wrap { flex: 0 0 auto; }
             #ebayDilGroiModal .ebay-dg-cols { flex: 1 1 auto; min-height: 0; }
         }
         @media (max-width: 991.98px) {
@@ -517,6 +518,16 @@
                             <div class="ebay-dg-pie-legend" id="ebay-dg-cvr-legend"></div>
                         </div>
                         @endunless
+                    </div>
+                    {{-- History graph (slab / CVR / Clearance dots): opens here, at the top of the modal, so it is seen without scrolling. --}}
+                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="ebay-dg-hist-canvas-wrap">
+                            <canvas id="ebay-dg-hist"></canvas>
+                        </div>
                     </div>
                     <div class="ebay-dg-cols">
                     <div class="ebay-dg-panel ebay-dg-panel-rules">
@@ -819,15 +830,6 @@
                                 <label class="small mb-0 text-muted">Target {{ $ebaySprcDilTargetLabel }}%</label>
                                 <input type="number" min="0" step="0.1" class="form-control form-control-sm ebay-dg-clearance-groi" style="width:110px;" value="0" title="Target {{ $ebaySprcDilTargetLabel }}% for clearance">
                             </span>
-                        </div>
-                    </div>
-                    <div class="ebay-dg-hist-wrap" id="ebay-dg-hist-wrap">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold" id="ebay-dg-hist-title">Slab history</span>
-                            <button type="button" class="btn-close" id="ebay-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="ebay-dg-hist-canvas-wrap">
-                            <canvas id="ebay-dg-hist"></canvas>
                         </div>
                     </div>
                     @if($ebaySprcDilNg)
@@ -2600,9 +2602,9 @@
             });
             $('#ebay-dg-hist-title').text((chart === 'cvr' ? 'CVR ' : ((chart === 'clearance' || chart === 'rule') ? '' : 'Dil ')) + spec.label + ' count · last 30 days');
             const $wrap = $('#ebay-dg-hist-wrap').addClass('is-open');
-            if ($wrap.length && $wrap[0].scrollIntoView) {
-                $wrap[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            }
+            // The graph sits at the top of the modal body: bring the top into view (the rule panels below scroll on their own).
+            const $body = $wrap.closest('.modal-body');
+            if ($body.length) $body.scrollTop(0);
             ebayDgWithChart(function() {
                 const canvas = document.getElementById('ebay-dg-hist');
                 if (!canvas || typeof Chart === 'undefined') return;

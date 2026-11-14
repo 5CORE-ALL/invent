@@ -441,6 +441,7 @@
             #amzDilGroiModal .modal-content { height: 100%; }
             #amzDilGroiModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
             #amzDilGroiModal .amz-dg-pies { flex: 0 0 auto; }
+            #amzDilGroiModal .amz-dg-hist-wrap { flex: 0 0 auto; }
             #amzDilGroiModal .amz-dg-cols { flex: 1 1 auto; min-height: 0; }
         }
         @media (max-width: 991.98px) {
@@ -1062,6 +1063,16 @@
                             <div class="amz-dg-pie-legend" id="amz-dg-cvr-legend"></div>
                         </div>
                     </div>
+                    {{-- History graph (slab / CVR / Clearance dots): opens here, at the top of the modal, so it is seen without scrolling. --}}
+                    <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold" id="amz-dg-hist-title">Slab history</span>
+                            <button type="button" class="btn-close" id="amz-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
+                        </div>
+                        <div class="amz-dg-hist-canvas-wrap">
+                            <canvas id="amz-dg-hist"></canvas>
+                        </div>
+                    </div>
                     <div class="amz-dg-cols">
                     <div class="amz-dg-panel amz-dg-panel-tables">
                     <div class="amz-dg-panel-body amz-dg-grid">
@@ -1092,15 +1103,6 @@
                     <div class="amz-dg-card-rules" data-card="dil">
                         <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
                         <div class="amz-dg-rules-list"></div>
-                    </div>
-                    <div class="amz-dg-hist-wrap" id="amz-dg-hist-wrap">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold" id="amz-dg-hist-title">Slab history</span>
-                            <button type="button" class="btn-close" id="amz-dg-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="amz-dg-hist-canvas-wrap">
-                            <canvas id="amz-dg-hist"></canvas>
-                        </div>
                     </div>
                     </div>
                     <div class="amz-dg-card" data-amz-card="cvr">
@@ -2796,7 +2798,7 @@
                 return Number(r[band]) || 0;
             });
             $('#amz-dg-hist-title').text((chart === 'rule' ? '' : (chart === 'cvr' ? 'CVR ' : 'Dil ')) + spec.label + ' count · last 30 days');
-            $('#amz-dg-hist-wrap').addClass('is-open');
+            $('#amz-dg-hist-wrap').addClass('is-open').closest('.modal-body').scrollTop(0);
             const draw = function() {
                 const canvas = document.getElementById('amz-dg-hist');
                 if (!canvas || typeof Chart === 'undefined') return;
