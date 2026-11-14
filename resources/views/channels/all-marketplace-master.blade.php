@@ -971,6 +971,24 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
         }
         #summary-stats .amm-inv-block-hist-dot:hover { transform: scale(1.4); }
+        /* History dot in the Inv@SP table rows (inline, after the $ value) */
+        #amm-inv-sp-tabulator .amm-inv-row-hist-dot,
+        #amm-inv-sp-tabulator .amm-inv-row-hist-dot-spacer {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            margin-left: 6px;
+            vertical-align: middle;
+            flex: 0 0 9px;
+        }
+        #amm-inv-sp-tabulator .amm-inv-row-hist-dot {
+            border-radius: 50%;
+            border: 1px solid #fff;
+            padding: 0;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+        }
+        #amm-inv-sp-tabulator .amm-inv-row-hist-dot:hover { transform: scale(1.4); }
         #ammInvModal .amm-inv-hist-wrap {
             display: none;
             margin: 0 0 6px;
@@ -8991,9 +9009,23 @@
                         },
                         {
                             title: 'Inv@SP $', field: 'inv_at_sp', hozAlign: 'right', sorter: 'number',
-                            formatter: function(cell) { return ammInvMoneyCompact(cell.getValue()); },
+                            // Standard history dot after the value: colour = latest saved day vs the day before
+                            // (same rule as the band cards); click opens the standard metric history graph.
+                            formatter: function(cell) {
+                                const d = cell.getData();
+                                const dotColor = ammInvBandDotColor(d.key, d.key + '_sp');
+                                const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span>'
+                                    + '<button type="button" class="amm-inv-row-hist-dot" data-chart="sp" data-band="' + d.key + '" '
+                                    + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
+                            },
+                            cellClick: function(e) {
+                                if (e.target.closest && e.target.closest('.amm-inv-row-hist-dot')) e.stopPropagation();
+                            },
                             bottomCalc: 'sum',
-                            bottomCalcFormatter: function(cell) { return ammInvMoneyCompact(cell.getValue()); },
+                            bottomCalcFormatter: function(cell) {
+                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
+                            },
                         },
                         {
                             title: '% of total', field: 'pct', hozAlign: 'right', sorter: 'number',
@@ -9217,7 +9249,7 @@
 
             // History dot on each INV band card -> the standard metric history graph
             // (same modal as every badge: rolling range, High / Median / Low, coloured day-over-day dots).
-            $(document).on('click', '.amm-inv-block-hist-dot', function(e) {
+            $(document).on('click', '.amm-inv-block-hist-dot, .amm-inv-row-hist-dot', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const chart = $(this).data('chart') === 'lp' ? 'lp' : 'sp';
