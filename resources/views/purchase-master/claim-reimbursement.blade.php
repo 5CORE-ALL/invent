@@ -77,6 +77,12 @@
     #claimModal .claim-action-card .claim-section-title i { color: #d97706; }
     #claimModal .claim-action-card .table { background: #fff; border-radius: 10px; overflow: hidden; margin-bottom: 0; }
     #claimModal .claim-action-card .table thead { background: #f1f5fb; }
+    #claimModal .claim-recd-card { margin-top: 20px; background: #f0fdf4 !important; border-color: #bbf7d0; }
+    #claimModal .claim-recd-card .claim-section-title i { color: #16a34a; }
+    #claimModal .claim-recd-card #claimRecdInput { border-radius: 12px 0 0 12px; background: #fff; resize: vertical; }
+    #claimModal .claim-recd-card .btn-claim-save { border-radius: 0 12px 12px 0; padding: 8px 20px; }
+    .recd-amt-btn.recd-done { color: #16a34a; border: 1px solid #16a34a; background: #f0fdf4; border-radius: 8px; padding: 2px 10px; font-size: 16px; line-height: 1.4; }
+    .recd-amt-btn.recd-done:hover { background: #dcfce7; }
     #claimModal .claim-action-card .btn-claim-save { border-radius: 0 12px 12px 0; padding: 8px 20px; }
     #claimModal .claim-action-card #claimActionInput { border-radius: 12px 0 0 12px; background: #fff; }
 
@@ -629,6 +635,15 @@
           </fieldset>
         </form>
 
+        {{-- Received amount / goods. Shown when an existing claim is opened. --}}
+        <div class="claim-card claim-recd-card" id="claimRecdCard" style="display: none;">
+          <div class="claim-section-title"><i class="fas fa-hand-holding-dollar"></i> Recd Amt/Goods $</div>
+          <div class="input-group">
+            <textarea id="claimRecdInput" class="form-control" rows="2" placeholder="Enter received amount / goods details..."></textarea>
+            <button type="button" class="btn btn-claim-save" id="claimRecdSaveBtn"><i class="fas fa-check me-1"></i> Save</button>
+          </div>
+        </div>
+
         {{-- Action section (claim history + new action). Shown when an existing claim is opened. --}}
         <div class="claim-card claim-action-card" id="claimActionCard" style="display: none;">
           <div class="claim-section-title"><i class="fas fa-bolt"></i> Action</div>
@@ -693,29 +708,6 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="saveActionBtn"><i class="fas fa-plus me-1"></i> Add</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-{{-- Received Amount / Goods Modal --}}
-<div class="modal fade" id="receivedAmountModal" tabindex="-1" aria-labelledby="receivedAmountModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="receivedAmountModalLabel">Recd Amt/Goods $</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="received_amount_claim_id">
-        <div class="mb-2">
-          <label for="received_amount_input" class="form-label fw-semibold">Received Amount / Goods</label>
-          <textarea id="received_amount_input" class="form-control" rows="3" placeholder="Enter received amount / goods details..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="saveReceivedAmountBtn">Save</button>
       </div>
     </div>
   </div>
@@ -876,15 +868,13 @@
                     formatter: function (cell) {
                         const val = cell.getValue();
                         if (val && String(val).trim() !== '') {
-                            return `<span class="d-inline-block text-truncate" style="max-width: 140px; vertical-align: middle;" title="${escapeHtml(val)}">${escapeHtml(val)}</span>
-                                    <button class="btn btn-sm btn-link p-0 ms-1 recd-amt-btn" title="Edit"><i class="fas fa-pen"></i></button>`;
+                            return `<button class="btn btn-sm recd-amt-btn recd-done" title="${escapeHtml(val)}"><i class="fas fa-circle-check"></i></button>`;
                         }
                         return `<button class="btn btn-sm btn-outline-primary recd-amt-btn"><i class="fas fa-plus me-1"></i> Add</button>`;
                     },
                     cellClick: function (e, cell) {
                         if (e.target.closest('.recd-amt-btn')) {
-                            const d = cell.getRow().getData();
-                            openReceivedAmountModal(d.id, d.received_amount);
+                            openClaimRecd(cell.getRow().getData());
                         }
                     }
                 },
@@ -948,48 +938,6 @@
         }
         if (showArchivedFilter) {
             showArchivedFilter.addEventListener('change', window.reloadClaimTable);
-        }
-
-        const saveReceivedAmountBtn = document.getElementById('saveReceivedAmountBtn');
-        if (saveReceivedAmountBtn) {
-            saveReceivedAmountBtn.addEventListener('click', function () {
-                const id = document.getElementById('received_amount_claim_id').value;
-                const value = document.getElementById('received_amount_input').value;
-                const btn = this;
-                const original = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
-
-                const formData = new FormData();
-                formData.append('received_amount', value);
-                formData.append('_token', '{{ csrf_token() }}');
-
-                fetch(`/claim-reimbursement/${id}/received-amount`, {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.success) {
-                        const row = table.getRow(id);
-                        if (row) {
-                            row.update({
-                                received_amount: res.received_amount,
-                                action_history: res.action_history
-                            });
-                        }
-                        bootstrap.Modal.getInstance(document.getElementById('receivedAmountModal')).hide();
-                    } else {
-                        alert('Failed: ' + (res.message || 'Unknown error'));
-                    }
-                })
-                .catch(() => alert('Something went wrong while saving.'))
-                .finally(() => {
-                    btn.disabled = false;
-                    btn.innerHTML = original;
-                });
-            });
         }
 
         const saveDetailsNoteBtn = document.getElementById('saveDetailsNoteBtn');
@@ -1655,11 +1603,18 @@
         if (field) field.focus();
     });
 
-    function openReceivedAmountModal(claimId, currentValue) {
-        document.getElementById('received_amount_claim_id').value = claimId || '';
-        document.getElementById('received_amount_input').value = currentValue || '';
-        const modal = new bootstrap.Modal(document.getElementById('receivedAmountModal'));
-        modal.show();
+    // Recd Amt/Goods lives inside the main claim modal: open the claim and jump to that section.
+    function openClaimRecd(d) {
+        openEditClaim(d, true);
+        const modalEl = document.getElementById('claimModal');
+        const focusIt = function () {
+            const card = document.getElementById('claimRecdCard');
+            const input = document.getElementById('claimRecdInput');
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (input) input.focus();
+        };
+        if (modalEl.classList.contains('show')) focusIt();
+        else modalEl.addEventListener('shown.bs.modal', focusIt, { once: true });
     }
 
     function buildDetailsInline(detailsData, detailsNote) {
@@ -1799,6 +1754,10 @@
         document.getElementById('claimActionInput').value = '';
         document.getElementById('claimActionCard').style.display = '';
 
+        // Recd Amt/Goods section (editable by everyone, like Action).
+        document.getElementById('claimRecdInput').value = d.received_amount || '';
+        document.getElementById('claimRecdCard').style.display = '';
+
         window.claimClearRows();
         const items = normalizeClaimItems(d.details);
         if (items.length) {
@@ -1860,6 +1819,48 @@
         });
     })();
 
+    // Save Recd Amt/Goods for the claim open in the modal.
+    (function () {
+        const input = document.getElementById('claimRecdInput');
+        const btn = document.getElementById('claimRecdSaveBtn');
+        if (!input || !btn) return;
+
+        btn.addEventListener('click', function () {
+            const id = window.claimEditId;
+            if (!id) return;
+
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            const formData = new FormData();
+            formData.append('received_amount', input.value);
+            formData.append('_token', '{{ csrf_token() }}');
+
+            fetch('/claim-reimbursement/' + id + '/received-amount', {
+                method: 'POST',
+                body: formData,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    const row = window.claimTable ? window.claimTable.getRow(id) : null;
+                    if (row) row.update({ received_amount: res.received_amount, action_history: res.action_history });
+                    renderClaimActions(res.action_history);
+                    input.value = res.received_amount || '';
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i> Saved';
+                    setTimeout(function () { btn.innerHTML = original; }, 1200);
+                } else {
+                    btn.innerHTML = original;
+                    alert('Failed: ' + (res.message || 'Unknown error'));
+                }
+            })
+            .catch(() => { btn.innerHTML = original; alert('Something went wrong while saving.'); })
+            .finally(() => { btn.disabled = false; });
+        });
+    })();
+
     // Put the modal back into "Add" mode once it closes.
     (function () {
         const modalEl = document.getElementById('claimModal');
@@ -1882,6 +1883,8 @@
             document.getElementById('claimFieldset').disabled = false;
             document.getElementById('claimActionCard').style.display = 'none';
             document.getElementById('claimActionInput').value = '';
+            document.getElementById('claimRecdCard').style.display = 'none';
+            document.getElementById('claimRecdInput').value = '';
             window.claimClearRows();
             window.claimAddRow();
             window.claimUpdateTotal();
