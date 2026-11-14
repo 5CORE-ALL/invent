@@ -170,6 +170,11 @@
     /* sent / inbox cards */
     #mrqModal .mrq-req { border: 1px solid var(--mq-border); background: var(--mq-surface); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; transition: box-shadow .2s ease, transform .2s ease; }
     #mrqModal .mrq-req:hover { box-shadow: 0 10px 26px -14px rgba(15, 23, 42, .35); transform: translateY(-1px); }
+    /* inbox card: text on the left, action buttons parallel on the right (saves vertical space) */
+    #mrqModal .mrq-req-row { display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap; }
+    #mrqModal .mrq-req-info { flex: 1 1 360px; min-width: 0; }
+    #mrqModal .mrq-req-row [data-actions] { flex: 0 0 auto; flex-wrap: nowrap !important; margin-left: auto; }
+    #mrqModal .mrq-req-row [data-actions] .btn { white-space: nowrap; }
     #mrqModal .mrq-req h6 { font-weight: 700; margin: 0 0 2px; color: var(--mq-text); }
 
     /* success */
@@ -527,7 +532,7 @@
         // ---------- sent by me: invited members + their answers ----------
         var STATUS = {
             in_room: ['In room', 'bg-success'], left: ['Left', 'bg-secondary'], accepted: ['Accepted', 'bg-success'],
-            declined: ['Declined', 'bg-danger'], pending: ['Waiting for reply', 'bg-warning text-dark']
+            declined: ['Declined', 'bg-danger'], completed: ['Completed', 'bg-primary'], pending: ['Waiting for reply', 'bg-warning text-dark']
         };
         function loadSent() {
             var box = $('mrqSentList'); box.innerHTML = '<div class="text-muted">Loading…</div>';
@@ -614,16 +619,17 @@
 
         function requestCard(r) {
             var div = document.createElement('div'); div.className = 'mrq-req';
-            div.innerHTML = '<h6>' + esc(r.title) + ' ' + prioBadge(r.priority) + (r.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
+            div.innerHTML = '<div class="mrq-req-row"><div class="mrq-req-info"><h6>' + esc(r.title) + ' ' + prioBadge(r.priority) + (r.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
                 + '<div class="small text-muted mb-1">From <strong>' + esc(r.host || '—') + '</strong> &middot; '
                 + '<i class="ri-calendar-event-line"></i> <strong>Date &amp; time:</strong> ' + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + (r.room ? ' &middot; <span class="mrq-room">' + esc(r.room) + '</span>' : '')
                 + (r.requested_at ? ' &middot; requested ' + esc(r.requested_at) : '') + '</div>'
-                + (r.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
-                + '<div class="d-flex gap-2 flex-wrap" data-actions></div><div class="small mt-2" data-result></div>';
+                + (r.agenda ? '<div class="small" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
+                + '</div><div class="d-flex gap-2" data-actions></div></div><div class="small mt-2" data-result></div>';
             var actions = div.querySelector('[data-actions]'), result = div.querySelector('[data-result]');
             function btn(label, cls, fn) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm ' + cls; b.innerHTML = label; b.addEventListener('click', fn); actions.appendChild(b); return b; }
             function answer(resp) {
                 if (resp === 'declined' && !confirm('Decline "' + r.title + '"? The host will see that you declined.')) return;
+                if (resp === 'completed' && !confirm('Mark "' + r.title + '" as completed? It will be removed from your requests and the host will see it as completed.')) return;
                 actions.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
                 call('POST', r.rsvp_url, { response: resp }).then(function (res) {
                     if (!res.ok || !res.data.ok) {
@@ -638,6 +644,9 @@
                                 ? ' <a class="btn btn-sm mrq-gmeet ms-2" target="_blank" rel="noopener noreferrer" href="' + esc(r.meet_url) + '"><i class="ri-vidicon-fill"></i> Join Google Meet</a>'
                                 : ' <a class="btn btn-success btn-sm ms-2" href="' + esc(res.data.room_url) + '"><i class="ri-vidicon-line"></i> Meeting details</a>')
                             + (r.google || res.data.live ? '' : '<div class="text-muted mt-1">Not started yet — you can join once the host starts it.</div>');
+                    } else if (resp === 'completed') {
+                        result.innerHTML = '<span class="text-primary fw-semibold"><i class="ri-check-double-line"></i> Marked as completed.</span>';
+                        setTimeout(function () { div.style.transition = 'opacity .4s ease'; div.style.opacity = '0'; setTimeout(function () { div.remove(); if (!$('mrqInboxList').children.length) loadInbox(); }, 400); }, 1200);
                     } else {
                         result.innerHTML = '<span class="text-secondary"><i class="ri-close-circle-fill"></i> You declined.</span>';
                     }
@@ -656,6 +665,7 @@
             }
             if (r.rsvp !== 'accepted') btn('<i class="ri-check-line"></i> Accept', 'btn-success', function () { answer('accepted'); });
             btn('<i class="ri-close-line"></i> Decline', 'btn-outline-danger', function () { answer('declined'); });
+            btn('<i class="ri-check-double-line"></i> Completed', 'btn-outline-primary', function () { answer('completed'); });
             return div;
         }
 

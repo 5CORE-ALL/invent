@@ -130,7 +130,7 @@
                                         <td>
                                             @if(! $p->is_invited)<span class="badge bg-primary">Host</span>
                                             @else
-                                                @php [$l, $t] = match ($p->rsvp) { 'accepted' => ['Accepted', 'success'], 'declined' => ['Declined', 'danger'], default => ['No reply', 'warning'] }; @endphp
+                                                @php [$l, $t] = match ($p->rsvp) { 'accepted' => ['Accepted', 'success'], 'declined' => ['Declined', 'danger'], 'completed' => ['Completed', 'primary'], default => ['No reply', 'warning'] }; @endphp
                                                 <span class="badge bg-{{ $t }} {{ $t === 'warning' ? 'text-dark' : '' }}">{{ $l }}</span>
                                             @endif
                                         </td>

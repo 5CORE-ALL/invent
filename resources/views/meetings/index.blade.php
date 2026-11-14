@@ -9,7 +9,7 @@
     $chipOf = function ($p) {
         if ($p->isInRoom()) return ['In room', 'success'];
         if ($p->first_joined_at) return ['Left', 'secondary'];
-        return match ($p->rsvp) { 'accepted' => ['Accepted', 'success'], 'declined' => ['Declined', 'danger'], default => ['Waiting', 'warning'] };
+        return match ($p->rsvp) { 'accepted' => ['Accepted', 'success'], 'declined' => ['Declined', 'danger'], 'completed' => ['Completed', 'primary'], default => ['Waiting', 'warning'] };
     };
 @endphp
     <div class="container-fluid">

@@ -399,12 +399,13 @@ class MeetingController extends Controller
             return 'left';
         }
 
-        return in_array($p->rsvp, ['accepted', 'declined'], true) ? $p->rsvp : 'pending';
+        return in_array($p->rsvp, ['accepted', 'declined', 'completed'], true) ? $p->rsvp : 'pending';
     }
 
     public function rsvp(Request $request, Meeting $meeting): JsonResponse
     {
-        $data = $request->validate(['response' => 'required|in:accepted,declined']);
+        // 'completed' = the invited member marks this meeting request as done; it leaves their "Requests for you" list.
+        $data = $request->validate(['response' => 'required|in:accepted,declined,completed']);
 
         if ($meeting->isEnded() || $meeting->isCancelled()) {
             return response()->json(['ok' => false, 'message' => $meeting->isCancelled() ? 'This meeting was cancelled.' : 'This meeting has already ended.'], 409);

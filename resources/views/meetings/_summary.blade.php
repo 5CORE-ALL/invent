@@ -68,7 +68,7 @@
         <div class="ps-label">Participants ({{ $people->count() }})</div>
         <div class="d-flex flex-wrap gap-3">
             @foreach($people as $p)
-                <span class="mt-person">@include('meetings._avatar', ['user' => $p->user, 'size' => 34])<span>{{ $p->user?->name ?? 'Unknown' }}<small>{{ $p->user?->designation }}@if($p->is_invited) &middot; {{ ['accepted' => 'accepted', 'declined' => 'declined'][$p->rsvp] ?? 'no reply' }}@else &middot; host @endif</small></span></span>
+                <span class="mt-person">@include('meetings._avatar', ['user' => $p->user, 'size' => 34])<span>{{ $p->user?->name ?? 'Unknown' }}<small>{{ $p->user?->designation }}@if($p->is_invited) &middot; {{ ['accepted' => 'accepted', 'declined' => 'declined', 'completed' => 'completed'][$p->rsvp] ?? 'no reply' }}@else &middot; host @endif</small></span></span>
             @endforeach
         </div>
     </div>
