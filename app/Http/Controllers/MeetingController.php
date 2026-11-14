@@ -245,7 +245,7 @@ class MeetingController extends Controller
         $request->merge(['invitee_ids' => $request->input('invitee_ids', [])]);
         $data = $request->validate([
             'title' => 'required|string|max:255',
-            'agenda' => 'required|string|max:5000',
+            'agenda' => 'nullable|string|max:5000',
             'priority' => 'required|in:'.implode(',', array_keys(Meeting::PRIORITIES)),
             'room_slot' => 'required|integer|in:'.implode(',', array_keys(Meeting::ROOMS)),
             // Date and time are not asked: they are stamped automatically when the request is made.
@@ -255,7 +255,6 @@ class MeetingController extends Controller
         ], [
             'invitee_ids.required' => 'Add at least one member to the meeting.',
             'invitee_ids.min' => 'Add at least one member to the meeting.',
-            'agenda.required' => 'Please add a meeting agenda.',
             'room_slot.required' => 'Choose one of the four meeting rooms.',
             'room_slot.in' => 'Choose one of the four meeting rooms.',
         ]);

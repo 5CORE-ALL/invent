@@ -217,7 +217,7 @@
                             <input type="text" id="mrqTitleInput" class="form-control" maxlength="255" placeholder="e.g. Amazon ads budget review">
                         </div>
                         <div class="mrq-f-agenda">
-                            <label class="form-label" for="mrqAgenda">Agenda <span class="text-danger">*</span>
+                            <label class="form-label" for="mrqAgenda">Agenda
                                 <small class="text-muted">what do you want to discuss / decide?</small></label>
                             <textarea id="mrqAgenda" class="form-control" rows="5" maxlength="5000"
                                       placeholder="1. Review last week's ACOS&#10;2. Decide budget for next week&#10;3. Assign owners"></textarea>
@@ -403,6 +403,7 @@
             return { date: p.year + '-' + p.month + '-' + p.day, time: p.hour + ':' + p.minute };
         }
         // Hidden date & time = "now". Refreshed whenever the modal opens and again at review (the server stamps the final value).
+        function resetPriority() { var n = document.querySelector('input[name="mrqPrio"][value="normal"]'); if (n) n.checked = true; }
         function stampNow() { var a = nowIn(0); $('mrqDate').value = a.date; $('mrqStart').value = a.time; }
         stampNow();
         var availSeq = 0;
@@ -473,13 +474,12 @@
         $('mrqBtnReview').addEventListener('click', function () {
             var p = collect();
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
-            if (p.agenda.length < 1) return showErr('mrqError', 'Please add a meeting agenda.');
             if (!p.room_slot) return showErr('mrqError', 'Choose one of the four meeting rooms.');
 
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
             lastPayload = p;
             $('mrqRvTitle').textContent = p.title;
-            $('mrqRvAgenda').textContent = p.agenda;
+            $('mrqRvAgenda').textContent = p.agenda || '—';
             $('mrqRvPrio').textContent = PRIO[p.priority][0] + ' ' + PRIO[p.priority][1];
             $('mrqRvRoom').textContent = 'Meeting Room ' + p.room_slot + (googleOk ? ' (Google Meet)' : ' (meeting-room link, created automatically)');
             $('mrqRvCount').textContent = p.invitee_ids.length;
@@ -515,7 +515,7 @@
                 setStep('done');
                 hide('mrqBtnStart', !(d.meeting.join_url || d.meeting.meet_url));
                 // reset form for next time
-                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; stampNow(); $('mrqApprox').value = '30'; $('mrqAvail').innerHTML = '';
+                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; $('mrqRoom').value = ''; resetPriority(); stampNow(); $('mrqApprox').value = '30'; $('mrqAvail').innerHTML = '';
                 renderChips(); renderMembers();
                 poll(false);
             }).catch(function () {
@@ -667,6 +667,7 @@
         }
         $('mrqModal').addEventListener('show.bs.modal', function (e) {
             stampNow(); checkAvail();
+            if (step === 'form') resetPriority();
             loadMembers();
             if (e.relatedTarget && e.relatedTarget.id === 'mrqFab') {
                 // Clicking the floating icon: go straight to pending requests if someone is waiting on you.
