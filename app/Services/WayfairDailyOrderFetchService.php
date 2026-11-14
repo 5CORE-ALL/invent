@@ -77,6 +77,8 @@ class WayfairDailyOrderFetchService
                         continue;
                     }
                     $seen[$poNumber] = true;
+                    // Wayfair tells us per query whether the PO already has a response (accepted) or not (new).
+                    $po['wayfair_has_response'] = $hasResponse;
                     $collected[] = $po;
                     $newOnPage++;
                     if (! empty($po['poDate'])) {

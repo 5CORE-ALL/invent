@@ -787,6 +787,8 @@ class WayfairTrackingSyncService
             $payload['asn_status'] = $status;
             unset($payload['asn_error'], $payload['asn_error_at']);
             $row->raw_payload = $payload;
+            // Wayfair accepted our shipment notice: the PO is shipped, no longer pending.
+            $row->status = 'shipped';
             $row->save();
         }
     }

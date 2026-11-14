@@ -181,6 +181,11 @@ class FetchWayfairDailyData extends Command
         $warehouse = $po['warehouse'] ?? [];
         $event = $product['event'] ?? [];
 
+        // Wayfair's own state for the PO: not responded yet = open, responded = accepted. Unknown (legacy query) = null.
+        $hasResponse = $po['wayfair_has_response'] ?? null;
+        $status = $hasResponse === null ? null : ($hasResponse ? 'accepted' : 'open');
+        unset($po['wayfair_has_response']);
+
         $quantity = (int) ($product['quantity'] ?? 1);
         $unitPrice = (float) ($product['price'] ?? 0);
         $totalPrice = $unitPrice * $quantity;
@@ -189,7 +194,7 @@ class FetchWayfairDailyData extends Command
             'po_number' => $po['poNumber'] ?? null,
             'po_date' => $poDateCarbon->toDateString(),
             'period' => $period,
-            'status' => 'open',
+            'status' => $status,
             'sku' => $sku,
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
@@ -224,6 +229,27 @@ class FetchWayfairDailyData extends Command
             'updated_at' => now(),
             'created_at' => now(),
         ];
+    }
+
+    /**
+     * Final status for a stored PO line: shipped once a shipment notice (ASN) was sent to Wayfair, otherwise the
+     * state Wayfair reported (open = no response yet, accepted = responded). When Wayfair did not say, keep what we had.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    protected function resolveStatus(array $order, ?string $existingStatus): string
+    {
+        $payload = json_decode((string) ($order['raw_payload'] ?? ''), true);
+        if (is_array($payload) && trim((string) ($payload['asn_sent_at'] ?? '')) !== '') {
+            return 'shipped';
+        }
+        $reported = trim((string) ($order['status'] ?? ''));
+        if ($reported !== '') {
+            return $reported;
+        }
+        $existingStatus = trim((string) $existingStatus);
+
+        return $existingStatus !== '' ? $existingStatus : 'open';
     }
 
     /**
@@ -273,8 +299,9 @@ class FetchWayfairDailyData extends Command
                     $existing = DB::table('wayfair_daily_data')
                         ->where('po_number', $order['po_number'])
                         ->where('sku', $order['sku'])
-                        ->first(['raw_payload']);
+                        ->first(['raw_payload', 'status']);
                     $order = $this->keepStoredWayfairTracking($order, $existing->raw_payload ?? null);
+                    $order['status'] = $this->resolveStatus($order, $existing->status ?? null);
                     $exists = $existing !== null;
                     if (! $exists && empty($order['id'])) {
                         $order['id'] = ((int) DB::table('wayfair_daily_data')->max('id')) + 1;
@@ -294,6 +321,7 @@ class FetchWayfairDailyData extends Command
             // Fallback to individual inserts
             foreach ($orders as $order) {
                 try {
+                    $order['status'] = $this->resolveStatus($order, null);
                     WayfairDailyData::updateOrCreate(
                         [
                             'po_number' => $order['po_number'],
