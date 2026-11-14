@@ -48,6 +48,7 @@ class PlsRuleSpriceApply
         app()->terminating(static function (): void {
             try {
                 self::runNow(self::AGAIN);
+                self::pushNow();
             } catch (Throwable $e) {
                 try {
                     Log::warning('[PlsRuleSpriceApply] failed: '.$e->getMessage());
@@ -58,6 +59,24 @@ class PlsRuleSpriceApply
                 Cache::forget(self::RUNNING);
             }
         });
+    }
+
+    /**
+     * Push the freshly saved S PRC to ProLightSounds right away, as a detached background process.
+     *
+     * A rule change used to wait for the next 10-minute pls:push-blue-prices tick, then trickle out at one SKU
+     * every ~2s, so ~600 blue triangles stayed unpushed for 30+ minutes after an edit. The same command now starts
+     * at once; the service lock keeps it from running twice, and the scheduled catch-up still picks up anything left.
+     */
+    public static function pushNow(): bool
+    {
+        try {
+            return DetachedArtisan::spawn('pls:push-blue-prices');
+        } catch (Throwable $e) {
+            Log::warning('[PlsRuleSpriceApply] could not start the push: '.$e->getMessage());
+
+            return false;
+        }
     }
 
     /**

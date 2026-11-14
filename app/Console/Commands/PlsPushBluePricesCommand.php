@@ -18,7 +18,7 @@ class PlsPushBluePricesCommand extends Command
 {
     protected $signature = 'pls:push-blue-prices
         {--dry-run : Compute only, do NOT push to PLS}
-        {--max-pushes=300 : Max PLS pushes per run (rest next run)}
+        {--max-pushes=1000 : Max PLS pushes per run (rest next run). 300 left ~600 blue SKUs waiting 30+ min after a rule edit}
         {--cooldown=10 : Minutes the store gets to apply a push before the same SKU is checked/re-pushed}
         {--sleep-ms=300 : Delay between PLS pushes (ms)}
         {--respect-switch : Skip the run when the page Push on reload switch is off}';

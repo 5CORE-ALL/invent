@@ -158,7 +158,10 @@ class PlsSprcDilAutoPushService
                         // Ask the ProLightSounds API for the live price first, for EVERY blue SKU (not only one pushed
                         // before). The store may already be right and only the Price column stale; then no push is needed.
                         // The pull also writes the real live price into the Price column, so the page shows what PLS has.
-                        if (! $dryRun && $canPush) {
+                        // Skipped when the live Price still equals the price we last pushed: the store is where our last
+                        // push left it, so the pull could only confirm a push is needed. That pull was ~1/3 of the 2s
+                        // per SKU, which made a rule edit (hundreds of blue SKUs) take 30+ minutes to push.
+                        if (! $dryRun && $canPush && ! $this->liveEqualsLastPush($row)) {
                             if ($maxPushes > 0 && $apiChecks >= $maxPushes * 2) {
                                 $this->log($logger, "Reached max live-price checks ({$apiChecks}) — rest next run");
                                 break;
@@ -596,6 +599,18 @@ class PlsSprcDilAutoPushService
     protected function isUnchanged(array $row, array $computed): bool
     {
         return PushedListingPrice::same($row['pushed_value'] ?? null, $computed['sprice']);
+    }
+
+    /**
+     * The live PLS Price column equals the price last pushed successfully for this SKU.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function liveEqualsLastPush(array $row): bool
+    {
+        return isset($row['pushed_value'])
+            && $row['pushed_value'] !== null
+            && PushedListingPrice::same($row['price'] ?? 0, $row['pushed_value']);
     }
 
     protected function withinCooldown(string $at, int $cooldownMinutes): bool

@@ -227,4 +227,18 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
+
+    public function test_live_pull_is_only_skipped_when_price_equals_the_last_push(): void
+    {
+        $m = new \ReflectionMethod(PlsSprcDilAutoPushService::class, 'liveEqualsLastPush');
+        $m->setAccessible(true);
+        $svc = new PlsSprcDilAutoPushService;
+
+        $this->assertTrue($m->invoke($svc, ['price' => 5.18, 'pushed_value' => 5.18]));
+        $this->assertTrue($m->invoke($svc, ['price' => 5.18, 'pushed_value' => 5.180001]));
+        // Store drifted from our last push, or never pushed: the live pull must still run.
+        $this->assertFalse($m->invoke($svc, ['price' => 5.50, 'pushed_value' => 5.18]));
+        $this->assertFalse($m->invoke($svc, ['price' => 5.18, 'pushed_value' => null]));
+        $this->assertFalse($m->invoke($svc, ['price' => 5.18]));
+    }
 }
