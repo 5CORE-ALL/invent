@@ -147,6 +147,18 @@ class AutomatedTaskAccessTest extends TestCase
         $this->assertCount(2, AutomatedTaskAccess::filterVisible($admin, $rows));
     }
 
+    public function test_hritiksha_can_edit_any_template_but_not_delete_it(): void
+    {
+        $hritiksha = $this->user('mgr-operations@5core.com', 'Hritiksha', 'member');
+        $theirs = $this->template(2, 'b@5core.com', 'c@5core.com');
+
+        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($hritiksha, $theirs));
+        $this->assertTrue(\App\Support\AutomatedTaskAccess::canModify($hritiksha, $theirs));
+        $this->assertTrue(\App\Http\Controllers\AutomatedTaskChecklistController::canManageChecklist($hritiksha));
+        $this->assertFalse(TaskPolicy::userCanDeleteAutomatedTask($hritiksha, $theirs));
+        $this->assertFalse(TaskPolicy::userIsPresident($hritiksha));
+    }
+
     public function test_president_level_login_can_modify_any_template_and_manage_checklists(): void
     {
         $shobha = $this->user('software5@5core.com', 'Shobha', 'member');

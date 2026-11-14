@@ -71,6 +71,27 @@ class TaskPolicy
         'software5@5core.com',      // Shobha — same edit/delete-anyone-task access as the President
     ];
 
+    /**
+     * Logins that may EDIT any automated task template (automate_tasks), not only the ones they assigned.
+     * Edit only: they still cannot delete someone else's template, and get none of the president's other task rights.
+     *
+     * @var list<string>
+     */
+    private const AUTOMATED_TASK_EDITOR_EMAILS = [
+        'mgr-operations@5core.com', // Hritiksha
+    ];
+
+    public static function userIsAutomatedTaskEditor(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::AUTOMATED_TASK_EDITOR_EMAILS, true);
+    }
+
     public static function userIsPresident(?User $user): bool
     {
         if ($user === null) {
@@ -206,7 +227,7 @@ class TaskPolicy
      */
     public static function userCanModifyAutomatedTask(User $user, object $task): bool
     {
-        if (self::userIsPresident($user)) {
+        if (self::userIsPresident($user) || self::userIsAutomatedTaskEditor($user)) {
             return true;
         }
 

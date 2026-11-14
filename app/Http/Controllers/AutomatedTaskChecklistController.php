@@ -32,7 +32,7 @@ class AutomatedTaskChecklistController extends Controller
 
         // President-level logins (president@, software5@ / Shobha) may edit any automated
         // task template, so they may also add or edit its checklist.
-        if (TaskPolicy::userIsPresident($user)) {
+        if (TaskPolicy::userIsPresident($user) || TaskPolicy::userIsAutomatedTaskEditor($user)) {
             return true;
         }
 
