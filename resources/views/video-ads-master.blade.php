@@ -1661,7 +1661,7 @@
             const LINK_LOCKED_MSG  = `Complete at least ${LINK_MIN_POINTS} of ${CHECKLIST_ITEMS.length} checklist points before adding a link.`;
 
             function canEditLink(rowData) {
-                return !!rowData && !!rowData.id && checklistDone(rowData) >= LINK_MIN_POINTS;
+                return !!rowData && (!!rowData.id || !!rowData._draft) && checklistDone(rowData) >= LINK_MIN_POINTS;
             }
 
             function checklistFormatter(cell) {
@@ -1695,7 +1695,7 @@
 
             function openChecklist(row) {
                 const data = row.getData();
-                if (!data.id) return;
+                if (!data.id && !data._draft) return;
                 checklistRow = row;
 
                 const ticked = new Set((Array.isArray(data.checklist) ? data.checklist : []).map(Number));
@@ -1741,6 +1741,14 @@
                     const v = t.value.trim();
                     if (v) notes[t.dataset.no] = v;
                 });
+
+                // Unsaved new row: keep the ticks in the draft; they are sent after the row is created.
+                if (data._draft) {
+                    row.update({ checklist: checked, checklist_notes: Object.keys(notes).length ? notes : null });
+                    checklistModal.hide();
+                    showToast('Checklist saved — it will be stored when you save the row', 'success');
+                    return;
+                }
 
                 const btn = document.getElementById('vamChecklistSave');
                 btn.disabled = true;
@@ -2463,10 +2471,8 @@
                 if (note) {
                     if (locked) {
                         note.innerHTML = '🔒 ' + escapeHtml(LINK_LOCKED_MSG)
-                            + (editingId
-                                ? ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="vamFormOpenChecklist">'
-                                  + '<i class="fas fa-list-check me-1"></i>Open checklist</button>'
-                                : ' Save the row first, then use the checklist icon in the table.');
+                            + ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="vamFormOpenChecklist">'
+                            + '<i class="fas fa-list-check me-1"></i>Open checklist</button>';
                     } else {
                         note.textContent = 'A link icon will be shown in the table when a URL is set.';
                     }
@@ -2478,8 +2484,28 @@
             // meanwhile (its typed values are kept) and comes back once the
             // checklist closes, with the Link / video fields re-checked.
             let reopenRowAfterChecklist = false;
+
+            // "Add Row" has no saved row yet, so its checklist is kept in this draft
+            // and written to the new row when the form is saved.
+            function newDraftRow() {
+                return {
+                    _data: { _draft: true, checklist: [], checklist_notes: null },
+                    getData() { return this._data; },
+                    update(d) { Object.assign(this._data, d); },
+                    reformat() {},
+                };
+            }
+            let draftRow = newDraftRow();
+
+            function currentFormRow() {
+                if (editingId) return table.getRow(editingId);
+                draftRow._data.name = (document.getElementById('vam_name').value || '').trim();
+                draftRow._data.target_value = '';
+                return draftRow;
+            }
+
             function openChecklistFromForm() {
-                const row = editingId ? table.getRow(editingId) : null;
+                const row = currentFormRow();
                 if (!row) return;
                 reopenRowAfterChecklist = true;
                 const el = document.getElementById('vamRowModal');
@@ -2490,7 +2516,7 @@
             function restoreRowFormAfterChecklist() {
                 if (!reopenRowAfterChecklist) return;
                 reopenRowAfterChecklist = false;
-                const row = editingId ? table.getRow(editingId) : null;
+                const row = currentFormRow();
                 if (row) setFormLinkLocked(!canEditLink(row.getData()));
                 rowModal.show();
             }
@@ -2524,6 +2550,7 @@
                 editingId = null;
                 resetForm();
                 document.getElementById('vamRowModalTitle').innerHTML = '<i class="fas fa-video me-2"></i>Add Video Ad';
+                draftRow = newDraftRow();
                 setFormLinkLocked(true);   // a new row has no checklist yet
                 rowModal.show();
             }
@@ -2625,20 +2652,46 @@
 
                 const request = (videoFile ? sendVideoChunks(videoFile, saveBtn) : Promise.resolve(null))
                 .then(function (uploadId) {
-                    if (uploadId) payload.video_upload = uploadId;
-                    return fetch(url, {
-                        method: isEdit ? 'PUT' : 'POST',
+                    const send = (u, method, body) => fetch(u, {
+                        method,
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': csrfToken,
                         },
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify(body),
+                    }).then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })));
+
+                    const draft = draftRow.getData();
+                    const useDraft = !isEdit && checklistDone(draft) >= LINK_MIN_POINTS;
+
+                    if (!useDraft) {
+                        if (uploadId) payload.video_upload = uploadId;
+                        return send(url, isEdit ? 'PUT' : 'POST', payload);
+                    }
+
+                    // New row with a completed draft checklist: the server only accepts a
+                    // link / video once the checklist is stored, so create the row first,
+                    // store the checklist, then apply the link / video.
+                    const followUp = { link: payload.link };
+                    if (uploadId) followUp.video_upload = uploadId;
+                    delete payload.link;
+
+                    return send(url, 'POST', payload).then(function (created) {
+                        if (!created.ok || !created.j.success) return created;
+                        const newId = created.j.row.id;
+                        return send(`/video-ads-master/${newId}/checklist`, 'PUT', {
+                            checklist: draft.checklist,
+                            notes: draft.checklist_notes || {},
+                        }).then(function (cl) {
+                            if (!cl.ok || !cl.j.success) return created;
+                            if (!followUp.link && !followUp.video_upload) return cl.j.row ? { ok: true, j: Object.assign({}, created.j, { row: Object.assign({}, created.j.row, { checklist: cl.j.row.checklist, checklist_notes: cl.j.row.checklist_notes }) }) } : created;
+                            return send(`/video-ads-master/${newId}`, 'PUT', followUp);
+                        });
                     });
                 });
 
                 request
-                .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
                     if (!ok || !j.success) {
                         showToast((j && j.message) || 'Failed to save', 'error');
