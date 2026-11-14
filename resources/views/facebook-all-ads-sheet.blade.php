@@ -1877,8 +1877,18 @@
                         'Campaign name',
                         'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
+                        'Shopify Sales', 'Shopify Sold', 'Sessions',
                         'Lifetime Acos', 'Lifetime CTR', 'Lifetime Sales', 'Lifetime Spend',
                     ]);
+                    // Live Shopify cells (Shopify Sales / Sold / Sessions): grey "—"
+                    // when Shopify couldn't be reached, otherwise the plain value.
+                    function formatLiveShopifyCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    }
                     // Columns whose cell should be painted with the
                     // matched ACOS-band colour (Sbgt only — Acos uses
                     // fixed background bands via formatAcosCell).
@@ -2098,6 +2108,7 @@
                         }
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
+                        else if (c.field === 'Shopify Sales' || c.field === 'Shopify Sold' || c.field === 'Sessions') formatter = formatLiveShopifyCell;
                         else if (c.field === 'CTR')          formatter = formatCtrCell;
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
                         else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
@@ -2114,6 +2125,7 @@
                         const NUMERIC = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR',
                             'SPEND','SALES','SOLD','CVR','CPS',
+                            'Shopify Sales','Shopify Sold','Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                         ]);
                         const sorter = NUMERIC.has(c.field)
@@ -2135,6 +2147,7 @@
                         // layout fills any leftover horizontal space.
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
+                            'Shopify Sales','Shopify Sold','Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48

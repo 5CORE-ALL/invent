@@ -7,6 +7,7 @@ use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Models\FacebookAdType;
 use App\Models\FacebookAllAdsSheet;
 use App\Models\FacebookB2bB2cOption;
+use App\Services\ShopifyMarketingReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -881,6 +882,22 @@ class FacebookAllAdsSheetController extends Controller
         }
         unset($row);
 
+        // Pass 4c — live Shopify sales / orders / sessions per campaign
+        // (ShopifyQL, last 30 days, cached 15 min). Stays blank when Shopify
+        // can't be reached; a campaign Shopify has no row for shows 0.
+        $liveShopify = $this->liveShopifyCampaignStats(30);
+        foreach ($projected as &$row) {
+            if ($liveShopify === null) {
+                $row['Shopify Sales'] = $row['Shopify Sold'] = $row['Sessions'] = null;
+                continue;
+            }
+            $ls = $liveShopify[(string) ($row['CAMPAIGN ID'] ?? '')] ?? ['sales' => 0.0, 'orders' => 0, 'sessions' => 0];
+            $row['Shopify Sales'] = '$' . number_format($ls['sales'], 2);
+            $row['Shopify Sold']  = (string) $ls['orders'];
+            $row['Sessions']      = (string) $ls['sessions'];
+        }
+        unset($row);
+
         // Pass 5 — write today's per-campaign metric snapshot so the
         // badge trend chart has a real history to query later. Same
         // pass runs every time the merged view is computed (every
@@ -939,6 +956,41 @@ class FacebookAllAdsSheetController extends Controller
                 'base_type'       => $baseType,
             ],
         ], $this->tcosPayloadMatchingMaster());
+    }
+
+    /**
+     * Live Shopify numbers per Meta campaign id, summed over every Meta
+     * channel / traffic type (ShopifyQL labels both Meta Ads and Facebook
+     * as "facebook"/"instagram", so the per-channel split isn't available).
+     *
+     * @return array<string, array{sales: float, orders: int, sessions: int}>|null
+     *         null when Shopify can't be reached (caller leaves cells blank).
+     */
+    private function liveShopifyCampaignStats(int $days = 30): ?array
+    {
+        try {
+            $res = app(ShopifyMarketingReportService::class)->campaignPerformance($days, 'meta');
+        } catch (\Throwable $e) {
+            Log::warning('FAAS live Shopify stats failed: ' . $e->getMessage());
+            return null;
+        }
+        if (empty($res['success'])) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($res['rows'] as $r) {
+            $cid = trim((string) ($r['marketing_campaign'] ?? ''));
+            if (! preg_match('/^\d{6,}$/', $cid)) {
+                continue;
+            }
+            $out[$cid] ??= ['sales' => 0.0, 'orders' => 0, 'sessions' => 0];
+            $out[$cid]['sales']    += (float) ($r['total_sales'] ?? 0);
+            $out[$cid]['orders']   += (int) ($r['orders'] ?? 0);
+            $out[$cid]['sessions'] += (int) ($r['sessions'] ?? 0);
+        }
+
+        return $out;
     }
 
     /**
@@ -2935,6 +2987,12 @@ class FacebookAllAdsSheetController extends Controller
         // rendered with a "$" prefix. Mode "cps" skips the *100 and
         // the trailing "%" that `divPct()` adds.
         ['title' => 'CPS',           'formula' => ['SPEND', 'SOLD', 0, 'cps']],
+        // Live Shopify (ShopifyQL, last 30 days) per campaign, summed across
+        // Meta channels. Display-only: filled in Pass 4c and deliberately NOT
+        // used by Acos / Sbgt, which stay on the uploaded Shopify export.
+        ['title' => 'Shopify Sales', 'sources' => []],
+        ['title' => 'Shopify Sold',  'sources' => []],
+        ['title' => 'Sessions',      'sources' => []],
         // Lifetime (all-time) ACOS and SALES per campaign. Placeholders here —
         // the values are attached in "Pass 4b" from facebook_campaign_lifetime_stats
         // (filled by `facebook:sync-lifetime-stats` from Meta, date_preset=maximum).
