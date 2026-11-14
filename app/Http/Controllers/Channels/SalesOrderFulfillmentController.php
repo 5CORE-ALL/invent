@@ -4728,7 +4728,7 @@ class SalesOrderFulfillmentController extends Controller
             $slug === 'aliexpress' && $upper === 'WAIT_BUYER_ACCEPT_GOODS' => 'Shipped',
             $slug === 'alibaba' && $upper === 'WAIT_BUYER_ACCEPT_GOODS' => 'Shipped',
             $slug === 'faire' && $upper === 'DELIVERED' => 'Delivered',
-            $slug === 'wayfair' && $lower === 'open' => 'Pending',
+            $slug === 'wayfair' && in_array($lower, ['open', 'accepted'], true) => 'Pending',
             in_array($slug, ['bestbuy', 'macy', 'purchasingpower'], true)
                 && (
                     in_array(str_replace([' ', '-'], '_', $upper), ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
@@ -7592,7 +7592,7 @@ class SalesOrderFulfillmentController extends Controller
                     ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT']
                 )->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
             }),
-            'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open'])
+            'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['open', 'accepted'])
                 ->when(
                     Schema::hasColumn('wayfair_daily_data', 'packing_slip_url')
                     || Schema::hasColumn('wayfair_daily_data', 'carrier_code'),

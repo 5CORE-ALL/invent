@@ -450,7 +450,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $slug === 'faire' => in_array($upper, ['PROCESSING', 'NEW'], true),
             in_array($slug, ['purchasingpower', 'bestbuy', 'macy'], true) => in_array($compact, ['SHIPPING', 'TO_COLLECT', 'AWAITING_SHIPMENT'], true)
                 || str_contains($lower, 'awaiting shipment'),
-            $slug === 'wayfair' => $lower === 'open',
+            $slug === 'wayfair' => in_array($lower, ['open', 'accepted'], true),
             $slug === 'doba' => $compact === 'UNSHIPPED',
             in_array($slug, ['tiktok', 'tiktok2'], true) => $upper === 'AWAITING_SHIPMENT',
             $slug === 'topdawg' => in_array($lower, ['pending', 'processing', 'saved'], true),
