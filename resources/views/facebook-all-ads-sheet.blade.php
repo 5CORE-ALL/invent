@@ -280,8 +280,11 @@
         #facebook-all-ads-table .tabulator-cell[tabulator-field="Campaign name"] {
             overflow: hidden;
         }
-        /* Fit everything on one screen — no horizontal scroll, tighter cells. */
-        #facebook-all-ads-table .tabulator-tableholder { overflow-x: hidden !important; }
+        /* Tighter cells. Columns still shrink to fit one screen when they can
+           (layout: fitColumns), but when the minimum widths add up to more
+           than the screen the table scrolls sideways instead of clipping
+           Sbgt / Audit Req / History off the right edge. */
+        #facebook-all-ads-table .tabulator-tableholder { overflow-x: auto !important; }
         #facebook-all-ads-table .tabulator-col-title { white-space: normal; font-size: 12px; }
         #facebook-all-ads-table .tabulator-cell { padding: 4px 4px; font-size: 12px; }
         #facebook-all-ads-table .tabulator-col .tabulator-col-content { padding: 4px 4px; }
