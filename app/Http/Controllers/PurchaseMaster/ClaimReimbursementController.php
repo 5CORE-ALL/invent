@@ -242,6 +242,7 @@ class ClaimReimbursementController extends Controller
             'rate.*' => 'required|numeric',
             'amount.*' => 'required|numeric',
             'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
+            'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
         ]);
 
         [$items, $totalAmount, $claimSupplierId] = $this->buildItemsFromForm($request);
@@ -307,6 +308,16 @@ class ClaimReimbursementController extends Controller
                 $imagePath = $uploadPath . '/' . $imageName;
             }
 
+            $screenshotPath = trim((string) $request->input("existing_screenshot.$index", '')) ?: null;
+
+            if ($request->hasFile("screenshot.$index")) {
+                $uploadPath = 'uploads/claim_images';
+                $shot = $request->file("screenshot.$index");
+                $shotName = time() . '_' . $index . '_sc.' . $shot->getClientOriginalExtension();
+                $shot->move(public_path($uploadPath), $shotName);
+                $screenshotPath = $uploadPath . '/' . $shotName;
+            }
+
             $rowAmount = $request->amount[$index];
             $totalAmount += $rowAmount;
 
@@ -322,6 +333,7 @@ class ClaimReimbursementController extends Controller
                 'amount' => $rowAmount,
                 'reason' => $request->reason[$index] ?? '',
                 'image' => $imagePath,
+                'screenshot' => $screenshotPath,
             ];
         }
 
@@ -346,6 +358,8 @@ class ClaimReimbursementController extends Controller
             'amount.*' => 'required|numeric',
             'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
             'existing_image.*' => 'nullable|string|max:500',
+            'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
+            'existing_screenshot.*' => 'nullable|string|max:500',
         ]);
 
         $claim = ClaimReimbursement::findOrFail($id);
@@ -433,6 +447,7 @@ class ClaimReimbursementController extends Controller
                 'amount' => $amount,
                 'reason' => trim((string) ($row['reason'] ?? '')),
                 'image' => $image,
+                'screenshot' => $existingItems[$index]['screenshot'] ?? null,
             ];
         }
 

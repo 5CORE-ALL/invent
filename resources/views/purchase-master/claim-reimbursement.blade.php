@@ -48,14 +48,22 @@
         overflow: visible !important;
     }
 
-    /* Action column: always a light yellow background (even on hover / striped / selected rows) */
-    .tabulator .tabulator-row .tabulator-cell.action-cell,
-    .tabulator .tabulator-row:hover .tabulator-cell.action-cell,
-    .tabulator .tabulator-row.tabulator-row-even .tabulator-cell.action-cell,
-    .tabulator .tabulator-row.tabulator-row-odd .tabulator-cell.action-cell,
-    .tabulator .tabulator-row.tabulator-selected .tabulator-cell.action-cell {
-        background-color: #fffbe0 !important;
+    /* Read-only view (non-directors): select2 boxes must not open */
+    #claimModal #claimFieldset:disabled .select2-container { pointer-events: none; opacity: .85; }
+    #claimModal #claimFieldset:disabled #addRowBtn { display: none; }
+    #claimModal #claimFieldset:disabled .remove-row { visibility: hidden; }
+
+    /* Action section (now inside the claim modal): always a light yellow background */
+    #claimModal .claim-action-card {
+        background: #fffbe0 !important;
+        border-color: #f3e8a3;
+        margin-top: 20px;
     }
+    #claimModal .claim-action-card .claim-section-title i { color: #d97706; }
+    #claimModal .claim-action-card .table { background: #fff; border-radius: 10px; overflow: hidden; margin-bottom: 0; }
+    #claimModal .claim-action-card .table thead { background: #f1f5fb; }
+    #claimModal .claim-action-card .btn-claim-save { border-radius: 0 12px 12px 0; padding: 8px 20px; }
+    #claimModal .claim-action-card #claimActionInput { border-radius: 12px 0 0 12px; background: #fff; }
 
     /* ===== Next-gen Add Claim modal ===== */
     #claimModal .modal-content {
@@ -210,6 +218,51 @@
     #claimModal #claimTable td.col-num6 .form-control::-webkit-outer-spin-button,
     #claimModal #claimTable td.col-num6 .form-control::-webkit-inner-spin-button {
         -webkit-appearance: none; margin: 0;
+    }
+
+    /* Screenshot: camera button -> thumbnail, large preview on hover */
+    #claimModal #claimTable th.col-shot,
+    #claimModal #claimTable td.col-shot { width: 72px; min-width: 72px; max-width: 72px; padding-left: 4px; padding-right: 4px; }
+    #claimModal #claimTable th.col-shot { white-space: normal; font-size: .62rem; }
+    #claimModal .claim-shot {
+        position: relative;
+        width: 40px; height: 40px;
+        margin: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 10px;
+        border: 1px solid #dbe2ee;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 16px;
+        cursor: pointer;
+        overflow: hidden;
+        transition: all .15s;
+    }
+    #claimModal .claim-shot:hover { border-color: #2563eb; color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .1); }
+    #claimModal .claim-shot.has-shot { border-color: #22c55e; }
+    #claimModal .claim-shot .claim-shot-thumb { width: 100%; height: 100%; object-fit: cover; }
+    #claimModal .claim-shot input[type="file"] {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        opacity: 0; cursor: pointer;
+        font-size: 0; padding: 0; min-height: 0;
+    }
+    #scPreview {
+        display: none;
+        position: fixed;
+        z-index: 3000;
+        pointer-events: none;
+        padding: 6px;
+        background: #fff;
+        border: 1px solid #c7d4ee;
+        border-radius: 12px;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, .4);
+    }
+    #scPreview img {
+        display: block;
+        max-width: min(560px, 70vw);
+        max-height: 70vh;
+        border-radius: 8px;
     }
 
     /* Reason / Notes: icon button that opens an editor modal */
@@ -482,6 +535,7 @@
       <div class="modal-body">
         <form id="claimForm" action="{{ route('claim.reimbursement.save') }}" method="POST" enctype="multipart/form-data">
             @csrf
+          <fieldset id="claimFieldset">
           <div class="claim-card">
             <div class="row g-3">
               <div class="col-md-6">
@@ -510,6 +564,7 @@
                   <th class="col-num6">Amount</th>
                   <th class="col-reason" style="min-width: 240px;">Reason/Notes</th>
                   <th class="col-attach" title="Image (if any)"><i class="fas fa-paperclip"></i></th>
+                  <th class="col-shot">Screenshot</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -531,6 +586,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" title="Add screenshot"><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*"></label></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -541,7 +597,18 @@
             <button type="button" class="btn btn-sm" id="addRowBtn"><i class="fas fa-plus me-1"></i> Add Row</button>
           </div>
           </div>
+          </fieldset>
         </form>
+
+        {{-- Action section (claim history + new action). Shown when an existing claim is opened. --}}
+        <div class="claim-card claim-action-card" id="claimActionCard" style="display: none;">
+          <div class="claim-section-title"><i class="fas fa-bolt"></i> Action</div>
+          <div id="claimActionHistory"></div>
+          <div class="input-group mt-3">
+            <input type="text" id="claimActionInput" class="form-control" placeholder="Action being taken..." autocomplete="off">
+            <button type="button" class="btn btn-claim-save" id="claimActionAddBtn"><i class="fas fa-plus me-1"></i> Add Action</button>
+          </div>
+        </div>
       </div>
 
       <div class="claim-footer">
@@ -736,6 +803,7 @@
                 {
                     title: "Created by",
                     field: "created_by",
+                    visible: false,
                     hozAlign: "center",
                     width: 85,
                     formatter: function (cell) {
@@ -754,25 +822,6 @@
                     cssClass: "comm-cell",
                     formatter: function(cell) {
                         return buildCommunicationDropdown(cell.getValue());
-                    }
-                },
-                {
-                    title: "Action",
-                    field: "action_history",
-                    cssClass: "action-cell",
-                    hozAlign: "left",
-                    headerSort: false,
-                    minWidth: 180,
-                    widthGrow: 2,
-                    variableHeight: true,
-                    formatter: function (cell) {
-                        return buildActionHistoryInline(cell.getValue());
-                    },
-                    cellClick: function (e, cell) {
-                        if (e.target.closest('.add-action-btn')) {
-                            const d = cell.getRow().getData();
-                            openAddActionModal(d.id);
-                        }
                     }
                 },
                 {
@@ -815,13 +864,17 @@
                     field: "is_archived",
                     hozAlign: "center",
                     headerSort: false,
-                    width: window.CLAIM_CAN_ARCHIVE === true ? 100 : 50,
+                    width: 100,
                     formatter: function (cell) {
                         return buildResolvedCell(cell.getRow().getData());
                     },
                     cellClick: function (e, cell) {
                         if (e.target.closest('.edit-claim-btn')) {
-                            openEditClaim(cell.getRow().getData());
+                            openEditClaim(cell.getRow().getData(), false);
+                            return;
+                        }
+                        if (e.target.closest('.view-claim-btn')) {
+                            openEditClaim(cell.getRow().getData(), true);
                             return;
                         }
                         const btn = e.target.closest('.archive-btn');
@@ -833,6 +886,8 @@
                 },
             ],
         });
+
+        window.claimTable = table;
 
         const showArchivedFilter = document.getElementById('show-archived-filter');
 
@@ -1089,6 +1144,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" title="Add screenshot"><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*"></label></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1122,6 +1178,11 @@
               reasonHidden.value = data.reason || '';
               if (typeof window.claimRefreshReasonBtn === 'function') {
                   window.claimRefreshReasonBtn(newRow.querySelector('.reason-btn'));
+              }
+
+              if (data.screenshot) {
+                  newRow.querySelector('.existing-screenshot').value = data.screenshot;
+                  setShotPreview(newRow.querySelector('.claim-shot'), '/' + String(data.screenshot).replace(/^\/+/, ''));
               }
 
               if (data.image) {
@@ -1342,6 +1403,85 @@
         });
     })();
 
+    // ---- Screenshot column: thumbnail in the row, large preview on hover ----
+    function setShotPreview(label, src) {
+        if (!label) return;
+        const img = label.querySelector('.claim-shot-thumb');
+        const icon = label.querySelector('i');
+        if (src) {
+            img.src = src;
+            img.style.display = 'block';
+            if (icon) icon.style.display = 'none';
+            label.classList.add('has-shot');
+            label.dataset.scSrc = src;
+            label.title = '';
+        } else {
+            img.removeAttribute('src');
+            img.style.display = 'none';
+            if (icon) icon.style.display = '';
+            label.classList.remove('has-shot');
+            delete label.dataset.scSrc;
+            label.title = 'Add screenshot';
+        }
+    }
+
+    document.addEventListener('change', function (e) {
+        const input = e.target;
+        if (!input || !input.classList || !input.classList.contains('claim-shot-input')) return;
+        const label = input.closest('.claim-shot');
+        const file = input.files && input.files[0];
+        if (!file) {
+            // Cleared: fall back to the saved screenshot (if editing), otherwise empty.
+            const saved = label.closest('td').querySelector('.existing-screenshot').value;
+            setShotPreview(label, saved ? '/' + saved.replace(/^\/+/, '') : '');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function (ev) { setShotPreview(label, ev.target.result); };
+        reader.readAsDataURL(file);
+    });
+
+    // One floating large preview shared by every [data-sc-src] element (modal rows + list table).
+    (function () {
+        const box = document.createElement('div');
+        box.id = 'scPreview';
+        box.innerHTML = '<img alt="Screenshot preview">';
+        document.body.appendChild(box);
+        const img = box.querySelector('img');
+
+        function place(e) {
+            const pad = 18;
+            const w = box.offsetWidth || 480;
+            const h = box.offsetHeight || 320;
+            let x = e.clientX + pad;
+            let y = e.clientY + pad;
+            if (x + w > window.innerWidth - 8) x = Math.max(8, e.clientX - w - pad);
+            if (y + h > window.innerHeight - 8) y = Math.max(8, window.innerHeight - h - 8);
+            box.style.left = x + 'px';
+            box.style.top = y + 'px';
+        }
+
+        document.addEventListener('mouseover', function (e) {
+            const t = e.target.closest ? e.target.closest('[data-sc-src]') : null;
+            if (!t) return;
+            img.onload = function () { place(e); };
+            img.src = t.dataset.scSrc;
+            box.style.display = 'block';
+            place(e);
+        });
+        document.addEventListener('mousemove', function (e) {
+            if (box.style.display === 'block') place(e);
+        });
+        document.addEventListener('mouseout', function (e) {
+            const t = e.target.closest ? e.target.closest('[data-sc-src]') : null;
+            if (!t) return;
+            if (e.relatedTarget && t.contains(e.relatedTarget)) return;
+            box.style.display = 'none';
+        });
+        // Never leave the preview stuck open (e.g. a modal closes or the user clicks).
+        document.addEventListener('click', function () { box.style.display = 'none'; });
+    })();
+
     // Attachment icon: show a green tick + file name tooltip once a file is chosen.
     document.addEventListener('change', function (e) {
         const input = e.target;
@@ -1378,11 +1518,15 @@
         if (items.length > 0) {
             html += '<table class="table table-sm table-bordered mb-1" style="font-size: 12px;">';
             html += '<thead class="table-light"><tr>'
-                + '<th>Parent</th><th>SKU</th><th>Supplier</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th>'
+                + '<th>Parent</th><th>SKU</th><th>Supplier</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th><th>Screenshot</th>'
                 + '</tr></thead><tbody>';
             items.forEach(item => {
                 const img = item.image
                     ? `<a href="/${escapeHtml(item.image)}" target="_blank"><img src="/${escapeHtml(item.image)}" style="height:28px;"></a>`
+                    : '<span class="text-muted">N/A</span>';
+                const shotSrc = item.screenshot ? '/' + String(item.screenshot).replace(/^\/+/, '') : '';
+                const shot = shotSrc
+                    ? `<img src="${escapeHtml(shotSrc)}" data-sc-src="${escapeHtml(shotSrc)}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:zoom-in;" alt="Screenshot">`
                     : '<span class="text-muted">N/A</span>';
                 html += '<tr>'
                     + `<td>${escapeHtml(item.parent || '')}</td>`
@@ -1393,6 +1537,7 @@
                     + `<td class="text-center">${escapeHtml(item.amount || '')}</td>`
                     + `<td>${escapeHtml(item.reason || '')}</td>`
                     + `<td class="text-center">${img}</td>`
+                    + `<td class="text-center">${shot}</td>`
                     + '</tr>';
             });
             html += '</tbody></table>';
@@ -1473,18 +1618,30 @@
         return Array.isArray(items) ? items : [];
     }
 
-    function openEditClaim(d) {
-        if (window.CLAIM_CAN_ARCHIVE !== true) return;
+    function renderClaimActions(history) {
+        document.getElementById('claimActionHistory').innerHTML = buildActionHistoryInline(history, false);
+    }
+
+    function openEditClaim(d, readOnly) {
+        // Directors may edit; everyone else only gets the read-only view.
+        if (!readOnly && window.CLAIM_CAN_ARCHIVE !== true) readOnly = true;
 
         const modalEl = document.getElementById('claimModal');
         const form = document.getElementById('claimForm');
 
         window.claimEditId = d.id;
         form.action = '/claim-reimbursement/' + d.id + '/update';
-        document.getElementById('claimModalLabel').textContent = 'Edit Claim / Reimbursement';
+        document.getElementById('claimModalLabel').textContent = readOnly ? 'Claim / Reimbursement' : 'Edit Claim / Reimbursement';
         document.getElementById('claimNo').value = d.claim_number || '';
         document.getElementById('claimDate').value = String(d.claim_date || '').substring(0, 10);
         document.getElementById('claimSaveBtn').innerHTML = '<i class="fas fa-check me-1"></i> Update Claim';
+        document.getElementById('claimSaveBtn').style.display = readOnly ? 'none' : '';
+        document.getElementById('claimFieldset').disabled = !!readOnly;
+
+        // Action section (history + add) below the items.
+        renderClaimActions(d.action_history);
+        document.getElementById('claimActionInput').value = '';
+        document.getElementById('claimActionCard').style.display = '';
 
         window.claimClearRows();
         const items = normalizeClaimItems(d.details);
@@ -1497,6 +1654,55 @@
 
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     }
+
+    // Add an Action to the claim that is open in the modal.
+    (function () {
+        const input = document.getElementById('claimActionInput');
+        const btn = document.getElementById('claimActionAddBtn');
+        if (!input || !btn) return;
+
+        function addAction() {
+            const id = window.claimEditId;
+            const note = input.value.trim();
+            if (!id) return;
+            if (note === '') { input.focus(); return; }
+
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            const formData = new FormData();
+            formData.append('note', note);
+            formData.append('_token', '{{ csrf_token() }}');
+
+            fetch('/claim-reimbursement/' + id + '/action', {
+                method: 'POST',
+                body: formData,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    const row = window.claimTable ? window.claimTable.getRow(id) : null;
+                    if (row) row.update({ action_history: res.action_history });
+                    renderClaimActions(res.action_history);
+                    input.value = '';
+                } else {
+                    alert('Failed: ' + (res.message || 'Unknown error'));
+                }
+            })
+            .catch(() => alert('Something went wrong while saving.'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            });
+        }
+
+        btn.addEventListener('click', addAction);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); addAction(); }
+        });
+    })();
 
     // Put the modal back into "Add" mode once it closes.
     (function () {
@@ -1516,6 +1722,10 @@
             document.getElementById('claimNo').value = defaults.claimNo;
             document.getElementById('claimDate').value = '';
             document.getElementById('claimSaveBtn').innerHTML = defaults.saveHtml;
+            document.getElementById('claimSaveBtn').style.display = '';
+            document.getElementById('claimFieldset').disabled = false;
+            document.getElementById('claimActionCard').style.display = 'none';
+            document.getElementById('claimActionInput').value = '';
             window.claimClearRows();
             window.claimAddRow();
             window.claimUpdateTotal();
@@ -1528,9 +1738,11 @@
 
         let html = '';
 
-        // Directors only: edit the whole claim in the full modal.
+        // Directors edit the whole claim; everyone else gets a read-only view (+ can log Actions).
         if (canArchive) {
             html += `<button class="btn btn-sm btn-outline-primary edit-claim-btn me-1" title="Edit claim"><i class="fas fa-pen-to-square"></i></button>`;
+        } else {
+            html += `<button class="btn btn-sm btn-outline-secondary view-claim-btn me-1" title="Open claim &amp; actions"><i class="fas fa-eye"></i></button>`;
         }
 
         if (archived) {
@@ -1617,7 +1829,8 @@
         .catch(() => alert('Something went wrong while saving the follow up date.'));
     }
 
-    function buildActionHistoryInline(historyData) {
+    function buildActionHistoryInline(historyData, withAddBtn) {
+    if (withAddBtn === undefined) withAddBtn = true;
     let history = historyData || [];
     if (typeof history === 'string') {
         try { history = JSON.parse(history) || []; } catch (e) { history = []; }
@@ -1642,7 +1855,9 @@
         html += '<span class="text-muted">No history</span><br>';
     }
 
-    html += '<button class="btn btn-sm btn-outline-primary add-action-btn"><i class="fas fa-plus me-1"></i> Add Action</button>';
+    if (withAddBtn) {
+        html += '<button class="btn btn-sm btn-outline-primary add-action-btn"><i class="fas fa-plus me-1"></i> Add Action</button>';
+    }
     return html;
 }
 
