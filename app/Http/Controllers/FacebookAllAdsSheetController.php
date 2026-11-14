@@ -762,6 +762,34 @@ class FacebookAllAdsSheetController extends Controller
             unset($mRow);
         }
 
+        // Live Meta overlay (synced Meta Marketing API data: meta_campaigns +
+        // meta_insights_daily). SPEND / IMPR / CLK / Status come from the API
+        // for the latest 30 synced days — the same window Shopify is read for
+        // above — so the Meta Spend upload is only a fallback. Campaigns
+        // Meta has no synced row for, non-USD ad accounts, or a stale / empty
+        // sync all keep the uploaded values.
+        $liveMeta = $this->liveMetaCampaignStats(
+            array_values(array_filter(array_map(
+                fn ($r) => (string) ($r['_campaign_id'] ?? ''),
+                $merged
+            ), fn ($c) => preg_match('/^\d{6,}$/', $c) === 1))
+        );
+        if ($liveMeta !== null) {
+            foreach ($merged as $cid => &$mRow) {
+                $lm = $liveMeta[(string) ($mRow['_campaign_id'] ?? $cid)] ?? null;
+                if ($lm === null) {
+                    continue;
+                }
+                $mRow['Amount spent (USD)'] = (string) round($lm['spend'], 2);
+                $mRow['Impressions']        = (string) $lm['impr'];
+                $mRow['Clicks (all)']       = (string) $lm['clk'];
+                if ($lm['status'] !== null) {
+                    $mRow['Campaign delivery'] = $lm['status'];
+                }
+            }
+            unset($mRow);
+        }
+
         // Project each merged row to the curated MERGED_COLUMNS set in two
         // passes: pass 1 resolves columns with `sources`, pass 2 computes
         // columns with `formula = [num, den, decimals]` using the values
@@ -996,6 +1024,125 @@ class FacebookAllAdsSheetController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Per-campaign spend / impressions / clicks / delivery status from the
+     * synced Meta API tables, for the latest 30 synced days.
+     *
+     * Returns null (caller keeps the uploaded values) when the tables are
+     * missing, there is no insight data, or the newest synced day is more
+     * than 3 days old. Campaigns in non-USD ad accounts are left out because
+     * the sheet's SPEND column is USD.
+     *
+     * @param  list<string>  $cids  Meta campaign ids on the sheet
+     * @return array<string, array{spend: float, impr: int, clk: int, status: ?string}>|null
+     */
+    private function liveMetaCampaignStats(array $cids): ?array
+    {
+        try {
+            if (! $cids
+                || ! Schema::hasTable('meta_campaigns')
+                || ! Schema::hasTable('meta_insights_daily')) {
+                return null;
+            }
+
+            $latest = DB::table('meta_insights_daily')->where('entity_type', 'campaign')->max('date_start');
+            if (! $latest || now()->diffInDays(\Carbon\Carbon::parse($latest), true) > 3) {
+                return null;
+            }
+            $from = \Carbon\Carbon::parse($latest)->subDays(29)->toDateString();
+
+            $camps = DB::table('meta_campaigns as c')
+                ->leftJoin('meta_ad_accounts as a', 'a.id', '=', 'c.ad_account_id')
+                ->whereIn('c.meta_id', $cids)
+                ->get(['c.id', 'c.meta_id', 'c.effective_status', 'c.status', 'c.synced_at', 'a.currency']);
+
+            $internal = [];
+            foreach ($camps as $c) {
+                if ($c->currency !== null && strtoupper((string) $c->currency) !== 'USD') {
+                    continue;
+                }
+                $internal[(int) $c->id] = $c;
+            }
+            if (! $internal) {
+                return null;
+            }
+
+            $ins = [];
+            foreach (array_chunk(array_keys($internal), 1000) as $chunk) {
+                foreach (DB::table('meta_insights_daily')
+                    ->where('entity_type', 'campaign')
+                    ->whereIn('entity_id', $chunk)
+                    ->whereBetween('date_start', [$from, $latest])
+                    ->groupBy('entity_id')
+                    ->selectRaw('entity_id, SUM(spend) AS s, SUM(impressions) AS i, SUM(clicks) AS k')
+                    ->get() as $row) {
+                    $ins[(int) $row->entity_id] = $row;
+                }
+            }
+
+            // The same Meta campaign id can appear more than once in
+            // meta_campaigns (22 of the sheet's campaigns do). Never sum the
+            // copies — take the largest metrics and the newest copy's status.
+            $out = [];
+            $newest = [];
+            foreach ($internal as $id => $c) {
+                $row = $ins[$id] ?? null;
+                $key = (string) $c->meta_id;
+                $raw = strtoupper(trim((string) ($c->effective_status ?: $c->status)));
+                $cur = [
+                    'spend'  => $row ? (float) $row->s : 0.0,
+                    'impr'   => $row ? (int) $row->i : 0,
+                    'clk'    => $row ? (int) $row->k : 0,
+                    'status' => $this->sheetStatusFromMeta($raw),
+                ];
+                if (! isset($out[$key])) {
+                    $out[$key] = $cur;
+                    $newest[$key] = (string) ($c->synced_at ?? '');
+                    continue;
+                }
+                $out[$key]['spend'] = max($out[$key]['spend'], $cur['spend']);
+                $out[$key]['impr']  = max($out[$key]['impr'], $cur['impr']);
+                $out[$key]['clk']   = max($out[$key]['clk'], $cur['clk']);
+                if ((string) ($c->synced_at ?? '') > $newest[$key]) {
+                    $newest[$key]       = (string) $c->synced_at;
+                    $out[$key]['status'] = $cur['status'];
+                }
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('FAAS live Meta stats failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Map Meta's API effective_status onto the words the sheet already uses
+     * for "Campaign delivery" in Meta's Ads Manager export (and colours the
+     * Status dot / filter by): active, inactive (= paused / off), archived.
+     * Anything else (WITH_ISSUES, IN_PROCESS, DISAPPROVED…) is kept as a
+     * lowercase word. Note the API has no "not_delivering" state — that is a
+     * delivery flag Ads Manager derives, so such campaigns read "active".
+     */
+    private function sheetStatusFromMeta(string $raw): ?string
+    {
+        $raw = strtoupper(trim($raw));
+        if ($raw === '') {
+            return null;
+        }
+        if ($raw === 'ACTIVE') {
+            return 'active';
+        }
+        if (in_array($raw, ['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED'], true)) {
+            return 'inactive';
+        }
+        if (in_array($raw, ['ARCHIVED', 'DELETED'], true)) {
+            return 'archived';
+        }
+
+        return strtolower($raw);
     }
 
     /**
