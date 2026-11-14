@@ -2483,6 +2483,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             }
         }
 
+        $channelStatus = app(\App\Services\MarketplaceManager\ChannelOrderDeliveryStatus::class);
+        $channelStatus->setMaxLiveCalls(4);
+
         foreach ($toFetch as $key => $shipment) {
             $res = $canFetch ? $this->matchTrackingResult($results, $key, (string) $shipment['number']) : null;
             $carrier = (string) ($shipment['carrier'] ?? '');
@@ -2492,6 +2495,18 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $status = (string) $res['status'];
                 $this->storeCarrierStatus((string) $shipment['number'], $carrier, $status, trim((string) ($res['detail'] ?? '')));
                 $checked = true;
+            }
+            // Second attempt: the carrier gave no usable status (or only "not found"), so ask the
+            // marketplace the order came from. A status the marketplace calls delivered is kept.
+            if (($status === '' || $status === ShipmentTrackingService::STATUS_NOT_FOUND)
+                && trim((string) ($shipment['mm_slug'] ?? '')) !== ''
+                && trim((string) ($shipment['order_id'] ?? '')) !== '') {
+                $second = $channelStatus->lookup((string) $shipment['mm_slug'], (string) $shipment['order_id']);
+                if ($second !== null) {
+                    $status = $second['status'];
+                    $this->storeCarrierStatus((string) $shipment['number'], $carrier, $status, $second['detail']);
+                    $checked = true;
+                }
             }
             $updates[] = $this->trackingStatusPayload((string) $shipment['number'], $carrier, $status, (string) $shipment['order_id'], $checked, (string) ($shipment['mm_slug'] ?? ''));
         }
