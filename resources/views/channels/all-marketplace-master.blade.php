@@ -1401,7 +1401,6 @@
                                 <div class="amm-inv-block-subtitle">Inv@SP</div>
                                 <div id="amm-inv-sp-tabulator"></div>
                             </div>
-                            @include('channels.partials.inv-summary-tabulator')
                         </div>
                     </div>
                 </div>
@@ -3493,7 +3492,6 @@
                                 tatBadge.setAttribute('data-exact-value', String(tatRounded));
                                 tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
-                            if (window.AmmInvSummaryTabulator) window.AmmInvSummaryTabulator.refresh();
                         }
                         if (response.dot_trends && Object.keys(response.dot_trends).length) {
                             applyDotTrendsMap(response.dot_trends);
@@ -8992,7 +8990,6 @@
                 $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
                 ammInvRenderSpTabulator(slices);
-                if (window.AmmInvSummaryTabulator) window.AmmInvSummaryTabulator.render(slices);
             }
 
             // Inv@SP Tabulator: one row per DIL band, same badge colours / numbers as the cards above.
