@@ -370,6 +370,11 @@ class ShipmentTrackingService
     /** How many native USPS tracking calls remain in the current hour budget. */
     public function uspsRemainingThisHour(): int
     {
+        $unauthorizedUntil = Cache::get('usps_tracking_unauthorized_until');
+        if ($unauthorizedUntil && now()->lt($unauthorizedUntil)) {
+            return 0;
+        }
+
         $blockedUntil = Cache::get('usps_tracking_quota_exhausted_until');
         if ($blockedUntil && now()->lt($blockedUntil)) {
             return 0;
@@ -416,6 +421,17 @@ class ShipmentTrackingService
 
     protected function transientResult(string $provider, string $detail, string $error = 'quota_exceeded'): array
     {
+        if ($provider === 'usps' && self::isUnusableProviderFailure($detail)) {
+            $until = now()->addHours(12);
+            if (! Cache::has('usps_tracking_unauthorized_until')) {
+                Log::warning('ShipmentTracking: USPS tracking API is not authorized for this mailer — using 17TRACK instead', [
+                    'until' => $until->toIso8601String(),
+                ]);
+            }
+            Cache::put('usps_tracking_unauthorized_until', $until, $until);
+            $error = 'not_authorized';
+        }
+
         return [
             'status' => self::STATUS_RATE_LIMITED,
             'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : 'Provider rate/quota limit reached',
@@ -491,8 +507,12 @@ class ShipmentTrackingService
         // so one hourly quota unit now covers 35 packages instead of 1.
         foreach (array_chunk($shipments, 35) as $chunk) {
             if ($quotaHit || ! $this->uspsCanRequest()) {
+                $denied = Cache::get('usps_tracking_unauthorized_until');
+                $reason = $denied && now()->lt($denied)
+                    ? 'USPS tracking API is not authorized for this mailer'
+                    : 'USPS hourly quota reserved — skipped this run';
                 foreach ($chunk as $s) {
-                    $out[$s['number']] = $this->transientResult('usps', 'USPS hourly quota reserved — skipped this run');
+                    $out[$s['number']] = $this->transientResult('usps', $reason);
                 }
 
                 continue;
@@ -632,7 +652,11 @@ class ShipmentTrackingService
             $number = $s['number'];
 
             if ($quotaHit || ! $this->uspsCanRequest()) {
-                $out[$number] = $this->transientResult('usps', 'USPS hourly quota reserved — skipped this run');
+                $denied = Cache::get('usps_tracking_unauthorized_until');
+                $reason = $denied && now()->lt($denied)
+                    ? 'USPS tracking API is not authorized for this mailer'
+                    : 'USPS hourly quota reserved — skipped this run';
+                $out[$number] = $this->transientResult('usps', $reason);
                 continue;
             }
 
@@ -1227,6 +1251,7 @@ class ShipmentTrackingService
         }
 
         $out = [];
+        $lastMile = [];
         $total = count($shipments);
         $i = 0;
         foreach ($shipments as $s) {
@@ -1267,28 +1292,153 @@ class ShipmentTrackingService
                 continue;
             }
 
-            $events = $res['data'];
-            // API returns newest-first in samples; take first event as current.
-            $latest = is_array($events) && array_is_list($events) ? ($events[0] ?? []) : $events;
-            if (! is_array($latest)) {
-                $latest = [];
+            $events = $this->gofoEventList($res['data']);
+            // The list is sometimes oldest-first, so the first row is only "Label Created"
+            // while a later row is Delivered. Keep the furthest-along event.
+            $bestStatus = self::STATUS_NOT_FOUND;
+            $bestDetail = null;
+            $bestRank = -1;
+            $bestWhen = '';
+            foreach ($events as $event) {
+                if (! is_array($event)) {
+                    continue;
+                }
+                $move = (string) ($event['operationMove'] ?? '');
+                $en = (string) ($event['enContext'] ?? $event['pubEsContext'] ?? '');
+                $status = $gofo->normalizeTrackStatus($move, $en);
+                $rank = $this->shipmentStatusRank($status);
+                $when = (string) ($event['operationTime'] ?? '');
+                if ($rank < $bestRank || ($rank === $bestRank && $when !== '' && $bestWhen !== '' && $when < $bestWhen)) {
+                    continue;
+                }
+                $loc = (string) ($event['location'] ?? '');
+                $detail = trim(implode(' · ', array_filter([$en, $loc, $when])));
+                $bestRank = $rank;
+                $bestWhen = $when;
+                $bestStatus = $status;
+                $bestDetail = $detail !== '' ? mb_substr($detail, 0, 480) : null;
             }
 
-            $move = (string) ($latest['operationMove'] ?? '');
-            $en = (string) ($latest['enContext'] ?? $latest['pubEsContext'] ?? '');
-            $when = (string) ($latest['operationTime'] ?? '');
-            $loc = (string) ($latest['location'] ?? '');
-            $detail = trim(implode(' · ', array_filter([$en, $loc, $when])));
-
             $out[$number] = [
-                'status' => $gofo->normalizeTrackStatus($move, $en),
-                'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
+                'status' => $bestStatus,
+                'detail' => $bestDetail,
                 'provider' => 'gofo',
-                'events' => is_array($events) && array_is_list($events) ? $events : [$latest],
+                'events' => $events,
             ];
+
+            // GOFO often stays on "label created" after USPS has already delivered the last mile.
+            if ($bestRank < $this->shipmentStatusRank(self::STATUS_IN_TRANSIT)) {
+                $mile = $this->gofoLastMileNumber($res['data'], $number);
+                if ($mile !== null) {
+                    $lastMile[$number] = $mile;
+                }
+            }
+        }
+
+        if ($lastMile !== [] && $this->has17Track()) {
+            $asked = [];
+            foreach ($lastMile as $mile) {
+                $asked[] = ['number' => $mile, 'carrier' => null];
+            }
+            try {
+                $mileResults = $this->track17Track($asked);
+            } catch (\Throwable $e) {
+                Log::warning('ShipmentTracking: GOFO last-mile lookup failed', ['error' => $e->getMessage()]);
+                $mileResults = [];
+            }
+            foreach ($lastMile as $gofoNo => $mile) {
+                $mileRes = null;
+                foreach ($mileResults as $key => $value) {
+                    if (strcasecmp((string) $key, $mile) === 0 && is_array($value)) {
+                        $mileRes = $value;
+                        break;
+                    }
+                }
+                if (! self::isPersistableResult($mileRes)) {
+                    continue;
+                }
+                if ($this->shipmentStatusRank((string) $mileRes['status']) <= $this->shipmentStatusRank((string) ($out[$gofoNo]['status'] ?? ''))) {
+                    continue;
+                }
+                $out[$gofoNo]['status'] = (string) $mileRes['status'];
+                $extra = trim((string) ($mileRes['detail'] ?? ''));
+                $out[$gofoNo]['detail'] = mb_substr(trim($extra.' (last mile '.$mile.')'), 0, 480);
+                $out[$gofoNo]['provider'] = 'gofo+17track';
+            }
         }
 
         return $out;
+    }
+
+    /** Higher means the package is further along. Delivered beats "Label Created". */
+    protected function shipmentStatusRank(string $status): int
+    {
+        return match ($status) {
+            self::STATUS_DELIVERED => 60,
+            self::STATUS_OUT_FOR_DELIV, self::STATUS_PICKUP => 50,
+            self::STATUS_IN_TRANSIT => 40,
+            self::STATUS_FAILED, self::STATUS_EXCEPTION => 30,
+            self::STATUS_INFO_RECEIVED, self::STATUS_PENDING => 20,
+            self::STATUS_EXPIRED => 10,
+            default => 0,
+        };
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function gofoEventList(mixed $data): array
+    {
+        if (! is_array($data)) {
+            return [];
+        }
+        if (array_is_list($data)) {
+            return array_values(array_filter($data, 'is_array'));
+        }
+        foreach (['trackList', 'tracks', 'events', 'list', 'trajectory', 'trajectoryList', 'details'] as $key) {
+            if (isset($data[$key]) && is_array($data[$key]) && array_is_list($data[$key])) {
+                return array_values(array_filter($data[$key], 'is_array'));
+            }
+        }
+
+        return [$data];
+    }
+
+    /** A USPS/UPS number carried inside a GOFO track response, other than the GFUS waybill itself. */
+    protected function gofoLastMileNumber(mixed $data, string $gofoNumber): ?string
+    {
+        $found = null;
+        $walk = function (mixed $node) use (&$walk, &$found, $gofoNumber): void {
+            if ($found !== null || ! is_array($node)) {
+                return;
+            }
+            foreach ($node as $key => $value) {
+                if (is_array($value)) {
+                    $walk($value);
+
+                    continue;
+                }
+                if (! is_scalar($value)) {
+                    continue;
+                }
+                $tn = strtoupper((string) preg_replace('/\s+/', '', (string) $value));
+                if ($tn === '' || strcasecmp($tn, $gofoNumber) === 0 || preg_match('/^GF[A-Z]{2,4}\d{8,}$/', $tn) === 1) {
+                    continue;
+                }
+                $name = strtolower((string) $key);
+                if ($name !== '' && preg_match('/url|time|date|status|context|move|code|msg/', $name) === 1) {
+                    continue;
+                }
+                if (preg_match('/^1Z[A-Z0-9]{16}$/', $tn) === 1 || preg_match('/^9\d{15,25}$/', $tn) === 1) {
+                    $found = $tn;
+
+                    return;
+                }
+            }
+        };
+        $walk($data);
+
+        return $found;
     }
 
     // ── 17TRACK ──────────────────────────────────────────────────────────────
@@ -1313,11 +1463,12 @@ class ShipmentTrackingService
             return [];
         }
 
+        $this->last17Error = '';
         $this->post17Track('/register', $payload);
         $resp = $this->post17Track('/gettrackinfo', $payload);
 
         $out = [];
-        $accepted = data_get($resp, 'data.accepted', []);
+        $accepted = (array) data_get($resp, 'data.accepted', []);
         foreach ($accepted as $row) {
             $number = (string) data_get($row, 'number', '');
             if ($number === '') {
@@ -1372,7 +1523,66 @@ class ShipmentTrackingService
             ];
         }
 
+        // Register is async: the first read is often empty. Ask again before giving up,
+        // so a delivered package is not left blank for a whole run.
+        $waiting = [];
+        foreach ($payload as $item) {
+            $res = $out[$item['number']] ?? null;
+            if (! is_array($res) || ! empty($res['transient']) || ($res['status'] ?? '') === self::STATUS_NOT_FOUND) {
+                $waiting[] = $item;
+            }
+        }
+        if ($waiting !== []) {
+            // The page request has a 50 second limit. Only the background sync can wait for 17TRACK.
+            if (app()->runningInConsole()) {
+                sleep(3);
+            }
+            // One bad number can make 17TRACK drop the whole batch, so the retry goes in small groups.
+            $limit = app()->runningInConsole() ? 40 : 10;
+            foreach (array_slice(array_chunk($waiting, 5), 0, (int) ceil($limit / 5)) as $group) {
+                $again = $this->post17Track('/gettrackinfo', $group);
+                foreach ((array) data_get($again, 'data.accepted', []) as $row) {
+                    $number = (string) data_get($row, 'number', '');
+                    $rawStatus = (string) data_get($row, 'track_info.latest_status.status', '');
+                    if ($number === '' || $rawStatus === '') {
+                        continue;
+                    }
+                    $detail = (string) (data_get($row, 'track_info.latest_event.description')
+                        ?? data_get($row, 'track_info.latest_status.sub_status')
+                        ?? '');
+                    $out[$number] = [
+                        'status' => $this->normalize17TrackStatus($rawStatus),
+                        'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
+                        'provider' => '17track',
+                    ];
+                }
+            }
+        }
+
+        // A number 17TRACK never mentioned: say why, so the sync log is no longer just "returned nothing".
+        foreach ($payload as $item) {
+            if (isset($out[$item['number']])) {
+                continue;
+            }
+            $out[$item['number']] = $this->transientResult(
+                '17track',
+                '17TRACK gave no answer for this number'.($this->last17Error !== '' ? ': '.$this->last17Error : '')
+            );
+        }
+
         return $out;
+    }
+
+    /** Last problem 17TRACK reported (HTTP error, or an error code in the reply body). */
+    private string $last17Error = '';
+
+    /** Raw 17TRACK call for the tracking:check command. */
+    public function raw17Track(string $path, array $body): array
+    {
+        $this->last17Error = '';
+        $resp = $this->post17Track($path, $body);
+
+        return ['response' => $resp, 'error' => $this->last17Error];
     }
 
     private function post17Track(string $path, array $body): array
@@ -1391,16 +1601,29 @@ class ShipmentTrackingService
                     'status' => $response->status(),
                     'body' => mb_substr($response->body(), 0, 500),
                 ]);
+                $this->last17Error = $path.' HTTP '.$response->status().' '.mb_substr(trim((string) $response->body()), 0, 200);
 
                 return [];
             }
 
-            return $response->json() ?? [];
+            $json = $response->json() ?? [];
+            // 17TRACK answers HTTP 200 and puts failures in the body: {"code": <non-zero>, "data": {"errors": [...]}}.
+            $code = data_get($json, 'code');
+            if ($code !== null && (int) $code !== 0) {
+                $msg = (string) (data_get($json, 'data.errors.0.message') ?? data_get($json, 'message') ?? '');
+                $this->last17Error = $path.' code '.$code.($msg !== '' ? ' '.$msg : '');
+                Log::warning('ShipmentTracking: 17track error code', ['path' => $path, 'code' => $code, 'message' => $msg]);
+            } elseif (is_array(data_get($json, 'data.errors')) && data_get($json, 'data.errors') !== []) {
+                $this->last17Error = $path.' '.mb_substr((string) json_encode(data_get($json, 'data.errors')), 0, 200);
+            }
+
+            return $json;
         } catch (\Throwable $e) {
             Log::error('ShipmentTracking: 17track request failed', [
                 'path' => $path,
                 'error' => $e->getMessage(),
             ]);
+            $this->last17Error = $path.' '.$e->getMessage();
 
             return [];
         }

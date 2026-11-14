@@ -94,6 +94,36 @@ class ListingChannelRefresher
         return $plan;
     }
 
+    /**
+     * Every marketplace slug, quick ones first. The slow live checks (every listed SKU against the
+     * marketplace API, eBay GetItem) go last so a long one cannot hold up the rest of the queue.
+     *
+     * @return list<string>
+     */
+    public static function orderedSlugs(): array
+    {
+        $plan = self::plan();
+        $weight = static function (array $steps): int {
+            $w = 0;
+            foreach ($steps as $step) {
+                $type = (string) ($step['type'] ?? '');
+                if ($type === 'ebay' || $type === 'ebay_verify') {
+                    return 3;
+                }
+                if ($type === 'stale_verify') {
+                    $w = max($w, 2);
+                }
+            }
+
+            return $w;
+        };
+
+        $slugs = array_keys($plan);
+        usort($slugs, static fn (string $a, string $b): int => $weight($plan[$a]) <=> $weight($plan[$b]));
+
+        return $slugs;
+    }
+
     public static function normalizeSlug(string $slug): string
     {
         return strtolower(preg_replace('/[^a-z0-9]/i', '', $slug) ?? '');
@@ -112,6 +142,19 @@ class ListingChannelRefresher
         return is_array($status) ? $status : ['state' => 'idle'];
     }
 
+    /** True while a worker is really executing a refresh for this slug (its lock is held). */
+    public static function isRunning(string $slug): bool
+    {
+        $lock = Cache::lock(self::LOCK_PREFIX.self::normalizeSlug($slug), 5);
+        if ($lock->get()) {
+            $lock->release();
+
+            return false;
+        }
+
+        return true;
+    }
+
     public static function markQueued(string $slug): void
     {
         self::putStatus($slug, [
@@ -127,9 +170,10 @@ class ListingChannelRefresher
      * Run every step for one listing page, then rebuild its counts.
      *
      * @param  bool  $manual  true for the button: ignore the "Auto-link listings by SKU" switch
+     * @param  bool  $countsOnly  true = skip every marketplace fetch / live check and only recount from the data already in the app (what the listing pages show)
      * @return array<string, mixed> final status
      */
-    public function run(string $slug, bool $manual = true): array
+    public function run(string $slug, bool $manual = true, bool $countsOnly = false): array
     {
         $slug = self::normalizeSlug($slug);
         @set_time_limit(0);
@@ -150,7 +194,7 @@ class ListingChannelRefresher
 
         try {
             $failed = 0;
-            foreach (self::plan()[$slug] ?? [] as $step) {
+            foreach ($countsOnly ? [] : (self::plan()[$slug] ?? []) as $step) {
                 $stepStart = microtime(true);
                 [$ok, $message] = $this->runStep($step, $manual);
                 $message .= ' ('.round(microtime(true) - $stepStart).'s)';
@@ -174,7 +218,7 @@ class ListingChannelRefresher
             $status['state'] = $failed > 0 ? 'failed' : 'done';
             $status['message'] = $failed > 0
                 ? $failed.' step(s) failed — see details.'
-                : 'Listings refreshed.';
+                : ($countsOnly ? 'Counts updated from the listing page data.' : 'Listings refreshed.');
         } catch (\Throwable $e) {
             Log::error('ListingChannelRefresher failed', ['slug' => $slug, 'error' => $e->getMessage()]);
             $status['state'] = 'failed';

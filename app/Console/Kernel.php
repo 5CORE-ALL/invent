@@ -640,8 +640,10 @@ class Kernel extends ConsoleKernel
         }
 
         // Once a day: refresh listing data for every marketplace (same job as the
-        // "Refresh listings" button on each listing page).
-        $schedule->command('listing:refresh all')
+        // "Refresh listings" button on each listing page). --queue: one isolated job per marketplace on the
+        // listing-refresh queue (each with its own timeout), quick ones first. Run in one process, a single
+        // slow or hung marketplace used to stop every marketplace after it, and Missing L never updated.
+        $schedule->command('listing:refresh all --queue')
             ->dailyAt('04:20')
             ->timezone('Asia/Kolkata')
             ->name('listing-refresh-all-marketplaces')

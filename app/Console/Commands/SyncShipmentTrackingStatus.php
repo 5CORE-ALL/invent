@@ -155,6 +155,16 @@ class SyncShipmentTrackingStatus extends Command
 
                 if (! ShipmentTrackingService::isPersistableResult($res)) {
                     $skipped++;
+                    // "Not authorized" and "carrier has not answered yet" are not a quota.
+                    // Counting them stopped the run while delivered orders were still unchecked.
+                    $detail = strtolower((string) (is_array($res) ? ($res['detail'] ?? '') : ''));
+                    if (str_contains($detail, 'quota')
+                        || str_contains($detail, 'rate limit')
+                        || str_contains($detail, 'too many')
+                        || str_contains($detail, 'throttl')
+                        || str_contains($detail, 'ran out')) {
+                        $batchQuota++;
+                    }
                     if ($this->output->isVerbose()) {
                         $this->line(sprintf(
                             '      skipped %s (%s): %s',
@@ -164,10 +174,6 @@ class SyncShipmentTrackingStatus extends Command
                                 ? 'provider returned nothing for this number'
                                 : trim(($res['provider'] ?? '?').' / '.($res['status'] ?? '').' / '.($res['detail'] ?? ''))
                         ));
-                    }
-                    if (($res['status'] ?? null) === ShipmentTrackingService::STATUS_RATE_LIMITED
-                        || ! empty($res['transient'])) {
-                        $batchQuota++;
                     }
                     // A miss must leave the front of the queue. Otherwise the same
                     // numbers are retried forever and every other status stays stale.

@@ -2455,8 +2455,28 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $canFetch = $toFetch !== [] && $tracking->isConfigured() && Schema::hasTable('carrier_tracking_statuses');
         $results = [];
         if ($canFetch) {
+            // GOFO is one call per number and each call may take 30 seconds. Ten of them in this
+            // request blow the 50 second limit, the browser gets no answer, and every cell stays "—".
+            // Do a few GOFO numbers per request. The page asks again for the rest.
+            $gofo = [];
+            $rest = [];
+            foreach ($toFetch as $key => $shipment) {
+                $carrier = strtolower((string) ($shipment['carrier'] ?? ''));
+                $number = strtoupper((string) $shipment['number']);
+                if (str_contains($carrier, 'gofo') || str_starts_with($number, 'GF')) {
+                    $gofo[$key] = $shipment;
+                } else {
+                    $rest[$key] = $shipment;
+                }
+            }
+            $fetchNow = $rest + array_slice($gofo, 0, 3, true);
+            $leftOut = array_diff_key($toFetch, $fetchNow);
+            foreach (array_keys($leftOut) as $key) {
+                unset($toFetch[$key]);
+            }
             try {
-                $results = $tracking->track(array_values($toFetch), ['prefer_native' => false]);
+                app(GofoExpressService::class)->setTimeout(8);
+                $results = $tracking->track(array_values($fetchNow), ['prefer_native' => false]);
             } catch (\Throwable $e) {
                 report($e);
                 $results = [];

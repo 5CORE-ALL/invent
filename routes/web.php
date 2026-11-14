@@ -5252,6 +5252,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-dil-groi-slab-history', [OverallAmazonController::class, 'getDilGroiSlabHistory'])->name('amazon.dil-groi-slab.history');
 
     // "Refresh listings" button on every /listing-<marketplace> page
+    Route::post('/listing-refresh-all', [\App\Http\Controllers\ListingRefreshController::class, 'startAll'])->name('listing.refresh.all.start');
+    Route::get('/listing-refresh-all/status', [\App\Http\Controllers\ListingRefreshController::class, 'statusAll'])->name('listing.refresh.all.status');
     Route::post('/listing-refresh/{channel}', [\App\Http\Controllers\ListingRefreshController::class, 'start'])->name('listing.refresh.start');
     Route::get('/listing-refresh/{channel}/status', [\App\Http\Controllers\ListingRefreshController::class, 'status'])->name('listing.refresh.status');
 
