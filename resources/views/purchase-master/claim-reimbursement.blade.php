@@ -51,7 +51,30 @@
     /* Read-only view (non-directors): select2 boxes must not open */
     #claimModal #claimFieldset:disabled .select2-container { pointer-events: none; opacity: .85; }
     #claimModal #claimFieldset:disabled #addRowBtn { display: none; }
-    #claimModal #claimFieldset:disabled .remove-row { visibility: hidden; }
+    /* Delete button stays visible for everyone but is only active for directors */
+    #claimModal .remove-row:disabled { background: #eef2f7; color: #94a3b8; cursor: not-allowed; opacity: .8; transform: none; }
+
+    /* Claims Pending badge */
+    .claims-pending-badge {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 7px 16px;
+        border-radius: 999px;
+        background: linear-gradient(120deg, #fff7e0, #ffe9b8);
+        border: 1px solid #f5c969;
+        color: #92400e;
+        font-size: .82rem;
+        box-shadow: 0 4px 12px rgba(217, 119, 6, .15);
+        white-space: nowrap;
+    }
+    .claims-pending-badge i { color: #d97706; }
+    .claims-pending-badge .cp-label { font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: .7rem; }
+    .claims-pending-badge .cp-count {
+        min-width: 26px; text-align: center;
+        padding: 1px 9px; border-radius: 999px;
+        background: #d97706; color: #fff; font-weight: 800;
+    }
+    .claims-pending-badge .cp-amount { font-weight: 800; font-size: .95rem; color: #78350f; font-variant-numeric: tabular-nums; }
+    .claims-pending-badge .cp-sep { width: 1px; height: 16px; background: #f0c36a; }
 
     /* Action section (now inside the claim modal): always a light yellow background */
     #claimModal .claim-action-card {
@@ -476,7 +499,17 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="mb-0">Claim & Reimbursement</h4>
+                    <div class="d-flex align-items-center flex-wrap gap-3">
+                        <h4 class="mb-0">Claim & Reimbursement</h4>
+                        <span id="claimsPendingBadge" class="claims-pending-badge" title="Active claims that are not archived / resolved">
+                            <i class="fas fa-hourglass-half"></i>
+                            <span class="cp-label">Claims Pending</span>
+                            <span class="cp-count" id="claimsPendingCount">-</span>
+                            <span class="cp-sep"></span>
+                            <span class="cp-label">Total Amt</span>
+                            <span class="cp-amount">$<span id="claimsPendingAmount">-</span></span>
+                        </span>
+                    </div>
                     <div class="d-flex align-items-center gap-2">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'claim_reimbursement'])
                         <button id="add-new-row" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#claimModal">
@@ -498,7 +531,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="show-archived-filter">
                             <label class="form-check-label fw-semibold" for="show-archived-filter">
-                                Show archived (resolved)
+                                Show archived (all claims)
                             </label>
                         </div>
                     </div>
@@ -891,7 +924,23 @@
 
         const showArchivedFilter = document.getElementById('show-archived-filter');
 
+        // "Claims Pending" badge: active (not archived) claims -> count + total amount.
+        window.refreshClaimsPending = function () {
+            const sid = supplierFilter ? (supplierFilter.value || '') : '';
+            fetch('/claim-reimbursement/pending-summary' + (sid ? '?supplier_id=' + encodeURIComponent(sid) : ''), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                document.getElementById('claimsPendingCount').textContent = Number(res.count || 0).toLocaleString('en-US');
+                document.getElementById('claimsPendingAmount').textContent = Math.round(Number(res.total_amount || 0)).toLocaleString('en-US');
+            })
+            .catch(() => {});
+        };
+        window.refreshClaimsPending();
+
         window.reloadClaimTable = function () {
+            window.refreshClaimsPending();
             table.setData("/claim-reimbursement/view-data", {
                 supplier_id: supplierFilter ? (supplierFilter.value || '') : '',
                 show_archived: (showArchivedFilter && showArchivedFilter.checked) ? 1 : 0
@@ -1750,15 +1799,14 @@
             const date = data.archived_date ? escapeHtml(data.archived_date) : '';
             const tip = ('Resolved' + (by ? ' by ' + by : '') + (date ? ' · ' + date : '')).replace(/"/g, '');
             html += `<span class="text-success" title="${tip}"><i class="fas fa-circle-check"></i></span>`;
-            if (canArchive) {
-                html += `<button class="btn btn-sm btn-link p-0 ms-1 archive-btn" data-archive="0" title="Restore"><i class="fas fa-rotate-left"></i></button>`;
-            }
+            // Shown to everyone; only directors can use it.
+            html += canArchive
+                ? `<button class="btn btn-sm btn-link p-0 ms-1 archive-btn" data-archive="0" title="Restore"><i class="fas fa-rotate-left"></i></button>`
+                : `<button class="btn btn-sm btn-link p-0 ms-1 archive-btn" disabled title="Only directors can restore"><i class="fas fa-rotate-left"></i></button>`;
         } else {
-            if (canArchive) {
-                html += `<button class="btn btn-sm btn-outline-success archive-btn" data-archive="1" title="Archive (resolve)"><i class="fas fa-box-archive"></i></button>`;
-            } else {
-                html += `<span class="text-muted small">-</span>`;
-            }
+            html += canArchive
+                ? `<button class="btn btn-sm btn-outline-success archive-btn" data-archive="1" title="Archive (resolve)"><i class="fas fa-box-archive"></i></button>`
+                : `<button class="btn btn-sm btn-outline-secondary archive-btn" disabled title="Only directors can archive"><i class="fas fa-box-archive"></i></button>`;
         }
 
         return html;

@@ -51,10 +51,9 @@ class ClaimReimbursementController extends Controller
             $claimsQuery->where('supplier_id', $request->supplier_id);
         }
 
-        // By default hide archived (resolved) claims unless explicitly requested.
-        if ($request->boolean('show_archived')) {
-            $claimsQuery->where('is_archived', true);
-        } else {
+        // Default view: active claims only. The "Show archived" view lists ALL claims
+        // (active + archived) so every claim can be found from the archived section too.
+        if (! $request->boolean('show_archived')) {
             $claimsQuery->where('is_archived', false);
         }
 
@@ -88,6 +87,23 @@ class ClaimReimbursementController extends Controller
         });
 
         return response()->json($formatted);
+    }
+
+    /**
+     * "Claims Pending" badge: number of active (not archived / resolved) claims and their total amount.
+     */
+    public function getPendingSummary(Request $request)
+    {
+        $query = ClaimReimbursement::where('is_archived', false);
+
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+
+        return response()->json([
+            'count' => (clone $query)->count(),
+            'total_amount' => round((float) (clone $query)->sum('total_amount'), 2),
+        ]);
     }
 
     /**
