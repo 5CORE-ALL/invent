@@ -153,7 +153,24 @@ class SyncShipmentTrackingStatus extends Command
                 }
                 $checked++;
 
-                if (! ShipmentTrackingService::isPersistableResult($res)) {
+                $persistable = ShipmentTrackingService::isPersistableResult($res);
+                $carrierMiss = ! $persistable
+                    || ((string) (is_array($res) ? ($res['status'] ?? '') : '')) === ShipmentTrackingService::STATUS_NOT_FOUND;
+                // Second attempt: the carrier gave nothing usable (or only "not found"), so ask the
+                // marketplace the order came from. Only a delivered / in transit status from it is used.
+                $second = $carrierMiss ? $this->marketplaceSecondAttempt($num) : null;
+                if ($second !== null || ! $persistable) {
+                    if ($second !== null) {
+                        $persistByStatus[$second['status']][] = [
+                            'number' => $num,
+                            'detail' => $second['detail'],
+                        ];
+                        $batchUpdated++;
+                        if ($this->output->isVerbose()) {
+                            $this->line(sprintf('      %s: %s via %s', $num, $second['status'], $second['source']));
+                        }
+                        continue;
+                    }
                     $skipped++;
                     // "Not authorized" and "carrier has not answered yet" are not a quota.
                     // Counting them stopped the run while delivered orders were still unchecked.
@@ -315,6 +332,44 @@ class SyncShipmentTrackingStatus extends Command
     /**
      * Pull tracking numbers from channel order tables into carrier_tracking_statuses.
      */
+    protected ?\App\Services\MarketplaceManager\ChannelOrderDeliveryStatus $channelStatus = null;
+
+    /**
+     * When the carrier gives nothing, read the order's own marketplace for a delivered / in transit status.
+     *
+     * @return array{status: string, detail: string, source: string}|null
+     */
+    protected function marketplaceSecondAttempt(string $trackingNumber): ?array
+    {
+        if (! Schema::hasTable('order_fulfillment_trackings')) {
+            return null;
+        }
+        $this->channelStatus ??= tap(
+            app(\App\Services\MarketplaceManager\ChannelOrderDeliveryStatus::class),
+            fn ($s) => $s->setMaxLiveCalls(40)
+        );
+
+        try {
+            $links = DB::table('order_fulfillment_trackings')
+                ->where('tracking_number', $trackingNumber)
+                ->whereNotNull('mm_slug')
+                ->whereNotNull('order_id')
+                ->limit(3)
+                ->get(['mm_slug', 'order_id']);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        foreach ($links as $link) {
+            $found = $this->channelStatus->lookup((string) $link->mm_slug, (string) $link->order_id);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
     protected function importChannelTrackingNumbers(?int $limitPerSource = null): int
     {
         if (! Schema::hasTable('carrier_tracking_statuses')) {
