@@ -178,6 +178,7 @@ class ShipmentTrackingService
             }
             if ($rest !== []) {
                 $out += $this->track17Track($rest);
+                $out = $this->retryNatively($rest, $out);
             }
 
             return $out;
@@ -203,10 +204,10 @@ class ShipmentTrackingService
                 $uspsOut = $this->trackUsps($byProvider['usps']);
                 $out += $uspsOut;
                 $retry = $this->numbersNeedingAggregatorFallback($byProvider['usps'], $uspsOut);
-                if ($retry !== [] && $this->has17Track()) {
+                if ($retry !== [] && $this->canAggregate()) {
                     $out = array_replace($out, $this->track17Track($retry));
                 }
-            } elseif ($this->has17Track()) {
+            } elseif ($this->canAggregate()) {
                 $out += $this->track17Track($byProvider['usps']);
             }
         }
@@ -216,10 +217,10 @@ class ShipmentTrackingService
                 $upsOut = $this->trackUps($byProvider['ups']);
                 $out += $upsOut;
                 $retry = $this->numbersNeedingAggregatorFallback($byProvider['ups'], $upsOut);
-                if ($retry !== [] && $this->has17Track()) {
+                if ($retry !== [] && $this->canAggregate()) {
                     $out = array_replace($out, $this->track17Track($retry));
                 }
-            } elseif ($this->has17Track()) {
+            } elseif ($this->canAggregate()) {
                 $out += $this->track17Track($byProvider['ups']);
             }
         }
@@ -227,7 +228,7 @@ class ShipmentTrackingService
         if (! empty($byProvider['fedex'])) {
             if ($this->hasFedex()) {
                 $out += $this->trackFedex($byProvider['fedex']);
-            } elseif ($this->has17Track()) {
+            } elseif ($this->canAggregate()) {
                 $out += $this->track17Track($byProvider['fedex']);
             }
         }
@@ -237,16 +238,16 @@ class ShipmentTrackingService
                 $gofoOut = $this->trackGofo($byProvider['gofo']);
                 $out += $gofoOut;
                 $retry = $this->numbersNeedingAggregatorFallback($byProvider['gofo'], $gofoOut);
-                if ($retry !== [] && $this->has17Track()) {
+                if ($retry !== [] && $this->canAggregate()) {
                     $out = array_replace($out, $this->track17Track($retry));
                 }
-            } elseif ($this->has17Track()) {
+            } elseif ($this->canAggregate()) {
                 $out += $this->track17Track($byProvider['gofo']);
             }
         }
 
         if (! empty($byProvider['17track'])) {
-            if ($this->has17Track()) {
+            if ($this->canAggregate()) {
                 $out += $this->track17Track($byProvider['17track']);
             } else {
                 foreach ($byProvider['17track'] as $s) {
@@ -269,6 +270,74 @@ class ShipmentTrackingService
         }
 
         return $out;
+    }
+
+    /** True while a native-only retry runs, so the carrier APIs never loop back into 17TRACK. */
+    private bool $nativeOnly = false;
+
+    protected function canAggregate(): bool
+    {
+        return $this->has17Track() && ! $this->nativeOnly;
+    }
+
+    /**
+     * 17TRACK answers asynchronously, so a number is often "not returned yet" or NotFound there while
+     * the carrier's own API (USPS / UPS / FedEx) already knows it. Ask the carrier for every number the
+     * aggregator could not give a real status for.
+     *
+     * @param  list<array{number: string, carrier: ?string}>  $requested
+     * @param  array<string, array<string, mixed>>  $results
+     * @return array<string, array<string, mixed>>
+     */
+    protected function retryNatively(array $requested, array $results): array
+    {
+        if ($this->nativeOnly) {
+            return $results;
+        }
+
+        $retry = [];
+        foreach ($requested as $s) {
+            $res = $results[$s['number']] ?? null;
+            $res = is_array($res) ? $res : null;
+            if (self::isPersistableResult($res) && ($res['status'] ?? '') !== self::STATUS_NOT_FOUND) {
+                continue;
+            }
+            $provider = $this->resolveProvider($s['number'], (string) ($s['carrier'] ?? ''));
+            if (($provider === 'usps' && $this->hasUsps() && $this->uspsCanRequest())
+                || ($provider === 'ups' && $this->hasUps())
+                || ($provider === 'fedex' && $this->hasFedex())) {
+                $retry[] = $s;
+            }
+        }
+        if ($retry === []) {
+            return $results;
+        }
+
+        $this->nativeOnly = true;
+        try {
+            $native = $this->track($retry, ['prefer_native' => true]);
+        } catch (\Throwable $e) {
+            Log::warning('ShipmentTracking: native retry failed', ['error' => $e->getMessage()]);
+            $native = [];
+        } finally {
+            $this->nativeOnly = false;
+        }
+
+        foreach ($native as $number => $res) {
+            $res = is_array($res) ? $res : null;
+            if (! self::isPersistableResult($res)) {
+                continue;
+            }
+            $before = $results[$number] ?? null;
+            $beforeOk = self::isPersistableResult(is_array($before) ? $before : null);
+            // A native NotFound never replaces an aggregator answer that was already a real status.
+            if (($res['status'] ?? '') === self::STATUS_NOT_FOUND && $beforeOk) {
+                continue;
+            }
+            $results[$number] = $res;
+        }
+
+        return $results;
     }
 
     /**
