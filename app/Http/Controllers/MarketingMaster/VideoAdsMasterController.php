@@ -16,7 +16,6 @@ use App\Models\ShopifySku;
 use App\Models\TiktokVideoAd;
 use App\Models\YoutubeShortsAd;
 use App\Models\YoutubeVideoAd;
-use App\Services\ShopifyMarketingReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -118,15 +117,8 @@ class VideoAdsMasterController extends Controller
         return view('marketing-masters.video-ads-master.facebook-video-ad');
     }
 
-    public function getFacebookVideoAdsData(ShopifyMarketingReportService $marketing)
+    public function getFacebookVideoAdsData()
     {
-        // Sales + orders (last 30 days, paid Meta traffic) per SKU, straight from Shopify.
-        $metaSales = $marketing->metaSalesBySku(30, 'paid');
-        $metaBySku = [];
-        foreach (($metaSales['skus'] ?? []) as $metaSku => $metaRow) {
-            $metaBySku[strtolower(trim($metaSku))] = $metaRow;
-        }
-
         $productMasterRows = ProductMaster::all()->keyBy('sku');
 
         $skus = $productMasterRows->keys()->toArray();
@@ -174,51 +166,14 @@ class VideoAdsMasterController extends Controller
                 $processedItem['L30'] = 0;
             }
 
-            // Sales + orders from Shopify (Meta paid traffic, last 30 days). Parent rows are filled below.
-            $meta = $metaBySku[strtolower(trim($sku))] ?? null;
-            $processedItem['meta_sales']  = $isParent ? 0 : round((float) ($meta['sales'] ?? 0), 2);
-            $processedItem['meta_orders'] = $isParent ? 0 : (int) ($meta['orders'] ?? 0);
-
             $processedData[] = $processedItem;
         }
-
-        // A parent row shows the total of its child SKUs.
-        $parentTotals = [];
-        foreach ($processedData as $item) {
-            if ($item['is_parent'] || empty($item['Parent'])) {
-                continue;
-            }
-            $parentTotals[$item['Parent']]['sales']  = ($parentTotals[$item['Parent']]['sales'] ?? 0) + $item['meta_sales'];
-            $parentTotals[$item['Parent']]['orders'] = ($parentTotals[$item['Parent']]['orders'] ?? 0) + $item['meta_orders'];
-        }
-        foreach ($processedData as &$item) {
-            if ($item['is_parent'] && isset($parentTotals[$item['Parent']])) {
-                $item['meta_sales']  = round($parentTotals[$item['Parent']]['sales'], 2);
-                $item['meta_orders'] = $parentTotals[$item['Parent']]['orders'];
-            }
-        }
-        unset($item);
 
         return response()->json([
             'message' => 'Video data fetched successfully',
             'data' => $processedData,
-            'status' => 200,
-            'shopify_sales_error' => ($metaSales['success'] ?? false) ? null : ($metaSales['message'] ?? 'Shopify sales unavailable'),
+            'status' => 200
         ]);
-    }
-
-    /**
-     * Shopify "Performance by marketing campaign" report (campaign / channel /
-     * traffic type with sales, sessions, orders, ...) pulled through ShopifyQL.
-     */
-    public function getFacebookShopifyCampaignSales(Request $request, ShopifyMarketingReportService $service)
-    {
-        $days    = (int) $request->query('days', 30);
-        $channel = $request->query('channel', 'meta') === 'all' ? 'all' : 'meta';
-
-        $result = $service->campaignPerformance($days, $channel, $request->boolean('refresh'));
-
-        return response()->json($result, $result['success'] ? 200 : 502);
     }
 
     public function saveFacebookVideoAds(Request $request){

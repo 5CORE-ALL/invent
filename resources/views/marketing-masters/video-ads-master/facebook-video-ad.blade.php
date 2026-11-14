@@ -68,8 +68,8 @@
                         <option value="parent">🔸 Parent</option>
                     </select>
 
-                    <!-- Dil% Color Filter (hidden: Dil% was based on the sheet's L30 sales) -->
-                    <select id="dil-color-filter" class="form-select border border-danger" style="width: 120px;" hidden>
+                    <!-- Dil% Color Filter -->
+                    <select id="dil-color-filter" class="form-select border border-danger" style="width: 120px;">
                         <option value="">🎯 Dil%</option>
                         <option value="red">🔴 Red</option>
                         <option value="yellow">🟡 Yellow</option>
@@ -111,40 +111,7 @@
                     </button>
 
                 </div>
-                <div id="shopify-sales-warning" class="alert alert-warning py-2 small" style="display:none;"></div>
                 <div id="facebook-video-ads"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-{{-- Shopify "Performance by marketing campaign" report (same numbers as Shopify Analytics > Reports) --}}
-<div class="row mt-3">
-    <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <h5 class="mb-0 me-2"><i class="fab fa-shopify me-1 text-success"></i> Shopify Campaign Sales
-                        <small class="text-muted fs-6">Performance by marketing campaign</small>
-                    </h5>
-                    <select id="shopify-campaign-days" class="form-select form-select-sm" style="width: 130px;">
-                        <option value="7">Last 7 days</option>
-                        <option value="30" selected>Last 30 days</option>
-                        <option value="60">Last 60 days</option>
-                        <option value="90">Last 90 days</option>
-                    </select>
-                    <select id="shopify-campaign-channel" class="form-select form-select-sm" style="width: 150px;">
-                        <option value="meta" selected>Meta / Facebook only</option>
-                        <option value="all">All channels</option>
-                    </select>
-                    <button type="button" class="btn btn-sm btn-success" id="shopify-campaign-refresh">
-                        <i class="fas fa-sync-alt me-1"></i> Fetch from Shopify
-                    </button>
-                    <span class="text-muted small ms-auto" id="shopify-campaign-status"></span>
-                </div>
-                <div id="shopify-campaign-summary" class="d-flex flex-wrap gap-3 mb-3"></div>
-                <div id="shopify-campaign-error" class="alert alert-danger py-2 small" style="display:none;"></div>
-                <div id="shopify-campaign-table"></div>
             </div>
         </div>
     </div>
@@ -339,38 +306,32 @@
                     hozAlign: "center"
                 },
                 {
-                    title: "Meta Sales L30",
-                    field: "meta_sales",
+                    title: "OV L30",
+                    field: "L30",
                     headerSort: true,
-                    sorter: "number",
-                    hozAlign: "right",
                     titleFormatter: function() {
-                        return `<div title="Sales from Meta ads traffic, last 30 days (Shopify)">
-                            Meta Sales L30<br>
-                            <span id="total-meta-sales-header" style="font-size:13px;color:white;font-weight:600;"></span>
+                        return `<div>
+                            OV L30<br>
+                            <span id="total-l30-header" style="font-size:13px;color:white;font-weight:600;"></span>
                         </div>`;
                     },
-                    formatter: function(cell) {
-                        const v = parseFloat(cell.getValue());
-                        if (isNaN(v) || v === 0) return '<span class="text-muted">$0.00</span>';
-                        return '<span class="fw-semibold" style="color:#16a34a;">$' + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>';
-                    }
+                    formatter: "plaintext",
+                    hozAlign: "center"
                 },
                 {
-                    title: "Meta Orders L30",
-                    field: "meta_orders",
-                    headerSort: true,
-                    sorter: "number",
-                    hozAlign: "center",
-                    titleFormatter: function() {
-                        return `<div title="Orders from Meta ads traffic, last 30 days (Shopify)">
-                            Meta Orders L30<br>
-                            <span id="total-meta-orders-header" style="font-size:13px;color:white;font-weight:600;"></span>
-                        </div>`;
-                    },
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue(), 10);
-                        return (isNaN(v) || v === 0) ? '<span class="text-muted">0</span>' : '<span class="fw-semibold">' + v + '</span>';
+                    title: "Dil%",
+                    field: "Dil",
+                    formatter: function (cell) {
+                        const data = cell.getData();
+                        const l30 = parseFloat(data.L30);
+                        const inv = parseFloat(data.INV);
+
+                        if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
+                            const dilDecimal = (l30 / inv);
+                            const color = getDilColor(dilDecimal); 
+                            return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
+                        }
+                        return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                     }
                 },
                 {
@@ -467,16 +428,6 @@
             ajaxResponse: function (url, params, response) {
                 // Handle different response formats
                 let rows = [];
-
-                const warnEl = document.getElementById('shopify-sales-warning');
-                if (warnEl) {
-                    if (response && response.shopify_sales_error) {
-                        warnEl.textContent = 'Shopify sales/orders could not be loaded: ' + response.shopify_sales_error;
-                        warnEl.style.display = 'block';
-                    } else {
-                        warnEl.style.display = 'none';
-                    }
-                }
                 
                 if (Array.isArray(response)) {
                     // If response is already an array
@@ -672,18 +623,11 @@
             const data = table.getData("active");
 
             const totalINV = data.reduce((sum, row) => sum + (parseFloat(row["INV"]) || 0), 0);
+            const totalL30 = data.reduce((sum, row) => sum + (parseFloat(row["L30"]) || 0), 0);
 
-            const invEl = document.getElementById("total-inv-header");
-            if (invEl) invEl.textContent = totalINV.toLocaleString();
+            document.getElementById("total-inv-header").textContent = totalINV.toLocaleString();
+            document.getElementById("total-l30-header").textContent = totalL30.toLocaleString();
 
-            // Parent rows already hold the sum of their children, so leave them out of the grand total.
-            const childRows = data.filter(row => !row.is_parent);
-            const totalMetaSales = childRows.reduce((sum, row) => sum + (parseFloat(row["meta_sales"]) || 0), 0);
-            const totalMetaOrders = childRows.reduce((sum, row) => sum + (parseInt(row["meta_orders"], 10) || 0), 0);
-            const salesEl = document.getElementById("total-meta-sales-header");
-            const ordersEl = document.getElementById("total-meta-orders-header");
-            if (salesEl) salesEl.textContent = '$' + totalMetaSales.toLocaleString(undefined, {maximumFractionDigits: 0});
-            if (ordersEl) ordersEl.textContent = totalMetaOrders.toLocaleString();
         }
 
         // Play/Pause Controls
@@ -1054,90 +998,3 @@
     });
 
     </script>
-<script>
-    // Shopify "Performance by marketing campaign" — loaded from ShopifyQL via /facebook-video-ads/shopify-campaigns
-    document.addEventListener('DOMContentLoaded', function () {
-        const daysEl = document.getElementById('shopify-campaign-days');
-        const channelEl = document.getElementById('shopify-campaign-channel');
-        const refreshBtn = document.getElementById('shopify-campaign-refresh');
-        const statusEl = document.getElementById('shopify-campaign-status');
-        const errorEl = document.getElementById('shopify-campaign-error');
-        const summaryEl = document.getElementById('shopify-campaign-summary');
-
-        const money = (v) => v === null || v === undefined ? '' : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const num = (v) => v === null || v === undefined ? '' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
-        const pct = (v) => v === null || v === undefined ? '' : (Number(v) * 100).toFixed(2) + '%';   // ShopifyQL returns rates as fractions
-        const channelDot = (cell) => {
-            const v = cell.getValue() || '';
-            const color = /instagram/i.test(v) ? '#c4509e' : (/facebook|meta/i.test(v) ? '#4a6fd4' : '#9ca3af');
-            const label = v ? v.charAt(0).toUpperCase() + v.slice(1) : '';
-            return v ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>${label}` : '';
-        };
-
-        const campaignTable = new Tabulator('#shopify-campaign-table', {
-            layout: 'fitColumns',
-            height: '420px',
-            placeholder: 'Click "Fetch from Shopify" to load campaign sales.',
-            columns: [
-                { title: 'Marketing campaign', field: 'marketing_campaign', minWidth: 190, headerFilter: 'input',
-                  formatter: (c) => c.getValue() || '<span class="text-muted">(no campaign)</span>' },
-                { title: 'Marketing channel', field: 'marketing_channel', minWidth: 140, formatter: channelDot, headerFilter: 'input' },
-                { title: 'Traffic type', field: 'traffic_type', width: 110 },
-                { title: 'Total sales', field: 'total_sales', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
-                { title: 'Sessions', field: 'sessions', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
-                { title: 'Orders', field: 'orders', hozAlign: 'right', sorter: 'number', formatter: (c) => num(c.getValue()) },
-                { title: 'Conv. rate', field: 'conversion_rate', hozAlign: 'right', sorter: 'number', formatter: (c) => pct(c.getValue()) },
-                { title: 'AOV', field: 'average_order_value', hozAlign: 'right', sorter: 'number', formatter: (c) => money(c.getValue()) },
-            ],
-            initialSort: [{ column: 'total_sales', dir: 'desc' }],
-        });
-
-        function renderSummary(t) {
-            const card = (label, value) => `<div class="border rounded px-3 py-2"><div class="text-muted small">${label}</div><div class="fw-semibold fs-5">${value}</div></div>`;
-            summaryEl.innerHTML = card('Campaigns', num(t.campaigns))
-                + card('Total sales', money(t.total_sales))
-                + card('Sessions', num(t.sessions))
-                + card('Orders', num(t.orders))
-                + card('Conversion rate', (t.conversion_rate || 0) + '%');
-        }
-
-        function load(refresh) {
-            errorEl.style.display = 'none';
-            refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Fetching...';
-            statusEl.textContent = '';
-
-            const qs = new URLSearchParams({ days: daysEl.value, channel: channelEl.value });
-            if (refresh) qs.set('refresh', '1');
-
-            fetch('/facebook-video-ads/shopify-campaigns?' + qs.toString(), { headers: { 'Accept': 'application/json' } })
-                .then(r => r.json().catch(() => ({ success: false, message: 'Unexpected response from server.' })))
-                .then(res => {
-                    if (!res.success) {
-                        campaignTable.clearData();
-                        summaryEl.innerHTML = '';
-                        errorEl.textContent = res.message || 'Failed to fetch Shopify campaign data.';
-                        errorEl.style.display = 'block';
-                        return;
-                    }
-                    campaignTable.setData(res.rows);
-                    renderSummary(res.totals || {});
-                    statusEl.textContent = (res.cached ? 'Cached (≤15 min) · ' : 'Live from Shopify · ') + res.rows.length + ' rows';
-                })
-                .catch(e => {
-                    console.error(e);
-                    errorEl.textContent = 'Network error while contacting the server.';
-                    errorEl.style.display = 'block';
-                })
-                .finally(() => {
-                    refreshBtn.disabled = false;
-                    refreshBtn.innerHTML = '<i class="fas fa-sync-alt me-1"></i> Fetch from Shopify';
-                });
-        }
-
-        refreshBtn.addEventListener('click', () => load(true));
-        daysEl.addEventListener('change', () => load(false));
-        channelEl.addEventListener('change', () => load(false));
-        load(false);
-    });
-</script>
