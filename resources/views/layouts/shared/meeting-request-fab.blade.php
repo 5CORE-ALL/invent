@@ -175,6 +175,7 @@
     #mrqModal .mrq-req-info { flex: 1 1 360px; min-width: 0; }
     #mrqModal .mrq-req-row [data-actions] { flex: 0 0 auto; flex-wrap: nowrap !important; margin-left: auto; }
     #mrqModal .mrq-req-row [data-actions] .btn { white-space: nowrap; }
+    #mrqModal .mrq-req-row [data-actions] .btn.mrq-ico { width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem; border-radius: 10px; }
     #mrqModal .mrq-req h6 { font-weight: 700; margin: 0 0 2px; color: var(--mq-text); }
 
     /* success */
@@ -534,11 +535,15 @@
             in_room: ['In room', 'bg-success'], left: ['Left', 'bg-secondary'], accepted: ['Accepted', 'bg-success'],
             declined: ['Declined', 'bg-danger'], completed: ['Completed', 'bg-primary'], pending: ['Waiting for reply', 'bg-warning text-dark']
         };
-        function loadSent() {
-            var box = $('mrqSentList'); box.innerHTML = '<div class="text-muted">Loading…</div>';
+        var sentSig = '';
+        function loadSent(silent) {
+            var box = $('mrqSentList'); if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
             call('GET', URLS.sent).then(function (res) {
                 var list = (res.data && res.data.meetings) || [];
-                if (!res.ok) { box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; return; }
+                if (!res.ok) { if (!silent) box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; return; }
+                var sig = JSON.stringify(list);
+                if (silent && (sig === sentSig || tab !== 'sent')) return; // nothing changed: leave the list (and scroll position) alone
+                sentSig = sig;
                 if (!list.length) { box.innerHTML = '<div class="text-muted py-3 text-center">You have no upcoming or live meetings. Use the <strong>Request a meeting</strong> tab to create one.</div>'; return; }
                 box.innerHTML = '';
                 list.forEach(function (m) {
@@ -585,7 +590,15 @@
                 if (!res.ok) return;
                 var list = res.data.requests || [];
                 setBadge(res.data.count || 0);
-                if (showToast !== false) {
+                var modalOpen = $('mrqModal').classList.contains('show');
+                if (showToast !== false && modalOpen && tab === 'inbox') {
+                    // Inbox is on screen: update it in place (no toast, no reload).
+                    rememberSeen(seenIds().concat(list.map(function (x) { return x.id; })));
+                    refreshInboxLive(list);
+                } else if (showToast !== false && modalOpen && tab === 'sent') {
+                    loadSent(true);
+                }
+                if (showToast !== false && !(modalOpen && tab === 'inbox')) {
                     var seen = seenIds();
                     var fresh = list.filter(function (r) { return seen.indexOf(r.id) === -1; });
                     if (fresh.length) {
@@ -603,17 +616,30 @@
             }).catch(function () {});
         }
 
+        var inboxSig = '';
+        function renderInbox(list) {
+            inboxSig = list.map(function (x) { return x.id + ':' + x.rsvp; }).join('|');
+            if (!list.length) {
+                $('mrqInboxList').innerHTML = '<div class="text-muted py-3 text-center">No pending meeting requests.</div>';
+                return;
+            }
+            $('mrqInboxList').innerHTML = '';
+            list.forEach(function (r) { $('mrqInboxList').appendChild(requestCard(r)); });
+        }
+        // Background refresh: redraw only when something changed and no card is mid-action (so buttons never vanish under the cursor).
+        function refreshInboxLive(list) {
+            var sig = list.map(function (x) { return x.id + ':' + x.rsvp; }).join('|');
+            if (sig === inboxSig) return;
+            var busy = Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-result]'), function (el) { return el.textContent.trim() !== ''; })
+                || Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-actions] button'), function (b) { return b.disabled; });
+            if (!busy) renderInbox(list);
+        }
         function loadInbox() {
             $('mrqInboxList').innerHTML = '<div class="text-muted">Loading…</div>';
             poll(false).then(function (list) {
                 list = list || [];
                 rememberSeen(seenIds().concat(list.map(function (x) { return x.id; })));
-                if (!list.length) {
-                    $('mrqInboxList').innerHTML = '<div class="text-muted py-3 text-center">No pending meeting requests.</div>';
-                    return;
-                }
-                $('mrqInboxList').innerHTML = '';
-                list.forEach(function (r) { $('mrqInboxList').appendChild(requestCard(r)); });
+                renderInbox(list);
             });
         }
 
@@ -626,7 +652,11 @@
                 + (r.agenda ? '<div class="small" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
                 + '</div><div class="d-flex gap-2" data-actions></div></div><div class="small mt-2" data-result></div>';
             var actions = div.querySelector('[data-actions]'), result = div.querySelector('[data-result]');
-            function btn(label, cls, fn) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm ' + cls; b.innerHTML = label; b.addEventListener('click', fn); actions.appendChild(b); return b; }
+            function btn(label, cls, fn) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm mrq-ico ' + cls;
+                // icon only; the text becomes the tooltip / screen-reader label
+                var tip = label.replace(/<[^>]*>/g, '').trim(), ic = label.match(/<i[^>]*><\/i>/);
+                b.innerHTML = ic ? ic[0] : label; b.title = tip; b.setAttribute('aria-label', tip);
+                b.addEventListener('click', fn); actions.appendChild(b); return b; }
             function answer(resp) {
                 if (resp === 'declined' && !confirm('Decline "' + r.title + '"? The host will see that you declined.')) return;
                 if (resp === 'completed' && !confirm('Mark "' + r.title + '" as completed? It will be removed from your requests and the host will see it as completed.')) return;
@@ -659,7 +689,7 @@
             // Join is always offered (joining counts as accepting); Accept only while unanswered.
             if (r.meet_url) {
                 var j = document.createElement('a'); j.className = 'btn btn-sm mrq-gmeet'; j.target = '_blank'; j.rel = 'noopener noreferrer'; j.href = r.meet_url;
-                j.innerHTML = '<i class="ri-vidicon-fill"></i> Join Google Meet'; actions.appendChild(j);
+                j.className += ' mrq-ico'; j.innerHTML = '<i class="ri-vidicon-fill"></i>'; j.title = 'Join Google Meet'; j.setAttribute('aria-label', 'Join Google Meet'); actions.appendChild(j);
             } else {
                 btn('<i class="ri-vidicon-line"></i> ' + (r.google ? 'Meeting details' : 'Join meeting'), 'btn-primary', function () { window.location.href = r.room_url; });
             }
@@ -692,7 +722,7 @@
         // ---------- background poll for incoming requests ----------
         function startPolling() {
             poll(true);
-            pollTimer = setInterval(function () { if (!document.hidden) poll(true); }, 30000);
+            pollTimer = setInterval(function () { if (!document.hidden) poll(true); }, 10000);
         }
         document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(true); });
         if (document.readyState === 'complete') startPolling(); else window.addEventListener('load', startPolling);
