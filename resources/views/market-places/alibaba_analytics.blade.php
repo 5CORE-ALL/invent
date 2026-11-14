@@ -314,10 +314,13 @@
         // S PRC (calc − Ship) is saved by the server (alibaba:sprc-dil-auto-push --skip-push). The page pushes S PRC to
         // Alibaba: on the first page open of the day (once a day) or with the Push now button.
         window.CH_STD_SERVER_OWNED = true;
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         // The SNROI% column here is SGROI on the S PRC (Ship already taken off, no Ads%), so the SNROI Cap judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'alibaba'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         document.body.style.zoom = "90%";
 
@@ -1006,7 +1009,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); }, cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); }, hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
-                            headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: the Dil slab Target SNROI, Std Prc is the maximum, no Ship. Std prc vs dil: Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Turning one ON turns the other OFF. Clearance SKUs get no S PRC. Saved by the server job (every 10 min, on Save Rule and right after a switch), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
+                            headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: the Dil slab Target SNROI, Std Prc is the maximum, no Ship. Std prc vs dil: Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Turning one ON turns the other OFF. Clearance SKUs (red C) are priced only from the Clearance Target NROI% (Sprc Dil modal, last row): LP × (1 + NROI%) ÷ take-home, no other rule. Saved by the server job (every 10 min, on Save Rule and right after a switch), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
@@ -1016,7 +1019,8 @@
                                 const tri = abHasBlueAlert(row)
                                     ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                     : '';
-                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">$' + value.toFixed(2) + '</span>' + tri + '</span>';
+                                const cMark = (window.chClr && typeof chClr.markHtml === 'function') ? chClr.markHtml(row) : '';
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">$' + value.toFixed(2) + '</span>' + cMark + tri + '</span>';
                             }
                         },
                         {

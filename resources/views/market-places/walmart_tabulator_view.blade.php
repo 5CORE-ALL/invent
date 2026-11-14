@@ -362,8 +362,11 @@
             const sku = String(row['(Child) sku'] || row.SKU || row.sku || '').toUpperCase();
             return sku.includes('PARENT');
         }
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'walmart'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'walmart'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         function walmartRowSpriceForAlert(data) {
             if (typeof chPromoTableSprice === 'function') {
@@ -906,8 +909,11 @@
                             const live = parseFloat(rowData.price) || 0;
                             const lmp = parseFloat(rowData.lmp_price || rowData.lmp || rowData.LMP) || 0;
                             if (!(value > 0)) return '';
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                            // Clearance: the Clearance Target NROI% price, no cap marks. The red C follows the price.
+                            const isClr = !!(window.chClr && chClr.isClearance(rowData));
+                            const clrMark = isClr ? chClr.markHtml(rowData) : '';
+                            const cap = (!isClr && window.SpriceLmpCap) ? SpriceLmpCap.apply(rowData, value) : null;
+                            const overLmp = !isClr && (cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp));
                             const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
                             const formatted = '$' + value.toFixed(2);
                             let style = 'font-weight:600;';
@@ -918,7 +924,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                            return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clrMark}${redTri}${blueTri}</span>`;
                         },
                         width: 92
                     },

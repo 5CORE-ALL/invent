@@ -611,6 +611,8 @@
     <script>
         // S PRC is saved + pushed by the server (aliexpress:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         // The SNROI% column here is SGROI (no Ads%), so the SNROI Cap in Std prc vs dil judges the same number.
         window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
@@ -825,6 +827,10 @@
         function aeLiveRuleSprice(data) {
             if (!data || data.is_parent) return 0;
             try {
+                // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
+                if (window.chStdIsClearance && window.chStdIsClearance(data)) {
+                    return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
+                }
                 if (aeSpriceRule() === 'dil') {
                     if (window._ebayDilRulesLoaded !== true) return 0;
                     if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
@@ -847,8 +853,7 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function aeRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
-            // A SKU under clearance gets no S PRC from any rule (the cell shows C).
-            if (window.chStdIsClearance && window.chStdIsClearance(data)) return 0;
+            // A SKU under clearance is priced by the Clearance Target NROI% only (aeLiveRuleSprice); until the rules load, the saved S PRC.
             const live = aeLiveRuleSprice(data);
             if (live > 0) return live;
             return aeSavedSprice(data);
@@ -2577,7 +2582,17 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            if (window.chClr && chClr.isClearance(d)) return chClr.markHtml(d);
+                            // Clearance SKU: price from the Clearance Target NROI% followed by the red C (blue triangle when it differs from the live price). No cap marks.
+                            if (window.chClr && chClr.isClearance(d)) {
+                                const cv = aeRuleSpriceRaw(d);
+                                const cMark = chClr.markHtml(d);
+                                if (!(cv > 0)) return cMark;
+                                const cLive = parseFloat(d.price) || 0;
+                                const cBlue = (cLive > 0 && Math.round(cv * 100) !== Math.round(cLive * 100))
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + cv.toFixed(2) + ' ≠ Price $' + cLive.toFixed(2) + '"></i>'
+                                    : '';
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">$' + cv.toFixed(2) + '</span>' + cMark + cBlue + '</span>';
+                            }
                             const raw = aeRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = aeEffectiveLmp(d);

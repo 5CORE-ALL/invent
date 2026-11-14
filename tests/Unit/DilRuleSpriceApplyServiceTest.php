@@ -336,11 +336,22 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(31.25, $out['sprice'], 0.001);
     }
 
-    public function test_other_channels_still_give_clearance_no_price(): void
+    public function test_every_channel_prices_clearance_only_from_the_clearance_nroi(): void
     {
-        $this->assertNull($this->compute('doba', [
-            'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 0, 'clearance' => true, 'clearance_nroi' => 10,
-        ]));
+        foreach (DilRuleSpriceApplyService::CHANNELS as $channel) {
+            $this->assertContains($channel, DilRuleSpriceApplyService::CLEARANCE_NROI_CHANNELS, $channel);
+        }
+
+        // Doba / Walmart / FB Marketplace / Temu: a clearance SKU gets a price from LP × (1 + NROI%) whatever its slab, Std or LMP say.
+        foreach (['doba', 'walmart', 'fb_marketplace', 'temu', 'temu2'] as $channel) {
+            $out = $this->compute($channel, [
+                'inv' => 10, 'dil' => 3, 'ov_l30' => 2, 'lp' => 20, 'ship' => 0, 'lmp' => 5, 'std_price' => 10, 'live' => 40,
+                'clearance' => true, 'clearance_nroi' => 10,
+            ]);
+            $this->assertNotNull($out, $channel);
+            $this->assertGreaterThan(22.0, $out['sprice'], $channel);
+            $this->assertEqualsWithDelta(10.0, $out['groi'], 0.001, $channel);
+        }
     }
 
     /**

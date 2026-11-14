@@ -82,6 +82,11 @@
     #mrqModal .mrq-tab.active { background: var(--mq-bg); color: var(--mq-accent); box-shadow: 0 2px 10px rgba(15, 23, 42, .14); }
     #mrqModal .mrq-tab .badge { margin-left: 6px; border-radius: 10px; }
     #mrqModal .mrq-hidden { display: none !important; }
+    #mrqModal .mrq-subtabs { display: flex; gap: 8px; margin: 0 0 16px; }
+    #mrqModal .mrq-subtab { border: 1.5px solid var(--mq-border); background: var(--mq-surface); color: var(--mq-muted); border-radius: 20px; padding: 5px 16px; font-size: .85rem; font-weight: 600; transition: all .15s ease; }
+    #mrqModal .mrq-subtab:hover { color: var(--mq-text); }
+    #mrqModal .mrq-subtab.active { border-color: var(--mq-accent); color: var(--mq-accent); background: var(--mq-sel); }
+    #mrqModal .mrq-subtab .badge { margin-left: 4px; border-radius: 10px; }
 
     /* form layout: two columns on wide screens */
     #mrqModal .mrq-form-grid {
@@ -302,6 +307,10 @@
 
                 {{-- Sent by you --}}
                 <div id="mrqSent" class="mrq-hidden">
+                    <div class="mrq-subtabs" id="mrqSentFilter">
+                        <button type="button" class="mrq-subtab active" data-filter="active"><i class="ri-time-line me-1"></i>Active</button>
+                        <button type="button" class="mrq-subtab" data-filter="completed"><i class="ri-check-double-line me-1"></i>Completed <span class="badge bg-primary mrq-hidden" id="mrqCompletedCount">0</span></button>
+                    </div>
                     <div id="mrqSentList"><div class="text-muted">Loading…</div></div>
                 </div>
 
@@ -535,34 +544,47 @@
             in_room: ['In room', 'bg-success'], left: ['Left', 'bg-secondary'], accepted: ['Accepted', 'bg-success'],
             declined: ['Declined', 'bg-danger'], completed: ['Completed', 'bg-primary'], pending: ['Waiting for reply', 'bg-warning text-dark']
         };
-        var sentSig = '';
+        var sentSig = '', sentFilter = 'active';
+        document.querySelectorAll('#mrqSentFilter .mrq-subtab').forEach(function (b) {
+            b.addEventListener('click', function () {
+                sentFilter = b.getAttribute('data-filter'); sentSig = '';
+                document.querySelectorAll('#mrqSentFilter .mrq-subtab').forEach(function (x) { x.classList.toggle('active', x === b); });
+                loadSent();
+            });
+        });
         function loadSent(silent) {
-            var box = $('mrqSentList'); if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
-            call('GET', URLS.sent).then(function (res) {
+            var box = $('mrqSentList'), done = sentFilter === 'completed', reqFilter = sentFilter;
+            if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
+            call('GET', URLS.sent + (done ? '?filter=completed' : '')).then(function (res) {
+                if (reqFilter !== sentFilter) return; // user switched Active/Completed meanwhile
                 var list = (res.data && res.data.meetings) || [];
                 if (!res.ok) { if (!silent) box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; return; }
+                var cc = (res.data && res.data.completed_count) || 0, cb = $('mrqCompletedCount');
+                cb.textContent = cc; cb.classList.toggle('mrq-hidden', !cc);
                 var sig = JSON.stringify(list);
                 if (silent && (sig === sentSig || tab !== 'sent')) return; // nothing changed: leave the list (and scroll position) alone
                 sentSig = sig;
-                if (!list.length) { box.innerHTML = '<div class="text-muted py-3 text-center">You have no upcoming or live meetings. Use the <strong>Request a meeting</strong> tab to create one.</div>'; return; }
+                if (!list.length) { box.innerHTML = done
+                    ? '<div class="text-muted py-3 text-center">No completed meetings yet.</div>'
+                    : '<div class="text-muted py-3 text-center">You have no upcoming or live meetings. Use the <strong>Request a meeting</strong> tab to create one.</div>'; return; }
                 box.innerHTML = '';
                 list.forEach(function (m) {
                     var div = document.createElement('div'); div.className = 'mrq-req';
-                    var counts = { accepted: 0, declined: 0, pending: 0 };
-                    m.invitees.forEach(function (i) { if (i.status === 'declined') counts.declined++; else if (i.status === 'pending') counts.pending++; else counts.accepted++; });
+                    var counts = { accepted: 0, declined: 0, pending: 0, completed: 0 };
+                    m.invitees.forEach(function (i) { if (i.status === 'declined') counts.declined++; else if (i.status === 'pending') counts.pending++; else if (i.status === 'completed') counts.completed++; else counts.accepted++; });
                     var chips = m.invitees.map(function (i) {
                         var st = STATUS[i.status] || STATUS.pending;
                         return '<span class="badge ' + st[1] + ' me-1 mb-1" style="font-size:.78rem">' + esc(i.name) + ' &middot; ' + st[0] + '</span>';
                     }).join('');
-                    var join = m.meet_url
+                    var join = done ? '' : m.meet_url
                         ? '<a class="btn btn-sm mrq-gmeet" target="_blank" rel="noopener noreferrer" href="' + esc(m.meet_url) + '"><i class="ri-vidicon-fill"></i> Join Google Meet</a> '
                         : (m.google
                             ? '<span class="badge bg-warning text-dark">Google Meet link ' + (m.google_status === 'failed' ? 'not created' : 'pending') + '</span> '
                             : '<a class="btn btn-sm btn-success" href="' + esc(m.room_url) + '"><i class="ri-vidicon-line"></i> Open meeting room</a> ');
-                    div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + '</h6>'
+                    div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + (done ? ' <span class="badge bg-primary"><i class="ri-check-double-line"></i> Completed</span>' : '') + '</h6>'
                         + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'No time set')) + (m.room ? ' &middot; <span class="mrq-room">' + esc(m.room) + '</span>' : '') + '</div>'
                         + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')
-                        + '<div class="small mb-1"><strong>' + counts.accepted + '</strong> accepted &middot; <strong>' + counts.declined + '</strong> declined &middot; <strong>' + counts.pending + '</strong> waiting</div>'
+                        + '<div class="small mb-1"><strong>' + counts.accepted + '</strong> accepted &middot; <strong>' + counts.completed + '</strong> completed &middot; <strong>' + counts.declined + '</strong> declined &middot; <strong>' + counts.pending + '</strong> waiting</div>'
                         + '<div class="mb-2">' + (chips || '<span class="text-muted small">No members invited.</span>') + '</div>'
                         + join + '<a class="btn btn-sm btn-light" href="' + esc(m.details_url || m.room_url) + '">Details</a>';
                     box.appendChild(div);

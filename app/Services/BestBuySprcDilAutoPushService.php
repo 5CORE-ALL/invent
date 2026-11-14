@@ -441,7 +441,7 @@ class BestBuySprcDilAutoPushService
     /**
      * Sprc Dil switch ON: the Sprc Dil modal rules, same chain as the page.
      *  1. Dil slab Target SNROI (no slab for the Dil % = no price). No CVR overlay: Best Buy has no session CVR.
-     *  2. + Diff points: (Std Prc - Price) / Price above the Diff threshold.
+     *  2. + Diff points: (LMP or Std Prc - rule price without the Diff points) / that price, above the Diff threshold.
      *  3. price = (LP x (1 + target%) + Ship BB) / take-home, no Ads.
      *  4. LMP cap (SGROI at LMP >= 20%): LMP x (1 - x%) by the SKU's Dil band. No Std Prc maximum.
      *  5. Amz rule last: never below A Price (wins over the LMP cap).
@@ -451,38 +451,6 @@ class BestBuySprcDilAutoPushService
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,margin:float,lp:float,ship:float}|null
      */
     protected function computeDilTarget(array $row, array $ctx): ?array
-    {
-        $first = $this->computeDilTargetAt($row, $ctx);
-        if ($first === null) {
-            return null;
-        }
-
-        // The Diff rule reads the LIVE Best Buy Price. Pushing the target changes that Price, which can switch the Diff points
-        // on/off and give a different target on the next run: the SKU then flips between two prices every 10 minutes and never
-        // settles (e.g. 54.62 <-> 57.20). Look one step ahead: if the target computed at the new live price comes straight back to
-        // the current live price, the two prices form a loop, so settle on the higher one (the same on every run, so it stops).
-        $live = (float) ($row['price'] ?? 0);
-        $target = (float) $first['sprice'];
-        if (! ($live > 0) || PushedListingPrice::same($live, $target)) {
-            return $first;
-        }
-
-        $second = $this->computeDilTargetAt(array_merge($row, ['price' => $target]), $ctx);
-        if ($second !== null && PushedListingPrice::same($second['sprice'], $live)) {
-            return (float) $second['sprice'] >= $target ? $second : $first;
-        }
-
-        return $first;
-    }
-
-    /**
-     * Sprc Dil target for one live Price (see computeDilTarget() for the loop guard around it).
-     *
-     * @param  array<string, mixed>  $row
-     * @param  array{rules:list<array<string,mixed>>,diff_adj:?array,lmp_cap:?array}  $ctx
-     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,margin:float,lp:float,ship:float}|null
-     */
-    protected function computeDilTargetAt(array $row, array $ctx): ?array
     {
         $lp = (float) ($row['lp'] ?? 0);
         if (! ($lp > 0)) {
@@ -513,8 +481,21 @@ class BestBuySprcDilAutoPushService
                 $ctx['age_adj']
             );
         }
-        $diffPct = EbayRuleSprice::stdPriceDiffPct(EbayRuleSprice::diffRefPrice($std, (float) ($row['lmp'] ?? 0)), (float) ($row['price'] ?? 0));
-        $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints($diffPct, $ctx['diff_adj'] ?? null), 2));
+        // Diff rule: judged against the rule price WITHOUT the Diff points, not the live Best Buy Price (same as Shein, Macys,
+        // TikTok, Alibaba and the page: ebayDilGroiStableDiffAdj). Read against the live Price, the boosted price is pushed ->
+        // Diff drops under the threshold -> the boost is removed -> the lower price is pushed -> Diff rises -> the boost is
+        // back, so the SKU flipped between two prices every 10-minute run (e.g. 54.62 <-> 57.20). A listed SKU (live Price > 0)
+        // and a Diff reference (LMP, else Std Prc) are still required.
+        $diffRef = EbayRuleSprice::diffRefPrice($std, $lmp);
+        if ($diffRef > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
+            $diffBase = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
+            if ($diffBase !== null && $diffBase > 0) {
+                $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
+                    EbayRuleSprice::stdPriceDiffPct($diffRef, $diffBase),
+                    $ctx['diff_adj'] ?? null
+                ), 2));
+            }
+        }
 
         $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
         if (! is_finite($raw) || $raw < 0.01) {

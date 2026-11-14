@@ -79,10 +79,13 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
-        $this->assertNull($this->target($this->row(['standard_price' => 150, 'lp' => 100, 'clearance' => true])));
+        // LP × 1.10 ÷ 0.80 = 100 × 1.10 ÷ 0.80 = 137.50. No Ship, no discount and no Std maximum (Std is only 120).
+        $out = $this->target($this->row(['standard_price' => 120, 'lp' => 100, 'ship' => 9, 'clearance' => true, 'clearance_nroi' => 10]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(137.50, $out['sprice'], 0.001);
     }
 
     public function test_no_std_or_inventory_has_no_target(): void
@@ -200,9 +203,13 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'lp' => 0])));
     }
 
-    public function test_sprc_dil_clearance_sku_and_no_inventory_have_no_target(): void
+    public function test_sprc_dil_clearance_sku_uses_the_clearance_nroi_and_no_inventory_has_no_target(): void
     {
-        $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'clearance' => true])));
+        // 20 × 1.10 ÷ 0.80 = 27.50, whatever the Dil slab says.
+        $out = $this->dilTarget($this->row(['dil' => 20, 'clearance' => true, 'clearance_nroi' => 10]));
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(27.50, $out['sprice'], 0.001);
+
         $this->assertNull($this->dilTarget($this->row(['dil' => 20, 'inv' => 0])));
     }
 

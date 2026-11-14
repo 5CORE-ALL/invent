@@ -95,9 +95,9 @@ class DilRuleSpriceApplyService
 
     /**
      * Channels whose clearance SKUs (Inv days clearance = YES) are priced only from the Clearance Target NROI%, in Std prc vs dil and
-     * Sprc Dil alike. Every other channel here still gives clearance SKUs no S PRC until its page is moved over.
+     * Sprc Dil alike: no slab, Diff, CVR, LMP, Std or Amz rule. Every channel this service handles is on it.
      */
-    public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu3', 'newegg'];
+    public const CLEARANCE_NROI_CHANNELS = ['wayfair', 'temu', 'temu2', 'temu3', 'newegg', 'doba', 'walmart', 'fb_marketplace'];
 
     /** Channels whose Sprc Dil modal has the Ageing Rule (age band points on the Target NROI). */
     public const AGE_ADJ_CHANNELS = ['newegg', 'temu', 'temu3', 'doba', 'wayfair', 'walmart', 'fb_marketplace'];
@@ -375,7 +375,7 @@ class DilRuleSpriceApplyService
     protected function computeTargetBeforeRule(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
         if ((new \App\Support\StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
-            // Channels not moved over yet: no S PRC from any rule, nothing is saved or pushed.
+            // A channel outside the list (none today): no S PRC from any rule, nothing is saved or pushed.
             if (! in_array($this->channel, self::CLEARANCE_NROI_CHANNELS, true)) {
                 return null;
             }

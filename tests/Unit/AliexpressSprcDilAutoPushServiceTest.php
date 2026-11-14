@@ -62,13 +62,17 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_sku_has_no_target_like_amazon(): void
+    public function test_clearance_sku_is_priced_only_from_the_clearance_nroi(): void
     {
-        // Clearance SKUs show "C" in S PRC. No rule prices them and nothing is saved or pushed.
-        $this->assertNull((new AliexpressSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
+        // (70 × 1.10 + 8) ÷ 0.89 = 95.51 although LMP is 50: no discount, LMP or Std rule applies.
+        $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
+            $this->row(['lp' => 70, 'ship' => 8, 'lmp' => 50, 'clearance' => true, 'clearance_nroi' => 10]),
             $this->pricer()
-        ));
+        );
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(95.51, $out['sprice'], 0.001);
+        $this->assertFalse($out['lmp_capped']);
     }
 
     public function test_lmp_cap_when_sgroi_at_lmp_is_at_least_20(): void
@@ -237,11 +241,14 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60, 'standard_price' => 0]), null, $this->dilCtx()));
     }
 
-    public function test_sprc_dil_skips_clearance_rows_and_no_inventory(): void
+    public function test_sprc_dil_prices_clearance_rows_from_the_clearance_nroi_only_and_skips_no_inventory(): void
     {
         $svc = new AliexpressSprcDilAutoPushService;
 
-        $this->assertNull($svc->computeTarget($this->dilRow(['clearance' => true, 'al30' => 0]), null, $this->dilCtx()));
+        $out = $svc->computeTarget($this->dilRow(['clearance' => true, 'al30' => 0, 'lp' => 20, 'ship' => 0, 'clearance_nroi' => 10]), null, $this->dilCtx());
+        $this->assertNotNull($out);
+        // 20 × 1.10 ÷ 0.89 = 24.72, whatever the Dil slab or Std Prc say.
+        $this->assertEqualsWithDelta(24.72, $out['sprice'], 0.001);
 
         $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
     }

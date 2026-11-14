@@ -342,21 +342,44 @@ class MeetingController extends Controller
     }
 
     /** Meetings I requested that have not ended, with every invited member and their answer. */
-    public function sent(): JsonResponse
+    public function sent(Request $request): JsonResponse
     {
-        $rows = Meeting::query()
+        $completedView = $request->query('filter') === 'completed';
+
+        // "Completed" = the meeting has ended, or every invited member marked their request as completed.
+        $allCompleted = fn ($q) => $q
+            ->whereHas('participants', fn ($p) => $p->where('is_invited', true))
+            ->whereDoesntHave('participants', fn ($p) => $p->where('is_invited', true)->where('rsvp', '!=', 'completed'));
+
+        $query = Meeting::query()
             ->where('host_user_id', Auth::id())
-            ->whereIn('status', [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE])
-            ->with(['participants' => fn ($q) => $q->where('is_invited', true)->with('user:id,name')])
-            ->orderBy('created_at') // old requests on top
-            ->orderByRaw($this->priorityRankSql())
-            ->orderBy('id')
-            ->limit(20)
-            ->get();
+            ->with(['participants' => fn ($q) => $q->where('is_invited', true)->with('user:id,name')]);
+
+        if ($completedView) {
+            $query->where('status', '!=', Meeting::STATUS_CANCELLED)
+                ->where(fn ($q) => $q->where('status', Meeting::STATUS_ENDED)->orWhere(fn ($w) => $allCompleted($w)))
+                ->orderByDesc('created_at')->orderByDesc('id');
+        } else {
+            $query->whereIn('status', [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE])
+                ->whereNot(fn ($q) => $allCompleted($q))
+                ->orderBy('created_at') // old requests on top
+                ->orderByRaw($this->priorityRankSql())
+                ->orderBy('id');
+        }
+
+        $completedCount = Meeting::query()
+            ->where('host_user_id', Auth::id())
+            ->where('status', '!=', Meeting::STATUS_CANCELLED)
+            ->where(fn ($q) => $q->where('status', Meeting::STATUS_ENDED)->orWhere(fn ($w) => $allCompleted($w)))
+            ->count();
+
+        $rows = $query->limit(20)->get();
 
         return response()->json([
+            'completed_count' => $completedCount,
             'meetings' => $rows->map(fn (Meeting $m) => [
                 'id' => $m->id,
+                'ended' => $m->isEnded(),
                 'title' => $m->title,
                 'agenda' => $m->agenda,
                 'live' => $m->isLive(),

@@ -298,6 +298,8 @@
 
 @section('script-bottom')
     <script>
+        // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes; the cell shows the price and a red C.
+        window.CH_CLEARANCE_KEEPS_RULES = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'fb_marketplace'])
         let table;
         let allTableData = [];
@@ -307,6 +309,7 @@
         const FB_MP_COL_SKIP = ['_select', '_parent_expand', 'missing_l'];
         let fbMpColumnVisibilityMap = {};
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'fb_marketplace'])
+        @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
@@ -742,8 +745,11 @@
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
-                            const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(d, value) : null;
-                            const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
+                            // Clearance: the Clearance Target NROI% price, no cap marks. The red C follows the price.
+                            const isClr = !!(window.chClr && chClr.isClearance(d));
+                            const clrMark = isClr ? chClr.markHtml(d) : '';
+                            const cap = (!isClr && window.SpriceLmpCap) ? SpriceLmpCap.apply(d, value) : null;
+                            const overLmp = !isClr && (cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp));
                             const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC ≥ LMP"></i>') : '';
                             const formatted = '$' + value.toFixed(2);
                             const priceHtml = overLmp
@@ -753,7 +759,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + redTri + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">' + priceHtml + clrMark + redTri + blueTri + '</span>';
                         }
                     },
                     {

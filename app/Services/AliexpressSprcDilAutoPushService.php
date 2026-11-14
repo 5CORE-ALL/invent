@@ -201,9 +201,10 @@ class AliexpressSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs (Inv days clearance = YES) get no S PRC from any rule: the page shows C, nothing is saved or pushed.
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row), in
+        // Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ take-home. No slab, Diff, LMP or Std rule.
         if ((new StdPrcVsDilPricer([], 'aliexpress'))->isClearanceRow($row)) {
-            return null;
+            return $this->computeClearanceTarget($row);
         }
         if ($dilContext !== null) {
             return $this->computeDilTarget($row, $dilContext);
@@ -266,11 +267,55 @@ class AliexpressSprcDilAutoPushService
     }
 
     /**
+     * Clearance SKU: (LP × (1 + Clearance NROI%) + Ship) ÷ take-home. AliExpress has no Ads%. No LMP cap and no Std maximum.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{sprice:float,lmp_capped:bool,base:float,sgpft:int,sroi:int}|null
+     */
+    protected function computeClearanceTarget(array $row): ?array
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.89;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        if (! ($lp > 0)) {
+            return null;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
+        $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $margin, 2);
+        if (! is_finite($price) || $price < 0.01) {
+            return null;
+        }
+        $profit = ($price * $margin) - $lp - $ship;
+
+        return [
+            'sprice' => $price,
+            'lmp_capped' => false,
+            'base' => round((float) ($row['standard_price'] ?? 0), 2),
+            'sgpft' => (int) round(($profit / $price) * 100),
+            'sroi' => (int) round(($profit / $lp) * 100),
+        ];
+    }
+
+    /** Clearance Target NROI% saved with the AliExpress Sprc Dil rules (last row of the modal). Default 0. */
+    protected function clearanceNroi(): float
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'aliexpress_dil_vs_groi')->first();
+        $unpacked = AmazonDilGroiRule::unpackStored(is_array($row?->visibility) ? $row->visibility : null);
+        $n = $unpacked['clearance_nroi'] ?? null;
+
+        return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
+    }
+
+    /**
      * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
      * Dil slab Target SNROI, Diff points, then price = (LP x (1 + Target%) + Ship) / take-home (no Ads on AliExpress),
      * LMP cap (price at/above LMP and SGROI at LMP >= 20% -> LMP x (1 - x%), x by the SKU's Dil band), Std Prc as the maximum.
      * AliExpress only: Dil outside every slab -> S PRC = Std Prc, and LMP when Std Prc is above LMP (no SGROI test, no Stop).
-     * Clearance SKUs are priced like any other. No CVR overlay on AliExpress.
+     * Clearance SKUs never reach this (computeClearanceTarget). No CVR overlay on AliExpress.
      *
      * @param  array<string, mixed>  $row
      * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx

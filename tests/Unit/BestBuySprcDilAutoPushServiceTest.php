@@ -201,7 +201,8 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
     /** @return array<string, mixed> */
     private function dilRow(array $over = []): array
     {
-        return $this->row(array_merge(['ship' => 5, 'price' => 100], $over));
+        // Std 50 is only 8% above the 46.25 rule price, so the Diff rule stays quiet unless a test raises Std.
+        return $this->row(array_merge(['ship' => 5, 'price' => 100, 'standard_price' => 50], $over));
     }
 
     private function dilTarget(array $row): ?array
@@ -220,13 +221,38 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertFalse($out['amz_capped']);
     }
 
-    public function test_sprc_dil_diff_adds_points_when_std_is_above_price_by_more_than_the_threshold(): void
+    public function test_sprc_dil_diff_adds_points_when_std_is_above_the_rule_price_by_more_than_the_threshold(): void
     {
-        // Std 100 vs Price 70 -> Diff 42.9% (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
-        $out = $this->dilTarget($this->dilRow(['price' => 70]));
+        // Rule price without the Diff points is 46.25; Std 100 is 116% above it (> 20): Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75.
+        $out = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 70]));
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_diff_does_not_flip_flop_with_the_live_price(): void
+    {
+        // The Diff is judged against the rule price, not the live Price: the same S PRC before and after its own push.
+        $before = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 46.25]));
+        $after = $this->dilTarget($this->dilRow(['standard_price' => 100, 'price' => 48.75]));
+
+        $this->assertNotNull($before);
+        $this->assertNotNull($after);
+        $this->assertEqualsWithDelta(48.75, $before['sprice'], 0.001);
+        $this->assertEqualsWithDelta($before['sprice'], $after['sprice'], 0.001);
+    }
+
+    public function test_sprc_dil_clearance_sku_ignores_diff_lmp_and_amz_rules(): void
+    {
+        // Clearance NROI 10%: (20 x 1.10 + 5) / 0.80 = 33.75, whatever Std, Diff, LMP (20) or A Price (90) say.
+        $out = $this->dilTarget($this->dilRow([
+            'standard_price' => 100, 'price' => 70, 'lmp' => 20, 'amz' => 90, 'clearance' => true, 'clearance_nroi' => 10,
+        ]));
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(33.75, $out['sprice'], 0.001);
+        $this->assertFalse($out['amz_capped']);
+        $this->assertFalse($out['lmp_capped']);
     }
 
     public function test_sprc_dil_dil_outside_every_slab_has_no_price(): void
