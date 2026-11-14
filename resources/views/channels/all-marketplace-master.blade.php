@@ -1401,10 +1401,7 @@
                                 <div class="amm-inv-block-subtitle">Inv@SP</div>
                                 <div id="amm-inv-sp-tabulator"></div>
                             </div>
-                            <div class="amm-inv-summary-tabulator-wrap" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
-                                <div class="amm-inv-block-subtitle">INV Summary</div>
-                                <div id="amm-inv-summary-tabulator"></div>
-                            </div>
+                            @include('channels.partials.inv-summary-tabulator')
                         </div>
                     </div>
                 </div>
@@ -3496,7 +3493,7 @@
                                 tatBadge.setAttribute('data-exact-value', String(tatRounded));
                                 tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
-                            if (typeof ammInvRenderSummaryTabulator === 'function') ammInvRenderSummaryTabulator();
+                            if (window.AmmInvSummaryTabulator) window.AmmInvSummaryTabulator.refresh();
                         }
                         if (response.dot_trends && Object.keys(response.dot_trends).length) {
                             applyDotTrendsMap(response.dot_trends);
@@ -8880,8 +8877,7 @@
             function ammInvMoneyCompact(n) {
                 const v = Math.round(Number(n) || 0);
                 const abs = Math.abs(v);
-                if (abs >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                if (abs >= 1000) return '$' + Math.round(v / 1000) + 'K';
+                if (abs >= 1000) return '$' + Math.round(v / 1000).toLocaleString('en-US') + 'K';
                 return '$' + v.toLocaleString('en-US');
             }
             function ammInvNormalizeSlices(raw) {
@@ -8996,112 +8992,7 @@
                 $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
                 ammInvRenderSpTabulator(slices);
-                ammInvLastSlices = slices;
-                ammInvRenderSummaryTabulator();
-            }
-
-            // INV Summary Tabulator: the INV badges (inv, Inv@SP, Inv@LP, TAT, Avail) plus the Inv@SP band rows, all in K.
-            var ammInvSummaryTable = null;
-            var ammInvLastSlices = [];
-            function ammInvKCompact(n) {
-                const v = Math.round(Number(n) || 0);
-                if (Math.abs(v) >= 1000) return '$' + Math.round(v / 1000).toLocaleString('en-US') + 'K';
-                return '$' + v.toLocaleString('en-US');
-            }
-            function ammInvBadgeExact(selector) {
-                const el = document.querySelector(selector);
-                if (!el) return null;
-                const raw = el.getAttribute('data-exact-value');
-                if (raw === null || raw === '') return null;
-                const n = parseFloat(raw);
-                return isFinite(n) ? n : null;
-            }
-            function ammInvRenderSummaryTabulator() {
-                const el = document.getElementById('amm-inv-summary-tabulator');
-                if (!el || typeof Tabulator === 'undefined') return;
-                const slices = ammInvLastSlices || [];
-                const tones = {
-                    zero: { bg: '#e5e7eb', fg: '#374151' },
-                    red1: { bg: '#fecaca', fg: '#7f1d1d' },
-                    red2: { bg: '#fee2e2', fg: '#991b1b' },
-                    green: { bg: '#dcfce7', fg: '#14532d' },
-                    pink: { bg: '#fce7f3', fg: '#9d174d' },
-                };
-                const rows = [];
-                [
-                    { id: 'm_inv', item: 'inv', sel: '.badge[data-metric="inventory"]', kind: 'money', bg: '#fcd34d', fg: '#000' },
-                    { id: 'm_sp', item: 'Inv@SP', sel: '.badge[data-metric="inv_at_sp"]', kind: 'money', bg: '#22c55e', fg: '#000' },
-                    { id: 'm_lp', item: 'Inv@LP', sel: '.badge[data-metric="inv_at_lp"]', kind: 'money', bg: '#ef4444', fg: '#fff' },
-                    { id: 'm_tat', item: 'TAT', sel: '.badge[data-metric="tat"]', kind: 'num', bg: '#ef4444', fg: '#fff' },
-                    { id: 'm_avail', item: 'Avail', sel: '[data-metric="fa_avail"]', kind: 'pct', bg: '#fcd34d', fg: '#000' },
-                ].forEach(function(m) {
-                    rows.push({
-                        id: m.id, section: 'Metrics', item: m.item, kind: m.kind, bg: m.bg, fg: m.fg,
-                        count: null, value: ammInvBadgeExact(m.sel), pct: null,
-                    });
-                });
-                const total = slices.reduce(function(sum, s) { return sum + (Number(s.inv_at_sp) || 0); }, 0);
-                let skuTotal = 0;
-                slices.forEach(function(s) {
-                    const val = Number(s.inv_at_sp) || 0;
-                    const t = tones[s.key] || tones.red1;
-                    skuTotal += Number(s.count) || 0;
-                    rows.push({
-                        id: 'b_' + s.key, section: 'Inv@SP bands', item: s.label, kind: 'money', bg: t.bg, fg: t.fg, dot: s.color,
-                        count: Number(s.count) || 0, value: val, pct: total > 0 ? Math.round((val / total) * 100) : 0,
-                    });
-                });
-                if (slices.length) {
-                    rows.push({
-                        id: 'b_total', section: 'Inv@SP bands', item: 'Total', kind: 'money', isTotal: true,
-                        count: skuTotal, value: total, pct: total > 0 ? 100 : 0,
-                    });
-                }
-                if (ammInvSummaryTable) {
-                    ammInvSummaryTable.setData(rows);
-                    return;
-                }
-                ammInvSummaryTable = new Tabulator(el, {
-                    layout: 'fitColumns',
-                    data: rows,
-                    height: false,
-                    index: 'id',
-                    groupBy: 'section',
-                    groupHeader: function(value) { return '<span style="font-weight:800;">' + value + '</span>'; },
-                    columns: [
-                        {
-                            title: 'Item', field: 'item', headerSort: false, widthGrow: 2,
-                            formatter: function(cell) {
-                                const d = cell.getData();
-                                if (d.isTotal) return '<span style="font-weight:800;">Total</span>';
-                                const dot = d.dot
-                                    ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:' + d.dot + ';"></span>'
-                                    : '';
-                                return '<span style="display:inline-block;padding:2px 10px;border-radius:6px;font-weight:800;background:'
-                                    + d.bg + ';color:' + d.fg + ';">' + dot + d.item + '</span>';
-                            },
-                        },
-                        {
-                            title: 'SKUs', field: 'count', hozAlign: 'right', headerSort: false,
-                            formatter: function(cell) { const v = cell.getValue(); return v === null || v === undefined ? '' : v; },
-                        },
-                        {
-                            title: 'Value', field: 'value', hozAlign: 'right', headerSort: false,
-                            formatter: function(cell) {
-                                const d = cell.getData();
-                                const v = cell.getValue();
-                                if (v === null || v === undefined) return '-';
-                                if (d.kind === 'pct') return Math.round(v) + '%';
-                                if (d.kind === 'num') return Number(v).toFixed(2);
-                                return ammInvKCompact(v);
-                            },
-                        },
-                        {
-                            title: '% of total', field: 'pct', hozAlign: 'right', headerSort: false,
-                            formatter: function(cell) { const v = cell.getValue(); return v === null || v === undefined ? '' : v + '%'; },
-                        },
-                    ],
-                });
+                if (window.AmmInvSummaryTabulator) window.AmmInvSummaryTabulator.render(slices);
             }
 
             // Inv@SP Tabulator: one row per DIL band, same badge colours / numbers as the cards above.
