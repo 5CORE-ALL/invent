@@ -42,8 +42,8 @@
             z-index: 30;
         }
         #of-toolbar .of-summary-badge {
-            font-size: 0.72rem !important;
-            padding: 0.2rem 0.45rem !important;
+            font-size: 0.86rem !important;
+            padding: 0.24rem 0.54rem !important;
             line-height: 1.15;
             font-weight: 600 !important;
             white-space: nowrap;
@@ -205,8 +205,8 @@
                                 @endif
                             @endforeach
                         </datalist>
-                        <select id="of-status-filter" class="form-select form-select-sm" style="width:220px;" title="Filter by status">
-                            <option value="">All statuses</option>
+                        <select id="of-status-filter" class="form-select form-select-sm" style="width:110px;" title="Status">
+                            <option value="">Status</option>
                         </select>
                         @if(!empty($ofScanPendingOnly))
                             <select id="of-alert-filter" class="form-select form-select-sm" style="width:150px;" title="Show only rows with the red triangle alert (over 36 hours since the order time), or all rows">
@@ -703,7 +703,7 @@
         const saved = readSavedStatuses();
         const current = String(el.value || '').trim();
         const preferred = current || (saved && saved.length === 1 ? saved[0] : '');
-        el.innerHTML = '<option value="">All statuses</option>' + labels.map(function (label) {
+        el.innerHTML = '<option value="">Status</option>' + labels.map(function (label) {
             return '<option value="' + escapeHtml(label) + '">' + escapeHtml(label) + ' (' + counts[label].toLocaleString() + ')</option>';
         }).join('');
         if (preferred && labels.indexOf(preferred) !== -1) {
