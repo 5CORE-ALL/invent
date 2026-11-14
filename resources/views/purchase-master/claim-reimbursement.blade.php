@@ -255,6 +255,9 @@
     }
     #claimModal .claim-shot:hover { border-color: #2563eb; color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .1); }
     #claimModal .claim-shot.has-shot { border-color: #22c55e; }
+    #claimModal #claimTable tr.claim-drop-over > td,
+    #claimModal #claimTable.claim-drop-over { background: #eaf2ff !important; }
+    #claimModal #claimTable tr.claim-drop-over .claim-shot { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .18); }
     #claimModal .claim-shot .claim-shot-thumb { width: 100%; height: 100%; object-fit: cover; }
     #claimModal .claim-shot input[type="file"] {
         position: absolute; inset: 0;
@@ -1535,16 +1538,62 @@
             setShotFile(label, new File([blob], 'snippet_' + Date.now() + '.' + ext, { type: blob.type }));
         });
 
+        // Drag & drop: drop image(s) on a row's camera, anywhere on a row, or anywhere in the items area.
+        // Extra images fill the following empty rows (new rows are added as needed).
+        function dragHasFiles(e) {
+            const t = e.dataTransfer && e.dataTransfer.types;
+            return !!t && Array.prototype.indexOf.call(t, 'Files') !== -1;
+        }
+
+        function clearDropHighlight() {
+            document.querySelectorAll('.claim-drop-over').forEach(function (el) { el.classList.remove('claim-drop-over'); });
+        }
+
+        function dropTargetFor(e) {
+            const zone = e.target.closest ? e.target.closest('#claimModal .modal-body') : null;
+            if (!zone) return null;
+            const row = e.target.closest('#claimTableBody tr');
+            return { zone: zone, row: row };
+        }
+
         document.addEventListener('dragover', function (e) {
-            if (e.target.closest && e.target.closest('.claim-shot')) e.preventDefault();
+            if (!dragHasFiles(e)) return;
+            const t = dropTargetFor(e);
+            if (!t) return;
+            e.preventDefault(); // also stops the browser from opening the dropped file
+            if (!claimOpenAndEditable()) { e.dataTransfer.dropEffect = 'none'; return; }
+            e.dataTransfer.dropEffect = 'copy';
+            clearDropHighlight();
+            (t.row || document.getElementById('claimTable') || t.zone).classList.add('claim-drop-over');
         });
+
+        document.addEventListener('dragleave', function (e) {
+            if (!e.relatedTarget || !(e.relatedTarget.closest && e.relatedTarget.closest('#claimModal'))) clearDropHighlight();
+        });
+
         document.addEventListener('drop', function (e) {
-            const label = e.target.closest ? e.target.closest('.claim-shot') : null;
-            if (!label || !claimOpenAndEditable()) return;
-            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-            if (!file || !/^image\//.test(file.type)) return;
+            if (!dragHasFiles(e)) return;
+            const t = dropTargetFor(e);
+            if (!t) return;
             e.preventDefault();
-            setShotFile(label, file);
+            clearDropHighlight();
+            if (!claimOpenAndEditable()) return;
+
+            const files = Array.from(e.dataTransfer.files).filter(function (f) { return /^image\//.test(f.type); });
+            if (!files.length) return;
+
+            const rows = function () { return Array.from(document.querySelectorAll('#claimTableBody tr')); };
+            let startIdx = t.row ? rows().indexOf(t.row) : rows().findIndex(function (r) {
+                return !r.querySelector('.claim-shot').classList.contains('has-shot');
+            });
+            if (startIdx < 0) startIdx = rows().length; // nothing free: append new rows
+
+            files.forEach(function (file, i) {
+                let r = rows()[startIdx + i];
+                if (!r && typeof window.claimAddRow === 'function') r = window.claimAddRow();
+                const label = r && r.querySelector('.claim-shot');
+                if (label) setShotFile(label, file);
+            });
         });
     })();
 
