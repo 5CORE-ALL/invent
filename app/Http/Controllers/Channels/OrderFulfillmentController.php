@@ -2856,6 +2856,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             return [];
         }
 
+        // All-digit array keys arrive as ints. Keep them as text so MySQL compares text with text.
+        $keys = array_map('strval', $keys);
+
         $out = [];
         foreach (array_chunk($keys, 500) as $chunk) {
             $rows = DB::table('carrier_tracking_statuses')
