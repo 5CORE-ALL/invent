@@ -180,6 +180,7 @@
                                 <option value="temu2_csv">Temu 2 (CSV)</option>
                                 <option value="temu3_csv">Temu 3 (CSV)</option>
                                 <option value="ups_csv">UPS (CSV)</option>
+                                <option value="shippo_csv">Shippo (CSV)</option>
                             </select>
                         </label>
                         <div class="vc-field">Type
@@ -279,6 +280,7 @@
                             <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="temu2"><span><b>Temu 2</b><small>Transactions</small></span></label>
                             <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="temu3"><span><b>Temu 3</b><small>Transactions</small></span></label>
                             <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="ups"><span><b>UPS</b><small>Billing → invoice CSV</small></span></label>
+                            <label class="vc-imp-opt"><input type="radio" name="vcImpPlatform" value="shippo"><span><b>Shippo</b><small>Transactions export CSV</small></span></label>
                         </div>
                         <div class="vc-imp-help mb-3" id="vcImpHelp"></div>
                         <label class="form-label fw-semibold" for="vcImportFile">CSV file</label>
@@ -523,9 +525,10 @@
                 ['Shopify Shipping Label', 'Label purchase', 'Shopify'],
                 ['Temu Label Purchase Adjustment', 'Label purchase adjustment', 'Temu'],
                 ['UPS Billing Adjustment', 'Billing adjustment', 'UPS'],
+                ['Shippo Label Surcharge', 'Label surcharge', 'Shippo'],
             ];
-            const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack', 'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation', 'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment', 'UPS Billing Adjustment'];
-            const SOURCE_LABELS = { veeqo_csv: 'Veeqo CSV', amazon_api: 'Amazon API', tiktok_api: 'TikTok 1 API', tiktok2_api: 'TikTok 2 API', shopify_csv: 'Shopify CSV', temu1_csv: 'Temu 1 CSV', temu2_csv: 'Temu 2 CSV', temu3_csv: 'Temu 3 CSV', ups_csv: 'UPS CSV' };
+            const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack', 'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation', 'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment', 'UPS Billing Adjustment', 'Shippo Label Surcharge'];
+            const SOURCE_LABELS = { veeqo_csv: 'Veeqo CSV', amazon_api: 'Amazon API', tiktok_api: 'TikTok 1 API', tiktok2_api: 'TikTok 2 API', shopify_csv: 'Shopify CSV', temu1_csv: 'Temu 1 CSV', temu2_csv: 'Temu 2 CSV', temu3_csv: 'Temu 3 CSV', ups_csv: 'UPS CSV', shippo_csv: 'Shippo CSV' };
             const SOURCE_BADGES = {
                 veeqo_csv: '<span class="badge bg-warning text-dark">Veeqo CSV</span>',
                 amazon_api: '<span class="badge bg-info text-dark">Amazon API</span>',
@@ -536,18 +539,23 @@
                 temu2_csv: '<span class="badge" style="background:#c2410c">Temu 2 CSV</span>',
                 temu3_csv: '<span class="badge" style="background:#9a3412">Temu 3 CSV</span>',
                 ups_csv: '<span class="badge" style="background:#5b3a14">UPS CSV</span>',
+                shippo_csv: '<span class="badge" style="background:#0e7490">Shippo CSV</span>',
             };
             let typeOptions = TYPE_OPTIONS.slice();
             let selectedTypes = (function () {
                 try {
                     const saved = JSON.parse(localStorage.getItem(TYPE_KEY) || 'null');
-                    if (Array.isArray(saved)) return saved;
+                    if (Array.isArray(saved)) {
+                        // Add the Shippo type for users who saved their selection before it existed.
+                        if (saved.includes('UPS Billing Adjustment') && !saved.includes('Shippo Label Surcharge')) saved.push('Shippo Label Surcharge');
+                        return saved;
+                    }
                 } catch (_) {}
                 return CHARGEBACK_TYPES.slice();
             })();
             let typesDirty = false;
 
-            const SOURCE_GROUP = { veeqo_csv: 'Veeqo', amazon_api: 'Amazon', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu', ups_csv: 'UPS' };
+            const SOURCE_GROUP = { veeqo_csv: 'Veeqo', amazon_api: 'Amazon', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu', ups_csv: 'UPS', shippo_csv: 'Shippo' };
 
             let sourceTypes = {};
             const SOURCE_EMPTY_HINT = {
@@ -560,6 +568,7 @@
                 temu2_csv: 'Use Import CSV → Temu 2.',
                 temu3_csv: 'Use Import CSV → Temu 3.',
                 ups_csv: 'Use Import CSV → UPS.',
+                shippo_csv: 'Use Import CSV → Shippo.',
             };
             const emptyEl = document.createElement('div');
             emptyEl.className = 'p-3 text-muted';
@@ -704,7 +713,8 @@
                     badge('TikTok net', money(t.tiktok_net || 0), Number(t.tiktok_net) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Shopify net', money(t.shopify_net || 0), Number(t.shopify_net) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Temu net', money(t.temu_net || 0), Number(t.temu_net) < 0 ? 'vc-debit' : 'vc-credit') +
-                    badge('UPS net', money(t.ups_net || 0), Number(t.ups_net) < 0 ? 'vc-debit' : 'vc-credit');
+                    badge('UPS net', money(t.ups_net || 0), Number(t.ups_net) < 0 ? 'vc-debit' : 'vc-credit') +
+                    badge('Shippo net', money(t.shippo_net || 0), Number(t.shippo_net) < 0 ? 'vc-debit' : 'vc-credit');
 
                 const f = json.filters || {};
                 renderTypeMenu(f.types);
@@ -948,6 +958,7 @@
                 shopify: 'Shopify admin → Settings → Billing → Bills/charges export. Columns: <code>Charge category, Description, Amount, Order, Charge date</code>. Label purchases and Shipping Label Price Adjustments are imported.',
                 temu: 'Temu Seller Center → Finance → Transactions by custom date range. Columns: <code>Date, Transaction type, Order ID, Total</code>. Shipping label purchase adjustments are imported.',
                 ups: 'UPS Billing Center → adjustments CSV (file like <code>UPS 2026.csv</code>). Columns: <code>Account Number, Invoice Number, Invoice Date, Tracking Number, Adjustment, Pickup Record Number, Original Address, Corrected Address, Reference Number 1–5, Zone, Service Type, Published Charge, Incentives, Net Amount Due</code>. One line per corrected package is imported; the invoice total lines (no tracking number) are skipped. Choose Source → UPS (CSV) to see the sheet with these columns. The invoice detail CSV (<code>Charge Description, Net Amount, Tracking Number</code>) also works; only its adjustment lines are kept.',
+                shippo: 'Shippo → Transactions → Export CSV (file like <code>export_user_..._.csv</code>). Columns: <code>Creation Date, Type, Description, Credit, Amount, Tracking Number, Carrier, Service Level, Invoice Number, Paid</code>. Every row is imported as a charge (a row marked <code>Credit = True</code> is a refund). The order number is looked up from the tracking number. Choose Source → Shippo (CSV) to see them.',
             };
             let importModal = null;
 
@@ -993,10 +1004,10 @@
                     out.textContent = json.message || (res.ok ? 'Import finished.' : 'Import failed (' + res.status + ').');
                     if (res.ok) {
                         input.value = '';
-                        if (platform === 'ups') {
-                            // Show the UPS sheet straight away.
+                        if (platform === 'ups' || platform === 'shippo') {
+                            // Show the imported sheet straight away.
                             const source = document.getElementById('vcSource');
-                            source.value = 'ups_csv';
+                            source.value = platform + '_csv';
                             source.dispatchEvent(new Event('change'));
                         } else {
                             refresh();

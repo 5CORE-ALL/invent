@@ -34,6 +34,7 @@ class VeeqoChargebackController extends Controller
         'LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound',
         'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation',
         'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment', 'UPS Billing Adjustment',
+        'Shippo Label Surcharge',
     ];
 
     public function index()
@@ -124,11 +125,11 @@ class VeeqoChargebackController extends Controller
             return $r;
         });
         $byTracking = $this->skusByTracking($rows
-            ->filter(fn ($r) => $r['sku'] === '' && ($r['source'] ?? '') === 'ups_csv' && ! empty($r['item_types']))
+            ->filter(fn ($r) => $r['sku'] === '' && in_array($r['source'] ?? '', ['ups_csv', 'shippo_csv'], true) && ! empty($r['item_types']))
             ->pluck('item_types')->unique()->values()->all());
         if ($byTracking !== []) {
             $rows = $rows->map(function ($r) use ($byTracking) {
-                if ($r['sku'] === '' && ($r['source'] ?? '') === 'ups_csv' && isset($byTracking[$r['item_types'] ?? ''])) {
+                if ($r['sku'] === '' && in_array($r['source'] ?? '', ['ups_csv', 'shippo_csv'], true) && isset($byTracking[$r['item_types'] ?? ''])) {
                     $r['sku'] = $byTracking[$r['item_types']];
                 }
 
@@ -180,6 +181,7 @@ class VeeqoChargebackController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'shopify_csv' THEN total_amount END), 0) as shopify_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('temu1_csv', 'temu2_csv', 'temu3_csv') THEN total_amount END), 0) as temu_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'ups_csv' THEN total_amount END), 0) as ups_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'shippo_csv' THEN total_amount END), 0) as shippo_net")
             ->selectRaw("SUM(CASE WHEN direction = 'debit' THEN 1 ELSE 0 END) as debits")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'debit' THEN total_amount END), 0) as debit_total")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN total_amount END), 0) as credit_total")

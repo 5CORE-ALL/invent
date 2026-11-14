@@ -694,6 +694,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/order-fulfillment/tracking/lookup', [OrderFulfillmentController::class, 'lookupTracking'])->name('order.fulfillment.tracking.lookup');
     Route::post('/order-fulfillment/tracking', [OrderFulfillmentController::class, 'saveTracking'])->name('order.fulfillment.tracking.save');
     Route::post('/order-fulfillment/tracking-status', [OrderFulfillmentController::class, 'refreshTrackingStatus'])->name('order.fulfillment.tracking.status');
+    Route::post('/order-fulfillment/marketplace-status/fetch', [OrderFulfillmentController::class, 'fetchMarketplaceStatus'])->name('order.fulfillment.marketplace-status.fetch');
+    Route::get('/order-fulfillment/marketplace-status/state', [OrderFulfillmentController::class, 'marketplaceStatusState'])->name('order.fulfillment.marketplace-status.state');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)

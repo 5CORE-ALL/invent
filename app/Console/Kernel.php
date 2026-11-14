@@ -3936,6 +3936,20 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // "Marketplace Tracking Status" column on /order-fulfillment: fetch each order's status from its own
+        // marketplace API and save it, twice a day at 09:00 and 14:00 California (PST/PDT) time.
+        // The same run is behind the "Fetch tracking status from marketplace" button.
+        // Lock (150) > --max-minutes (60) so a run cannot overlap itself.
+        foreach (['09:00' => 'morning', '14:00' => 'afternoon'] as $at => $label) {
+            $schedule->command('order-fulfillment:fetch-marketplace-status --days=14 --max-minutes=60')
+                ->dailyAt($at)
+                ->timezone('America/Los_Angeles')
+                ->name('order-fulfillment-marketplace-status-'.$label)
+                ->withoutOverlapping(150)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // Daily catch-up also re-fetches marketplace orders, then import + fulfill + tracking.
         // --max-minutes 120 (hard kill at 125) stays below the 180 min lock.
         $schedule->command('mm:push-orders-tracking --days=7 --skip-inventory --max-minutes=120')

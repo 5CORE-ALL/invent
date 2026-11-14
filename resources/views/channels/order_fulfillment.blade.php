@@ -197,6 +197,8 @@
                         <input type="date" id="of-date-to" class="form-control form-control-sm" style="width:140px;" value="{{ $ofDateTo ?? '' }}" min="{{ $ofDateEarliest ?? '2026-09-15' }}" title="To date">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="of-apply-dates">Apply</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="of-clear-dates">Last 30 days</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="of-mp-fetch-btn" title="Fetch the order status and tracking status from each marketplace's own API now (also runs automatically at 9:00 and 14:00 California time)"><i class="fas fa-cloud-download-alt me-1" aria-hidden="true"></i>Fetch tracking status from marketplace</button>
+                        <span class="small text-muted" id="of-mp-fetch-info"></span>
                         <input type="text" id="of-channel-filter" class="form-control form-control-sm" style="width:150px;" list="of-channel-datalist" placeholder="Channel…" autocomplete="off">
                         <datalist id="of-channel-datalist">
                             @foreach(($ofChannels ?? []) as $chOpt)
@@ -207,6 +209,9 @@
                         </datalist>
                         <select id="of-status-filter" class="form-select form-select-sm" style="width:110px;" title="Status">
                             <option value="">Status</option>
+                        </select>
+                        <select id="of-mp-status-filter" class="form-select form-select-sm" style="width:190px;" title="Marketplace Tracking Status: the status each marketplace reported at its last fetch">
+                            <option value="">Marketplace Tracking Status</option>
                         </select>
                         @if(!empty($ofScanPendingOnly))
                             <select id="of-alert-filter" class="form-select form-select-sm" style="width:150px;" title="Show only rows with the red triangle alert (over 36 hours since the order time), or all rows">
@@ -689,6 +694,32 @@
         return value === '' ? null : [value];
     }
 
+    function mpStatusLabel(row) {
+        const value = String((row && row.mp_order_status) || '').trim();
+        return value ? value : '—';
+    }
+
+    // Marketplace Tracking Status dropdown: every value in the table with its count, "—" for orders not fetched yet.
+    function renderMpStatusOptions(rows) {
+        const el = document.getElementById('of-mp-status-filter');
+        if (!el) return;
+        const counts = {};
+        (rows || []).forEach(function (row) {
+            const label = mpStatusLabel(row);
+            counts[label] = (counts[label] || 0) + 1;
+        });
+        const labels = Object.keys(counts).sort(function (a, b) {
+            if (a === '—') return 1;
+            if (b === '—') return -1;
+            return a.localeCompare(b);
+        });
+        const current = String(el.value || '').trim();
+        el.innerHTML = '<option value="">Marketplace Tracking Status</option>' + labels.map(function (label) {
+            return '<option value="' + escapeHtml(label) + '">' + escapeHtml(label) + ' (' + counts[label].toLocaleString() + ')</option>';
+        }).join('');
+        el.value = (current && labels.indexOf(current) !== -1) ? current : '';
+    }
+
     function renderStatusOptions(rows) {
         const el = document.getElementById('of-status-filter');
         if (!el) return;
@@ -722,6 +753,7 @@
             data && data.tracking,
             data && data.carrier,
             data && data.tracking_status,
+            data && data.mp_order_status,
             data && data.paid_label,
             data && data.customer_name,
             data && data.customer_email,
@@ -750,8 +782,9 @@
         const channel = String(document.getElementById('of-channel-filter')?.value || '').trim().toLowerCase();
         const paid = String(document.getElementById('of-paid-filter')?.value || '').trim();
         const statuses = selectedStatuses();
+        const mpStatus = String(document.getElementById('of-mp-status-filter')?.value || '').trim();
         const onlyAlerts = alertsOnly();
-        if (!q && !channel && !paid && statuses === null && !onlyAlerts) {
+        if (!q && !channel && !paid && statuses === null && !mpStatus && !onlyAlerts) {
             table.clearFilter(true);
             countsFromRows(table.getData());
             return;
@@ -760,6 +793,7 @@
         table.setFilter(function (data) {
             if (onlyAlerts && !data.scan_alert) return false;
             if (statuses && statuses.indexOf(statusLabel(data)) === -1) return false;
+            if (mpStatus && mpStatusLabel(data) !== mpStatus) return false;
             if (paid && String(data.paid_label || '') !== paid) return false;
             if (channel && !String(data.channel || '').toLowerCase().includes(channel)) return false;
             if (!words.length) return true;
@@ -830,6 +864,9 @@
             setCount('of-alert-count', response && response.alert_count);
             navStatusCounts = (response && response.nav_status_counts) || null;
             setNavCounts(response && response.nav_counts);
+            if (typeof showMarketplaceFetchInfo === 'function') {
+                showMarketplaceFetchInfo(response && response.marketplace_fetch);
+            }
             if (response && response.success === false) {
                 showTablePlaceholder(response.message || 'Failed to load orders.');
             } else if (!rows.length) {
@@ -840,6 +877,7 @@
         dataLoaded: function () {
             table.setSort([{ column: 'order_date', dir: defaultSortDir }]);
             renderStatusOptions(table.getData());
+        renderMpStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
                 statusWave = 0;
@@ -939,6 +977,22 @@
                 formatter: function (cell) {
                     const value = String(cell.getValue() || '').trim();
                     return value && value !== '—' ? escapeHtml(value) : '—';
+                },
+            },
+            {
+                title: 'Marketplace Tracking Status',
+                field: 'mp_order_status',
+                minWidth: 140,
+                sorter: 'string',
+                headerSort: true,
+                headerHozAlign: 'center',
+                headerTooltip: 'Status the marketplace the order came from reports for it, fetched from that marketplace API twice a day (9:00 and 14:00 California time) or with the Fetch tracking status button',
+                formatter: function (cell) {
+                    const value = String(cell.getValue() || '').trim();
+                    if (!value) return '—';
+                    const at = String(cell.getRow().getData().mp_order_status_at || '').trim();
+                    const title = at ? ' title="Fetched from the marketplace ' + escapeHtml(at) + ' (California time)"' : '';
+                    return '<span' + title + '>' + escapeHtml(value) + '</span>';
                 },
             },
             {
@@ -1047,7 +1101,7 @@
         refreshSavedNavCounts();
     });
 
-    ['of-search', 'of-channel-filter', 'of-paid-filter', 'of-alert-filter'].forEach(function (id) {
+    ['of-search', 'of-channel-filter', 'of-paid-filter', 'of-alert-filter', 'of-mp-status-filter'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('input', function () { applyFilters(table); });
         document.getElementById(id)?.addEventListener('change', function () { applyFilters(table); });
     });
@@ -1147,6 +1201,66 @@
     const statusUrl = @json(route('order.fulfillment.tracking.status'));
     let trackingLookupRunning = false;
     let trackingFailCount = 0;
+
+    // "Fetch tracking status from marketplace": runs the marketplace fetch in the background, then reloads the table.
+    const mpFetchUrl = @json(route('order.fulfillment.marketplace-status.fetch'));
+    const mpStateUrl = @json(route('order.fulfillment.marketplace-status.state'));
+    let mpFetchPoll = null;
+    const mpFetchBtn = document.getElementById('of-mp-fetch-btn');
+    const mpFetchLabel = mpFetchBtn ? mpFetchBtn.innerHTML : '';
+
+    function showMarketplaceFetchInfo(info) {
+        const el = document.getElementById('of-mp-fetch-info');
+        if (!el || !info) return;
+        const running = info.state === 'running';
+        if (mpFetchBtn) {
+            mpFetchBtn.disabled = running;
+            mpFetchBtn.innerHTML = running
+                ? '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Fetching…'
+                : mpFetchLabel;
+        }
+        if (running) {
+            pollMarketplaceFetch();
+            el.textContent = info.message || 'Fetching from the marketplaces…';
+        } else if (info.state === 'failed') {
+            el.textContent = 'Last fetch failed: ' + (info.message || 'see logs');
+        } else if (info.last_run) {
+            el.textContent = 'Last fetched ' + info.last_run + ' (California time)';
+        } else {
+            el.textContent = 'Fetched at 9:00 and 14:00 California time';
+        }
+    }
+
+    function pollMarketplaceFetch() {
+        if (mpFetchPoll) return;
+        mpFetchPoll = setInterval(function () {
+            $.getJSON(mpStateUrl).done(function (info) {
+                showMarketplaceFetchInfo(info);
+                if (info.state !== 'running') {
+                    clearInterval(mpFetchPoll);
+                    mpFetchPoll = null;
+                    table.setData();
+                }
+            });
+        }, 10000);
+    }
+
+    mpFetchBtn?.addEventListener('click', function () {
+        if (!confirm('Fetch the order status and tracking status from every marketplace now? It runs in the background and can take several minutes. The table reloads when it finishes.')) return;
+        mpFetchBtn.disabled = true;
+        $.ajax({
+            url: mpFetchUrl,
+            type: 'POST',
+            dataType: 'json',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+        }).done(function (res) {
+            showMarketplaceFetchInfo(res);
+            pollMarketplaceFetch();
+        }).fail(function (xhr) {
+            mpFetchBtn.disabled = false;
+            alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not start the fetch.');
+        });
+    });
 
     function csrfToken() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -1432,6 +1546,7 @@
             if (sorters.length) table.setSort(sorters.map(function (s) { return { column: s.field, dir: s.dir }; }));
         } catch (e) { /* keep current order */ }
         renderStatusOptions(table.getData());
+        renderMpStatusOptions(table.getData());
         applyFilters(table);
         setNavCount('create_orders', table.getData().filter(function (r) { return r.manual; }).length);
         setTimeout(function () {
