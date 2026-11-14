@@ -47,6 +47,364 @@
     .tabulator-row {
         overflow: visible !important;
     }
+
+    /* Action column: always a light yellow background (even on hover / striped / selected rows) */
+    .tabulator .tabulator-row .tabulator-cell.action-cell,
+    .tabulator .tabulator-row:hover .tabulator-cell.action-cell,
+    .tabulator .tabulator-row.tabulator-row-even .tabulator-cell.action-cell,
+    .tabulator .tabulator-row.tabulator-row-odd .tabulator-cell.action-cell,
+    .tabulator .tabulator-row.tabulator-selected .tabulator-cell.action-cell {
+        background-color: #fffbe0 !important;
+    }
+
+    /* ===== Next-gen Add Claim modal ===== */
+    #claimModal .modal-content {
+        border: 0;
+        border-radius: 0;
+        background: #f4f6fb;
+    }
+    #claimModal .claim-header {
+        background: linear-gradient(120deg, #0ea5a4 0%, #2563eb 55%, #7c3aed 100%);
+        color: #fff;
+        border: 0;
+        padding: 18px 28px;
+        align-items: center;
+    }
+    #claimModal .claim-header .claim-icon {
+        width: 44px; height: 44px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .18);
+        backdrop-filter: blur(6px);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        margin-right: 14px;
+    }
+    #claimModal .claim-header .modal-title { font-weight: 700; letter-spacing: .2px; }
+    #claimModal .claim-header .claim-sub { font-size: .8rem; opacity: .85; }
+    #claimModal .claim-close {
+        width: 36px; height: 36px;
+        border: 0; border-radius: 10px;
+        background: rgba(255, 255, 255, .18);
+        color: #fff; font-size: 16px;
+        transition: background .15s, transform .15s;
+    }
+    #claimModal .claim-close:hover { background: rgba(255, 255, 255, .32); transform: rotate(90deg); }
+
+    #claimModal .modal-body { padding: 24px 28px; }
+    #claimModal .claim-card {
+        background: #fff;
+        border: 1px solid #e6eaf2;
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(30, 41, 90, .06);
+        padding: 20px 22px;
+    }
+    #claimModal .claim-card + .claim-card { margin-top: 20px; }
+    #claimModal .claim-section-title {
+        font-size: .72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .08em;
+        color: #64748b; margin-bottom: 12px;
+        display: flex; align-items: center; gap: 8px;
+    }
+    #claimModal .claim-section-title i { color: #2563eb; }
+    #claimModal .form-label {
+        font-size: .72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .06em;
+        color: #64748b;
+    }
+    #claimModal .form-control,
+    #claimModal .form-select {
+        border-radius: 10px;
+        border: 1px solid #dbe2ee;
+        background-color: #f8fafc;
+        min-height: 40px;
+        font-size: .9rem;
+        transition: border-color .15s, box-shadow .15s, background-color .15s;
+    }
+    #claimModal .form-control:focus,
+    #claimModal .form-select:focus {
+        background-color: #fff;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, .12);
+    }
+    #claimModal .form-control[readonly] { background-color: #eef2f7; color: #475569; }
+    #claimModal #claimNo {
+        font-weight: 700; color: #2563eb;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Items table */
+    #claimModal .claim-table-wrap { border-radius: 12px; border: 1px solid #e6eaf2; overflow: hidden; }
+    #claimModal #claimTable { margin: 0; border-collapse: separate; border-spacing: 0; }
+    #claimModal #claimTable > :not(caption) > * > * { border-width: 0 0 1px 0; border-color: #eef1f6; padding: 10px 8px; }
+    #claimModal #claimTable thead th {
+        background: #f1f5fb;
+        color: #475569;
+        font-size: .7rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .07em;
+        padding: 12px 8px;
+        white-space: nowrap;
+    }
+    #claimModal #claimTable tbody tr { transition: background .15s; }
+    #claimModal #claimTable tbody tr:hover { background: #f8faff; }
+    #claimModal #claimTable tbody tr:last-child td { border-bottom: 0; }
+    #claimModal #claimTable .amount { font-weight: 700; color: #059669; text-align: center; }
+    #claimModal #claimTable .qty,
+    #claimModal #claimTable .rate { text-align: center; }
+    #claimModal #claimTable .row-parent { font-weight: 600; text-align: center; }
+    /* SKU column: 60% of the previous width (220px -> 132px) */
+    #claimModal #claimTable th.col-sku,
+    #claimModal #claimTable td.col-sku {
+        width: 132px; min-width: 132px; max-width: 132px;
+        padding-left: 4px; padding-right: 4px;
+    }
+    #claimModal #claimTable td.col-sku .select2-container { width: 100% !important; }
+    #claimModal #claimTable td.col-sku .select2-selection--single .select2-selection__rendered {
+        padding-left: 8px; padding-right: 36px; font-size: .85rem;
+    }
+
+    /* Supplier column: 50% of the previous width (180px -> 90px) */
+    #claimModal #claimTable th.col-supplier,
+    #claimModal #claimTable td.col-supplier {
+        width: 90px; min-width: 90px; max-width: 90px;
+        padding-left: 4px; padding-right: 4px;
+    }
+    #claimModal #claimTable td.col-supplier .select2-container { width: 100% !important; }
+    #claimModal #claimTable td.col-supplier .select2-selection--single .select2-selection__rendered {
+        padding-left: 8px; padding-right: 30px; font-size: .85rem;
+    }
+
+    /* Parent column: half the previous width (160px -> 80px) */
+    #claimModal #claimTable th.col-parent,
+    #claimModal #claimTable td.col-parent {
+        width: 80px; min-width: 80px; max-width: 80px;
+        padding-left: 4px; padding-right: 4px;
+    }
+    #claimModal #claimTable td.col-parent .row-parent {
+        width: 100%; padding: 6px 6px; font-size: .8rem;
+        text-overflow: ellipsis;
+    }
+
+    /* Compact numeric columns: Qty / Rate = 4 characters, Amount = 6 characters */
+    #claimModal #claimTable th.col-num4,
+    #claimModal #claimTable td.col-num4 {
+        width: calc(4ch + 22px); min-width: calc(4ch + 22px); max-width: calc(4ch + 22px);
+        padding-left: 4px; padding-right: 4px;
+    }
+    #claimModal #claimTable th.col-num6,
+    #claimModal #claimTable td.col-num6 {
+        width: calc(6ch + 22px); min-width: calc(6ch + 22px); max-width: calc(6ch + 22px);
+        padding-left: 4px; padding-right: 4px;
+    }
+    #claimModal #claimTable th.col-num4,
+    #claimModal #claimTable th.col-num6 { white-space: normal; line-height: 1.2; font-size: .62rem; }
+    #claimModal #claimTable td.col-num4 .form-control,
+    #claimModal #claimTable td.col-num6 .form-control {
+        width: 100%;
+        padding: 6px 4px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        -moz-appearance: textfield;
+    }
+    #claimModal #claimTable td.col-num4 .form-control::-webkit-outer-spin-button,
+    #claimModal #claimTable td.col-num4 .form-control::-webkit-inner-spin-button,
+    #claimModal #claimTable td.col-num6 .form-control::-webkit-outer-spin-button,
+    #claimModal #claimTable td.col-num6 .form-control::-webkit-inner-spin-button {
+        -webkit-appearance: none; margin: 0;
+    }
+
+    /* Reason / Notes: icon button that opens an editor modal */
+    #claimModal #claimTable td.col-reason { min-width: 240px; }
+    #claimModal .reason-btn {
+        width: 100%; min-height: 40px;
+        padding: 6px 12px;
+        display: flex; align-items: center; gap: 10px;
+        text-align: left;
+        border-radius: 10px;
+        border: 1px solid #dbe2ee;
+        background: #f8fafc;
+        color: #94a3b8;
+        font-size: .88rem;
+        transition: all .15s;
+    }
+    #claimModal .reason-btn i { color: #64748b; font-size: 15px; flex-shrink: 0; }
+    #claimModal .reason-btn .reason-text {
+        flex: 1; min-width: 0;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #claimModal .reason-btn:hover { border-color: #2563eb; background: #fff; box-shadow: 0 0 0 4px rgba(37, 99, 235, .1); }
+    #claimModal .reason-btn:hover i { color: #2563eb; }
+    #claimModal .reason-btn.has-text { background: #eef4ff; border-color: #bcd0fb; color: #1e293b; }
+    #claimModal .reason-btn.has-text i { color: #2563eb; }
+
+    #reasonModal .reason-modal-content { border: 0; border-radius: 18px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+    #reasonModal .reason-modal-header {
+        background: linear-gradient(120deg, #0ea5a4 0%, #2563eb 55%, #7c3aed 100%);
+        color: #fff; border: 0; padding: 14px 20px;
+    }
+    #reasonModal .reason-modal-header .modal-title { font-weight: 700; font-size: 1.05rem; }
+    #reasonModal .claim-close {
+        width: 34px; height: 34px; border: 0; border-radius: 10px;
+        background: rgba(255, 255, 255, .18); color: #fff;
+        transition: background .15s, transform .15s;
+    }
+    #reasonModal .claim-close:hover { background: rgba(255, 255, 255, .32); transform: rotate(90deg); }
+    #reasonModal textarea.form-control {
+        border-radius: 12px; border: 1px solid #dbe2ee; background: #f8fafc; resize: vertical;
+    }
+    #reasonModal textarea.form-control:focus {
+        background: #fff; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .12);
+    }
+    #reasonModal .btn-claim-save {
+        background: linear-gradient(120deg, #2563eb, #7c3aed);
+        border: 0; color: #fff; font-weight: 700;
+        border-radius: 12px; padding: 9px 24px;
+        box-shadow: 0 8px 18px rgba(37, 99, 235, .3);
+    }
+    #reasonModal .btn-claim-save:hover { color: #fff; transform: translateY(-1px); }
+    #reasonModal .btn-claim-cancel { background: #eef2f7; border: 0; color: #475569; border-radius: 12px; padding: 9px 18px; font-weight: 600; }
+    #reasonModal .btn-claim-cancel:hover { background: #e2e8f0; }
+
+    /* Attachment: icon-only picker */
+    #claimModal #claimTable th.col-attach,
+    #claimModal #claimTable td.col-attach { width: 64px; min-width: 64px; max-width: 64px; padding-left: 4px; padding-right: 4px; }
+    #claimModal .claim-attach {
+        position: relative;
+        width: 38px; height: 38px;
+        margin: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 10px;
+        border: 1px solid #dbe2ee;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all .15s;
+    }
+    #claimModal .claim-attach:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #claimModal .claim-attach input[type="file"] {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        opacity: 0; cursor: pointer;
+        font-size: 0; padding: 0; min-height: 0;
+    }
+    #claimModal .claim-attach.has-file { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+    #claimModal .claim-attach.has-file::after {
+        content: '\f00c';
+        font-family: 'Font Awesome 6 Free'; font-weight: 900;
+        position: absolute; top: -6px; right: -6px;
+        width: 16px; height: 16px; border-radius: 50%;
+        background: #22c55e; color: #fff;
+        font-size: 9px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    #claimModal .remove-row {
+        width: 34px; height: 34px; padding: 0;
+        border-radius: 10px; border: 0;
+        background: #fee2e2; color: #dc2626;
+        transition: background .15s, color .15s, transform .15s;
+    }
+    #claimModal .remove-row:hover { background: #dc2626; color: #fff; transform: scale(1.06); }
+
+    #claimModal #addRowBtn {
+        border: 1.5px dashed #93b4f5;
+        background: #f3f7ff;
+        color: #2563eb;
+        border-radius: 10px;
+        font-weight: 600;
+        padding: 8px 16px;
+        transition: all .15s;
+    }
+    #claimModal #addRowBtn:hover { background: #2563eb; color: #fff; border-style: solid; }
+
+    /* Select2 inside the modal */
+    #claimModal .select2-container--default .select2-selection--single {
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid #dbe2ee;
+        background-color: #f8fafc;
+        display: flex; align-items: center;
+    }
+    #claimModal .select2-container--default .select2-selection--single .select2-selection__rendered {
+        line-height: 38px; padding-left: 12px; font-size: .9rem; color: #1e293b;
+    }
+    #claimModal .select2-container--default .select2-selection--single .select2-selection__arrow { height: 38px; }
+    #claimModal .select2-container--default.select2-container--focus .select2-selection--single,
+    #claimModal .select2-container--default.select2-container--open .select2-selection--single {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, .12);
+        background-color: #fff;
+    }
+
+    /* Wide, tall dropdown panels (SKU + Supplier) that open downward */
+    .select2-container--open .select2-dropdown.claim-select-dropdown {
+        min-width: 460px;
+        width: auto !important;
+        max-width: calc(100vw - 48px);
+        border: 1px solid #c7d4ee;
+        border-radius: 14px;
+        box-shadow: 0 18px 40px rgba(30, 41, 90, .22);
+        overflow: hidden;
+        z-index: 2000;
+    }
+    .claim-select-dropdown .select2-search--dropdown { padding: 12px; background: #f1f5fb; }
+    .claim-select-dropdown .select2-search--dropdown .select2-search__field {
+        border-radius: 10px;
+        border: 1px solid #c7d4ee;
+        padding: 9px 12px;
+        font-size: .95rem;
+        outline: 0;
+    }
+    .claim-select-dropdown .select2-search--dropdown .select2-search__field:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, .12);
+    }
+    .claim-select-dropdown .select2-results__options {
+        max-height: max(260px, calc(100vh - 400px)) !important;
+    }
+    .claim-select-dropdown .select2-results__option {
+        padding: 9px 16px;
+        font-size: .92rem;
+        white-space: nowrap;
+    }
+    .claim-select-dropdown .select2-results__option--highlighted[aria-selected],
+    .claim-select-dropdown .select2-results__option--highlighted.select2-results__option--selectable {
+        background: #2563eb !important;
+        color: #fff !important;
+    }
+
+    /* Footer */
+    #claimModal .claim-footer {
+        background: #fff;
+        border-top: 1px solid #e6eaf2;
+        padding: 14px 28px;
+        display: flex; align-items: center; justify-content: space-between;
+        box-shadow: 0 -6px 20px rgba(30, 41, 90, .05);
+    }
+    #claimModal .claim-total {
+        display: flex; align-items: baseline; gap: 10px;
+    }
+    #claimModal .claim-total .label {
+        font-size: .72rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .08em; color: #64748b;
+    }
+    #claimModal .claim-total .value {
+        font-size: 1.7rem; font-weight: 800; color: #0f172a;
+        font-variant-numeric: tabular-nums;
+    }
+    #claimModal .claim-total .value small { color: #2563eb; font-size: 1rem; margin-right: 2px; }
+    #claimModal .btn-claim-save {
+        background: linear-gradient(120deg, #2563eb, #7c3aed);
+        border: 0; color: #fff; font-weight: 700;
+        border-radius: 12px; padding: 10px 26px;
+        box-shadow: 0 8px 18px rgba(37, 99, 235, .3);
+        transition: transform .15s, box-shadow .15s;
+    }
+    #claimModal .btn-claim-save:hover { transform: translateY(-1px); box-shadow: 0 12px 24px rgba(37, 99, 235, .38); color: #fff; }
+    #claimModal .btn-claim-cancel {
+        background: #eef2f7; border: 0; color: #475569;
+        border-radius: 12px; padding: 10px 20px; font-weight: 600;
+    }
+    #claimModal .btn-claim-cancel:hover { background: #e2e8f0; }
 </style>
 @endsection
 
@@ -94,7 +452,12 @@
                 </div>
 
 @php $canArchive = $canArchive ?? false; @endphp
-<script>window.CLAIM_CAN_ARCHIVE = @json($canArchive);</script>
+<script>
+    window.CLAIM_CAN_ARCHIVE = @json($canArchive);
+    window.CLAIM_SUPPLIER_OPTIONS = '<option value="">Select Supplier</option>' + @json($suppliers->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->values())
+        .map(function (s) { return '<option value="' + s.id + '">' + String(s.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') + '</option>'; })
+        .join('');
+</script>
                 <div id="claim-reimbursement-table"></div>
             </div>
         </div>
@@ -103,77 +466,114 @@
 
 <!-- Modal -->
 <div class="modal fade" id="claimModal" tabindex="-1" aria-labelledby="claimModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl">
+  <div class="modal-dialog modal-fullscreen">
     <div class="modal-content">
-      <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="claimModalLabel">Add Claim / Reimbursement</h5>
-        <button type="button" class="btn-close bg-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      <div class="modal-header claim-header">
+        <div class="d-flex align-items-center">
+          <span class="claim-icon"><i class="fas fa-file-invoice-dollar"></i></span>
+          <div>
+            <h5 class="modal-title mb-0" id="claimModalLabel">Add Claim / Reimbursement</h5>
+            <div class="claim-sub">Log damaged, missing or overbilled items against a supplier</div>
+          </div>
+        </div>
+        <button type="button" class="claim-close" data-bs-dismiss="modal" aria-label="Close"><i class="fas fa-xmark"></i></button>
       </div>
 
       <div class="modal-body">
         <form id="claimForm" action="{{ route('claim.reimbursement.save') }}" method="POST" enctype="multipart/form-data">
             @csrf
-          <div class="row mb-3">
-            <div class="col-md-4">
-              <label for="supplier" class="form-label fw-semibold">From Supplier</label>
-              <select id="supplier" name="supplier" class="form-select" required>
-                <option value="">Select Supplier</option>
-                @foreach($suppliers as $supplier)
-                    <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
-                @endforeach
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label for="claimNo" class="form-label fw-semibold">Claim No.</label>
-              <input type="text" id="claimNo" name="claim_number" class="form-control" value="{{ $claimNumber }}" readonly>
-            </div>
-            <div class="col-md-4">
-              <label for="claimDate" class="form-label fw-semibold">Date</label>
-              <input type="date" id="claimDate" name="claim_date" class="form-control" required>
+          <div class="claim-card">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="claimNo" class="form-label">Claim No.</label>
+                <input type="text" id="claimNo" name="claim_number" class="form-control" value="{{ $claimNumber }}" readonly>
+              </div>
+              <div class="col-md-6">
+                <label for="claimDate" class="form-label">Date</label>
+                <input type="date" id="claimDate" name="claim_date" class="form-control" required>
+              </div>
             </div>
           </div>
 
+          <div class="claim-card">
+          <div class="claim-section-title"><i class="fas fa-boxes-stacked"></i> Items</div>
           <!-- Dynamic Item Table -->
-          <div class="table-responsive">
+          <div class="table-responsive claim-table-wrap">
             <table class="table table-bordered align-middle text-center" id="claimTable">
               <thead class="table-light">
                 <tr>
-                  <th style="min-width: 220px;">SKU</th>
-                  <th>Qty</th>
-                  <th>Rate USD</th>
-                  <th>Amount</th>
-                  <th>Reason/Notes</th>
-                  <th>Image (if ANY)</th>
+                  <th class="col-parent">Parent</th>
+                  <th class="col-sku">SKU</th>
+                  <th class="col-supplier">Supplier</th>
+                  <th class="col-num4">Qty</th>
+                  <th class="col-num4">Rate USD</th>
+                  <th class="col-num6">Amount</th>
+                  <th class="col-reason" style="min-width: 240px;">Reason/Notes</th>
+                  <th class="col-attach" title="Image (if any)"><i class="fas fa-paperclip"></i></th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody id="claimTableBody">
                 <!-- Default row -->
                 <tr>
-                  <td><select name="item[]" class="form-control sku-select" required style="width: 100%;"><option value="">Search SKU...</option></select></td>
-                  <td><input type="number" name="qty[]" class="form-control qty" required></td>
-                  <td><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
-                  <td><input type="number" name="amount[]" class="form-control amount" readonly></td>
-                  <td><input type="text" name="reason[]" class="form-control"></td>
-                  <td><input type="file" name="image[]" class="form-control"></td>
-                  <td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="fas fa-close"></i></button></td>
+                  <td class="col-parent"><input type="text" name="row_parent[]" class="form-control row-parent" readonly placeholder="Auto"></td>
+                  <td class="col-sku"><select name="item[]" class="form-control sku-select" required style="width: 100%;"><option value="">Search SKU...</option></select></td>
+                  <td class="col-supplier">
+                    <select name="row_supplier[]" class="form-select row-supplier" required>
+                      <option value="">Select Supplier</option>
+                      @foreach($suppliers as $supplier)
+                        <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                      @endforeach
+                    </select>
+                  </td>
+                  <td class="col-num4"><input type="number" name="qty[]" class="form-control qty" required></td>
+                  <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
+                  <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
+                  <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
+                  <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+                  <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div class="mb-3">
-            <button type="button" class="btn btn-outline-success btn-sm" id="addRowBtn"><i class="fas fa-plus-circle me-1"></i> Add Row</button>
+          <div class="mt-3">
+            <button type="button" class="btn btn-sm" id="addRowBtn"><i class="fas fa-plus me-1"></i> Add Row</button>
           </div>
-
-          <div class="text-end">
-            <strong>Total Amount: $<span id="totalAmount">0.00</span></strong>
           </div>
         </form>
       </div>
 
-      <div class="modal-footer">
-        <button type="submit" form="claimForm" class="btn btn-primary">Save Claim</button>
+      <div class="claim-footer">
+        <div class="claim-total">
+          <span class="label">Total Amount</span>
+          <span class="value"><small>$</small><span id="totalAmount">0.00</span></span>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-claim-cancel" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" id="claimSaveBtn" form="claimForm" class="btn btn-claim-save"><i class="fas fa-check me-1"></i> Save Claim</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Reason / Notes editor (opened from the claim modal rows) --}}
+<div class="modal fade" id="reasonModal" tabindex="-1" aria-labelledby="reasonModalLabel" aria-hidden="true" style="z-index: 1070;">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content reason-modal-content">
+      <div class="modal-header reason-modal-header">
+        <h5 class="modal-title" id="reasonModalLabel"><i class="fas fa-pen-to-square me-2"></i>Reason / Notes</h5>
+        <button type="button" class="claim-close" data-bs-dismiss="modal" aria-label="Close"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="reasonModalSku"></div>
+        <textarea id="reasonModalInput" class="form-control" rows="5" placeholder="Describe the reason for this claim (damaged, missing, overbilled...)"></textarea>
+        <div class="small text-muted mt-2">Tip: press Ctrl/Cmd + Enter to save.</div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-claim-cancel" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-claim-save" id="reasonModalSave"><i class="fas fa-check me-1"></i> Save</button>
       </div>
     </div>
   </div>
@@ -334,27 +734,6 @@
                     }
                 },
                 {
-                    title: "Recd Amt/Goods $",
-                    field: "received_amount",
-                    hozAlign: "center",
-                    width: 110,
-                    headerSort: false,
-                    formatter: function (cell) {
-                        const val = cell.getValue();
-                        if (val && String(val).trim() !== '') {
-                            return `<span class="d-inline-block text-truncate" style="max-width: 140px; vertical-align: middle;" title="${escapeHtml(val)}">${escapeHtml(val)}</span>
-                                    <button class="btn btn-sm btn-link p-0 ms-1 recd-amt-btn" title="Edit"><i class="fas fa-pen"></i></button>`;
-                        }
-                        return `<button class="btn btn-sm btn-outline-primary recd-amt-btn"><i class="fas fa-plus me-1"></i> Add</button>`;
-                    },
-                    cellClick: function (e, cell) {
-                        if (e.target.closest('.recd-amt-btn')) {
-                            const d = cell.getRow().getData();
-                            openReceivedAmountModal(d.id, d.received_amount);
-                        }
-                    }
-                },
-                {
                     title: "Created by",
                     field: "created_by",
                     hozAlign: "center",
@@ -380,6 +759,7 @@
                 {
                     title: "Action",
                     field: "action_history",
+                    cssClass: "action-cell",
                     hozAlign: "left",
                     headerSort: false,
                     minWidth: 180,
@@ -410,15 +790,40 @@
                     }
                 },
                 {
+                    title: "Recd Amt/Goods $",
+                    field: "received_amount",
+                    hozAlign: "center",
+                    width: 140,
+                    headerSort: false,
+                    formatter: function (cell) {
+                        const val = cell.getValue();
+                        if (val && String(val).trim() !== '') {
+                            return `<span class="d-inline-block text-truncate" style="max-width: 140px; vertical-align: middle;" title="${escapeHtml(val)}">${escapeHtml(val)}</span>
+                                    <button class="btn btn-sm btn-link p-0 ms-1 recd-amt-btn" title="Edit"><i class="fas fa-pen"></i></button>`;
+                        }
+                        return `<button class="btn btn-sm btn-outline-primary recd-amt-btn"><i class="fas fa-plus me-1"></i> Add</button>`;
+                    },
+                    cellClick: function (e, cell) {
+                        if (e.target.closest('.recd-amt-btn')) {
+                            const d = cell.getRow().getData();
+                            openReceivedAmountModal(d.id, d.received_amount);
+                        }
+                    }
+                },
+                {
                     title: '<i class="fas fa-box-archive" title="Resolved"></i>',
                     field: "is_archived",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 50,
+                    width: window.CLAIM_CAN_ARCHIVE === true ? 100 : 50,
                     formatter: function (cell) {
                         return buildResolvedCell(cell.getRow().getData());
                     },
                     cellClick: function (e, cell) {
+                        if (e.target.closest('.edit-claim-btn')) {
+                            openEditClaim(cell.getRow().getData());
+                            return;
+                        }
                         const btn = e.target.closest('.archive-btn');
                         if (btn) {
                             const d = cell.getRow().getData();
@@ -578,7 +983,7 @@
                 const sku = String(params.get('sku') || '').trim();
                 const supplierName = String(params.get('supplier') || '').trim();
 
-                const supplierSelect = document.getElementById('supplier');
+                const supplierSelect = document.querySelector('#claimTableBody tr .row-supplier');
                 if (supplierSelect && supplierName) {
                     const target = supplierName.toLowerCase();
                     let matched = '';
@@ -596,7 +1001,9 @@
                         });
                     }
                     if (matched) {
-                        supplierSelect.value = matched;
+                        setRowSupplier(supplierSelect, matched);
+                        // Keep the supplier passed in the link when the SKU autofill runs.
+                        window.CLAIM_PREFILL_SUPPLIER_ID = matched;
                     }
                 }
 
@@ -644,12 +1051,17 @@
           const rateInput = row.querySelector('.rate');
           const amountInput = row.querySelector('.amount');
 
+          // A real keystroke on Rate means the user owns the value now.
+          rateInput.addEventListener('input', (e) => {
+              if (e.isTrusted) delete rateInput.dataset.auto;
+          });
+
           [qtyInput, rateInput].forEach(input => {
               input.addEventListener('input', () => {
                   const qty = parseFloat(qtyInput.value) || 0;
                   const rate = parseFloat(rateInput.value) || 0;
                   const amt = qty * rate;
-                  amountInput.value = amt.toFixed(2);
+                  amountInput.value = Math.round(amt); // rounded off to a whole number
                   updateTotal();
               });
           });
@@ -665,27 +1077,86 @@
           });
       }
 
-      // Handle Add Row button
-      addRowBtn.addEventListener('click', () => {
+      // Build one item row (blank, or prefilled when editing an existing claim).
+      function buildRow(data, fallbackSupplierId) {
           const newRow = document.createElement('tr');
           newRow.innerHTML = `
-              <td><select name="item[]" class="form-control sku-select" required style="width: 100%;"><option value="">Search SKU...</option></select></td>
-              <td><input type="number" name="qty[]" class="form-control qty" required></td>
-              <td><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
-              <td><input type="number" name="amount[]" class="form-control amount" readonly></td>
-              <td><input type="text" name="reason[]" class="form-control"></td>
-              <td><input type="file" name="image[]" class="form-control"></td>
-              <td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="fas fa-close"></i></button></td>
+              <td class="col-parent"><input type="text" name="row_parent[]" class="form-control row-parent" readonly placeholder="Auto"></td>
+              <td class="col-sku"><select name="item[]" class="form-control sku-select" required style="width: 100%;"><option value="">Search SKU...</option></select></td>
+              <td class="col-supplier"><select name="row_supplier[]" class="form-select row-supplier" required>${window.CLAIM_SUPPLIER_OPTIONS}</select></td>
+              <td class="col-num4"><input type="number" name="qty[]" class="form-control qty" required></td>
+              <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
+              <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
+              <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
+              <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+              <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
           attachListeners(newRow);
           initializeSkuSelect(newRow.querySelector('.sku-select'));
-      });
+          initializeSupplierSelect(newRow.querySelector('.row-supplier'));
+
+          if (data) {
+              const $row = jQuery(newRow);
+              const sku = String(data.item || '');
+
+              if (sku) {
+                  // 'change.select2' refreshes the UI without running the SKU autofill (keeps saved values).
+                  $row.find('.sku-select').append(new Option(sku, sku, true, true)).trigger('change.select2');
+              }
+
+              const parentInput = newRow.querySelector('.row-parent');
+              parentInput.value = data.parent || '';
+              parentInput.title = parentInput.value;
+
+              const supplierId = data.supplier_id || fallbackSupplierId || '';
+              setRowSupplier(newRow.querySelector('.row-supplier'), supplierId ? String(supplierId) : '');
+
+              newRow.querySelector('.qty').value = data.qty ?? '';
+              newRow.querySelector('.rate').value = data.rate ?? '';
+              newRow.querySelector('.amount').value = data.amount !== undefined && data.amount !== null && data.amount !== ''
+                  ? Math.round(parseFloat(data.amount) || 0)
+                  : '';
+
+              const reasonHidden = newRow.querySelector('.reason-value');
+              reasonHidden.value = data.reason || '';
+              if (typeof window.claimRefreshReasonBtn === 'function') {
+                  window.claimRefreshReasonBtn(newRow.querySelector('.reason-btn'));
+              }
+
+              if (data.image) {
+                  newRow.querySelector('.existing-image').value = data.image;
+                  const attach = newRow.querySelector('.claim-attach');
+                  attach.classList.add('has-file');
+                  attach.title = 'Current file: ' + String(data.image).split('/').pop() + ' (choose a file to replace)';
+              }
+          }
+
+          return newRow;
+      }
+
+      // Handle Add Row button
+      addRowBtn.addEventListener('click', () => buildRow());
+
+      // Helpers used by the "Edit claim" flow (directors).
+      window.claimUpdateTotal = updateTotal;
+      window.claimAddRow = buildRow;
+      window.claimClearRows = function () {
+          claimTableBody.querySelectorAll('tr').forEach(function (tr) {
+              if (window.jQuery) {
+                  jQuery(tr).find('select').each(function () {
+                      if (jQuery(this).data('select2')) jQuery(this).select2('destroy');
+                  });
+              }
+              tr.remove();
+          });
+      };
 
       const firstRow = claimTableBody.querySelector('tr');
       if (firstRow) {
           attachListeners(firstRow);
           initializeSkuSelect(firstRow.querySelector('.sku-select'));
+          initializeSupplierSelect(firstRow.querySelector('.row-supplier'));
       }
     }
 
@@ -717,9 +1188,176 @@
             placeholder: 'Search SKU...',
             allowClear: true,
             minimumInputLength: 0,
-            dropdownParent: jQuery('#claimModal')
+            width: '100%',
+            dropdownParent: jQuery('#claimModal'),
+            dropdownCssClass: 'claim-select-dropdown'
+        });
+
+        // Autofill the row's Supplier from the supplier list (matched via SKU / Parent).
+        jQuery(element).on('change', function () {
+            const sku = jQuery(this).val();
+            const supplierSelect = jQuery(this).closest('tr').find('.row-supplier')[0];
+            const parentInput = jQuery(this).closest('tr').find('.row-parent')[0];
+            if (!supplierSelect) return;
+
+            if (!sku) {
+                setRowSupplier(supplierSelect, '');
+                if (parentInput) parentInput.value = '';
+                return;
+            }
+
+            fetch('/claim-reimbursement/sku-supplier?sku=' + encodeURIComponent(sku), {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (parentInput) {
+                    parentInput.value = (res && res.parent) || '';
+                    parentInput.title = parentInput.value; // full parent on hover (column is narrow)
+                }
+                const list = (res && res.suppliers) || [];
+                let supplierId = list.length ? String(list[0].id) : '';
+                if (window.CLAIM_PREFILL_SUPPLIER_ID) {
+                    supplierId = String(window.CLAIM_PREFILL_SUPPLIER_ID);
+                    window.CLAIM_PREFILL_SUPPLIER_ID = null;
+                }
+                setRowSupplier(supplierSelect, supplierId);
+
+                // Autofill Rate USD from the last purchase (never overwrite a hand-typed rate).
+                const rateInput = jQuery(element).closest('tr').find('.rate')[0];
+                if (rateInput && res && res.last_rate != null && (rateInput.value === '' || rateInput.dataset.auto === '1')) {
+                    rateInput.value = parseFloat(Number(res.last_rate).toFixed(2)); // keep it short (e.g. 37.5)
+                    rateInput.title = 'Last purchase rate' + (res.last_rate_source ? ' (' + res.last_rate_source + ')' : '');
+                    rateInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    rateInput.dataset.auto = '1';
+                }
+
+                supplierSelect.title = list.length > 1
+                    ? 'Multiple suppliers match: ' + list.map(s => s.name).join(', ')
+                    : '';
+            })
+            .catch(() => {});
         });
     }
+
+    // Lower-case and strip everything except letters/digits so "ARM-SET 16" == "armset16".
+    function normalizeSearch(str) {
+        return String(str == null ? '' : str).toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    // Searchable supplier dropdown with the same normalized quick search.
+    function initializeSupplierSelect(element) {
+        if (!element) return;
+        jQuery(element).select2({
+            width: '100%',
+            placeholder: 'Select Supplier',
+            allowClear: true,
+            dropdownParent: jQuery('#claimModal'),
+            dropdownCssClass: 'claim-select-dropdown',
+            matcher: function (params, data) {
+                const term = String(params.term || '').trim();
+                if (term === '') return data;
+                if (!data.text) return null;
+                const hay = normalizeSearch(data.text);
+                const ok = term.split(/\s+/).every(function (tok) {
+                    const n = normalizeSearch(tok);
+                    return n === '' || hay.indexOf(n) !== -1;
+                });
+                return ok ? data : null;
+            }
+        });
+    }
+
+    // Set a row supplier and refresh the select2 UI.
+    function setRowSupplier(select, value) {
+        if (!select) return;
+        if (window.jQuery) {
+            jQuery(select).val(value || '').trigger('change');
+        } else {
+            select.value = value || '';
+        }
+    }
+
+    // Reason / Notes: edit icon opens a modal; the text is kept in the row's hidden input.
+    (function () {
+        let activeBtn = null;
+
+        function refreshReasonBtn(btn) {
+            const hidden = btn.parentElement.querySelector('.reason-value');
+            const text = (hidden && hidden.value || '').trim();
+            btn.classList.toggle('has-text', text !== '');
+            btn.title = text !== '' ? text : 'Add reason / notes';
+            const label = btn.querySelector('.reason-text');
+            if (label) label.textContent = text !== '' ? text : 'Add reason / notes';
+        }
+
+        window.claimRefreshReasonBtn = refreshReasonBtn;
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest ? e.target.closest('.reason-btn') : null;
+            if (!btn) return;
+            activeBtn = btn;
+            const row = btn.closest('tr');
+            const sku = row && row.querySelector('.sku-select') ? (row.querySelector('.sku-select').value || '') : '';
+            document.getElementById('reasonModalSku').textContent = sku ? 'SKU: ' + sku : '';
+            document.getElementById('reasonModalInput').value = btn.parentElement.querySelector('.reason-value').value || '';
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('reasonModal')).show();
+        });
+
+        const reasonModalEl = document.getElementById('reasonModal');
+        if (!reasonModalEl) return;
+
+        // Stack above the (full-screen) claim modal and its backdrop.
+        reasonModalEl.addEventListener('show.bs.modal', function () {
+            setTimeout(function () {
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                if (backdrops.length) backdrops[backdrops.length - 1].style.zIndex = '1065';
+            }, 10);
+        });
+        reasonModalEl.addEventListener('shown.bs.modal', function () {
+            const input = document.getElementById('reasonModalInput');
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+        });
+        // Closing the top modal must not unlock scrolling while the claim modal is still open.
+        reasonModalEl.addEventListener('hidden.bs.modal', function () {
+            if (document.getElementById('claimModal').classList.contains('show')) {
+                document.body.classList.add('modal-open');
+            }
+        });
+
+        function saveReason() {
+            if (!activeBtn) return;
+            activeBtn.parentElement.querySelector('.reason-value').value = document.getElementById('reasonModalInput').value.trim();
+            refreshReasonBtn(activeBtn);
+            bootstrap.Modal.getInstance(reasonModalEl).hide();
+        }
+
+        document.getElementById('reasonModalSave').addEventListener('click', saveReason);
+        document.getElementById('reasonModalInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveReason();
+            }
+        });
+    })();
+
+    // Attachment icon: show a green tick + file name tooltip once a file is chosen.
+    document.addEventListener('change', function (e) {
+        const input = e.target;
+        if (!input || !input.classList || !input.classList.contains('claim-attach-input')) return;
+        const label = input.closest('.claim-attach');
+        if (!label) return;
+        const file = input.files && input.files[0];
+        label.classList.toggle('has-file', !!file);
+        label.title = file ? file.name : 'Attach image / PDF';
+    });
+
+    // Always focus the search box when any claim dropdown opens.
+    jQuery(document).on('select2:open', function () {
+        const field = document.querySelector('.select2-container--open .select2-search__field');
+        if (field) field.focus();
+    });
 
     function openReceivedAmountModal(claimId, currentValue) {
         document.getElementById('received_amount_claim_id').value = claimId || '';
@@ -740,14 +1378,16 @@
         if (items.length > 0) {
             html += '<table class="table table-sm table-bordered mb-1" style="font-size: 12px;">';
             html += '<thead class="table-light"><tr>'
-                + '<th>SKU</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th>'
+                + '<th>Parent</th><th>SKU</th><th>Supplier</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th>'
                 + '</tr></thead><tbody>';
             items.forEach(item => {
                 const img = item.image
                     ? `<a href="/${escapeHtml(item.image)}" target="_blank"><img src="/${escapeHtml(item.image)}" style="height:28px;"></a>`
                     : '<span class="text-muted">N/A</span>';
                 html += '<tr>'
+                    + `<td>${escapeHtml(item.parent || '')}</td>`
                     + `<td>${escapeHtml(item.item || '')}</td>`
+                    + `<td>${escapeHtml(item.supplier || '')}</td>`
                     + `<td class="text-center">${escapeHtml(item.qty || '')}</td>`
                     + `<td class="text-center">${escapeHtml(item.rate || '')}</td>`
                     + `<td class="text-center">${escapeHtml(item.amount || '')}</td>`
@@ -763,8 +1403,6 @@
         if (detailsNote && String(detailsNote).trim() !== '') {
             html += `<div class="small"><span class="fw-semibold">Note:</span> ${escapeHtml(detailsNote)} `
                 + `<button class="btn btn-sm btn-link p-0 details-note-btn" title="Edit details"><i class="fas fa-pen"></i></button></div>`;
-        } else {
-            html += `<button class="btn btn-sm btn-outline-secondary details-note-btn" title="Enter details"><i class="fas fa-pen me-1"></i> Add Details</button>`;
         }
 
         return html;
@@ -826,11 +1464,74 @@
             '<ul class="dropdown-menu dropdown-menu-end" style="overflow: visible; min-width: auto; padding: 6px;"><li class="d-flex align-items-center gap-2 px-2">' + items + '</li></ul></div>';
     }
 
+    // ---- Edit a whole claim in the full modal (directors only; also enforced on the server) ----
+    function normalizeClaimItems(raw) {
+        let items = raw || [];
+        for (let i = 0; i < 2 && typeof items === 'string'; i++) {
+            try { items = JSON.parse(items) || []; } catch (e) { items = []; }
+        }
+        return Array.isArray(items) ? items : [];
+    }
+
+    function openEditClaim(d) {
+        if (window.CLAIM_CAN_ARCHIVE !== true) return;
+
+        const modalEl = document.getElementById('claimModal');
+        const form = document.getElementById('claimForm');
+
+        window.claimEditId = d.id;
+        form.action = '/claim-reimbursement/' + d.id + '/update';
+        document.getElementById('claimModalLabel').textContent = 'Edit Claim / Reimbursement';
+        document.getElementById('claimNo').value = d.claim_number || '';
+        document.getElementById('claimDate').value = String(d.claim_date || '').substring(0, 10);
+        document.getElementById('claimSaveBtn').innerHTML = '<i class="fas fa-check me-1"></i> Update Claim';
+
+        window.claimClearRows();
+        const items = normalizeClaimItems(d.details);
+        if (items.length) {
+            items.forEach(function (it) { window.claimAddRow(it, d.supplier_id); });
+        } else {
+            window.claimAddRow();
+        }
+        window.claimUpdateTotal();
+
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    // Put the modal back into "Add" mode once it closes.
+    (function () {
+        const modalEl = document.getElementById('claimModal');
+        if (!modalEl) return;
+        const defaults = {
+            action: document.getElementById('claimForm').getAttribute('action'),
+            claimNo: document.getElementById('claimNo').value,
+            title: document.getElementById('claimModalLabel').textContent,
+            saveHtml: document.getElementById('claimSaveBtn').innerHTML
+        };
+        modalEl.addEventListener('hidden.bs.modal', function (e) {
+            if (e.target !== modalEl || !window.claimEditId) return;
+            window.claimEditId = null;
+            document.getElementById('claimForm').setAttribute('action', defaults.action);
+            document.getElementById('claimModalLabel').textContent = defaults.title;
+            document.getElementById('claimNo').value = defaults.claimNo;
+            document.getElementById('claimDate').value = '';
+            document.getElementById('claimSaveBtn').innerHTML = defaults.saveHtml;
+            window.claimClearRows();
+            window.claimAddRow();
+            window.claimUpdateTotal();
+        });
+    })();
+
     function buildResolvedCell(data) {
         const canArchive = window.CLAIM_CAN_ARCHIVE === true;
         const archived = data.is_archived === true || data.is_archived === 1;
 
         let html = '';
+
+        // Directors only: edit the whole claim in the full modal.
+        if (canArchive) {
+            html += `<button class="btn btn-sm btn-outline-primary edit-claim-btn me-1" title="Edit claim"><i class="fas fa-pen-to-square"></i></button>`;
+        }
 
         if (archived) {
             const by = data.archived_by ? escapeHtml(data.archived_by) : '';

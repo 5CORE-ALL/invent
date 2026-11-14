@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\ProductMaster;
+use App\Models\Purchase;
+use App\Models\PurchaseOrder;
 use App\Models\Supplier;
-use App\Support\SuperAdminAccess;
+use App\Support\AttendanceAccess;
 use Illuminate\Http\Request;
 use App\Models\ClaimReimbursement;
 use Illuminate\Support\Facades\Auth;
@@ -13,12 +16,18 @@ use Illuminate\Support\Facades\Log;
 class ClaimReimbursementController extends Controller
 {
     /**
-     * Emails allowed to archive / resolve claims.
+     * Only directors may archive / resolve (remove) or edit claims.
+     * Director = org level, role or designation, same rule as {@see AttendanceAccess::isDirector()}.
      */
-    private const ARCHIVE_ALLOWED_EMAILS = [
-        'president@5core.com',
-        'inventory@5core.com',
-    ];
+    private function userCanManage(): bool
+    {
+        return AttendanceAccess::isDirector(Auth::user());
+    }
+
+    private function userCanArchive(): bool
+    {
+        return $this->userCanManage();
+    }
 
     public function index()
     {
@@ -29,7 +38,7 @@ class ClaimReimbursementController extends Controller
         $nextNumber = $lastClaim ? ((int) str_replace('CLM-', '', $lastClaim->claim_number)) + 1 : 1;
         $claimNumber = 'CLM-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
 
-        $canArchive = SuperAdminAccess::allows(Auth::user(), self::ARCHIVE_ALLOWED_EMAILS);
+        $canArchive = $this->userCanArchive();
 
         return view('purchase-master.claim-reimbursement', compact('suppliers', 'claimNumber', 'canArchive'));
     }
@@ -60,6 +69,7 @@ class ClaimReimbursementController extends Controller
             return [
                 'id' => $claim->id,
                 'claim_number' => $claim->claim_number,
+                'supplier_id' => $claim->supplier_id,
                 'supplier_name' => $claim->supplier->name ?? 'N/A',
                 'claim_date' => $claim->claim_date,
                 'details' => $claim->items,
@@ -78,6 +88,100 @@ class ClaimReimbursementController extends Controller
         });
 
         return response()->json($formatted);
+    }
+
+    /**
+     * Resolve supplier(s) for a SKU using the data on /supplier.list:
+     * the SKU's Parent (product master) is matched against each supplier's
+     * "parent" list, and the SKU itself against the supplier's "sku" list.
+     */
+    public function getSkuSupplier(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->query('sku', '')));
+        if ($sku === '') {
+            return response()->json(['parent' => '', 'suppliers' => []]);
+        }
+
+        $parentRaw = trim((string) ProductMaster::where('sku', $request->query('sku'))->value('parent'));
+        $parent = strtoupper($parentRaw);
+
+        $split = static fn ($v) => array_filter(array_map('trim', explode(',', strtoupper((string) $v))), fn ($x) => $x !== '');
+
+        $matches = [];
+        foreach (Supplier::where('type', 'Supplier')->get(['id', 'name', 'sku', 'parent']) as $supplier) {
+            $parents = $split($supplier->parent);
+            $skus = $split($supplier->sku);
+
+            if (($parent !== '' && in_array($parent, $parents, true)) || in_array($sku, $skus, true)) {
+                $matches[] = ['id' => $supplier->id, 'name' => $supplier->name];
+            }
+        }
+
+        $last = $this->findLastPurchaseRate((string) $request->query('sku'));
+
+        return response()->json([
+            'parent' => $parentRaw,
+            'suppliers' => $matches,
+            'last_rate' => $last['rate'] ?? null,
+            'last_rate_source' => $last['source'] ?? null,
+        ]);
+    }
+
+    /**
+     * Latest USD rate paid for a SKU: newest Purchase voucher first,
+     * then the newest USD-priced PO line as a fallback.
+     *
+     * @return array{rate: float, source: string}|null
+     */
+    private function findLastPurchaseRate(string $sku): ?array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $needle = '%' . addcslashes(json_encode($sku), '\\%_') . '%';
+        $matchSku = static fn ($row) => is_array($row)
+            && strcasecmp(trim((string) ($row['sku'] ?? '')), $sku) === 0;
+
+        $purchases = Purchase::where('items', 'like', $needle)
+            ->orderByDesc('purchase_date')
+            ->orderByDesc('id')
+            ->get(['id', 'vo_number', 'purchase_date', 'items']);
+
+        foreach ($purchases as $purchase) {
+            $items = is_array($purchase->items) ? $purchase->items : json_decode((string) $purchase->items, true);
+            foreach ((array) $items as $row) {
+                if ($matchSku($row) && (float) ($row['price'] ?? 0) > 0) {
+                    return [
+                        'rate' => round((float) $row['price'], 4),
+                        'source' => 'Purchase ' . $purchase->vo_number,
+                    ];
+                }
+            }
+        }
+
+        $orders = PurchaseOrder::where('items', 'like', $needle)
+            ->orderByDesc('po_date')
+            ->orderByDesc('id')
+            ->get(['id', 'po_number', 'po_date', 'items']);
+
+        foreach ($orders as $order) {
+            $items = is_array($order->items) ? $order->items : json_decode((string) $order->items, true);
+            foreach ((array) $items as $row) {
+                if (! $matchSku($row) || strtoupper((string) ($row['currency'] ?? 'USD')) !== 'USD') {
+                    continue;
+                }
+                if ((float) ($row['price'] ?? 0) > 0) {
+                    return [
+                        'rate' => round((float) $row['price'], 4),
+                        'source' => 'PO ' . $order->po_number,
+                    ];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -129,7 +233,8 @@ class ClaimReimbursementController extends Controller
     public function saveClaimReimbursement(Request $request)
     {
         $request->validate([
-            'supplier' => 'required|exists:suppliers,id',
+            'supplier' => 'nullable|exists:suppliers,id',
+            'row_supplier.*' => 'nullable|exists:suppliers,id',
             'claim_number' => 'required|string',
             'claim_date' => 'required|date',
             'item.*' => 'required|string',
@@ -139,37 +244,15 @@ class ClaimReimbursementController extends Controller
             'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
         ]);
 
-        $items = [];
-        $totalAmount = 0;
-
-        foreach ($request->item as $index => $item) {
-            $imagePath = null;
-
-            if ($request->hasFile("image.$index")) {
-                $uploadPath = 'uploads/claim_images';
-                $image = $request->file("image.$index");
-                $imageName = time() . '_' . $index . '.' . $image->getClientOriginalExtension();
-                $image->move(public_path($uploadPath), $imageName);
-                $imagePath = $uploadPath . '/' . $imageName;
-            }
-
-            $rowAmount = $request->amount[$index];
-            $totalAmount += $rowAmount;
-
-            $items[] = [
-                'item' => $item,
-                'qty' => $request->qty[$index],
-                'rate' => $request->rate[$index],
-                'amount' => $rowAmount,
-                'reason' => $request->reason[$index] ?? '',
-                'image' => $imagePath,
-            ];
+        [$items, $totalAmount, $claimSupplierId] = $this->buildItemsFromForm($request);
+        if (! $claimSupplierId) {
+            return redirect()->back()->withInput()->withErrors(['row_supplier' => 'Please select a supplier.']);
         }
 
         $user = Auth::user()->name ?? 'System';
 
         ClaimReimbursement::create([
-            'supplier_id' => $request->supplier,
+            'supplier_id' => $claimSupplierId,
             'claim_number' => $request->claim_number,
             'claim_date' => $request->claim_date,
             'items' => json_encode($items),
@@ -191,6 +274,105 @@ class ClaimReimbursementController extends Controller
         }
 
         return redirect()->back()->with('flash_message', 'Claim submitted successfully.');
+    }
+
+    /**
+     * Turn the claim modal's parallel arrays into line items.
+     * A row keeps its previous image (existing_image[]) unless a new file is uploaded.
+     *
+     * @return array{0: array<int, array<string, mixed>>, 1: float|int, 2: int|string|null}
+     */
+    private function buildItemsFromForm(Request $request): array
+    {
+        $items = [];
+        $totalAmount = 0;
+
+        $rowSupplierIds = array_filter((array) $request->input('row_supplier', []));
+
+        // The claim's main supplier: explicit one (PO proforma) or the first row's supplier.
+        $claimSupplierId = $request->input('supplier') ?: (reset($rowSupplierIds) ?: null);
+
+        $rowSupplierNames = $rowSupplierIds
+            ? Supplier::whereIn('id', $rowSupplierIds)->pluck('name', 'id')->all()
+            : [];
+
+        foreach ($request->item as $index => $item) {
+            $imagePath = trim((string) $request->input("existing_image.$index", '')) ?: null;
+
+            if ($request->hasFile("image.$index")) {
+                $uploadPath = 'uploads/claim_images';
+                $image = $request->file("image.$index");
+                $imageName = time() . '_' . $index . '.' . $image->getClientOriginalExtension();
+                $image->move(public_path($uploadPath), $imageName);
+                $imagePath = $uploadPath . '/' . $imageName;
+            }
+
+            $rowAmount = $request->amount[$index];
+            $totalAmount += $rowAmount;
+
+            $rowSupplierId = $request->input("row_supplier.$index");
+
+            $items[] = [
+                'parent' => trim((string) $request->input("row_parent.$index", '')),
+                'item' => $item,
+                'supplier_id' => $rowSupplierId ?: null,
+                'supplier' => $rowSupplierId ? ($rowSupplierNames[$rowSupplierId] ?? '') : '',
+                'qty' => $request->qty[$index],
+                'rate' => $request->rate[$index],
+                'amount' => $rowAmount,
+                'reason' => $request->reason[$index] ?? '',
+                'image' => $imagePath,
+            ];
+        }
+
+        return [$items, $totalAmount, $claimSupplierId];
+    }
+
+    /**
+     * Edit a whole claim from the claim modal. Directors only.
+     */
+    public function updateClaim(Request $request, $id)
+    {
+        if (! $this->userCanManage()) {
+            return redirect()->back()->with('flash_message', 'Only directors can edit claims.');
+        }
+
+        $request->validate([
+            'row_supplier.*' => 'nullable|exists:suppliers,id',
+            'claim_date' => 'required|date',
+            'item.*' => 'required|string',
+            'qty.*' => 'required|numeric',
+            'rate.*' => 'required|numeric',
+            'amount.*' => 'required|numeric',
+            'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
+            'existing_image.*' => 'nullable|string|max:500',
+        ]);
+
+        $claim = ClaimReimbursement::findOrFail($id);
+
+        [$items, $totalAmount, $claimSupplierId] = $this->buildItemsFromForm($request);
+        if (! $claimSupplierId) {
+            return redirect()->back()->withInput()->withErrors(['row_supplier' => 'Please select a supplier.']);
+        }
+
+        $user = Auth::user()->name ?? 'System';
+        $history = $claim->action_history ?: [];
+        $history[] = [
+            'action' => 'Edited',
+            'user' => $user,
+            'date' => now()->format('j M'),
+            'datetime' => now()->format('j M Y, g:i A'),
+        ];
+
+        $claim->update([
+            'supplier_id' => $claimSupplierId,
+            'claim_date' => $request->claim_date,
+            'items' => $items,
+            'total_amount' => $totalAmount,
+            'action_history' => $history,
+        ]);
+
+        return redirect()->back()->with('flash_message', 'Claim ' . $claim->claim_number . ' updated successfully.');
     }
 
     /**
@@ -242,7 +424,10 @@ class ClaimReimbursementController extends Controller
             }
 
             $items[] = [
+                'parent' => $existingItems[$index]['parent'] ?? '',
                 'item' => $sku,
+                'supplier_id' => $existingItems[$index]['supplier_id'] ?? null,
+                'supplier' => $existingItems[$index]['supplier'] ?? '',
                 'qty' => $qty,
                 'rate' => $rate,
                 'amount' => $amount,
@@ -393,10 +578,10 @@ class ClaimReimbursementController extends Controller
 
     public function toggleArchive(Request $request, $id)
     {
-        if (! SuperAdminAccess::allows(Auth::user(), self::ARCHIVE_ALLOWED_EMAILS)) {
+        if (! $this->userCanArchive()) {
             return response()->json([
                 'success' => false,
-                'message' => 'You are not authorized to archive / resolve claims.',
+                'message' => 'Only directors can archive / resolve claims.',
             ], 403);
         }
 

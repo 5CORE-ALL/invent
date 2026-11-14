@@ -11,6 +11,7 @@ use App\Models\Warehouse;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PurchaseController extends Controller
@@ -197,10 +198,30 @@ class PurchaseController extends Controller
             ->where('sku', 'NOT LIKE', 'PARENT %');
 
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('sku', 'like', "%{$search}%")
-                    ->orWhere('parent', 'like', "%{$search}%");
-            });
+            // Normalized quick search: case, spaces and punctuation are ignored
+            // ("arm-set 16" matches "ARM SET 16"); every typed word must match.
+            $normalizedColumn = static function (string $col): string {
+                $expr = "LOWER({$col})";
+                foreach ([' ', '-', '_', '.', '/', ',', '"', "'", '(', ')', '+', '&', '#', ':', '*'] as $ch) {
+                    $expr = "REPLACE({$expr}, " . DB::getPdo()->quote($ch) . ", '')";
+                }
+
+                return $expr;
+            };
+            $skuExpr = $normalizedColumn('sku');
+            $parentExpr = $normalizedColumn('parent');
+
+            foreach (preg_split('/\s+/', $search) as $token) {
+                $needle = preg_replace('/[^a-z0-9]/', '', strtolower($token));
+                if ($needle === '') {
+                    continue;
+                }
+                $like = '%' . addcslashes($needle, '\\%_') . '%';
+                $query->where(function ($q) use ($skuExpr, $parentExpr, $like) {
+                    $q->whereRaw("{$skuExpr} LIKE ?", [$like])
+                        ->orWhereRaw("{$parentExpr} LIKE ?", [$like]);
+                });
+            }
         }
 
         $total = (clone $query)->count();

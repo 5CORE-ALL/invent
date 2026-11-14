@@ -7029,7 +7029,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(ClaimReimbursementController::class)->group(function () {
         Route::get('/claim-reimbursement', 'index')->name('claim.reimbursement');
         Route::get('/claim-reimbursement/view-data', 'getViewClaimReimbursementData');
+        Route::get('/claim-reimbursement/sku-supplier', 'getSkuSupplier')->name('claim.reimbursement.sku-supplier');
         Route::post('/claim-reimbursement/save', 'saveClaimReimbursement')->name('claim.reimbursement.save');
+        Route::post('/claim-reimbursement/{id}/update', 'updateClaim')->name('claim.reimbursement.update');
         Route::post('/claim-reimbursement/{id}/items', 'updateClaimItems')->name('claim.reimbursement.items');
         Route::post('/claim-reimbursement/{id}/received-amount', 'updateReceivedAmount')->name('claim.reimbursement.received-amount');
         Route::post('/claim-reimbursement/{id}/action', 'addAction')->name('claim.reimbursement.action');
