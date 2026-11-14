@@ -155,6 +155,16 @@ class SyncShipmentTrackingStatus extends Command
 
                 if (! ShipmentTrackingService::isPersistableResult($res)) {
                     $skipped++;
+                    if ($this->output->isVerbose()) {
+                        $this->line(sprintf(
+                            '      skipped %s (%s): %s',
+                            $num,
+                            (string) ($r->carrier ?? '-'),
+                            $res === null
+                                ? 'provider returned nothing for this number'
+                                : trim(($res['provider'] ?? '?').' / '.($res['status'] ?? '').' / '.($res['detail'] ?? ''))
+                        ));
+                    }
                     if (($res['status'] ?? null) === ShipmentTrackingService::STATUS_RATE_LIMITED
                         || ! empty($res['transient'])) {
                         $batchQuota++;
