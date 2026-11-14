@@ -218,7 +218,7 @@
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
                     @unless($c2c)
-                        <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Pull live listing data from every marketplace now and recount Missing L (the same refresh also runs automatically every day)">
+                        <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Recount Missing L for every marketplace from the data in the app, the same numbers each listing page shows. Nothing is fetched from the marketplaces.">
                             <i class="fas fa-sync-alt me-1"></i>Refresh all Missing L now
                         </button>
                         <button type="button" class="btn btn-sm btn-link p-0" id="ml-refresh-all-details" data-bs-toggle="modal" data-bs-target="#mlRefreshAllModal">Details</button>
@@ -1359,7 +1359,7 @@
 
     $('#ml-refresh-all-btn').on('click', function () {
         const btn = $(this);
-        if (!confirm('Refresh live listing data for ALL marketplaces now? Quick ones finish in minutes; the slow live checks (eBay, Amazon, …) can take longer. You can leave this page open or close it.')) return;
+        if (!confirm('Recount Missing L for ALL marketplaces now from the listing page data? Nothing is fetched from the marketplaces. This takes a few minutes and runs in the background.')) return;
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Queuing…');
         $.ajax({ url: startUrl, method: 'POST', dataType: 'json', headers: { 'X-CSRF-TOKEN': csrf } })
             .done(function (res) {

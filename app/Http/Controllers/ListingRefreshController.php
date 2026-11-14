@@ -38,7 +38,8 @@ class ListingRefreshController extends Controller
 
     /**
      * "Refresh all Missing L" on /missing-listing: queue one refresh job per marketplace
-     * (same job as each listing page's button, quick marketplaces first).
+     * recounting from the data already in the app (the same numbers each listing page shows).
+     * Nothing is fetched from the marketplaces here; the daily run does that.
      */
     public function startAll(): JsonResponse
     {
@@ -49,15 +50,14 @@ class ListingRefreshController extends Controller
         $queued = 0;
         $skipped = 0;
         foreach (ListingChannelRefresher::orderedSlugs() as $slug) {
-            $current = ListingChannelRefresher::status($slug);
-            $startedAt = isset($current['started_at']) ? strtotime((string) $current['started_at']) : 0;
-            if (($current['state'] ?? '') === 'running' && $startedAt > time() - self::RUNNING_STALE_SECONDS) {
+            // Only skip a marketplace whose refresh is really executing now (a leftover "queued" flag must not block this).
+            if (ListingChannelRefresher::isRunning($slug)) {
                 $skipped++;
 
                 continue;
             }
             ListingChannelRefresher::markQueued($slug);
-            RefreshListingChannelJob::dispatch($slug, true);
+            RefreshListingChannelJob::dispatch($slug, true, true);
             $queued++;
         }
 

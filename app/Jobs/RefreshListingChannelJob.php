@@ -22,14 +22,14 @@ class RefreshListingChannelJob implements ShouldQueue
     /** Dedicated queue (worker kept alive by queue:watchdog) so a click never waits behind long price-rule jobs. */
     public const QUEUE = 'listing-refresh';
 
-    public function __construct(public string $slug, public bool $manual = true)
+    public function __construct(public string $slug, public bool $manual = true, public bool $countsOnly = false)
     {
         $this->onQueue(self::QUEUE);
     }
 
     public function handle(ListingChannelRefresher $refresher): void
     {
-        $refresher->run($this->slug, $this->manual);
+        $refresher->run($this->slug, $this->manual, $this->countsOnly);
     }
 
     public function failed(?\Throwable $e): void
