@@ -376,6 +376,10 @@ class ChannelPushSpriceRunner
                     } else {
                         ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
                     }
+                    if ($this->channel === 'pls') {
+                        // The Push column on /pls-pricing reads PLS_STATUS (✓✓).
+                        \App\Support\PlsPushStatus::set($sku, 'pushed');
+                    }
                     if ($this->channel === 'topdawg') {
                         // TopDawg shows the pushed price in TD Price for the review window.
                         $live = $stamp;
@@ -391,6 +395,9 @@ class ChannelPushSpriceRunner
                     'error' => $error,
                 ]);
                 $this->markListingEndedIfNeeded($sku, $error);
+                if ($this->channel === 'pls' && $sku !== '') {
+                    \App\Support\PlsPushStatus::set($sku, 'error');
+                }
                 // eBay 2: SKU no longer on that listing → park the stale row and pull fresh listings from eBay.
                 \App\Support\Marketplace\Ebay2VariationMissingHeal::handle($this->channel, $sku, $error);
                 if ($this->channel === 'newtemuone' && $sku !== '' && $price > 0

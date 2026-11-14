@@ -69,20 +69,7 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         // (70 × 1.10 + 10) ÷ 0.80 = 108.75 although Std Prc is 100: no discount or Std Prc rule applies. Same in Sprc Dil.
         $row = $this->row(['standard_price' => 100, 'lp' => 70, 'ship' => 10, 'clearance' => true, 'clearance_nroi' => 10]);
         $this->assertEqualsWithDelta(108.75, $this->target($row)['sprice'], 0.001);
-        $this->assertEqualsWithDelta(108.75, (new PlsSprcDilAutoPushService)->computeTarget($row, null, $this->dilCtx())['sprice'], 0.001);
         $this->assertNull($this->target($this->row(['lp' => 0, 'clearance' => true, 'clearance_nroi' => 10])));
-    }
-
-    public function test_blue_catch_up_falls_back_to_the_saved_s_prc_the_page_shows(): void
-    {
-        $svc = new PlsSprcDilAutoPushService;
-        $row = ['inv' => 5, 'sprice' => 41.5, 'margin' => 80, 'lp' => 10, 'ship' => 2, 'standard_price' => 60];
-        $t = $svc->savedSpriceTarget($row);
-        $this->assertSame(41.5, $t['sprice']);
-        $this->assertEqualsWithDelta(0.8, $t['margin'], 0.0001);
-
-        $this->assertNull($svc->savedSpriceTarget(['inv' => 0, 'sprice' => 41.5]));
-        $this->assertNull($svc->savedSpriceTarget(['inv' => 5, 'sprice' => 0]));
     }
 
     public function test_lmp_has_no_effect_on_pls(): void
@@ -148,97 +135,20 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(90.0, $out['sprice']);
     }
 
-    /** @return array<string, mixed> */
-    private function dilCtx(): array
+    public function test_sprc_dil_is_gone_the_rule_price_is_always_std_prc_vs_dil(): void
     {
-        return [
-            'rules' => [
-                ['key' => '0-0', 'label' => '0%', 'min' => 0.0, 'max' => 0.0, 'groi' => 40.0],
-                ['key' => '0.1-50', 'label' => '0.1–50%', 'min' => 0.1, 'max' => 50.0, 'groi' => 60.0],
-            ],
-            'cvr_adj' => ['down_lt' => 7, 'down_adj' => -5, 'up_gt' => 10, 'up_adj' => 5],
-            'diff_adj' => ['gt_pct' => 20, 'points' => 10],
-            'lmp_cap' => null,
-        ];
+        $this->assertFalse(method_exists(PlsSprcDilAutoPushService::class, 'computeDilTarget'));
+        $this->assertFalse(method_exists(PlsSprcDilAutoPushService::class, 'loadDilContext'));
+        $this->assertSame('std', \App\Support\SpriceActiveRule::forChannel('pls'));
     }
 
-    /** @return array<string, mixed> */
-    private function dilRow(array $over = []): array
+    public function test_service_only_saves_s_prc_the_shared_worker_pushes(): void
     {
-        return $this->row(array_merge(['price' => 100, 'standard_price' => 50], $over));
-    }
-
-    public function test_sprc_dil_price_is_the_slab_target_with_ship(): void
-    {
-        $out = (new PlsSprcDilAutoPushService)->computeTarget($this->dilRow(), null, $this->dilCtx());
-
-        $this->assertNotNull($out);
-        // Target 60%: (20 x 1.6 + 5) / 0.80 = 46.25. Std 50 is within the Diff threshold of that price.
-        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
-    }
-
-    public function test_sprc_dil_diff_adds_points_when_std_is_above_the_rule_price_by_more_than_the_threshold(): void
-    {
-        // Std 100 vs the rule price 46.25 -> Diff over 20: Target 70%. (20 x 1.7 + 5) / 0.80 = 48.75, whatever the live Price.
-        $out = (new PlsSprcDilAutoPushService)->computeTarget($this->dilRow(['standard_price' => 100, 'price' => 70]), null, $this->dilCtx());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(48.75, $out['sprice'], 0.001);
-    }
-
-    public function test_sprc_dil_diff_does_not_flip_flop_with_the_live_price(): void
-    {
-        $svc = new PlsSprcDilAutoPushService;
-        $first = $svc->computeTarget($this->dilRow(['standard_price' => 100, 'price' => 70]), null, $this->dilCtx());
-        // After the push the live Price equals the pushed price. The target must not move.
-        $second = $svc->computeTarget($this->dilRow(['standard_price' => 100, 'price' => $first['sprice']]), null, $this->dilCtx());
-
-        $this->assertEqualsWithDelta($first['sprice'], $second['sprice'], 0.001);
-    }
-
-    public function test_sprc_dil_has_no_cvr_overlay_and_no_lmp_cap(): void
-    {
-        $out = (new PlsSprcDilAutoPushService)->computeTarget($this->dilRow(['cvr' => 5, 'views' => 500, 'lmp' => 30]), null, $this->dilCtx());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(46.25, $out['sprice'], 0.001);
-    }
-
-    public function test_sprc_dil_std_price_is_the_maximum(): void
-    {
-        $out = (new PlsSprcDilAutoPushService)->computeTarget($this->dilRow(['standard_price' => 30]), null, $this->dilCtx());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(30.0, $out['sprice'], 0.001);
-    }
-
-    public function test_sprc_dil_above_every_slab_and_no_inventory_have_no_target(): void
-    {
-        $svc = new PlsSprcDilAutoPushService;
-
-        $this->assertNull($svc->computeTarget($this->dilRow(['dil' => 60]), null, $this->dilCtx()));
-        $this->assertNull($svc->computeTarget($this->dilRow(['inv' => 0]), null, $this->dilCtx()));
-    }
-
-    public function test_without_a_dil_context_the_std_rule_still_prices(): void
-    {
-        $out = (new PlsSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(), null);
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
-    }
-
-    public function test_live_pull_is_only_skipped_when_price_equals_the_last_push(): void
-    {
-        $m = new \ReflectionMethod(PlsSprcDilAutoPushService::class, 'liveEqualsLastPush');
-        $m->setAccessible(true);
-        $svc = new PlsSprcDilAutoPushService;
-
-        $this->assertTrue($m->invoke($svc, ['price' => 5.18, 'pushed_value' => 5.18]));
-        $this->assertTrue($m->invoke($svc, ['price' => 5.18, 'pushed_value' => 5.180001]));
-        // Store drifted from our last push, or never pushed: the live pull must still run.
-        $this->assertFalse($m->invoke($svc, ['price' => 5.50, 'pushed_value' => 5.18]));
-        $this->assertFalse($m->invoke($svc, ['price' => 5.18, 'pushed_value' => null]));
-        $this->assertFalse($m->invoke($svc, ['price' => 5.18]));
+        // Same shape as Shopify B2C: no inline push in the service.
+        foreach (['pushOne', 'pushPrice', 'pullLive', 'setPlsStatus'] as $m) {
+            $this->assertFalse(method_exists(PlsSprcDilAutoPushService::class, $m), $m);
+        }
+        $this->assertTrue(method_exists(PlsSprcDilAutoPushService::class, 'collectPushTasks'));
+        $this->assertContains('pls', \App\Services\Support\ChannelPushSpriceDailyEnqueue::EXTRA_PUSH_CHANNELS);
     }
 }

@@ -28,7 +28,7 @@ class ChannelPushSpriceDailyEnqueue
     public const CHANNELS = [];
 
     /** Sprc Dil pages whose live push is not in the Dil channel list. */
-    public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'macys', 'newtemuone', 'ebay1', 'ebay2', 'ebay3'];
+    public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'pls', 'macys', 'newtemuone', 'ebay1', 'ebay2', 'ebay3'];
 
     /**
      * @return list<string>
@@ -148,6 +148,10 @@ class ChannelPushSpriceDailyEnqueue
         }
         if ($channel === 'shopify_b2c') {
             return $this->collectSavedAgainstLive(Shopifyb2cDataView::class, ShopifySku::class, 'price', 'b2c_price');
+        }
+        if ($channel === 'pls') {
+            // Blue triangles on /pls-pricing: INV > 0, listed, saved S PRC ≠ live PLS Price (same rows as the page).
+            return app(\App\Services\PlsSprcDilAutoPushService::class)->collectPushTasks();
         }
         if ($channel === 'macys') {
             // Inactive / unlisted offers cannot take a price (the push refuses them). They carry a stale sheet price, so

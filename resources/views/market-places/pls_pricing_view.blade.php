@@ -95,7 +95,6 @@
             white-space: nowrap;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'pls'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'pls'])
     </style>
 @endsection
 
@@ -166,7 +165,6 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'pls'])
 
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
@@ -289,21 +287,19 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'pls'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'pls'])
 @endsection
 
 @section('script-bottom')
 <script>
-    // S PRC is saved + pushed by the server (pls:sprc-dil-auto-push). The page only shows it.
+    // S PRC is saved by the server (pls:sprc-dil-auto-push / pls:push-blue-prices) and pushed by the shared S PRC worker, like Shopify B2C. The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
     // The server job pushes every S PRC. The page never queues a push on open (no client-side push queue).
     window.CH_PUSH_SPRICE_SERVER_ONLY = true;
-    // A clearance SKU is priced only from the Clearance Target NROI% (Sprc Dil modal, last row), in both modes.
+    // A clearance SKU is priced only from the saved Clearance Target NROI%.
     window.CH_CLEARANCE_KEEPS_RULES = true;
     // The SNROI% column here is (S PRC x PLS% - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
     window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'pls'])
     @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
     @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'pls', 'temuRuleLiveLabel' => 'Price'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
@@ -336,9 +332,6 @@
         const stored = parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         return stored > 0 ? stored : 0;
     }
-    function plsSpriceRule() {
-        return (typeof window.spriceActiveRule === 'function') ? window.spriceActiveRule() : 'std';
-    }
     /** Std Prc of the row. */
     function plsStdPrice(d) {
         const n = parseFloat(d && (d.STANDARD_PRICE != null && d.STANDARD_PRICE !== '' ? d.STANDARD_PRICE : d.standard_price));
@@ -348,33 +341,13 @@
     function plsRowLmp() { return 0; }
     /** No A Price / Amz cap on PLS. */
     function plsAmzPrice() { return 0; }
-    /** Sprc Dil price before the Std Prc maximum: Dil slab + Diff points, with Ship in the price (no Ads, no CVR overlay). 0 when the rule gives none. */
-    function plsDilRawSprice(data) {
-        if (typeof ebayDilGroiMetaForRow !== 'function') return 0;
-        const meta = ebayDilGroiMetaForRow(data);
-        const n = meta ? Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) : 0;
-        return n > 0 ? Math.round(n * 100) / 100 : 0;
-    }
-    /** Sprc Dil switch ON: the Dil price with Std Prc as the maximum. No LMP cap. */
-    function plsCapDilSprice(data, raw) {
-        let out = Math.round((parseFloat(raw) || 0) * 100) / 100;
-        if (!(out > 0)) return 0;
-        const std = plsStdPrice(data);
-        if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
-        return out;
-    }
-    /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules load or when the row has none. */
+    /** The Std prc vs dil price with its Std max, worked out live. 0 while the rules load or when the row has none. */
     function plsLiveRuleSprice(data) {
         if (!data || plsIsParentRow(data)) return 0;
         try {
-            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff or Std rule.
+            // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it. No slab or Std rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                 return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
-            }
-            if (plsSpriceRule() === 'dil') {
-                if (window._ebayDilRulesLoaded !== true) return 0;
-                const raw = plsDilRawSprice(data);
-                return raw > 0 ? plsCapDilSprice(data, raw) : 0;
             }
             if (window.__chStdSettled !== true) return 0;
             if (typeof window.chStdPriceForRow === 'function') {
@@ -403,11 +376,7 @@
         const ship = parseFloat(d && d.ship) || 0;
         return (((p * PLS_PERCENTAGE) - ship - lp) / lp) * 100;
     }
-    /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
-    function plsDiffCfgNow() {
-        const c = (typeof window.ebayDiffAdjCfg === 'function') ? window.ebayDiffAdjCfg() : null;
-        return { gt_pct: c && isFinite(Number(c.gt_pct)) ? Number(c.gt_pct) : 20, points: c && isFinite(Number(c.points)) ? Number(c.points) : 10 };
-    }
+    const PLS_STD_DIFF_PINK_PCT = 20;
     /** Std Diff % = (Std Prc - Price) / Price x 100, same as /amazon-tabulator-view. null when either is missing. */
     function plsStdPrcDiffPct(rowData) {
         if (!rowData || plsIsParentRow(rowData)) return null;
@@ -416,14 +385,14 @@
         if (!(std > 0) || !(price > 0)) return null;
         return ((std - price) / price) * 100;
     }
-    /** Std Diff cell: pink above the Sprc Dil Diff threshold (default 20%), red < -5%, else green. Styles the cell element itself. */
+    /** Std Diff cell: pink above 20%, red < -5%, else green. Styles the cell element itself. */
     function plsRenderStdPrcDiff(el, rowData) {
         const pct = plsStdPrcDiffPct(rowData);
         let html = '';
         let bg = '';
         let color = '';
         if (pct !== null) {
-            if (pct > plsDiffCfgNow().gt_pct) { bg = '#ffb6d9'; color = '#000'; }
+            if (pct > PLS_STD_DIFF_PINK_PCT) { bg = '#ffb6d9'; color = '#000'; }
             else if (pct < -5) { bg = '#dc3545'; color = '#fff'; }
             else { bg = '#28a745'; color = '#fff'; }
             html = '<span style="font-weight:600;">' + pct.toFixed(1) + '%</span>';
@@ -434,10 +403,7 @@
         }
         return html;
     }
-    // The Sprc Dil Diff rule reads Std Prc and the PLS price from these two columns.
-    window.ebayDiffStdPrice = function(d) { return plsStdPrice(d); };
-    window.ebayDiffLivePrice = function(d) { return parseFloat(d && d.price) || 0; };
-    /** Repaint every S PRC dependent cell from the rule now ON (switch, or a rule edit). No row writes, no scroll jump. */
+        /** Repaint every S PRC dependent cell (after a rule edit). No row writes, no scroll jump. */
     function plsRefreshSpriceCells() {
         if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
         try {
@@ -448,10 +414,6 @@
         try { if (typeof updateSummary === 'function') updateSummary(); } catch (e2) { /* ignore */ }
     }
     window.plsRefreshSpriceCells = plsRefreshSpriceCells;
-    // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server saves the same S PRC right after the response.
-    window.spriceOnRuleSwitched = function() { plsRefreshSpriceCells(); };
-    // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from the new rule; the server saves it too.
-    window.ebayOnDilRulesSaved = function() { plsRefreshSpriceCells(); };
     // Rules and the clearance list finish loading after the first paint: repaint once so no S PRC stays blank.
     $(document).on('chStd:settled', function() { plsRefreshSpriceCells(); });
     /** The cell dollar. */
@@ -985,7 +947,7 @@
                     field: "std_prc_diff",
                     hozAlign: "center",
                     width: 62,
-                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above the Sprc Dil Diff threshold (default 20%: Sprc Dil adds +10 to the Target SNROI), red = below −5%, green = the rest.",
+                    headerTooltip: "Std Diff = (Std Prc − Price) / Price × 100, same as /amazon-tabulator-view. Pink = above 20%, red = below −5%, green = the rest.",
                     sorter: tabSortBlankLast(function(d) { return plsStdPrcDiffPct(d); }),
                     formatter: function(cell) {
                         return plsRenderStdPrcDiff(cell.getElement(), cell.getRow().getData());
@@ -1148,7 +1110,7 @@
                     visible: true,
                     cellMouseEnter: function(e, cell) { if (typeof temuRuleTipShow === 'function') temuRuleTipShow('sprice', cell); },
                     cellMouseLeave: function() { if (typeof temuRuleTipScheduleHide === 'function') temuRuleTipScheduleHide(); },
-                    headerTooltip: "Not editable. The ON switch fills this column: Sprc Dil (Dil slab Target SNROI with Diff, Ship in the price, Std Prc as the maximum) or Std prc vs dil (Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), Std Prc is the maximum). Turning one ON turns the other OFF. The server saves it right after a switch or rule edit and pushes twice daily (and every 10 min for blue triangles). LMP and Amz are not used. Brown triangle = capped at Std Prc. Blue triangle = S PRC ≠ Price. Hover for every rule used.",
+                    headerTooltip: "Not editable. Std prc vs dil: Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), Std Prc is the maximum. The server saves it right after a rule edit and queues the push (twice daily and every 10 min for blue triangles), same as Shopify B2C. LMP and Amz are not used. Blue triangle = S PRC ≠ Price. Hover for every rule used.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
@@ -1170,17 +1132,9 @@
                         const cap = window.SpriceLmpCap ? SpriceLmpCap.apply(rowData, value) : null;
                         const overLmp = cap ? cap.alert : (lmp > 0 && value + 0.0001 >= lmp);
                         const redTri = overLmp ? (cap ? cap.triangleHtml : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP"></i>') : '';
-                        // Brown triangle: Sprc Dil price capped at Std Prc (no LMP on PLS).
-                        let capTris = '';
-                        let capColor = '';
-                        if (plsSpriceRule() === 'dil' && window.chClr && typeof chClr.capFlags === 'function') {
-                            const rawDil = plsDilRawSprice(rowData);
-                            if (rawDil > 0) {
-                                const flags = chClr.capFlags({ raw: rawDil, shown: value, lmp: 0, std: plsStdPrice(rowData), sgroiAtLmp: null });
-                                capTris = flags ? (flags.reviewTri + flags.stdTri) : '';
-                                capColor = flags && flags.color ? flags.color : '';
-                            }
-                        }
+                        // No cap marks: Std Prc is the maximum inside the Std prc vs dil rule itself (no LMP on PLS).
+                        const capTris = '';
+                        const capColor = '';
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;">${formatted}</span>`

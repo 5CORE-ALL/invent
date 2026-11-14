@@ -2,45 +2,35 @@
 
 namespace App\Services;
 
-use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\PlsController;
-use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\PLSDataView;
 use App\Support\AmazonDilGroiRule;
-use App\Support\EbayRuleSprice;
-use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
-use App\Support\SpriceActiveRule;
 use App\Support\StdPrcVsDilPricer;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * PLS (ProLightSounds) Std prc vs dil stack → SPRICE → ProLightSounds Shopify price (page not required).
+ * PLS (ProLightSounds) Std prc vs dil stack → SPRICE (page not required). Same shape as ShopifyB2cSprcDilAutoPushService:
+ * this service only SAVES S PRC. The live ProLightSounds push is queued by ChannelPushSpriceDailyEnqueue
+ * (collectPushTasks() below) and sent by the shared S PRC worker, exactly like Shopify B2C.
  *
- * Same steps as AmazonSprcDilAutoPushService, with PLS as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  PLS has no ads, so NPFT = GPFT. Clearance SKUs are priced only from the Clearance Target NROI% (Sprc Dil modal, last row), no cap.
+ *  PLS has no ads, so NPFT = GPFT. Clearance SKUs are priced only from the Clearance Target NROI% (saved value), no cap.
  *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI, judged like the page's
  *  SNROI% column, (S PRC × PLS% − Ship − LP) ÷ LP with no Ads%, instead of the discounts. Std Prc stays the maximum.
  *  0 Sold = P L30 (pls_products.p_l30), the page's sold qty. Std Prc is the maximum.
  *  PLS has no LMP and no Amz rule, so neither is used.
- *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
  *
- * Flow, same as Amazon:
- *  - Twice-daily run: skips a SKU whose last pushed price already equals the target.
- *  - Live pull: the blue catch-up reads the live ProLightSounds variant price first, so a SKU where the store is
- *    already right is repaired instead of re-pushed. The push itself is verified by Shopify (the returned price
- *    must equal the pushed price), so no second read is needed after a push.
- *  - Blue catch-up run (pls:push-blue-prices): SKUs whose PLS Price ≠ S PRC are pushed again once the
- *    cooldown has passed.
+ * This is the only S PRC rule on /pls-pricing. The Sprc Dil rule (Dil slab Target SNROI + Diff) was removed from the page;
+ * its saved settings stay in the database untouched.
  *
  * Rows come from PlsController::pricingDataJson(), the same rows /pls-pricing shows.
+ * Never pushes a price whose SNROI is below 0: the shared runner applies NegativeSnroiPushGuard.
  */
 class PlsSprcDilAutoPushService
 {
@@ -50,173 +40,74 @@ class PlsSprcDilAutoPushService
     private ?array $viewsByNorm = null;
 
     /**
+     * Re-price every listed SKU with INV > 0 and save S PRC where it changed. Nothing is pushed here.
+     *
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
      * @return array<string, mixed>
      */
     public function run(
         bool $dryRun = false,
-        bool $skipPush = false,
         ?int $limit = null,
-        int $sleepMs = 300,
         ?array $onlySkus = null,
-        ?callable $logger = null,
-        bool $pushAll = false,
-        bool $blueCatchUp = false,
-        int $cooldownMinutes = 120,
-        int $errorCooldownMinutes = 120,
-        int $maxPushes = 0
+        ?callable $logger = null
     ): array {
         StdPrcVsDilPricer::flush();
         $pricer = StdPrcVsDilPricer::forChannel('pls');
-        // The page switch decides the S PRC rule: Std prc vs dil, or the Sprc Dil modal (slab + Diff + Std max).
-        $dilContext = SpriceActiveRule::usesStdPrc('pls') ? null : $this->loadDilContext();
 
-        $this->log($logger, $dilContext !== null
-            ? 'PLS S PRC rule = Sprc Dil (Dil slab Target SNROI + Diff, Ship in the price, Std max)'
-            : 'Loaded PLS Std prc vs dil (pls_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max');
+        $this->log($logger, 'Loaded PLS Std prc vs dil (pls_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max');
 
         $stats = [
             'candidates' => 0,
             'applied' => 0,
-            'pushed' => 0,
             'skipped_unchanged' => 0,
-            'price_repaired' => 0,
             'skipped' => 0,
-            'push_failed' => 0,
             'errors' => [],
         ];
 
-        try {
-            $rows = $this->loadCandidates($limit, $onlySkus);
-        } catch (Throwable $e) {
-            $stats['errors'][] = 'load: '.$e->getMessage();
-            $this->log($logger, '✗ Load failed: '.$e->getMessage());
-
-            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
-        }
-
-        $lock = Cache::lock($skipPush && ! $dryRun ? self::LOCK_KEY.'-save-only' : self::LOCK_KEY, 10800);
+        $lock = Cache::lock(self::LOCK_KEY, 10800);
         if (! $lock->get()) {
-            $this->log($logger, 'Skipped: another PLS Sprc Dil push is already running');
+            $this->log($logger, 'Skipped: another PLS S PRC run is already running');
             $stats['errors'][] = 'lock: already running';
 
-            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
+            return ['dry_run' => $dryRun, 'stats' => $stats];
         }
 
-        $stats['candidates'] = count($rows);
-        $this->log($logger, "Found {$stats['candidates']} candidate SKU(s) with INV > 0 listed on PLS");
-
-        $canPush = ! $dryRun && ! $skipPush;
-        $total = count($rows);
-        // Live PLS API price checks made this run (blue catch-up). Capped so a run stays short.
-        $apiChecks = 0;
-
         try {
+            try {
+                $rows = $this->loadCandidates($limit, $onlySkus);
+            } catch (Throwable $e) {
+                $stats['errors'][] = 'load: '.$e->getMessage();
+                $this->log($logger, '✗ Load failed: '.$e->getMessage());
+
+                return ['dry_run' => $dryRun, 'stats' => $stats];
+            }
+
+            $stats['candidates'] = count($rows);
+            $this->log($logger, "Found {$stats['candidates']} candidate SKU(s) with INV > 0 listed on PLS");
+
+            $total = count($rows);
             foreach ($rows as $i => $row) {
                 try {
-                    $computed = $this->computeTarget($row, $pricer, $dilContext);
-                    if ($computed === null && $blueCatchUp) {
-                        // The page paints the saved S PRC when the rule gives no price (blue badge when it differs from
-                        // Price). Push that same S PRC so no blue badge is left behind, same as Amazon.
-                        $computed = $this->savedSpriceTarget($row);
-                    }
+                    $computed = $this->computeTarget($row, $pricer);
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
                     }
                     $sprice = (float) $computed['sprice'];
 
-                    if (PushedListingPrice::same($row['price'] ?? 0, $sprice)) {
-                        // Live PLS Price already equals the target. Keep the saved S PRC in step, no push.
-                        if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
-                            $this->saveSprice($row, $computed, 'pushed');
-                            $stats['applied']++;
-                        }
+                    if (PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                        // Saved S PRC already equals the rule price.
                         $stats['skipped_unchanged']++;
                         continue;
                     }
 
-                    if ($blueCatchUp) {
-                        // Headless "Push on reload": the blue-triangle SKUs (INV > 0, Price ≠ S PRC), same as Amazon.
-                        // The twice-daily run skips a SKU whose last pushed price already equals the target, so a Price
-                        // that drifted afterwards (the store reverted it) stayed blue until someone opened the page.
-                        if ($maxPushes > 0 && $stats['pushed'] + $stats['push_failed'] >= $maxPushes) {
-                            $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
-                            break;
-                        }
-                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
-                            // Shopify rejected the last push — retry after the cooldown, not every run.
-                            $stats['skipped']++;
-                            continue;
-                        }
-                        if ($this->isUnchanged($row, $computed)
-                            && $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            $stats['skipped_unchanged']++;
-                            continue;
-                        }
-                        // Ask the ProLightSounds API for the live price first, for EVERY blue SKU (not only one pushed
-                        // before). The store may already be right and only the Price column stale; then no push is needed.
-                        // The pull also writes the real live price into the Price column, so the page shows what PLS has.
-                        // Skipped when the live Price still equals the price we last pushed: the store is where our last
-                        // push left it, so the pull could only confirm a push is needed. That pull was ~1/3 of the 2s
-                        // per SKU, which made a rule edit (hundreds of blue SKUs) take 30+ minutes to push.
-                        if (! $dryRun && $canPush && ! $this->liveEqualsLastPush($row)) {
-                            if ($maxPushes > 0 && $apiChecks >= $maxPushes * 2) {
-                                $this->log($logger, "Reached max live-price checks ({$apiChecks}) — rest next run");
-                                break;
-                            }
-                            $apiChecks++;
-                            $pull = $this->pullLive((string) $row['sku'], $sprice);
-                            if ($sleepMs > 0) {
-                                usleep($sleepMs * 1000);
-                            }
-                            if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
-                                $stats['price_repaired']++;
-                                $stats['skipped_unchanged']++;
-                                $this->saveSprice($row, $computed, 'pushed');
-                                $this->setPlsStatus((string) $row['sku'], 'pushed');
-                                continue;
-                            }
-                        }
-                    } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
-                        // Last push already equals the target. Refresh the live PLS Price column, no push.
-                        // The blue catch-up handles a Price that stayed different.
-                        if (! $dryRun && $canPush) {
-                            $pull = $this->pullLive((string) $row['sku']);
-                            if ($pull && ! empty($pull['success'])) {
-                                $stats['price_repaired']++;
-                            }
-                            if ($sleepMs > 0) {
-                                usleep($sleepMs * 1000);
-                            }
-                        }
-                        $stats['skipped_unchanged']++;
-                        continue;
-                    }
-
-                    // The blue catch-up runs every 10 min: only rewrite the saved S PRC when it changed.
-                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
-                        $this->saveSprice($row, $computed, 'applied');
+                    if (! $dryRun) {
+                        // Live Price already at the target: mark it pushed, so no push is queued for it.
+                        $this->saveSprice($row, $computed, PushedListingPrice::same($row['price'] ?? 0, $sprice) ? 'pushed' : 'applied');
                     }
                     $stats['applied']++;
-
-                    if (! $canPush) {
-                        continue;
-                    }
-
-                    if (NegativeSnroiPushGuard::shouldSkip('pls', (string) $row['sku'], $sprice)) {
-                        $stats['skipped']++;
-                        $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
-                        continue;
-                    }
-
-                    $this->pushOne($row, $computed, $stats, $logger);
-                    if ($sleepMs > 0) {
-                        usleep($sleepMs * 1000);
-                    }
                 } catch (Throwable $e) {
-                    $stats['push_failed']++;
                     $stats['errors'][] = ($row['sku'] ?? '').': '.$e->getMessage();
                     Log::error('[PlsSprcDilAutoPush] exception', [
                         'sku' => $row['sku'] ?? '',
@@ -224,51 +115,65 @@ class PlsSprcDilAutoPushService
                     ]);
                 }
 
-                if ($logger && (($i + 1) % 100 === 0 || ($i + 1) === $total)) {
-                    $this->log($logger, 'Progress '.($i + 1)."/{$total} (pushed {$stats['pushed']}, unchanged {$stats['skipped_unchanged']})");
+                if ($logger && (($i + 1) % 200 === 0 || ($i + 1) === $total)) {
+                    $this->log($logger, 'Progress '.($i + 1)."/{$total} (applied {$stats['applied']}, unchanged {$stats['skipped_unchanged']})");
                 }
             }
 
             $this->log($logger, sprintf(
-                'Done: applied=%d pushed=%d unchanged=%d repaired=%d skipped=%d failed=%d%s',
+                'Done: candidates=%d applied=%d unchanged=%d skipped=%d errors=%d%s',
+                $stats['candidates'],
                 $stats['applied'],
-                $stats['pushed'],
                 $stats['skipped_unchanged'],
-                $stats['price_repaired'],
                 $stats['skipped'],
-                $stats['push_failed'],
-                ($dryRun || $skipPush) ? ' [no PLS push]' : ''
+                count($stats['errors']),
+                $dryRun ? ' [dry run]' : ''
             ));
-
-            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
         } finally {
             optional($lock)->release();
         }
+
+        return ['dry_run' => $dryRun, 'stats' => $stats];
+    }
+
+    /**
+     * The blue triangles: listed, INV > 0, a saved S PRC that differs from the live PLS Price. These are the tasks the
+     * shared S PRC worker pushes (ChannelPushSpriceDailyEnqueue::collect('pls')). Same rule as the page's blue badge.
+     *
+     * @return list<array{sku: string, price: float}>
+     */
+    public function collectPushTasks(): array
+    {
+        $out = [];
+        foreach ($this->loadCandidates(null, null) as $row) {
+            $saved = round((float) ($row['sprice'] ?? 0), 2);
+            $live = round((float) ($row['price'] ?? 0), 2);
+            if (! ($saved > 0) || ! ($live > 0) || PushedListingPrice::same($saved, $live)) {
+                continue;
+            }
+            $out[] = ['sku' => strtoupper(trim((string) $row['sku'])), 'price' => $saved];
+        }
+
+        return $out;
     }
 
     /**
      * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum.
      * PLS has no LMP, ads or Amz rule.
      *
-     * With a $dilContext (the Sprc Dil switch is ON) the Sprc Dil modal rules price it instead.
-     *
      * @param  array<string, mixed>  $row
-     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float,ship:float}|null
      */
-    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, ?array $dilContext = null): ?array
+    public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
         }
-        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row), in
-        // Std prc vs dil and Sprc Dil alike: (LP × (1 + NROI%) + Ship) ÷ PLS%. No slab, Diff or Std rule.
+        // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI%:
+        // (LP × (1 + NROI%) + Ship) ÷ PLS%. No slab, Diff or Std rule.
         if ((new StdPrcVsDilPricer([], 'pls'))->isClearanceRow($row)) {
             return $this->computeClearanceTarget($row);
-        }
-        if ($dilContext !== null) {
-            return $this->computeDilTarget($row, $dilContext);
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
@@ -327,38 +232,6 @@ class PlsSprcDilAutoPushService
     }
 
     /**
-     * Target from the S PRC already saved on the row. Used by the blue catch-up when no rule gives a price: the page
-     * shows that saved S PRC, and a blue badge when it differs from Price.
-     *
-     * @param  array<string, mixed>  $row
-     * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float,ship:float}|null
-     */
-    public function savedSpriceTarget(array $row): ?array
-    {
-        $inv = (float) ($row['inv'] ?? 0);
-        $saved = round((float) ($row['sprice'] ?? 0), 2);
-        if (! ($inv > 0) || ! ($saved >= 0.01) || ! is_finite($saved)) {
-            return null;
-        }
-        $margin = (float) ($row['margin'] ?? 0);
-        if ($margin > 1) {
-            $margin /= 100;
-        }
-        if (! ($margin > 0 && $margin <= 1)) {
-            $margin = 1.0;
-        }
-
-        return [
-            'sprice' => $saved,
-            'uncapped' => $saved,
-            'base' => round((float) ($row['standard_price'] ?? 0), 2),
-            'margin' => $margin,
-            'lp' => (float) ($row['lp'] ?? 0),
-            'ship' => (float) ($row['ship'] ?? 0),
-        ];
-    }
-
-    /**
      * Clearance SKU: (LP × (1 + Clearance NROI%) + Ship) ÷ PLS%. PLS has no Ads, LMP or Amz rule, and Std Prc does not cap it.
      *
      * @param  array<string, mixed>  $row
@@ -378,7 +251,7 @@ class PlsSprcDilAutoPushService
             return null;
         }
         $ship = (float) ($row['ship'] ?? 0);
-        // A row may carry its own clearance_nroi (tests); otherwise the saved Sprc Dil modal value.
+        // A row may carry its own clearance_nroi (tests); otherwise the saved value.
         $nroi = isset($row['clearance_nroi']) && is_numeric($row['clearance_nroi']) ? (float) $row['clearance_nroi'] : $this->clearanceNroi();
         $price = round(($lp * (1 + max(0.0, $nroi) / 100) + $ship) / $margin, 2);
         if (! is_finite($price) || $price < 0.01) {
@@ -395,7 +268,10 @@ class PlsSprcDilAutoPushService
         ];
     }
 
-    /** Clearance Target NROI% saved with the PLS Sprc Dil rules (last row of the modal). Default 0. */
+    /**
+     * Clearance Target NROI% saved earlier with the PLS rules (pls_dil_vs_groi, last row). Default 0.
+     * The Sprc Dil modal that edited it is gone from the page; the saved value is still read.
+     */
     protected function clearanceNroi(): float
     {
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'pls_dil_vs_groi')->first();
@@ -403,103 +279,6 @@ class PlsSprcDilAutoPushService
         $n = $unpacked['clearance_nroi'] ?? null;
 
         return (is_numeric($n) && (float) $n >= 0) ? (float) $n : 0.0;
-    }
-
-    /**
-     * Sprc Dil switch ON, same as the page (ebay-sprc-dil + /amazon-tabulator-view order):
-     * Dil slab Target SNROI, Diff points, then price = (LP x (1 + Target%) + Ship) / PLS%. PLS has no Ads, no CVR
-     * overlay, no LMP and no Amz rule. Std Prc is the maximum. A SKU whose Dil is outside every slab has no Sprc Dil
-     * price. Clearance SKUs never reach this (computeClearanceTarget).
-     *
-     * @param  array<string, mixed>  $row
-     * @param  array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}  $ctx
-     * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float,ship:float}|null
-     */
-    protected function computeDilTarget(array $row, array $ctx): ?array
-    {
-        $margin = (float) ($row['margin'] ?? 0);
-        if ($margin > 1) {
-            $margin /= 100;
-        }
-        if (! ($margin > 0 && $margin <= 1)) {
-            $margin = 1.0;
-        }
-        $lp = (float) ($row['lp'] ?? 0);
-        if (! ($lp > 0)) {
-            return null;
-        }
-        $ship = (float) ($row['ship'] ?? 0);
-        $std = round((float) ($row['standard_price'] ?? 0), 2);
-        $dil = (float) ($row['dil'] ?? 0);
-
-        $rule = AmazonDilGroiRule::match($dil, $ctx['rules']);
-        if ($rule === null) {
-            return null;
-        }
-        $target = max(0.0, round((float) $rule['groi'], 2));
-        // Ageing Rule: the SKU's age band adds its points to the Target NROI, before the Diff rule (floored at 0).
-        if (is_array($ctx['age_adj'] ?? null) && $ctx['age_adj'] !== []) {
-            $target = AmazonDilGroiRule::adjustGroiForAge(
-                $target,
-                is_numeric($row['age_days'] ?? null) ? (float) $row['age_days'] : null,
-                $ctx['age_adj']
-            );
-        }
-        // Diff rule: judged against the rule price WITHOUT the Diff points, not the live PLS Price (same as Amazon,
-        // Purchasing Power, Shein and the page). Read against the live Price, the boosted price is pushed -> Diff drops
-        // under the threshold -> the boost is removed -> the lower price is pushed -> Diff rises -> the boost is back,
-        // so the SKU alternated between two prices every 10-minute run. A listed SKU (live Price > 0) and a Std Prc
-        // are still required.
-        if ($std > 0 && round((float) ($row['price'] ?? 0), 2) > 0) {
-            $diffBase = AmazonDilGroiRule::suggestedPrice($lp, $ship, $target, 0.0, $margin);
-            if ($diffBase !== null && $diffBase > 0) {
-                $target = max(0.0, round($target + AmazonDilGroiRule::diffAdjPoints(
-                    EbayRuleSprice::stdPriceDiffPct($std, $diffBase),
-                    $ctx['diff_adj'] ?? null
-                ), 2));
-            }
-        }
-
-        $raw = round(($lp * (1 + $target / 100) + $ship) / $margin, 2);
-        if (! is_finite($raw) || $raw < 0.01) {
-            return null;
-        }
-        $capped = ($std > 0 && $raw > $std) ? $std : $raw;
-        if (! is_finite($capped) || $capped < 0.01) {
-            return null;
-        }
-
-        return [
-            'sprice' => round($capped, 2),
-            'uncapped' => $raw,
-            'base' => $std,
-            'margin' => $margin,
-            'lp' => $lp,
-            'ship' => $ship,
-        ];
-    }
-
-    /**
-     * The Sprc Dil modal settings saved for PLS: slabs and the Diff rule.
-     *
-     * @return array{rules:list<array<string,mixed>>,cvr_adj:?array,diff_adj:?array,lmp_cap:?array}
-     */
-    protected function loadDilContext(): array
-    {
-        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'pls_dil_vs_groi')->first();
-        $saved = is_array($row?->visibility) ? $row->visibility : null;
-        $unpacked = AmazonDilGroiRule::unpackStored($saved);
-        $rules = $unpacked['rules'] === []
-            ? AmazonDilGroiRule::defaultsForChannel('pls')
-            : AmazonDilGroiRule::ensureZeroToZero($unpacked['rules']);
-
-        return [
-            'rules' => $rules,
-            'cvr_adj' => $unpacked['cvr_adj'] ?? null,
-            'diff_adj' => $unpacked['diff_adj'] ?? null,
-            'lmp_cap' => $unpacked['lmp_cap'] ?? null,
-            'age_adj' => $unpacked['age_adj'] ?? null,
-        ];
     }
 
     /**
@@ -556,9 +335,6 @@ class PlsSprcDilAutoPushService
             }
             $seen[$key] = true;
 
-            $plsStatus = strtolower((string) ($r['pls_status'] ?? ''));
-            $plsStatusAt = $r['pls_status_at'] ?? null;
-
             $out[] = [
                 'sku' => $sku,
                 'price' => $price,
@@ -572,12 +348,6 @@ class PlsSprcDilAutoPushService
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['sprice'] ?? 0),
-                'pushed_value' => isset($r['sprice_pushed_value']) && is_numeric($r['sprice_pushed_value'])
-                    ? (float) $r['sprice_pushed_value']
-                    : null,
-                // Last successful push time. Kept when a later push failed, so a recent push is not repeated early.
-                'pushed_at' => $r['sprice_pushed_at'] ?? ($plsStatus === 'pushed' ? $plsStatusAt : null),
-                'push_error_at' => $plsStatus === 'error' ? $plsStatusAt : null,
             ];
 
             if ($limit !== null && $limit > 0 && count($out) >= $limit) {
@@ -588,41 +358,6 @@ class PlsSprcDilAutoPushService
         usort($out, static fn ($a, $b) => strnatcasecmp($a['sku'], $b['sku']));
 
         return $out;
-    }
-
-    /**
-     * Last push already equals the target.
-     *
-     * @param  array<string, mixed>  $row
-     * @param  array{sprice:float}  $computed
-     */
-    protected function isUnchanged(array $row, array $computed): bool
-    {
-        return PushedListingPrice::same($row['pushed_value'] ?? null, $computed['sprice']);
-    }
-
-    /**
-     * The live PLS Price column equals the price last pushed successfully for this SKU.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    protected function liveEqualsLastPush(array $row): bool
-    {
-        return isset($row['pushed_value'])
-            && $row['pushed_value'] !== null
-            && PushedListingPrice::same($row['price'] ?? 0, $row['pushed_value']);
-    }
-
-    protected function withinCooldown(string $at, int $cooldownMinutes): bool
-    {
-        if ($cooldownMinutes <= 0 || $at === '') {
-            return false;
-        }
-        try {
-            return Carbon::parse($at)->gt(now()->subMinutes($cooldownMinutes));
-        } catch (Throwable $e) {
-            return false;
-        }
     }
 
     /**
@@ -660,127 +395,6 @@ class PlsSprcDilAutoPushService
         }
 
         $this->persistView($view, $existing);
-    }
-
-    /**
-     * Push one SKU through CvrMasterController::pushPriceToAmazon (marketplace pls). That is the same call the
-     * old page push and the old runner used: it sets the ProLightSounds Shopify variant price and verifies it.
-     *
-     * @param  array<string, mixed>  $row
-     * @param  array{sprice:float}  $computed
-     * @param  array<string, mixed>  $stats
-     * @param  callable(string): void|null  $logger
-     */
-    protected function pushOne(array $row, array $computed, array &$stats, ?callable $logger): void
-    {
-        $sku = (string) $row['sku'];
-        $price = round((float) $computed['sprice'], 2);
-        $result = $this->pushPrice($sku, $price);
-
-        if (! empty($result['success'])) {
-            $stats['pushed']++;
-            // Shopify returned the new price and it matched, so the Price column moves to the pushed price.
-            try {
-                ChannelLivePriceSync::writeLive('pls', $sku, $price);
-            } catch (Throwable $e) {
-                Log::warning('[PlsSprcDilAutoPush] price column write failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-            }
-            $this->savePushMeta($sku, 'pushed', $price);
-            $this->setPlsStatus($sku, 'pushed');
-
-            return;
-        }
-
-        $stats['push_failed']++;
-        $err = (string) ($result['message'] ?? 'PLS price push failed');
-        $stats['errors'][] = $sku.': '.$err;
-        $this->log($logger, 'Push failed '.$sku.': '.$err);
-        Log::error('PLS Sprc Dil push failed', ['sku' => $sku, 'price' => $price, 'error' => $err]);
-        $this->savePushMeta($sku, 'error', null);
-        $this->setPlsStatus($sku, 'error');
-    }
-
-    /**
-     * Live ProLightSounds variant price. With an expected price the Price column only moves when the store
-     * shows it; without one the live price is written as is.
-     *
-     * @return array{success?:bool,price?:?float,message?:string}|null
-     */
-    protected function pullLive(string $sku, ?float $expected = null): ?array
-    {
-        try {
-            return app(ChannelPushedPricePullService::class)
-                ->pullSkus('pls', [$sku], $expected !== null ? [strtoupper(trim($sku)) => $expected] : [])[0] ?? null;
-        } catch (Throwable $e) {
-            Log::warning('[PlsSprcDilAutoPush] live price pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-
-            return null;
-        }
-    }
-
-    /** @return array{success:bool,message?:string} */
-    protected function pushPrice(string $sku, float $price): array
-    {
-        try {
-            $res = app(CvrMasterController::class)->pushPriceToAmazon(Request::create('/cvr-master-push-price', 'POST', [
-                'sku' => strtoupper(trim($sku)),
-                'price' => $price,
-                'marketplace' => 'pls',
-            ]));
-            $payload = method_exists($res, 'getData') ? $res->getData(true) : [];
-            $status = method_exists($res, 'getStatusCode') ? $res->getStatusCode() : 200;
-            $payload = is_array($payload) ? $payload : [];
-            $ok = $status < 400
-                && ! (isset($payload['success']) && $payload['success'] === false)
-                && empty($payload['errors']);
-            if ($ok) {
-                return ['success' => true];
-            }
-
-            return [
-                'success' => false,
-                'message' => (string) (($payload['errors'][0]['message'] ?? null) ?: ($payload['message'] ?? 'PLS price push failed')),
-            ];
-        } catch (Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-    }
-
-    /** Status, time and pushed value in pls_data_views (the keys the page and cooldown read). */
-    protected function savePushMeta(string $sku, string $status, ?float $price): void
-    {
-        try {
-            $view = $this->findView($sku);
-            $existing = $this->decodeValue($view->value);
-            $now = now()->toDateTimeString();
-            $existing['SPRICE_STATUS'] = $status;
-            $existing['SPRICE_STATUS_UPDATED_AT'] = $now;
-            if ($status === 'pushed' && $price !== null && $price > 0) {
-                $existing['SPRICE_PUSHED_VALUE'] = $price;
-                $existing['SPRICE_PUSHED_AT'] = $now;
-                $existing['SPRICE_PUSHED_BY'] = 'Server (Sprc Dil auto push)';
-            }
-            $this->persistView($view, $existing);
-        } catch (Throwable $e) {
-            Log::error('[PlsSprcDilAutoPush] status save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /** The Push column on /pls-pricing reads PLS_STATUS from amazon_data_views. Keep it in step. */
-    protected function setPlsStatus(string $sku, string $status): void
-    {
-        try {
-            // One indexed lookup per pushed SKU. amazon_data_views is large, so it is never loaded whole.
-            $view = AmazonDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first()
-                ?? new AmazonDataView(['sku' => strtoupper(trim($sku))]);
-            $existing = $this->decodeValue($view->value);
-            $existing['PLS_STATUS'] = $status;
-            $existing['PLS_STATUS_UPDATED_AT'] = now()->toDateTimeString();
-            $view->value = $existing;
-            $view->save();
-        } catch (Throwable $e) {
-            Log::error('[PlsSprcDilAutoPush] PLS_STATUS save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-        }
     }
 
     /**

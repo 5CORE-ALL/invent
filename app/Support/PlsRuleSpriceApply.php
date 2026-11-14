@@ -3,16 +3,17 @@
 namespace App\Support;
 
 use App\Services\PlsSprcDilAutoPushService;
+use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * PLS: re-save S PRC from the rule that is ON right after the page switch (Sprc Dil <-> Std prc vs dil) or a
- * Sprc Dil rule changed, so the saved S PRC (and SGROI, SNROI, the blue triangle) follow the rules at once instead of at
- * the next scheduled run. Nothing is pushed to PLS here; the scheduled run and the blue catch-up push.
+ * PLS: re-save S PRC from the Std prc vs dil rules right after they change, so the saved S PRC (and SGROI, SNROI,
+ * the blue triangle) follow the rules at once instead of at the next scheduled run. The re-save pushes nothing itself;
+ * pushNow() queues the push right after it.
  *
- * Same as ShopifyB2cRuleSpriceApply: rapid edits (the Sprc Dil modal autosaves) share one run. A change that arrives
+ * Same as ShopifyB2cRuleSpriceApply: rapid edits (the rules modal autosaves) share one run. A change that arrives
  * while a run is going sets a flag and the run repeats once at its end with the newest rules.
  */
 class PlsRuleSpriceApply
@@ -62,29 +63,26 @@ class PlsRuleSpriceApply
     }
 
     /**
-     * Push the freshly saved S PRC to ProLightSounds right away, as a detached background process.
+     * Queue the push of the freshly saved S PRC right away, through the same shared S PRC worker Shopify B2C uses
+     * (ChannelPushSpriceDailyEnqueue → channel:push-sprice-run pls).
      *
-     * A rule change used to wait for the next 10-minute pls:push-blue-prices tick, then trickle out at one SKU
-     * every ~2s, so ~600 blue triangles stayed unpushed for 30+ minutes after an edit. The same command now starts
-     * at once; the service lock keeps it from running twice, and the scheduled catch-up still picks up anything left.
+     * A rule change used to wait for the next 10-minute pls:push-blue-prices tick, so hundreds of blue triangles stayed
+     * unpushed for 30+ minutes after an edit. The worker holds its own file lock (survives a cache clear), so two never
+     * run at once, and the scheduled catch-up still picks up anything left.
+     *
+     * @param  bool  $throttled  page opens: at most one queue request per 2 minutes
      */
     public static function pushNow(bool $throttled = false): bool
     {
         try {
-            // Another push is already going (the service holds this lock for the whole run): nothing to start.
-            $probe = Cache::lock(PlsSprcDilAutoPushService::LOCK_KEY, 5);
-            if (! $probe->get()) {
-                return true;
-            }
-            $probe->release();
-            // Page opens and reloads can come in bursts; one spawn per window is enough (loading the rows is heavy).
             if ($throttled && ! Cache::add('pls-push-now-kick', 1, 120)) {
                 return true;
             }
+            app(ChannelPushSpriceDailyEnqueue::class)->enqueueChannel('pls');
 
-            return DetachedArtisan::spawn('pls:push-blue-prices');
+            return true;
         } catch (Throwable $e) {
-            Log::warning('[PlsRuleSpriceApply] could not start the push: '.$e->getMessage());
+            Log::warning('[PlsRuleSpriceApply] could not queue the push: '.$e->getMessage());
 
             return false;
         }
@@ -109,12 +107,7 @@ class PlsRuleSpriceApply
             StdPrcVsDilPricer::flush();
             $deadline = microtime(true) + 120;
             do {
-                $summary = app(PlsSprcDilAutoPushService::class)->run(
-                    skipPush: true,
-                    sleepMs: 0,
-                    cooldownMinutes: 0,
-                    errorCooldownMinutes: 0
-                );
+                $summary = app(PlsSprcDilAutoPushService::class)->run();
                 $errors = (array) ($summary['stats']['errors'] ?? []);
                 $locked = in_array('lock: already running', $errors, true);
                 if ($locked) {

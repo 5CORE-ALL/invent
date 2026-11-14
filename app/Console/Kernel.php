@@ -1745,7 +1745,8 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // PLS (ProLightSounds) Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ads, no LMP, Std max)
-        // → S PRC → ProLightSounds Shopify price. Same twice-daily idea as Amazon. /pls-pricing does not need to be open.
+        // → S PRC → ProLightSounds Shopify price. Same as Shopify B2C: the command saves S PRC, then queues the push for
+        // the shared S PRC worker (ChannelPushSpriceDailyEnqueue). /pls-pricing does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
         $schedule->command('pls:sprc-dil-auto-push')
             ->dailyAt('07:45')
