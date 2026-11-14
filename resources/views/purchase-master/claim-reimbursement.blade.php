@@ -55,26 +55,18 @@
     #claimModal .remove-row:disabled { background: #eef2f7; color: #94a3b8; cursor: not-allowed; opacity: .8; transform: none; }
 
     /* Claims Pending badge */
-    .claims-pending-badge {
-        display: inline-flex; align-items: center; gap: 10px;
-        padding: 7px 16px;
+    .badge.claims-pending-badge {
+        display: inline-flex; align-items: center;
+        padding: 8px 16px;
         border-radius: 999px;
-        background: linear-gradient(120deg, #fff7e0, #ffe9b8);
-        border: 1px solid #f5c969;
-        color: #92400e;
-        font-size: .82rem;
-        box-shadow: 0 4px 12px rgba(217, 119, 6, .15);
+        font-size: .82rem; font-weight: 700;
         white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 4px 12px rgba(217, 119, 6, .18);
     }
-    .claims-pending-badge i { color: #d97706; }
-    .claims-pending-badge .cp-label { font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: .7rem; }
-    .claims-pending-badge .cp-count {
-        min-width: 26px; text-align: center;
-        padding: 1px 9px; border-radius: 999px;
-        background: #d97706; color: #fff; font-weight: 800;
-    }
-    .claims-pending-badge .cp-amount { font-weight: 800; font-size: .95rem; color: #78350f; font-variant-numeric: tabular-nums; }
-    .claims-pending-badge .cp-sep { width: 1px; height: 16px; background: #f0c36a; }
+    .badge.cp-count-badge { background: linear-gradient(120deg, #fff7e0, #ffe9b8); border: 1px solid #f5c969; color: #92400e; }
+    .badge.cp-count-badge i { color: #d97706; }
+    .badge.cp-amount-badge { background: linear-gradient(120deg, #d97706, #b45309); border: 1px solid #b45309; color: #fff; }
 
     /* Action section (now inside the claim modal): always a light yellow background */
     #claimModal .claim-action-card {
@@ -501,13 +493,14 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex align-items-center flex-wrap gap-3">
                         <h4 class="mb-0">Claim & Reimbursement</h4>
-                        <span id="claimsPendingBadge" class="claims-pending-badge" title="Active claims that are not archived / resolved">
-                            <i class="fas fa-hourglass-half"></i>
-                            <span class="cp-label">Claims Pending</span>
-                            <span class="cp-count" id="claimsPendingCount">-</span>
-                            <span class="cp-sep"></span>
-                            <span class="cp-label">Total Amt</span>
-                            <span class="cp-amount">$<span id="claimsPendingAmount">-</span></span>
+                        {{-- Two real .badge elements: Auto Task Events (ATE) reads them as "Claims Pending" and "Total Amt". --}}
+                        <span class="d-inline-flex align-items-center gap-2 flex-wrap">
+                            <span id="claimsPendingCountBadge" class="badge claims-pending-badge cp-count-badge" title="Active claims that are not archived / resolved">
+                                <i class="fas fa-hourglass-half me-1"></i>Claims Pending: <span id="claimsPendingCount">-</span>
+                            </span>
+                            <span id="claimsPendingAmountBadge" class="badge claims-pending-badge cp-amount-badge" title="Total amount of the pending claims">
+                                Total Amt: $<span id="claimsPendingAmount">-</span>
+                            </span>
                         </span>
                     </div>
                     <div class="d-flex align-items-center gap-2">

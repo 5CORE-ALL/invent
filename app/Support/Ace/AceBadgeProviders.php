@@ -4,6 +4,7 @@ namespace App\Support\Ace;
 
 use App\Http\Controllers\AmazonAds\AmazonFbmTargetingController;
 use App\Http\Controllers\AmazonAdsMissingController;
+use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 
 /**
  * Pages whose badge numbers the SERVER can compute. Badge rules on these pages are checked by the daily
@@ -18,6 +19,7 @@ class AceBadgeProviders
         return [
             AcePages::pageKey('amazon-ads/fbm-targeting') => fn () => app(AmazonFbmTargetingController::class)->aceBadgeValues(),
             AcePages::pageKey('amazon-ads/missing') => fn () => app(AmazonAdsMissingController::class)->aceBadgeValues(),
+            AcePages::pageKey('claim-reimbursement') => fn () => app(ClaimReimbursementController::class)->aceBadgeValues(),
         ];
     }
 

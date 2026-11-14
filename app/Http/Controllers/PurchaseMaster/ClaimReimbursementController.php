@@ -90,6 +90,22 @@ class ClaimReimbursementController extends Controller
     }
 
     /**
+     * Badge numbers for Auto Task Events (ATE): keys are the badge element ids on the page, so rules made
+     * in the browser and the server-side daily check use the same badges. Covers all suppliers.
+     *
+     * @return list<array{key: string, label: string, value: int|float}>
+     */
+    public function aceBadgeValues(): array
+    {
+        $query = ClaimReimbursement::where('is_archived', false);
+
+        return [
+            ['key' => 'claimsPendingCountBadge', 'label' => 'Claims Pending', 'value' => (clone $query)->count()],
+            ['key' => 'claimsPendingAmountBadge', 'label' => 'Total Amt', 'value' => (int) round((float) (clone $query)->sum('total_amount'))],
+        ];
+    }
+
+    /**
      * "Claims Pending" badge: number of active (not archived / resolved) claims and their total amount.
      */
     public function getPendingSummary(Request $request)
