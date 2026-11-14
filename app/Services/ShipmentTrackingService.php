@@ -1463,11 +1463,12 @@ class ShipmentTrackingService
             return [];
         }
 
+        $this->last17Error = '';
         $this->post17Track('/register', $payload);
         $resp = $this->post17Track('/gettrackinfo', $payload);
 
         $out = [];
-        $accepted = data_get($resp, 'data.accepted', []);
+        $accepted = (array) data_get($resp, 'data.accepted', []);
         foreach ($accepted as $row) {
             $number = (string) data_get($row, 'number', '');
             if ($number === '') {
@@ -1522,7 +1523,7 @@ class ShipmentTrackingService
             ];
         }
 
-        // Register is async: the first read is often empty. Ask once more before giving up,
+        // Register is async: the first read is often empty. Ask again before giving up,
         // so a delivered package is not left blank for a whole run.
         $waiting = [];
         foreach ($payload as $item) {
@@ -1536,26 +1537,52 @@ class ShipmentTrackingService
             if (app()->runningInConsole()) {
                 sleep(3);
             }
-            $again = $this->post17Track('/gettrackinfo', $waiting);
-            $accepted = data_get($again, 'data.accepted', []);
-            foreach ($accepted as $row) {
-                $number = (string) data_get($row, 'number', '');
-                $rawStatus = (string) data_get($row, 'track_info.latest_status.status', '');
-                if ($number === '' || $rawStatus === '') {
-                    continue;
+            // One bad number can make 17TRACK drop the whole batch, so the retry goes in small groups.
+            $limit = app()->runningInConsole() ? 40 : 10;
+            foreach (array_slice(array_chunk($waiting, 5), 0, (int) ceil($limit / 5)) as $group) {
+                $again = $this->post17Track('/gettrackinfo', $group);
+                foreach ((array) data_get($again, 'data.accepted', []) as $row) {
+                    $number = (string) data_get($row, 'number', '');
+                    $rawStatus = (string) data_get($row, 'track_info.latest_status.status', '');
+                    if ($number === '' || $rawStatus === '') {
+                        continue;
+                    }
+                    $detail = (string) (data_get($row, 'track_info.latest_event.description')
+                        ?? data_get($row, 'track_info.latest_status.sub_status')
+                        ?? '');
+                    $out[$number] = [
+                        'status' => $this->normalize17TrackStatus($rawStatus),
+                        'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
+                        'provider' => '17track',
+                    ];
                 }
-                $detail = (string) (data_get($row, 'track_info.latest_event.description')
-                    ?? data_get($row, 'track_info.latest_status.sub_status')
-                    ?? '');
-                $out[$number] = [
-                    'status' => $this->normalize17TrackStatus($rawStatus),
-                    'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
-                    'provider' => '17track',
-                ];
             }
         }
 
+        // A number 17TRACK never mentioned: say why, so the sync log is no longer just "returned nothing".
+        foreach ($payload as $item) {
+            if (isset($out[$item['number']])) {
+                continue;
+            }
+            $out[$item['number']] = $this->transientResult(
+                '17track',
+                '17TRACK gave no answer for this number'.($this->last17Error !== '' ? ': '.$this->last17Error : '')
+            );
+        }
+
         return $out;
+    }
+
+    /** Last problem 17TRACK reported (HTTP error, or an error code in the reply body). */
+    private string $last17Error = '';
+
+    /** Raw 17TRACK call for the tracking:check command. */
+    public function raw17Track(string $path, array $body): array
+    {
+        $this->last17Error = '';
+        $resp = $this->post17Track($path, $body);
+
+        return ['response' => $resp, 'error' => $this->last17Error];
     }
 
     private function post17Track(string $path, array $body): array
@@ -1574,16 +1601,29 @@ class ShipmentTrackingService
                     'status' => $response->status(),
                     'body' => mb_substr($response->body(), 0, 500),
                 ]);
+                $this->last17Error = $path.' HTTP '.$response->status().' '.mb_substr(trim((string) $response->body()), 0, 200);
 
                 return [];
             }
 
-            return $response->json() ?? [];
+            $json = $response->json() ?? [];
+            // 17TRACK answers HTTP 200 and puts failures in the body: {"code": <non-zero>, "data": {"errors": [...]}}.
+            $code = data_get($json, 'code');
+            if ($code !== null && (int) $code !== 0) {
+                $msg = (string) (data_get($json, 'data.errors.0.message') ?? data_get($json, 'message') ?? '');
+                $this->last17Error = $path.' code '.$code.($msg !== '' ? ' '.$msg : '');
+                Log::warning('ShipmentTracking: 17track error code', ['path' => $path, 'code' => $code, 'message' => $msg]);
+            } elseif (is_array(data_get($json, 'data.errors')) && data_get($json, 'data.errors') !== []) {
+                $this->last17Error = $path.' '.mb_substr((string) json_encode(data_get($json, 'data.errors')), 0, 200);
+            }
+
+            return $json;
         } catch (\Throwable $e) {
             Log::error('ShipmentTracking: 17track request failed', [
                 'path' => $path,
                 'error' => $e->getMessage(),
             ]);
+            $this->last17Error = $path.' '.$e->getMessage();
 
             return [];
         }
