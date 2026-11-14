@@ -232,6 +232,7 @@ final class ClearanceHistory
             $vis = $row && is_array($row->visibility) ? $row->visibility : [];
             $days = is_array($vis['days'] ?? null) ? $vis['days'] : [];
             $days[$today] = ['count' => max(0, $count), 'inv' => max(0, $inv)];
+            $days = self::seedMissingDays($days, $today, $count, $inv);
             ksort($days);
             if (count($days) > self::CHANNEL_KEEP_DAYS) {
                 $days = array_slice($days, -self::CHANNEL_KEEP_DAYS, null, true);
@@ -241,6 +242,47 @@ final class ClearanceHistory
                 ['visibility' => ['days' => $days], 'column_order' => []]
             );
         });
+    }
+
+    /**
+     * A page that has no history yet but already shows every clearance SKU (its count and INV equal the all-SKU live total)
+     * has exactly the all-SKU history, so the last 30 days it never saved are filled from clearance_daily_counts. A page that
+     * shows only some of the clearance SKUs is left alone: its past days stay empty rather than get a wrong number.
+     *
+     * @param  array<string, mixed>  $days
+     * @return array<string, mixed>
+     */
+    private static function seedMissingDays(array $days, string $today, int $count, int $inv): array
+    {
+        if (! Schema::hasTable('clearance_daily_counts')) {
+            return $days;
+        }
+        $start = Carbon::parse($today, self::TZ)->subDays(29)->toDateString();
+        $missing = false;
+        for ($d = Carbon::parse($start, self::TZ); $d->toDateString() < $today; $d->addDay()) {
+            if (! isset($days[$d->toDateString()])) {
+                $missing = true;
+                break;
+            }
+        }
+        if (! $missing) {
+            return $days;
+        }
+        $all = self::liveTotals();
+        if ($count !== $all['count'] || $inv !== $all['inv']) {
+            return $days;
+        }
+        $rows = DB::table('clearance_daily_counts')
+            ->where('record_date', '>=', $start)->where('record_date', '<', $today)
+            ->get(['record_date', 'sku_count', 'inv_units']);
+        foreach ($rows as $r) {
+            $date = Carbon::parse($r->record_date)->toDateString();
+            if (! isset($days[$date])) {
+                $days[$date] = ['count' => (int) $r->sku_count, 'inv' => (int) $r->inv_units, 'seeded' => true];
+            }
+        }
+
+        return $days;
     }
 
     /**
