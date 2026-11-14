@@ -210,6 +210,9 @@
                         <select id="of-status-filter" class="form-select form-select-sm" style="width:110px;" title="Status">
                             <option value="">Status</option>
                         </select>
+                        <select id="of-mp-status-filter" class="form-select form-select-sm" style="width:190px;" title="Marketplace Tracking Status: the status each marketplace reported at its last fetch">
+                            <option value="">Marketplace Tracking Status</option>
+                        </select>
                         @if(!empty($ofScanPendingOnly))
                             <select id="of-alert-filter" class="form-select form-select-sm" style="width:150px;" title="Show only rows with the red triangle alert (over 36 hours since the order time), or all rows">
                                 <option value="alert" selected>&#9650; Triangle alert</option>
@@ -691,6 +694,32 @@
         return value === '' ? null : [value];
     }
 
+    function mpStatusLabel(row) {
+        const value = String((row && row.mp_order_status) || '').trim();
+        return value ? value : '—';
+    }
+
+    // Marketplace Tracking Status dropdown: every value in the table with its count, "—" for orders not fetched yet.
+    function renderMpStatusOptions(rows) {
+        const el = document.getElementById('of-mp-status-filter');
+        if (!el) return;
+        const counts = {};
+        (rows || []).forEach(function (row) {
+            const label = mpStatusLabel(row);
+            counts[label] = (counts[label] || 0) + 1;
+        });
+        const labels = Object.keys(counts).sort(function (a, b) {
+            if (a === '—') return 1;
+            if (b === '—') return -1;
+            return a.localeCompare(b);
+        });
+        const current = String(el.value || '').trim();
+        el.innerHTML = '<option value="">Marketplace Tracking Status</option>' + labels.map(function (label) {
+            return '<option value="' + escapeHtml(label) + '">' + escapeHtml(label) + ' (' + counts[label].toLocaleString() + ')</option>';
+        }).join('');
+        el.value = (current && labels.indexOf(current) !== -1) ? current : '';
+    }
+
     function renderStatusOptions(rows) {
         const el = document.getElementById('of-status-filter');
         if (!el) return;
@@ -724,6 +753,7 @@
             data && data.tracking,
             data && data.carrier,
             data && data.tracking_status,
+            data && data.mp_order_status,
             data && data.paid_label,
             data && data.customer_name,
             data && data.customer_email,
@@ -752,8 +782,9 @@
         const channel = String(document.getElementById('of-channel-filter')?.value || '').trim().toLowerCase();
         const paid = String(document.getElementById('of-paid-filter')?.value || '').trim();
         const statuses = selectedStatuses();
+        const mpStatus = String(document.getElementById('of-mp-status-filter')?.value || '').trim();
         const onlyAlerts = alertsOnly();
-        if (!q && !channel && !paid && statuses === null && !onlyAlerts) {
+        if (!q && !channel && !paid && statuses === null && !mpStatus && !onlyAlerts) {
             table.clearFilter(true);
             countsFromRows(table.getData());
             return;
@@ -762,6 +793,7 @@
         table.setFilter(function (data) {
             if (onlyAlerts && !data.scan_alert) return false;
             if (statuses && statuses.indexOf(statusLabel(data)) === -1) return false;
+            if (mpStatus && mpStatusLabel(data) !== mpStatus) return false;
             if (paid && String(data.paid_label || '') !== paid) return false;
             if (channel && !String(data.channel || '').toLowerCase().includes(channel)) return false;
             if (!words.length) return true;
@@ -845,6 +877,7 @@
         dataLoaded: function () {
             table.setSort([{ column: 'order_date', dir: defaultSortDir }]);
             renderStatusOptions(table.getData());
+        renderMpStatusOptions(table.getData());
             applyFilters(table);
             setTimeout(function () {
                 statusWave = 0;
@@ -950,6 +983,8 @@
                 title: 'Marketplace Tracking Status',
                 field: 'mp_order_status',
                 minWidth: 140,
+                sorter: 'string',
+                headerSort: true,
                 headerHozAlign: 'center',
                 headerTooltip: 'Status the marketplace the order came from reports for it, fetched from that marketplace API twice a day (9:00 and 14:00 California time) or with the Fetch tracking status button',
                 formatter: function (cell) {
@@ -1066,7 +1101,7 @@
         refreshSavedNavCounts();
     });
 
-    ['of-search', 'of-channel-filter', 'of-paid-filter', 'of-alert-filter'].forEach(function (id) {
+    ['of-search', 'of-channel-filter', 'of-paid-filter', 'of-alert-filter', 'of-mp-status-filter'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('input', function () { applyFilters(table); });
         document.getElementById(id)?.addEventListener('change', function () { applyFilters(table); });
     });
@@ -1511,6 +1546,7 @@
             if (sorters.length) table.setSort(sorters.map(function (s) { return { column: s.field, dir: s.dir }; }));
         } catch (e) { /* keep current order */ }
         renderStatusOptions(table.getData());
+        renderMpStatusOptions(table.getData());
         applyFilters(table);
         setNavCount('create_orders', table.getData().filter(function (r) { return r.manual; }).length);
         setTimeout(function () {
