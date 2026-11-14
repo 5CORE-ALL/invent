@@ -120,7 +120,10 @@ class ChargebackOsizeSync
                 ->get(['id', 'sku']);
             $found = [];
             foreach ($bySku as $p) {
-                $k = strtoupper(trim((string) $p->sku));
+                $k = strtoupper(trim((string) preg_replace('/\s+/', ' ', (string) $p->sku)));
+                if (! isset($standalone[$k])) {
+                    continue;
+                }
                 $valueById[(int) $p->id] = $standalone[$k];
                 $found[$k] = true;
             }
