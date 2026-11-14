@@ -24,7 +24,7 @@ class AliexpressListingCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(bool $requirePositiveInv = true): array
+    public static function counts(bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         $productMasters = ListingCountsEngine::productMasters();
         $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);

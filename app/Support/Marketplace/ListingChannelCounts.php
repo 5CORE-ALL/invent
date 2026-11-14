@@ -563,7 +563,7 @@ class ListingChannelCounts
             'Pending' => (int) ($counts['Pending'] ?? $counts['MissingL'] ?? 0),
         ];
 
-        $cacheKey = 'listing_channel_counts_v3:inv:'.$key;
+        $cacheKey = 'listing_channel_counts_v4:'.(ListingCountsEngine::REQUIRE_POSITIVE_INV ? 'inv' : 'cp').':'.$key;
         $previous = Cache::get($cacheKey);
         Cache::put($cacheKey, $counts, now()->addMinutes(10));
 
@@ -682,7 +682,7 @@ class ListingChannelCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = true, bool $throwOnFailure = false): array
+    public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV, bool $throwOnFailure = false): array
     {
         $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
         $key = self::normalize($channel);
@@ -703,7 +703,7 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v3:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
+        $cacheKey = 'listing_channel_counts_v4:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {
@@ -735,7 +735,7 @@ class ListingChannelCounts
     {
         $key = self::normalize($channel);
         foreach (['inv', 'cp'] as $mode) {
-            Cache::forget('listing_channel_counts_v3:'.$mode.':'.$key);
+            Cache::forget('listing_channel_counts_v4:'.$mode.':'.$key);
         }
         ListingCountsEngine::forgetCsvListedCounts();
         $counts = self::forChannel($channel, true);
@@ -800,7 +800,7 @@ class ListingChannelCounts
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    private static function loadCounts(string $normalizedKey, bool $requirePositiveInv = true): array
+    private static function loadCounts(string $normalizedKey, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         // EbayTwo — shared helper (source of truth for /listing-ebaytwo)
         if (in_array($normalizedKey, ['ebay2', 'ebaytwo'], true)) {

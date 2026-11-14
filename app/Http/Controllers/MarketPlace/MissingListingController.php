@@ -445,7 +445,7 @@ class MissingListingController extends Controller
             }
 
             try {
-                $listingCounts = ListingChannelCounts::forChannel($channel, true, true, true);
+                $listingCounts = ListingChannelCounts::forChannel($channel, true, ListingCountsEngine::REQUIRE_POSITIVE_INV, true);
             } catch (\Throwable $e) {
                 Log::warning('Missing Listing counts failed for '.$channel.': '.$e->getMessage());
                 // Keep the last good numbers instead of caching zeros for days.

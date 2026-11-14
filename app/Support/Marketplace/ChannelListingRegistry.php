@@ -491,7 +491,7 @@ class ChannelListingRegistry
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(string $key, bool $requirePositiveInv = true): array
+    public static function counts(string $key, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         $cfg = self::get($key);
         if ($cfg === null) {

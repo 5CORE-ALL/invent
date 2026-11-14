@@ -26,6 +26,14 @@ class ListingCountsEngine
      */
     public const NRL_DISABLED = true;
 
+    /**
+     * false = REQ / NRL / Listed / Missing L count every Active / 2BDC SKU, in stock or not.
+     * That is what the listing pages show in their badges (their INV filter starts on "INV: All"), so
+     * /missing-listing, the sidebar total and each listing page agree. Set to true to count only SKUs
+     * with Shopify stock again.
+     */
+    public const REQUIRE_POSITIVE_INV = false;
+
     private static ?Collection $productMastersMemo = null;
 
     /** @var list<string>|null */
@@ -75,7 +83,7 @@ class ListingCountsEngine
     public static function csvListedCounts(): array
     {
         try {
-            return Cache::remember('sheet_csv_listed_counts_v2', now()->addMinutes(10), function () {
+            return Cache::remember('sheet_csv_listed_counts_v3', now()->addMinutes(10), function () {
                 return self::loadCsvListedCounts();
             });
         } catch (\Throwable $e) {
@@ -86,7 +94,7 @@ class ListingCountsEngine
     public static function forgetCsvListedCounts(): void
     {
         try {
-            Cache::forget('sheet_csv_listed_counts_v2');
+            Cache::forget('sheet_csv_listed_counts_v3');
         } catch (\Throwable $e) {
             // ignore
         }
@@ -104,7 +112,8 @@ class ListingCountsEngine
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
-            if (self::shopifyInv(self::shopifyRow($shopify, $sku, (string) $item->sku)) <= 0) {
+            if (self::REQUIRE_POSITIVE_INV
+                && self::shopifyInv(self::shopifyRow($shopify, $sku, (string) $item->sku)) <= 0) {
                 continue;
             }
             $id = strtolower($sku);
@@ -182,7 +191,7 @@ class ListingCountsEngine
      * @param  array<string, string>  $listedIdBySkuLower  sku_lower → non-empty listing id when listed
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(Collection $nrValuesBySkuUpper, array $listedIdBySkuLower, bool $requirePositiveInv = true): array
+    public static function counts(Collection $nrValuesBySkuUpper, array $listedIdBySkuLower, bool $requirePositiveInv = self::REQUIRE_POSITIVE_INV): array
     {
         $productMasters = self::productMasters();
         $shopifyData = $requirePositiveInv ? self::requestShopifyMap() : collect();

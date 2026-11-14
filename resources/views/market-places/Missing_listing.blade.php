@@ -213,7 +213,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same count as the Missing L badge on each listing page)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
@@ -962,7 +962,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "In-stock (INV > 0) SKUs that are required (not NRL) — same as the listing page",
+                    headerTooltip: "All Active SKUs (in stock or not) that are required (not NRL) — same as the REQ badge on the listing page",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
@@ -984,7 +984,7 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "In-stock SKUs marked NRL / Not Required (deducted from Missing Listing) — same as the listing page",
+                    headerTooltip: "SKUs marked NRL / Not Required (deducted from Missing Listing) — same as the listing page",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
@@ -1006,7 +1006,7 @@
                     width: 110,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "In-stock SKUs that have a marketplace API listing id — same as the listing page",
+                    headerTooltip: "SKUs that have a marketplace listing id — same as the Listed badge on the listing page",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);
@@ -1028,7 +1028,7 @@
                     width: 180,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "In-stock REQ SKUs not listed on this marketplace — same Missing L badge as the listing page",
+                    headerTooltip: "REQ SKUs not listed on this marketplace (in stock or not) — same number as the Missing L badge on the listing page",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
                         const v = Number(cell.getValue() || 0);

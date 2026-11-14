@@ -58,7 +58,7 @@ class AutomatedListingPage
      * @param  iterable<int, object>  $rows
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function countsFromRows(iterable $rows, bool $requirePositiveInv = true): array
+    public static function countsFromRows(iterable $rows, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         $req = 0;
         $nrl = 0;
@@ -95,7 +95,7 @@ class AutomatedListingPage
     /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
      */
-    public static function counts(string $channelKey, bool $requirePositiveInv = true): array
+    public static function counts(string $channelKey, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         return self::countsFromRows(self::rows($channelKey, false, false), $requirePositiveInv);
     }
