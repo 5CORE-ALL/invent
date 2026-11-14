@@ -146,4 +146,16 @@ class AutomatedTaskAccessTest extends TestCase
 
         $this->assertCount(2, AutomatedTaskAccess::filterVisible($admin, $rows));
     }
+
+    public function test_president_level_login_can_modify_any_template_and_manage_checklists(): void
+    {
+        $shobha = $this->user('software5@5core.com', 'Shobha', 'member');
+        $theirs = $this->template(2, 'b@5core.com', 'c@5core.com');
+
+        $this->assertTrue(TaskPolicy::userCanModifyAutomatedTask($shobha, $theirs));
+        $this->assertTrue(\App\Http\Controllers\AutomatedTaskChecklistController::canManageChecklist($shobha));
+        $this->assertFalse(\App\Http\Controllers\AutomatedTaskChecklistController::canManageChecklist(
+            $this->user('a@5core.com', 'User A', 'member')
+        ));
+    }
 }

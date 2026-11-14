@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AutomateTaskChecklistForm;
 use App\Models\AutomateTaskChecklistSubmission;
 use App\Models\User;
+use App\Policies\TaskPolicy;
 use App\Support\AutomatedTaskAccess;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\SuperAdminAccess;
@@ -26,6 +27,12 @@ class AutomatedTaskChecklistController extends Controller
         }
 
         if (SuperAdminAccess::isTaskAdmin($user)) {
+            return true;
+        }
+
+        // President-level logins (president@, software5@ / Shobha) may edit any automated
+        // task template, so they may also add or edit its checklist.
+        if (TaskPolicy::userIsPresident($user)) {
             return true;
         }
 
