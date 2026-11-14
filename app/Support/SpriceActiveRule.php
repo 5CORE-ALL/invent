@@ -16,11 +16,6 @@ class SpriceActiveRule
         if ($channel === '') {
             return 'std';
         }
-        // PLS has one S PRC rule, Std prc vs dil (the Sprc Dil rule and its switch were removed from /pls-pricing).
-        // A stored 'dil' choice from before is ignored; the saved settings are left in the database.
-        if ($channel === 'pls') {
-            return 'std';
-        }
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', $channel.'_sprice_active_rule')
             ->first();
