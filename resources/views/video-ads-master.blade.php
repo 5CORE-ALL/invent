@@ -2461,11 +2461,38 @@
                 }
                 const note = document.getElementById('vam_link_note');
                 if (note) {
-                    note.textContent = locked
-                        ? '🔒 ' + LINK_LOCKED_MSG + ' Use the checklist icon in the table.'
-                        : 'A link icon will be shown in the table when a URL is set.';
+                    if (locked) {
+                        note.innerHTML = '🔒 ' + escapeHtml(LINK_LOCKED_MSG)
+                            + (editingId
+                                ? ' <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="vamFormOpenChecklist">'
+                                  + '<i class="fas fa-list-check me-1"></i>Open checklist</button>'
+                                : ' Save the row first, then use the checklist icon in the table.');
+                    } else {
+                        note.textContent = 'A link icon will be shown in the table when a URL is set.';
+                    }
                     note.classList.toggle('text-danger', !!locked);
                 }
+            }
+
+            // Open the checklist for the row being edited. The edit form is hidden
+            // meanwhile (its typed values are kept) and comes back once the
+            // checklist closes, with the Link / video fields re-checked.
+            let reopenRowAfterChecklist = false;
+            function openChecklistFromForm() {
+                const row = editingId ? table.getRow(editingId) : null;
+                if (!row) return;
+                reopenRowAfterChecklist = true;
+                const el = document.getElementById('vamRowModal');
+                el.addEventListener('hidden.bs.modal', function () { openChecklist(row); }, { once: true });
+                rowModal.hide();
+            }
+
+            function restoreRowFormAfterChecklist() {
+                if (!reopenRowAfterChecklist) return;
+                reopenRowAfterChecklist = false;
+                const row = editingId ? table.getRow(editingId) : null;
+                if (row) setFormLinkLocked(!canEditLink(row.getData()));
+                rowModal.show();
             }
 
             // Repopulates the CHANNEL <datalist>. Called on boot.
@@ -2650,6 +2677,10 @@
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
                 checklistModal      = new bootstrap.Modal(document.getElementById('vamChecklistModal'));
                 document.getElementById('vamChecklistSave').addEventListener('click', saveChecklist);
+                document.getElementById('vamChecklistModal').addEventListener('hidden.bs.modal', restoreRowFormAfterChecklist);
+                document.getElementById('vam_link_note').addEventListener('click', (e) => {
+                    if (e.target.closest('#vamFormOpenChecklist')) openChecklistFromForm();
+                });
                 document.getElementById('vamChecklistBody').addEventListener('change', updateChecklistProgress);
                 document.getElementById('vamChecklistBody').addEventListener('input', (e) => {
                     if (e.target.classList.contains('vam-cl-note-input')) updateChecklistProgress();
