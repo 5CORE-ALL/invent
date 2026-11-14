@@ -1401,6 +1401,10 @@
                                 <div class="amm-inv-block-subtitle">Inv@SP</div>
                                 <div id="amm-inv-sp-tabulator"></div>
                             </div>
+                            <div class="amm-inv-summary-tabulator-wrap" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
+                                <div class="amm-inv-block-subtitle">INV Summary</div>
+                                <div id="amm-inv-summary-tabulator"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2956,6 +2960,16 @@
             var chartSyncedAllMetrics = {};
             var chartSyncedChannelMetrics = {};
             var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 't_ads_pct', 'p_ads_pct', 'tat'];
+            // Projected badges: true = projected is better than L30 (green), false = not (red).
+            // Filled in updateSummaryStats(); applied last in paintDotBadgeBackgrounds().
+            var projVsL30Good = {};
+            function setProjVsL30(metric, projected, l30, lowerIsBetter) {
+                if (projected == null || l30 == null || !isFinite(projected) || !isFinite(l30)) {
+                    delete projVsL30Good[metric];
+                    return;
+                }
+                projVsL30Good[metric] = lowerIsBetter ? (projected < l30) : (projected > l30);
+            }
             // These Y / Today dots start from a "vs L30 average" pair, but as soon as the badge's
             // graph series is known (prefetched on load or opened by click) the dot is re-synced
             // to the graph (last point vs the day before) — see syncAllBadgeDotWithChart.
@@ -3406,10 +3420,8 @@
                             if (!el || rawVal == null) return 0;
                             const val = Math.round(parseFloat(rawVal) || 0);
                             let compact;
-                            if (Math.abs(val) >= 1000000) {
-                                compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                            } else if (Math.abs(val) >= 1000) {
-                                compact = Math.round(val / 1000) + 'K';
+                            if (Math.abs(val) >= 1000) {
+                                compact = Math.round(val / 1000).toLocaleString('en-US') + 'K';
                             } else {
                                 compact = String(val);
                             }
@@ -3484,6 +3496,7 @@
                                 tatBadge.setAttribute('data-exact-value', String(tatRounded));
                                 tatBadge.title = 'TAT = inv ÷ L30 Sales (months of stock): ' + tatRounded.toFixed(2);
                             }
+                            if (typeof ammInvRenderSummaryTabulator === 'function') ammInvRenderSummaryTabulator();
                         }
                         if (response.dot_trends && Object.keys(response.dot_trends).length) {
                             applyDotTrendsMap(response.dot_trends);
@@ -6952,6 +6965,23 @@
                         badge.style.removeProperty('-webkit-text-fill-color');
                     }
                 });
+                // Projected badges: green when projected beats L30, otherwise red (overrides the dot colour).
+                Object.keys(projVsL30Good).forEach(function(metric) {
+                    var badge = document.querySelector('#summary-stats .badge-chart-link[data-metric="' + metric + '"]');
+                    if (!badge) return;
+                    var good = projVsL30Good[metric];
+                    badge.style.setProperty('background-color', good ? '#22c55e' : '#ef4444', 'important');
+                    badge.style.setProperty('color', good ? '#052e16' : '#fff', 'important');
+                    badge.classList.toggle('amm-dot-down', !good);
+                    if (good) {
+                        badge.style.removeProperty('-webkit-text-fill-color');
+                    } else {
+                        badge.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+                    }
+                    badge.querySelectorAll('#total-p-sales-vs-sales, #total-p-npft-vs-npft').forEach(function(pctEl) {
+                        pctEl.style.setProperty('color', good ? '#052e16' : '#fff', 'important');
+                    });
+                });
                 document.querySelectorAll('#summary-stats .ebay2-summary-badge-row > .badge').forEach(function(badge) {
                     if (badge.querySelector('.summary-trend-dot')) return;
                     if (badge.classList.contains('amm-dot-down') || ammBadgeBgIsRed(badge)) {
@@ -7287,6 +7317,7 @@
                     $el.closest('.badge').attr('title',
                         'Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Dot matches the chart (vs previous day).');
                     setBadgeExact($el, val);
+                    setProjVsL30('p_sales', totalPSales, totalL30Sales);
                 })();
                 (function() {
                     const val = Math.round(totalL30Orders);
@@ -7405,6 +7436,7 @@
                     $el.closest('.badge').attr('title',
                         'P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
+                    setProjVsL30('p_groi_pct', avgPGroi, avgGroi);
                 })();
                 (function() {
                     const avgPNpft = totalPSales > 0 ? ((totalPGross - totalAdSpend) / totalPSales) * 100 : 0;
@@ -7414,6 +7446,7 @@
                     $el.closest('.badge').attr('title',
                         'Projected NPFT% = (Σ P-Sales × GPFT% − ad spend) ÷ Σ P-Sales. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
+                    setProjVsL30('p_npft', avgPNpft, avgNpft);
                 })();
                 (function() {
                     let pNet = 0;
@@ -7430,6 +7463,7 @@
                     $el.closest('.badge').attr('title',
                         'P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS. Same projected COGS as P GROI%: L30 COGS × (P-Sales ÷ L30 Sales). P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
+                    setProjVsL30('p_nroi_pct', avgPNroi, avgNroi);
                 })();
                 (function() {
                     const avgPAds = totalPSales > 0 ? (totalAdSpend / totalPSales) * 100 : 0;
@@ -7440,6 +7474,7 @@
                         'P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                     prefetchAllBadgeChartDot('p_ads_pct', val);
+                    setProjVsL30('p_ads_pct', avgPAds, avgAdsPercent, true);
                 })();
                 (function() {
                     let totalPViews = 0;
@@ -7453,6 +7488,7 @@
                         'P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
                     prefetchAllBadgeChartDot('p_views', val);
+                    setProjVsL30('p_views', totalPViews, totalViews);
                 })();
                 (function() {
                     let pcViews = 0, pcUnits = 0;
@@ -7469,10 +7505,12 @@
                         $el.closest('.badge').attr('title', baseTitle + ' ' + val.toFixed(2) + '%');
                         setBadgeExact($el, val);
                         prefetchAllBadgeChartDot('p_cvr', val);
+                        setProjVsL30('p_cvr', val, cvrPct);
                     } else {
                         $el.text('-');
                         $el.closest('.badge').attr('title', baseTitle);
                         setBadgeExact($el, null);
+                        setProjVsL30('p_cvr', null, null);
                     }
                 })();
                 (function() {
@@ -7487,6 +7525,7 @@
                         'P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
                     prefetchAllBadgeChartDot('p_orders', val);
+                    setProjVsL30('p_orders', totalPOrders, totalL30Orders);
                 })();
                 (function() {
                     let totalPNet = 0;
@@ -7513,6 +7552,7 @@
                     $el.closest('.badge').attr('title',
                         'Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is (L7 ÷ 7) × 30. $' + val.toLocaleString('en-US') + pctLabel + '. Dot matches the chart (vs previous day).');
                     setBadgeExact($el, val);
+                    setProjVsL30('p_npft_amt', totalPNet, netProfit);
                 })();
                 (function() {
                     const avgYNpft = totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0;
@@ -8956,6 +8996,112 @@
                 $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
                 ammInvRenderSpTabulator(slices);
+                ammInvLastSlices = slices;
+                ammInvRenderSummaryTabulator();
+            }
+
+            // INV Summary Tabulator: the INV badges (inv, Inv@SP, Inv@LP, TAT, Avail) plus the Inv@SP band rows, all in K.
+            var ammInvSummaryTable = null;
+            var ammInvLastSlices = [];
+            function ammInvKCompact(n) {
+                const v = Math.round(Number(n) || 0);
+                if (Math.abs(v) >= 1000) return '$' + Math.round(v / 1000).toLocaleString('en-US') + 'K';
+                return '$' + v.toLocaleString('en-US');
+            }
+            function ammInvBadgeExact(selector) {
+                const el = document.querySelector(selector);
+                if (!el) return null;
+                const raw = el.getAttribute('data-exact-value');
+                if (raw === null || raw === '') return null;
+                const n = parseFloat(raw);
+                return isFinite(n) ? n : null;
+            }
+            function ammInvRenderSummaryTabulator() {
+                const el = document.getElementById('amm-inv-summary-tabulator');
+                if (!el || typeof Tabulator === 'undefined') return;
+                const slices = ammInvLastSlices || [];
+                const tones = {
+                    zero: { bg: '#e5e7eb', fg: '#374151' },
+                    red1: { bg: '#fecaca', fg: '#7f1d1d' },
+                    red2: { bg: '#fee2e2', fg: '#991b1b' },
+                    green: { bg: '#dcfce7', fg: '#14532d' },
+                    pink: { bg: '#fce7f3', fg: '#9d174d' },
+                };
+                const rows = [];
+                [
+                    { id: 'm_inv', item: 'inv', sel: '.badge[data-metric="inventory"]', kind: 'money', bg: '#fcd34d', fg: '#000' },
+                    { id: 'm_sp', item: 'Inv@SP', sel: '.badge[data-metric="inv_at_sp"]', kind: 'money', bg: '#22c55e', fg: '#000' },
+                    { id: 'm_lp', item: 'Inv@LP', sel: '.badge[data-metric="inv_at_lp"]', kind: 'money', bg: '#ef4444', fg: '#fff' },
+                    { id: 'm_tat', item: 'TAT', sel: '.badge[data-metric="tat"]', kind: 'num', bg: '#ef4444', fg: '#fff' },
+                    { id: 'm_avail', item: 'Avail', sel: '[data-metric="fa_avail"]', kind: 'pct', bg: '#fcd34d', fg: '#000' },
+                ].forEach(function(m) {
+                    rows.push({
+                        id: m.id, section: 'Metrics', item: m.item, kind: m.kind, bg: m.bg, fg: m.fg,
+                        count: null, value: ammInvBadgeExact(m.sel), pct: null,
+                    });
+                });
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s.inv_at_sp) || 0); }, 0);
+                let skuTotal = 0;
+                slices.forEach(function(s) {
+                    const val = Number(s.inv_at_sp) || 0;
+                    const t = tones[s.key] || tones.red1;
+                    skuTotal += Number(s.count) || 0;
+                    rows.push({
+                        id: 'b_' + s.key, section: 'Inv@SP bands', item: s.label, kind: 'money', bg: t.bg, fg: t.fg, dot: s.color,
+                        count: Number(s.count) || 0, value: val, pct: total > 0 ? Math.round((val / total) * 100) : 0,
+                    });
+                });
+                if (slices.length) {
+                    rows.push({
+                        id: 'b_total', section: 'Inv@SP bands', item: 'Total', kind: 'money', isTotal: true,
+                        count: skuTotal, value: total, pct: total > 0 ? 100 : 0,
+                    });
+                }
+                if (ammInvSummaryTable) {
+                    ammInvSummaryTable.setData(rows);
+                    return;
+                }
+                ammInvSummaryTable = new Tabulator(el, {
+                    layout: 'fitColumns',
+                    data: rows,
+                    height: false,
+                    index: 'id',
+                    groupBy: 'section',
+                    groupHeader: function(value) { return '<span style="font-weight:800;">' + value + '</span>'; },
+                    columns: [
+                        {
+                            title: 'Item', field: 'item', headerSort: false, widthGrow: 2,
+                            formatter: function(cell) {
+                                const d = cell.getData();
+                                if (d.isTotal) return '<span style="font-weight:800;">Total</span>';
+                                const dot = d.dot
+                                    ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:' + d.dot + ';"></span>'
+                                    : '';
+                                return '<span style="display:inline-block;padding:2px 10px;border-radius:6px;font-weight:800;background:'
+                                    + d.bg + ';color:' + d.fg + ';">' + dot + d.item + '</span>';
+                            },
+                        },
+                        {
+                            title: 'SKUs', field: 'count', hozAlign: 'right', headerSort: false,
+                            formatter: function(cell) { const v = cell.getValue(); return v === null || v === undefined ? '' : v; },
+                        },
+                        {
+                            title: 'Value', field: 'value', hozAlign: 'right', headerSort: false,
+                            formatter: function(cell) {
+                                const d = cell.getData();
+                                const v = cell.getValue();
+                                if (v === null || v === undefined) return '-';
+                                if (d.kind === 'pct') return Math.round(v) + '%';
+                                if (d.kind === 'num') return Number(v).toFixed(2);
+                                return ammInvKCompact(v);
+                            },
+                        },
+                        {
+                            title: '% of total', field: 'pct', hozAlign: 'right', headerSort: false,
+                            formatter: function(cell) { const v = cell.getValue(); return v === null || v === undefined ? '' : v + '%'; },
+                        },
+                    ],
+                });
             }
 
             // Inv@SP Tabulator: one row per DIL band, same badge colours / numbers as the cards above.

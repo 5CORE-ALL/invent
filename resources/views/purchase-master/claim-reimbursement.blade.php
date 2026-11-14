@@ -835,42 +835,17 @@
                     }
                 },
                 {
-                    title: '<i class="fas fa-comments" title="Communication"></i>',
-                    field: "communication",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 45,
-                    cssClass: "comm-cell",
-                    formatter: function(cell) {
-                        return buildCommunicationDropdown(cell.getValue());
-                    }
-                },
-                {
-                    title: "Follow",
-                    field: "follow_up_date",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 80,
-                    editor: "date",
-                    formatter: function (cell) {
-                        return buildFollowUpDisplay(cell.getValue());
-                    },
-                    cellEdited: function (cell) {
-                        saveFollowUpDate(cell.getRow().getData().id, cell.getValue(), cell);
-                    }
-                },
-                {
-                    title: "Recd Amt/Goods $",
+                    title: "Recd",
                     field: "received_amount",
                     hozAlign: "center",
-                    width: 140,
+                    width: 80,
                     headerSort: false,
                     formatter: function (cell) {
                         const val = cell.getValue();
                         if (val && String(val).trim() !== '') {
                             return `<button class="btn btn-sm recd-amt-btn recd-done" title="${escapeHtml(val)}"><i class="fas fa-circle-check"></i></button>`;
                         }
-                        return `<button class="btn btn-sm btn-outline-primary recd-amt-btn"><i class="fas fa-plus me-1"></i> Add</button>`;
+                        return `<button class="btn btn-sm btn-outline-primary recd-amt-btn" title="Add Recd Amt/Goods"><i class="fas fa-plus"></i></button>`;
                     },
                     cellClick: function (e, cell) {
                         if (e.target.closest('.recd-amt-btn')) {
