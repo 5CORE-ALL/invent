@@ -272,6 +272,38 @@
             background-color: #f8f9fa;
         }
 
+        /* Type column header dropdown (undo the vertical/rotated header title styling) */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title:has(.amm-type-header-wrap) {
+            writing-mode: horizontal-tb;
+            transform: none;
+            height: auto;
+        }
+        .amm-type-header-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .amm-type-header-filter {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 40px;
+            height: 22px;
+            padding: 0 2px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #000;
+            text-align: center;
+            text-align-last: center;
+            background: #fff;
+            border: 1px solid #93c5fd;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .amm-type-header-filter.is-active {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+
         /* Vertical column headers */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: vertical-rl;
@@ -339,6 +371,81 @@
         }
         .variation-single-select.is-variation { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
         .variation-single-select.is-single { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+
+        /* Exec — image-only dropdown */
+        .amm-exec-trigger {
+            border: 0;
+            background: transparent;
+            padding: 0;
+            line-height: 0;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .amm-exec-trigger:hover .amm-exec-avatar,
+        .amm-exec-trigger:hover .amm-exec-empty { box-shadow: 0 0 0 2px #93c5fd; }
+        .amm-exec-avatar {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            overflow: hidden;
+            color: #fff;
+            font-weight: 700;
+            vertical-align: middle;
+        }
+        .amm-exec-avatar img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .amm-exec-empty {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px dashed #94a3b8;
+            color: #64748b;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .amm-exec-menu {
+            position: fixed;
+            z-index: 2000;
+            display: none;
+            flex-wrap: wrap;
+            gap: 6px;
+            width: 232px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 8px;
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, .18);
+        }
+        .amm-exec-opt {
+            border: 2px solid transparent;
+            background: transparent;
+            padding: 0;
+            line-height: 0;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .amm-exec-opt:hover { border-color: #93c5fd; }
+        .amm-exec-opt.is-selected { border-color: #0d6efd; }
+        .amm-exec-opt-clear {
+            width: 34px;
+            height: 34px;
+            line-height: 30px;
+            font-size: 18px;
+            color: #64748b;
+            border: 2px dashed #cbd5e1;
+        }
 
         /* Type labels — text + color only (no pill) */
         .type-badge {
@@ -3138,6 +3245,104 @@
                 }).always(function() { $sel.prop('disabled', false); });
             });
 
+            // Exec (executive) per channel: image-only dropdown, saved per row.
+            const execMap = @json(\App\Models\ChannelExecutive::map());
+            const execUsers = @json(\App\Models\ChannelExecutive::options());
+            const execUserById = {};
+            execUsers.forEach(function(u) { execUserById[u.id] = u; });
+
+            function execInitials(name) {
+                const parts = String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+                return parts.map(function(p) { return p.charAt(0).toUpperCase(); }).join('') || '?';
+            }
+            function execColor(name) {
+                let h = 0;
+                String(name || '').split('').forEach(function(c) { h = (h * 31 + c.charCodeAt(0)) % 360; });
+                return 'hsl(' + h + ',55%,45%)';
+            }
+            function execEsc(s) {
+                return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            // Image-only avatar (photo, or coloured initials when there is no photo / it fails to load).
+            function execAvatarHtml(user, size) {
+                const initials = execEsc(execInitials(user.name));
+                const style = 'width:' + size + 'px;height:' + size + 'px;background:' + execColor(user.name) + ';font-size:' + Math.round(size * 0.4) + 'px;';
+                const img = user.avatar
+                    ? '<img src="' + execEsc(user.avatar) + '" alt="" loading="lazy" onerror="this.remove()">'
+                    : '';
+                return '<span class="amm-exec-avatar" style="' + style + '">' + initials + img + '</span>';
+            }
+            function execUserFor(rowData) {
+                const id = execMap[variationKeyOf(rowData && rowData['Channel '])];
+                return id ? execUserById[id] : null;
+            }
+
+            let execMenuEl = null;
+            let execMenuCtx = null;
+            function closeExecMenu() {
+                if (execMenuEl) execMenuEl.style.display = 'none';
+                execMenuCtx = null;
+            }
+            function openExecMenu(anchorEl, channel) {
+                if (!execMenuEl) {
+                    execMenuEl = document.createElement('div');
+                    execMenuEl.className = 'amm-exec-menu';
+                    document.body.appendChild(execMenuEl);
+                    execMenuEl.addEventListener('click', function(e) {
+                        const btn = e.target.closest('[data-exec-id]');
+                        if (!btn || !execMenuCtx) return;
+                        e.stopPropagation();
+                        saveExec(execMenuCtx, btn.getAttribute('data-exec-id'));
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (execMenuEl.style.display !== 'none' && !execMenuEl.contains(e.target)) closeExecMenu();
+                    });
+                    window.addEventListener('scroll', closeExecMenu, { passive: true, capture: true });
+                    window.addEventListener('resize', closeExecMenu);
+                }
+                const current = execMap[variationKeyOf(channel)] || 0;
+                let html = '<button type="button" class="amm-exec-opt amm-exec-opt-clear' + (!current ? ' is-selected' : '') + '" data-exec-id="" title="No executive">&times;</button>';
+                execUsers.forEach(function(u) {
+                    html += '<button type="button" class="amm-exec-opt' + (u.id === current ? ' is-selected' : '') + '" data-exec-id="' + u.id + '" title="' + execEsc(u.name) + '">' + execAvatarHtml(u, 30) + '</button>';
+                });
+                execMenuEl.innerHTML = html;
+                execMenuCtx = channel;
+                execMenuEl.style.display = 'flex';
+                const r = anchorEl.getBoundingClientRect();
+                const mw = execMenuEl.offsetWidth;
+                const mh = execMenuEl.offsetHeight;
+                let left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8));
+                let top = r.bottom + 4;
+                if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+                execMenuEl.style.left = left + 'px';
+                execMenuEl.style.top = top + 'px';
+            }
+            function saveExec(channel, userId) {
+                const key = variationKeyOf(channel);
+                const prev = execMap[key] || '';
+                closeExecMenu();
+                $.ajax({
+                    url: '{{ route('channels.master.executive') }}',
+                    method: 'POST',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), channel: channel, user_id: userId },
+                }).done(function() {
+                    if (userId) execMap[key] = parseInt(userId, 10); else delete execMap[key];
+                    // Repaint the Exec cell(s) of this channel.
+                    table.getRows().forEach(function(row) {
+                        if (variationKeyOf(row.getData()['Channel ']) === key) {
+                            const cell = row.getCell('executive');
+                            if (cell) cell.getElement().innerHTML = cell.getColumn().getDefinition().formatter(cell);
+                        }
+                    });
+                    const u = userId ? execUserById[userId] : null;
+                    if (typeof showToast === 'function') showToast('success', channel + ': ' + (u ? u.name : 'executive cleared'));
+                }).fail(function(xhr) {
+                    if (prev) execMap[key] = prev;
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || Object.values(xhr.responseJSON.errors || {}).flat().join(' '))) || 'Could not save Exec.';
+                    if (typeof showToast === 'function') showToast('error', msg); else alert(msg);
+                });
+            }
+
             table = new Tabulator("#marketplace-table", {
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
@@ -3278,11 +3483,6 @@
                     if (typeof showToast === 'function') showToast('error', msg);
                 },
                 columns: [{
-                        title: "",
-                        field: "_pin",
-                        visible: false,
-                        sorter: "number"
-                    }, {
                         title: "Img",
                         field: "logo",
                         frozen: true,
@@ -3345,7 +3545,40 @@
                         hozAlign: "center",
                         width: 48,
                         minWidth: 44,
-                        headerTooltip: "Channel type (B2C, B2B, C2C, DS, Wholesale).",
+                        headerTooltip: "Channel type (B2C, B2B, C2C, DS, Wholesale). Use the dropdown to filter.",
+                        // Dropdown filter inside the header; kept in sync with the toolbar #type-filter.
+                        titleFormatter: function() {
+                            const options = [
+                                ['all', 'Type'],
+                                ['B2C', 'B2C'],
+                                ['B2B', 'B2B'],
+                                ['C2C', 'C2C'],
+                                ['Dropship', 'DS'],
+                                ['Wholesale', 'WS'],
+                            ];
+                            const current = $('#type-filter').val() || 'all';
+                            const wrap = document.createElement('div');
+                            wrap.className = 'amm-type-header-wrap';
+                            const select = document.createElement('select');
+                            select.className = 'amm-type-header-filter' + (current !== 'all' ? ' is-active' : '');
+                            select.setAttribute('aria-label', 'Filter by Type');
+                            select.title = 'Filter by Type';
+                            options.forEach(function(opt) {
+                                const o = document.createElement('option');
+                                o.value = opt[0];
+                                o.textContent = opt[1];
+                                if (opt[0] === current) o.selected = true;
+                                select.appendChild(o);
+                            });
+                            ['click', 'mousedown', 'dblclick', 'touchstart'].forEach(function(evt) {
+                                select.addEventListener(evt, function(e) { e.stopPropagation(); });
+                            });
+                            select.addEventListener('change', function() {
+                                $('#type-filter').val(select.value).trigger('change');
+                            });
+                            wrap.appendChild(select);
+                            return wrap;
+                        },
                         formatter: function(cell) {
                             const type = (cell.getValue() || '').toString().trim();
                             if (!type) {
@@ -3376,6 +3609,39 @@
                             const title = titles[slug] || label;
                             const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
                             return `<span class="type-badge ${cls}" title="${safeTitle}">${safe}</span>`;
+                        }
+                    },
+                    {
+                        // Exec — executive for the channel; image-only dropdown, saved per row.
+                        title: "Exec",
+                        field: "executive",
+                        frozen: true,
+                        responsive: 0,
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 52,
+                        minWidth: 48,
+                        headerTooltip: "Executive for this channel. Click the picture to change.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ua = execUserFor(aRow.getData());
+                            const ub = execUserFor(bRow.getData());
+                            const na = ua ? ua.name.toLowerCase() : '';
+                            const nb = ub ? ub.name.toLowerCase() : '';
+                            return na === nb ? 0 : (na < nb ? -1 : 1);
+                        },
+                        formatter: function(cell) {
+                            const user = execUserFor(cell.getRow().getData());
+                            const inner = user
+                                ? execAvatarHtml(user, 28)
+                                : '<span class="amm-exec-empty" aria-hidden="true">+</span>';
+                            const title = user ? user.name : 'Assign executive';
+                            return '<button type="button" class="amm-exec-trigger" title="' + execEsc(title) + '" aria-label="Executive">' + inner + '</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            const trigger = e.target.closest('.amm-exec-trigger');
+                            if (!trigger) return;
+                            e.stopPropagation();
+                            openExecMenu(trigger, String(cell.getRow().getData()['Channel '] || '').trim());
                         }
                     },
                     {
@@ -3449,6 +3715,14 @@
                             }
                             return `<span style="font-weight:600;">${alias}</span>`;
                         }
+                    },
+                    {
+                        // Hidden sort helper. Must stay AFTER the left-frozen columns: Tabulator
+                        // treats every frozen column that follows a non-frozen one as right-frozen.
+                        title: "",
+                        field: "_pin",
+                        visible: false,
+                        sorter: "number"
                     },
                     {
                         title: "Missing L",
@@ -7438,6 +7712,11 @@
 
             // Type Filter
             $('#type-filter').on('change', function() {
+                // Keep the header dropdown in sync with the toolbar dropdown.
+                const v = $(this).val() || 'all';
+                $('.amm-type-header-filter').each(function() {
+                    $(this).val(v).toggleClass('is-active', v !== 'all');
+                });
                 applyMasterFilters();
             });
 
@@ -7559,7 +7838,7 @@
 
             // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
             const COLUMN_MENU_GROUPS = [
-                { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation', 'variation_single'] },
+                { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'executive', 'brand_authorisation', 'variation_single'] },
                 { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%', 'T GPFT%', 'T GROI%', 'T NPFT%', 'T NROI%'] },
                 { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%', 'Y Ads%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
