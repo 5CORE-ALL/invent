@@ -197,6 +197,8 @@
                         <input type="date" id="of-date-to" class="form-control form-control-sm" style="width:140px;" value="{{ $ofDateTo ?? '' }}" min="{{ $ofDateEarliest ?? '2026-09-15' }}" title="To date">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="of-apply-dates">Apply</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="of-clear-dates">Last 30 days</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="of-mp-fetch-btn" title="Fetch the order status and tracking status from each marketplace's own API now (also runs automatically at 9:00 and 14:00 California time)"><i class="fas fa-cloud-download-alt me-1" aria-hidden="true"></i>Fetch tracking status from marketplace</button>
+                        <span class="small text-muted" id="of-mp-fetch-info"></span>
                         <input type="text" id="of-channel-filter" class="form-control form-control-sm" style="width:150px;" list="of-channel-datalist" placeholder="Channel…" autocomplete="off">
                         <datalist id="of-channel-datalist">
                             @foreach(($ofChannels ?? []) as $chOpt)
@@ -830,6 +832,9 @@
             setCount('of-alert-count', response && response.alert_count);
             navStatusCounts = (response && response.nav_status_counts) || null;
             setNavCounts(response && response.nav_counts);
+            if (typeof showMarketplaceFetchInfo === 'function') {
+                showMarketplaceFetchInfo(response && response.marketplace_fetch);
+            }
             if (response && response.success === false) {
                 showTablePlaceholder(response.message || 'Failed to load orders.');
             } else if (!rows.length) {
@@ -939,6 +944,20 @@
                 formatter: function (cell) {
                     const value = String(cell.getValue() || '').trim();
                     return value && value !== '—' ? escapeHtml(value) : '—';
+                },
+            },
+            {
+                title: 'Marketplace Tracking Status',
+                field: 'mp_order_status',
+                minWidth: 140,
+                headerHozAlign: 'center',
+                headerTooltip: 'Status the marketplace the order came from reports for it, fetched from that marketplace API twice a day (9:00 and 14:00 California time) or with the Fetch tracking status button',
+                formatter: function (cell) {
+                    const value = String(cell.getValue() || '').trim();
+                    if (!value) return '—';
+                    const at = String(cell.getRow().getData().mp_order_status_at || '').trim();
+                    const title = at ? ' title="Fetched from the marketplace ' + escapeHtml(at) + ' (California time)"' : '';
+                    return '<span' + title + '>' + escapeHtml(value) + '</span>';
                 },
             },
             {
@@ -1147,6 +1166,66 @@
     const statusUrl = @json(route('order.fulfillment.tracking.status'));
     let trackingLookupRunning = false;
     let trackingFailCount = 0;
+
+    // "Fetch tracking status from marketplace": runs the marketplace fetch in the background, then reloads the table.
+    const mpFetchUrl = @json(route('order.fulfillment.marketplace-status.fetch'));
+    const mpStateUrl = @json(route('order.fulfillment.marketplace-status.state'));
+    let mpFetchPoll = null;
+    const mpFetchBtn = document.getElementById('of-mp-fetch-btn');
+    const mpFetchLabel = mpFetchBtn ? mpFetchBtn.innerHTML : '';
+
+    function showMarketplaceFetchInfo(info) {
+        const el = document.getElementById('of-mp-fetch-info');
+        if (!el || !info) return;
+        const running = info.state === 'running';
+        if (mpFetchBtn) {
+            mpFetchBtn.disabled = running;
+            mpFetchBtn.innerHTML = running
+                ? '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Fetching…'
+                : mpFetchLabel;
+        }
+        if (running) {
+            pollMarketplaceFetch();
+            el.textContent = info.message || 'Fetching from the marketplaces…';
+        } else if (info.state === 'failed') {
+            el.textContent = 'Last fetch failed: ' + (info.message || 'see logs');
+        } else if (info.last_run) {
+            el.textContent = 'Last fetched ' + info.last_run + ' (California time)';
+        } else {
+            el.textContent = 'Fetched at 9:00 and 14:00 California time';
+        }
+    }
+
+    function pollMarketplaceFetch() {
+        if (mpFetchPoll) return;
+        mpFetchPoll = setInterval(function () {
+            $.getJSON(mpStateUrl).done(function (info) {
+                showMarketplaceFetchInfo(info);
+                if (info.state !== 'running') {
+                    clearInterval(mpFetchPoll);
+                    mpFetchPoll = null;
+                    table.setData();
+                }
+            });
+        }, 10000);
+    }
+
+    mpFetchBtn?.addEventListener('click', function () {
+        if (!confirm('Fetch the order status and tracking status from every marketplace now? It runs in the background and can take several minutes. The table reloads when it finishes.')) return;
+        mpFetchBtn.disabled = true;
+        $.ajax({
+            url: mpFetchUrl,
+            type: 'POST',
+            dataType: 'json',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+        }).done(function (res) {
+            showMarketplaceFetchInfo(res);
+            pollMarketplaceFetch();
+        }).fail(function (xhr) {
+            mpFetchBtn.disabled = false;
+            alert((xhr.responseJSON && xhr.responseJSON.message) || 'Could not start the fetch.');
+        });
+    });
 
     function csrfToken() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';

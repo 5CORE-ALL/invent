@@ -141,6 +141,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $rows = $this->attachCpMasterInventory($rows);
             $rows = $this->attachSavedTracking($rows);
             $rows = $this->attachCarrierAndTrackingStatus($rows);
+            $rows = $this->attachMarketplaceStatuses($rows);
             [$navCounts, $navStatusCounts] = $manualOnly
                 ? [$this->emptyFulfillmentNavCounts(), []]
                 : $this->fulfillmentNavCounts($rows);
@@ -207,6 +208,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 'date_to' => $to->toDateString(),
                 'nav_counts' => $navCounts,
                 'nav_status_counts' => $navStatusCounts,
+                'marketplace_fetch' => $this->marketplaceFetchInfo(),
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -2831,6 +2833,120 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         OrderFulfillmentTracking::query()->updateOrCreate(['row_key' => $rowKey], $values);
+    }
+
+    /**
+     * Rows for the twice-daily marketplace status save (order-fulfillment:fetch-marketplace-status).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function rowsForMarketplaceStatusSync(): array
+    {
+        return $this->attachCarrierAndTrackingStatus($this->collectFulfillmentRows());
+    }
+
+    /**
+     * "Marketplace Tracking Status" column: what each marketplace itself reported at the last fetch.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function attachMarketplaceStatuses(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $row['mp_order_status'] = '';
+            $row['mp_order_status_at'] = '';
+        }
+        unset($row);
+
+        if ($rows === [] || ! \App\Services\MarketplaceManager\OrderMarketplaceStatusStore::available()) {
+            return $rows;
+        }
+
+        $orderIds = [];
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['order_id'] ?? ''));
+            if ($id !== '') {
+                $orderIds[] = $id;
+            }
+        }
+        $saved = app(\App\Services\MarketplaceManager\OrderMarketplaceStatusStore::class)->forOrders($orderIds);
+        if ($saved === []) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $hit = $saved[strtolower(trim((string) ($row['mm_slug'] ?? ''))).'|'.trim((string) ($row['order_id'] ?? ''))] ?? null;
+            if ($hit === null) {
+                continue;
+            }
+            $row['mp_order_status'] = trim((string) ($hit->order_status ?? ''));
+            $row['mp_order_status_at'] = $hit->fetched_at
+                ? \Carbon\Carbon::parse($hit->fetched_at)->setTimezone('America/Los_Angeles')->format('M j, g:i A')
+                : '';
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array{state: string, message: string, last_run: ?string}
+     */
+    protected function marketplaceFetchInfo(): array
+    {
+        $state = \Illuminate\Support\Facades\Cache::get(\App\Jobs\FetchOrderMarketplaceStatusJob::STATE_CACHE_KEY);
+        $last = \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\FetchOrderMarketplaceStatusCommand::LAST_RUN_CACHE_KEY);
+
+        $lastRun = null;
+        if (is_array($last) && ! empty($last['finished_at'])) {
+            try {
+                $lastRun = \Carbon\Carbon::parse((string) $last['finished_at'])->setTimezone('America/Los_Angeles')->format('M j, g:i A');
+            } catch (\Throwable) {
+                $lastRun = null;
+            }
+        }
+
+        $current = is_array($state) ? (string) ($state['state'] ?? '') : '';
+        $message = is_array($state) ? (string) ($state['message'] ?? '') : '';
+        $startedAt = is_array($state) && ! empty($state['started_at']) ? (int) strtotime((string) $state['started_at']) : 0;
+        // A fetch "running" for over 2 hours is dead (worker killed): let the button work again.
+        if ($current === 'running' && $startedAt > 0 && $startedAt < time() - 7200) {
+            $current = 'failed';
+            $message = 'The last fetch stopped without finishing. Run it again.';
+        }
+
+        return ['state' => $current !== '' ? $current : 'idle', 'message' => $message, 'last_run' => $lastRun];
+    }
+
+    /** "Fetch tracking status from marketplace" button. */
+    public function fetchMarketplaceStatus(): JsonResponse
+    {
+        if (config('queue.default') === 'sync') {
+            return response()->json(['state' => 'failed', 'message' => 'Queue is not configured (QUEUE_CONNECTION=sync), so the fetch cannot run in the background.', 'last_run' => null], 422);
+        }
+        if (! \App\Services\MarketplaceManager\OrderMarketplaceStatusStore::available()) {
+            return response()->json(['state' => 'failed', 'message' => 'Run "php artisan migrate" first (table order_fulfillment_marketplace_statuses is missing).', 'last_run' => null], 422);
+        }
+
+        $info = $this->marketplaceFetchInfo();
+        if ($info['state'] === 'running') {
+            return response()->json($info);
+        }
+
+        \Illuminate\Support\Facades\Cache::put(\App\Jobs\FetchOrderMarketplaceStatusJob::STATE_CACHE_KEY, [
+            'state' => 'running',
+            'message' => 'Queued: fetching orders from the marketplaces…',
+            'started_at' => now()->toIso8601String(),
+        ], now()->addHours(2));
+        \App\Jobs\FetchOrderMarketplaceStatusJob::dispatch();
+
+        return response()->json($this->marketplaceFetchInfo());
+    }
+
+    public function marketplaceStatusState(): JsonResponse
+    {
+        return response()->json($this->marketplaceFetchInfo());
     }
 
     /**
