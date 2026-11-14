@@ -685,6 +685,18 @@ class PlsController extends Controller
     }
 
     /**
+     * Page open with blue triangles (Price ≠ S PRC): start the server push in the background right away, the way
+     * Amazon starts its Push Prc worker, instead of waiting for the next 10-minute pls:push-blue-prices tick.
+     * The server still owns every push; this only starts the same command (throttled, never two at once).
+     */
+    public function kickBluePush()
+    {
+        $started = \App\Support\PlsRuleSpriceApply::pushNow(true);
+
+        return response()->json(['success' => true, 'started' => $started]);
+    }
+
+    /**
      * Save PLS SPRICE and calculate SGPFT% and SROI%
      */
     public function savePlsSprice(Request $request)

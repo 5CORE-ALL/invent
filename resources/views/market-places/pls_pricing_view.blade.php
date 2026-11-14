@@ -496,6 +496,21 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.plsHasBlueTriangle = plsHasBlueTriangle;
+    // Blue triangles on screen: ask the server to start its push in the background now (same as Amazon's auto-start
+    // Push Prc), not at the next 10-minute tick. The page pushes nothing itself; the server also throttles and never
+    // runs two pushes at once. At most one request per 3 minutes from this tab.
+    let plsLastKickAt = 0;
+    function plsKickBluePush(blueCount) {
+        if (!(blueCount > 0)) return;
+        const now = Date.now();
+        if (now - plsLastKickAt < 180000) return;
+        plsLastKickAt = now;
+        $.ajax({
+            url: '/pls-kick-blue-push',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
+        });
+    }
     function syncPlsTriangleBadgeState() {
         $('#pls-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -1448,6 +1463,7 @@
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             if (typeof syncPlsTriangleBadgeState === 'function') syncPlsTriangleBadgeState();
+            plsKickBluePush(blueTriangleCount);
 
             fitSummaryBadges();
         

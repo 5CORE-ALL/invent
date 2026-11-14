@@ -68,9 +68,20 @@ class PlsRuleSpriceApply
      * every ~2s, so ~600 blue triangles stayed unpushed for 30+ minutes after an edit. The same command now starts
      * at once; the service lock keeps it from running twice, and the scheduled catch-up still picks up anything left.
      */
-    public static function pushNow(): bool
+    public static function pushNow(bool $throttled = false): bool
     {
         try {
+            // Another push is already going (the service holds this lock for the whole run): nothing to start.
+            $probe = Cache::lock(PlsSprcDilAutoPushService::LOCK_KEY, 5);
+            if (! $probe->get()) {
+                return true;
+            }
+            $probe->release();
+            // Page opens and reloads can come in bursts; one spawn per window is enough (loading the rows is heavy).
+            if ($throttled && ! Cache::add('pls-push-now-kick', 1, 120)) {
+                return true;
+            }
+
             return DetachedArtisan::spawn('pls:push-blue-prices');
         } catch (Throwable $e) {
             Log::warning('[PlsRuleSpriceApply] could not start the push: '.$e->getMessage());

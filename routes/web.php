@@ -6784,6 +6784,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pls-pricing', [PlsController::class, 'pricingView'])->name('pls.pricing');
     Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);
     Route::post('/save-pls-sprice', [PlsController::class, 'savePlsSprice']);
+    Route::post('/pls-kick-blue-push', [PlsController::class, 'kickBluePush'])->name('pls.kick.blue.push');
     Route::post('/pls-clear-sprice', [PlsController::class, 'clearPlsSprice']);
     Route::post('/pls/save-links', [PlsController::class, 'saveLinks'])->name('pls.save.links');
     // Business5Core
