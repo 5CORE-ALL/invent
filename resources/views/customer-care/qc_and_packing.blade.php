@@ -463,6 +463,12 @@
             vertical-align: middle;
         }
 
+        .form-control.rc-locked,
+        .form-select.rc-locked {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+        }
+
         .orders-hold-table .issue-loss-input {
             max-width: 6.5rem;
             min-width: 4.5rem;
@@ -2113,18 +2119,29 @@
                                 <input type="hidden" id="hold_issue_action_1_remark" name="action_1_remark" value="">
                             @endunless
 
-                            @if ($showDispatchExtras ?? false)
+                            @if (($showDispatchExtras ?? false) || ($showAllIssuesLinkFields ?? false))
+                                @php($linkFieldsReadOnly = (bool) (($rootCauseOnlyEdit ?? false) || ($showAllIssuesLinkFields ?? false)))
                                 <div class="col-md-6">
-                                    <label for="hold_issue_tracking_number" class="form-label">Tracking ID</label>
+                                    <label for="hold_issue_tracking_number" class="form-label">Tracking ID
+                                        @if ($linkFieldsReadOnly)
+                                            <span class="text-muted small fw-normal">(from All Issues)</span>
+                                        @endif
+                                    </label>
                                     <input type="text" class="form-control" id="hold_issue_tracking_number"
-                                        name="tracking_number" maxlength="50" placeholder="Tracking ID for this claim">
+                                        name="tracking_number" maxlength="50" placeholder="Tracking ID for this claim"
+                                        @if ($linkFieldsReadOnly) readonly data-always-readonly="1" @endif>
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="hold_issue_issue_link" class="form-label">Link</label>
+                                    <label for="hold_issue_issue_link" class="form-label">Link
+                                        @if ($linkFieldsReadOnly)
+                                            <span class="text-muted small fw-normal">(from All Issues)</span>
+                                        @endif
+                                    </label>
                                     <input type="text" class="form-control" id="hold_issue_issue_link"
                                         name="issue_link" maxlength="500"
                                         placeholder="https://… or paste any reference URL" autocomplete="off"
-                                        inputmode="url">
+                                        inputmode="url"
+                                        @if ($linkFieldsReadOnly) readonly data-always-readonly="1" @endif>
                                 </div>
                             @endif
 
@@ -2454,6 +2471,8 @@
             const showClaimDatesInHistory = @json((bool) (($showClaimFiledColumn ?? false) || ($showClaimReceivedColumn ?? false)));
             const rowHistoryBaseUrl = @json($rowHistoryBaseUrl ?? url('/customer-care/all-issues/issues'));
             const singleEntryIssueBoard = @json((bool) ($singleEntryIssueBoard ?? false));
+            // Boards where only Root Cause Found / Root Cause Fixed can be edited on existing rows.
+            const rootCauseOnlyEdit = @json((bool) ($rootCauseOnlyEdit ?? false));
 
             const skuInput = document.getElementById('hold_issue_sku');
             const skuDatalist = document.getElementById('hold_issue_sku_datalist');
@@ -2535,6 +2554,7 @@
 
             if (modalEl && showDispatchExtras) {
                 modalEl.addEventListener('paste', function(pe) {
+                    if (modalEl.dataset.rootCauseLocked === '1') return;
                     const items = pe.clipboardData && pe.clipboardData.items;
                     if (!items) return;
                     for (let i = 0; i < items.length; i++) {
@@ -3190,12 +3210,12 @@
                     '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
                     'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" inputmode="decimal" ' +
-                    'autocomplete="off" aria-label="Loss $">' +
+                    'autocomplete="off" aria-label="Loss $"' + (rootCauseOnlyEdit ? ' readonly tabindex="-1"' : '') + '>' +
                     '</td>';
             }
 
             async function saveTotalLossFromInput(input) {
-                if (!showLossColumn) return;
+                if (!showLossColumn || rootCauseOnlyEdit) return;
                 const id = input.getAttribute('data-issue-id');
                 if (!id) return;
                 const parsed = parseLossInput(input.value);
@@ -5359,6 +5379,42 @@
                 }
                 toggleCAction1RemarkField();
                 hideAlert();
+                applyRootCauseOnlyLock(false);
+            }
+
+            // Edit mode on root-cause-only boards: everything except Root Cause Found / Fixed is read-only.
+            const ROOT_CAUSE_EDITABLE_IDS = [
+                'hold_issue_text', 'hold_issue_remark', 'hold_issue_c_action_1', 'hold_issue_c_action_1_remark',
+                'add-root-cause-found-option', 'delete-root-cause-found-option',
+                'add-root-cause-fixed-option', 'delete-root-cause-fixed-option',
+            ];
+            const TEXTUAL_INPUT_TYPES = ['text', 'number', 'search', 'email', 'url', 'tel', 'date'];
+
+            function applyRootCauseOnlyLock(locked) {
+                if (!rootCauseOnlyEdit || !form) return;
+                if (modalEl) modalEl.dataset.rootCauseLocked = locked ? '1' : '0';
+                form.querySelectorAll('input, select, textarea, button').forEach(function(el) {
+                    if (ROOT_CAUSE_EDITABLE_IDS.indexOf(el.id) !== -1) return;
+                    if (el.dataset.alwaysReadonly === '1') return;
+                    if (el.type === 'hidden' || el.type === 'submit') return;
+                    if (el.hasAttribute('data-bs-dismiss') || el.classList.contains('btn-close')) return;
+                    const textual = el.tagName === 'TEXTAREA' ||
+                        (el.tagName === 'INPUT' && TEXTUAL_INPUT_TYPES.indexOf(el.type) !== -1);
+                    if (locked) {
+                        if (textual) {
+                            if (!el.readOnly) { el.readOnly = true; el.dataset.rcLocked = 'ro'; }
+                        } else if (!el.disabled) {
+                            el.disabled = true;
+                            el.dataset.rcLocked = 'dis';
+                        }
+                        el.classList.add('rc-locked');
+                    } else {
+                        if (el.dataset.rcLocked === 'ro') el.readOnly = false;
+                        else if (el.dataset.rcLocked === 'dis') el.disabled = false;
+                        delete el.dataset.rcLocked;
+                        el.classList.remove('rc-locked');
+                    }
+                });
             }
 
             function getRecordById(id) {
@@ -5514,6 +5570,7 @@
 
                 const submitBtn = form.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.textContent = 'Update';
+                applyRootCauseOnlyLock(true);
 
                 const modalInstance = window.bootstrap?.Modal?.getOrCreateInstance(modalEl);
                 if (modalInstance) modalInstance.show();

@@ -16,6 +16,9 @@
     'marketplaces' => $marketplaces ?? collect(),
     'hideImportCsv' => true,
     'showOrderIdField' => true,
+    // Existing rows: only Root Cause Found / Root Cause Fixed are editable; Tracking ID and Link come from All Issues.
+    'rootCauseOnlyEdit' => true,
+    'showAllIssuesLinkFields' => true,
     'orderIdFieldLabel' => 'Order ID',
     'showMonthlyReport' => true,
     'monthlyReportTitle' => 'C-Care',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use App\Http\Controllers\CustomerCare\Concerns\AttachesAllIssuesLinkFields;
 use App\Http\Controllers\CustomerCare\Concerns\HasOptionalOrderNumberField;
 use App\Support\CustomerCareDepartments;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 
 class LabelIssuesController extends IssueBoardControllerBase
 {
+    use AttachesAllIssuesLinkFields;
     use HasOptionalOrderNumberField;
 
     protected function viewName(): string
@@ -91,6 +93,8 @@ class LabelIssuesController extends IssueBoardControllerBase
     {
         $body = parent::issuesIndex()->getData(true);
         $body['data'] = $this->attachSkuQcFields($this->onlyBoardRows($body['data'] ?? []));
+        // Tracking ID and Link are read-only here; they come from All Issues by order number.
+        $body['data'] = $this->attachAllIssuesLinkFields($body['data']);
         // Supplier per SKU, used by the Supplier report.
         $body['data'] = app(QcAndPackingController::class)->attachSuppliers($body['data']);
 

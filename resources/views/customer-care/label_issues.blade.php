@@ -43,6 +43,7 @@
             display: inline-flex; align-items: center; justify-content: center; color: #adb5bd;
         }
         .sku-image-preview { width: 52px; height: 52px; }
+        .form-control.li-locked, .form-select.li-locked { background-color: #e9ecef; cursor: not-allowed; }
         .issue-loss-input {
             width: 100%; max-width: 5.5rem; font-size: 0.8125rem;
             padding: 0.15rem 0.3rem; text-align: right;
@@ -285,6 +286,14 @@
                             <div class="col-md-6">
                                 <label class="form-label" for="li-track-r">Replacement Tracking Number</label>
                                 <input type="text" class="form-control" id="li-track-r" maxlength="50" placeholder="Optional tracking number">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="li-tracking-number">Tracking ID <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                <input type="text" class="form-control" id="li-tracking-number" readonly data-always-readonly="1">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="li-issue-link">Link <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                <input type="text" class="form-control" id="li-issue-link" readonly data-always-readonly="1">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="li-ctn">CTN Pkg</label>
@@ -531,7 +540,7 @@
                 const v = (n != null && n !== '' && !isNaN(parseFloat(n))) ? String(Math.round(parseFloat(n))) : '';
                 return '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
                     'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" data-issue-id="' + escAttr(String(d.id)) +
-                    '" inputmode="decimal" autocomplete="off" aria-label="Loss $">';
+                    '" inputmode="decimal" autocomplete="off" aria-label="Loss $" readonly tabindex="-1">';
             };
             const fmtActions = function () {
                 let html = '<button type="button" class="li-row-btn li-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>';
@@ -608,8 +617,32 @@
                 if (!fixedOther) document.getElementById('li-root-fixed-remark').value = '';
             }
 
+            // Editing an existing row: only Root Cause Found / Fixed (and their remarks) can be changed.
+            const LI_EDITABLE_IDS = ['li-root', 'li-root-remark', 'li-root-fixed', 'li-root-fixed-remark'];
+            const LI_TEXT_TYPES = ['text', 'number', 'search', 'email', 'url', 'tel', 'date'];
+            function setEditLock(locked) {
+                document.querySelectorAll('#li-issue-form input, #li-issue-form select, #li-issue-form textarea').forEach(function (el) {
+                    if (LI_EDITABLE_IDS.indexOf(el.id) !== -1) return;
+                    if (el.dataset.alwaysReadonly === '1' || el.type === 'hidden' || el.type === 'submit') return;
+                    const textual = el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && LI_TEXT_TYPES.indexOf(el.type) !== -1);
+                    if (locked) {
+                        if (textual) { if (!el.readOnly) { el.readOnly = true; el.dataset.liLocked = 'ro'; } }
+                        else if (!el.disabled) { el.disabled = true; el.dataset.liLocked = 'dis'; }
+                        el.classList.add('li-locked');
+                    } else {
+                        if (el.dataset.liLocked === 'ro') el.readOnly = false;
+                        else if (el.dataset.liLocked === 'dis') el.disabled = false;
+                        delete el.dataset.liLocked;
+                        el.classList.remove('li-locked');
+                    }
+                });
+            }
+
             function resetForm() {
                 document.getElementById('li-issue-form').reset();
+                setEditLock(false);
+                document.getElementById('li-tracking-number').value = '';
+                document.getElementById('li-issue-link').value = '';
                 document.getElementById('li-id').value = '';
                 document.getElementById('li-qty').value = '0';
                 document.getElementById('li-parent').value = '';
@@ -634,6 +667,8 @@
                 document.getElementById('li-action').value = record.action_1 || '';
                 document.getElementById('li-action-remark').value = record.action_1_remark || '';
                 document.getElementById('li-track-r').value = record.replacement_tracking || '';
+                document.getElementById('li-tracking-number').value = record.tracking_number || '';
+                document.getElementById('li-issue-link').value = record.issue_link || '';
                 document.getElementById('li-ctn').value = record.ctn_instructions || '';
                 document.getElementById('li-item-pkg').value = record.instructions_item_pkg || '';
                 document.getElementById('li-qe-issue').value = record.qc_enhance_issue || '';
@@ -651,6 +686,7 @@
                 document.getElementById('li-save').textContent = 'Update';
                 document.getElementById('li-issue-modal-title').textContent = 'Label/ Shipping Issues';
                 toggleOtherFields();
+                setEditLock(true);
             }
 
             async function refreshSkuSuggestions(query) {
@@ -815,6 +851,7 @@
                 return isNaN(n) ? null : Math.round(n * 100) / 100;
             }
             async function saveLoss(input) {
+                return; // Loss $ is read-only on this board.
                 const id = input.getAttribute('data-issue-id');
                 if (!id) return;
                 const parsed = parseLoss(input.value);
@@ -1046,7 +1083,8 @@
                             showAlert((firstKey && errors[firstKey] && errors[firstKey][0]) || data.message || 'Unable to save hold issue.');
                             return;
                         }
-                        await savePackagingFields();
+                        // CTN / item pkg / QC Enhance are locked when editing, so only a new issue writes them.
+                        if (!editId) await savePackagingFields();
                         await loadRows();
                         if (historyTable) await loadHistory();
                         modal.hide();
