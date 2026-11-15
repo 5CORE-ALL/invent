@@ -1737,10 +1737,16 @@
             let out = +Number(s).toFixed(2);
             // Clearance SKU on the Sprc Dil rule: priced from the clearance Target NROI%, no LMP / Std cap.
             if (typeof window.amzClearanceDilActive === 'function' && window.amzClearanceDilActive(rowData)) return out;
-            // The Sprc Dil rule has no LMP cap any more (the LMP Rule was deleted): only Std Prc limits it, below.
+            // Sprc Dil rule: if LMP is available and lower than the new S PRC (after all the other rules), S PRC = LMP × 0.97.
+            // Std Prc is still the maximum, below. Same as AmazonSprcDilAutoPushService.
             // The Std prc vs dil rule keeps its own LMP Reduce block (by Dil slab).
             const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
-            if (!dilRuleOn && amazonShouldCapSpriceToLmp(rowData, s)) {
+            if (dilRuleOn) {
+                const lmpDil = lmpWithShipping(rowData);
+                if (lmpDil > 0 && out > lmpDil + 0.0001) {
+                    out = +Number(lmpDil * 0.97).toFixed(2);
+                }
+            } else if (amazonShouldCapSpriceToLmp(rowData, s)) {
                 const lmp = lmpWithShipping(rowData);
                 if (lmp > 0) {
                     const reducePct = (typeof window.amzStdLmpReducePct === 'function') ? Number(window.amzStdLmpReducePct(rowData)) || 0 : 0;

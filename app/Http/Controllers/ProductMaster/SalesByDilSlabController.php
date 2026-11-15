@@ -26,6 +26,84 @@ class SalesByDilSlabController extends Controller
         ]);
     }
 
+    /**
+     * Same inventory badges as All Marketplace Master: inv / Inv@SP / Inv@LP / TAT / Avail
+     * plus the Inv@SP DIL band slices and their daily history (for the trend dots).
+     */
+    public function badges(Request $request): JsonResponse
+    {
+        @set_time_limit(120);
+
+        $out = [
+            'inv' => 0, 'inv_at_sp' => 0, 'inv_at_lp' => 0, 'tat' => 0,
+            'avail_pct' => 0, 'avail_bg' => '#dc3545', 'avail_fg' => '#ffffff',
+            'dots' => [], 'slices' => [], 'history' => [],
+        ];
+
+        try {
+            $amm = \App\Models\BadgeData::dataForPage('all-marketplace-master');
+            $out['inv'] = (float) ($amm['inventory_value_amazon'] ?? 0);
+            $out['tat'] = (float) ($amm['tat'] ?? 0);
+            $out['inv_at_sp'] = (float) ($amm['inv_at_sp'] ?? 0);
+            $out['inv_at_lp'] = (float) ($amm['inv_at_lp'] ?? 0);
+
+            $fa = \App\Models\BadgeData::dataForPage('forecast-analysis');
+            $avail = max(0, min(100, 100 - (int) ($fa['zero_stock_pct'] ?? 0)));
+            $out['avail_pct'] = $avail;
+        } catch (\Throwable $e) {
+            Log::warning('Sales by Dil slab badges: badge data failed: '.$e->getMessage());
+        }
+
+        try {
+            $pies = json_decode(
+                app(\App\Http\Controllers\Channels\ChannelMasterController::class)->getInventoryPies($request)->getContent(),
+                true
+            );
+            if (is_array($pies) && ! empty($pies['slices'])) {
+                $out['slices'] = $pies['slices'];
+                $out['history'] = $pies['history'] ?? [];
+                $out['inv_at_amz'] = (float) ($pies['inv_at_amz'] ?? 0);
+                // Live values win over the saved badge snapshot.
+                if ((float) ($pies['inv_at_sp'] ?? 0) > 0) {
+                    $out['inv_at_sp'] = (float) $pies['inv_at_sp'];
+                }
+                if ((float) ($pies['inv_at_lp'] ?? 0) > 0) {
+                    $out['inv_at_lp'] = (float) $pies['inv_at_lp'];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Sales by Dil slab badges: inventory pies failed: '.$e->getMessage());
+        }
+
+        // Dot pair [previous day, latest day] per badge, same source as the All Marketplace Master dots.
+        try {
+            $dotReq = Request::create('/channel-metric-dot-trends', 'GET', ['channels' => 'all']);
+            $dots = json_decode(
+                app(\App\Http\Controllers\Channels\ChannelMasterController::class)->getChannelMetricDotTrends($dotReq)->getContent(),
+                true
+            );
+            $all = $dots['channels']['all'] ?? [];
+            foreach (['inventory', 'inv_at_sp', 'inv_at_lp', 'tat'] as $m) {
+                if (isset($all[$m]) && is_array($all[$m])) {
+                    $out['dots'][$m] = $all[$m];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Sales by Dil slab badges: dot trends failed: '.$e->getMessage());
+        }
+        try {
+            $zero = \App\Models\BadgeDataHistory::series('forecast-analysis', 'zero_stock_pct', 14);
+            $n = count($zero);
+            if ($n >= 2) {
+                $out['dots']['avail'] = [100 - (float) $zero[$n - 2]['value'], 100 - (float) $zero[$n - 1]['value']];
+            }
+        } catch (\Throwable $e) {
+            // dot stays gray
+        }
+
+        return response()->json($out);
+    }
+
     public function data(Request $request, SkuSalesByWindowService $sales): JsonResponse
     {
         @set_time_limit(180);
@@ -97,6 +175,8 @@ class SalesByDilSlabController extends Controller
                 'today' => round((float) ($s['today'] ?? 0), 2),
                 'yesterday' => round((float) ($s['yesterday'] ?? 0), 2),
                 'l30_sales' => round((float) ($s['l30'] ?? 0), 2),
+                // Projected 30-day sales = last 7 days / 7 x 30 (same formula as All Marketplace Master).
+                'projected' => round(((float) ($s['l7'] ?? 0)) / 7 * 30, 2),
                 'npft' => $npft,
                 'nroi' => $nroi,
                 'lp' => round($lp, 2),
@@ -112,7 +192,7 @@ class SalesByDilSlabController extends Controller
         }
 
         // Orders for SKUs that are not in Product Master.
-        $unmapped = ['skus' => 0, 'today' => 0.0, 'yesterday' => 0.0, 'l30' => 0.0];
+        $unmapped = ['skus' => 0, 'today' => 0.0, 'yesterday' => 0.0, 'l30' => 0.0, 'l7' => 0.0];
         foreach ($bySku as $key => $s) {
             if (isset($matched[$key])) {
                 continue;
@@ -121,8 +201,10 @@ class SalesByDilSlabController extends Controller
             $unmapped['today'] += $s['today'];
             $unmapped['yesterday'] += $s['yesterday'];
             $unmapped['l30'] += $s['l30'];
+            $unmapped['l7'] += $s['l7'] ?? 0;
         }
-        foreach (['today', 'yesterday', 'l30'] as $k) {
+        $unmapped['projected'] = $unmapped['l7'] / 7 * 30;
+        foreach (['today', 'yesterday', 'l30', 'projected'] as $k) {
             $unmapped[$k] = round($unmapped[$k], 2);
         }
 

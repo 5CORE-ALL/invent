@@ -396,6 +396,12 @@ class AmazonSprcDilAutoPushService
                     }
                 }
             }
+            // LMP rule: when LMP is available and lower than the new S PRC (after all the rules above), S PRC = LMP × 0.97.
+            $dilLmpCapped = false;
+            if ($lmp > 0 && $capped > $lmp + 0.0001) {
+                $capped = round($lmp * 0.97, 2);
+                $dilLmpCapped = true;
+            }
             $capped = AmazonDilGroiRule::capToStdWhenNoLmp($capped, 0.0, $std);
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -416,7 +422,7 @@ class AmazonSprcDilAutoPushService
                 'age_disc' => 0.0,
                 'sum_disc' => 0.0,
                 'dil_groi' => true,
-                'lmp_capped' => false,
+                'lmp_capped' => $dilLmpCapped,
                 'base' => $std > 0 ? round($std, 2) : round($capped, 2),
             ];
         }

@@ -13,8 +13,9 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Our own marketplace order data (the API-synced tables the Order Fulfillment page reads),
- * rolled up per SKU for Today / Yesterday / L30 (Pacific days). Shopify is left out on purpose:
- * it no longer holds every sale.
+ * rolled up per SKU for Today / Yesterday / L30 (Pacific days), plus Shopify B2C and B2B
+ * (the same price x quantity formula as their daily-sales analytics pages). Shopify direct
+ * (/shopify raw orders) is left out on purpose: it no longer holds every sale.
  *
  * Result keys are ShopifySku::compactSkuForLookup(sku).
  */
@@ -40,10 +41,10 @@ class SkuSalesByWindowService
         'Reverb' => ['reverb_order_metrics', 'naive', 'unit'],
     ];
 
-    /** @var array<string, array{today: float, yesterday: float, l30: float}> */
+    /** @var array<string, array{today: float, yesterday: float, l7: float, l30: float}> */
     private array $skus = [];
 
-    /** @var array<string, array{today: float, yesterday: float, l30: float}> */
+    /** @var array<string, array{today: float, yesterday: float, l7: float, l30: float}> */
     private array $channels = [];
 
     /** @var list<string> */
@@ -55,6 +56,8 @@ class SkuSalesByWindowService
 
     private string $l30From;
 
+    private string $l7From;
+
     private Carbon $start;
 
     private Carbon $end;
@@ -62,11 +65,11 @@ class SkuSalesByWindowService
     private string $storageTz;
 
     /**
-     * @return array{skus: array<string, array{today: float, yesterday: float, l30: float}>, channels: array<string, array{today: float, yesterday: float, l30: float}>, errors: list<string>, as_of: string, today: string, yesterday: string, l30_from: string}
+     * @return array{skus: array<string, array{today: float, yesterday: float, l7: float, l30: float}>, channels: array<string, array{today: float, yesterday: float, l7: float, l30: float}>, errors: list<string>, as_of: string, today: string, yesterday: string, l30_from: string}
      */
     public function build(bool $fresh = false): array
     {
-        $key = 'sku_sales_by_window_v1_'.Carbon::now(self::TZ)->toDateString();
+        $key = 'sku_sales_by_window_v3_'.Carbon::now(self::TZ)->toDateString();
         if ($fresh) {
             Cache::forget($key);
         }
@@ -84,6 +87,8 @@ class SkuSalesByWindowService
         $this->start = $now->copy()->subDays(30)->startOfDay();
         $this->end = $now->copy()->endOfDay();
         $this->l30From = $this->start->toDateString();
+        // Last 7 Pacific days including today (used for the Projected column: L7 / 7 x 30).
+        $this->l7From = $now->copy()->subDays(6)->toDateString();
         $this->storageTz = (string) (config('app.timezone') ?: self::TZ);
         $this->skus = [];
         $this->channels = [];
@@ -104,6 +109,8 @@ class SkuSalesByWindowService
         $this->run('Temu', fn () => $this->temu('Temu', TemuShopifySalesService::getOrdersTableRows($this->start, $this->end)));
         $this->run('Temu 2', fn () => $this->temu('Temu 2', TemuShopifySalesService::getTemu2OrdersTableRows($this->start, $this->end)));
         $this->run('Temu 3', fn () => $this->temu('Temu 3', TemuShopifySalesService::getTemu3OrdersTableRows($this->start, $this->end)));
+        $this->run('Shopify B2C', fn () => $this->shopifyB2x('Shopify B2C', 'shopify_b2c_daily_data', false));
+        $this->run('Shopify B2B', fn () => $this->shopifyB2x('Shopify B2B', 'shopify_b2b_daily_data', true));
 
         return [
             'skus' => $this->skus,
@@ -141,13 +148,16 @@ class SkuSalesByWindowService
         $this->bump($this->channels, $channel, $ymd, $sales);
     }
 
-    /** @param  array<string, array{today: float, yesterday: float, l30: float}>  $bucket */
+    /** @param  array<string, array{today: float, yesterday: float, l7: float, l30: float}>  $bucket */
     private function bump(array &$bucket, string $k, string $ymd, float $sales): void
     {
         if (! isset($bucket[$k])) {
-            $bucket[$k] = ['today' => 0.0, 'yesterday' => 0.0, 'l30' => 0.0];
+            $bucket[$k] = ['today' => 0.0, 'yesterday' => 0.0, 'l7' => 0.0, 'l30' => 0.0];
         }
         $bucket[$k]['l30'] += $sales;
+        if ($ymd >= $this->l7From) {
+            $bucket[$k]['l7'] += $sales;
+        }
         if ($ymd === $this->today) {
             $bucket[$k]['today'] += $sales;
         } elseif ($ymd === $this->yesterday) {
@@ -345,6 +355,32 @@ class SkuSalesByWindowService
                 continue;
             }
             $this->add('FB Marketplace', (string) $r->sku, $this->pacificDate($r->order_date, 'naive'), (float) $r->sold_price * $qty);
+        }
+    }
+
+    /**
+     * Shopify B2C / B2B, same formula as the /shopify-b2c/daily-sales and /shopify-b2b/daily-sales pages:
+     * sales = price x quantity per line, PARENT SKUs left out. B2C drops refunded orders; B2B drops
+     * refunded / cancelled / canceled. Windowed by order_date (Pacific), not the stored period label.
+     */
+    private function shopifyB2x(string $label, string $table, bool $b2b): void
+    {
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+        [$from, $to] = $this->range('naive');
+        $q = DB::table($table)
+            ->whereBetween('order_date', [$from, $to])
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', 'not like', '%PARENT%');
+        if ($b2b) {
+            $q->whereNotIn('financial_status', ['refunded', 'cancelled', 'canceled']);
+        } else {
+            $q->where('financial_status', '!=', 'refunded');
+        }
+        foreach ($q->select(['order_date', 'sku', 'price', 'quantity'])->cursor() as $r) {
+            $this->add($label, (string) $r->sku, $this->pacificDate($r->order_date, 'naive'), (float) $r->price * (float) $r->quantity);
         }
     }
 

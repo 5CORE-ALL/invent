@@ -6239,6 +6239,7 @@ class ChannelMasterController extends Controller
             $dilBands[$band]['units'] += $inv;
             $dilBands[$band]['inv_at_lp'] += $lpValue;
             $dilBands[$band]['inv_at_sp'] += $spValue;
+            $dilBands[$band]['inv_at_amz'] += $amzValue;
         }
         $weightedAvgLp = $invSum > 0 ? round($invAtLp / $invSum, 2) : 0.0;
 
@@ -6246,6 +6247,7 @@ class ChannelMasterController extends Controller
             $dilBands[$key]['units'] = round((float) $band['units'], 2);
             $dilBands[$key]['inv_at_lp'] = round((float) $band['inv_at_lp'], 2);
             $dilBands[$key]['inv_at_sp'] = round((float) $band['inv_at_sp'], 2);
+            $dilBands[$key]['inv_at_amz'] = round((float) ($band['inv_at_amz'] ?? 0), 2);
         }
 
         $dil = $this->productMasterDilTotals();
@@ -6400,6 +6402,7 @@ class ChannelMasterController extends Controller
                 'units' => 0.0,
                 'inv_at_lp' => 0.0,
                 'inv_at_sp' => 0.0,
+                'inv_at_amz' => 0.0,
             ];
         }
 
@@ -6464,6 +6467,7 @@ class ChannelMasterController extends Controller
                 'units' => round((float) ($row['units'] ?? 0), 2),
                 'inv_at_lp' => round((float) ($row['inv_at_lp'] ?? 0), 2),
                 'inv_at_sp' => round((float) ($row['inv_at_sp'] ?? 0), 2),
+                'inv_at_amz' => round((float) ($row['inv_at_amz'] ?? 0), 2),
             ];
         }
         $this->rememberInventoryDilHistory($slices);
@@ -8421,6 +8425,7 @@ class ChannelMasterController extends Controller
                 'inv_sum' => $metrics['inv_sum'],
                 'inv_at_lp' => $metrics['inv_at_lp'],
                 'inv_at_sp' => $metrics['inv_at_sp'],
+                'inv_at_amz' => $metrics['inv_at_amz'] ?? 0,
                 'slices' => $pies['slices'],
                 'history' => $pies['history'],
             ];
