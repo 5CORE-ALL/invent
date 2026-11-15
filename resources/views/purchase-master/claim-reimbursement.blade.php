@@ -243,11 +243,11 @@
 
     /* Screenshot: camera button -> thumbnail, large preview on hover */
     #claimModal #claimTable th.col-shot,
-    #claimModal #claimTable td.col-shot { width: 72px; min-width: 72px; max-width: 72px; padding-left: 4px; padding-right: 4px; }
+    #claimModal #claimTable td.col-shot { width: 88px; min-width: 88px; max-width: 88px; padding-left: 4px; padding-right: 4px; }
     #claimModal #claimTable th.col-shot { white-space: normal; font-size: .62rem; }
     #claimModal .claim-shot {
         position: relative;
-        width: 40px; height: 40px;
+        width: 64px; height: 64px;
         margin: 0;
         display: inline-flex; align-items: center; justify-content: center;
         border-radius: 10px;
@@ -1558,6 +1558,8 @@
             const type = blob.type || 'image/png';
             const ext = (type.split('/')[1] || 'png').replace('jpeg', 'jpg');
             setShotFile(label, new File([blob], 'snippet_' + Date.now() + '.' + ext, { type: type }));
+            selectShot(null); // drop the selection ring so the thumbnail is clearly visible
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
             shotToast('Screenshot added.');
             return true;
         }
