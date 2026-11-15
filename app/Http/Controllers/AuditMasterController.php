@@ -595,13 +595,29 @@ class AuditMasterController extends Controller
                 ->keyBy('channel_id');
         }
 
+        // "Messages Pending" counts (same data as /customer-care/messages-pending),
+        // shown only on the CC Messages page.
+        $pendingMap = [];
+        $pendingService = null;
+        if ($page === 'messages_returns') {
+            $pendingService = app(\App\Services\CustomerCare\MarketplacePendingMessagesService::class);
+            $pendingService->ensureSchema();
+            if (Schema::hasTable('cc_messages_pending') && ! empty($channelIds)) {
+                $pendingMap = \App\Models\CcMessagesPending::query()
+                    ->whereIn('channel_id', $channelIds)
+                    ->get()
+                    ->keyBy('channel_id');
+            }
+        }
+
         $rows = $channels->map(function (ChannelMaster $c) use (
             $ahmController, $hasLogo,
             &$scopeToMLink, &$scopeToHLink,
             $latestChecklistMap, $prevChecklistMap,
             $latestReturnsMap,   $prevReturnsMap,
             $nextValueMap, $nextReturnsValueMap,
-            $sLinkMap, $rLinkMap
+            $sLinkMap, $rLinkMap,
+            $pendingMap, $pendingService
         ) {
             $scope = $ahmController->definitionScopeForChannel($c);
 
@@ -701,7 +717,21 @@ class AuditMasterController extends Controller
             $rLinkRow = $rLinkMap[$c->id] ?? null;
             $rLinkValue = $rLinkRow ? (trim((string) $rLinkRow->r_link) ?: null) : null;
 
+            // Pending messages: count is only trusted when the last pull succeeded.
+            $pendingRow = $pendingMap[$c->id] ?? null;
+            $pendingStatus = $pendingRow ? trim((string) ($pendingRow->fetch_status ?? '')) : '';
+            if ($pendingStatus === '' && $pendingService !== null) {
+                $pendingStatus = $pendingService->driverFor($c) !== null
+                    ? 'pending'
+                    : \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_UNSUPPORTED;
+            }
+
             return [
+                'pending_count'            => $pendingRow && $pendingStatus === \App\Services\CustomerCare\MarketplacePendingMessagesService::STATUS_OK
+                    ? (int) $pendingRow->pending_count
+                    : 0,
+                'pending_status'           => $pendingStatus,
+                'pending_note'             => $pendingRow ? ($pendingRow->fetch_note ?? null) : null,
                 'id'                       => $c->id,
                 'channel'                  => $c->channel,
                 'logo'                     => $hasLogo ? ($c->logo ?? null) : null,

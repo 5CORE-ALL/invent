@@ -5,7 +5,10 @@
     'recordsTitle' => 'Dispatch Issues',
     'modalTitle' => 'Dispatch Issues',
     'skuDetailsUrl' => route('customer.care.dispatch.issues.sku.details'),
-    'recordsListUrl' => route('customer.care.dispatch.issues.list.index'),
+    // Tracking ID / Link come from All Issues (looked up by order number).
+    'recordsListUrl' => route('customer.care.dispatch.issues.list.index', ['link_source' => 'all_issues']),
+    // Existing rows: only Root Cause Found / Root Cause Fixed are editable.
+    'rootCauseOnlyEdit' => true,
     'recordsStoreUrl' => route('customer.care.dispatch.issues.list.store'),
     'recordsUpdateBaseUrl' => route('customer.care.dispatch.issues.list.index', [], false),
     'historyListUrl' => route('customer.care.dispatch.issues.history.index'),

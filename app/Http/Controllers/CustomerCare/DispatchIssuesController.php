@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\CustomerCare;
 
+use App\Http\Controllers\CustomerCare\Concerns\AttachesAllIssuesLinkFields;
 use App\Http\Controllers\InventoryManagement\OutgoingController;
 use App\Models\AmazonDatasheet;
 use App\Support\CustomerCareDepartments;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class DispatchIssuesController extends IssueBoardControllerBase
 {
+    use AttachesAllIssuesLinkFields;
+
     /**
      * Per-request memoization of expensive Schema::hasTable / hasColumn lookups.
      * Each Schema call hits INFORMATION_SCHEMA (~30-150 ms), so calling them
@@ -1347,6 +1350,11 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'amz_loss'              => $amzLoss,
             ] + $this->extraRowFields($row);
         })->values();
+
+        // Boards that show Tracking ID / Link read-only ask for the All Issues values.
+        if (request()->query('link_source') === 'all_issues') {
+            $data = collect($this->attachAllIssuesLinkFields($data->all()))->values();
+        }
 
         return response()->json(['data' => $data]);
     }

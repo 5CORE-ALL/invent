@@ -364,6 +364,18 @@
         }
         .ccmr-tat-badge--messages .ccmr-tat-badge__value { color: #3730a3; }
         /* Returns variant: amber accent (echoes the R-side cell pills). */
+        .ccmr-tat-badge--pending {
+            background: linear-gradient(135deg, #fdecee 0%, #ffffff 60%);
+            border-color: #f1aeb5;
+            text-decoration: none;
+        }
+        .ccmr-tat-badge--pending .ccmr-tat-badge__icon {
+            background: #f8d7da;
+            color: #a71d2a;
+        }
+        .ccmr-tat-badge--pending .ccmr-tat-badge__value { color: #a71d2a; }
+        a.ccmr-tat-badge--pending:hover { filter: brightness(0.97); }
+
         .ccmr-tat-badge--returns {
             background: linear-gradient(135deg, #fff7e6 0%, #ffffff 60%);
             border-color: #fcd34d;
@@ -421,6 +433,18 @@
                         <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
                     </span>
                 </div>
+                <a class="ccmr-tat-badge ccmr-tat-badge--pending" id="ccmrMessagesPendingTotal"
+                    href="{{ route('customer.care.messages.pending') }}"
+                    title="Total pending marketplace messages. Click to open Messages Pending.">
+                    <span class="ccmr-tat-badge__icon">
+                        <i class="fa-regular fa-envelope"></i>
+                    </span>
+                    <span class="ccmr-tat-badge__body">
+                        <span class="ccmr-tat-badge__label">Messages Pending</span>
+                        <span class="ccmr-tat-badge__value" data-role="value">0</span>
+                        <span class="ccmr-tat-badge__meta" data-role="meta">across all channels</span>
+                    </span>
+                </a>
             </div>
         </div>
     </div>
@@ -1310,6 +1334,9 @@
                 next_returns_value:       (row.next_returns_value === 0 || row.next_returns_value) ? row.next_returns_value : null,
                 tat_minutes:              (row.tat_minutes === 0 || row.tat_minutes) ? row.tat_minutes : null,
                 tat_returns_minutes:      (row.tat_returns_minutes === 0 || row.tat_returns_minutes) ? row.tat_returns_minutes : null,
+                pending_count:            Number(row.pending_count || 0),
+                pending_status:           row.pending_status || '',
+                pending_note:             row.pending_note || '',
             }));
 
             window.__ccmrTable = new Tabulator('#ccMessagesReturnsTable', {
@@ -1366,6 +1393,33 @@
                         headerSort: false,
                         headerTooltip: "M link from the marketplace's factors",
                         formatter: mLinkFormatter,
+                    },
+                    {
+                        title: 'Messages Pending',
+                        field: 'pending_count',
+                        width: 120,
+                        hozAlign: 'center',
+                        vertAlign: 'middle',
+                        headerSort: true,
+                        sorter: 'number',
+                        headerTooltip: 'Unread / unanswered messages from the marketplace API (same as Messages Pending page)',
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            const status = d.pending_status || '';
+                            const note = String(d.pending_note || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            if (status === 'unsupported') {
+                                return '<span class="text-muted" title="' + (note || 'No possible API') + '">—</span>';
+                            }
+                            if (status === 'error') {
+                                return '<span class="text-warning" title="' + (note || 'Pull failed') + '"><i class="fas fa-triangle-exclamation"></i></span>';
+                            }
+                            if (status === 'pending') {
+                                return '<span class="text-muted">…</span>';
+                            }
+                            const v = Number(cell.getValue() || 0);
+                            const color = v === 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + ';font-weight:700;">' + v.toLocaleString('en-US') + '</span>';
+                        },
                     },
                     {
                         title: 'Status',
@@ -1448,8 +1502,27 @@
                     : ('across ' + count + ' channel' + (count === 1 ? '' : 's'));
             }
 
+            // Total of the Messages Pending column (only channels whose last pull succeeded).
+            function refreshPendingTotalBadge() {
+                const el = document.getElementById('ccmrMessagesPendingTotal');
+                if (!el || !window.__ccmrTable) return;
+                let total = 0, n = 0;
+                window.__ccmrTable.getRows().forEach(r => {
+                    const d = r.getData() || {};
+                    if (d.pending_status === 'ok') {
+                        total += Number(d.pending_count || 0);
+                        n++;
+                    }
+                });
+                const valueEl = el.querySelector('[data-role="value"]');
+                const metaEl  = el.querySelector('[data-role="meta"]');
+                if (valueEl) valueEl.textContent = total.toLocaleString('en-US');
+                if (metaEl)  metaEl.textContent  = 'across ' + n + ' channel' + (n === 1 ? '' : 's');
+            }
+
             function refreshAvgTatBadges() {
                 setBadge('ccmrAvgTatMessages', 'tat_minutes');
+                refreshPendingTotalBadge();
             }
 
             // Tabulator v6 builds the table asynchronously after the
