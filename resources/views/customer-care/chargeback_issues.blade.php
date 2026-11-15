@@ -191,6 +191,35 @@
             background: rgba(13, 110, 253, 0.1);
         }
 
+        /* Resolved dropdown: green when resolved, red when not */
+        .cb-resolved-select {
+            width: 100%;
+            min-width: 112px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 0.15rem 1.4rem 0.15rem 0.4rem;
+            border-width: 1px;
+            border-style: solid;
+            cursor: pointer;
+        }
+
+        .cb-resolved-select.cb-resolved-yes {
+            background-color: #d1fae5;
+            border-color: #10b981;
+            color: #065f46;
+        }
+
+        .cb-resolved-select.cb-resolved-no {
+            background-color: #fee2e2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .cb-resolved-select:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
         .cb-row-btn {
             border: none;
             background: transparent;
@@ -252,6 +281,7 @@
                 updateBase: @json(route('customer.care.dispatch.issues.list.index', [], false)),
                 skuDetails: @json(route('customer.care.dispatch.issues.sku.details')),
                 archiveBase: @json(url('/customer-care/all-issues/issues')),
+                resolvedBase: @json(url('/customer-care/all-issues/issues')),
                 dropdownOptions: @json(route('customer.care.dispatch.issues.dropdown.options.index')),
                 l30Issues: @json(route('customer.care.dispatch.issues.l30.issues')),
                 l30Loss: @json(route('customer.care.dispatch.issues.l30.loss')),
@@ -524,6 +554,45 @@
                 return stale ? '<span class="text-danger">' + escapeHtml(disp) + '</span>' : escapeHtml(disp);
             };
 
+            const fmtResolved = function (cell) {
+                const d = cell.getData();
+                const yes = d.resolved === 'yes';
+                return '<select class="form-select form-select-sm cb-resolved-select ' + (yes ? 'cb-resolved-yes' : 'cb-resolved-no') + '" ' +
+                    'data-issue-id="' + escAttr(String(d.id)) + '" aria-label="Resolved or not">' +
+                    '<option value="no"' + (yes ? '' : ' selected') + '>Not resolved</option>' +
+                    '<option value="yes"' + (yes ? ' selected' : '') + '>Resolved</option>' +
+                    '</select>';
+            };
+
+            async function saveResolvedFromSelect(select) {
+                const id = select.getAttribute('data-issue-id');
+                if (!id) return;
+                const next = select.value === 'yes' ? 'yes' : 'no';
+                select.disabled = true;
+                try {
+                    const res = await fetch(URLS.resolvedBase + '/' + encodeURIComponent(id) + '/resolved', {
+                        method: 'PATCH',
+                        headers: jsonHeaders,
+                        body: JSON.stringify({ resolved: next }),
+                    });
+                    const data = await res.json().catch(function () { return {}; });
+                    if (!res.ok) throw new Error(data.message || 'Save failed');
+                    const row = table ? table.getRow(id) : null;
+                    if (row) {
+                        row.update({ resolved: next });
+                    } else {
+                        select.className = select.className.replace(/cb-resolved-(yes|no)/, 'cb-resolved-' + next);
+                    }
+                } catch (e) {
+                    alert(e.message || 'Could not save Resolved');
+                    const previous = next === 'yes' ? 'no' : 'yes';
+                    select.value = previous;
+                    select.className = select.className.replace(/cb-resolved-(yes|no)/, 'cb-resolved-' + previous);
+                } finally {
+                    select.disabled = false;
+                }
+            }
+
             const fmtActions = function () {
                 return '<div><button type="button" class="cb-row-btn cb-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
                     '<button type="button" class="cb-row-btn cb-danger cb-archive" title="Archive"><i class="bi bi-archive-fill"></i></button></div>';
@@ -561,6 +630,7 @@
                         { title: 'Root Cause Found', field: 'issue', width: 60, formatter: fmtRootCause, hozAlign: 'center' },
                         { title: 'Instructions CTN', field: '_ctn', width: 60, formatter: fmtCtn, headerSort: false, hozAlign: 'center' },
                         { title: 'Root Cause Fixed', field: 'c_action_1', width: 60, formatter: fmtRootCauseFixed, hozAlign: 'center' },
+                        { title: 'Resolved', field: 'resolved', width: 140, formatter: fmtResolved, tooltip: false, hozAlign: 'center' },
                         { title: 'Dept', field: 'department', width: 90, formatter: function (c) { return dash(c.getValue()); } },
                         { title: 'Close', field: '_actions', width: 70, formatter: fmtActions, headerSort: false, hozAlign: 'center', frozen: true },
                         { title: 'Created By', field: 'created_by', width: 100, formatter: function (c) { return dash(c.getValue()); } },
@@ -912,6 +982,10 @@
                 document.getElementById('chargeback-tabulator')?.addEventListener('focusout', function (e) {
                     const inp = e.target.closest('.issue-loss-input');
                     if (inp) saveTotalLossFromInput(inp);
+                });
+                document.getElementById('chargeback-tabulator')?.addEventListener('change', function (e) {
+                    const sel = e.target.closest('.cb-resolved-select');
+                    if (sel) saveResolvedFromSelect(sel);
                 });
                 document.getElementById('chargeback-tabulator')?.addEventListener('keydown', function (e) {
                     const inp = e.target.closest('.issue-loss-input');
