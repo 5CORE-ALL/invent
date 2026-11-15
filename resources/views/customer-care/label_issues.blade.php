@@ -20,19 +20,19 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         .tabulator-col .tabulator-col-sorter { display: none !important; }
+        /* Horizontal headers: titles wrap onto 2-3 lines inside narrow columns. */
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            white-space: nowrap;
-            transform: rotate(180deg);
-            height: 80px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+            word-break: break-word;
+            text-align: center;
+            line-height: 1.15;
             font-size: 11px;
             font-weight: 600;
         }
-        .tabulator .tabulator-header .tabulator-col { height: 80px !important; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content { padding: 6px 4px; }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder { width: 100%; }
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title { padding-right: 0 !important; }
         .tabulator-paginator label { margin-right: 5px; }
         .sku-thumb, .sku-thumb-placeholder, .sku-image-preview {
