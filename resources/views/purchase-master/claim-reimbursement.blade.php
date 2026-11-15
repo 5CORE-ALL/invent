@@ -1495,7 +1495,9 @@
 
         document.addEventListener('click', function (e) {
             if (e.target.classList && e.target.classList.contains('claim-shot-input')) return; // programmatic picker open
-            const label = e.target.closest ? e.target.closest('#claimTableBody .claim-shot') : null;
+            // The whole Screenshot cell counts, not just the 64px camera box.
+            const cell = e.target.closest ? e.target.closest('#claimTableBody td.col-shot') : null;
+            const label = cell ? cell.querySelector('.claim-shot') : null;
             if (!label) {
                 if (!(e.target.closest && e.target.closest('#claimShotPasteBtn'))) selectShot(null);
                 return;
@@ -1504,6 +1506,20 @@
             if (!claimOpenAndEditable()) return;
             selectShot(label);
         });
+
+        // Root-cause fix: browsers (Safari especially) only deliver "paste" to an editable element.
+        // If the user presses Cmd/Ctrl+V anywhere in the open claim modal while NOT typing in a
+        // field, move focus into the invisible catcher *during keydown*, before the paste runs.
+        document.addEventListener('keydown', function (e) {
+            if (!((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (e.key === 'v' || e.key === 'V'))) return;
+            if (!claimOpenAndEditable()) return;
+            const a = document.activeElement;
+            const typing = a && a !== catcher && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable);
+            if (typing) return;
+            const c = getCatcher();
+            c.value = '';
+            c.focus({ preventScroll: true });
+        }, true);
 
         document.addEventListener('dblclick', function (e) {
             const label = e.target.closest ? e.target.closest('#claimTableBody .claim-shot') : null;
