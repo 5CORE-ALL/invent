@@ -580,6 +580,15 @@
             font-size: 11px;
             opacity: 0.85;
         }
+        .ai-feed-table { font-size: 12px; margin: 0; }
+        .ai-feed-table thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; white-space: nowrap; }
+        .ai-feed-table td { vertical-align: top; }
+        .ai-feed-chg { line-height: 1.5; }
+        .ai-feed-chg .ai-old { background: #fde8e8; color: #9b1c1c; text-decoration: line-through; padding: 0 3px; border-radius: 3px; }
+        .ai-feed-chg .ai-new { background: #e3f6e8; color: #166534; padding: 0 3px; border-radius: 3px; }
+        .ai-feed-chg .ai-fld { font-weight: 600; }
+        .ai-feed-chg .ai-empty { color: #94a3b8; font-style: italic; }
+        .ai-feed-empty { padding: 28px; text-align: center; color: #64748b; }
     </style>
 @endsection
 
@@ -599,6 +608,10 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="btnShowHistory">
                         <i class="fa-solid fa-clock-rotate-left"></i> History
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="btnShowArchive"
+                        title="Archived and deleted issues, and who removed them">
+                        <i class="fa-solid fa-box-archive"></i> Archive
                     </button>
                     <button type="button" class="btn btn-sm btn-success" id="btnExportCsv"
                         title="Export CSV" aria-label="Export CSV">
@@ -672,6 +685,63 @@
                     </div>
                     <div id="all-issues-history-tabulator" style="flex: 1 1 auto; min-height: 0;"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Activity feeds: History (every change) + Archive (archived / deleted) ── --}}
+    <div class="modal fade" id="aiHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>History — all changes</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="px-3 pt-2 pb-2 border-bottom">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="search" class="form-control form-control-sm ai-feed-search" style="max-width: 420px;"
+                            placeholder="Search SKU, order #, user, field, value…" autocomplete="off">
+                        <select class="form-select form-select-sm ai-feed-event" style="width: auto;">
+                            <option value="">All events</option>
+                            <option value="created">Created</option>
+                            <option value="updated">Edited</option>
+                            <option value="archived">Archived</option>
+                            <option value="restored">Restored</option>
+                            <option value="deleted">Deleted</option>
+                        </select>
+                        <span class="badge bg-light text-dark ai-feed-count">0</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="aiOpenLegacyHistory">
+                            Order revision history (old view)
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-1 ai-feed-note"></div>
+                </div>
+                <div class="modal-body p-0 ai-feed-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="aiArchiveModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="fa-solid fa-box-archive me-2"></i>Archive — archived &amp; deleted</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="px-3 pt-2 pb-2 border-bottom">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="search" class="form-control form-control-sm ai-feed-search" style="max-width: 420px;"
+                            placeholder="Search SKU, order #, user, root cause…" autocomplete="off">
+                        <select class="form-select form-select-sm ai-feed-event" style="width: auto;">
+                            <option value="">Archived + Deleted</option>
+                            <option value="archived">Archived only</option>
+                            <option value="deleted">Deleted only</option>
+                        </select>
+                        <span class="badge bg-light text-dark ai-feed-count">0</span>
+                    </div>
+                    <div class="small text-muted mt-1 ai-feed-note"></div>
+                </div>
+                <div class="modal-body p-0 ai-feed-body"></div>
             </div>
         </div>
     </div>
@@ -1430,6 +1500,8 @@
             const dropdownOptionsStoreUrl = @json(route('customer.care.dispatch.issues.dropdown.options.store'));
             const dropdownOptionsDeleteUrl = @json(route('customer.care.dispatch.issues.dropdown.options.delete'));
             const archiveBase = @json(url('/customer-care/all-issues/issues'));
+            const activityUrl = @json(route('customer.care.dispatch.issues.activity'));
+            const archiveLogUrl = @json(route('customer.care.dispatch.issues.archive.log'));
             // Hard-delete endpoint base — appended with `/{id}` at call
             // time so the URL is built next to where it's used.
             const deleteBase = @json(url('/customer-care/all-issues/issues'));
@@ -5823,7 +5895,7 @@
                     initializeDynamicRootCauseOptions();
                 });
 
-                document.getElementById('btnShowHistory').addEventListener('click', () => {
+                function openLegacyHistoryCard() {
                     const card = document.getElementById('holdIssueHistoryCard');
                     card.classList.remove('d-none');
                     loadHoldIssueHistoryRows();
@@ -5834,7 +5906,179 @@
                         behavior: 'smooth',
                         block: 'start'
                     });
-                });
+                }
+
+                // ── History / Archive feeds ───────────────────────────────────
+                const FEED_RENDER_LIMIT = 500;
+                const EVENT_BADGES = {
+                    created: ['bg-success', 'Created'],
+                    updated: ['bg-primary', 'Edited'],
+                    archived: ['bg-warning text-dark', 'Archived'],
+                    restored: ['bg-info text-dark', 'Restored'],
+                    deleted: ['bg-danger', 'Deleted'],
+                };
+
+                function feedValue(v) {
+                    const t = String(v ?? '').trim();
+                    return t === '' ? '<span class="ai-empty">empty</span>' : escapeHtml(t);
+                }
+
+                function feedChanges(ev) {
+                    if (ev.changes && ev.changes.length) {
+                        const lines = ev.changes.map(c =>
+                            '<div><span class="ai-fld">' + escapeHtml(c.field) + ':</span> ' +
+                            '<span class="ai-old">' + feedValue(c.old) + '</span> → ' +
+                            '<span class="ai-new">' + feedValue(c.new) + '</span></div>');
+                        const head = ev.action && ev.action !== 'Edited'
+                            ? '<div class="text-muted">' + escapeHtml(ev.action) + '</div>' : '';
+                        return head + lines.join('');
+                    }
+                    if (ev.event === 'created') return '<span class="text-muted">New issue added</span>';
+                    if (ev.event === 'archived') return '<span class="text-muted">Moved to archive</span>';
+                    if (ev.event === 'restored') return '<span class="text-muted">Restored from archive</span>';
+                    if (ev.event === 'deleted') return '<span class="text-danger">Permanently deleted</span>';
+                    return '<span class="text-muted">' + (ev.legacy
+                        ? 'Edited (older record — no field detail)' : 'Edited') + '</span>';
+                }
+
+                function feedBadge(event) {
+                    const b = EVENT_BADGES[event] || ['bg-secondary', event || '—'];
+                    return '<span class="badge ' + b[0] + '">' + escapeHtml(b[1]) + '</span>';
+                }
+
+                function feedSearchText(ev) {
+                    const parts = [ev.event, (EVENT_BADGES[ev.event] || [])[1], ev.action, ev.user, ev.sku,
+                        ev.order_number, ev.department, ev.issue, ev.total_loss, ev.created_by, ev.when];
+                    (ev.changes || []).forEach(c => parts.push(c.field, c.old, c.new));
+                    return parts.filter(p => p != null && p !== '').join(' ').toLowerCase();
+                }
+
+                const feedRenderers = {
+                    history: {
+                        head: ['When', 'Who', 'Event', 'SKU', 'Order #', 'Dept', 'What changed'],
+                        row: ev => [
+                            '<span class="text-nowrap">' + escapeHtml(ev.when) + '</span>',
+                            escapeHtml(ev.user),
+                            feedBadge(ev.event),
+                            dash(ev.sku),
+                            dash(ev.order_number),
+                            dash(ev.department),
+                            '<div class="ai-feed-chg">' + feedChanges(ev) + '</div>',
+                        ],
+                    },
+                    archive: {
+                        head: ['When', 'Removed by', 'Event', 'SKU', 'Order #', 'Dept', 'Root cause', 'Loss $', 'Created by'],
+                        row: ev => [
+                            '<span class="text-nowrap">' + escapeHtml(ev.when) + '</span>',
+                            escapeHtml(ev.user),
+                            feedBadge(ev.event),
+                            dash(ev.sku),
+                            dash(ev.order_number),
+                            dash(ev.department),
+                            dash(ev.issue),
+                            ev.total_loss != null && ev.total_loss !== '' ? money(ev.total_loss) : '—',
+                            dash(ev.created_by) + (ev.created_at ? '<div class="text-muted">' + escapeHtml(ev.created_at) + '</div>' : ''),
+                        ],
+                    },
+                };
+
+                function setupFeed(modalId, buttonId, url, kind) {
+                    const modalEl = document.getElementById(modalId);
+                    const btn = document.getElementById(buttonId);
+                    if (!modalEl || !btn) return null;
+                    const searchEl = modalEl.querySelector('.ai-feed-search');
+                    const eventEl = modalEl.querySelector('.ai-feed-event');
+                    const countEl = modalEl.querySelector('.ai-feed-count');
+                    const noteEl = modalEl.querySelector('.ai-feed-note');
+                    const bodyEl = modalEl.querySelector('.ai-feed-body');
+                    const renderer = feedRenderers[kind];
+                    let events = [];
+                    let searchTimer = null;
+
+                    function render() {
+                        const terms = searchEl.value.toLowerCase().split(/\s+/).filter(Boolean);
+                        const only = eventEl.value;
+                        const matched = events.filter(ev =>
+                            (!only || ev.event === only) &&
+                            terms.every(t => ev._text.indexOf(t) !== -1));
+                        countEl.textContent = matched.length === events.length
+                            ? String(events.length)
+                            : matched.length + ' of ' + events.length;
+                        if (!matched.length) {
+                            bodyEl.innerHTML = '<div class="ai-feed-empty">' +
+                                (events.length ? 'Nothing matches your search.' : 'Nothing here yet.') + '</div>';
+                            return;
+                        }
+                        const shown = matched.slice(0, FEED_RENDER_LIMIT);
+                        let html = '<table class="table table-sm table-hover ai-feed-table"><thead><tr>' +
+                            renderer.head.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>';
+                        shown.forEach(ev => {
+                            html += '<tr>' + renderer.row(ev).map(c => '<td>' + c + '</td>').join('') + '</tr>';
+                        });
+                        html += '</tbody></table>';
+                        if (matched.length > shown.length) {
+                            html += '<div class="ai-feed-empty">Showing the newest ' + shown.length +
+                                ' of ' + matched.length + ' — use search to narrow down.</div>';
+                        }
+                        bodyEl.innerHTML = html;
+                    }
+
+                    async function load() {
+                        bodyEl.innerHTML = '<div class="ai-feed-empty"><div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading…</div>';
+                        noteEl.textContent = '';
+                        try {
+                            const qs = lockedDepartment ? ('?department=' + encodeURIComponent(lockedDepartment)) : '';
+                            const res = await fetch(url + qs, { headers: getHeaders, credentials: 'same-origin' });
+                            if (!res.ok) throw new Error('HTTP ' + res.status);
+                            const data = await res.json();
+                            events = Array.isArray(data.events) ? data.events : [];
+                            events.forEach(ev => { ev._text = feedSearchText(ev); });
+                            const notes = [];
+                            if (kind === 'history' && data.tracking_since) {
+                                notes.push('Field-level change tracking started ' + data.tracking_since +
+                                    '; older entries come from the earlier revision log.');
+                            }
+                            if (kind === 'archive' && data.delete_tracking_since) {
+                                notes.push('Deleted entries are recorded from ' +
+                                    new Date(String(data.delete_tracking_since).replace(' ', 'T')).toLocaleString() + ' onwards.');
+                            }
+                            if (data.truncated) notes.push('Showing the newest ' + events.length + ' entries.');
+                            noteEl.textContent = notes.join(' ');
+                            render();
+                        } catch (err) {
+                            events = [];
+                            countEl.textContent = '0';
+                            bodyEl.innerHTML = '<div class="ai-feed-empty text-danger">Could not load: ' +
+                                escapeHtml(err && err.message ? err.message : 'error') + '</div>';
+                        }
+                    }
+
+                    searchEl.addEventListener('input', () => {
+                        clearTimeout(searchTimer);
+                        searchTimer = setTimeout(render, 150);
+                    });
+                    eventEl.addEventListener('change', render);
+                    btn.addEventListener('click', () => {
+                        searchEl.value = '';
+                        eventEl.value = '';
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                        load();
+                    });
+                    modalEl.addEventListener('shown.bs.modal', () => searchEl.focus());
+
+                    return { modalEl };
+                }
+
+                const historyFeed = setupFeed('aiHistoryModal', 'btnShowHistory', activityUrl, 'history');
+                setupFeed('aiArchiveModal', 'btnShowArchive', archiveLogUrl, 'archive');
+                const legacyBtn = document.getElementById('aiOpenLegacyHistory');
+                if (legacyBtn && historyFeed) {
+                    legacyBtn.addEventListener('click', () => {
+                        const el = historyFeed.modalEl;
+                        el.addEventListener('hidden.bs.modal', openLegacyHistoryCard, { once: true });
+                        bootstrap.Modal.getOrCreateInstance(el).hide();
+                    });
+                }
                 document.getElementById('btnExportCsv').addEventListener('click', exportCsv);
 
                 wireAddSkuRow();
