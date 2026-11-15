@@ -1572,7 +1572,10 @@
                 const imgItem = items.find(function (it) { return it.kind === 'file' && /^image\//.test(it.type); });
                 if (imgItem) blob = imgItem.getAsFile();
                 if (!blob && cd.files && cd.files.length) {
-                    blob = Array.from(cd.files).find(function (f) { return /^image\//.test(f.type); }) || null;
+                    // Files copied in Finder can arrive with an empty MIME type: fall back to the extension.
+                    blob = Array.from(cd.files).find(function (f) {
+                        return /^image\//.test(f.type) || (!f.type && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name));
+                    }) || null;
                 }
             }
 
@@ -1581,9 +1584,15 @@
                 const a = document.activeElement;
                 const typing = a && a !== catcher && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
                 const overShot = !!hovered;
-                if (!typing || overShot) {
+                const catching = a === catcher;
+                if (catching) e.preventDefault();
+                if (!typing || overShot || catching) {
                     const hasText = cd && cd.types && Array.prototype.indexOf.call(cd.types, 'text/plain') !== -1;
-                    if (!hasText || overShot) shotToast(MAC_HINT);
+                    if (!hasText || overShot || catching) {
+                        // Include what the browser actually received, to help diagnose Mac clipboard issues.
+                        const seen = cd && cd.types ? Array.from(cd.types).join(', ') : 'nothing';
+                        shotToast(MAC_HINT + ' (Clipboard contained: ' + (seen || 'nothing') + ')');
+                    }
                 }
                 return;
             }
