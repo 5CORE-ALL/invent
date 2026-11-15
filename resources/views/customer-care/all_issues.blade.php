@@ -7,46 +7,6 @@
     $lockedDepartment = $lockedDepartment ?? null;
     $hideDepartmentColumnAndFilter = (bool) ($hideDepartmentColumnAndFilter ?? !empty($lockedDepartment));
     $colVisChannel = $colVisChannel ?? 'all_issues';
-    $importCsvHeaders = [
-        'sku',
-        'order_number',
-        'qty',
-        'order_qty',
-        'parent',
-        'marketplace_1',
-        'what_happened',
-        'action_1',
-        'action_1_remark',
-        'tracking_number',
-        'issue_link',
-        'replacement_tracking',
-        'issue_carrier',
-        'issue',
-        'issue_remark',
-        'c_action_1',
-        'c_action_1_remark',
-        'department',
-    ];
-    $importCsvSampleRow = [
-        'SAMPLE-SKU-001',
-        '112-1234567-8901234',
-        '5',
-        '2',
-        'PARENT-001',
-        'Amz',
-        'Damaged',
-        'Cancelled',
-        '',
-        '1Z999AA10123456784',
-        'https://example.com',
-        'TRK123',
-        'USPS',
-        'Quality Issue',
-        '',
-        'Fixed',
-        '',
-        'Dispatch',
-    ];
 @endphp
 
 @section('css')
@@ -644,9 +604,6 @@
                         title="Export CSV" aria-label="Export CSV">
                         <i class="fa-solid fa-download"></i>
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-info" id="btnImportCsv">
-                        <i class="fa-solid fa-upload"></i> Import CSV
-                    </button>
                     <div id="l30-loss-badge" class="l30-badge" role="button" data-bs-toggle="modal"
                         data-bs-target="#l30LossModal" title="Last 30 Days Loss — click for detail">
                         <i class="fa-solid fa-arrow-trend-down"></i> L30 Loss: <span id="l30-badge-total">…</span>
@@ -754,57 +711,6 @@
                 <div class="modal-footer">
                     <span class="text-muted small me-auto" id="rowHistoryModalCount"></span>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ── Import CSV Modal ── --}}
-    <div class="modal fade" id="importCsvModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import CSV</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="importCsvAlert" class="d-none mb-3"></div>
-                    <p class="text-muted small mb-2">
-                        Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku, order_number, qty, order_qty, parent, marketplace_1, what_happened, action_1,
-                            action_1_remark, tracking_number, issue_link, replacement_tracking, issue_carrier, issue, issue_remark,
-                            c_action_1, c_action_1_remark, department</code>
-                    </p>
-                    <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause),
-                        <strong>department</strong>. Use multiple departments separated by <strong>|</strong> or
-                        <strong>,</strong>
-                        (e.g. <code>Dispatch|QC</code>). Other columns are optional.
-                    </p>
-                    <div class="mb-3">
-                        <label for="importCsvFile" class="form-label">CSV File</label>
-                        <input type="file" class="form-control" id="importCsvFile" accept=".csv,.txt">
-                    </div>
-                    <div id="importCsvProgress" class="d-none">
-                        <div class="progress mb-2">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                                style="width:100%"></div>
-                        </div>
-                        <p class="text-muted small text-center">Uploading…</p>
-                    </div>
-                    <div id="importCsvErrors" class="d-none">
-                        <p class="fw-semibold small mb-1 text-warning">Skipped rows:</p>
-                        <ul id="importCsvErrorList" class="small text-warning mb-0"
-                            style="max-height:160px;overflow-y:auto;"></ul>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <a href="#" id="importCsvSampleLink" class="btn btn-sm btn-outline-secondary me-auto">
-                        <i class="bi bi-download me-1"></i> Download Sample
-                    </a>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-info" id="importCsvSubmitBtn"><i
-                            class="bi bi-upload me-1"></i> Import</button>
                 </div>
             </div>
         </div>
@@ -1517,7 +1423,6 @@
             const dropdownOptionsListUrl = @json(route('customer.care.dispatch.issues.dropdown.options.index'));
             const dropdownOptionsStoreUrl = @json(route('customer.care.dispatch.issues.dropdown.options.store'));
             const dropdownOptionsDeleteUrl = @json(route('customer.care.dispatch.issues.dropdown.options.delete'));
-            const importUrl = @json(route('customer.care.dispatch.issues.import'));
             const archiveBase = @json(url('/customer-care/all-issues/issues'));
             // Hard-delete endpoint base — appended with `/{id}` at call
             // time so the URL is built next to where it's used.
@@ -1529,8 +1434,6 @@
             const COLVIS_CHANNEL = @json($colVisChannel);
             const lockedDepartment = @json($lockedDepartment);
             const hideDepartmentColumnAndFilter = @json($hideDepartmentColumnAndFilter);
-            const importCsvHeaders = @json($importCsvHeaders);
-            const importCsvSampleRow = @json($importCsvSampleRow);
             const issueCarrierOptions = ['USPS', 'UPS', 'FEDEX', 'GOFO'];
 
             const jsonHeaders = {
@@ -5325,80 +5228,6 @@
                 downloadCsv(buildCsv(headers, data), 'all_issues_active_' + dateStr + '.csv');
             }
 
-            function wireImportCsv() {
-                document.getElementById('btnImportCsv').addEventListener('click', () => {
-                    document.getElementById('importCsvFile').value = '';
-                    document.getElementById('importCsvAlert').className = 'd-none mb-3';
-                    document.getElementById('importCsvAlert').innerHTML = '';
-                    document.getElementById('importCsvProgress').classList.add('d-none');
-                    document.getElementById('importCsvErrors').classList.add('d-none');
-                    document.getElementById('importCsvErrorList').innerHTML = '';
-                    new bootstrap.Modal(document.getElementById('importCsvModal')).show();
-                });
-                document.getElementById('importCsvSampleLink').addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const csv = [importCsvHeaders.join(','), importCsvSampleRow.join(',')].join('\r\n');
-                    const blob = new Blob([csv], {
-                        type: 'text/csv;charset=utf-8;'
-                    });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'import_sample.csv';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                });
-                document.getElementById('importCsvSubmitBtn').addEventListener('click', async () => {
-                    const fileInput = document.getElementById('importCsvFile');
-                    const alertEl = document.getElementById('importCsvAlert');
-                    const progressEl = document.getElementById('importCsvProgress');
-                    const errorsEl = document.getElementById('importCsvErrors');
-                    const errList = document.getElementById('importCsvErrorList');
-                    if (!fileInput.files.length) {
-                        alertEl.className = 'alert alert-warning mb-3';
-                        alertEl.textContent = 'Please select a CSV file.';
-                        return;
-                    }
-                    const formData = new FormData();
-                    formData.append('file', fileInput.files[0]);
-                    formData.append('_token', csrfToken);
-                    alertEl.className = 'd-none mb-3';
-                    progressEl.classList.remove('d-none');
-                    errorsEl.classList.add('d-none');
-                    document.getElementById('importCsvSubmitBtn').disabled = true;
-                    try {
-                        const res = await fetch(importUrl, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const data = await res.json();
-                        progressEl.classList.add('d-none');
-                        if (res.ok) {
-                            alertEl.className = 'alert alert-success mb-3';
-                            alertEl.textContent = data.message || 'Import complete.';
-                            if (data.errors && data.errors.length) {
-                                errList.innerHTML = data.errors.map(x => '<li>' + escapeHtml(x) + '</li>')
-                                    .join('');
-                                errorsEl.classList.remove('d-none');
-                            }
-                            await loadHoldIssueRows();
-                            if (historyTable) loadHoldIssueHistoryRows();
-                        } else {
-                            alertEl.className = 'alert alert-danger mb-3';
-                            alertEl.textContent = data.message || 'Import failed.';
-                        }
-                    } catch (e) {
-                        progressEl.classList.add('d-none');
-                        alertEl.className = 'alert alert-danger mb-3';
-                        alertEl.textContent = 'Network error. Please try again.';
-                    } finally {
-                        document.getElementById('importCsvSubmitBtn').disabled = false;
-                    }
-                });
-            }
-
             // ── L30 Loss / Issues charts (Chart.js) ────────────────────────────
             let l30Data = null,
                 l30FullChart = null;
@@ -5913,7 +5742,6 @@
                 document.getElementById('btnExportCsv').addEventListener('click', exportCsv);
 
                 wireAddSkuRow();
-                wireImportCsv();
 
                 // Paste image into modal → Image 1 then Image 2
                 modalEl.addEventListener('paste', function(pe) {

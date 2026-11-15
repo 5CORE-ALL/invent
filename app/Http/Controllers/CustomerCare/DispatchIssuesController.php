@@ -825,6 +825,29 @@ class DispatchIssuesController extends IssueBoardControllerBase
         return response()->json(['message' => 'Updated.', 'nfe' => $next]);
     }
 
+    /** Inline-edit endpoint for the "Resolved" dropdown (yes = resolved, no = not resolved). */
+    public function updateResolved(Request $request, int $id): JsonResponse
+    {
+        if (! Schema::hasColumn($this->issuesTable(), 'resolved')) {
+            return response()->json(['message' => 'Not available. Run php artisan migrate.'], 503);
+        }
+        $validated = $request->validate(['resolved' => 'required|in:yes,no']);
+        $next = $validated['resolved'];
+
+        $updated = DB::table($this->issuesTable())
+            ->where('id', $id)
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->update(['resolved' => $next, 'updated_at' => now()]);
+
+        if ($updated === 0) {
+            return response()->json(['message' => 'Record not found.'], 404);
+        }
+
+        return response()->json(['message' => 'Updated.', 'resolved' => $next]);
+    }
+
     public function updateClaimable(Request $request, int $id): JsonResponse
     {
         if (! Schema::hasColumn($this->issuesTable(), 'claimable')) {
@@ -1296,6 +1319,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'c_action_1_remark'    => $row->c_action_1_remark,
                 'close_note'           => $row->close_note,
                 'nfe'                  => $row->nfe ?? null,
+                'resolved'             => ($row->resolved ?? null) === 'yes' ? 'yes' : 'no',
                 'department'           => CustomerCareDepartments::label($row->department ?? null),
                 'departments'          => CustomerCareDepartments::decode($row->department ?? null),
                 'created_by'           => $row->created_by,

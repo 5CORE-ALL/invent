@@ -672,7 +672,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/veeqo-chargebacks/data', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'data'])->name('veeqo.chargebacks.data');
     Route::get('/veeqo-chargebacks/summary', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'summary'])->name('veeqo.chargebacks.summary');
     Route::get('/veeqo-chargebacks/transaction/{id}', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'show'])->name('veeqo.chargebacks.show')->whereNumber('id');
-    Route::post('/veeqo-chargebacks/sync', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'syncNow'])->name('veeqo.chargebacks.sync');
     Route::get('/veeqo-chargebacks/sku-report', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'skuReport'])->name('veeqo.chargebacks.sku-report');
     Route::post('/veeqo-chargebacks/find-missing-skus', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'findMissingSkus'])->name('veeqo.chargebacks.find-skus');
     Route::post('/veeqo-chargebacks/sync-tiktok', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'syncTikTok'])->name('veeqo.chargebacks.sync-tiktok');
@@ -2449,6 +2448,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.dispatch.issues.list.patch.claimable.remark');
     Route::patch('/customer-care/all-issues/issues/{id}/nfe', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateNfe'])
         ->name('customer.care.dispatch.issues.list.patch.nfe');
+    Route::patch('/customer-care/all-issues/issues/{id}/resolved', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateResolved'])
+        ->name('customer.care.dispatch.issues.list.patch.resolved');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])
         ->name('customer.care.dispatch.issues.list.patch.amp.usd');
     Route::patch('/customer-care/all-issues/issues/{id}/amt-rec', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmtRec'])

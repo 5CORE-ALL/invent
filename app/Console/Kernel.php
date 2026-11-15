@@ -269,12 +269,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('clearance-snapshot')
             ->appendOutputTo($log);
-        $schedule->command('veeqo:sync-chargebacks --days=30')
-            ->dailyAt('04:40')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->name('veeqo-sync-chargebacks')
-            ->appendOutputTo($log);
         $schedule->command('veeqo:fill-order-skus --limit=300')
             ->hourlyAt(50)
             ->withoutOverlapping(60)
