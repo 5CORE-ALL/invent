@@ -2231,6 +2231,43 @@ class ChannelPromoPricingController extends Controller
         );
     }
 
+    /**
+     * Master Dil slab rule (/sales-by-dil-slab): the Seq 1 rule (Dil slabs - Target NROI) is written to every marketplace at once.
+     * Only the slabs change; every page keeps its own CVR / Age / Diff / LMP cap / Clearance settings. Each page whose slabs changed
+     * re-saves its S PRC from them (no push, no waiting), the same as a Save on that page.
+     */
+    public function saveMasterDilSlabs(Request $request): JsonResponse
+    {
+        $incoming = $request->input('rules');
+        if (! is_array($incoming) && is_string($incoming)) {
+            $decoded = json_decode($incoming, true);
+            $incoming = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        try {
+            $written = \App\Support\MasterDilGroiSync::writeMaster($incoming);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+        foreach ($written['updated'] as $page) {
+            $this->dispatchDilRuleReapply($page);
+        }
+
+        return response()->json([
+            'success' => true,
+            'target_metric' => 'nroi',
+            'rules' => $written['rules'],
+            'updated' => $written['updated'],
+            'channels' => array_map(
+                static fn (string $c): string => \App\Support\MasterDilGroiSync::labelFor($c),
+                array_values(array_filter($written['channels'], static fn (string $c): bool => $c !== 'macy'))
+            ),
+        ]);
+    }
+
     /** After a page's Dil rules changed: re-save its S PRC from them (no push, no waiting). */
     private function dispatchDilRuleReapply(string $channel): void
     {

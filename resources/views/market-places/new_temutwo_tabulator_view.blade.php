@@ -2487,7 +2487,7 @@
         return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
     }
     /** Same as Amazon (AMZ_DIL_LMP_REDUCE_PCT): when the price reaches LMP it lands on LMP × 0.98. */
-    const NTO_LMP_REDUCE_PCT = 2;
+    const NTO_LMP_REDUCE_PCT = 3;
     /** Same as eBay: the LMP reduce % follows the SKU's Dil band set in the Sprc Dil modal (LMP cap table; default 2%). */
     function ntoLmpReducePct(d) {
         const n = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(d)) : NaN;

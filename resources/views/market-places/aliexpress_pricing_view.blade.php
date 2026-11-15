@@ -817,8 +817,8 @@
         }
         /** Sprc Dil switch ON: the Dil price, the LMP cap by Dil band, then Std Prc as the maximum. */
         function aeCapDilSprice(data, raw) {
-            const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
-            let out = aeApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+            const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 3;
+            let out = aeApplyLmpCap(data, raw, isFinite(pct) ? pct : 3);
             const std = parseFloat(data && data.STANDARD_PRICE) || 0;
             if (std > 0 && out > std + 0.0001) out = Math.round(std * 100) / 100;
             return out;

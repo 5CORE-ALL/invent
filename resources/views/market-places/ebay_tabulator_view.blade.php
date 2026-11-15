@@ -1631,7 +1631,7 @@
                 // Std prc vs dil switch ON: S PRC = LMP.
                 const dilOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
                 // The reduce % follows the SKU's Dil band set in the Sprc Dil modal (LMP cap table; default 2%).
-                const reducePct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(rowData) : 2;
+                const reducePct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(rowData) : 3;
                 if (lmp > 0) out = +Number(dilOn ? lmp * (1 - reducePct / 100) : lmp).toFixed(2);
             }
             const lmpNow = ebayEffectiveLmp(rowData);
@@ -2977,7 +2977,7 @@
                             'Price is at or above LMP ' + ebayRuleMoney(lmp) + ', but SNROI at LMP is ' + sg.toFixed(1)
                             + '% (below 20%). The cap is <b>not</b> applied.'));
                     } else {
-                        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(d) : 2;
+                        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? window.ebayLmpReducePctForRow(d) : 3;
                         afterLmp = +(dilOn ? lmp * (1 - pct / 100) : lmp).toFixed(2);
                         steps.push(ebayRuleStep('ok', n + ' · LMP cap',
                             'Price is at or above LMP ' + ebayRuleMoney(lmp) + ' and SNROI at LMP is '

@@ -76,8 +76,8 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $out = $svc->computeTarget($this->row(['lmp' => 80]), $this->pricer());
 
         $this->assertNotNull($out);
-        // LMP 80 × (1 − 2%) = 78.40 (default reduce %; the Sprc Dil modal can set it by Dil band).
-        $this->assertSame(78.4, $out['sprice']);
+        // LMP 80 × (1 − 3%) = 77.60 (default reduce %; the Sprc Dil modal can set it by Dil band).
+        $this->assertSame(77.6, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
     }
 

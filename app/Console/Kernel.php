@@ -1285,22 +1285,28 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Today Sales on /all-marketplace-master — hourly 9 AM–10 PM EST/EDT.
+        // Today block on /all-marketplace-master — every 15 min, 9 AM–9 PM Pacific (PST/PDT).
+        // Runs at :00/:15/:30/:45 from 9:00 through 21:00 inclusive (the :59 pads the seconds
+        // the scheduler tick lands on, so the 9:00 PM run is not skipped).
         // Lightweight persist so the column does not sit at $0 while calculate-data holds its lock.
         $schedule->command('channel:refresh-today-sales')
-            ->cron('0 9-22 * * *')
-            ->timezone('America/New_York')
+            ->everyFifteenMinutes()
+            ->timezone('America/Los_Angeles')
+            ->between('9:00', '21:00:59')
             ->name('channel-refresh-today-sales')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // T Spend for T Ads% (Amazon): today's SP + SB spend so far, pulled before each Today Sales refresh.
+        // T Spend for T Ads% (Amazon): today's SP + SB spend so far, pulled 10 min before each
+        // Today refresh (:50/:05/:20/:35) so the refresh always sees a fresh figure.
+        // Window 8:50 AM–8:50 PM Pacific feeds the 9:00 AM … 9:00 PM refreshes.
         $schedule->command('amazon:pull-today-ad-spend')
-            ->cron('35 8-22 * * *')
-            ->timezone('America/New_York')
+            ->cron('5,20,35,50 * * * *')
+            ->timezone('America/Los_Angeles')
+            ->between('8:50', '20:59:59')
             ->name('amazon-pull-today-ad-spend')
-            ->withoutOverlapping(self::HF_MUTEX_HOURLY)
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
             ->appendOutputTo($log);
 

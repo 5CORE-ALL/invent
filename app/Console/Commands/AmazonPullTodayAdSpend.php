@@ -187,7 +187,7 @@ class AmazonPullTodayAdSpend extends Command
 
     /**
      * Amazon answers an identical report request with "duplicate of <old report id>" and that old
-     * report holds stale numbers. The same single-day request is made every hour, so the optional
+     * report holds stale numbers. The same single-day request is made every 15 minutes, so the optional
      * columns rotate per run to make each request unique while "campaignId" + "cost" stay constant.
      *
      * @return list<string>
@@ -195,7 +195,7 @@ class AmazonPullTodayAdSpend extends Command
     private function columnsForThisRun(): array
     {
         $optional = ['impressions', 'clicks', 'campaignStatus', 'campaignBudgetAmount', 'campaignBudgetCurrencyCode'];
-        $mask = ((int) floor(time() / 3600) % 31) + 1; // 1..31, a different subset every hour
+        $mask = ((int) floor(time() / 900) % 31) + 1; // 1..31, a different subset every 15 minutes
         $columns = ['campaignId', 'campaignName', 'cost'];
         foreach ($optional as $i => $name) {
             if ($mask & (1 << $i)) {

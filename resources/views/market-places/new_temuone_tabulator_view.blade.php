@@ -1182,7 +1182,7 @@
             if (!atLmp || atLmp.sgroi == null || atLmp.sgroi >= 20) {
                 // x% follows the SKU's Dil band (Sprc Dil modal, LMP cap table; default 2% = LMP × 0.98).
                 const bandPct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(row)) : NaN;
-                sprice = +(lmp * (1 - ((isFinite(bandPct) && bandPct >= 0 ? bandPct : 2) / 100))).toFixed(2);
+                sprice = +(lmp * (1 - ((isFinite(bandPct) && bandPct >= 0 ? bandPct : 3) / 100))).toFixed(2);
                 lmpAlert = true;
             }
         }

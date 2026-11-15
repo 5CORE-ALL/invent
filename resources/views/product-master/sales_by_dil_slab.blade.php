@@ -55,6 +55,18 @@
         .sds-band-name { font-size: 11px; font-weight: 800; overflow-wrap: anywhere; padding-right: 14px; }
         .sds-band-cnt { font-size: 13px; font-weight: 700; margin-top: 2px; }
         .sds-band-val { font-size: 12px; font-weight: 700; display: flex; flex-wrap: wrap; column-gap: 4px; }
+        /* Master Dil slab rule modal (same Dil slabs - Target NROI table as the Amazon Sprc Dil modal) */
+        #sdsMasterModal .sds-m-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: #fff; }
+        #sdsMasterModal .sds-m-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 700; margin-bottom: 8px; }
+        #sdsMasterModal .sds-m-seq { display: inline-flex; align-items: center; gap: 4px; background: #eef2ff; color: #4338ca; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
+        #sdsMasterModal table .form-control-sm { padding-top: 1px; padding-bottom: 1px; min-height: 24px; height: 26px; font-size: 12px; max-width: 110px; display: inline-block; text-align: right; font-weight: 600; }
+        #sdsMasterModal .sds-m-count { font-weight: 700; text-align: center; white-space: nowrap; }
+        #sdsMasterModal .sds-m-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; }
+        #sdsMasterModal .sds-m-del { border: none; background: none; color: #dc3545; padding: 0 4px; line-height: 1; cursor: pointer; font-size: 16px; }
+        #sdsMasterModal .sds-m-rules { margin: 10px 0 0; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; font-size: 12px; }
+        #sdsMasterModal .sds-m-rules ol { margin: 4px 0 0; padding-left: 20px; }
+        #sdsMasterModal .sds-m-rules li { margin-bottom: 3px; }
+        #sdsMasterModal .sds-m-status { font-size: 12px; min-height: 18px; }
         @media (max-width: 991px) { .sds-inv-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sds-inv-panel { grid-template-columns: 1fr; } }
     </style>
 @endsection
@@ -68,7 +80,13 @@
                     <div class="sds-toolbar">
                         <h4>Sales by Dil Slab</h4>
                         <input type="search" id="sds-search" class="form-control form-control-sm" placeholder="Search parent / SKU">
+                        <select id="sds-slab" class="form-select form-select-sm" style="width:auto;min-width:170px;" title="Filter by Dil slab">
+                            <option value="">All slabs</option>
+                        </select>
                         <button type="button" id="sds-clear" class="btn btn-sm btn-outline-secondary" style="display:none;">Clear slab filter</button>
+                        <button type="button" id="sds-master-btn" class="btn btn-sm btn-primary" title="Master Dil slab rule: the Dil slabs - Target NROI table (Seq 1). Any change applies automatically to all marketplaces.">
+                            <i class="fas fa-layer-group"></i> Master Dil Slab Rule
+                        </button>
                         <button type="button" id="sds-refresh" class="btn btn-sm btn-outline-primary" title="Reload from the marketplace order tables">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
@@ -99,6 +117,56 @@
                     <div class="sds-note mb-2" id="sds-channels"></div>
 
                     <div id="sds-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="sdsMasterModal" tabindex="-1" aria-labelledby="sdsMasterModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="sdsMasterModalLabel"><i class="fas fa-layer-group me-1"></i> Master Dil Slab Rule</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2">
+                        This is the <strong>Seq 1</strong> rule (Dil slabs &mdash; Target NROI) of the Amazon Sprc Dil modal. Every change you make here is
+                        applied <strong>automatically to all marketplaces</strong>. Only the slabs change: each page keeps its own CVR, Ageing, LMP cap,
+                        Clearance and other rules.
+                    </div>
+                    <div class="sds-m-card">
+                        <div class="sds-m-title">
+                            <span class="sds-m-seq">SEQ 1</span>
+                            <span><i class="fas fa-layer-group me-1"></i> Dil slabs &mdash; Target NROI</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 ms-auto" id="sds-m-add"><i class="fas fa-plus me-1"></i> Add slab</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0" id="sds-m-table">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center" style="width:110px;">From</th>
+                                        <th class="text-center" style="width:110px;">To</th>
+                                        <th class="text-center" style="width:90px;" title="Child SKUs with INV &gt; 0 whose Dil is in this slab">Count</th>
+                                        <th class="text-end" style="width:140px;">Target NROI%</th>
+                                        <th style="width:36px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sds-m-tbody"><tr><td colspan="5" class="text-muted small text-center">Loading…</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="sds-m-rules">
+                            <strong><i class="fas fa-list-ul me-1"></i> Rules</strong>
+                            <ol>
+                                <li>When Dil sits in a From&ndash;To range (INV &gt; 0): use that slab&rsquo;s Target NROI (first match; last slab includes the To value). S PRC is set so SNROI = Target NROI using Channel Master Ads%: (LP &times; (1 + NROI%/100) + Ship) / (0.80 &minus; Ads%/100).</li>
+                                <li>When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.</li>
+                                <li>When you change the first Target NROI%: later rows fill as first +5, +10, &hellip; (increasing down the table).</li>
+                                <li>When INV &le; 0: Count and pies skip that SKU.</li>
+                                <li>Any change here is saved to every marketplace automatically (this Seq 1 rule only).</li>
+                            </ol>
+                        </div>
+                    </div>
+                    <div class="sds-m-status mt-2 text-muted" id="sds-m-status"></div>
                 </div>
             </div>
         </div>
@@ -392,12 +460,28 @@
                     return true;
                 });
                 document.getElementById('sds-clear').style.display = activeBand ? '' : 'none';
+                document.getElementById('sds-slab').value = activeBand || '';
                 drawBadge();
             }
             function setBand(key) {
                 activeBand = (key && activeBand === key) ? null : (key || null);
                 applyFilters();
             }
+
+            // Slab dropdown (kept in sync with the legend / chart click filter).
+            (function initSlabSelect() {
+                const sel = document.getElementById('sds-slab');
+                BANDS.forEach(function (b) {
+                    const o = document.createElement('option');
+                    o.value = b.key;
+                    o.textContent = b.label;
+                    sel.appendChild(o);
+                });
+                sel.addEventListener('change', function () {
+                    activeBand = sel.value || null;
+                    applyFilters();
+                });
+            })();
 
             document.getElementById('sds-search').addEventListener('input', applyFilters);
             document.getElementById('sds-clear').addEventListener('click', function () { setBand(null); });
@@ -539,6 +623,181 @@
                 .catch(function () {
                     document.getElementById('sds-inv-bands').innerHTML = '<span class="text-danger small">Failed to load inventory badges.</span>';
                 });
+
+            // ---- Master Dil slab rule: the Seq 1 table of the Amazon Sprc Dil modal; every change is saved to all marketplaces ----
+            (function masterDilSlab() {
+                const MASTER_SAVE_URL = @json(route('sales.by.dil.slab.master.rule'));
+                const MASTER_LOAD_URL = '/channel-promo-pricing/amazon/dil-groi';
+                const COLORS = ['#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c', '#7c3aed', '#0ea5e9'];
+                const DEFAULTS = [
+                    { min: 0, max: 0, nroi: 50 }, { min: 0.1, max: 5, nroi: 50 }, { min: 5, max: 10, nroi: 55 },
+                    { min: 10, max: 15, nroi: 60 }, { min: 15, max: 20, nroi: 65 }, { min: 20, max: 25, nroi: 70 },
+                ];
+                let slabs = [];
+                let loaded = false;
+                let saveTimer = null;
+                let saving = false;
+                let dirtyWhileSaving = false;
+                const csrf = function () { const m = document.querySelector('meta[name="csrf-token"]'); return m ? m.getAttribute('content') : ''; };
+                const r2 = function (n) { return Math.round(n * 100) / 100; };
+
+                function norm(r) {
+                    let min = parseFloat(r.min), max = parseFloat(r.max);
+                    const t = parseFloat(r.nroi != null ? r.nroi : r.groi);
+                    if (!isFinite(min) || !isFinite(max)) return null;
+                    min = Math.max(0, min); max = Math.max(0, max);
+                    if (max < min) { const x = min; min = max; max = x; }
+                    return { min: r2(min), max: r2(max), nroi: r2(Math.max(0, isFinite(t) ? t : 0)) };
+                }
+                function normList(list) {
+                    const out = [];
+                    (Array.isArray(list) ? list : []).forEach(function (r) { const n = norm(r); if (n) out.push(n); });
+                    out.sort(function (a, b) { return a.min - b.min || a.max - b.max; });
+                    return out;
+                }
+                /** Same slab test as the server: min <= Dil < max, the last slab also includes max, min = max matches that Dil only. */
+                function slabIndex(dil, list) {
+                    const n = r2(num(dil));
+                    const last = list.length - 1;
+                    for (let i = 0; i < list.length; i++) {
+                        const r = list[i];
+                        const hit = r.max === r.min ? n === r.min : (n >= r.min && (i === last ? n <= r.max : n < r.max));
+                        if (hit) return i;
+                    }
+                    return -1;
+                }
+                function counts() {
+                    const c = slabs.map(function () { return 0; });
+                    rows.forEach(function (d) {
+                        if (num(d.INV) <= 0) return;
+                        const i = slabIndex(d.dil, slabs);
+                        if (i >= 0) c[i]++;
+                    });
+                    return c;
+                }
+                function render() {
+                    const tb = document.getElementById('sds-m-tbody');
+                    const c = counts();
+                    const canDelete = slabs.length > 1;
+                    tb.innerHTML = slabs.map(function (r, i) {
+                        return '<tr data-idx="' + i + '">'
+                            + '<td class="text-center"><input type="number" min="0" step="0.1" class="form-control form-control-sm sds-m-min" value="' + r.min + '"></td>'
+                            + '<td class="text-center"><input type="number" min="0" step="0.1" class="form-control form-control-sm sds-m-max" value="' + r.max + '"></td>'
+                            + '<td class="sds-m-count"><span class="sds-m-n">' + (c[i] || 0) + '</span><span class="sds-m-dot" style="background:' + COLORS[i % COLORS.length] + ';"></span></td>'
+                            + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm sds-m-nroi" value="' + r.nroi + '"'
+                            + (i === 0 ? ' title="Changing this sets the following slabs to +5 each"' : '') + '></td>'
+                            + '<td class="text-center">' + (canDelete ? '<button type="button" class="sds-m-del" data-idx="' + i + '" title="Remove slab">&times;</button>' : '') + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+                function readTable() {
+                    const list = [];
+                    document.querySelectorAll('#sds-m-tbody tr').forEach(function (tr) {
+                        const n = norm({
+                            min: tr.querySelector('.sds-m-min').value,
+                            max: tr.querySelector('.sds-m-max').value,
+                            nroi: tr.querySelector('.sds-m-nroi').value,
+                        });
+                        if (n) list.push(n);
+                    });
+                    slabs = list.length ? normList(list) : DEFAULTS.map(function (r) { return Object.assign({}, r); });
+                }
+                function setStatus(html, cls) {
+                    const el = document.getElementById('sds-m-status');
+                    el.className = 'sds-m-status mt-2 ' + (cls || 'text-muted');
+                    el.innerHTML = html;
+                }
+                function scheduleSave() {
+                    if (!loaded) return;
+                    setStatus('Change detected, applying to all marketplaces…');
+                    clearTimeout(saveTimer);
+                    saveTimer = setTimeout(save, 700);
+                }
+                function save() {
+                    if (saving) { dirtyWhileSaving = true; return; }
+                    saving = true;
+                    dirtyWhileSaving = false;
+                    const payload = slabs.map(function (r) { return { min: r.min, max: r.max, groi: r.nroi, nroi: r.nroi }; });
+                    fetch(MASTER_SAVE_URL, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf() },
+                        body: JSON.stringify({ rules: payload, _token: csrf() }),
+                    }).then(function (r) {
+                        return r.json().then(function (j) { if (!r.ok || !j.success) throw new Error(j.message || ('HTTP ' + r.status)); return j; });
+                    }).then(function (res) {
+                        const n = (res.channels || []).length;
+                        setStatus('<i class="fas fa-check-circle text-success"></i> Applied to all marketplaces ('
+                            + n + ' pages' + ((res.updated || []).length ? ', ' + res.updated.length + ' changed' : ', already the same') + ').', 'text-success');
+                    }).catch(function (e) {
+                        setStatus('<i class="fas fa-exclamation-triangle"></i> Could not apply: ' + esc(e.message), 'text-danger');
+                    }).finally(function () {
+                        saving = false;
+                        if (dirtyWhileSaving) scheduleSave();
+                    });
+                }
+                function load() {
+                    loaded = false;
+                    setStatus('Loading the saved slabs…');
+                    fetch(MASTER_LOAD_URL, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                        .then(function (res) {
+                            const list = normList((res && Array.isArray(res.rules)) ? res.rules : []);
+                            slabs = list.length ? list : DEFAULTS.map(function (r) { return Object.assign({}, r); });
+                            render();
+                            loaded = true;
+                            setStatus('Loaded the Dil slabs. Changes are applied to all marketplaces automatically.');
+                        })
+                        .catch(function (e) {
+                            slabs = DEFAULTS.map(function (r) { return Object.assign({}, r); });
+                            render();
+                            setStatus('<i class="fas fa-exclamation-triangle"></i> Could not load the saved slabs (' + esc(e.message) + '). Editing is disabled until it loads.', 'text-danger');
+                        });
+                }
+
+                document.getElementById('sds-master-btn').addEventListener('click', function () {
+                    const el = document.getElementById('sdsMasterModal');
+                    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+                    bootstrap.Modal.getOrCreateInstance(el).show();
+                    load();
+                });
+                const tbody = document.getElementById('sds-m-tbody');
+                tbody.addEventListener('change', function (e) {
+                    if (!loaded || !e.target.matches('input')) return;
+                    const first = tbody.querySelector('tr .sds-m-nroi');
+                    if (e.target === first && e.target.classList.contains('sds-m-nroi')) {
+                        // First Target NROI changed: the following slabs fill as first +5, +10, ... (same as the Amazon modal).
+                        const v = parseFloat(first.value);
+                        if (isFinite(v)) {
+                            tbody.querySelectorAll('tr .sds-m-nroi').forEach(function (inp, i) { if (i > 0) inp.value = r2(Math.max(0, v + i * 5)); });
+                        }
+                    }
+                    readTable();
+                    render();
+                    scheduleSave();
+                });
+                tbody.addEventListener('click', function (e) {
+                    const del = e.target.closest('.sds-m-del');
+                    if (!del || !loaded) return;
+                    readTable();
+                    if (slabs.length <= 1) return;
+                    slabs.splice(parseInt(del.getAttribute('data-idx'), 10), 1);
+                    render();
+                    scheduleSave();
+                });
+                document.getElementById('sds-m-add').addEventListener('click', function () {
+                    if (!loaded) return;
+                    readTable();
+                    let nextMin = 0.1, lastNroi = 50;
+                    slabs.forEach(function (r) { if (r.max > nextMin) nextMin = r.max; lastNroi = r.nroi; });
+                    slabs.push({ min: r2(nextMin), max: r2(nextMin + 5), nroi: r2(Math.max(0, lastNroi + 5)) });
+                    slabs = normList(slabs);
+                    render();
+                    scheduleSave();
+                });
+                // Counts follow the sales data once it has loaded.
+                document.getElementById('sdsMasterModal').addEventListener('shown.bs.modal', function () { if (slabs.length) render(); });
+            })();
         })();
     </script>
 @endsection

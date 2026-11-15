@@ -396,10 +396,11 @@ class AmazonSprcDilAutoPushService
                     }
                 }
             }
-            // LMP rule: when LMP is available and lower than the new S PRC (after all the rules above), S PRC = LMP × 0.97.
+            // LMP cap (Sprc Dil modal): when LMP is available and lower than the new S PRC (after all the rules above),
+            // S PRC = LMP less the Reduce % of the SKU's Dil band (default 3% = LMP × 0.97). Std Prc is the maximum, below.
             $dilLmpCapped = false;
-            if ($lmp > 0 && $capped > $lmp + 0.0001) {
-                $capped = round($lmp * 0.97, 2);
+            if ($this->dilRuleOn('lmp') && $lmp > 0 && $capped > $lmp + 0.0001) {
+                $capped = AmazonDilGroiRule::lmpTargetPrice($lmp, AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg));
                 $dilLmpCapped = true;
             }
             $capped = AmazonDilGroiRule::capToStdWhenNoLmp($capped, 0.0, $std);
@@ -1299,8 +1300,11 @@ class AmazonSprcDilAutoPushService
     /** Clearance Target NROI% (last "clearance" row of the Sprc Dil modal); null = not saved (treated as 0). */
     private ?float $clearanceAdjCfg = null;
 
-    /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, clearance). A block that is OFF no longer applies. */
-    private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'clearance' => true];
+    /** LMP cap saved in the Sprc Dil modal (reduce % of LMP by Dil band); null = defaults (3% = LMP × 0.97). */
+    private ?array $lmpCapCfg = null;
+
+    /** ON / OFF switches of the Sprc Dil blocks (dil, cvr, age, lmp, clearance). A block that is OFF no longer applies. */
+    private array $ruleOnCfg = ['dil' => true, 'cvr' => true, 'age' => true, 'lmp' => true, 'clearance' => true];
 
     /** Sequence numbers of the Target NROI rules (cvr, age): the order they are applied in. */
     private array $ruleSeqCfg = ['cvr' => 3.0, 'age' => 4.0];
@@ -1352,6 +1356,7 @@ class AmazonSprcDilAutoPushService
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         $unpacked = AmazonDilGroiRule::unpackStored(is_array($saved) ? $saved : null);
         $this->ageAdjCfg = $unpacked['age_adj'] ?? null;
+        $this->lmpCapCfg = $unpacked['lmp_cap'] ?? null;
         $this->ruleOnCfg = AmazonDilGroiRule::normalizeRuleOn($unpacked['rule_on'] ?? null);
         $this->ruleSeqCfg = AmazonDilGroiRule::normalizeRuleSeq($unpacked['rule_seq'] ?? null);
         $this->customRulesCfg = AmazonDilGroiRule::normalizeCustomRules($unpacked['custom_rules'] ?? null);

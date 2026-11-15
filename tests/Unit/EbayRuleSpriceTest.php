@@ -216,15 +216,15 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(100.0, EbayRuleSprice::price($this->pricer(), $this->input(['lp' => 50, 'ship' => 5, 'lmp' => 70, 'percentage' => 85]))['sprice']);
     }
 
-    public function test_sprc_dil_switch_prices_from_target_nroi_and_lands_on_lmp_x_098(): void
+    public function test_sprc_dil_switch_prices_from_target_nroi_and_lands_on_lmp_x_097(): void
     {
         $dil = ['rules' => [AmazonDilGroiRule::make(0, 0, 40), AmazonDilGroiRule::make(0.1, 100, 40)], 'cvr_adj' => AmazonDilGroiRule::normalizeCvrAdj(null)];
         $context = ['rule' => 'dil', 'dil' => $dil];
-        // Target NROI 40%: (50 × 1.4 + 5) ÷ (0.80 − 0.10) = 107.14, over LMP 90 (SGROI at LMP = 34%) → LMP × 0.98.
+        // Target NROI 40%: (50 × 1.4 + 5) ÷ (0.80 − 0.10) = 107.14, over LMP 90 (SGROI at LMP = 34%) → LMP × 0.97.
         $input = $this->input(['lp' => 50, 'ship' => 5, 'lmp' => 90, 'percentage' => 0.8, 'ads' => 0.10, 'inv' => 10, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8]);
         $out = EbayRuleSprice::price($this->pricer(), $input, $context);
         $this->assertSame(107.14, $out['rule_price']);
-        $this->assertSame(88.2, $out['sprice']);
+        $this->assertSame(87.3, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
         // The same SKU on Std prc vs dil (switch default) lands on LMP itself.
         $std = EbayRuleSprice::price($this->pricer(), $input, ['rule' => 'std', 'dil' => null]);
@@ -243,14 +243,14 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(81.0, EbayRuleSprice::price($this->pricer(), $this->input(['dil' => 60] + $base), $context)['sprice']);
     }
 
-    public function test_lmp_cap_config_is_normalized_and_defaults_to_2_percent(): void
+    public function test_lmp_cap_config_is_normalized_and_defaults_to_3_percent(): void
     {
-        $this->assertSame(2.0, AmazonDilGroiRule::lmpCapReducePct(40));
+        $this->assertSame(3.0, AmazonDilGroiRule::lmpCapReducePct(40));
         $cfg = AmazonDilGroiRule::normalizeLmpCap(['low_lt' => 60, 'high_gt' => 10, 'mid_pct' => 500, 'low_pct' => -1]);
         $this->assertSame(60.0, $cfg['high_gt']);
         $this->assertSame(99.0, $cfg['mid_pct']);
-        $this->assertSame(2.0, $cfg['low_pct']);
-        $this->assertSame(2.0, AmazonDilGroiRule::unpackStored(['rules' => [], 'cvr_adj' => []])['lmp_cap']['high_pct']);
+        $this->assertSame(3.0, $cfg['low_pct']);
+        $this->assertSame(3.0, AmazonDilGroiRule::unpackStored(['rules' => [], 'cvr_adj' => []])['lmp_cap']['high_pct']);
     }
 
     public function test_sprc_dil_adds_10_to_target_nroi_when_std_vs_price_diff_is_over_20_percent(): void

@@ -17,10 +17,10 @@ class AmazonDilGroiRule
     public const LMP_SGROI_MIN = 20.0;
 
     /**
-     * Sprc Dil rule (and eBay 1 / 2 / 3): when LMP is available and S PRC reaches it, S PRC = LMP × 0.98
+     * Sprc Dil rule (and eBay 1 / 2 / 3): when LMP is available and S PRC reaches it, S PRC = LMP × 0.97
      * (LMP less this %). The Amazon Std prc vs dil rule uses its own LMP Reduce block instead.
      */
-    public const DIL_LMP_REDUCE_PCT = 2.0;
+    public const DIL_LMP_REDUCE_PCT = 3.0;
 
     /**
      * @return list<array{key:string,label:string,min:float,max:float,groi:float|int}>

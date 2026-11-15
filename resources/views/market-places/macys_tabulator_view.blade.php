@@ -396,8 +396,8 @@
         if (lmp > 0 && out + 0.0001 >= lmp) {
             const sg = macysSgroiAtPrice(data, lmp);
             if (sg === null || sg >= 20) {
-                const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
-                out = Math.round(lmp * (1 - (isFinite(pct) ? pct : 2) / 100) * 100) / 100;
+                const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 3;
+                out = Math.round(lmp * (1 - (isFinite(pct) ? pct : 3) / 100) * 100) / 100;
             }
         }
         const std = parseFloat(data && data.STANDARD_PRICE) || 0;

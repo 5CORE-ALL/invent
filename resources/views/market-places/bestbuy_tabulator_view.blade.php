@@ -593,8 +593,8 @@
     }
     /** Sprc Dil switch ON: the Dil price, then the LMP cap by Dil band. No Std Prc maximum. (The Amz floor runs after.) */
     function bestbuyCapDilSprice(data, raw) {
-        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 2;
-        return bestbuyApplyLmpCap(data, raw, isFinite(pct) ? pct : 2);
+        const pct = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(data)) : 3;
+        return bestbuyApplyLmpCap(data, raw, isFinite(pct) ? pct : 3);
     }
     /**
      * The rule price of the ON switch worked out live: { pre, final }. pre = after the LMP cap (no Std max),

@@ -127,7 +127,7 @@
 
         function temuRuleBandPct(d) {
             const n = (typeof window.ebayLmpReducePctForRow === 'function') ? Number(window.ebayLmpReducePctForRow(d)) : NaN;
-            return isFinite(n) && n >= 0 ? n : 2;
+            return isFinite(n) && n >= 0 ? n : 3;
         }
 
         /** Where the listing Price stands vs the price we push, Std Prc and LMP. o = { price, pushLabel, push, live, std, lmp, inv }. */

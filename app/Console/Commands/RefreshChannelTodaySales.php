@@ -20,7 +20,7 @@ class RefreshChannelTodaySales extends Command
 
     protected string $monitorJobName = 'Channel Refresh Today Sales';
 
-    protected int $monitorLockTtlSeconds = 3300;
+    protected int $monitorLockTtlSeconds = 840;
 
     public function handle(): int
     {

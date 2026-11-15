@@ -6056,6 +6056,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-by-dil-slab', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'index'])->name('sales.by.dil.slab');
     Route::get('/sales-by-dil-slab-badges', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'badges'])->name('sales.by.dil.slab.badges');
     Route::get('/sales-by-dil-slab-data', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'data'])->name('sales.by.dil.slab.data');
+    Route::post('/sales-by-dil-slab/master-rule', [\App\Http\Controllers\MarketPlace\ChannelPromoPricingController::class, 'saveMasterDilSlabs'])->name('sales.by.dil.slab.master.rule');
     Route::post('/update-smsl', [MovementAnalysisController::class, 'updateSmsl'])->name('update-smsl');
 
     // Update Forecast Sheet

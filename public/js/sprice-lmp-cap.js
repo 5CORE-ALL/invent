@@ -56,11 +56,14 @@
         return isFinite(l) && l > 0 && isFinite(t) && t > 0 && l + 0.0001 > t;
     }
 
+    /** LMP rule: when LMP is available and lower than the new S PRC, S PRC = LMP × 0.97. */
+    var LMP_FACTOR = 0.97;
+
     function cap(sprice, lmp, std) {
         var s = num(sprice);
         var l = num(lmp);
         if (!(isFinite(s) && s > 0)) return isFinite(s) ? +Number(s).toFixed(2) : s;
-        if (isFinite(l) && l > 0 && s + 0.0001 >= l) s = +Number(l).toFixed(2);
+        if (isFinite(l) && l > 0 && s > l + 0.0001) s = +Number(l * LMP_FACTOR).toFixed(2);
         return capToStdWhenNoLmp(s, l, std);
     }
 
@@ -136,6 +139,7 @@
     }
 
     window.SpriceLmpCap = {
+        LMP_FACTOR: LMP_FACTOR,
         lmpOf: lmpOf,
         stdOf: stdOf,
         cap: cap,

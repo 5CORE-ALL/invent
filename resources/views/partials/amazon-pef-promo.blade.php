@@ -423,7 +423,14 @@
             line-height: 1;
             cursor: pointer;
         }
+        #amz-lmp-cap-table .amz-lmp-cap-input {
+            max-width: 84px;
+            display: inline-block;
+            text-align: right;
+            font-weight: 600;
+        }
         #amz-cvr-groi-table .amz-dg-count,
+        #amz-lmp-cap-table .amz-dg-count,
         #amz-age-adj-table .amz-dg-count {
             font-weight: 700;
             text-align: center;
@@ -1186,6 +1193,71 @@
                         <div class="amz-dg-rules-list"></div>
                     </div>
                     </div>
+                    <div class="amz-dg-card" data-amz-card="lmp">
+                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
+                    <button type="button" class="amz-dg-del-btn" data-amz-del="lmp" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
+                    <div class="amz-dg-side">
+                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
+                        title="When LMP is available and lower than the new S PRC (after all the other rules), S PRC = LMP less the % of the SKU's Dil band. Std Prc stays the maximum. Count = SKUs (INV &gt; 0) in that Dil band.">
+                        <span>LMP cap — S PRC = LMP − x% by Dil</span>
+                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = S PRC is no longer brought down to LMP."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="lmp" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
+                    </div>
+                    </div>
+                    <div class="amz-dg-main">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cap-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Dil band</th>
+                                    <th class="text-center">Dil %</th>
+                                    <th class="text-end">LMP reduce %</th>
+                                    <th class="text-center">S PRC</th>
+                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) whose Dil % is in this band">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-row="low">
+                                    <td>Below</td>
+                                    <td class="text-center">
+                                        &lt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-lt" value="25">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-pct" value="3">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-low">LMP × 0.97</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-low-count">0</span></td>
+                                </tr>
+                                <tr data-row="mid">
+                                    <td>Between</td>
+                                    <td class="text-center"><span class="amz-lmp-cap-mid-range">25 – 50</span></td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-mid-pct" value="3">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-mid">LMP × 0.97</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-mid-count">0</span></td>
+                                </tr>
+                                <tr data-row="high">
+                                    <td>Above</td>
+                                    <td class="text-center">
+                                        &gt;
+                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-gt" value="50">
+                                    </td>
+                                    <td class="text-end">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-pct" value="3">
+                                    </td>
+                                    <td class="text-center text-muted amz-lmp-cap-eg-high">LMP × 0.97</td>
+                                    <td class="amz-dg-count"><span class="amz-lmp-cap-high-count">0</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+                    <div class="amz-dg-card-rules" data-card="lmp">
+                        <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
+                        <div class="amz-dg-rules-list"></div>
+                    </div>
+                    </div>
                     <div class="amz-dg-card" data-amz-card="clearance">
                     <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
                     <button type="button" class="amz-dg-del-btn" data-amz-del="clearance" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
@@ -1282,6 +1354,9 @@
             ],
             age: [
                 'If the SKU\u2019s age (days) is inside an age band, add that band\u2019s points to the Target NROI (use a negative number to lower it). Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.',
+            ],
+            lmp: [
+                'If LMP is available and is lower than the new S PRC after applying all the rules, then use S PRC = LMP × (1 − x%), x by the SKU\u2019s Dil band (default 3% = LMP × 0.97). Std Prc stays the maximum.',
             ],
             clearance: [
                 'If an item is on clearance, its Target NROI is exactly the Clearance Target NROI% above (0 included). The Dil slab, CVR overlay, Ageing and custom rules do not apply to it. Std Prc stays the maximum.',
@@ -1525,12 +1600,12 @@
          * age = Ageing Rule, clearance = Clearance points.
          * Saved with Save Only / Save All and read by AmazonSprcDilAutoPushService, so the page and the cron agree.
          */
-        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'clearance'];
-        let amzRuleOn = { dil: true, cvr: true, age: true, clearance: true };
+        const AMZ_RULE_ON_KEYS = ['dil', 'cvr', 'age', 'lmp', 'clearance'];
+        let amzRuleOn = { dil: true, cvr: true, age: true, lmp: true, clearance: true };
         function amzRuleIsOn(key) { return amzRuleOn[key] !== false; }
         window.amzRuleIsOn = amzRuleIsOn;
         function amzNormalizeRuleOn(raw) {
-            const out = { dil: true, cvr: true, age: true, clearance: true };
+            const out = { dil: true, cvr: true, age: true, lmp: true, clearance: true };
             if (!raw || typeof raw !== 'object') return out;
             AMZ_RULE_ON_KEYS.forEach(function(k) {
                 const v = raw[k];
@@ -1549,6 +1624,7 @@
                 if (k === 'dil') $parts = $('#amz-dil-groi-table').closest('.table-responsive').add('#amz-dil-groi-add-btn');
                 else if (k === 'cvr') $parts = $('#amz-cvr-groi-table').closest('.table-responsive');
                 else if (k === 'age') $parts = $('#amz-age-adj-table').closest('.table-responsive').prev('.small').add($('#amz-age-adj-table').closest('.table-responsive')).add('#amz-age-adj-add-btn');
+                else if (k === 'lmp') $parts = $('#amz-lmp-cap-table').closest('.table-responsive');
                 else if (k === 'clearance') $parts = $('#amzDilGroiModal .amz-dg-clearance-wrap > .small.text-muted').add('#amz-dg-clearance-block');
                 $parts.toggleClass('amz-dg-dim', !on);
             });
@@ -1608,7 +1684,8 @@
         function amzPaintRuleSeqOrder() {
             $('#amzDilGroiModal .amz-dg-card[data-amz-card]').each(function() {
                 const k = this.getAttribute('data-amz-card');
-                this.style.order = String(Math.round((amzRuleSeq[k] || 0) * 100));
+                // The LMP cap card has no Seq number: it always runs last (after every other rule), so it sits after the numbered cards.
+                this.style.order = (k === 'lmp') ? '90000' : String(Math.round((amzRuleSeq[k] || 0) * 100));
             });
         }
         /** Turn the numbers into a clean 1..n order (lowest first, a tie keeps the default order), one rule per number. */
@@ -1997,6 +2074,79 @@
                 $(this).find('.amz-age-adj-count').text(counts[i] || 0);
             });
             amzPaintRuleHistDots();
+        }
+        /**
+         * LMP cap (Sprc Dil): when LMP is available and lower than the new S PRC (after all the other rules), S PRC = LMP less
+         * the Reduce % of the SKU's Dil band (default 3% = LMP × 0.97). Same as the server (AmazonDilGroiRule::lmpCapReducePct).
+         * Dil below low_lt → low_pct, Dil above high_gt → high_pct, otherwise mid_pct.
+         */
+        const AMZ_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 3, mid_pct: 3, high_pct: 3 };
+        let amzLmpCap = Object.assign({}, AMZ_LMP_CAP_DEFAULT);
+        function amzNormalizeLmpCap(raw) {
+            const out = Object.assign({}, AMZ_LMP_CAP_DEFAULT);
+            if (!raw || typeof raw !== 'object') return out;
+            Object.keys(out).forEach(function(k) {
+                const n = parseFloat(raw[k]);
+                if (!isFinite(n) || n < 0) return;
+                out[k] = amzPefRound2(k.slice(-4) === '_pct' ? Math.min(99, n) : n);
+            });
+            if (out.high_gt < out.low_lt) out.high_gt = out.low_lt;
+            return out;
+        }
+        function amzLmpCapNow() {
+            const $t = $('#amz-lmp-cap-table');
+            if (!$t.length || !$t.data('painted')) return amzLmpCap;
+            return amzNormalizeLmpCap({
+                low_lt: $t.find('.amz-lmp-cap-low-lt').val(),
+                high_gt: $t.find('.amz-lmp-cap-high-gt').val(),
+                low_pct: $t.find('.amz-lmp-cap-low-pct').val(),
+                mid_pct: $t.find('.amz-lmp-cap-mid-pct').val(),
+                high_pct: $t.find('.amz-lmp-cap-high-pct').val(),
+            });
+        }
+        function amzLmpCapBandOf(dil, cfg) {
+            if (dil < cfg.low_lt) return 'low';
+            if (dil > cfg.high_gt) return 'high';
+            return 'mid';
+        }
+        /** Reduce % (of LMP) for a grid row, by its Dil band. */
+        function amzLmpReducePct(d) {
+            const cfg = amzLmpCap;
+            return cfg[amzLmpCapBandOf(amzPefDil(d), cfg) + '_pct'];
+        }
+        window.amzLmpReducePct = amzLmpReducePct;
+        function amzPaintLmpCapEg() {
+            const $t = $('#amz-lmp-cap-table');
+            if (!$t.length) return;
+            const cfg = amzLmpCapNow();
+            const f = function(p) { return 'LMP × ' + (Math.round((1 - p / 100) * 10000) / 10000); };
+            $t.find('.amz-lmp-cap-mid-range').text(cfg.low_lt + ' – ' + cfg.high_gt);
+            $t.find('.amz-lmp-cap-eg-low').text(f(cfg.low_pct));
+            $t.find('.amz-lmp-cap-eg-mid').text(f(cfg.mid_pct));
+            $t.find('.amz-lmp-cap-eg-high').text(f(cfg.high_pct));
+        }
+        function amzPaintLmpCapCounts() {
+            const $t = $('#amz-lmp-cap-table');
+            if (!$t.length) return;
+            const cfg = amzLmpCapNow();
+            const counts = { low: 0, mid: 0, high: 0 };
+            amzDgEachInvChild(function(d) { counts[amzLmpCapBandOf(amzPefDil(d), cfg)]++; });
+            $t.find('.amz-lmp-cap-low-count').text(counts.low);
+            $t.find('.amz-lmp-cap-mid-count').text(counts.mid);
+            $t.find('.amz-lmp-cap-high-count').text(counts.high);
+        }
+        function amzPaintLmpCapTable(raw) {
+            amzLmpCap = amzNormalizeLmpCap(raw);
+            const $t = $('#amz-lmp-cap-table');
+            if (!$t.length) return;
+            $t.find('.amz-lmp-cap-low-lt').val(amzLmpCap.low_lt);
+            $t.find('.amz-lmp-cap-high-gt').val(amzLmpCap.high_gt);
+            $t.find('.amz-lmp-cap-low-pct').val(amzLmpCap.low_pct);
+            $t.find('.amz-lmp-cap-mid-pct').val(amzLmpCap.mid_pct);
+            $t.find('.amz-lmp-cap-high-pct').val(amzLmpCap.high_pct);
+            $t.data('painted', true);
+            amzPaintLmpCapEg();
+            amzPaintLmpCapCounts();
         }
         function amzDgCvrBands() {
             const cfg = amzCvrGroiAdjNow();
@@ -3365,6 +3515,7 @@
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
                 else amzRenderAgeAdjTable();
+                amzPaintLmpCapTable(res && res.lmp_cap);
                 amzPaintRuleOn(res && res.rule_on);
                 amzSetCustomRules(res && res.custom_rules);
                 amzPaintRuleSeq(res && res.rule_seq);
@@ -3393,6 +3544,8 @@
             const cvrAdj = amzCvrGroiAdjNow();
             amzCvrGroiAdj = cvrAdj;
             const ageAdj = amzAgeAdjPayload();
+            const lmpCap = amzLmpCapNow();
+            amzLmpCap = lmpCap;
             const ruleOn = amzReadRuleOnFromModal();
             const ruleSeq = amzReadRuleSeqFromModal();
             return $.ajax({
@@ -3403,7 +3556,7 @@
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, age_adj: ageAdj, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_adj: amzClearanceNroiNow(), _token: amzPefCsrf() }),
+                data: JSON.stringify({ rules: rules, cvr_adj: cvrAdj, age_adj: ageAdj, lmp_cap: lmpCap, rule_on: ruleOn, rule_seq: ruleSeq, custom_rules: amzCustomRules, clearance_adj: amzClearanceNroiNow(), _token: amzPefCsrf() }),
             }).then(function(res) {
                 if (res && res.clearance_adj != null && res.clearance_adj !== '' && isFinite(Number(res.clearance_adj))) {
                     amzClearanceNroi = amzPefRound2(Number(res.clearance_adj));
@@ -3418,6 +3571,7 @@
                 }
                 if (res && res.cvr_adj) amzPaintCvrGroiAdjTable(res.cvr_adj);
                 if (res && Array.isArray(res.age_adj)) amzPaintAgeAdjTable(res.age_adj);
+                if (res && res.lmp_cap) amzPaintLmpCapTable(res.lmp_cap);
                 if (res && res.rule_on) amzPaintRuleOn(res.rule_on);
                 if (res && res.custom_rules) amzSetCustomRules(res.custom_rules);
                 if (res && res.rule_seq) amzPaintRuleSeq(res.rule_seq);
@@ -6272,6 +6426,13 @@
                 .on('input.amzAgeAdj change.amzAgeAdj', '#amz-age-adj-table .amz-age-adj-input', function() {
                     amzReadAgeAdjFromTable();
                     amzPaintAgeAdjCounts();
+                    amzAfterDilGroiRulesChanged();
+                });
+            $(document).off('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input')
+                .on('input.amzLmpCap change.amzLmpCap', '#amz-lmp-cap-table .amz-lmp-cap-input', function() {
+                    amzLmpCap = amzLmpCapNow();
+                    amzPaintLmpCapEg();
+                    amzPaintLmpCapCounts();
                     amzAfterDilGroiRulesChanged();
                 });
             $(document).off('click.amzAgeAdjDel', '#amz-age-adj-table .amz-age-adj-del')

@@ -927,18 +927,18 @@
                                         <input type="number" min="0" step="1" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-lt" value="25">
                                     </td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-pct" value="2">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-low-pct" value="3">
                                     </td>
-                                    <td class="text-center text-muted ebay-lmp-cap-eg-low">LMP × 0.98</td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-low">LMP × 0.97</td>
                                     <td class="ebay-dg-count"><span class="ebay-lmp-cap-low-count">0</span></td>
                                 </tr>
                                 <tr data-row="mid">
                                     <td>Between</td>
                                     <td class="text-center"><span class="ebay-lmp-cap-mid-range">25 – 50</span></td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-mid-pct" value="2">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-mid-pct" value="3">
                                     </td>
-                                    <td class="text-center text-muted ebay-lmp-cap-eg-mid">LMP × 0.98</td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-mid">LMP × 0.97</td>
                                     <td class="ebay-dg-count"><span class="ebay-lmp-cap-mid-count">0</span></td>
                                 </tr>
                                 <tr data-row="high">
@@ -948,9 +948,9 @@
                                         <input type="number" min="0" step="1" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-gt" value="50">
                                     </td>
                                     <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-pct" value="2">
+                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm ebay-lmp-cap-input ebay-lmp-cap-high-pct" value="3">
                                     </td>
-                                    <td class="text-center text-muted ebay-lmp-cap-eg-high">LMP × 0.98</td>
+                                    <td class="text-center text-muted ebay-lmp-cap-eg-high">LMP × 0.97</td>
                                     <td class="ebay-dg-count"><span class="ebay-lmp-cap-high-count">0</span></td>
                                 </tr>
                             </tbody>
@@ -1286,7 +1286,7 @@
             ebayRenderCvrGroiTable();
         }
         /** Sprc Dil LMP cap: S PRC = LMP − x% where x follows the SKU's Dil band (ebay1 / ebay2 / ebay3). */
-        const EBAY_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 2, mid_pct: 2, high_pct: 2 };
+        const EBAY_LMP_CAP_DEFAULT = { low_lt: 25, high_gt: 50, low_pct: 3, mid_pct: 3, high_pct: 3 };
         let ebayLmpCap = Object.assign({}, EBAY_LMP_CAP_DEFAULT);
         function ebayNormalizeLmpCap(raw) {
             const out = Object.assign({}, EBAY_LMP_CAP_DEFAULT);

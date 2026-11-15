@@ -227,6 +227,59 @@ class MasterDilGroiSync
     }
 
     /**
+     * Every marketplace that reads a {channel}_dil_vs_groi row: the known Sprc Dil channels, every page of the shared rule models
+     * (eBay 1 / 2 / 3, Temu 1 / 2 ... even if they never saved a row yet) and any other *_dil_vs_groi row already stored.
+     *
+     * @return list<string>
+     */
+    public static function masterTargets(): array
+    {
+        $channels = self::persistTargets();
+        foreach (DilRuleModels::MODELS as $model) {
+            foreach ($model['channels'] as $channel) {
+                $channels[] = $channel;
+            }
+        }
+        foreach (['ebay1', 'ebay2', 'ebay3', 'newtemuone', 'alibaba'] as $channel) {
+            $channels[] = $channel;
+        }
+
+        return array_values(array_unique($channels));
+    }
+
+    /**
+     * Master Dil slab rule (Seq 1, "Dil slabs - Target NROI"): the slabs below become the slabs of EVERY marketplace, exactly.
+     * Only the slabs are written. Each page keeps its own CVR / Age / Diff / LMP cap / Clearance / ON-OFF / Seq settings
+     * (persistChannel keeps them), and the 0-0 slab is kept first on the pages that need it.
+     *
+     * @param  list<array<string, mixed>>  $incoming
+     * @return array{rules:list<array{key:string,label:string,min:float,max:float,groi:float}>,updated:list<string>,channels:list<string>}
+     */
+    public static function writeMaster(array $incoming): array
+    {
+        $rules = AmazonDilGroiRule::normalizeList($incoming);
+        if ($rules === []) {
+            throw new \InvalidArgumentException('At least one Dil slab is required');
+        }
+
+        $updated = [];
+        $channels = self::masterTargets();
+        foreach ($channels as $channel) {
+            $loaded = self::loadChannel($channel);
+            $next = AmazonDilGroiRule::usesZeroToZero($channel)
+                ? AmazonDilGroiRule::ensureZeroToZero($rules)
+                : $rules;
+            if (AmazonDilGroiRule::sameRules($loaded['rules'], $next) && ! $loaded['is_default']) {
+                continue;
+            }
+            self::persistChannel($channel, $next);
+            $updated[] = $channel;
+        }
+
+        return ['rules' => $rules, 'updated' => $updated, 'channels' => $channels];
+    }
+
+    /**
      * Copy a slab diff from one channel onto every other store.
      * Single-page Sprc Dil saves do not call this. A page edit stays on that channel.
      *
