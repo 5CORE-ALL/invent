@@ -1443,12 +1443,53 @@
         // Click = select the camera (so Cmd/Ctrl+V pastes into it). Double-click / Enter = choose a file.
         let selectedShot = null;
 
+        // Safari/Chrome only fire "paste" reliably when an editable element has focus, so a
+        // label can't receive Cmd+V itself. Selecting a camera focuses this invisible field instead.
+        let catcher = null;
+        function getCatcher() {
+            if (!catcher) {
+                catcher = document.createElement('textarea');
+                catcher.id = 'claimShotCatcher';
+                catcher.setAttribute('aria-label', 'Paste screenshot here');
+                catcher.setAttribute('autocomplete', 'off');
+                catcher.style.cssText = 'position:fixed;left:-200px;top:0;width:10px;height:10px;opacity:0;pointer-events:none;border:0;padding:0;';
+                (document.getElementById('claimModal') || document.body).appendChild(catcher);
+
+                catcher.addEventListener('keydown', function (ev) {
+                    if (!selectedShot) return;
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        selectedShot.querySelector('.claim-shot-input').click();
+                    }
+                });
+                // Fallback when the browser does not fire a paste event: read the clipboard directly.
+                catcher.addEventListener('keydown', function (ev) {
+                    if (!((ev.metaKey || ev.ctrlKey) && (ev.key === 'v' || ev.key === 'V'))) return;
+                    pasteFired = false;
+                    setTimeout(function () {
+                        if (pasteFired || !selectedShot || !navigator.clipboard || !navigator.clipboard.read) return;
+                        navigator.clipboard.read().then(function (clipItems) {
+                            for (const ci of clipItems) {
+                                const type = ci.types.find(function (t) { return /^image\//.test(t); });
+                                if (type) { ci.getType(type).then(function (b) { applyBlob(b, false); }); return; }
+                            }
+                        }).catch(function () {});
+                    }, 200);
+                });
+            }
+            return catcher;
+        }
+
+        let pasteFired = false;
+
         function selectShot(label) {
             document.querySelectorAll('.claim-shot.shot-selected').forEach(function (l) { l.classList.remove('shot-selected'); });
             selectedShot = label;
             if (label) {
                 label.classList.add('shot-selected');
-                label.focus({ preventScroll: true });
+                const c = getCatcher();
+                c.value = '';
+                c.focus({ preventScroll: true });
             }
         }
 
@@ -1523,6 +1564,7 @@
 
         document.addEventListener('paste', function (e) {
             if (!claimOpenAndEditable()) return;
+            pasteFired = true;
             const cd = e.clipboardData;
             let blob = null;
             if (cd) {
@@ -1537,7 +1579,7 @@
             if (!blob) {
                 // Plain-text paste into a field is left alone; otherwise explain what to do.
                 const a = document.activeElement;
-                const typing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+                const typing = a && a !== catcher && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
                 const overShot = !!hovered;
                 if (!typing || overShot) {
                     const hasText = cd && cd.types && Array.prototype.indexOf.call(cd.types, 'text/plain') !== -1;
