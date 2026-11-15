@@ -633,6 +633,12 @@
                             placeholder="Search all columns (case-insensitive)..."
                             style="padding-left: 28px;">
                     </div>
+                    <label class="d-flex align-items-center gap-1 mb-0 small align-self-center" for="ai-merge-skus"
+                        style="cursor:pointer;"
+                        title="One row per order and department, listing every SKU of that order. Turn off to see one row per SKU.">
+                        <input type="checkbox" class="form-check-input mt-0" id="ai-merge-skus" checked>
+                        <span>Merge SKUs of one order</span>
+                    </label>
                     <span id="hold_issue_total_count_wrap" class="badge bg-light text-dark align-self-center"
                         title="Total active error groups">Total: <span id="hold_issue_total_count">0</span></span>
                 </div>
@@ -1590,6 +1596,10 @@
                 const badge = d.group_id ?
                     ' <span class="badge bg-warning text-dark" style="font-size:.7rem;" title="Grouped entry (1 error)">G</span>' :
                     '';
+                if (Array.isArray(d.sku_names) && d.sku_names.length > 1) {
+                    return '<span title="' + escAttr(d.sku_names.join(', ')) + '">' +
+                        d.sku_names.map(escapeHtml).join('<br>') + '</span>' + badge;
+                }
                 return '<span title="' + escAttr(d.sku) + '">' + escapeHtml(d.sku) + '</span>' + badge;
             };
             const fmtOrderNum = function(cell) {
@@ -2777,7 +2787,12 @@
                     if (!btn) return;
                     const data = cell.getRow().getData();
                     if (btn.classList.contains('cb-edit')) {
-                        openEditModal(data);
+                        openEditModal(rawRecordFor(data));
+                        if (Array.isArray(data.member_ids) && data.member_ids.length > 1) {
+                            showAlert('This entry has ' + data.member_ids.length + ' SKUs (' + data.sku_names.join(', ') +
+                                '). You are editing ' + (rawRecordFor(data).sku || '') +
+                                '. To edit another SKU on its own, turn off "Merge SKUs of one order".', 'info');
+                        }
                     } else if (btn.classList.contains('cb-archive')) {
                         archiveRecord(data.id);
                     } else if (btn.classList.contains('cb-delete')) {
@@ -3029,6 +3044,101 @@
                 return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
             }
 
+            // ── Merge SKUs of one order ────────────────────────────────────────
+            // One submission with several SKUs and N departments is stored as
+            // (SKUs x N) rows sharing a group_id. The table shows one row per
+            // department that lists every SKU; the raw rows stay in holdIssueRows.
+            let mergeSkus = localStorage.getItem('ai-merge-skus') !== '0';
+
+            function numOrNull(v) {
+                if (v === null || v === undefined || v === '') return null;
+                const n = Number(v);
+                return isNaN(n) ? null : n;
+            }
+
+            function mergeIssueGroup(members) {
+                if (members.length === 1) return members[0];
+                const sorted = members.slice().sort(function (a, b) { return Number(a.id) - Number(b.id); });
+                const rep = sorted[0];
+                const names = [];
+                sorted.forEach(function (m) {
+                    const s = String(m.sku || '').trim();
+                    if (s && names.indexOf(s) === -1) names.push(s);
+                });
+                const qtys = sorted.map(function (m) { return numOrNull(m.order_qty); }).filter(function (n) { return n !== null; });
+                const losses = sorted.map(function (m) { return numOrNull(m.total_loss); }).filter(function (n) { return n !== null; });
+                const sameLoss = losses.every(function (n) { return n === losses[0]; });
+                return Object.assign({}, rep, {
+                    sku: names.join(', '),
+                    sku_names: names,
+                    member_ids: sorted.map(function (m) { return Number(m.id); }),
+                    order_qty: qtys.length ? qtys.reduce(function (a, b) { return a + b; }, 0) : rep.order_qty,
+                    total_loss: losses.length
+                        ? (sameLoss ? losses[0] : losses.reduce(function (a, b) { return a + b; }, 0))
+                        : rep.total_loss,
+                });
+            }
+
+            function buildDisplayRows(rows) {
+                if (!mergeSkus) return rows;
+                const out = [];
+                const byKey = new Map();
+                rows.forEach(function (r) {
+                    if (!r.group_id) {
+                        out.push({ single: r });
+                        return;
+                    }
+                    const key = r.group_id + '|' + rowDepartments(r).map(function (d) {
+                        return String(d).trim().toLowerCase();
+                    }).sort().join(',');
+                    let g = byKey.get(key);
+                    if (!g) {
+                        g = { members: [] };
+                        byKey.set(key, g);
+                        out.push(g);
+                    }
+                    g.members.push(r);
+                });
+                return out.map(function (item) {
+                    return item.single ? item.single : mergeIssueGroup(item.members);
+                });
+            }
+
+            // Raw row ids behind one displayed row (just itself when not merged).
+            function memberIdsFor(id) {
+                const row = table ? table.getRow(id) : null;
+                const ids = row ? row.getData().member_ids : null;
+                return Array.isArray(ids) && ids.length ? ids : [Number(id)];
+            }
+
+            // The un-merged row for a displayed row (used by the edit form).
+            function rawRecordFor(data) {
+                if (!data) return data;
+                return holdIssueRows.find(function (x) { return String(x.id) === String(data.id); }) || data;
+            }
+
+            async function patchAllMembers(id, suffix, body) {
+                let first = null;
+                for (const mid of memberIdsFor(id)) {
+                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(mid) + suffix, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify(body),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.message || 'Save failed');
+                    }
+                    if (first === null) first = data;
+                }
+                return first || {};
+            }
+
             function getFilteredRows() {
                 if (!activeDeptFilter) return holdIssueRows;
                 return holdIssueRows.filter(rowMatchesActiveDeptFilter);
@@ -3067,27 +3177,12 @@
                 }
                 const r = holdIssueRows.find(x => String(x.id) === String(id));
                 try {
-                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
-                        '/total-loss', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            body: JSON.stringify({
-                                total_loss: parsed
-                            }),
-                        });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        throw new Error(data.message || 'Save failed');
-                    }
+                    const data = await patchAllMembers(id, '/total-loss', { total_loss: parsed });
                     const saved = data.total_loss != null ? data.total_loss : null;
-                    if (r) {
-                        r.total_loss = saved;
-                    }
+                    memberIdsFor(id).forEach(function (mid) {
+                        const rr = holdIssueRows.find(x => String(x.id) === String(mid));
+                        if (rr) rr.total_loss = saved;
+                    });
                     const row = table ? table.getRow(id) : null;
                     if (row) {
                         row.update({
@@ -3119,26 +3214,11 @@
                 const prev = r ? String(r.issue_carrier ?? '').trim() : '';
                 if (newV === prev) return;
                 try {
-                    const res = await fetch(recordsUpdateBaseUrl + '/' + encodeURIComponent(id) +
-                        '/issue-carrier', {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken,
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            body: JSON.stringify({
-                                issue_carrier: newV.length ? newV : null
-                            }),
-                        });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        throw new Error(data.message || 'Save failed');
-                    }
-                    if (r) {
-                        r.issue_carrier = newV;
-                    }
+                    await patchAllMembers(id, '/issue-carrier', { issue_carrier: newV.length ? newV : null });
+                    memberIdsFor(id).forEach(function (mid) {
+                        const rr = holdIssueRows.find(x => String(x.id) === String(mid));
+                        if (rr) rr.issue_carrier = newV;
+                    });
                     const row = table ? table.getRow(id) : null;
                     if (row) {
                         row.update({
@@ -3225,10 +3305,10 @@
                 }
                 buildDeptFilters();
                 if (table) {
-                    table.replaceData(holdIssueRows);
+                    table.replaceData(buildDisplayRows(holdIssueRows));
                     applyFilters();
                 } else {
-                    buildMainTabulator(holdIssueRows);
+                    buildMainTabulator(buildDisplayRows(holdIssueRows));
                 }
                 hideMainLoader();
             }
@@ -3285,8 +3365,8 @@
 
             function showAlert(message, type) {
                 alertBox.textContent = message;
-                alertBox.classList.remove('alert-danger', 'alert-success');
-                alertBox.classList.add(type === 'success' ? 'alert-success' : 'alert-danger');
+                alertBox.classList.remove('alert-danger', 'alert-success', 'alert-info');
+                alertBox.classList.add(type === 'success' ? 'alert-success' : (type === 'info' ? 'alert-info' : 'alert-danger'));
                 alertBox.classList.remove('d-none');
             }
 
@@ -4679,15 +4759,17 @@
             async function archiveRecord(recordId) {
                 if (!recordId || !confirm('Archive this record?')) return;
                 try {
-                    const res = await fetch(archiveBase + '/' + encodeURIComponent(recordId) + '/archive', {
-                        method: 'POST',
-                        headers: jsonHeaders,
-                        body: '{}'
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        alert(data?.message || 'Unable to archive record.');
-                        return;
+                    for (const mid of memberIdsFor(recordId)) {
+                        const res = await fetch(archiveBase + '/' + encodeURIComponent(mid) + '/archive', {
+                            method: 'POST',
+                            headers: jsonHeaders,
+                            body: '{}'
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            alert(data?.message || 'Unable to archive record.');
+                            return;
+                        }
                     }
                     await loadHoldIssueRows();
                     if (historyTable) loadHoldIssueHistoryRows();
@@ -4706,14 +4788,16 @@
                 if (!confirm('Permanently delete this record? This cannot be undone.')) return;
                 if (!confirm('Are you absolutely sure? The row and its history will be removed.')) return;
                 try {
-                    const res = await fetch(deleteBase + '/' + encodeURIComponent(recordId), {
-                        method: 'DELETE',
-                        headers: jsonHeaders,
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                        alert(data?.message || 'Unable to delete record.');
-                        return;
+                    for (const mid of memberIdsFor(recordId)) {
+                        const res = await fetch(deleteBase + '/' + encodeURIComponent(mid), {
+                            method: 'DELETE',
+                            headers: jsonHeaders,
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            alert(data?.message || 'Unable to delete record.');
+                            return;
+                        }
                     }
                     await loadHoldIssueRows();
                     if (historyTable) loadHoldIssueHistoryRows();
@@ -5541,6 +5625,18 @@
                     loadL30Issues();
                 });
                 document.getElementById('ai-search')?.addEventListener('input', applyFilters);
+                const mergeToggle = document.getElementById('ai-merge-skus');
+                if (mergeToggle) {
+                    mergeToggle.checked = mergeSkus;
+                    mergeToggle.addEventListener('change', function () {
+                        mergeSkus = mergeToggle.checked;
+                        localStorage.setItem('ai-merge-skus', mergeSkus ? '1' : '0');
+                        if (table) {
+                            table.replaceData(buildDisplayRows(holdIssueRows));
+                            applyFilters();
+                        }
+                    });
+                }
 
                 document.getElementById('all-issues-tabulator')?.addEventListener('change', function(e) {
                     const sel = e.target.closest('.carrier-issue-carrier-select');
