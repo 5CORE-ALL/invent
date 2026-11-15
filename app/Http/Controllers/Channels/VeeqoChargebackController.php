@@ -176,7 +176,6 @@ class VeeqoChargebackController extends Controller
             ->selectRaw('COUNT(*) as rows_count')
             ->selectRaw('COUNT(DISTINCT order_number) as orders')
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'veeqo_csv' THEN total_amount END), 0) as veeqo_net")
-            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'amazon_api' THEN total_amount END), 0) as amazon_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('tiktok_api', 'tiktok2_api') THEN total_amount END), 0) as tiktok_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source = 'shopify_csv' THEN total_amount END), 0) as shopify_net")
             ->selectRaw("COALESCE(SUM(CASE WHEN source IN ('temu1_csv', 'temu2_csv', 'temu3_csv') THEN total_amount END), 0) as temu_net")
@@ -201,9 +200,6 @@ class VeeqoChargebackController extends Controller
             ],
             'sync' => [
                 'rows' => VeeqoChargeback::query()->count(),
-                'api_first' => VeeqoChargeback::query()->where('source', 'amazon_api')->min('posted_at'),
-                'api_last' => VeeqoChargeback::query()->where('source', 'amazon_api')->max('posted_at'),
-                'api_synced_at' => VeeqoChargeback::query()->where('source', 'amazon_api')->max('updated_at'),
                 'csv_first' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->min('posted_at'),
                 'csv_last' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('posted_at'),
                 'csv_imported_at' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('updated_at'),
@@ -677,7 +673,10 @@ class VeeqoChargebackController extends Controller
 
     private function filtered(Request $request): Builder
     {
-        $query = VeeqoChargeback::query();
+        // The Amazon settlement (API) source was retired: its stored rows stay in the table but are not shown or counted.
+        $query = VeeqoChargeback::query()->where(function (Builder $q) {
+            $q->whereNull('source')->orWhere('source', '!=', 'amazon_api');
+        });
 
         $from = trim((string) $request->input('from', ''));
         $to = trim((string) $request->input('to', ''));

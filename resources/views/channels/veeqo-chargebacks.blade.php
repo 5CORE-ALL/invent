@@ -156,7 +156,7 @@
 
     @include('layouts.shared/page-title', [
         'page_title' => 'Shipping Chargebacks',
-        'sub_title' => 'Carrier label charges and adjustments from Veeqo, Amazon, TikTok, Shopify and Temu',
+        'sub_title' => 'Carrier label charges and adjustments from Veeqo, TikTok, Shopify, Temu, UPS and Shippo',
     ])
 
     <div class="row">
@@ -172,7 +172,6 @@
                             <select id="vcSource" class="form-select form-select-sm">
                                 <option value="">All</option>
                                 <option value="veeqo_csv">Veeqo card (CSV)</option>
-                                <option value="amazon_api">Amazon settlement (API)</option>
                                 <option value="tiktok_api">TikTok 1 (API)</option>
                                 <option value="tiktok2_api">TikTok 2 (API)</option>
                                 <option value="shopify_csv">Shopify (CSV)</option>
@@ -210,7 +209,6 @@
                         <button type="button" class="btn btn-sm btn-sku-report" id="vcSkuReport" title="Chargebacks per SKU for the last 12 months"><i class="fas fa-chart-bar"></i> Report SKU wise</button>
                         <button type="button" class="btn btn-sm btn-sku-report" id="vcParentReport" title="Chargebacks per parent for the last 12 months"><i class="fas fa-layer-group"></i> Report Parent wise</button>
                         <button type="button" class="btn btn-sm btn-primary" id="vcExport"><i class="fas fa-download"></i> Export page</button>
-                        <button type="button" class="btn btn-sm btn-success" id="vcSync" title="Pull the last 30 days from Amazon Finances"><i class="fas fa-sync"></i> Sync Amazon</button>
                         <button type="button" class="btn btn-sm btn-dark" id="vcSyncTikTok" title="Pull the last 30 days of TikTok 1 and TikTok 2 shipping charges from the TikTok Finance API (also runs daily)"><i class="fab fa-tiktok"></i> Sync TikTok</button>
                         <button type="button" class="btn btn-sm btn-warning" id="vcImport" title="Upload a Veeqo, Shopify or Temu shipping charges CSV"><i class="fas fa-file-upload"></i> Import CSV</button>
                     </div>
@@ -528,10 +526,9 @@
                 ['Shippo Label Surcharge', 'Label surcharge', 'Shippo'],
             ];
             const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack', 'TikTok Shipping Fee Adjustment', 'TikTok Shipping Fee Compensation', 'Shopify Label Price Adjustment', 'Temu Label Purchase Adjustment', 'UPS Billing Adjustment', 'Shippo Label Surcharge'];
-            const SOURCE_LABELS = { veeqo_csv: 'Veeqo CSV', amazon_api: 'Amazon API', tiktok_api: 'TikTok 1 API', tiktok2_api: 'TikTok 2 API', shopify_csv: 'Shopify CSV', temu1_csv: 'Temu 1 CSV', temu2_csv: 'Temu 2 CSV', temu3_csv: 'Temu 3 CSV', ups_csv: 'UPS CSV', shippo_csv: 'Shippo CSV' };
+            const SOURCE_LABELS = { veeqo_csv: 'Veeqo CSV', tiktok_api: 'TikTok 1 API', tiktok2_api: 'TikTok 2 API', shopify_csv: 'Shopify CSV', temu1_csv: 'Temu 1 CSV', temu2_csv: 'Temu 2 CSV', temu3_csv: 'Temu 3 CSV', ups_csv: 'UPS CSV', shippo_csv: 'Shippo CSV' };
             const SOURCE_BADGES = {
                 veeqo_csv: '<span class="badge bg-warning text-dark">Veeqo CSV</span>',
-                amazon_api: '<span class="badge bg-info text-dark">Amazon API</span>',
                 tiktok_api: '<span class="badge bg-dark">TikTok 1 API</span>',
                 tiktok2_api: '<span class="badge bg-secondary">TikTok 2 API</span>',
                 shopify_csv: '<span class="badge bg-success">Shopify CSV</span>',
@@ -555,12 +552,11 @@
             })();
             let typesDirty = false;
 
-            const SOURCE_GROUP = { veeqo_csv: 'Veeqo', amazon_api: 'Amazon', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu', ups_csv: 'UPS', shippo_csv: 'Shippo' };
+            const SOURCE_GROUP = { veeqo_csv: 'Veeqo', tiktok_api: 'TikTok', tiktok2_api: 'TikTok', shopify_csv: 'Shopify', temu1_csv: 'Temu', temu2_csv: 'Temu', temu3_csv: 'Temu', ups_csv: 'UPS', shippo_csv: 'Shippo' };
 
             let sourceTypes = {};
             const SOURCE_EMPTY_HINT = {
                 veeqo_csv: 'Use Import CSV → Veeqo.',
-                amazon_api: 'Click Sync Amazon.',
                 tiktok_api: 'Click Sync TikTok.',
                 tiktok2_api: 'Click Sync TikTok.',
                 shopify_csv: 'Use Import CSV → Shopify.',
@@ -709,7 +705,6 @@
                     badge('Credits', money(t.credit_total || 0), 'vc-credit') +
                     badge('Net', money(t.net_total || 0), Number(t.net_total) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Veeqo card net', money(t.veeqo_net || 0), Number(t.veeqo_net) < 0 ? 'vc-debit' : 'vc-credit') +
-                    badge('Amazon settlement net', money(t.amazon_net || 0), Number(t.amazon_net) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('TikTok net', money(t.tiktok_net || 0), Number(t.tiktok_net) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Shopify net', money(t.shopify_net || 0), Number(t.shopify_net) < 0 ? 'vc-debit' : 'vc-credit') +
                     badge('Temu net', money(t.temu_net || 0), Number(t.temu_net) < 0 ? 'vc-debit' : 'vc-credit') +
@@ -727,7 +722,6 @@
                 info += s.csv_first
                     ? ' · Veeqo CSV ' + day(s.csv_first) + ' → ' + day(s.csv_last) + ' (imported ' + String(s.csv_imported_at).replace('T', ' ').slice(0, 16) + ')'
                     : ' · no Veeqo CSV imported yet';
-                if (s.api_first) info += ' · Amazon API ' + day(s.api_first) + ' → ' + day(s.api_last) + ' (synced ' + String(s.api_synced_at).replace('T', ' ').slice(0, 16) + ')';
                 if (s.tiktok_last) info += ' · TikTok API to ' + day(s.tiktok_last) + ' (synced ' + String(s.tiktok_synced_at).replace('T', ' ').slice(0, 16) + ')';
                 (s.imports || []).forEach(function (im) {
                     info += ' · ' + (SOURCE_LABELS[im.source] || im.source) + ' ' + day(im.first) + ' → ' + day(im.last) + ' (imported ' + String(im.imported_at).replace('T', ' ').slice(0, 16) + ')';
@@ -1110,7 +1104,6 @@
                     clearTimeout(timer);
                     timer = setTimeout(refresh, 350);
                 });
-                document.getElementById('vcSync').addEventListener('click', function () { syncNow(this, '{{ route('veeqo.chargebacks.sync') }}'); });
                 document.getElementById('vcSyncTikTok').addEventListener('click', function () { syncNow(this, '{{ route('veeqo.chargebacks.sync-tiktok') }}'); });
                 document.getElementById('vcExport').addEventListener('click', function () {
                     if (table) table.download('csv', 'veeqo_chargebacks_page.csv');
