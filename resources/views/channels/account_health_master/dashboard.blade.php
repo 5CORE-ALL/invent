@@ -672,8 +672,8 @@
             'valid_tracking_rate_allowed': '/validtracking-rate/update',
             'on_time_delivery': '/onTimeDelivery-rate/update',
             'on_time_delivery_allowed': '/onTimeDelivery-rate/update',
-            'atoz_claims_rate': '/atozclaims-rate/update',
-            'atoz_claims_rate_allowed': '/atozclaims-rate/update',
+            'atoz_claims_rate': '/AtoZClaims-rate/update',
+            'atoz_claims_rate_allowed': '/AtoZClaims-rate/update',
             'violation_rate': '/voilance-rate/update',
             'violation_rate_allowed': '/voilance-rate/update',
             'late_shipment_rate': '/lateshipment-rate/update',
@@ -798,9 +798,9 @@
                             ],
                             'N/A'),
                         on_time_delivery_allowed: pick(item, ['on_time_delivery_rate_allowed'], ''),
-                        // atoz_claims_rate: pick(item, ['atoz_claims_rate', 'AtoZ Claims Rate'],
-                        //     'N/A'),
-                        // atoz_claims_rate_allowed: pick(item, ['atoz_claims_rate_allowed'], ''),
+                        atoz_claims_rate: pick(item, ['atoz_claims_rate', 'AtoZ Claims Rate'],
+                            'N/A'),
+                        atoz_claims_rate_allowed: pick(item, ['atoz_claims_rate_allowed'], ''),
                         violation_rate: pick(item, ['violation_rate', 'Violation Rate'], 'N/A'),
                         violation_rate_allowed: pick(item, ['violation_rate_allowed'], ''),
                         late_shipment_rate: pick(item, ['late_shipment_rate', 'Late Shipment Rate'],
@@ -1576,6 +1576,106 @@
                         },
                         cellEdited: function(cell) {
                             updateField(cell, fieldUpdateEndpoints['negative_seller_rate_allowed']);
+                        },
+                        hozAlign: "center"
+                    },
+                    {
+                        title: "A-Z Claims",
+                        field: "atoz_claims_rate",
+                        editor: function(cell, onRendered, success, cancel) {
+                            const input = document.createElement("input");
+                            input.type = "number";
+                            input.min = 0;
+                            input.max = 100;
+                            input.step = "any";
+
+                            const currentValue = cell.getValue();
+                            let numericValue = currentValue;
+                            if (typeof currentValue === 'string' && currentValue.includes('%')) {
+                                numericValue = parseFloat(currentValue.replace('%', ''));
+                            }
+                            input.value = isNaN(numericValue) ? '' : numericValue;
+
+                            onRendered(function() {
+                                input.focus();
+                                input.style.height = "100%";
+                                input.style.width = "100%";
+                                input.style.border = "none";
+                                input.style.padding = "4px";
+                                input.style.boxSizing = "border-box";
+                            });
+
+                            function onSubmit() {
+                                let value = parseFloat(input.value);
+                                if (input.value.trim() === '') {
+                                    // Emptied the box = delete this cell's data (wrong entry)
+                                    cancel();
+                                    const existing = cell.getValue();
+                                    if (!input._clearing && existing !== 'N/A' && existing !== '' && existing !== null && existing !== undefined) {
+                                        input._clearing = true;
+                                        setTimeout(function() { deleteCellData(cell); }, 0);
+                                    }
+                                    return;
+                                }
+                                if (isNaN(value) || value < 0 || value > 100) {
+                                    cancel();
+                                    return;
+                                }
+                                success(value);
+                            }
+
+                            input.addEventListener("blur", onSubmit);
+                            input.addEventListener("keydown", function(e) {
+                                if (e.key === "Enter") {
+                                    onSubmit();
+                                }
+                                if (e.key === "Escape") {
+                                    cancel();
+                                }
+                            });
+
+                            return input;
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === 'N/A' || value === '' || isNaN(parseFloat(value))) {
+                                return `<div class="text-center editable-field" style="padding:4px; border-radius:4px;">
+                                            <span>N/A</span>
+                                        </div>`;
+                            }
+                            const parsed = parseFloat(value);
+                            let color = parsed > 1 ? "#dc3545" : parsed > 0.5 ? "#ffc107" : "#28a745";
+                            return `<div class="text-center editable-field" style="background-color:${color}; color:#ffffff; padding:4px; border-radius:4px;">
+                                        <span>${formatExactPercent(value)}</span>
+                                    </div>`;
+                        },
+                        cellEdited: function(cell) {
+                            const newValue = parseFloat(cell.getValue());
+                            if (isNaN(newValue) || newValue < 0 || newValue > 100) {
+                                alert('Please enter a value between 0 and 100');
+                                cell.restoreOldValue();
+                                return;
+                            }
+                            updateField(cell, fieldUpdateEndpoints['atoz_claims_rate']);
+                        },
+                        hozAlign: "center"
+                    },
+                    {
+                        title: "A-Z Claims Allowed",
+                        field: "atoz_claims_rate_allowed",
+                        editor: "input",
+                        editorParams: {
+                            minLength: 0,
+                            maxLength: 50
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue() || '';
+                            return `<div class="text-center editable-field" style="padding:4px; border-radius:4px;">
+                                        <span>${value}</span>
+                                    </div>`;
+                        },
+                        cellEdited: function(cell) {
+                            updateField(cell, fieldUpdateEndpoints['atoz_claims_rate_allowed']);
                         },
                         hozAlign: "center"
                     },
