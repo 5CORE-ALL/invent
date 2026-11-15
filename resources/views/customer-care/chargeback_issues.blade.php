@@ -191,35 +191,40 @@
             background: rgba(13, 110, 253, 0.1);
         }
 
-        /* Resolved dropdown: green when resolved, red when not */
-        .cb-resolved-select {
-            width: 100%;
-            min-width: 112px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            padding: 0.15rem 1.4rem 0.15rem 0.4rem;
-            border-width: 1px;
-            border-style: solid;
+        /* Resolved: click the dot. Green = resolved, red = not resolved. */
+        .cb-resolved-dot {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            border-radius: 50%;
             cursor: pointer;
         }
 
-        .cb-resolved-select.cb-resolved-yes {
-            background-color: #d1fae5;
-            border-color: #10b981;
-            color: #065f46;
+        .cb-resolved-dot::before {
+            content: '';
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: block;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 3px currentColor;
         }
 
-        .cb-resolved-select.cb-resolved-no {
-            background-color: #fee2e2;
-            border-color: #ef4444;
-            color: #991b1b;
-        }
+        .cb-resolved-dot.cb-resolved-yes { color: #198754; }
+        .cb-resolved-dot.cb-resolved-yes::before { background-color: #198754; }
+        .cb-resolved-dot.cb-resolved-no { color: #dc3545; }
+        .cb-resolved-dot.cb-resolved-no::before { background-color: #dc3545; }
 
-        .cb-resolved-select:disabled {
-            opacity: 0.6;
+        .cb-resolved-dot:hover { background: rgba(0, 0, 0, 0.06); }
+
+        .cb-resolved-dot:disabled {
+            opacity: 0.5;
             cursor: wait;
         }
-
         .cb-row-btn {
             border: none;
             background: transparent;
@@ -557,18 +562,17 @@
             const fmtResolved = function (cell) {
                 const d = cell.getData();
                 const yes = d.resolved === 'yes';
-                return '<select class="form-select form-select-sm cb-resolved-select ' + (yes ? 'cb-resolved-yes' : 'cb-resolved-no') + '" ' +
-                    'data-issue-id="' + escAttr(String(d.id)) + '" aria-label="Resolved or not">' +
-                    '<option value="no"' + (yes ? '' : ' selected') + '>Not resolved</option>' +
-                    '<option value="yes"' + (yes ? ' selected' : '') + '>Resolved</option>' +
-                    '</select>';
+                return '<button type="button" class="cb-resolved-dot ' + (yes ? 'cb-resolved-yes' : 'cb-resolved-no') + '" ' +
+                    'data-issue-id="' + escAttr(String(d.id)) + '" data-resolved="' + (yes ? 'yes' : 'no') + '" ' +
+                    'title="' + (yes ? 'Resolved (click to mark not resolved)' : 'Not resolved (click to mark resolved)') + '" ' +
+                    'aria-label="' + (yes ? 'Resolved' : 'Not resolved') + '"></button>';
             };
 
-            async function saveResolvedFromSelect(select) {
-                const id = select.getAttribute('data-issue-id');
+            async function toggleResolvedFromDot(btn) {
+                const id = btn.getAttribute('data-issue-id');
                 if (!id) return;
-                const next = select.value === 'yes' ? 'yes' : 'no';
-                select.disabled = true;
+                const next = btn.getAttribute('data-resolved') === 'yes' ? 'no' : 'yes';
+                btn.disabled = true;
                 try {
                     const res = await fetch(URLS.resolvedBase + '/' + encodeURIComponent(id) + '/resolved', {
                         method: 'PATCH',
@@ -578,21 +582,13 @@
                     const data = await res.json().catch(function () { return {}; });
                     if (!res.ok) throw new Error(data.message || 'Save failed');
                     const row = table ? table.getRow(id) : null;
-                    if (row) {
-                        row.update({ resolved: next });
-                    } else {
-                        select.className = select.className.replace(/cb-resolved-(yes|no)/, 'cb-resolved-' + next);
-                    }
+                    if (row) row.update({ resolved: next });
                 } catch (e) {
                     alert(e.message || 'Could not save Resolved');
-                    const previous = next === 'yes' ? 'no' : 'yes';
-                    select.value = previous;
-                    select.className = select.className.replace(/cb-resolved-(yes|no)/, 'cb-resolved-' + previous);
                 } finally {
-                    select.disabled = false;
+                    btn.disabled = false;
                 }
             }
-
             const fmtActions = function () {
                 return '<div><button type="button" class="cb-row-btn cb-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
                     '<button type="button" class="cb-row-btn cb-danger cb-archive" title="Archive"><i class="bi bi-archive-fill"></i></button></div>';
@@ -630,7 +626,7 @@
                         { title: 'Root Cause Found', field: 'issue', width: 60, formatter: fmtRootCause, hozAlign: 'center' },
                         { title: 'Instructions CTN', field: '_ctn', width: 60, formatter: fmtCtn, headerSort: false, hozAlign: 'center' },
                         { title: 'Root Cause Fixed', field: 'c_action_1', width: 60, formatter: fmtRootCauseFixed, hozAlign: 'center' },
-                        { title: 'Resolved', field: 'resolved', width: 140, formatter: fmtResolved, tooltip: false, hozAlign: 'center' },
+                        { title: 'Resolved', field: 'resolved', width: 60, formatter: fmtResolved, tooltip: false, hozAlign: 'center' },
                         { title: 'Dept', field: 'department', width: 90, formatter: function (c) { return dash(c.getValue()); } },
                         { title: 'Close', field: '_actions', width: 70, formatter: fmtActions, headerSort: false, hozAlign: 'center', frozen: true },
                         { title: 'Created By', field: 'created_by', width: 100, formatter: function (c) { return dash(c.getValue()); } },
@@ -983,11 +979,10 @@
                     const inp = e.target.closest('.issue-loss-input');
                     if (inp) saveTotalLossFromInput(inp);
                 });
-                document.getElementById('chargeback-tabulator')?.addEventListener('change', function (e) {
-                    const sel = e.target.closest('.cb-resolved-select');
-                    if (sel) saveResolvedFromSelect(sel);
-                });
-                document.getElementById('chargeback-tabulator')?.addEventListener('keydown', function (e) {
+                document.getElementById('chargeback-tabulator')?.addEventListener('click', function (e) {
+                    const dot = e.target.closest('.cb-resolved-dot');
+                    if (dot) toggleResolvedFromDot(dot);
+                });                document.getElementById('chargeback-tabulator')?.addEventListener('keydown', function (e) {
                     const inp = e.target.closest('.issue-loss-input');
                     if (inp && e.key === 'Enter') {
                         e.preventDefault();
