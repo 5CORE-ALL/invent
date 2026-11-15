@@ -2143,6 +2143,17 @@
                                         inputmode="url"
                                         @if ($linkFieldsReadOnly) readonly data-always-readonly="1" @endif>
                                 </div>
+                                @if (($showAllIssuesLinkFields ?? false) && !($showDispatchExtras ?? false))
+                                    {{-- Read-only Image 1 / Image 2, taken from All Issues by order number. --}}
+                                    <div class="col-md-6">
+                                        <label class="form-label">Image 1 <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                        <div id="hold_issue_image_1_view" class="small text-muted">—</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Image 2 <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                        <div id="hold_issue_image_2_view" class="small text-muted">—</div>
+                                    </div>
+                                @endif
                             @endif
 
                             <div class="col-md-6">
@@ -5379,7 +5390,25 @@
                 }
                 toggleCAction1RemarkField();
                 hideAlert();
+                renderReadOnlyIssueImages(null);
                 applyRootCauseOnlyLock(false);
+            }
+
+            // Read-only Image 1 / Image 2 (from All Issues) on boards without their own image upload.
+            function renderReadOnlyIssueImages(record) {
+                [1, 2].forEach(function(n) {
+                    const el = document.getElementById('hold_issue_image_' + n + '_view');
+                    if (!el) return;
+                    const url = record ? record['image_' + n + '_url'] : null;
+                    if (url) {
+                        el.classList.remove('text-muted');
+                        el.innerHTML = '<a href="' + escAttr(url) + '" target="_blank" rel="noopener"><img src="' +
+                            escAttr(url) + '" class="issue-modal-thumb" alt="Image ' + n + '"></a>';
+                    } else {
+                        el.classList.add('text-muted');
+                        el.textContent = '—';
+                    }
+                });
             }
 
             // Edit mode on root-cause-only boards: everything except Root Cause Found / Fixed is read-only.
@@ -5570,6 +5599,7 @@
 
                 const submitBtn = form.querySelector('button[type="submit"]');
                 if (submitBtn) submitBtn.textContent = 'Update';
+                renderReadOnlyIssueImages(record);
                 applyRootCauseOnlyLock(true);
 
                 const modalInstance = window.bootstrap?.Modal?.getOrCreateInstance(modalEl);

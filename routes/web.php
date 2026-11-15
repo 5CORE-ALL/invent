@@ -2436,39 +2436,43 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/customer-care/all-issues/issues/{id}/history', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'rowHistoryIndex'])
         ->whereNumber('id')
         ->name('customer.care.dispatch.issues.row.history');
+    Route::get('/customer-care/all-issues/activity', [\App\Http\Controllers\CustomerCare\IssueActivityController::class, 'history'])
+        ->name('customer.care.dispatch.issues.activity');
+    Route::get('/customer-care/all-issues/archive-log', [\App\Http\Controllers\CustomerCare\IssueActivityController::class, 'archive'])
+        ->name('customer.care.dispatch.issues.archive.log');
     Route::post('/customer-care/all-issues/issues', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'store'])
-        ->name('customer.care.dispatch.issues.list.store');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.store');
     Route::put('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'update'])
-        ->name('customer.care.dispatch.issues.list.update');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.update');
     Route::patch('/customer-care/all-issues/issues/{id}/claim-filed', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimFiled'])
-        ->name('customer.care.dispatch.issues.list.patch.claim.filed');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.claim.filed');
     Route::patch('/customer-care/all-issues/issues/{id}/claimable', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimable'])
-        ->name('customer.care.dispatch.issues.list.patch.claimable');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.claimable');
     Route::patch('/customer-care/all-issues/issues/{id}/claimable-remark', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimableRemark'])
-        ->name('customer.care.dispatch.issues.list.patch.claimable.remark');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.claimable.remark');
     Route::patch('/customer-care/all-issues/issues/{id}/nfe', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateNfe'])
-        ->name('customer.care.dispatch.issues.list.patch.nfe');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.nfe');
     Route::patch('/customer-care/all-issues/issues/{id}/resolved', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateResolved'])
-        ->name('customer.care.dispatch.issues.list.patch.resolved');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.resolved');
     Route::patch('/customer-care/all-issues/issues/{id}/amp-usd', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmpUsd'])
-        ->name('customer.care.dispatch.issues.list.patch.amp.usd');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.amp.usd');
     Route::patch('/customer-care/all-issues/issues/{id}/amt-rec', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateAmtRec'])
-        ->name('customer.care.dispatch.issues.list.patch.amt.rec');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.amt.rec');
     Route::patch('/customer-care/all-issues/issues/{id}/total-loss', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateTotalLoss'])
-        ->name('customer.care.dispatch.issues.list.patch.total.loss');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.total.loss');
     Route::patch('/customer-care/all-issues/issues/{id}/claim-received', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateClaimReceived'])
-        ->name('customer.care.dispatch.issues.list.patch.claim.received');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.claim.received');
     Route::patch('/customer-care/all-issues/issues/{id}/issue-carrier', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'updateIssueCarrier'])
-        ->name('customer.care.dispatch.issues.list.patch.issue.carrier');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.patch.issue.carrier');
     Route::get('/customer-care/all-issues/claims-stats', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'claimsStats'])
         ->name('customer.care.dispatch.issues.claims.stats');
     Route::post('/customer-care/all-issues/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'archive'])
-        ->name('customer.care.dispatch.issues.list.archive');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.archive');
     // Permanent delete (row + history). Server-side restricted to the
     // operations manager account ("Hritiksha" / mgr-operations@5core.com).
     Route::delete('/customer-care/all-issues/issues/{id}', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'destroy'])
         ->whereNumber('id')
-        ->name('customer.care.dispatch.issues.list.destroy');
+        ->middleware(\App\Http\Middleware\LogIssueActivity::class)->name('customer.care.dispatch.issues.list.destroy');
     Route::get('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsIndex'])
         ->name('customer.care.dispatch.issues.dropdown.options.index');
     Route::post('/customer-care/all-issues/dropdown-options', [\App\Http\Controllers\CustomerCare\DispatchIssuesController::class, 'dropdownOptionsStore'])
