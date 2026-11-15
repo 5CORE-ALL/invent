@@ -131,8 +131,8 @@
                 </div>
                 <div class="modal-body">
                     <div class="small text-muted mb-2">
-                        This is the <strong>Seq 1</strong> rule (Dil slabs &mdash; Target NROI) of the Amazon Sprc Dil modal. Every change you make here is
-                        applied <strong>automatically to all marketplaces</strong>. Only the slabs change: each page keeps its own CVR, Ageing, LMP cap,
+                        This is the <strong>Seq 1</strong> rule (Dil slabs &mdash; Target NROI) of the Amazon Sprc Dil modal. Edit the slabs, then click
+                        <strong>Save &amp; Apply</strong> to apply them to <strong>all marketplaces</strong>. Only the slabs change: each page keeps its own CVR, Ageing, LMP cap,
                         Clearance and other rules.
                     </div>
                     <div class="sds-m-card">
@@ -162,11 +162,17 @@
                                 <li>When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.</li>
                                 <li>When you change the first Target NROI%: later rows fill as first +5, +10, &hellip; (increasing down the table).</li>
                                 <li>When INV &le; 0: Count and pies skip that SKU.</li>
-                                <li>Any change here is saved to every marketplace automatically (this Seq 1 rule only).</li>
+                                <li>Changes are saved to every marketplace only when you click Save &amp; Apply (this Seq 1 rule only).</li>
                             </ol>
                         </div>
                     </div>
                     <div class="sds-m-status mt-2 text-muted" id="sds-m-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-success" id="sds-m-save" disabled>
+                        <i class="fas fa-save me-1"></i> Save &amp; Apply to all marketplaces
+                    </button>
                 </div>
             </div>
         </div>
@@ -707,16 +713,26 @@
                     el.className = 'sds-m-status mt-2 ' + (cls || 'text-muted');
                     el.innerHTML = html;
                 }
+                function setSaveBtn(disabled, busy) {
+                    const b = document.getElementById('sds-m-save');
+                    b.disabled = disabled;
+                    b.innerHTML = busy
+                        ? '<i class="fas fa-spinner fa-spin me-1"></i> Applying…'
+                        : '<i class="fas fa-save me-1"></i> Save &amp; Apply to all marketplaces';
+                }
+                // Edits are only marked as unsaved; nothing is sent until Save & Apply is clicked.
                 function scheduleSave() {
                     if (!loaded) return;
-                    setStatus('Change detected, applying to all marketplaces…');
-                    clearTimeout(saveTimer);
-                    saveTimer = setTimeout(save, 700);
+                    setStatus('<i class="fas fa-pen"></i> Unsaved changes. Click Save &amp; Apply to apply them to all marketplaces.', 'text-warning');
+                    setSaveBtn(false, false);
                 }
                 function save() {
-                    if (saving) { dirtyWhileSaving = true; return; }
+                    if (saving || !loaded) return;
+                    readTable();
+                    render();
                     saving = true;
-                    dirtyWhileSaving = false;
+                    setSaveBtn(true, true);
+                    setStatus('Applying to all marketplaces…');
                     const payload = slabs.map(function (r) { return { min: r.min, max: r.max, groi: r.nroi, nroi: r.nroi }; });
                     fetch(MASTER_SAVE_URL, {
                         method: 'POST',
@@ -729,15 +745,18 @@
                         const n = (res.channels || []).length;
                         setStatus('<i class="fas fa-check-circle text-success"></i> Applied to all marketplaces ('
                             + n + ' pages' + ((res.updated || []).length ? ', ' + res.updated.length + ' changed' : ', already the same') + ').', 'text-success');
+                        setSaveBtn(true, false);
                     }).catch(function (e) {
                         setStatus('<i class="fas fa-exclamation-triangle"></i> Could not apply: ' + esc(e.message), 'text-danger');
+                        setSaveBtn(false, false);
                     }).finally(function () {
                         saving = false;
-                        if (dirtyWhileSaving) scheduleSave();
                     });
                 }
+                document.getElementById('sds-m-save').addEventListener('click', save);
                 function load() {
                     loaded = false;
+                    setSaveBtn(true, false);
                     setStatus('Loading the saved slabs…');
                     fetch(MASTER_LOAD_URL, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
                         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
@@ -746,7 +765,7 @@
                             slabs = list.length ? list : DEFAULTS.map(function (r) { return Object.assign({}, r); });
                             render();
                             loaded = true;
-                            setStatus('Loaded the Dil slabs. Changes are applied to all marketplaces automatically.');
+                            setStatus('Loaded the Dil slabs. Edit them, then click Save & Apply to update all marketplaces.');
                         })
                         .catch(function (e) {
                             slabs = DEFAULTS.map(function (r) { return Object.assign({}, r); });
