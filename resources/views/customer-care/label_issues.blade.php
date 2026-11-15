@@ -296,6 +296,14 @@
                                 <input type="text" class="form-control" id="li-issue-link" readonly data-always-readonly="1">
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label">Image 1 <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                <div id="li-image-1-view" class="small text-muted">—</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Image 2 <span class="text-muted small fw-normal">(from All Issues)</span></label>
+                                <div id="li-image-2-view" class="small text-muted">—</div>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label" for="li-ctn">CTN Pkg</label>
                                 <input type="text" class="form-control" id="li-ctn" maxlength="100" placeholder="CTN packaging instructions (max 100)" autocomplete="off">
                             </div>
@@ -638,9 +646,25 @@
                 });
             }
 
+            function renderIssueImages(record) {
+                [1, 2].forEach(function (n) {
+                    const el = document.getElementById('li-image-' + n + '-view');
+                    if (!el) return;
+                    const url = record ? record['image_' + n + '_url'] : null;
+                    if (url) {
+                        el.classList.remove('text-muted');
+                        el.innerHTML = '<a href="' + escAttr(url) + '" target="_blank" rel="noopener"><img src="' + escAttr(url) + '" alt="Image ' + n + '" style="max-height:64px;max-width:100%;border:1px solid #dee2e6;border-radius:4px;"></a>';
+                    } else {
+                        el.classList.add('text-muted');
+                        el.textContent = '—';
+                    }
+                });
+            }
+
             function resetForm() {
                 document.getElementById('li-issue-form').reset();
                 setEditLock(false);
+                renderIssueImages(null);
                 document.getElementById('li-tracking-number').value = '';
                 document.getElementById('li-issue-link').value = '';
                 document.getElementById('li-id').value = '';
@@ -669,6 +693,7 @@
                 document.getElementById('li-track-r').value = record.replacement_tracking || '';
                 document.getElementById('li-tracking-number').value = record.tracking_number || '';
                 document.getElementById('li-issue-link').value = record.issue_link || '';
+                renderIssueImages(record);
                 document.getElementById('li-ctn').value = record.ctn_instructions || '';
                 document.getElementById('li-item-pkg').value = record.instructions_item_pkg || '';
                 document.getElementById('li-qe-issue').value = record.qc_enhance_issue || '';
