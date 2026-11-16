@@ -1111,7 +1111,7 @@
             publishUrl: '/listing_mercariwoship/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
 @include('partials.listing-sku-search')
 @include('partials.master-listing-form', ['channel' => 'mercariwoship', 'label' => \App\Support\Marketplace\SheetListingCatalog::label('mercariwoship')])
 @endsection
