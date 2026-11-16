@@ -44,6 +44,17 @@
         .im-card.im-card-hero .im-card-name { max-width:162px; font-size:13px; }
         .im-card.im-card-hero .im-card-filename { max-width:162px; font-size:10px; }
         .im-card.im-card-hero .im-card-arrows button { font-size:13px; padding:3px 0; }
+        /* Auto-fit layout: 3 rows (Hero 1 + Hero 2 on top, then 6 + 6), sized from the window height/width */
+        #editImModal .modal-dialog.modal-xl { max-width:min(96vw, 1600px); }
+        #editImModal { --im-h:clamp(78px, min(calc((100vh - 470px) / 3.5), calc((min(96vw, 1600px) - 150px) / 7.8)), 240px); --im-w:calc(var(--im-h) * 1.3); }
+        #imGrid .im-grid { display:grid; grid-template-columns:repeat(6, var(--im-w)); gap:10px; }
+        #imGrid .im-grid.im-grid-hero { grid-template-columns:repeat(2, calc(var(--im-w) * 1.5)) var(--im-w); gap:10px; margin-bottom:10px; align-items:start; }
+        #imGrid .im-card { width:100%; }
+        #imGrid .im-card .im-card-img-wrap { width:100%; height:var(--im-h); }
+        #imGrid .im-card.im-card-hero { width:100%; }
+        #imGrid .im-card.im-card-hero .im-card-img-wrap { width:100%; height:calc(var(--im-h) * 1.5); }
+        #imGrid .im-card-name, #imGrid .im-card-filename { max-width:100%; }
+        #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) * 1.5); }
         .im-drop-end { border:2px dashed #cbd5e1; background:#f8fafc; box-shadow:none; min-height:150px; display:flex; align-items:center; justify-content:center; }
         .im-drop-end-inner, .im-sb-empty { display:flex; flex-direction:column; align-items:center; gap:4px; color:#94a3b8; font-size:11px; font-weight:600; text-align:center; }
         .im-sandbox { margin-top:16px; border:2px dashed #94a3b8; border-radius:12px; padding:10px 12px; background:#f8fafc; }
@@ -1886,8 +1897,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>`;
         }).join('');
         el.innerHTML = '<div id="imGrid">'
-            + `<div class="im-grid im-grid-hero">${heroCards}</div>`
-            + `<div class="im-grid">${restCards}${modalUrls.length ? endBox : ''}</div>`
+            + `<div class="im-grid im-grid-hero">${heroCards}${modalUrls.length ? endBox : ''}</div>`
+            + `<div class="im-grid">${restCards}</div>`
             + '</div>'
             + `<div class="im-sandbox" id="imSandbox">
                 <div class="im-sandbox-title"><i class="fas fa-box-open me-1"></i>Sandbox
