@@ -6213,6 +6213,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Transit Container Details
     Route::get('/transit-container-details', [TransitContainerDetailsController::class, 'index'])->name('transit.container.details');
+    Route::get('/transit-container/next-tab-name', [TransitContainerDetailsController::class, 'nextTabName']);
     Route::post('/transit-container/add-tab', [TransitContainerDetailsController::class, 'addTab']);
     Route::post('/transit-container/save-row', [TransitContainerDetailsController::class, 'saveRow']);
     Route::post('/transit-container/dropdown-option', [TransitContainerDetailsController::class, 'addDropdownOption']);
