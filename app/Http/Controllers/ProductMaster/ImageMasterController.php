@@ -730,6 +730,71 @@ class ImageMasterController extends Controller
         ]);
     }
 
+    /**
+     * GET /image-master/active-channels
+     * Active channels (channel_master, same source as the Active Channels pages) that Image Master can push to,
+     * with their logo. Matched to the Image Master marketplace keys by channel name / alias.
+     */
+    public function activeChannels(): \Illuminate\Http\JsonResponse
+    {
+        $out = [];
+        try {
+            if (Schema::hasTable('channel_master')) {
+                $norm = static fn ($v) => strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $v));
+                $hasLogo = Schema::hasColumn('channel_master', 'logo');
+                $hasAlias = Schema::hasColumn('channel_master', 'alias');
+                $cols = array_values(array_filter(['id', 'channel', $hasLogo ? 'logo' : null, $hasAlias ? 'alias' : null]));
+                $rows = DB::table('channel_master')
+                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                    ->whereNotNull('channel')->where('channel', '!=', '')
+                    ->orderBy('channel')
+                    ->get($cols);
+
+                // Extra spellings that differ from the registry label (eBay1 / eBay One, Temu1 …).
+                $extra = [
+                    'ebay' => ['ebay', 'ebay1', 'ebayone'], 'ebay2' => ['ebaytwo'], 'ebay3' => ['ebaythree'],
+                    'temu' => ['temu', 'temu1', 'temuone'], 'temu2' => ['temutwo'], 'temu3' => ['temuthree'],
+                    'amazon_fba' => ['amazonfba', 'fba'], 'macy' => ['macys', 'macy'],
+                    'shopify_main' => ['shopifyb2c', 'shopifymain', 'shopify'], 'shopify_pls' => ['shopifypls', 'pls'],
+                    'shopify_b5c' => ['business5core', 'b5c', 'shopifyb5c'], 'bestbuy' => ['bestbuy'],
+                    'tiktok' => ['tiktokshop', 'tiktok'], 'tiktok2' => ['tiktokshop2', 'tiktok2'],
+                ];
+                $registry = app(\App\Services\Support\AllMarketplaceChannelRegistry::class);
+                $byName = [];
+                foreach ($rows as $r) {
+                    foreach ([$r->channel ?? '', $hasAlias ? ($r->alias ?? '') : ''] as $name) {
+                        $n = $norm($name);
+                        if ($n !== '' && ! isset($byName[$n])) {
+                            $byName[$n] = $r;
+                        }
+                    }
+                }
+                foreach ($registry->channels() as $ch) {
+                    if (! ($ch['image'] ?? false)) {
+                        continue;
+                    }
+                    $cands = array_merge([$norm($ch['label']), $norm($ch['key'])], $extra[$ch['key']] ?? []);
+                    foreach ($cands as $cand) {
+                        if (isset($byName[$cand])) {
+                            $r = $byName[$cand];
+                            $out[] = [
+                                'key' => $ch['key'],
+                                'label' => $ch['label'],
+                                'channel' => (string) $r->channel,
+                                'logo' => $hasLogo && ! empty($r->logo) ? '/storage/'.ltrim((string) $r->logo, '/') : null,
+                            ];
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster activeChannels failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['success' => true, 'channels' => $out]);
+    }
+
     private function slotNameKind(int $slot): string
     {
         return 'im_name_'.str_pad((string) $slot, 2, '0', STR_PAD_LEFT);

@@ -4754,6 +4754,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
     Route::get('/image-master/push/status', [ImageMasterController::class, 'pushJobStatus'])->name('image.master.push.status');
     Route::post('/image-master/audit', [ImageMasterController::class, 'auditCreate'])->name('image.master.audit');
+    Route::get('/image-master/active-channels', [ImageMasterController::class, 'activeChannels'])->name('image.master.active.channels');
     Route::get('/image-master/sku-text', [ImageMasterController::class, 'skuText'])->name('image.master.sku.text');
     Route::get('/image-master/slot-prompts', [ImageMasterController::class, 'slotPrompts'])->name('image.master.slot.prompts');
     Route::post('/image-master/slot-names', [ImageMasterController::class, 'saveSlotName'])->name('image.master.slot.names.save');

@@ -120,6 +120,13 @@
         .im-hist-counts .bad { color:#dc2626; font-weight:700; }
         #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
         .im-hist-act { font-weight:700; color:#2563eb; }
+        .im-status-cell { display:inline-flex; align-items:center; gap:6px; font-weight:500; color:#4a5568; white-space:nowrap; }
+        .im-status-marble { display:inline-block; width:12px; height:12px; border-radius:50%; flex-shrink:0; box-shadow:inset 2px 2px 3px rgba(255,255,255,.55), inset -2px -2px 4px rgba(0,0,0,.35); }
+        .im-status-marble--active { background:radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d); }
+        .im-status-marble--inactive, .im-status-marble--dc { background:radial-gradient(circle at 32% 28%, #fecaca, #ef4444 42%, #7f1d1d); }
+        .im-status-marble--upcoming { background:radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12); }
+        .im-status-marble--2bdc { background:radial-gradient(circle at 32% 28%, #bfdbfe, #2563eb 45%, #1e3a8a); }
+        .im-status-marble--muted { background:radial-gradient(circle at 32% 28%, #e5e7eb, #9ca3af 45%, #374151); }
         .im-audit-st { display:inline-block; padding:0 6px; border-radius:8px; font-size:9px; font-weight:700; background:#e2e8f0; color:#334155; }
         .im-audit-st.done { background:#dcfce7; color:#166534; }
         .im-audit-st.work { background:#dbeafe; color:#1d4ed8; }
@@ -156,10 +163,13 @@
         .im-prompts-menu .ip-row:last-child { border-bottom:none; }
         .im-prompts-menu .ip-name { flex:1; font-size:12px; font-weight:600; color:#334155; white-space:nowrap; }
         .im-prompts-menu .ip-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; margin-left:6px; }
-        .hero-row { display:grid; grid-template-columns:150px 1fr 74px; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
+        .hero-row { display:grid; grid-template-columns:22px 92px 1fr 40px; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
         .hero-row-head { font-weight:700; font-size:10px; text-transform:uppercase; color:#64748b; border-bottom:2px solid #e2e8f0; }
         .hero-row-all { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
         .hero-mp { font-weight:600; color:#334155; }
+        .hero-mp-logo { max-height:26px; max-width:100%; object-fit:contain; display:block; }
+        /* Main Image modal: half width, docked to the right side of the page */
+        #heroImageModal .modal-dialog { max-width:min(400px, 96vw); margin-left:auto; margin-right:12px; }
         .hero-thumbs { display:flex; gap:4px; }
         .hero-thumbs img { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e2e8f0; background:#f8fafc; }
         .im-icon-expand { display:inline-flex; align-items:center; }
@@ -211,6 +221,16 @@
                         </div>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
+                        <select id="rowTypeFilter" class="form-select form-select-sm" style="width:auto;" title="Which rows to list: SKU rows, PARENT rows, or both">
+                            <option value="sku" selected>SKU</option>
+                            <option value="parent">Parent</option>
+                            <option value="both">Both</option>
+                        </select>
+                        <select id="invFilter" class="form-select form-select-sm" style="width:auto;" title="INV filter (Shopify inventory)">
+                            <option value="gt0" selected>Inv&gt;0</option>
+                            <option value="eq0">Inv=0</option>
+                            <option value="all">All</option>
+                        </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <span class="badge bg-success" id="missingImagesBadge" title="SKUs with fewer than 14 images (red in the Images column)">Missing images: 0</span>
                         <span class="text-muted small" id="selectedCountBadge">0 selected</span>
@@ -233,7 +253,10 @@
                                     <th style="width:36px;text-align:center;" data-sort="selected" title="Sort by selected">
                                         <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
                                     </th>
+                                    <th data-sort="parent">Parent</th>
                                     <th data-sort="sku">SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
+                                    <th data-sort="inv" style="text-align:center;" title="Shopify inventory (parents show the total of their SKUs)">INV</th>
+                                    <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status</th>
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
                                     <th data-sort="name">Product Name</th>
                                     <th id="imActionTh">Action</th>
@@ -518,16 +541,13 @@
                 <div class="modal-body">
                     <p class="small text-muted mb-3">When you push, the <strong>Main image</strong> chosen here is sent first on each marketplace. Default is Image 1.</p>
                     <div id="heroScopeNote" class="alert alert-warning small py-2 mb-3" style="display:none;"></div>
-                    <div class="hero-row hero-row-all mb-2">
-                        <span class="hero-mp fw-bold">Apply to all marketplaces</span>
-                        <select id="heroAllMain" class="form-select form-select-sm"></select>
-                        <button type="button" class="btn btn-outline-primary btn-sm" id="heroApplyAllBtn">Apply</button>
-                    </div>
+                    <label class="hero-row hero-row-selall mb-0" style="cursor:pointer;" title="Tick marketplaces, then change one of the ticked dropdowns to set them all at once">
+                        <input type="checkbox" class="form-check-input m-0" id="heroSelAll">
+                        <span class="hero-mp">Select all</span><span></span><span></span>
+                    </label>
                     <div id="heroRows"></div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary me-auto" id="heroResetBtn">Reset all</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="heroSaveBtn"><i class="fas fa-save"></i> Save</button>
                 </div>
             </div>
@@ -813,11 +833,18 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('rainbow-loader').style.display = 'block';
         return fetch('/image-master-data').then(r=>r.json()).then(res => {
             const raw = Array.isArray(res.data) ? res.data : [];
-            tableData = raw.filter(i => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
+            tableData = raw.filter(i => i && i.SKU); // PARENT rows are listed too (bulk push / pull still skip them)
+            // INV = Shopify inventory; a PARENT row shows the total of its SKUs (like Product Master).
+            const parentInv = {};
+            tableData.forEach(r => {
+                if (!String(r.SKU).toUpperCase().includes('PARENT') && r.Parent) parentInv[r.Parent] = (parentInv[r.Parent] || 0) + (Number(r.shopify_inv) || 0);
+            });
+            tableData.forEach(r => {
+                r._inv = String(r.SKU).toUpperCase().includes('PARENT') ? (parentInv[r.Parent] || 0) : (Number(r.shopify_inv) || 0);
+            });
             bySku.clear();
             tableData.forEach(r => bySku.set(String(r.SKU), r));
             renderTable(tableData);
-            document.getElementById('rowCountBadge').textContent = tableData.length + ' products';
         }).catch(e => toast('Load failed: '+e.message, false))
         .finally(() => { document.getElementById('rainbow-loader').style.display = 'none'; });
     }
@@ -1026,6 +1053,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.table-responsive')?.addEventListener('scroll', hide, { passive: true });
     })();
 
+    // ── Status column: same value and look as the STATUS column on Product Master ──
+    function pmStatusRaw(r) {
+        let raw = r && r.status;
+        if ((raw === null || raw === undefined || raw === '') && r && r.Values) {
+            let V = r.Values;
+            if (typeof V === 'string') { try { V = JSON.parse(V); } catch (_) { V = {}; } }
+            raw = V && V.status;
+        }
+        return String(raw || '').trim();
+    }
+    function statusCellHtml(r) {
+        const raw = pmStatusRaw(r);
+        if (!raw) return '<span class="text-muted">—</span>';
+        const lower = raw.toLowerCase(), upper = raw.toUpperCase();
+        const mod = lower === 'active' ? 'active' : lower === 'inactive' ? 'inactive' : upper === 'DC' ? 'dc' : lower === 'upcoming' ? 'upcoming' : upper === '2BDC' ? '2bdc' : 'muted';
+        const label = lower === 'upcoming' ? 'Coming' : lower === 'active' ? 'Active' : lower === 'inactive' ? 'Inactive' : raw;
+        return `<span class="im-status-cell"><span class="im-status-marble im-status-marble--${mod}" title="${esc(raw)}"></span><span>${esc(label)}</span></span>`;
+    }
+
     // ── Audit History column: Task Manager tasks raised from the Audit button ──
     const auditStClass = (st) => {
         const x = String(st || '').toLowerCase();
@@ -1073,6 +1119,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         switch (key) {
             case 'selected': return selectedSkus.has(sku) ? 1 : 0;
+            case 'inv': return r._inv;
+            case 'status': return pmStatusRaw(r).toLowerCase() || null;
+            case 'parent': return String(r.Parent || '') || null;
             case 'sku': return sku;
             case 'images': return pmImageUrls(r).length;
             case 'name': return String(r.Parent || sku);
@@ -1188,6 +1237,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
+        const rowType = document.getElementById('rowTypeFilter')?.value || 'sku';
+        if (rowType !== 'both') {
+            const wantParent = rowType === 'parent';
+            rows = rows.filter(r => String(r.SKU || '').toUpperCase().includes('PARENT') === wantParent);
+        }
+        const invMode = document.getElementById('invFilter')?.value || 'gt0';
+        if (invMode === 'gt0') rows = rows.filter(r => (r._inv || 0) > 0);
+        else if (invMode === 'eq0') rows = rows.filter(r => !(r._inv > 0));
+        document.getElementById('rowCountBadge').textContent = rows.length + (rowType === 'parent' ? ' parents' : rowType === 'both' ? ' rows' : ' products');
         rows = sortRows(rows);
         updateSortIndicators();
         visibleFilteredRows = rows;
@@ -1200,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             missingBadge.classList.toggle('bg-success', missing === 0);
         }
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="23" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="26" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -1222,7 +1280,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const imgCountHtml = `<span class="im-img-count ${imgCount >= IM_TARGET_IMAGES ? 'ok' : 'low'}" title="${imgCount} of ${IM_TARGET_IMAGES} images saved">${imgCount}/${IM_TARGET_IMAGES}</span>`;
             return `<tr data-sku="${esc(sku)}">
                 <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
+                <td>${esc(r.Parent || '')}</td>
                 <td>${esc(sku)}</td>
+                <td class="text-center">${r._inv}</td>
+                <td class="text-center">${statusCellHtml(r)}</td>
                 <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
                 <td class="text-center"><button type="button" class="btn btn-sm edit-btn im-view-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
@@ -1940,9 +2001,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let heroUsingSelection = false;
     let heroMain = {};   // mp -> index
 
-    function heroOptionsHtml(n, selected, withAuto) {
-        let h = withAuto ? `<option value="auto"${selected == null ? ' selected' : ''}>Auto</option>` : '';
-        for (let i = 0; i < n; i++) h += `<option value="${i}"${selected === i ? ' selected' : ''}>Image ${i + 1}</option>`;
+    /** Only two choices: Hero image 1 (slot 1) or Hero image 2 (slot 2). A leftover older choice (3+) is kept as an extra option. */
+    function heroOptionsHtml(selected) {
+        const sel = Number.isInteger(selected) ? selected : 0;
+        let h = `<option value="0"${sel === 0 ? ' selected' : ''}>Hero image 1</option><option value="1"${sel === 1 ? ' selected' : ''}>Hero image 2</option>`;
+        if (sel > 1) h += `<option value="${sel}" selected>Image ${sel + 1} (current)</option>`;
         return h;
     }
 
@@ -1952,19 +2015,37 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span class="hero-thumbs">${t(m)}</span>`;
     }
 
+    // Marketplaces shown in this modal = active channels (with logos) from the Active Channel pages.
+    let heroChannels = [];
+    fetch('/image-master/active-channels', { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json()).then(j => {
+            heroChannels = (j && Array.isArray(j.channels)) ? j.channels : [];
+            if (document.getElementById('heroImageModal')?.classList.contains('show')) renderHeroRows();
+        }).catch(() => {});
+    const heroMpList = () => heroChannels.length ? heroChannels.map(c => c.key) : MARKETPLACES;
+    const heroMpInfo = (mp) => heroChannels.find(c => c.key === mp) || { key: mp, label: LABELS[mp] || mp, logo: null };
+
+    let heroChecked = new Set(); // ticked marketplaces: changing one ticked dropdown sets all ticked ones
+    function syncHeroSelAll() {
+        const all = document.getElementById('heroSelAll');
+        if (!all) return;
+        const list = heroMpList();
+        all.checked = list.length > 0 && list.every(mp => heroChecked.has(mp));
+        all.indeterminate = !all.checked && heroChecked.size > 0;
+    }
+
     function renderHeroRows() {
         const single = heroRows.length === 1 ? pmImageUrls(heroRows[0]) : null;
-        const n = Math.max(1, ...heroRows.map(r => pmImageUrls(r).length));
         const wrap = document.getElementById('heroRows');
         if (!wrap) return;
-        wrap.innerHTML = MARKETPLACES.map(mp => `
+        wrap.innerHTML = heroMpList().map(mp => { const info = heroMpInfo(mp); return `
             <div class="hero-row" data-mp="${esc(mp)}">
-                <span class="hero-mp">${esc(LABELS[mp] || mp)}</span>
-                <select class="form-select form-select-sm hero-sel-main" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroMain[mp] ?? 0, false)}</select>
+                <input type="checkbox" class="form-check-input m-0 hero-chk" data-mp="${esc(mp)}"${heroChecked.has(mp) ? ' checked' : ''} aria-label="Select ${esc(info.label)}">
+                <span class="hero-mp" title="${esc(info.label)}">${info.logo ? `<img class="hero-mp-logo" src="${esc(info.logo)}" alt="${esc(info.label)}" onerror="this.outerHTML='${esc(info.label).replace(/'/g, '&#39;')}'">` : esc(info.label)}</span>
+                <select class="form-select form-select-sm hero-sel-main" data-mp="${esc(mp)}">${heroOptionsHtml(heroMain[mp] ?? 0)}</select>
                 <span class="hero-thumbs-cell">${single ? heroThumbsHtml(single, mp) : ''}</span>
-            </div>`).join('');
-        const allMain = document.getElementById('heroAllMain');
-        if (allMain) allMain.innerHTML = heroOptionsHtml(n, 0, false);
+            </div>`; }).join('');
+        syncHeroSelAll();
     }
 
     function openHeroModal() {
@@ -1991,6 +2072,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : '';
             note.style.display = note.textContent ? '' : 'none';
         }
+        heroChecked = new Set();
         renderHeroRows();
         bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).show();
     }
@@ -2001,23 +2083,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('heroRows')?.addEventListener('change', (e) => {
+        const chk = e.target.closest('input.hero-chk');
+        if (chk) {
+            if (chk.checked) heroChecked.add(chk.dataset.mp); else heroChecked.delete(chk.dataset.mp);
+            syncHeroSelAll();
+            return;
+        }
         const sel = e.target.closest('select[data-mp]');
         if (!sel) return;
-        heroSetFor(sel.dataset.mp, sel.value);
-        const cell = sel.closest('.hero-row')?.querySelector('.hero-thumbs-cell');
-        if (cell && heroRows.length === 1) cell.innerHTML = heroThumbsHtml(pmImageUrls(heroRows[0]), sel.dataset.mp);
+        // A ticked row's change applies to every ticked marketplace; an unticked row only changes itself.
+        const targets = heroChecked.has(sel.dataset.mp) ? [...heroChecked] : [sel.dataset.mp];
+        targets.forEach(mp => {
+            heroSetFor(mp, sel.value);
+            const row = document.querySelector(`#heroRows .hero-row[data-mp="${CSS.escape(mp)}"]`);
+            const other = row?.querySelector('select.hero-sel-main');
+            if (other && other !== sel) {
+                if (![...other.options].some(o => o.value === sel.value)) other.add(new Option(sel.options[sel.selectedIndex].text, sel.value));
+                other.value = sel.value;
+            }
+            const cell = row?.querySelector('.hero-thumbs-cell');
+            if (cell && heroRows.length === 1) cell.innerHTML = heroThumbsHtml(pmImageUrls(heroRows[0]), mp);
+        });
     });
-
-    document.getElementById('heroApplyAllBtn')?.addEventListener('click', () => {
-        const m = document.getElementById('heroAllMain').value;
-        MARKETPLACES.forEach(mp => heroSetFor(mp, m));
-        renderHeroRows();
-        document.getElementById('heroAllMain').value = m;
-    });
-
-    document.getElementById('heroResetBtn')?.addEventListener('click', () => {
-        heroMain = defaultMainByMarketplace();
-        renderHeroRows();
+    document.getElementById('heroSelAll')?.addEventListener('change', (e) => {
+        heroChecked = e.target.checked ? new Set(heroMpList()) : new Set();
+        document.querySelectorAll('#heroRows .hero-chk').forEach(c => { c.checked = heroChecked.has(c.dataset.mp); });
+        syncHeroSelAll();
     });
 
     document.getElementById('heroSaveBtn')?.addEventListener('click', async () => {
@@ -2799,6 +2890,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('skuSearchIm')?.addEventListener('input', () => renderTable(tableData));
+    document.getElementById('rowTypeFilter')?.addEventListener('change', () => renderTable(tableData));
+    document.getElementById('invFilter')?.addEventListener('change', () => renderTable(tableData));
 
     document.getElementById('exportBtn')?.addEventListener('click', () => {
         const rows = tableData.map(row => {
