@@ -261,6 +261,32 @@
     }
     #claimModal .claim-shot-paste { border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 0 5px; font-size: 11px; line-height: 18px; cursor: pointer; }
     #claimModal .claim-shot-paste:hover { background: #eaf2ff; border-color: #2563eb; }
+    #claimModal td.col-shot { position: relative; }
+    #claimModal .claim-shot-expand {
+        display: none; position: absolute; top: 5px; right: 9px; width: 22px; height: 22px;
+        align-items: center; justify-content: center; border-radius: 6px;
+        background: rgba(15, 23, 42, .72); color: #fff; font-size: 11px; cursor: zoom-in; z-index: 2;
+    }
+    #claimModal .claim-shot-expand:hover { background: #2563eb; }
+    #claimModal .claim-shot.has-shot ~ .claim-shot-expand { display: flex; }
+
+    /* Full-size screenshot viewer */
+    #scLightbox { display: none; position: fixed; inset: 0; z-index: 200200; background: rgba(15, 23, 42, .92); flex-direction: column; }
+    #scLightbox.open { display: flex; }
+    #scLightbox .sc-lb-bar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 10px 16px; color: #e2e8f0; font-size: 13px; }
+    #scLightbox .sc-lb-count { margin-right: auto; }
+    #scLightbox .sc-lb-bar a, #scLightbox .sc-lb-bar button { color: #e2e8f0; background: rgba(255,255,255,.12); border: 0; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; text-decoration: none; }
+    #scLightbox .sc-lb-bar a:hover, #scLightbox .sc-lb-bar button:hover { background: rgba(255,255,255,.25); }
+    #scLightbox .sc-lb-stage { flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 0 70px 20px; }
+    #scLightbox .sc-lb-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; background: #fff; cursor: zoom-in; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+    #scLightbox.zoomed .sc-lb-stage { align-items: flex-start; justify-content: flex-start; }
+    #scLightbox.zoomed .sc-lb-stage img { max-width: none; max-height: none; margin: auto; cursor: zoom-out; }
+    #scLightbox .sc-lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 50%; border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 26px; line-height: 1; cursor: pointer; }
+    #scLightbox .sc-lb-nav:hover { background: rgba(255,255,255,.3); }
+    #scLightbox .sc-lb-prev { left: 12px; }
+    #scLightbox .sc-lb-next { right: 12px; }
+    #scLightbox.single .sc-lb-nav { display: none; }
+
     #claimModal .claim-shot-choose { display: block; margin: 4px auto 0; width: 64px; border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 1px 0; font-size: 10px; line-height: 16px; cursor: pointer; }
     #claimModal .claim-shot-choose:hover { background: #eaf2ff; border-color: #2563eb; }
     #claimModal .claim-shot-choose:disabled { opacity: .5; cursor: not-allowed; }
@@ -628,7 +654,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -1119,7 +1145,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1807,6 +1833,114 @@
         });
         // Never leave the preview stuck open (e.g. a modal closes or the user clicks).
         document.addEventListener('click', function () { box.style.display = 'none'; });
+    })();
+
+    // Full-size viewer: expand icon on a modal thumbnail, or click a screenshot in the claims list.
+    // Arrow buttons / keys step through every screenshot in the same claim.
+    (function () {
+        const lb = document.createElement('div');
+        lb.id = 'scLightbox';
+        lb.innerHTML =
+            '<div class="sc-lb-bar"><span class="sc-lb-count"></span>'
+            + '<a class="sc-lb-open" target="_blank" rel="noopener">Open in new tab</a>'
+            + '<button type="button" class="sc-lb-close" title="Close (Esc)">&times; Close</button></div>'
+            + '<button type="button" class="sc-lb-nav sc-lb-prev" title="Previous (&larr;)">&#8249;</button>'
+            + '<div class="sc-lb-stage"><img class="no-img-hover" alt="Screenshot"></div>'
+            + '<button type="button" class="sc-lb-nav sc-lb-next" title="Next (&rarr;)">&#8250;</button>';
+        document.body.appendChild(lb);
+
+        const img = lb.querySelector('.sc-lb-stage img');
+        const count = lb.querySelector('.sc-lb-count');
+        const openLink = lb.querySelector('.sc-lb-open');
+        let list = [];
+        let idx = 0;
+
+        function show() {
+            const src = list[idx];
+            img.src = src;
+            lb.classList.remove('zoomed');
+            lb.classList.toggle('single', list.length < 2);
+            count.textContent = list.length > 1 ? ('Screenshot ' + (idx + 1) + ' of ' + list.length) : 'Screenshot';
+            openLink.href = src;
+            openLink.style.display = /^data:/.test(src) ? 'none' : '';
+        }
+
+        function open(srcs, start) {
+            if (!srcs.length) return;
+            list = srcs;
+            idx = Math.min(Math.max(start || 0, 0), srcs.length - 1);
+            show();
+            lb.classList.add('open');
+        }
+
+        function close() {
+            lb.classList.remove('open', 'zoomed');
+            img.removeAttribute('src');
+        }
+
+        function step(d) {
+            if (list.length < 2) return;
+            idx = (idx + d + list.length) % list.length;
+            show();
+        }
+
+        lb.querySelector('.sc-lb-close').addEventListener('click', close);
+        lb.querySelector('.sc-lb-prev').addEventListener('click', function () { step(-1); });
+        lb.querySelector('.sc-lb-next').addEventListener('click', function () { step(1); });
+        img.addEventListener('click', function () { lb.classList.toggle('zoomed'); }); // fit <-> actual size
+        lb.addEventListener('click', function (e) {
+            if (e.target === lb || e.target.classList.contains('sc-lb-stage')) close();
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (!lb.classList.contains('open')) return;
+            if (e.key === 'Escape') close();
+            else if (e.key === 'ArrowLeft') step(-1);
+            else if (e.key === 'ArrowRight') step(1);
+            else return;
+            e.preventDefault();
+            e.stopImmediatePropagation(); // don't let Esc also close the claim modal behind
+        }, true);
+
+        function modalSources(label) {
+            const labels = Array.from(document.querySelectorAll('#claimTableBody .claim-shot[data-sc-src]'));
+            return { srcs: labels.map(function (l) { return l.dataset.scSrc; }), start: Math.max(0, labels.indexOf(label)) };
+        }
+
+        function handle(e) {
+            const t = e.target;
+            if (!t || !t.closest) return;
+
+            // Expand icon in the claim form (works in read-only view too).
+            const exp = t.closest('#claimTableBody .claim-shot-expand');
+            if (exp) {
+                const label = exp.closest('td').querySelector('.claim-shot');
+                if (label && label.dataset.scSrc) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const m = modalSources(label);
+                    open(m.srcs, m.start);
+                }
+                return;
+            }
+
+            // Screenshot thumbnail in the claims list table.
+            const thumb = t.closest('img[data-sc-src]');
+            if (thumb && !thumb.closest('#claimModal')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const cell = thumb.closest('.tabulator-cell') || thumb.parentElement;
+                const imgs = Array.from(cell.querySelectorAll('img[data-sc-src]'));
+                open(imgs.map(function (i) { return i.dataset.scSrc; }), imgs.indexOf(thumb));
+            }
+        }
+
+        document.addEventListener('click', handle, true);
+        document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('claim-shot-expand')) {
+                handle({ target: e.target, preventDefault: function () { e.preventDefault(); }, stopPropagation: function () {} });
+            }
+        });
     })();
 
     // Attachment icon: show a green tick + file name tooltip once a file is chosen.
