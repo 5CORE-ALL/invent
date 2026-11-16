@@ -261,6 +261,9 @@
     }
     #claimModal .claim-shot-paste { border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 0 5px; font-size: 11px; line-height: 18px; cursor: pointer; }
     #claimModal .claim-shot-paste:hover { background: #eaf2ff; border-color: #2563eb; }
+    #claimModal .claim-shot-choose { display: block; margin: 4px auto 0; width: 64px; border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 1px 0; font-size: 10px; line-height: 16px; cursor: pointer; }
+    #claimModal .claim-shot-choose:hover { background: #eaf2ff; border-color: #2563eb; }
+    #claimModal .claim-shot-choose:disabled { opacity: .5; cursor: not-allowed; }
     #claimShotToast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 4000; max-width: 460px; background: #0f172a; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.25); display: none; text-align: center; }
     #claimModal .claim-shot:focus, #claimModal .claim-shot.shot-selected { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .25); }
     #claimModal .claim-shot:hover { border-color: #2563eb; color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .1); }
@@ -625,7 +628,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -1116,7 +1119,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1505,6 +1508,16 @@
 
         document.addEventListener('click', function (e) {
             if (e.target.classList && e.target.classList.contains('claim-shot-input')) return; // programmatic picker open
+            // "Choose" button under the camera: open the file picker (multiple files allowed).
+            const chooseBtn = e.target.closest ? e.target.closest('#claimTableBody .claim-shot-choose') : null;
+            if (chooseBtn) {
+                e.preventDefault();
+                if (!claimOpenAndEditable()) return;
+                const lbl = chooseBtn.closest('td').querySelector('.claim-shot');
+                const fileInput = lbl.querySelector('.claim-shot-input');
+                fileInput.click();
+                return;
+            }
             // The whole Screenshot cell counts, not just the 64px camera box.
             const cell = e.target.closest ? e.target.closest('#claimTableBody td.col-shot') : null;
             const label = cell ? cell.querySelector('.claim-shot') : null;
