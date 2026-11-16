@@ -103,7 +103,8 @@
         .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
         .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
         .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
-        .im-view-btn { width:16px; height:16px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:8px; line-height:1; border-radius:4px; }
+        .im-view-btn, .im-view-btn:hover, .im-view-btn:focus, .im-view-btn:active { width:auto; height:auto; padding:2px 4px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; line-height:1; color:#000 !important; background:transparent !important; border:0 !important; box-shadow:none !important; }
+        .im-view-btn:hover { opacity:.65; }
         .im-slot-cell { position:relative; display:inline-block; line-height:0; }
         .im-ai-edit-btn { position:absolute; right:-6px; bottom:-6px; width:22px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:#475569; background:#fff; border:1px solid #94a3b8; border-radius:5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.2); }
         .im-ai-edit-btn:hover { background:#2563eb; border-color:#2563eb; color:#fff; }
@@ -223,39 +224,40 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-images me-2"></i>Edit product images</h5>
+                    <h5 class="modal-title text-nowrap"><i class="fas fa-images me-2"></i>Edit product images</h5>
+                    <div class="d-flex align-items-center gap-2 flex-wrap ms-3 me-auto small text-white">
+                        <label class="btn btn-light btn-sm mb-0" for="modalFileInput" style="cursor:pointer;" title="Upload images (max 20)" aria-label="Upload images">
+                            <i class="fas fa-upload"></i>
+                        </label>
+                        <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
+                        <span id="fileChosenLabel" style="opacity:.85;">No file chosen</span>
+                        <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
+                            <i class="fas fa-plus me-1"></i>Add to list
+                        </button>
+                        <div class="spinner-border spinner-border-sm text-light" id="uploadSpinner" role="status" style="display:none;"></div>
+                        <span class="fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
+                        <span style="opacity:.7;">Max 20 images</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1 me-2">
+                        <button type="button" class="btn btn-light btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file" aria-label="Download all (ZIP)">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button type="button" class="btn btn-light btn-sm text-danger" id="removeAllImagesBtn" style="display:none;" title="Remove all images" aria-label="Remove all">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
-                    <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div class="mb-3"><strong>Parent:</strong> <span id="modalProductLabel"></span></div>
 
-                    {{-- ── ADD IMAGES SECTION ─────────────────────────────────── --}}
-                    <div class="border rounded p-3 mb-3" style="background:#f8fafc;">
-                        <div class="fw-semibold small mb-2"><i class="fas fa-folder-open me-1"></i>Upload Images</div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-                            <label class="btn btn-outline-primary btn-sm mb-0" for="modalFileInput" style="cursor:pointer;">
-                                <i class="fas fa-image me-1"></i>Choose Files
-                            </label>
-                            <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
-                            <span class="text-muted small" id="fileChosenLabel">No file chosen</span>
-                        </div>
-                        {{-- Pre-upload preview list --}}
-                        <div id="uploadPreviewList" class="mb-2" style="display:none;">
-                            <div class="small text-muted mb-1">Selected files will be uploaded when you click <strong>Add to list</strong> or <strong>Save Images</strong>.</div>
-                            <div id="uploadPreviewItems" class="d-flex flex-wrap gap-2"></div>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
-                                <i class="fas fa-plus me-1"></i>Add to list
-                            </button>
-                            <div class="spinner-border spinner-border-sm text-success" id="uploadSpinner" role="status" style="display:none;"></div>
-                            <span class="small text-success fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
-                            <span class="small text-muted">Max 20 images. Drag cards to reorder before saving.</span>
-                        </div>
+                    {{-- Upload controls live in the modal header; only the pre-upload preview stays here --}}
+                    <div id="uploadPreviewList" class="border rounded p-2 mb-3" style="display:none;background:#f8fafc;">
+                        <div class="small text-muted mb-1">Selected files will be uploaded when you click <strong>Add to list</strong> or <strong>Save Images</strong>.</div>
+                        <div id="uploadPreviewItems" class="d-flex flex-wrap gap-2"></div>
                     </div>
-                    {{-- ── END ADD IMAGES ──────────────────────────────────────── --}}
 
                     <!-- <div class="mb-2">
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchAmazonBtn"><i class="fab fa-amazon"></i> Fetch Amz images</button>
@@ -266,13 +268,6 @@
                     <div class="fw-semibold small mb-1 d-flex align-items-center justify-content-between gap-2 flex-wrap">
                         <span>Order — drag a card onto another to <strong>swap</strong> (hold <kbd>Shift</kbd> to insert), or park it in the sandbox below</span>
                         <div class="d-flex align-items-center gap-2">
-                            <button type="button" class="btn btn-outline-primary btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file">
-                                <i class="fas fa-download me-1"></i>Download all (ZIP)
-                            </button>
-                            <button type="button" class="btn btn-outline-danger btn-sm" id="removeAllImagesBtn" style="display:none;">
-                                <i class="fas fa-trash-alt me-1"></i>Remove all
-                            </button>
-                            <span class="text-muted small">Drag cards to reorder</span>
                         </div>
                     </div>
                     <div id="imSlots"></div>
@@ -996,7 +991,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const viewTh = document.createElement('th');
         viewTh.style.cssText = 'width:36px;min-width:36px;text-align:center;';
         viewTh.title = 'Open the image editor for this row';
-        viewTh.innerHTML = '<i class="fas fa-search" aria-hidden="true"></i>';
+        viewTh.innerHTML = '<i class="fas fa-search" style="color:#000;" aria-hidden="true"></i>';
         actionTh.parentNode.insertBefore(viewTh, actionTh);
         for (let i = 0; i < IM_SLOT_COUNT; i++) {
             const th = document.createElement('th');
@@ -1064,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(sku)}</td>
                 <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
-                <td class="text-center"><button type="button" class="btn btn-sm btn-primary edit-btn im-view-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
+                <td class="text-center"><button type="button" class="btn btn-sm edit-btn im-view-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
                 ${slotCells}
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
@@ -2111,7 +2106,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = this;
         const label = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Preparing ZIP...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
         try {
             await downloadFromServer('/image-master/download-zip', {
                 method: 'POST',
