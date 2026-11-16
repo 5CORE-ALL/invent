@@ -391,6 +391,7 @@ class MeetingController extends Controller
                 'google_status' => $m->google_sync_status,
                 'details_url' => route('meetings.show', $m),
                 'room_url' => $m->isGoogleMeet() ? route('meetings.show', $m) : route('meetings.room', $m),
+                'end_url' => route('meetings.end', $m),
                 'invitees' => $m->participants->map(fn (MeetingParticipant $p) => [
                     'name' => (string) ($p->user?->name ?? 'Unknown'),
                     'status' => $this->inviteeStatus($p),

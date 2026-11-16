@@ -586,7 +586,27 @@
                         + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')
                         + '<div class="small mb-1"><strong>' + counts.accepted + '</strong> accepted &middot; <strong>' + counts.completed + '</strong> completed &middot; <strong>' + counts.declined + '</strong> declined &middot; <strong>' + counts.pending + '</strong> waiting</div>'
                         + '<div class="mb-2">' + (chips || '<span class="text-muted small">No members invited.</span>') + '</div>'
-                        + join + '<a class="btn btn-sm btn-light" href="' + esc(m.details_url || m.room_url) + '">Details</a>';
+                        + join + '<a class="btn btn-sm btn-light" href="' + esc(m.details_url || m.room_url) + '">Details</a>'
+                        + (done ? '' : ' <button type="button" class="btn btn-sm btn-primary" data-complete title="Mark this meeting as completed"><i class="ri-check-double-line"></i> Completed</button>')
+                        + '<div class="small mt-2" data-result></div>';
+                    var cbtn = div.querySelector('[data-complete]');
+                    if (cbtn) cbtn.addEventListener('click', function () {
+                        if (!confirm('Mark "' + m.title + '" as completed? It will move to the Completed tab.')) return;
+                        var res = div.querySelector('[data-result]');
+                        cbtn.disabled = true;
+                        call('POST', m.end_url).then(function (r) {
+                            if (!r.ok || !(r.data && r.data.ok)) {
+                                cbtn.disabled = false;
+                                res.innerHTML = '<span class="text-danger">' + esc((r.data && r.data.message) || 'Could not mark as completed.') + '</span>';
+                                return;
+                            }
+                            res.innerHTML = '<span class="text-primary fw-semibold"><i class="ri-check-double-line"></i> Marked as completed.</span>';
+                            setTimeout(function () { sentSig = ''; loadSent(); }, 800);
+                        }).catch(function () {
+                            cbtn.disabled = false;
+                            res.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>';
+                        });
+                    });
                     box.appendChild(div);
                 });
             }).catch(function () { box.innerHTML = '<div class="text-danger">Could not load your meeting requests.</div>'; });
