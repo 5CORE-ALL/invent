@@ -78,6 +78,34 @@
         #imHistoryPop .hp-row .mk.bad { color:#dc2626; }
         #imHistoryPop .hp-row .nm { font-weight:600; min-width:92px; }
         #imHistoryPop .hp-row .msg { color:#64748b; white-space:normal; word-break:break-word; }
+        .im-slot-th { min-width:84px; text-align:center; }
+        .im-slot-th .im-slot-name { width:72px; max-width:100%; text-align:center; background:transparent; border:1px solid transparent; color:#fff; font-size:10px; font-weight:700; text-transform:uppercase; padding:1px 3px; border-radius:4px; }
+        .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
+        .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
+        .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
+        .im-col-hidden { display:none!important; }
+        .im-mp-open { width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; }
+        .mpg-wrap { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:6px; }
+        .mpg-col { flex:0 0 210px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
+        .mpg-col.mpg-over { border-color:#6366f1; box-shadow:0 0 0 2px rgba(99,102,241,.2); }
+        .mpg-head { display:flex; align-items:center; gap:6px; padding:8px; border-bottom:1px solid #e2e8f0; background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; border-radius:9px 9px 0 0; }
+        .mpg-head .mpg-name-input { flex:1; min-width:0; background:transparent; border:1px solid transparent; color:#fff; font-size:11px; font-weight:700; text-transform:uppercase; padding:1px 4px; border-radius:4px; }
+        .mpg-head .mpg-name-input:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
+        .mpg-head .mpg-count { font-size:10px; opacity:.85; white-space:nowrap; }
+        .mpg-head .mpg-del { background:none; border:none; color:#fff; opacity:.75; padding:0 2px; cursor:pointer; font-size:12px; }
+        .mpg-head .mpg-del:hover { opacity:1; }
+        .mpg-list { min-height:56px; padding:8px; display:flex; flex-direction:column; gap:5px; }
+        .mpg-list:empty::after { content:'Drop marketplaces here'; color:#94a3b8; font-size:11px; text-align:center; padding:14px 0; }
+        .mpg-item { display:flex; align-items:center; gap:6px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:4px 6px; cursor:grab; font-size:11px; margin:0; }
+        .mpg-item.dragging { opacity:.4; }
+        .mpg-item.disabled { opacity:.55; cursor:grab; }
+        .mpg-item .marketplace-btn { width:26px; height:22px; font-size:9px; cursor:inherit; flex-shrink:0; }
+        .mpg-item .mpg-lbl { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; color:#334155; }
+        .mpg-add-bar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+        #im-master-table thead th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; }
+        #im-master-table thead th[data-sort]:hover { filter:brightness(1.12); }
+        #im-master-table thead th .im-sort-ind { display:inline-block; margin-left:4px; font-size:9px; opacity:.45; }
+        #im-master-table thead th.im-sorted .im-sort-ind { opacity:1; }
     </style>
 @endsection
 
@@ -117,22 +145,23 @@
                         <table id="im-master-table" class="table w-100">
                             <thead>
                                 <tr>
-                                    <th style="width:36px;text-align:center;">
+                                    <th style="width:36px;text-align:center;" data-sort="selected" title="Sort by selected">
                                         <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
                                     </th>
-                                    <th>SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
-                                    <th style="width:72px;text-align:center;" title="Saved Product Master images for this SKU">Images</th>
-                                    <th>Product Name</th>
-                                    <th title="Hover a row's History to see the last image push">History</th>
-                                    <th>Preview</th>
-                                    <th>Action</th>
-                                    <th title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
+                                    <th data-sort="sku">SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
+                                    <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
+                                    <th data-sort="name">Product Name</th>
+                                    <th data-sort="history" title="Hover a row's History to see the last image push">History</th>
+                                    <th data-sort="preview">Preview</th>
+                                    <th id="imActionTh">Action</th>
+                                    <th style="width:54px;text-align:center;" data-sort="mp" title="Open marketplaces picker (groups, checkboxes, push)">MP</th>
+                                    <th class="im-col-hidden" title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
                                         </div>
                                     </th>
-                                    <th title="Shopify Main, Shopify PLS">
+                                    <th data-sort="shopify" title="Shopify Main, Shopify PLS">
                                         <div class="bp-mp-th-title">SHOPIFY</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
@@ -281,6 +310,32 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" id="shopifyPullConfirmCancelBtn" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-warning" id="shopifyPullConfirmBtn"><i class="fas fa-download"></i> Yes, Pull Images</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── MP picker modal (groups, drag & drop, checkboxes) ───────── --}}
+    <div class="modal fade" id="mpPickerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-search me-2"></i>Marketplaces — <span id="mpPickerSku"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mpg-add-bar mb-3">
+                        <input type="text" id="mpgNewName" class="form-control form-control-sm" style="max-width:220px;" placeholder="New column name">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="mpgAddBtn"><i class="fas fa-plus me-1"></i>Add column</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="mpgResetBtn" title="Restore default groups">Reset layout</button>
+                        <span class="text-muted small ms-auto">Drag marketplaces between columns to regroup. Green dot = already pushed.</span>
+                    </div>
+                    <div id="mpgWrap" class="mpg-wrap"></div>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto small text-muted" id="mpgSelCount">0 selected</span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning" id="mpgPushBtn"><i class="fas fa-cloud-upload-alt"></i> Push selected</button>
                 </div>
             </div>
         </div>
@@ -689,13 +744,121 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.table-responsive')?.addEventListener('scroll', hide, { passive: true });
     })();
 
+    let imSort = { key: null, dir: 'asc' };
+
+    function groupPushedCount(gkey, row) {
+        const keys = (GROUPS[gkey] || []).filter((mp) => ENABLED_MARKETPLACES.includes(mp));
+        const im = row.image_master || {};
+        return keys.filter(mp => hasPushedImages(im[mp] || '')).length;
+    }
+
+    function imSortValue(key, r) {
+        const sku = String(r.SKU || '');
+        if (/^slot\d+$/.test(key)) {
+            const u = pmImageUrls(r)[Number(key.slice(4))];
+            return u ? String(u).split('?')[0].split('/').pop().toLowerCase() : null;
+        }
+        switch (key) {
+            case 'selected': return selectedSkus.has(sku) ? 1 : 0;
+            case 'sku': return sku;
+            case 'images': return pmImageUrls(r).length;
+            case 'name': return String(r.Parent || sku);
+            case 'history': {
+                const t = r.push_history && r.push_history.last_at ? new Date(String(r.push_history.last_at).replace(' ', 'T')).getTime() : NaN;
+                return isNaN(t) ? null : t;
+            }
+            case 'preview': return (r.preview_thumb || r.main_image || r.image1 || r.image_path) ? 1 : 0;
+            case 'mp': {
+                const im = r.image_master || {};
+                return ENABLED_MARKETPLACES.filter(mp => hasPushedImages(im[mp] || '')).length;
+            }
+            case 'channels': return groupPushedCount('gChannels', r);
+            case 'shopify': return groupPushedCount('gShopify', r);
+        }
+        return null;
+    }
+
+    function sortRows(rows) {
+        if (!imSort.key) return rows;
+        const dir = imSort.dir === 'desc' ? -1 : 1;
+        return rows.slice().sort((a, b) => {
+            const va = imSortValue(imSort.key, a), vb = imSortValue(imSort.key, b);
+            // empty values always last
+            if (va === null && vb === null) return 0;
+            if (va === null) return 1;
+            if (vb === null) return -1;
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+            return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+        });
+    }
+
+    function updateSortIndicators() {
+        document.querySelectorAll('#im-master-table thead th[data-sort]').forEach(th => {
+            let ind = th.querySelector('.im-sort-ind');
+            if (!ind) {
+                ind = document.createElement('span');
+                ind.className = 'im-sort-ind';
+                th.appendChild(ind);
+            }
+            const active = imSort.key === th.dataset.sort;
+            th.classList.toggle('im-sorted', active);
+            ind.textContent = active ? (imSort.dir === 'asc' ? '▲' : '▼') : '⇅';
+        });
+    }
+
+    // ── Image slot columns: one image per column (Hero 1, Hero 2, 3 … 14), editable headers ──
+    const IM_SLOT_COUNT = 14;
+    const IM_SLOT_KEY = 'im_slot_names_v1';
+    const imSlotDefault = (i) => i === 0 ? 'Hero 1' : i === 1 ? 'Hero 2' : String(i + 1);
+    let imSlotNames = (() => {
+        let saved = [];
+        try { saved = JSON.parse(localStorage.getItem(IM_SLOT_KEY) || '[]'); } catch (_) {}
+        return Array.from({ length: IM_SLOT_COUNT }, (_, i) => (saved && typeof saved[i] === 'string' && saved[i].trim()) ? saved[i] : imSlotDefault(i));
+    })();
+    (function buildSlotHeaders() {
+        const actionTh = document.getElementById('imActionTh');
+        if (!actionTh) return;
+        for (let i = 0; i < IM_SLOT_COUNT; i++) {
+            const th = document.createElement('th');
+            th.className = 'im-slot-th';
+            th.dataset.sort = 'slot' + i;
+            th.title = `Image ${i + 1} — click header name to rename, click elsewhere on the header to sort`;
+            const inp = document.createElement('input');
+            inp.type = 'text';
+            inp.className = 'im-slot-name';
+            inp.value = imSlotNames[i];
+            inp.placeholder = imSlotDefault(i);
+            inp.maxLength = 24;
+            inp.addEventListener('change', () => {
+                imSlotNames[i] = inp.value.trim() || imSlotDefault(i);
+                inp.value = imSlotNames[i];
+                try { localStorage.setItem(IM_SLOT_KEY, JSON.stringify(imSlotNames)); } catch (_) {}
+            });
+            inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+            th.appendChild(inp);
+            actionTh.parentNode.insertBefore(th, actionTh);
+        }
+    })();
+
+    document.querySelectorAll('#im-master-table thead th[data-sort]').forEach(th => {
+        th.addEventListener('click', (e) => {
+            if (e.target.closest('input, button, select, a')) return;
+            const key = th.dataset.sort;
+            if (imSort.key === key) imSort.dir = imSort.dir === 'asc' ? 'desc' : 'asc';
+            else imSort = { key, dir: 'asc' };
+            renderTable(tableData);
+        });
+    });
+
     function renderTable(rows) {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
+        rows = sortRows(rows);
+        updateSortIndicators();
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="23" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -705,8 +868,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const checked = selectedSkus.has(sku) ? 'checked' : '';
             const thumb = r.preview_thumb || r.main_image || r.image1 || r.image_path || '';
             const thumbImg = thumb ? `<img class="im-thumb" src="${esc(imgSrc(thumb))}" alt="">` : '<span class="text-muted">—</span>';
-            const imgCount = pmImageUrls(r).length;
-            const IM_TARGET_IMAGES = 13; // green at 13 or more, red below
+            const slotUrls = pmImageUrls(r);
+            const slotCells = Array.from({ length: IM_SLOT_COUNT }, (_, i) => {
+                const u = slotUrls[i];
+                return `<td class="text-center">${u ? `<img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">` : '<span class="text-muted">—</span>'}</td>`;
+            }).join('');
+            const imgCount = slotUrls.length;
+            const IM_TARGET_IMAGES = 14; // green at 14 or more, red below
             const imgCountHtml = `<span class="im-img-count ${imgCount >= IM_TARGET_IMAGES ? 'ok' : 'low'}" title="${imgCount} of ${IM_TARGET_IMAGES} images saved">${imgCount}/${IM_TARGET_IMAGES}</span>`;
             return `<tr data-sku="${esc(sku)}">
                 <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
@@ -715,24 +883,242 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(r.Parent||sku)}</td>
                 <td>${historyCellHtml(sku, r.push_history)}</td>
                 <td>${thumbImg}</td>
+                ${slotCells}
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
                         <button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
                         <button type="button" class="shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify images for this SKU"><i class="fas fa-download"></i></button>
                     </div>
                 </td>
-                <td>${groupCell('gChannels', sku, r)}</td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary im-mp-open" data-mp-open="${esc(sku)}" title="Marketplaces for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
                 <td>${groupCell('gShopify', sku, r)}</td>
             </tr>`;
         }).join('');
         bindRowCheckboxEvents(tbody);
         updateSelectedCount();
         syncSelectAllCheckbox();
+        document.querySelectorAll('.im-mp-open[data-mp-open]').forEach(b => b.addEventListener('click', () => openMpPicker(b.dataset.mpOpen)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
             quickPush(b.dataset.sku, b.dataset.pushMp);
         }));
+    }
+
+
+    // ── MP picker modal: grouped marketplaces, drag & drop regroup, checkboxes ──
+    const MPG_KEY = 'im_mp_groups_v1';
+    function defaultMpGroups() {
+        return [
+            { id: 'gChannels', name: 'Market Places', mps: [...(GROUPS.gChannels || [])] },
+            { id: 'gShopify', name: 'Shopify', mps: [...(GROUPS.gShopify || [])] },
+        ];
+    }
+    function normalizeMpGroups(gs) {
+        const seen = new Set();
+        let out = (Array.isArray(gs) ? gs : []).filter(g => g && g.id).map(g => ({
+            id: String(g.id), name: String(g.name || 'Group'),
+            mps: (Array.isArray(g.mps) ? g.mps : []).filter(mp => {
+                if (!ENABLED_MARKETPLACES.includes(mp) || seen.has(mp)) return false;
+                seen.add(mp); return true;
+            }),
+        }));
+        if (!out.length) out = defaultMpGroups().map(g => ({ ...g, mps: g.mps.filter(mp => { if (!ENABLED_MARKETPLACES.includes(mp) || seen.has(mp)) return false; seen.add(mp); return true; }) }));
+        ENABLED_MARKETPLACES.forEach(mp => { if (!seen.has(mp)) { out[0].mps.push(mp); seen.add(mp); } });
+        return out;
+    }
+    function loadMpGroups() {
+        try { return normalizeMpGroups(JSON.parse(localStorage.getItem(MPG_KEY) || 'null')); }
+        catch (_) { return normalizeMpGroups(null); }
+    }
+    let mpGroups = loadMpGroups();
+    let mpPickerSku = '';
+    const mpPickerSelected = new Set();
+    let mpDragMp = null;
+    const saveMpGroups = () => { try { localStorage.setItem(MPG_KEY, JSON.stringify(mpGroups)); } catch (_) {} };
+
+    function mpItemState(mp) {
+        return mpPushTileState(mp, { label: LABELS[mp], implemented: ENABLED_MARKETPLACES.includes(mp) });
+    }
+
+    function renderMpPicker() {
+        const wrap = document.getElementById('mpgWrap');
+        if (!wrap) return;
+        const row = bySku.get(String(mpPickerSku)) || {};
+        const im = row.image_master || {};
+        wrap.innerHTML = mpGroups.map(g => `
+            <div class="mpg-col" data-gid="${esc(g.id)}">
+                <div class="mpg-head">
+                    <input type="checkbox" class="form-check-input mpg-group-chk m-0" data-gid="${esc(g.id)}" title="Select all in this column" aria-label="Select all in ${esc(g.name)}">
+                    <input type="text" class="mpg-name-input" data-gid="${esc(g.id)}" value="${esc(g.name)}" title="Rename column">
+                    <span class="mpg-count">${g.mps.length}</span>
+                    ${mpGroups.length > 1 ? `<button type="button" class="mpg-del" data-gid="${esc(g.id)}" title="Delete column (marketplaces move to the first other column)"><i class="fas fa-times"></i></button>` : ''}
+                </div>
+                <div class="mpg-list" data-gid="${esc(g.id)}">
+                    ${g.mps.map(mp => {
+                        const st = mpItemState(mp);
+                        const pushed = hasPushedImages(im[mp] || '');
+                        return `<label class="mpg-item ${st.disabled ? 'disabled' : ''}" draggable="true" data-mp="${esc(mp)}" title="${esc(st.title || '')}">
+                            <input type="checkbox" class="form-check-input mpg-chk m-0" data-mp="${esc(mp)}" ${st.disabled ? 'disabled' : ''} ${mpPickerSelected.has(mp) && !st.disabled ? 'checked' : ''}>
+                            <span class="marketplace-btn ${MP_TILE[mp] || 'btn-secondary'}">${esc(MP_SHORT[mp] || mp)}</span>
+                            <span class="mpg-lbl">${esc(LABELS[mp] || mp)}</span>
+                            <span class="bp-mp-dot ${pushed ? 'pushed' : ''}"></span>
+                        </label>`;
+                    }).join('')}
+                </div>
+            </div>`).join('');
+        refreshMpPickerChecks();
+    }
+
+    function refreshMpPickerChecks() {
+        mpGroups.forEach(g => {
+            const chk = document.querySelector(`.mpg-group-chk[data-gid="${CSS.escape(g.id)}"]`);
+            if (!chk) return;
+            const sel = g.mps.filter(mp => !mpItemState(mp).disabled);
+            const n = sel.filter(mp => mpPickerSelected.has(mp)).length;
+            chk.checked = sel.length > 0 && n === sel.length;
+            chk.indeterminate = n > 0 && n < sel.length;
+            chk.disabled = sel.length === 0;
+        });
+        const c = document.getElementById('mpgSelCount');
+        if (c) c.textContent = mpPickerSelected.size + ' selected';
+    }
+
+    function openMpPicker(sku) {
+        mpPickerSku = String(sku);
+        mpPickerSelected.clear();
+        document.getElementById('mpPickerSku').textContent = sku;
+        renderMpPicker();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('mpPickerModal')).show();
+    }
+
+    function moveMpTo(mp, gid, beforeMp) {
+        mpGroups.forEach(g => { g.mps = g.mps.filter(x => x !== mp); });
+        const target = mpGroups.find(g => g.id === gid);
+        if (!target) return;
+        const idx = beforeMp ? target.mps.indexOf(beforeMp) : -1;
+        if (idx >= 0) target.mps.splice(idx, 0, mp); else target.mps.push(mp);
+        saveMpGroups();
+        renderMpPicker();
+    }
+
+    (function bindMpPicker() {
+        const wrap = document.getElementById('mpgWrap');
+        if (!wrap) return;
+        wrap.addEventListener('change', (e) => {
+            const t = e.target;
+            if (t.classList.contains('mpg-chk')) {
+                if (t.checked) mpPickerSelected.add(t.dataset.mp); else mpPickerSelected.delete(t.dataset.mp);
+                refreshMpPickerChecks();
+            } else if (t.classList.contains('mpg-group-chk')) {
+                const g = mpGroups.find(x => x.id === t.dataset.gid);
+                if (!g) return;
+                g.mps.filter(mp => !mpItemState(mp).disabled).forEach(mp => {
+                    if (t.checked) mpPickerSelected.add(mp); else mpPickerSelected.delete(mp);
+                });
+                renderMpPicker();
+            } else if (t.classList.contains('mpg-name-input')) {
+                const g = mpGroups.find(x => x.id === t.dataset.gid);
+                if (g) { g.name = t.value.trim() || g.name; saveMpGroups(); }
+            }
+        });
+        wrap.addEventListener('click', (e) => {
+            const del = e.target.closest('.mpg-del');
+            if (!del) return;
+            const idx = mpGroups.findIndex(g => g.id === del.dataset.gid);
+            if (idx < 0 || mpGroups.length < 2) return;
+            const [removed] = mpGroups.splice(idx, 1);
+            if (removed.mps.length) mpGroups[0].mps.push(...removed.mps);
+            saveMpGroups();
+            renderMpPicker();
+        });
+        wrap.addEventListener('dragstart', (e) => {
+            const item = e.target.closest('.mpg-item');
+            if (!item) return;
+            mpDragMp = item.dataset.mp;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', mpDragMp); } catch (_) {}
+        });
+        wrap.addEventListener('dragend', () => {
+            mpDragMp = null;
+            wrap.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+            wrap.querySelectorAll('.mpg-over').forEach(el => el.classList.remove('mpg-over'));
+        });
+        wrap.addEventListener('dragover', (e) => {
+            if (!mpDragMp) return;
+            const col = e.target.closest('.mpg-col');
+            if (!col) return;
+            e.preventDefault();
+            wrap.querySelectorAll('.mpg-over').forEach(el => { if (el !== col) el.classList.remove('mpg-over'); });
+            col.classList.add('mpg-over');
+        });
+        wrap.addEventListener('drop', (e) => {
+            if (!mpDragMp) return;
+            const col = e.target.closest('.mpg-col');
+            if (!col) return;
+            e.preventDefault();
+            const list = col.querySelector('.mpg-list');
+            const items = [...list.querySelectorAll('.mpg-item')].filter(el => el.dataset.mp !== mpDragMp);
+            const before = items.find(el => { const r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+            moveMpTo(mpDragMp, col.dataset.gid, before ? before.dataset.mp : null);
+            mpDragMp = null;
+        });
+
+        document.getElementById('mpgAddBtn')?.addEventListener('click', () => {
+            const inp = document.getElementById('mpgNewName');
+            const name = (inp.value || '').trim();
+            if (!name) { toast('Enter a column name first.', false); inp.focus(); return; }
+            mpGroups.push({ id: 'g' + Date.now().toString(36), name, mps: [] });
+            inp.value = '';
+            saveMpGroups();
+            renderMpPicker();
+        });
+        document.getElementById('mpgNewName')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('mpgAddBtn').click(); }
+        });
+        document.getElementById('mpgResetBtn')?.addEventListener('click', () => {
+            mpGroups = normalizeMpGroups(null);
+            saveMpGroups();
+            renderMpPicker();
+        });
+        document.getElementById('mpgPushBtn')?.addEventListener('click', () => pushFromMpPicker());
+    })();
+
+    function pushFromMpPicker() {
+        const sku = mpPickerSku;
+        const row = bySku.get(String(sku));
+        const mps = ENABLED_MARKETPLACES.filter(mp => mpPickerSelected.has(mp) && !mpItemState(mp).disabled);
+        if (!row) return;
+        if (!mps.length) { toast('Select at least one marketplace.', false); return; }
+        const urls = pmImageUrls(row);
+        if (!urls.length) { toast('No images on Product Master for this SKU — open Edit first.', false); return; }
+        if (!confirmEbay3Push(mps)) return;
+        if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${mps.length} marketplace(s)?\n\n${mps.map(mp => LABELS[mp] || mp).join(', ')}\n\nThis will replace existing marketplace images.`)) return;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('mpPickerModal')).hide();
+        setPushProgress(true, `Queuing push for ${mps.length} marketplace(s)…`, '', false, true);
+        queueImagePushAndWait({
+            sku,
+            mode: 'replace',
+            updates: mps.map(mp => ({ marketplace: mp, images: urls })),
+            main_by_marketplace: mainByMarketplacePayloadFromRow(row),
+        }, (st) => renderImagePushJobProgress(st, `Pushing ${sku} to ${mps.length} marketplace(s)…`))
+        .then(({ res, j }) => {
+            let ok = 0, fail = 0;
+            const lines = mps.map((mp, i) => {
+                const r = j && j.results ? j.results[mp] : null;
+                const good = !!(r && r.success);
+                if (good) ok++; else fail++;
+                return `${i + 1}/${mps.length} ${esc(LABELS[mp] || mp)}: ${good ? 'OK' : 'Failed'}${r && r.message ? ` - ${esc(r.message)}` : ''}`;
+            });
+            if (!(j && j.results) && !res.ok) lines.unshift(esc(j?.message || `HTTP ${res.status}`));
+            setPushProgress(true, `Push finished: ${ok} success, ${fail} failed`, lines.join('<br>'), fail > 0);
+            toast(fail ? `Push completed with ${fail} failure(s).` : `Pushed to ${ok} marketplace(s).`, !fail);
+            loadData();
+        }).catch(e => {
+            setPushProgress(true, 'Push failed', esc(e.message || 'Request failed'), true);
+            toast(e.message || 'Push failed', false);
+        });
     }
 
     function defaultMainByMarketplace() {
