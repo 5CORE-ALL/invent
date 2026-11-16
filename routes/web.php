@@ -6287,6 +6287,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/container-planning/delete', 'deleteContainerPlanning')->name('container.planning.delete');
     });
 
+    Route::controller(\App\Http\Controllers\PurchaseMaster\ContainerQuotationController::class)->group(function () {
+        Route::get('/quotations-container', 'index')->name('container.quotations');
+        Route::get('/quotations-container/data', 'data')->name('container.quotations.data');
+        Route::post('/quotations-container/save', 'save')->name('container.quotations.save');
+        Route::post('/quotations-container/quotes', 'saveQuotes')->name('container.quotations.quotes.save');
+    });
+
     // api data view routes
     Route::get('/shopify/products', [ShopifyController::class, 'getProducts']);
 
