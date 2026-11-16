@@ -8,6 +8,7 @@ use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguratio
 use App\Jobs\RunImageMasterPushJob;
 use App\Jobs\RunShopifyImagePullJob;
 use App\Models\ProductImage;
+use App\Models\ProductRawImageAiPrompt;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
@@ -22,6 +23,7 @@ use App\Services\ShopifyApiService;
 use App\Services\ShopifyB5CApiService;
 use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
+use App\Services\Support\ImageMasterActivityLog;
 use App\Services\Support\ImageMasterPushJobStore;
 use App\Services\Support\ShopifyImagePullJobStore;
 use App\Services\Support\EbaySellInventoryListingResolver;
@@ -54,6 +56,9 @@ class ImageMasterController extends Controller
 
     private const PM_MAX_IMAGES = 20;
 
+    /** Key suffix for the per-marketplace Hero 2 image (value = image index + 1; 0 / absent = auto). */
+    private const HERO2_SUFFIX = '__hero2';
+
     public function index(Request $request)
     {
         $mode = $request->query('mode', '');
@@ -81,6 +86,7 @@ class ImageMasterController extends Controller
             $skuList = array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products);
             $mainBySku = $this->loadImageMainByMarketplaceForSkus($skuList);
             $historyBySku = array_change_key_case(\App\Services\Support\ImageMasterPushHistory::summaryForSkus($skuList), CASE_UPPER);
+            $activityBySku = ImageMasterActivityLog::recentForSkus($skuList);
 
             foreach ($products as &$row) {
                 $sku = $this->normalizeSku($row['SKU'] ?? null);
@@ -91,6 +97,7 @@ class ImageMasterController extends Controller
                 $row['image_master'] = $im;
                 $row['image_main_by_marketplace'] = $mainBySku[$sku] ?? [];
                 $row['push_history'] = $historyBySku[strtoupper($sku)] ?? null;
+                $row['activity'] = $activityBySku[strtoupper($sku)] ?? [];
                 $row['preview_thumb'] = $this->firstPreviewUrl($row);
             }
 
@@ -250,7 +257,7 @@ class ImageMasterController extends Controller
             'updates.*.images.*'     => 'nullable|string|max:2048',
             'mode'                   => 'nullable|string|in:replace,add',
             'main_by_marketplace'    => 'nullable|array',
-            'main_by_marketplace.*'  => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
+            'main_by_marketplace.*'  => 'integer|min:0|max:'.self::PM_MAX_IMAGES,
             'dry_run'                => 'nullable|boolean',
         ]);
 
@@ -389,10 +396,11 @@ class ImageMasterController extends Controller
             ];
         }
 
+        $hero2Index = $this->hero2ImageIndexFromMap($mainMap, $mp, $originalCount);
         if ($images !== [] && $mode !== 'add') {
             $mainIndex = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
-            if ($mainIndex > 0) {
-                $images = $this->reorderImagesWithMainFirst($images, $mainIndex);
+            if ($mainIndex > 0 || $hero2Index !== null) {
+                $images = $this->reorderImagesWithHeroes($images, $mainIndex, $hero2Index);
             }
         }
 
@@ -400,6 +408,9 @@ class ImageMasterController extends Controller
         if ($images !== [] && $mode !== 'add') {
             $mainIdx = $this->mainImageIndexFromMap($mainMap, $mp, $originalCount);
             $mainNote = ' Main image: Image '.($mainIdx + 1).'.';
+            if ($hero2Index !== null && $hero2Index !== $mainIdx) {
+                $mainNote .= ' Hero 2: Image '.($hero2Index + 1).'.';
+            }
         }
 
         $limit = $this->marketplaceImageLimit($mp);
@@ -590,6 +601,201 @@ class ImageMasterController extends Controller
         ];
     }
 
+    private const SLOT_PROMPT_COUNT = 14;
+
+    private function slotPromptKind(int $slot): string
+    {
+        return 'im_slot_'.str_pad((string) $slot, 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Saved prompt text per image slot (1–14), shared by all users.
+     */
+    public function slotPrompts(): \Illuminate\Http\JsonResponse
+    {
+        $out = [];
+        try {
+            if (Schema::hasTable('product_raw_image_ai_prompts')) {
+                $kinds = [];
+                for ($i = 1; $i <= self::SLOT_PROMPT_COUNT; $i++) {
+                    $kinds[$this->slotPromptKind($i)] = $i;
+                }
+                foreach (ProductRawImageAiPrompt::query()->whereIn('kind', array_keys($kinds))->get() as $row) {
+                    $out[$kinds[$row->kind]] = (string) $row->prompt;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster slotPrompts failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['success' => true, 'prompts' => (object) $out]);
+    }
+
+    public function saveSlotPrompt(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'slot' => 'required|integer|min:1|max:'.self::SLOT_PROMPT_COUNT,
+            'prompt' => 'nullable|string|max:20000',
+        ]);
+
+        if (! Schema::hasTable('product_raw_image_ai_prompts')) {
+            return response()->json(['success' => false, 'message' => 'Prompt storage table is missing (run migrations).'], 500);
+        }
+
+        $kind = $this->slotPromptKind((int) $validated['slot']);
+        $prompt = trim((string) ($validated['prompt'] ?? ''));
+
+        try {
+            if ($prompt === '') {
+                ProductRawImageAiPrompt::query()->where('kind', $kind)->delete();
+            } else {
+                ProductRawImageAiPrompt::query()->updateOrCreate(['kind' => $kind], ['prompt' => $prompt]);
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'message' => $prompt === '' ? 'Prompt cleared.' : 'Prompt saved.']);
+    }
+
+    private function aiEditFolder(string $sku): string
+    {
+        return 'image-master-ai/'.(preg_replace('/[^a-zA-Z0-9_\- ]/', '_', $sku) ?: 'sku').'/';
+    }
+
+    private function savedSlotPrompt(int $slot): string
+    {
+        try {
+            if (Schema::hasTable('product_raw_image_ai_prompts')) {
+                return trim((string) ProductRawImageAiPrompt::query()->where('kind', $this->slotPromptKind($slot))->value('prompt'));
+            }
+        } catch (\Throwable $e) {
+            //
+        }
+
+        return '';
+    }
+
+    /**
+     * Generate a new version of one of the SKU's images from a prompt (Nano Banana). Nothing is
+     * changed on the product until aiEditApply() is called.
+     */
+    public function aiEditGenerate(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $v = $request->validate([
+            'sku' => 'required|string|max:255',
+            'slot' => 'required|integer|min:1|max:'.self::PM_MAX_IMAGES,
+            'prompt' => 'nullable|string|max:20000',
+        ]);
+        $sku = $this->normalizeSku($v['sku']);
+        $slot = (int) $v['slot'];
+
+        $product = ProductMaster::query()->where('sku', $sku)->first();
+        $url = $this->productMasterImageArray($product)[$slot - 1] ?? null;
+        if (! $url) {
+            return response()->json(['success' => false, 'message' => 'This SKU has no image in that column.'], 422);
+        }
+
+        $prompt = trim((string) ($v['prompt'] ?? ''));
+        if ($prompt === '') {
+            $prompt = $this->savedSlotPrompt($slot);
+        }
+        if ($prompt === '') {
+            return response()->json(['success' => false, 'message' => 'No prompt saved for this image. Write one first.'], 422);
+        }
+
+        $src = $this->fetchImageForDownload($url);
+        if (isset($src['error'])) {
+            return response()->json(['success' => false, 'message' => $src['error']], 422);
+        }
+
+        @set_time_limit(240);
+        try {
+            $out = app(\App\Services\RawImagesAiImageService::class)->editWithNanoBanana($src['bytes'], $prompt);
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster aiEditGenerate failed', ['sku' => $sku, 'slot' => $slot, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 502);
+        }
+
+        $path = $this->aiEditFolder($sku).'slot'.$slot.'_'.uniqid().'.jpg';
+        Storage::disk('public')->put($path, $out);
+
+        return response()->json([
+            'success' => true,
+            'path' => $path,
+            'preview_url' => url('/storage/'.$path),
+            'prompt' => $prompt,
+        ]);
+    }
+
+    /**
+     * Replace the SKU's image in the given column with a generated image (overwrites the old one).
+     */
+    public function aiEditApply(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $v = $request->validate([
+            'sku' => 'required|string|max:255',
+            'slot' => 'required|integer|min:1|max:'.self::PM_MAX_IMAGES,
+            'path' => 'required|string|max:500',
+            'prompt' => 'nullable|string|max:20000',
+        ]);
+        $sku = $this->normalizeSku($v['sku']);
+        $slot = (int) $v['slot'];
+        $path = (string) $v['path'];
+
+        if (! str_starts_with($path, $this->aiEditFolder($sku)) || str_contains($path, '..') || ! Storage::disk('public')->exists($path)) {
+            return response()->json(['success' => false, 'message' => 'Generated image not found. Generate again.'], 422);
+        }
+
+        $product = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found'], 404);
+        }
+
+        // Image Master lists non-empty images in order, so slot N is the Nth non-empty image column.
+        $columns = [];
+        for ($i = 1; $i <= self::PM_MAX_IMAGES; $i++) {
+            if (Schema::hasColumn('product_master', 'image'.$i) && trim((string) ($product->{'image'.$i} ?? '')) !== '') {
+                $columns[] = 'image'.$i;
+            }
+        }
+        if ($columns === [] && trim((string) ($product->main_image ?? '')) !== '' && $slot === 1) {
+            $columns = ['image1'];
+        }
+        $target = $columns[$slot - 1] ?? null;
+        if ($target === null) {
+            return response()->json(['success' => false, 'message' => 'This SKU has no image in that column.'], 422);
+        }
+
+        $bytes = (string) Storage::disk('public')->get($path);
+        $newUrl = url('/storage/'.$path);
+        try {
+            $cdn = app(ShopifyApiService::class)->uploadImageToShopifyCdn($bytes, 'ai_'.$slot.'_'.uniqid().'.jpg', 'image/jpeg');
+            if (($cdn['success'] ?? false) && ! empty($cdn['url'])) {
+                $newUrl = (string) $cdn['url'];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster aiEditApply: CDN upload failed, using local URL', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        $previous = trim((string) ($product->{$target} ?? ''));
+        $product->{$target} = $newUrl;
+        if ($slot === 1) {
+            $product->main_image = $newUrl;
+        }
+        $product->save();
+
+        ImageMasterActivityLog::record(
+            $sku,
+            'edit',
+            'Image '.$slot.' replaced with a Nano Banana AI edit',
+            ['slot' => $slot, 'column' => $target, 'before' => $previous, 'after' => $newUrl, 'prompt' => $v['prompt'] ?? null]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Image '.$slot.' replaced.', 'url' => $newUrl]);
+    }
+
     /**
      * Save ordered URLs to Product Master image1–image20 and main_image.
      */
@@ -600,7 +806,7 @@ class ImageMasterController extends Controller
             'images' => 'present|array|max:'.self::PM_MAX_IMAGES,
             'images.*' => 'nullable|string|max:2048',
             'main_by_marketplace' => 'nullable|array',
-            'main_by_marketplace.*' => 'integer|min:0|max:'.(self::PM_MAX_IMAGES - 1),
+            'main_by_marketplace.*' => 'integer|min:0|max:'.self::PM_MAX_IMAGES,
             'removed_urls' => 'nullable|array|max:100',
             'removed_urls.*' => 'nullable|string|max:2048',
         ]);
@@ -618,6 +824,11 @@ class ImageMasterController extends Controller
             return response()->json(['success' => false, 'message' => 'Product not found'], 404);
         }
 
+        $oldImages = $this->productMasterImageArray($product);
+        $oldMainRaw = Schema::hasColumn('product_master', 'image_main_by_marketplace_json')
+            ? (string) ($product->image_main_by_marketplace_json ?? '')
+            : '';
+
         for ($i = 0; $i < self::PM_MAX_IMAGES; $i++) {
             $col = 'image'.($i + 1);
             $product->{$col} = $images[$i] ?? null;
@@ -632,6 +843,8 @@ class ImageMasterController extends Controller
         try {
             $product->save();
 
+            $this->logImageChanges($sku, $oldImages, $images, $oldMainRaw, $mainByMarketplace);
+
             // Clean up images the user removed in the modal — local file, DB row, and Shopify CDN
             // file. Heavily guarded (see purgeRemovedSkuImages) so a kept image can never be deleted.
             $purged = $this->purgeRemovedSkuImages($sku, $validated['removed_urls'] ?? [], $images);
@@ -644,6 +857,78 @@ class ImageMasterController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Record what changed between the previously saved and newly saved image sets.
+     *
+     * @param  list<string>  $old
+     * @param  list<string>  $new
+     * @param  array<string, int>  $newMainByMarketplace
+     */
+    private function logImageChanges(string $sku, array $old, array $new, string $oldMainRaw, array $newMainByMarketplace): void
+    {
+        $oldKeys = $this->normalizedImageArray($old);
+        $newKeys = $this->normalizedImageArray($new);
+
+        $added = [];
+        foreach ($new as $i => $url) {
+            if (! in_array($newKeys[$i], $oldKeys, true)) {
+                $added[] = $url;
+            }
+        }
+        $removed = [];
+        foreach ($old as $i => $url) {
+            if (! in_array($oldKeys[$i], $newKeys, true)) {
+                $removed[] = $url;
+            }
+        }
+
+        $parts = [];
+        if ($added !== []) {
+            $parts[] = 'added '.count($added);
+        }
+        if ($removed !== []) {
+            $parts[] = 'removed '.count($removed);
+        }
+
+        $reordered = $added === [] && $removed === [] && $oldKeys !== $newKeys;
+        if ($reordered) {
+            $parts[] = 'reordered';
+        } elseif ($added !== [] || $removed !== []) {
+            $keptOld = array_values(array_filter($oldKeys, fn ($k) => in_array($k, $newKeys, true)));
+            $keptNew = array_values(array_filter($newKeys, fn ($k) => in_array($k, $oldKeys, true)));
+            if ($keptOld !== $keptNew) {
+                $parts[] = 'reordered';
+            }
+        }
+        if (($oldKeys[0] ?? null) !== ($newKeys[0] ?? null) && $newKeys !== [] && $oldKeys !== []) {
+            $parts[] = 'main image changed';
+        }
+
+        $oldMain = $this->decodeImageMainByMarketplaceJson($oldMainRaw);
+        if ($oldMain != $newMainByMarketplace) {
+            $parts[] = 'per-marketplace main image changed';
+        }
+
+        if ($parts === []) {
+            return;
+        }
+
+        $action = match (true) {
+            count($parts) > 1 => 'edit',
+            $added !== [] => 'add',
+            $removed !== [] => 'remove',
+            $reordered => 'reorder',
+            default => 'edit',
+        };
+
+        ImageMasterActivityLog::record(
+            $sku,
+            $action,
+            ucfirst(implode(', ', $parts)).'. '.count($new).' image(s) now (was '.count($old).').',
+            ['added' => $added, 'removed' => $removed, 'before' => $old, 'after' => $new]
+        );
     }
 
     /**
@@ -732,6 +1017,16 @@ class ImageMasterController extends Controller
                 'url'   => $url,
                 'name'  => $originalName,
             ];
+        }
+
+        if ($records !== []) {
+            $names = array_map(fn ($r) => $r['name'], $records);
+            ImageMasterActivityLog::record(
+                $sku,
+                'upload',
+                'Uploaded '.count($records).' image(s): '.mb_substr(implode(', ', $names), 0, 300),
+                ['files' => $names, 'urls' => $urls]
+            );
         }
 
         return response()->json([
@@ -950,7 +1245,10 @@ class ImageMasterController extends Controller
         if (! empty($image->image_path)) {
             Storage::disk('public')->delete($image->image_path);
         }
+        $deletedSku = (string) $image->sku;
+        $deletedName = (string) ($image->original_name ?: basename((string) $image->image_path));
         $image->delete();
+        ImageMasterActivityLog::record($deletedSku, 'delete', 'Deleted stored image '.$deletedName, ['file' => $deletedName]);
 
         return response()->json(['success' => true]);
     }
@@ -1260,6 +1558,14 @@ class ImageMasterController extends Controller
         $out = [];
         foreach ($decoded as $mp => $idx) {
             $mp = strtolower(trim((string) $mp));
+            if (str_ends_with($mp, self::HERO2_SUFFIX)) {
+                // Hero 2 is stored as image index + 1 (0 / absent = automatic).
+                if (in_array(substr($mp, 0, -strlen(self::HERO2_SUFFIX)), $allowed, true)) {
+                    $out[$mp] = max(0, min(self::PM_MAX_IMAGES, (int) $idx));
+                }
+
+                continue;
+            }
             if (! in_array($mp, $allowed, true)) {
                 continue;
             }
@@ -1284,6 +1590,16 @@ class ImageMasterController extends Controller
         $out = [];
         foreach ($input as $mp => $idx) {
             $mp = strtolower(trim((string) $mp));
+            if (str_ends_with($mp, self::HERO2_SUFFIX)) {
+                if (in_array(substr($mp, 0, -strlen(self::HERO2_SUFFIX)), $allowed, true)) {
+                    $v = max(0, min($maxIdx + 1, (int) $idx));
+                    if ($v > 0) {
+                        $out[$mp] = $v;
+                    }
+                }
+
+                continue;
+            }
             if (! in_array($mp, $allowed, true)) {
                 continue;
             }
@@ -1313,6 +1629,52 @@ class ImageMasterController extends Controller
         $idx = (int) ($map[$marketplace] ?? 0);
 
         return max(0, min($imageCount - 1, $idx));
+    }
+
+    /**
+     * Hero 2 image index for a marketplace, or null when automatic (stored as index + 1; 0 / absent = auto).
+     *
+     * @param  array<string, int>  $map
+     */
+    private function hero2ImageIndexFromMap(array $map, string $marketplace, int $imageCount): ?int
+    {
+        if ($imageCount <= 1) {
+            return null;
+        }
+        $v = (int) ($map[$marketplace.self::HERO2_SUFFIX] ?? 0);
+        if ($v <= 0) {
+            return null;
+        }
+
+        return max(0, min($imageCount - 1, $v - 1));
+    }
+
+    /**
+     * Put Hero 1 first and Hero 2 second; remaining images keep their original order.
+     *
+     * @param  list<string>  $images
+     * @return list<string>
+     */
+    private function reorderImagesWithHeroes(array $images, int $mainIndex, ?int $hero2Index): array
+    {
+        $count = count($images);
+        if ($count <= 1) {
+            return $images;
+        }
+        $mainIndex = max(0, min($mainIndex, $count - 1));
+        $hero2Index = $hero2Index !== null && $hero2Index !== $mainIndex ? max(0, min($hero2Index, $count - 1)) : null;
+
+        $out = [$images[$mainIndex]];
+        if ($hero2Index !== null) {
+            $out[] = $images[$hero2Index];
+        }
+        foreach ($images as $i => $url) {
+            if ($i !== $mainIndex && $i !== $hero2Index) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1817,6 +2179,14 @@ class ImageMasterController extends Controller
             $product->save();
 
             $newImages = $this->productMasterImageArray($product->fresh());
+            if (! $matchedBefore) {
+                ImageMasterActivityLog::record(
+                    $sku,
+                    'shopify_pull',
+                    'Pulled '.count($newImages).' image(s) from Shopify (was '.count($currentImages).')',
+                    ['before' => $currentImages, 'after' => $newImages]
+                );
+            }
             Log::info('ImageMaster: pulled Shopify images to Product Master', [
                 'sku' => $sku,
                 'shopify_product_id' => $shopify['product_id'] ?? null,

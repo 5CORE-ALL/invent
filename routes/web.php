@@ -4753,6 +4753,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
     Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
     Route::get('/image-master/push/status', [ImageMasterController::class, 'pushJobStatus'])->name('image.master.push.status');
+    Route::get('/image-master/slot-prompts', [ImageMasterController::class, 'slotPrompts'])->name('image.master.slot.prompts');
+    Route::post('/image-master/slot-prompts', [ImageMasterController::class, 'saveSlotPrompt'])->name('image.master.slot.prompts.save');
+    Route::post('/image-master/ai-edit/generate', [ImageMasterController::class, 'aiEditGenerate'])->name('image.master.ai.edit.generate');
+    Route::post('/image-master/ai-edit/apply', [ImageMasterController::class, 'aiEditApply'])->name('image.master.ai.edit.apply');
     Route::post('/image-master/save-pm', [ImageMasterController::class, 'saveProductMasterImages'])->name('image.master.save.pm');
     Route::post('/image-master/upload', [ImageMasterController::class, 'uploadImages'])->name('image.master.upload');
     Route::get('/image-master/amazon-images', [ImageMasterController::class, 'getAmazonImages'])->name('image.master.amazon.images');
@@ -4797,6 +4801,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/raw-images-hero-2/upload', [RawImagesController::class, 'upload'])->name('raw.images.hero.2.upload');
     Route::post('/raw-images-hero-2/push-ebay', [RawImagesController::class, 'pushHero2ToEbay'])->name('raw.images.hero.2.push.ebay');
     Route::post('/raw-images-hero-2/push-ebay-bulk', [RawImagesController::class, 'pushHero2ToEbayBulk'])->name('raw.images.hero.2.push.ebay.bulk');
+    Route::post('/raw-images-hero-2/save-to-image-master', [RawImagesController::class, 'saveHero2ToImageMaster'])->name('raw.images.hero.2.save.image.master');
     Route::post('/raw-images-hero-2/bulk-import', [RawImagesController::class, 'bulkImport'])->name('raw.images.hero.2.bulk.import');
     Route::post('/raw-images-hero-2/download', [RawImagesController::class, 'downloadSelected'])->name('raw.images.hero.2.download');
     Route::get('/raw-images-hero-2/template', [RawImagesController::class, 'downloadTemplate'])->name('raw.images.hero.2.template');

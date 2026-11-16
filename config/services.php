@@ -1223,6 +1223,8 @@ return [
     'raw_images_ai' => [
         'gemini_key' => env('GEMINI_API_KEY', env('GOOGLE_GEMINI_API_KEY')),
         'gemini_model' => env('RAW_IMAGES_GEMINI_IMAGE_MODEL', 'gemini-3.1-flash-image-preview'),
+        // Image Master "Edit" column — Nano Banana (Gemini image model). Override with IMAGE_MASTER_NANO_BANANA_MODEL.
+        'nano_banana_model' => env('IMAGE_MASTER_NANO_BANANA_MODEL', 'gemini-2.5-flash-image'),
         'openai_key' => \App\Support\OpenAiRequest::normalizeApiKey(
             env('RAW_IMAGES_OPENAI_API_KEY', env('OPENAI_API_KEY'))
         ),

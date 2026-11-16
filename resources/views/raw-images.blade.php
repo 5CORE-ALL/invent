@@ -432,8 +432,8 @@
         padding: 8px 4px !important;
     }
     .ri-barcode-square {
-        width: 130px;
-        min-height: 118px;
+        width: 91px;
+        min-height: 83px;
         border: 1px solid #d1d5db;
         border-radius: 8px;
         background: #fff;
@@ -441,26 +441,32 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 8px 6px;
+        padding: 6px 4px;
         box-sizing: border-box;
-        gap: 4px;
+        gap: 3px;
         cursor: pointer;
         vertical-align: middle;
     }
+    .ri-save-hero-btn { width: 32px; height: 32px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+    .ri-save-opt { flex: 1; border: 2px solid #e2e8f0; border-radius: 10px; padding: 10px; text-align: center; cursor: pointer; background: #fff; }
+    .ri-save-opt.selected { border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .ri-save-opt.disabled { opacity: .45; cursor: not-allowed; background: #f8fafc; }
+    .ri-save-opt img { width: 100%; max-height: 130px; object-fit: contain; border-radius: 6px; background: #f8fafc; }
+    .ri-save-opt .ri-save-opt-title { font-weight: 700; font-size: 12px; margin-top: 6px; }
     .ri-barcode-square:hover { box-shadow: 0 0 0 2px #4dd0e1; }
     .ri-barcode-square img,
     .ri-barcode-square svg {
-        width: 110px;
-        height: 48px;
-        max-width: 110px;
-        max-height: 48px;
+        width: 77px;
+        height: 34px;
+        max-width: 77px;
+        max-height: 34px;
         object-fit: contain;
         display: block;
         flex-shrink: 0;
         background: #fff;
     }
     .ri-barcode-sku {
-        font-size: 10px;
+        font-size: 8px;
         font-weight: 700;
         color: #1a3d7c;
         line-height: 1.2;
@@ -471,7 +477,7 @@
         overflow: hidden;
     }
     .ri-barcode-code {
-        font-size: 10px;
+        font-size: 8px;
         font-weight: 600;
         color: #374151;
         line-height: 1.2;
@@ -480,8 +486,8 @@
         word-break: break-all;
     }
     .ri-barcode-empty {
-        width: 130px;
-        min-height: 118px;
+        width: 91px;
+        min-height: 83px;
         border: 1px dashed #cbd5e1;
         border-radius: 8px;
         display: inline-flex;
@@ -889,6 +895,28 @@
         </div>
     </div>
 
+    @if (!empty($saveImageMasterUrl))
+    <div class="modal fade" id="riSaveHero2Modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title mb-0"><i class="fas fa-save me-2"></i>Save to Image Master — <span id="riSaveHero2Sku"></span></h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Choose which image to save as <strong>Hero 2</strong> (Image 2) in Image Master. It will <strong>overwrite</strong> the image currently in that column.</p>
+                    <div class="d-flex gap-3" id="riSaveHero2Options"></div>
+                    <div id="riSaveHero2Msg" class="small mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="riSaveHero2ConfirmBtn"><i class="fas fa-save me-1"></i> Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="modal fade" id="riBarcodeModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -926,6 +954,7 @@
         const rawImagesManualColumnTitle = @json($manualColumnTitle);
         const rawImagesAiColumnTitle = @json($aiColumnTitle);
         const rawImagesIsHero2 = @json((bool) $isHero2);
+        const rawImagesSaveImageMasterUrl = @json($saveImageMasterUrl ?? null);
         const rawImagesIsBatchCoo = @json((bool) $isBatchCoo);
         const rawImagesStampCooUrl = @json($stampCooUrl);
         const rawImagesPushChannelsUrl = @json($pushChannelsUrl);
@@ -1407,8 +1436,8 @@
                 format: format,
                 displayValue: false,
                 margin: 0,
-                width: large ? 2.6 : 1.4,
-                height: large ? 140 : 48,
+                width: large ? 2.6 : 1,
+                height: large ? 140 : 34,
                 background: '#ffffff',
                 lineColor: '#111827'
             };
@@ -1584,7 +1613,7 @@
                     {
                         title: 'Barcode',
                         field: 'barcode',
-                        width: 160,
+                        width: 115,
                         hozAlign: 'center',
                         headerSort: false,
                         formatter: function (cell) {
@@ -1682,6 +1711,19 @@
                             return rawImageCellHtml(cell.getData(), 'manual');
                         }
                     },
+                    ...(rawImagesIsHero2 && rawImagesSaveImageMasterUrl ? [{
+                        title: 'Save',
+                        headerTooltip: 'Save Hero Image 2 or Hero Image 2 AI as Hero 2 (Image 2) in Image Master',
+                        field: 'save_hero2',
+                        width: 70,
+                        hozAlign: 'center',
+                        headerSort: false,
+                        formatter: function (cell) {
+                            const sku = cell.getData().SKU || '';
+                            if (!sku) return '';
+                            return '<button type="button" class="btn btn-success ri-save-hero-btn js-save-hero2" data-sku="' + escapeHtml(sku) + '" title="Save to Image Master (Hero 2)"><i class="fas fa-save"></i></button>';
+                        }
+                    }] : []),
                     ...(rawImagesIsHero2 ? [{
                         title: 'History',
                         headerTooltip: 'History: EB1 / EB2 / EB3 only after this SKU’s Hero Image 2 was pushed to that eBay account. Dash means no image or not pushed.',
@@ -1726,6 +1768,12 @@
                 if (copyBtn) {
                     e.preventDefault();
                     copyToClipboard(copyBtn.getAttribute('data-sku') || '', null, 'SKU copied.');
+                    return;
+                }
+                const saveHeroBtn = e.target.closest('.js-save-hero2');
+                if (saveHeroBtn) {
+                    e.preventDefault();
+                    openSaveHero2Modal(saveHeroBtn.getAttribute('data-sku') || '');
                     return;
                 }
                 const barcodeBtn = e.target.closest('.ri-barcode-open');
@@ -1992,6 +2040,89 @@
                 setUploadErr('Delete failed: ' + err.message);
             });
         }
+
+        // ── Save Hero Image 2 / Hero Image 2 AI to Image Master (Image 2 = Hero 2 column) ──
+        let saveHero2State = { sku: '', source: null, options: {} };
+
+        function openSaveHero2Modal(sku) {
+            const row = findDataItemBySku(sku);
+            if (!row) return;
+            const opts = {
+                ai: rawImageSourceImages(row, 'ai')[0] || null,
+                manual: rawImageSourceImages(row, 'manual')[0] || null
+            };
+            saveHero2State = { sku: row.SKU || sku, source: opts.ai ? 'ai' : (opts.manual ? 'manual' : null), options: opts };
+            document.getElementById('riSaveHero2Sku').textContent = saveHero2State.sku;
+            document.getElementById('riSaveHero2Msg').textContent = '';
+            renderSaveHero2Options();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('riSaveHero2Modal')).show();
+        }
+
+        function renderSaveHero2Options() {
+            const defs = [['ai', rawImagesAiColumnTitle], ['manual', rawImagesManualColumnTitle]];
+            document.getElementById('riSaveHero2Options').innerHTML = defs.map(function (d) {
+                const img = saveHero2State.options[d[0]];
+                const cls = 'ri-save-opt' + (img ? '' : ' disabled') + (saveHero2State.source === d[0] ? ' selected' : '');
+                const media = img
+                    ? '<img src="' + escapeHtml(cachedImageSrc(img.url, img.thumb_url)) + '" alt="">'
+                    : '<div class="text-muted small py-4">No image</div>';
+                return '<label class="' + cls + '" data-source="' + d[0] + '">'
+                    + '<input type="radio" name="riSaveHero2Src" class="form-check-input me-1" value="' + d[0] + '"'
+                    + (img ? '' : ' disabled') + (saveHero2State.source === d[0] ? ' checked' : '') + '>'
+                    + media + '<div class="ri-save-opt-title">' + escapeHtml(d[1]) + '</div></label>';
+            }).join('');
+        }
+
+        document.getElementById('riSaveHero2Options')?.addEventListener('change', function (e) {
+            if (e.target.name !== 'riSaveHero2Src') return;
+            saveHero2State.source = e.target.value;
+            renderSaveHero2Options();
+        });
+
+        document.getElementById('riSaveHero2ConfirmBtn')?.addEventListener('click', function () {
+            const btn = this;
+            const msg = document.getElementById('riSaveHero2Msg');
+            const img = saveHero2State.options[saveHero2State.source];
+            if (!saveHero2State.source || !img) {
+                msg.className = 'small mt-3 text-danger';
+                msg.textContent = 'Select an image to save.';
+                return;
+            }
+            const label = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+            msg.className = 'small mt-3 text-muted';
+            msg.textContent = 'Saving to Image Master…';
+            fetch(rawImagesSaveImageMasterUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ sku: saveHero2State.sku, source: saveHero2State.source, image_id: img.id })
+            })
+            .then(function (res) { return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                if (result.ok && result.data.success) {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('riSaveHero2Modal')).hide();
+                    flashAction(result.data.message || 'Saved to Image Master.');
+                } else {
+                    const errs = result.data && result.data.errors ? Object.values(result.data.errors).flat().join(' ') : '';
+                    msg.className = 'small mt-3 text-danger';
+                    msg.textContent = (result.data && result.data.message) || errs || 'Save failed.';
+                }
+            })
+            .catch(function (err) {
+                msg.className = 'small mt-3 text-danger';
+                msg.textContent = 'Save failed: ' + err.message;
+            })
+            .finally(function () {
+                btn.disabled = false;
+                btn.innerHTML = label;
+            });
+        });
 
         function skuKey(sku) {
             return String(sku || '').replace(/\u00a0/g, ' ').trim().toUpperCase();

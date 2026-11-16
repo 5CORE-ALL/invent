@@ -55,6 +55,34 @@ class RawImagesAiImageService
     }
 
     /**
+     * Edit a product image from a free-form instruction using Nano Banana (Gemini image model).
+     * Used by the Image Master "Edit" column.
+     */
+    public function editWithNanoBanana(string $imageBytes, string $instruction): string
+    {
+        $key = $this->geminiKey();
+        if ($key === null) {
+            throw new \RuntimeException('Set GEMINI_API_KEY in .env to use Nano Banana.');
+        }
+        $instruction = trim($instruction);
+        if ($instruction === '') {
+            throw new \RuntimeException('Write a prompt first.');
+        }
+
+        $model = trim((string) config('services.raw_images_ai.nano_banana_model', 'gemini-2.5-flash-image')) ?: 'gemini-2.5-flash-image';
+        $prompt = "Edit the attached product image as follows:\n".$instruction
+            ."\nKeep the product itself identical (shape, colors, ports, logos, lettering) unless the instruction says otherwise."
+            ."\nPhotoreal result, square 2000x2000, no watermark.";
+
+        $bytes = $this->editWithGemini($imageBytes, $prompt, $key, [], $model);
+        if (! is_string($bytes) || $bytes === '') {
+            throw new \RuntimeException('Nano Banana returned no image. Try changing the prompt.');
+        }
+
+        return $this->resizeToSquareJpeg($bytes, 2000);
+    }
+
+    /**
      * @return array<string, string>
      */
     private function analyzeHeroWithClaude(string $heroBytes, string $sku): array
@@ -289,7 +317,7 @@ class RawImagesAiImageService
         return $key !== '' ? $key : null;
     }
 
-    private function editWithGemini(string $heroBytes, string $prompt, string $key, array $logoBytes = []): ?string
+    private function editWithGemini(string $heroBytes, string $prompt, string $key, array $logoBytes = [], ?string $modelOverride = null): ?string
     {
         $jpeg = $this->bytesToJpeg($heroBytes, 1600);
         if ($jpeg === '') {
@@ -306,7 +334,7 @@ class RawImagesAiImageService
             }
         }
 
-        $model = (string) config('services.raw_images_ai.gemini_model', 'gemini-3.1-flash-image-preview');
+        $model = $modelOverride ?: (string) config('services.raw_images_ai.gemini_model', 'gemini-3.1-flash-image-preview');
         $tried = [];
 
         try {

@@ -11,6 +11,8 @@ use App\Models\ShopifySku;
 use App\Services\BatchCooStampService;
 use App\Services\Hero2EbayImagePushService;
 use App\Services\RawImagesAiImageService;
+use App\Services\ShopifyApiService;
+use App\Services\Support\ImageMasterActivityLog;
 use App\Services\Support\AllMarketplaceChannelRegistry;
 use App\Support\Badges\RawImagesBadgeCalculator;
 use App\Support\Badges\RawImagesBatchCooBadgeCalculator;
@@ -284,6 +286,102 @@ class RawImagesController extends Controller
         );
 
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * Save the chosen Hero Image 2 (manual or AI) as the 2nd image (image2 = "Hero 2" column) of the
+     * SKU in Image Master. Overwrites whatever image was in that slot; the old file is not deleted.
+     */
+    public function saveHero2ToImageMaster(Request $request): JsonResponse
+    {
+        if ($this->kindFromRequest($request) !== ProductRawImage::KIND_HERO_2) {
+            return response()->json(['success' => false, 'message' => 'Only available on Hero Image 2.'], 422);
+        }
+
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'source' => 'required|string|in:ai,manual',
+            'image_id' => 'nullable|integer',
+        ]);
+
+        $sku = $this->normalizeSku($validated['sku']);
+        $isAi = $validated['source'] === 'ai';
+
+        $query = ProductRawImage::query()
+            ->where('sku', $sku)
+            ->where('kind', $isAi ? ProductRawImage::KIND_HERO_2_AI : ProductRawImage::KIND_HERO_2);
+        if (! empty($validated['image_id'])) {
+            $query->where('id', (int) $validated['image_id']);
+        }
+        $raw = $query->orderBy('id')->first();
+        if (! $raw) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No '.($isAi ? 'Hero Image 2 AI' : 'Hero Image 2').' image found for this SKU.',
+            ], 422);
+        }
+
+        $product = ProductMaster::query()->where('sku', $sku)->first();
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found in Product Master.'], 404);
+        }
+        if (! Schema::hasColumn('product_master', 'image2')) {
+            return response()->json(['success' => false, 'message' => 'Product Master has no image2 column.'], 500);
+        }
+
+        // Image 2 only makes sense when Image 1 exists (Image Master lists images without gaps).
+        $image1 = trim((string) ($product->image1 ?? ''));
+        if ($image1 === '' && trim((string) ($product->main_image ?? '')) !== '') {
+            $image1 = trim((string) $product->main_image);
+            $product->image1 = $image1;
+        }
+        if ($image1 === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'This SKU has no Hero 1 / first image in Image Master yet. Add image 1 there first.',
+            ], 422);
+        }
+
+        // Prefer a public Shopify CDN URL (marketplaces cannot fetch a self-hosted /storage URL);
+        // fall back to the local public URL when the CDN upload is unavailable.
+        $disk = Storage::disk('public');
+        $localUrl = url('/storage/'.ltrim((string) $raw->image_path, '/'));
+        $newUrl = $localUrl;
+        $usedCdn = false;
+        try {
+            if ($disk->exists($raw->image_path)) {
+                $bytes = (string) $disk->get($raw->image_path);
+                if ($bytes !== '') {
+                    $bytes = app(ShopifyApiService::class)->downscaleImageBytes($bytes);
+                    $name = 'hero2_'.preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo((string) $raw->image_path, PATHINFO_FILENAME)).'_'.uniqid().'.jpg';
+                    $cdn = app(ShopifyApiService::class)->uploadImageToShopifyCdn($bytes, $name, (string) ($raw->mime_type ?: 'image/jpeg'));
+                    if (($cdn['success'] ?? false) && ! empty($cdn['url'])) {
+                        $newUrl = (string) $cdn['url'];
+                        $usedCdn = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Hero2 save to Image Master: CDN upload failed, using local URL', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        $previous = trim((string) ($product->image2 ?? ''));
+        $product->image2 = $newUrl;
+        $product->save();
+
+        ImageMasterActivityLog::record(
+            $sku,
+            'edit',
+            'Hero 2 (Image 2) '.($previous !== '' ? 'replaced' : 'set').' from '.($isAi ? 'Hero Image 2 AI' : 'Hero Image 2'),
+            ['before' => $previous !== '' ? $previous : null, 'after' => $newUrl, 'source' => $validated['source']]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Saved to Image Master as Hero 2 (Image 2)'.($previous !== '' ? ', replacing the previous image' : '').'.',
+            'url' => $newUrl,
+            'cdn' => $usedCdn,
+        ]);
     }
 
     public function pushHero2ToEbayBulk(Request $request): JsonResponse
@@ -1309,6 +1407,7 @@ class RawImagesController extends Controller
                 'cachedImageUrl' => route('raw.images.cached.image'),
                 'savedAiPrompt' => $this->savedAiPrompt($kind),
                 'savedAiLogos' => $this->savedAiLogos($kind),
+                'saveImageMasterUrl' => route('raw.images.hero.2.save.image.master'),
                 'pushEbayUrl' => \Illuminate\Support\Facades\Route::has('raw.images.hero.2.push.ebay')
                     ? route('raw.images.hero.2.push.ebay')
                     : route('raw.images.hero.2.upload'),

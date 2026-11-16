@@ -69,6 +69,7 @@
         .im-hist-counts .ok { color:#16a34a; font-weight:700; }
         .im-hist-counts .bad { color:#dc2626; font-weight:700; }
         #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
+        .im-hist-act { font-weight:700; color:#2563eb; }
         #imHistoryPop .hp-title { font-weight:700; font-size:12px; margin-bottom:4px; }
         #imHistoryPop .hp-meta { color:#475569; margin-bottom:6px; }
         #imHistoryPop .hp-section { font-weight:700; margin:6px 0 3px; text-transform:uppercase; font-size:9px; letter-spacing:.3px; color:#64748b; }
@@ -83,6 +84,23 @@
         .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
         .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
         .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
+        .im-slot-edit-th { min-width:54px; }
+        .ai-edit-pane { border:1px solid #e2e8f0; border-radius:10px; padding:8px; text-align:center; background:#f8fafc; min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+        .ai-edit-pane img { max-width:100%; max-height:340px; object-fit:contain; border-radius:6px; background:#fff; }
+        .ai-edit-pane .ai-edit-cap { font-size:11px; font-weight:700; color:#475569; margin-bottom:6px; text-transform:uppercase; }
+        .im-prompts-menu .ip-row { display:flex; align-items:center; gap:10px; padding:4px 6px; border-bottom:1px solid #f1f5f9; }
+        .im-prompts-menu .ip-row:last-child { border-bottom:none; }
+        .im-prompts-menu .ip-name { flex:1; font-size:12px; font-weight:600; color:#334155; white-space:nowrap; }
+        .im-prompts-menu .ip-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; margin-left:6px; }
+        .hero-row { display:grid; grid-template-columns:150px 1fr 1fr 74px; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
+        .hero-row-head { font-weight:700; font-size:10px; text-transform:uppercase; color:#64748b; border-bottom:2px solid #e2e8f0; }
+        .hero-row-all { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
+        .hero-mp { font-weight:600; color:#334155; }
+        .hero-thumbs { display:flex; gap:4px; }
+        .hero-thumbs img { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e2e8f0; background:#f8fafc; }
+        .im-icon-expand { display:inline-flex; align-items:center; }
+        .im-icon-expand .im-icon-expand-text { max-width:0; overflow:hidden; white-space:nowrap; opacity:0; margin-left:0; transition:max-width .25s ease, opacity .2s ease, margin-left .25s ease; }
+        .im-icon-expand:hover .im-icon-expand-text, .im-icon-expand:focus-visible .im-icon-expand-text { max-width:140px; opacity:1; margin-left:6px; }
         .im-col-hidden { display:none!important; }
         .im-mp-open { width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; }
         .mpg-wrap { display:flex; gap:12px; align-items:flex-start; overflow-x:auto; padding-bottom:6px; }
@@ -124,7 +142,11 @@
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pullShopifyBtn" class="btn btn-warning btn-sm"><i class="fas fa-download"></i> Shopify Pull</button>
-                        <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
+                        <div class="dropdown" id="promptsDropdown">
+                            <button type="button" id="promptsBtn" class="btn btn-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="fas fa-wand-magic-sparkles"></i> Prompts</button>
+                            <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
+                        </div>
+                        <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <span class="text-muted small" id="selectedCountBadge">0 selected</span>
@@ -152,19 +174,12 @@
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
                                     <th data-sort="name">Product Name</th>
                                     <th data-sort="history" title="Hover a row's History to see the last image push">History</th>
-                                    <th data-sort="preview">Preview</th>
                                     <th id="imActionTh">Action</th>
                                     <th style="width:54px;text-align:center;" data-sort="mp" title="Open marketplaces picker (groups, checkboxes, push)">MP</th>
                                     <th class="im-col-hidden" title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
                                         <div class="bp-mp-th-title">MARKET PLACES</div>
                                         <div class="bp-mp-th-icons">
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
-                                        </div>
-                                    </th>
-                                    <th data-sort="shopify" title="Shopify Main, Shopify PLS">
-                                        <div class="bp-mp-th-title">SHOPIFY</div>
-                                        <div class="bp-mp-th-icons">
-                                            <span class="bp-mp-th-pill btn-shopify">SM</span><span class="bp-mp-th-pill btn-shopify-pls">PLS</span>
                                         </div>
                                     </th>
                                 </tr>
@@ -238,16 +253,8 @@
                         </div>
                     </div>
                     <div id="imSlots"></div>
-                    <div id="imMainByMpSection" class="im-main-mp-section mt-3" style="display:none;">
-                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
-                            <span class="fw-semibold small"><i class="fas fa-star text-warning me-1"></i>Main image per marketplace</span>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" id="resetMainAllBtn">Reset all to #1</button>
-                        </div>
-                        <p class="small text-muted mb-2 mb-md-3">When you push, the selected image is sent <strong>first</strong> as the main/hero image on that platform. Default is image #1 for every marketplace.</p>
-                        <div id="imMainByMpGrid" class="row g-2"></div>
-                    </div>
                     <div class="alert alert-info small mt-3 mb-0">
-                        Save images here first. Use the marketplace buttons in the table row after saving when you are ready to push images.
+                        Save images here first. Use the <strong>Hero Image</strong> button in the table row to choose Hero 1 / Hero 2 per marketplace, and the MP button to push.
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -310,6 +317,90 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" id="shopifyPullConfirmCancelBtn" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-warning" id="shopifyPullConfirmBtn"><i class="fas fa-download"></i> Yes, Pull Images</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── AI edit modal (Nano Banana) ────────────────────────────── --}}
+    <div class="modal fade" id="aiEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-pen me-2"></i>Edit <span id="aiEditName"></span> — <span id="aiEditSku"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="ai-edit-pane"><div class="ai-edit-cap">Current image</div><div id="aiEditOriginal"></div></div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="ai-edit-pane"><div class="ai-edit-cap">New image (Nano Banana)</div><div id="aiEditResult"><span class="text-muted small">Click <strong>Prompt</strong> to generate.</span></div></div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="form-label small fw-semibold mb-1">Prompt for this image</label>
+                        <textarea id="aiEditPrompt" class="form-control" rows="4" placeholder="Describe how to change this image…"></textarea>
+                        <div id="aiEditMsg" class="small mt-2"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="aiEditSavePromptBtn"><i class="fas fa-save me-1"></i>Save prompt</button>
+                    <button type="button" class="btn btn-primary" id="aiEditGenerateBtn" title="Generate a new image from this prompt"><i class="fas fa-wand-magic-sparkles me-1"></i>Prompt</button>
+                    <button type="button" class="btn btn-success" id="aiEditApplyBtn" style="display:none;"><i class="fas fa-check me-1"></i>Use this image (overwrite)</button>
+                    <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Slot prompt modal ──────────────────────────────────────── --}}
+    <div class="modal fade" id="slotPromptModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-wand-magic-sparkles me-2"></i>Prompt — <span id="slotPromptName"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="slotPromptText" class="form-control" rows="10" placeholder="Write the prompt for this image…"></textarea>
+                    <div id="slotPromptMsg" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" id="slotPromptCopyBtn"><i class="fas fa-copy me-1"></i>Copy</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="slotPromptSaveBtn"><i class="fas fa-save me-1"></i>Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Hero image modal ───────────────────────────────────────── --}}
+    <div class="modal fade" id="heroImageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-star me-2"></i>Hero Image — <span id="heroSkuLabel"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">When you push, <strong>Hero 1</strong> is sent first (main image) and <strong>Hero 2</strong> second on each marketplace. Hero 2 &ldquo;Auto&rdquo; keeps the natural order. Default is Image 1.</p>
+                    <div class="hero-row hero-row-all mb-2">
+                        <span class="hero-mp fw-bold">Apply to all marketplaces</span>
+                        <select id="heroAllMain" class="form-select form-select-sm"></select>
+                        <select id="heroAllHero2" class="form-select form-select-sm"></select>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="heroApplyAllBtn">Apply</button>
+                    </div>
+                    <div class="hero-row hero-row-head">
+                        <span class="hero-mp">Marketplace</span><span>Hero image 1</span><span>Hero image 2</span><span></span>
+                    </div>
+                    <div id="heroRows"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" id="heroResetBtn">Reset all</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="heroSaveBtn"><i class="fas fa-save"></i> Save</button>
                 </div>
             </div>
         </div>
@@ -421,6 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let modalUrls = [];
     let knownImageUrls = []; // every image URL seen this modal session (loaded + uploaded/fetched), to detect removals on Save
     let modalMainByMp = {};
+    let modalHero2ByMp = {};   // mp -> image index (absent = automatic)
     let pendingFiles = [];
     let selectedUrls = new Set();   // URLs checked for push
 
@@ -686,18 +778,58 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleString(undefined, opts);
     }
 
-    function historyCellHtml(sku, h) {
-        if (!h || !h.last_at) return '<span class="text-muted">—</span>';
-        const pushed = Array.isArray(h.pushed) ? h.pushed : [];
-        const ok = pushed.filter(p => p.success).length;
-        const bad = pushed.length - ok;
+    /** Compact "1 APR" label; the year is shown in the hover popup. */
+    function fmtHistoryShort(raw) {
+        if (!raw) return '';
+        const d = new Date(String(raw).replace(' ', 'T'));
+        if (isNaN(d.getTime())) return String(raw);
+        return d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    }
+
+    const HIST_ACTION_LABEL = {
+        add: 'Added', edit: 'Edited', remove: 'Removed', reorder: 'Reordered',
+        upload: 'Uploaded', delete: 'Deleted', shopify_pull: 'Shopify pull', push: 'Pushed',
+    };
+    const histTs = (raw) => { const t = new Date(String(raw || '').replace(' ', 'T')).getTime(); return isNaN(t) ? null : t; };
+
+    /** Most recent event of any kind (image change or marketplace push) for a row. */
+    function historyLatest(r) {
+        const acts = Array.isArray(r.activity) ? r.activity : [];
+        const h = r.push_history;
+        let best = null;
+        if (acts.length) {
+            const t = histTs(acts[0].at);
+            if (t !== null) best = { ts: t, at: acts[0].at, kind: acts[0].action };
+        }
+        if (h && h.last_at) {
+            const t = histTs(h.last_at);
+            if (t !== null && (!best || t > best.ts)) best = { ts: t, at: h.last_at, kind: 'push' };
+        }
+        return best;
+    }
+
+    function historyCellHtml(sku, r) {
+        const latest = historyLatest(r);
+        if (!latest) return '<span class="text-muted">—</span>';
+        const h = r.push_history;
+        const acts = Array.isArray(r.activity) ? r.activity : [];
+        let line2;
+        if (latest.kind === 'push' && h) {
+            const pushed = Array.isArray(h.pushed) ? h.pushed : [];
+            const ok = pushed.filter(p => p.success).length;
+            const bad = pushed.length - ok;
+            line2 = `<span class="ok">${ok}✓</span>${bad ? ` <span class="bad">${bad}✗</span>` : ''}`;
+        } else {
+            line2 = `<span class="im-hist-act">${esc(HIST_ACTION_LABEL[latest.kind] || latest.kind)}</span>`;
+        }
+        const total = acts.length + (h && h.last_at ? 1 : 0);
         return `<span class="im-hist" data-history-sku="${esc(sku)}">
-            <span class="im-hist-date"><i class="far fa-clock me-1"></i>${esc(fmtHistoryDate(h.last_at, false))}</span>
-            <span class="im-hist-counts"><span class="ok">${ok}✓</span>${bad ? ` <span class="bad">${bad}✗</span>` : ''}</span>
+            <span class="im-hist-date"><i class="far fa-clock me-1"></i>${esc(fmtHistoryShort(latest.at))}</span>
+            <span class="im-hist-counts">${line2}${total > 1 ? ` <span class="text-muted">· ${total}</span>` : ''}</span>
         </span>`;
     }
 
-    function historyPopHtml(sku, h) {
+    function pushPopHtml(sku, h) {
         const pushed = Array.isArray(h.pushed) ? h.pushed : [];
         const ok = pushed.filter(p => p.success);
         const bad = pushed.filter(p => !p.success);
@@ -708,11 +840,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const lastSuccess = Object.entries(h.last_success || {})
             .filter(([mp]) => !ok.some(p => p.marketplace === mp))
             .sort((a, b) => String(b[1]).localeCompare(String(a[1])));
-        return `<div class="hp-title">${esc(sku)} — last image push</div>
+        return `<div class="hp-section">Last marketplace push</div>
             <div class="hp-meta"><div><b>Date:</b> ${esc(fmtHistoryDate(h.last_at))}</div><div><b>By:</b> ${who}</div>${h.mode ? `<div><b>Mode:</b> ${esc(h.mode)}</div>` : ''}</div>
             ${ok.length ? `<div class="hp-section">Pushed successfully (${ok.length})</div>${ok.map(p => line(p, true)).join('')}` : ''}
             ${bad.length ? `<div class="hp-section">Failed (${bad.length})</div>${bad.map(p => line(p, false)).join('')}` : ''}
             ${lastSuccess.length ? `<div class="hp-section">Earlier successful pushes</div>${lastSuccess.map(([mp, at]) => `<div class="hp-row"><span class="mk ok">✓</span><span class="nm">${esc(LABELS[mp] || mp)}</span><span class="msg">${esc(fmtHistoryDate(at))}</span></div>`).join('')}` : ''}`;
+    }
+
+    function historyPopHtml(sku, r) {
+        const acts = Array.isArray(r.activity) ? r.activity : [];
+        const h = r.push_history;
+        const actHtml = acts.map(a => {
+            const who = a.user_name || a.user_email || 'System';
+            return `<div class="hp-row"><span class="mk ok">●</span><span class="msg" style="color:#0f172a;">
+                <b>${esc(HIST_ACTION_LABEL[a.action] || a.action)}</b> — ${esc(a.summary || '')}<br>
+                <span style="color:#64748b;">${esc(fmtHistoryDate(a.at))} · ${esc(who)}</span></span></div>`;
+        }).join('');
+        return `<div class="hp-title">${esc(sku)} — history</div>
+            ${acts.length ? `<div class="hp-section">Image changes (latest ${acts.length})</div>${actHtml}` : ''}
+            ${h && h.last_at ? pushPopHtml(sku, h) : ''}`;
     }
 
     (function bindHistoryHover() {
@@ -724,9 +870,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const el = e.target.closest('[data-history-sku]');
             if (!el) return;
             const sku = el.dataset.historySku;
-            const h = bySku.get(sku)?.push_history;
-            if (!h) return;
-            pop.innerHTML = historyPopHtml(sku, h);
+            const hr = bySku.get(sku);
+            if (!hr || !historyLatest(hr)) return;
+            pop.innerHTML = historyPopHtml(sku, hr);
             pop.style.display = 'block';
             const r = el.getBoundingClientRect();
             const pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -764,10 +910,9 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'images': return pmImageUrls(r).length;
             case 'name': return String(r.Parent || sku);
             case 'history': {
-                const t = r.push_history && r.push_history.last_at ? new Date(String(r.push_history.last_at).replace(' ', 'T')).getTime() : NaN;
-                return isNaN(t) ? null : t;
+                const l = historyLatest(r);
+                return l ? l.ts : null;
             }
-            case 'preview': return (r.preview_thumb || r.main_image || r.image1 || r.image_path) ? 1 : 0;
             case 'mp': {
                 const im = r.image_master || {};
                 return ENABLED_MARKETPLACES.filter(mp => hasPushedImages(im[mp] || '')).length;
@@ -837,6 +982,13 @@ document.addEventListener('DOMContentLoaded', () => {
             inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
             th.appendChild(inp);
             actionTh.parentNode.insertBefore(th, actionTh);
+
+            const eth = document.createElement('th');
+            eth.className = 'im-slot-edit-th';
+            eth.style.textAlign = 'center';
+            eth.textContent = 'Edit';
+            eth.title = 'Edit image ' + (i + 1) + ' with AI (Nano Banana)';
+            actionTh.parentNode.insertBefore(eth, actionTh);
         }
     })();
 
@@ -858,7 +1010,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSortIndicators();
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="23" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="35" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -866,12 +1018,11 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = rows.map(r => {
             const sku = String(r.SKU||'');
             const checked = selectedSkus.has(sku) ? 'checked' : '';
-            const thumb = r.preview_thumb || r.main_image || r.image1 || r.image_path || '';
-            const thumbImg = thumb ? `<img class="im-thumb" src="${esc(imgSrc(thumb))}" alt="">` : '<span class="text-muted">—</span>';
             const slotUrls = pmImageUrls(r);
             const slotCells = Array.from({ length: IM_SLOT_COUNT }, (_, i) => {
                 const u = slotUrls[i];
-                return `<td class="text-center">${u ? `<img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">` : '<span class="text-muted">—</span>'}</td>`;
+                return `<td class="text-center">${u ? `<img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">` : '<span class="text-muted">—</span>'}</td>`
+                    + `<td class="text-center">${u ? `<button type="button" class="btn btn-sm btn-outline-secondary im-ai-edit-btn" data-ai-edit="${esc(sku)}" data-slot="${i + 1}" title="Edit ${esc(imSlotNames[i])} with AI"><i class="fas fa-pen"></i></button>` : '<span class="text-muted">—</span>'}</td>`;
             }).join('');
             const imgCount = slotUrls.length;
             const IM_TARGET_IMAGES = 14; // green at 14 or more, red below
@@ -881,23 +1032,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(sku)}</td>
                 <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
-                <td>${historyCellHtml(sku, r.push_history)}</td>
-                <td>${thumbImg}</td>
+                <td>${historyCellHtml(sku, r)}</td>
                 ${slotCells}
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
-                        <button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                        <button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}" title="Edit images" aria-label="Edit ${esc(sku)}"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="btn btn-sm btn-warning im-icon-expand hero-open-btn" data-hero-open="${esc(sku)}" title="Hero Image" aria-label="Hero Image for ${esc(sku)}"><i class="fas fa-star"></i><span class="im-icon-expand-text">Hero Image</span></button>
                         <button type="button" class="shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify images for this SKU"><i class="fas fa-download"></i></button>
                     </div>
                 </td>
                 <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary im-mp-open" data-mp-open="${esc(sku)}" title="Marketplaces for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
-                <td>${groupCell('gShopify', sku, r)}</td>
             </tr>`;
         }).join('');
         bindRowCheckboxEvents(tbody);
         updateSelectedCount();
         syncSelectAllCheckbox();
         document.querySelectorAll('.im-mp-open[data-mp-open]').forEach(b => b.addEventListener('click', () => openMpPicker(b.dataset.mpOpen)));
+        document.querySelectorAll('.im-ai-edit-btn[data-ai-edit]').forEach(b => b.addEventListener('click', () => openAiEditModal(b.dataset.aiEdit, parseInt(b.dataset.slot, 10))));
+        document.querySelectorAll('.hero-open-btn[data-hero-open]').forEach(b => b.addEventListener('click', () => openHeroModal(b.dataset.heroOpen)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
@@ -907,11 +1059,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ── MP picker modal: grouped marketplaces, drag & drop regroup, checkboxes ──
-    const MPG_KEY = 'im_mp_groups_v1';
+    const MPG_KEY = 'im_mp_groups_v2';
     function defaultMpGroups() {
         return [
-            { id: 'gChannels', name: 'Market Places', mps: [...(GROUPS.gChannels || [])] },
-            { id: 'gShopify', name: 'Shopify', mps: [...(GROUPS.gShopify || [])] },
+            { id: 'gChannels', name: 'Market Places', mps: [...(GROUPS.gChannels || []), ...(GROUPS.gShopify || [])] },
         ];
     }
     function normalizeMpGroups(gs) {
@@ -1138,12 +1289,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return out;
     }
 
+    const HERO2_SUFFIX = '__hero2';
+
+    /** Hero 2 is stored server-side as "<mp>__hero2": image index + 1 (absent/0 = automatic). */
+    function hero2FromRaw(raw) {
+        const out = {};
+        if (!raw || typeof raw !== 'object') return out;
+        MARKETPLACES.forEach(mp => {
+            const v = parseInt(raw[mp + HERO2_SUFFIX], 10) || 0;
+            if (v > 0) out[mp] = Math.min(PM_MAX_IMAGES - 1, v - 1);
+        });
+        return out;
+    }
+
     function clampMainIndicesAfterDelete(deletedIdx) {
         MARKETPLACES.forEach(mp => {
             let idx = modalMainByMp[mp] ?? 0;
             if (idx === deletedIdx) idx = 0;
             else if (idx > deletedIdx) idx--;
             modalMainByMp[mp] = Math.max(0, idx);
+            if (modalHero2ByMp[mp] != null) {
+                const h = modalHero2ByMp[mp];
+                if (h === deletedIdx) delete modalHero2ByMp[mp];
+                else if (h > deletedIdx) modalHero2ByMp[mp] = h - 1;
+            }
         });
     }
 
@@ -1155,6 +1324,13 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (from < to && idx > from && idx <= to) idx--;
             else if (from > to && idx >= to && idx < from) idx++;
             modalMainByMp[mp] = idx;
+            if (modalHero2ByMp[mp] != null) {
+                let h = modalHero2ByMp[mp];
+                if (h === from) h = to;
+                else if (from < to && h > from && h <= to) h--;
+                else if (from > to && h >= to && h < from) h++;
+                modalHero2ByMp[mp] = h;
+            }
         });
     }
 
@@ -1165,6 +1341,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (modalUrls.length === 0) idx = 0;
             else if (idx > max) idx = 0;
             modalMainByMp[mp] = idx;
+            if (modalHero2ByMp[mp] != null && (modalUrls.length < 2 || modalHero2ByMp[mp] > max)) delete modalHero2ByMp[mp];
         });
     }
 
@@ -1174,6 +1351,8 @@ document.addEventListener('DOMContentLoaded', () => {
         MARKETPLACES.forEach(mp => {
             const idx = Math.max(0, Math.min(max, modalMainByMp[mp] ?? 0));
             if (idx > 0) out[mp] = idx;
+            const h = modalHero2ByMp[mp];
+            if (h != null && h <= max && h !== idx) out[mp + HERO2_SUFFIX] = h + 1;
         });
         return out;
     }
@@ -1185,6 +1364,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const idx = map[mp] ?? 0;
             if (idx > 0) out[mp] = idx;
         });
+        const h2 = hero2FromRaw(row?.image_main_by_marketplace);
+        Object.keys(h2).forEach(mp => { if (h2[mp] !== (map[mp] ?? 0)) out[mp + HERO2_SUFFIX] = h2[mp] + 1; });
         return out;
     }
 
@@ -1195,37 +1376,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function mainImageIndexFor(mp, source) {
         if (source === 'modal') return modalMainByMp[mp] ?? 0;
         return normalizeMainByMarketplace(source?.image_main_by_marketplace)[mp] ?? 0;
-    }
-
-    function renderMainByMpSelectors() {
-        const section = document.getElementById('imMainByMpSection');
-        const grid = document.getElementById('imMainByMpGrid');
-        if (!section || !grid) return;
-        if (!modalUrls.length) {
-            section.style.display = 'none';
-            grid.innerHTML = '';
-            return;
-        }
-        section.style.display = 'block';
-        clampMainIndicesToLength();
-        grid.innerHTML = MARKETPLACES.map(mp => {
-            const idx = modalMainByMp[mp] ?? 0;
-            const opts = modalUrls.map((url, i) =>
-                `<option value="${i}"${i === idx ? ' selected' : ''}>Image ${i + 1}</option>`
-            ).join('');
-            return `<div class="col-6 col-md-4 col-lg-3">
-                <div class="im-main-mp-row">
-                    <label for="im-main-${mp}">${esc(LABELS[mp] || mp)}</label>
-                    <select id="im-main-${mp}" class="form-select form-select-sm im-main-mp-select" data-mp="${mp}">${opts}</select>
-                </div>
-            </div>`;
-        }).join('');
-        grid.querySelectorAll('.im-main-mp-select').forEach(sel => {
-            sel.addEventListener('change', () => {
-                modalMainByMp[sel.dataset.mp] = parseInt(sel.value, 10) || 0;
-                renderSlots();
-            });
-        });
     }
 
     function pmImageUrls(row) {
@@ -1242,6 +1392,313 @@ document.addEventListener('DOMContentLoaded', () => {
         return u.slice(0, PM_MAX_IMAGES);
     }
 
+
+    // ── Prompts: one editable/copyable prompt per image slot (shared, saved on the server) ──
+    let slotPrompts = {};
+    let slotPromptCurrent = 0;
+    fetch('/image-master/slot-prompts', { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json()).then(j => { if (j && j.prompts) slotPrompts = j.prompts; })
+        .catch(() => {});
+
+    function renderPromptsMenu() {
+        const menu = document.getElementById('promptsMenu');
+        if (!menu) return;
+        menu.innerHTML = imSlotNames.map((name, i) => {
+            const has = !!String(slotPrompts[i + 1] || '').trim();
+            return `<div class="ip-row">
+                <span class="ip-name">${esc(name)}${has ? '<span class="ip-dot" title="Prompt saved"></span>' : ''}</span>
+                <button type="button" class="btn btn-sm btn-outline-primary ip-open" data-slot="${i + 1}">Prompt</button>
+            </div>`;
+        }).join('');
+    }
+    document.getElementById('promptsDropdown')?.addEventListener('show.bs.dropdown', renderPromptsMenu);
+    document.getElementById('promptsMenu')?.addEventListener('click', (e) => {
+        const b = e.target.closest('.ip-open');
+        if (!b) return;
+        slotPromptCurrent = parseInt(b.dataset.slot, 10) || 0;
+        document.getElementById('slotPromptName').textContent = imSlotNames[slotPromptCurrent - 1] || ('Image ' + slotPromptCurrent);
+        document.getElementById('slotPromptText').value = slotPrompts[slotPromptCurrent] || '';
+        document.getElementById('slotPromptMsg').textContent = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('slotPromptModal')).show();
+    });
+
+    document.getElementById('slotPromptCopyBtn')?.addEventListener('click', async () => {
+        const ta = document.getElementById('slotPromptText');
+        const msg = document.getElementById('slotPromptMsg');
+        const text = ta.value;
+        if (!text) { msg.className = 'small mt-2 text-muted'; msg.textContent = 'Nothing to copy.'; return; }
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (_) {
+            ta.select();
+            document.execCommand('copy');
+        }
+        msg.className = 'small mt-2 text-success';
+        msg.textContent = 'Copied to clipboard.';
+    });
+
+    document.getElementById('slotPromptSaveBtn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('slotPromptSaveBtn');
+        const msg = document.getElementById('slotPromptMsg');
+        const prompt = document.getElementById('slotPromptText').value;
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        try {
+            const r = await fetch('/image-master/slot-prompts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ slot: slotPromptCurrent, prompt }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                if (prompt.trim()) slotPrompts[slotPromptCurrent] = prompt.trim(); else delete slotPrompts[slotPromptCurrent];
+                msg.className = 'small mt-2 text-success';
+                msg.textContent = j.message || 'Saved.';
+                toast(j.message || 'Prompt saved');
+            } else {
+                msg.className = 'small mt-2 text-danger';
+                msg.textContent = j.message || 'Save failed.';
+            }
+        } catch (e) {
+            msg.className = 'small mt-2 text-danger';
+            msg.textContent = e.message || 'Save failed.';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
+
+    // ── AI edit (Nano Banana): per-image Edit modal ───────────────────────────
+    let aiEdit = { sku: '', slot: 0, path: '' };
+
+    function aiEditMsg(text, cls) {
+        const m = document.getElementById('aiEditMsg');
+        m.className = 'small mt-2 ' + (cls || 'text-muted');
+        m.textContent = text || '';
+    }
+
+    function openAiEditModal(sku, slot) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        const url = pmImageUrls(row)[slot - 1];
+        if (!url) return;
+        aiEdit = { sku: String(sku), slot, path: '' };
+        document.getElementById('aiEditName').textContent = imSlotNames[slot - 1] || ('Image ' + slot);
+        document.getElementById('aiEditSku').textContent = sku;
+        document.getElementById('aiEditOriginal').innerHTML = `<img src="${esc(imgSrc(url))}" alt="">`;
+        document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">Click <strong>Prompt</strong> to generate.</span>';
+        document.getElementById('aiEditPrompt').value = slotPrompts[slot] || '';
+        document.getElementById('aiEditApplyBtn').style.display = 'none';
+        aiEditMsg(slotPrompts[slot] ? '' : 'No saved prompt for this image yet — write one below (or use the Prompts button in the toolbar).');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).show();
+    }
+
+    document.getElementById('aiEditSavePromptBtn')?.addEventListener('click', async () => {
+        const prompt = document.getElementById('aiEditPrompt').value;
+        try {
+            const r = await fetch('/image-master/slot-prompts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ slot: aiEdit.slot, prompt }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                if (prompt.trim()) slotPrompts[aiEdit.slot] = prompt.trim(); else delete slotPrompts[aiEdit.slot];
+                aiEditMsg(j.message || 'Prompt saved.', 'text-success');
+            } else {
+                aiEditMsg(j.message || 'Could not save prompt.', 'text-danger');
+            }
+        } catch (e) {
+            aiEditMsg(e.message || 'Could not save prompt.', 'text-danger');
+        }
+    });
+
+    document.getElementById('aiEditGenerateBtn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('aiEditGenerateBtn');
+        const prompt = document.getElementById('aiEditPrompt').value.trim();
+        if (!prompt) { aiEditMsg('Write a prompt first.', 'text-danger'); return; }
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating…';
+        document.getElementById('aiEditApplyBtn').style.display = 'none';
+        document.getElementById('aiEditResult').innerHTML = '<div class="spinner-border text-primary"></div><div class="small text-muted mt-2">Nano Banana is generating… this can take up to a minute.</div>';
+        aiEditMsg('');
+        try {
+            const r = await fetch('/image-master/ai-edit/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: aiEdit.sku, slot: aiEdit.slot, prompt }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                aiEdit.path = j.path;
+                document.getElementById('aiEditResult').innerHTML = `<img src="${esc(j.preview_url)}" alt="">`;
+                document.getElementById('aiEditApplyBtn').style.display = '';
+                aiEditMsg('Generated. Use it to overwrite this image, or edit the prompt and try again.', 'text-success');
+            } else {
+                document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">No image generated.</span>';
+                aiEditMsg(j.message || 'Generation failed.', 'text-danger');
+            }
+        } catch (e) {
+            document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">No image generated.</span>';
+            aiEditMsg(e.message || 'Generation failed.', 'text-danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
+
+    document.getElementById('aiEditApplyBtn')?.addEventListener('click', async () => {
+        if (!aiEdit.path) return;
+        if (!window.confirm(`Overwrite ${imSlotNames[aiEdit.slot - 1] || 'this image'} for ${aiEdit.sku} with the new image?`)) return;
+        const btn = document.getElementById('aiEditApplyBtn');
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        try {
+            const r = await fetch('/image-master/ai-edit/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: aiEdit.sku, slot: aiEdit.slot, path: aiEdit.path, prompt: document.getElementById('aiEditPrompt').value }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                toast(j.message || 'Image replaced');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).hide();
+                loadData();
+            } else {
+                aiEditMsg(j.message || 'Could not save the image.', 'text-danger');
+            }
+        } catch (e) {
+            aiEditMsg(e.message || 'Could not save the image.', 'text-danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
+
+    // ── Hero Image modal: Hero 1 / Hero 2 per marketplace ─────────────────────
+    let heroSku = '';
+    let heroMain = {};   // mp -> index
+    let heroHero2 = {};  // mp -> index (absent = Auto)
+
+    function heroOptionsHtml(n, selected, withAuto) {
+        let h = withAuto ? `<option value="auto"${selected == null ? ' selected' : ''}>Auto</option>` : '';
+        for (let i = 0; i < n; i++) h += `<option value="${i}"${selected === i ? ' selected' : ''}>Image ${i + 1}</option>`;
+        return h;
+    }
+
+    function heroThumbsHtml(urls, mp) {
+        const m = heroMain[mp] ?? 0;
+        const h = heroHero2[mp];
+        const t = (i) => urls[i] ? `<img src="${esc(imgSrc(urls[i]))}" alt="">` : '';
+        return `<span class="hero-thumbs">${t(m)}${h != null && h !== m ? t(h) : ''}</span>`;
+    }
+
+    function renderHeroRows() {
+        const row = bySku.get(String(heroSku));
+        const urls = row ? pmImageUrls(row) : [];
+        const n = urls.length;
+        const wrap = document.getElementById('heroRows');
+        if (!wrap) return;
+        wrap.innerHTML = MARKETPLACES.map(mp => `
+            <div class="hero-row" data-mp="${esc(mp)}">
+                <span class="hero-mp">${esc(LABELS[mp] || mp)}</span>
+                <select class="form-select form-select-sm hero-sel-main" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroMain[mp] ?? 0, false)}</select>
+                <select class="form-select form-select-sm hero-sel-2" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroHero2[mp] ?? null, true)}</select>
+                <span class="hero-thumbs-cell">${heroThumbsHtml(urls, mp)}</span>
+            </div>`).join('');
+        const allMain = document.getElementById('heroAllMain');
+        const allH2 = document.getElementById('heroAllHero2');
+        if (allMain) allMain.innerHTML = heroOptionsHtml(n, 0, false);
+        if (allH2) allH2.innerHTML = heroOptionsHtml(n, null, true);
+    }
+
+    function openHeroModal(sku) {
+        const row = bySku.get(String(sku));
+        if (!row) return;
+        if (pmImageUrls(row).length === 0) {
+            toast('No images on Product Master for this SKU — open Edit and add images first.', false);
+            return;
+        }
+        heroSku = String(sku);
+        heroMain = normalizeMainByMarketplace(row.image_main_by_marketplace);
+        heroHero2 = hero2FromRaw(row.image_main_by_marketplace);
+        document.getElementById('heroSkuLabel').textContent = sku;
+        renderHeroRows();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).show();
+    }
+
+    function heroSetFor(mp, which, rawVal) {
+        const val = rawVal === 'auto' ? null : (parseInt(rawVal, 10) || 0);
+        if (which === 'main') heroMain[mp] = val ?? 0;
+        else if (val === null) delete heroHero2[mp];
+        else heroHero2[mp] = val;
+    }
+
+    document.getElementById('heroRows')?.addEventListener('change', (e) => {
+        const sel = e.target.closest('select[data-mp]');
+        if (!sel) return;
+        heroSetFor(sel.dataset.mp, sel.classList.contains('hero-sel-main') ? 'main' : 'h2', sel.value);
+        const row = bySku.get(String(heroSku));
+        const cell = sel.closest('.hero-row')?.querySelector('.hero-thumbs-cell');
+        if (cell && row) cell.innerHTML = heroThumbsHtml(pmImageUrls(row), sel.dataset.mp);
+    });
+
+    document.getElementById('heroApplyAllBtn')?.addEventListener('click', () => {
+        const m = document.getElementById('heroAllMain').value;
+        const h = document.getElementById('heroAllHero2').value;
+        MARKETPLACES.forEach(mp => { heroSetFor(mp, 'main', m); heroSetFor(mp, 'h2', h); });
+        renderHeroRows();
+        document.getElementById('heroAllMain').value = m;
+        document.getElementById('heroAllHero2').value = h;
+    });
+
+    document.getElementById('heroResetBtn')?.addEventListener('click', () => {
+        heroMain = defaultMainByMarketplace();
+        heroHero2 = {};
+        renderHeroRows();
+    });
+
+    document.getElementById('heroSaveBtn')?.addEventListener('click', async () => {
+        const row = bySku.get(String(heroSku));
+        if (!row) return;
+        const urls = pmImageUrls(row);
+        const payload = {};
+        MARKETPLACES.forEach(mp => {
+            const m = Math.max(0, Math.min(urls.length - 1, heroMain[mp] ?? 0));
+            if (m > 0) payload[mp] = m;
+            const h = heroHero2[mp];
+            if (h != null && h !== m && h <= urls.length - 1) payload[mp + HERO2_SUFFIX] = h + 1;
+        });
+        const btn = document.getElementById('heroSaveBtn');
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        try {
+            const r = await fetch('/image-master/save-pm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ sku: heroSku, images: urls, main_by_marketplace: payload, removed_urls: [] }),
+            });
+            const j = await r.json();
+            if (j.success) {
+                row.image_main_by_marketplace = j.image_main_by_marketplace || payload;
+                toast('Hero images saved');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).hide();
+                loadData();
+            } else {
+                toast(j.message || 'Save failed', false);
+            }
+        } catch (e) {
+            toast(e.message || 'Save failed', false);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
+
     // storedImageIds: url → DB id (so we can delete from server)
     const storedImageMeta = new Map();
 
@@ -1255,6 +1712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modalUrls = pmImageUrls(row);
         knownImageUrls = [...modalUrls];
         modalMainByMp = normalizeMainByMarketplace(row.image_main_by_marketplace);
+        modalHero2ByMp = hero2FromRaw(row.image_main_by_marketplace);
         renderSlots();
         // Reset the upload section
         pendingFiles = [];
@@ -1367,6 +1825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const picked = modalUrls.splice(i, 1)[0];
                 modalUrls.unshift(picked);
                 modalMainByMp = defaultMainByMarketplace();
+                modalHero2ByMp = {};
                 renderSlots();
             });
         });
@@ -1417,7 +1876,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        renderMainByMpSelectors();
+        clampMainIndicesToLength();
     }
 
     // Fetch a file from the server and save it with the name the server gives it.
@@ -1460,17 +1919,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('resetMainAllBtn')?.addEventListener('click', () => {
-        modalMainByMp = defaultMainByMarketplace();
-        renderSlots();
-    });
-
     document.getElementById('removeAllImagesBtn')?.addEventListener('click', () => {
         if (!modalUrls.length) return;
         if (!confirm('Remove all images from this list? Click Save Images afterward to apply the change to Product Master.')) return;
         modalUrls = [];
         storedImageMeta.clear();
         modalMainByMp = defaultMainByMarketplace();
+        modalHero2ByMp = {};
         pendingFiles = [];
         updatePendingFileUi();
         document.getElementById('uploadSuccessMsg').style.display = 'none';
