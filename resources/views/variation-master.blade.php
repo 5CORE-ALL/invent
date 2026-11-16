@@ -74,6 +74,11 @@
             background-color: #f0fdfa;
         }
 
+        /* Checkbox, Parent SKU and SKU stay in view while scrolling sideways: they need a solid background. */
+        #vm-tabulator .tabulator-cell.tabulator-frozen { background-color: #fff; }
+        #vm-tabulator .tabulator-header .tabulator-col.tabulator-frozen { background: #e8ecf1; }
+        #vm-tabulator .tabulator-cell.tabulator-frozen.tabulator-frozen-left { border-right: 1px solid #cbd5e1; }
+
         #vm-tabulator .tabulator-cell.vm-sku {
             font-weight: 700;
             color: #0f172a;
@@ -548,6 +553,7 @@
                         width: 44,
                         minWidth: 44,
                         resizable: false,
+                        frozen: true,
                         cssClass: 'vm-check'
                     },
                     {
@@ -556,6 +562,7 @@
                         headerFilter: 'input',
                         headerFilterPlaceholder: 'Parent SKU',
                         minWidth: 140,
+                        frozen: true,
                         cssClass: 'vm-sku',
                         formatter: skuFormatter
                     },
@@ -565,6 +572,7 @@
                         headerFilter: 'input',
                         headerFilterPlaceholder: 'SKU',
                         minWidth: 160,
+                        frozen: true,
                         cssClass: 'vm-sku',
                         formatter: skuFormatter
                     },
