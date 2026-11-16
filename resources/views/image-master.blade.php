@@ -103,6 +103,7 @@
         .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
         .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
         .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
+        .im-view-btn { width:16px; height:16px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:8px; line-height:1; border-radius:4px; }
         .im-slot-cell { position:relative; display:inline-block; line-height:0; }
         .im-ai-edit-btn { position:absolute; right:-6px; bottom:-6px; width:22px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:#475569; background:#fff; border:1px solid #94a3b8; border-radius:5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.2); }
         .im-ai-edit-btn:hover { background:#2563eb; border-color:#2563eb; color:#fff; }
@@ -195,7 +196,6 @@
                                     <th data-sort="sku">SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
                                     <th data-sort="name">Product Name</th>
-                                    <th data-sort="history" title="Hover a row's History to see the last image push">History</th>
                                     <th id="imActionTh">Action</th>
                                     <th style="width:54px;text-align:center;" data-sort="mp" title="Open marketplaces picker (groups, checkboxes, push)">MP</th>
                                     <th class="im-col-hidden" title="eBay1–3, Macy's, Amz, Temu, Reverb, Wayfair, Best Buy">
@@ -204,6 +204,7 @@
                                             <span class="bp-mp-th-pill btn-ebay1">E1</span><span class="bp-mp-th-pill btn-ebay2">E2</span><span class="bp-mp-th-pill btn-ebay3">E3</span><span class="bp-mp-th-pill btn-macy">M</span><span class="bp-mp-th-pill btn-amazon">A</span><span class="bp-mp-th-pill btn-temu">T</span><span class="bp-mp-th-pill btn-reverb">R</span><span class="bp-mp-th-pill btn-wayfair">W</span><span class="bp-mp-th-pill btn-bestbuy">B</span>
                                         </div>
                                     </th>
+                                    <th data-sort="history" title="Hover a row's History to see the last image change or push">History</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -993,7 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!actionTh) return;
         // Column before Hero 1: opens the image editor for the row (magnifying glass).
         const viewTh = document.createElement('th');
-        viewTh.style.cssText = 'width:54px;text-align:center;';
+        viewTh.style.cssText = 'width:36px;min-width:36px;text-align:center;';
         viewTh.title = 'Open the image editor for this row';
         viewTh.innerHTML = '<i class="fas fa-search" aria-hidden="true"></i>';
         actionTh.parentNode.insertBefore(viewTh, actionTh);
@@ -1063,8 +1064,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(sku)}</td>
                 <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
-                <td>${historyCellHtml(sku, r)}</td>
-                <td class="text-center"><button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-primary edit-btn im-view-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
                 ${slotCells}
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
@@ -1072,6 +1072,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </td>
                 <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary im-mp-open" data-mp-open="${esc(sku)}" title="Marketplaces for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
+                <td>${historyCellHtml(sku, r)}</td>
             </tr>`;
         }).join('');
         bindRowCheckboxEvents(tbody);
