@@ -619,11 +619,11 @@ class AuditMasterController extends Controller
                 ->keyBy('channel_id');
         }
 
-        // "Messages Pending" counts (same data as /customer-care/messages-pending),
-        // shown only on the CC Messages page.
+        // "Messages Pending" counts (marketplace inbox APIs), shown on the
+        // CC Message page and the Returns report page.
         $pendingMap = [];
         $pendingService = null;
-        if ($page === 'messages_returns') {
+        if (in_array($page, ['messages_returns', 'returns'], true)) {
             $pendingService = app(\App\Services\CustomerCare\MarketplacePendingMessagesService::class);
             $pendingService->ensureSchema();
             if (Schema::hasTable('cc_messages_pending') && ! empty($channelIds)) {
