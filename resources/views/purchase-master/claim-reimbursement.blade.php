@@ -2634,6 +2634,22 @@
     (function () {
         const modalEl = document.getElementById('claimModal');
         if (!modalEl) return;
+
+        // Claim date is filled automatically with today's date (the browser's local date, not UTC).
+        const dateEl = document.getElementById('claimDate');
+        function claimToday() {
+            const n = new Date();
+            const p = function (x) { return String(x).padStart(2, '0'); };
+            return n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate());
+        }
+        function fillTodayIfNew() {
+            if (!window.claimEditId && dateEl && !dateEl.value) dateEl.value = claimToday();
+        }
+        fillTodayIfNew();
+        modalEl.addEventListener('show.bs.modal', function (e) {
+            if (e.target === modalEl) fillTodayIfNew(); // editing an existing claim keeps its own date
+        });
+
         const defaults = {
             action: document.getElementById('claimForm').getAttribute('action'),
             claimNo: document.getElementById('claimNo').value,
@@ -2646,7 +2662,7 @@
             document.getElementById('claimForm').setAttribute('action', defaults.action);
             document.getElementById('claimModalLabel').textContent = defaults.title;
             document.getElementById('claimNo').value = defaults.claimNo;
-            document.getElementById('claimDate').value = '';
+            document.getElementById('claimDate').value = claimToday();
             document.getElementById('claimSaveBtn').innerHTML = defaults.saveHtml;
             document.getElementById('claimSaveBtn').style.display = '';
             document.getElementById('claimFieldset').disabled = false;
