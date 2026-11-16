@@ -764,6 +764,7 @@
       </div>
       <div class="modal-body">
         <div class="small text-muted mb-2" id="videoModalSku"></div>
+        <div class="alert alert-warning py-2 small" id="videoModalReadOnly" style="display:none;"><i class="fas fa-lock me-1"></i> View only. Open this claim with <b>Edit</b> (directors) to add or change a video link or file.</div>
         <input type="url" id="videoModalInput" class="form-control" placeholder="Paste video link (YouTube, Google Drive, Loom, etc.)" autocomplete="off">
         <div class="video-error" id="videoModalError">Please enter a valid link starting with http:// or https://</div>
         <div class="small mt-2" id="videoModalOpenWrap" style="display:none;"><a href="#" id="videoModalOpen" target="_blank" rel="noopener noreferrer"><i class="fas fa-up-right-from-square me-1"></i>Open link in new tab</a></div>
@@ -1553,7 +1554,7 @@
             const s = currentFileState();
             clearPlayer();
             if (!s) {
-                fileInfo.textContent = 'No file selected';
+                fileInfo.textContent = input.readOnly ? 'No video file uploaded' : 'No file selected';
                 fileRemoveBtn.style.display = 'none';
                 return;
             }
@@ -1618,6 +1619,8 @@
             document.getElementById('videoModalSave').style.display = readOnly ? 'none' : '';
             removeBtn.style.display = readOnly ? 'none' : '';
             pickBtn.style.display = readOnly ? 'none' : '';
+            document.getElementById('videoModalReadOnly').style.display = readOnly ? '' : 'none';
+            input.placeholder = readOnly ? 'No video link added' : 'Paste video link (YouTube, Google Drive, Loom, etc.)';
             renderFile();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }, true); // capture: buttons inside a disabled fieldset still open the viewer
