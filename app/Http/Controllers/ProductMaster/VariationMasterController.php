@@ -723,45 +723,40 @@ class VariationMasterController extends Controller
         return $slots;
     }
 
+    /**
+     * Download Excel / CSV: one line per child SKU with every field the page holds for it:
+     * parent, SKU, variation type and name, title, description, the 5 bullets, the A+ content of the
+     * parent and of the SKU (full HTML), the uploaded parent images and the Image Master photos of the SKU (links).
+     * The first 11 columns keep the order the import reads back.
+     */
     public function download(Request $request): StreamedResponse
     {
         $format = strtolower(trim((string) $request->query('format', 'xlsx')));
-        // Exports stay one line per child SKU (the import skips PARENT rows).
-        $rows = array_values(array_filter($this->productRows(), static fn (array $row): bool => $row['row_type'] === 'sku'));
+        @set_time_limit(300);
+        @ini_set('memory_limit', '1024M');
 
-        if ($format === 'csv') {
-            return response()->streamDownload(function () use ($rows) {
-                $out = fopen('php://output', 'w');
-                fwrite($out, "\xEF\xBB\xBF");
-                fputcsv($out, ['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5']);
-                foreach ($rows as $row) {
-                    fputcsv($out, [
-                        $row['parent'],
-                        $row['sku'],
-                        $row['variation_type'],
-                        $row['variation_name'],
-                        $row['title'],
-                        $row['description'],
-                        $row['bullet_1'],
-                        $row['bullet_2'],
-                        $row['bullet_3'],
-                        $row['bullet_4'],
-                        $row['bullet_5'],
-                    ]);
-                }
-                fclose($out);
-            }, 'variation-master.csv', [
-                'Content-Type' => 'text/csv; charset=UTF-8',
-            ]);
+        $all = $this->productRows();
+        $parentsByKey = [];
+        foreach ($all as $row) {
+            if ($row['row_type'] === 'parent') {
+                $parentsByKey[strtoupper((string) $row['parent_key'])] = $row;
+            }
         }
+        // Exports stay one line per child SKU (the import skips PARENT rows); parent data is repeated on each child line.
+        $rows = array_values(array_filter($all, static fn (array $row): bool => $row['row_type'] === 'sku'));
+        $skuAplus = $this->skuAplusHtmlBySku();
 
-        $spreadsheet = new Spreadsheet;
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Variation Master');
-        $sheet->fromArray(['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5'], null, 'A1');
-        $rowNum = 2;
-        foreach ($rows as $row) {
-            $sheet->fromArray([
+        $headers = [
+            'Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description',
+            'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5',
+            'Parent A+ Content', 'SKU A+ Content', 'Parent Images (count)', 'Parent Images', 'SKU Images (count)', 'SKU Images',
+        ];
+        $line = function (array $row) use ($parentsByKey, $skuAplus): array {
+            $parent = $parentsByKey[strtoupper((string) $row['parent_key'])] ?? null;
+            $parentImages = $parent ? (array) ($parent['parent_images'] ?? []) : [];
+            $skuImages = (array) ($row['parent_images'] ?? []);
+
+            return [
                 $row['parent'],
                 $row['sku'],
                 $row['variation_type'],
@@ -773,18 +768,54 @@ class VariationMasterController extends Controller
                 $row['bullet_3'],
                 $row['bullet_4'],
                 $row['bullet_5'],
-            ], null, 'A'.$rowNum);
+                $parent ? (string) ($parent['aplus'] ?? '') : '',
+                $skuAplus[$this->skuKey((string) $row['sku'])] ?? '',
+                count($parentImages),
+                implode("\n", $parentImages),
+                count($skuImages),
+                implode("\n", $skuImages),
+            ];
+        };
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($rows, $headers, $line) {
+                $out = fopen('php://output', 'w');
+                fwrite($out, "\xEF\xBB\xBF");
+                fputcsv($out, $headers);
+                foreach ($rows as $row) {
+                    fputcsv($out, $line($row));
+                }
+                fclose($out);
+            }, 'variation-master.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Variation Master');
+        $sheet->fromArray($headers, null, 'A1');
+        $rowNum = 2;
+        foreach ($rows as $row) {
+            $sheet->fromArray($line($row), null, 'A'.$rowNum);
             $rowNum++;
         }
-        $sheet->getStyle('A1:K1')->applyFromArray([
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($headers));
+        $sheet->getStyle('A1:'.$lastCol.'1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '0F766E']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
-        foreach (range('A', 'K') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
+        // Long text columns get a fixed width so the sheet stays readable (auto size would make them huge).
+        $wide = ['E' => 40, 'F' => 60, 'G' => 40, 'H' => 40, 'I' => 40, 'J' => 40, 'K' => 40, 'L' => 40, 'M' => 40, 'O' => 50, 'Q' => 50];
+        foreach (range('A', $lastCol) as $col) {
+            if (isset($wide[$col])) {
+                $sheet->getColumnDimension($col)->setWidth($wide[$col]);
+            } else {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
         }
-        $sheet->freezePane('A2');
+        $sheet->freezePane('C2');
         $writer = new Xlsx($spreadsheet);
 
         return response()->streamDownload(function () use ($writer) {
@@ -794,6 +825,39 @@ class VariationMasterController extends Controller
         ]);
     }
 
+    /**
+     * Full A+ HTML of every child SKU, as Description Master holds it (Shopify A+ first, else the HTML description).
+     *
+     * @return array<string, string> SKU key => HTML
+     */
+    private function skuAplusHtmlBySku(): array
+    {
+        $columns = array_values(array_filter(['shopify_aplus_content', 'description_html'], static fn (string $c): bool => Schema::hasColumn('product_master', $c)));
+        if ($columns === []) {
+            return [];
+        }
+        $out = [];
+        ProductMaster::query()->select(array_merge(['id', 'sku'], $columns))->orderBy('id')->chunkById(300, function ($products) use (&$out, $columns) {
+            foreach ($products as $product) {
+                $sku = $this->normalizeDisplay($product->sku);
+                if ($sku === '' || ListingManagerFamily::isParentSku($sku)) {
+                    continue;
+                }
+                $html = '';
+                foreach ($columns as $column) {
+                    $html = trim((string) ($product->{$column} ?? ''));
+                    if ($html !== '') {
+                        break;
+                    }
+                }
+                if ($html !== '') {
+                    $out[$this->skuKey($sku)] = $html;
+                }
+            }
+        });
+
+        return $out;
+    }
     public function import(Request $request): JsonResponse
     {
         $request->validate([
