@@ -104,6 +104,82 @@
         }, 250);
     }
 
+    // ---- Selection: only the rows that are shown AND ticked ------------------------------------
+    // Tabulator's header "select all" ticks every row of the table, including rows a filter hides (listed SKUs
+    // while Missing L is open). Publishing must only ever use the rows that are ticked and still shown.
+    function activeSkuSet(table) {
+        const set = {};
+        (table.getRows('active') || []).forEach(function (row) {
+            const sku = String(((row.getData && row.getData()) || {}).sku || '').trim();
+            if (sku) set[sku] = true;
+        });
+        return set;
+    }
+
+    function activeSelectedData(table) {
+        if (!table) return [];
+        const active = activeSkuSet(table);
+        return (table.getSelectedData() || []).filter(function (row) {
+            return active[String((row && row.sku) || '').trim()] === true;
+        });
+    }
+
+    function selectedPublishableSkus(table) {
+        const seen = {};
+        const out = [];
+        activeSelectedData(table).forEach(function (row) {
+            const sku = String(row.sku || '').trim();
+            if (!sku || seen[sku] || sku.toUpperCase().indexOf('PARENT') !== -1) return;
+            seen[sku] = true;
+            out.push(sku);
+        });
+        return out;
+    }
+
+    window.ListingSelection = {
+        activeSelectedData: activeSelectedData,
+        selectedSkus: selectedPublishableSkus
+    };
+
+    function updateSelectionCount(table) {
+        const btn = document.getElementById('bulk-publish-btn');
+        if (!btn) return;
+        let badge = document.getElementById('bulk-publish-count');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'bulk-publish-count';
+            badge.className = 'badge bg-light text-primary ms-1';
+            badge.style.cssText = 'font-weight:700;min-width:22px;';
+            btn.appendChild(badge);
+        }
+        let n = 0;
+        try { n = selectedPublishableSkus(table).length; } catch (err) {}
+        badge.textContent = String(n);
+        badge.title = n + ' SKU' + (n === 1 ? '' : 's') + ' selected';
+    }
+
+    function bindSelection(table) {
+        if (!table || table.__lpSelectionBound) return;
+        table.__lpSelectionBound = true;
+        // Header "select all" = every row that passes the current filter, not the whole table.
+        if (typeof table.selectRow === 'function') {
+            const original = table.selectRow.bind(table);
+            table.selectRow = function (rows) {
+                return original(typeof rows === 'undefined' ? 'active' : rows);
+            };
+        }
+        // Debounced: the filter finishes updating the active rows just after it fires its event.
+        let refreshTimer = null;
+        const refresh = function () {
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(function () { updateSelectionCount(table); }, 80);
+        };
+        ['rowSelectionChanged', 'dataFiltered', 'dataLoaded'].forEach(function (name) {
+            try { table.on(name, refresh); } catch (err) {}
+        });
+        refresh();
+    }
+
     function csvCell(value) {
         const text = String(value ?? '');
         if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
@@ -1532,6 +1608,17 @@
     }
 
     function renderGroups(groups) {
+        // The window lists only the SKUs that were selected. Siblings the server adds to a parent (listed ones too)
+        // are not shown and never published.
+        if (previewSeedSkus.length && groups && groups.length) {
+            const seed = {};
+            previewSeedSkus.forEach(function (s) { seed[String(s).trim()] = true; });
+            groups = groups.map(function (group) {
+                const own = Object.assign({}, group);
+                own.children = (group.children || []).filter(function (child) { return seed[String((child && child.sku) || '').trim()] === true; });
+                return own;
+            }).filter(function (group) { return group.children.length > 0; });
+        }
         lastPreviewGroups = groups || [];
         ensureSkuCatStyle();
         ensureParentCatStyle();
@@ -1681,6 +1768,24 @@
             });
         }
         confirm.disabled = !anyChecked || pending;
+        // Count of the SKUs that will be published.
+        const picked = $('#listing-publish-groups .listing-publish-sku-check:checked:not(:disabled)').length;
+        const listed = $('#listing-publish-groups .listing-publish-sku-check').length;
+        const groupsBox = document.getElementById('listing-publish-groups');
+        if (groupsBox && groupsBox.parentNode) {
+            let countEl = document.getElementById('listing-publish-count');
+            if (!countEl) {
+                countEl = document.createElement('div');
+                countEl.id = 'listing-publish-count';
+                countEl.style.cssText = 'font-weight:700;font-size:13px;margin:0 0 8px;color:#0f172a;';
+                groupsBox.parentNode.insertBefore(countEl, groupsBox);
+            }
+            countEl.textContent = picked + ' SKU' + (picked === 1 ? '' : 's') + ' selected to publish' + (listed > picked ? ' (of ' + listed + ' in this list)' : '');
+        }
+        if (!confirm.querySelector('.fa-spin')) {
+            const word = selectedPublishMode() === 'single' ? 'Publish listing(s)' : 'Publish variation(s)';
+            confirm.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> ' + word + (picked ? ' (' + picked + ')' : '');
+        }
         const progress = document.getElementById('listing-publish-progress');
         if (progress && !confirm.querySelector('.fa-spin')) {
             progress.textContent = (anyChecked && pending)
@@ -2223,9 +2328,7 @@
             if (ownPublishModalId() || cfg().ownPublishColumn) {
                 return; // the page has its own publish modal (Temu 1 / 2 / 3)
             }
-            const selected = (table.getSelectedData() || [])
-                .map(function (row) { return String(row.sku || '').trim(); })
-                .filter(function (sku) { return sku && String(sku).toUpperCase().indexOf('PARENT') === -1; });
+            const selected = selectedPublishableSkus(table);
             if (!selected.length) {
                 notify('danger', 'Select one or more SKUs first.');
                 return;
@@ -2751,6 +2854,7 @@
             });
         if (!cfg().tableId) return;
         waitForTable(function (table) {
+            bindSelection(table);
             enhanceTable(table);
             bindUi(table);
         });

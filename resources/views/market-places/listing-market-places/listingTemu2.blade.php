@@ -1802,7 +1802,7 @@
 
             $('#bulk-publish-btn').on('click', function () {
                 if (!temu2ListingTable) return;
-                const selected = (temu2ListingTable.getSelectedData() || [])
+                const selected = ((window.ListingSelection ? window.ListingSelection.activeSelectedData(temu2ListingTable) : temu2ListingTable.getSelectedData()) || [])
                     .map(function (row) { return String(row.sku || '').trim(); })
                     .filter(function (sku) { return sku && !isParentSku(sku); });
                 if (!selected.length) {

@@ -1970,7 +1970,7 @@
             // Publish selected: the checked SKU rows go to the same review modal as the row Publish button.
             $('#bulk-publish-btn').on('click', function () {
                 if (!temuListingTable) return;
-                const selected = (temuListingTable.getSelectedData() || [])
+                const selected = ((window.ListingSelection ? window.ListingSelection.activeSelectedData(temuListingTable) : temuListingTable.getSelectedData()) || [])
                     .map(function (row) { return String(row.sku || '').trim(); })
                     .filter(function (sku) { return sku && !isParentSku(sku); });
                 if (!selected.length) {
