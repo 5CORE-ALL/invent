@@ -4753,6 +4753,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
     Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
     Route::get('/image-master/push/status', [ImageMasterController::class, 'pushJobStatus'])->name('image.master.push.status');
+    Route::get('/image-master/sku-text', [ImageMasterController::class, 'skuText'])->name('image.master.sku.text');
     Route::get('/image-master/slot-prompts', [ImageMasterController::class, 'slotPrompts'])->name('image.master.slot.prompts');
     Route::post('/image-master/slot-prompts', [ImageMasterController::class, 'saveSlotPrompt'])->name('image.master.slot.prompts.save');
     Route::post('/image-master/ai-edit/generate', [ImageMasterController::class, 'aiEditGenerate'])->name('image.master.ai.edit.generate');

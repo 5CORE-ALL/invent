@@ -44,17 +44,29 @@
         .im-card.im-card-hero .im-card-name { max-width:162px; font-size:13px; }
         .im-card.im-card-hero .im-card-filename { max-width:162px; font-size:10px; }
         .im-card.im-card-hero .im-card-arrows button { font-size:13px; padding:3px 0; }
-        /* Auto-fit layout: 3 rows (Hero 1 + Hero 2 on top, then 6 + 6), sized from the window height/width */
-        #editImModal .modal-dialog.modal-xl { max-width:min(96vw, 1600px); }
-        #editImModal { --im-h:clamp(78px, min(calc((100vh - 470px) / 3.5), calc((min(96vw, 1600px) - 150px) / 7.8)), 240px); --im-w:calc(var(--im-h) * 1.3); }
-        #imGrid .im-grid { display:grid; grid-template-columns:repeat(6, var(--im-w)); gap:10px; }
-        #imGrid .im-grid.im-grid-hero { grid-template-columns:repeat(2, calc(var(--im-w) * 1.5)) var(--im-w); gap:10px; margin-bottom:10px; align-items:start; }
-        #imGrid .im-card { width:100%; }
+        /* Auto-fit layout: one 4-per-row grid. Hero 1 + Hero 2 (1.5x) share row 1 with image 3; the sandbox is the last cell. */
+        #editImModal { --im-h:clamp(70px, min(calc((100vh - 400px) / 4.5), calc((min(96vw, 1140px) - 110px) / 5.2)), 230px); --im-w:calc(var(--im-h) * 1.3); }
+        #imGrid .im-grid { display:grid; grid-template-columns:repeat(8, calc((var(--im-w) - 10px) / 2)); gap:10px; align-items:start; justify-content:start; }
+        #imGrid .im-card, #imGrid .im-sandbox { grid-column:span 2; width:100%; margin:0; }
+        #imGrid .im-card.im-card-hero { grid-column:span 3; }
         #imGrid .im-card .im-card-img-wrap { width:100%; height:var(--im-h); }
-        #imGrid .im-card.im-card-hero { width:100%; }
-        #imGrid .im-card.im-card-hero .im-card-img-wrap { width:100%; height:calc(var(--im-h) * 1.5); }
+        #imGrid .im-card.im-card-hero .im-card-img-wrap { height:calc(var(--im-h) * 1.5); }
         #imGrid .im-card-name, #imGrid .im-card-filename { max-width:100%; }
-        #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) * 1.5); }
+        /* Download / Edit: shown only on hover, over the bottom of the image */
+        #imGrid .im-card-arrows { position:absolute; left:0; right:0; bottom:6px; margin:0; justify-content:center; gap:6px; z-index:4; opacity:0; pointer-events:none; transition:opacity .12s; }
+        #imGrid .im-card:hover .im-card-arrows { opacity:1; pointer-events:auto; }
+        #imGrid .im-card-arrows button { flex:0 0 auto; width:34px; height:28px; padding:0; border:0; border-radius:6px; color:#fff; font-size:13px; box-shadow:0 1px 4px rgba(0,0,0,.35); }
+        #imGrid .im-card-arrows .im-dl { background:#16a34a; }
+        #imGrid .im-card-arrows .im-dl:hover { background:#15803d; color:#fff; }
+        #imGrid .im-card-arrows .im-ai { background:#d4a017; }
+        #imGrid .im-card-arrows .im-ai:hover { background:#b8860b; color:#fff; }
+        #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) + 56px); }
+        #imGrid .im-sandbox { min-height:calc(var(--im-h) + 56px); padding:6px 8px; border-radius:10px; }
+        #imGrid .im-sandbox-grid { display:flex; flex-wrap:wrap; gap:5px; }
+        #imGrid .im-sb-card { width:54px; grid-column:auto; }
+        #imGrid .im-sb-card .im-card-img-wrap { height:46px; }
+        #imGrid .im-sb-card .im-card-footer { display:none; }
+        #imGrid .im-sb-empty { width:100%; min-height:calc(var(--im-h) * 0.55); border-radius:8px; }
         .im-drop-end { border:2px dashed #cbd5e1; background:#f8fafc; box-shadow:none; min-height:150px; display:flex; align-items:center; justify-content:center; }
         .im-drop-end-inner, .im-sb-empty { display:flex; flex-direction:column; align-items:center; gap:4px; color:#94a3b8; font-size:11px; font-weight:600; text-align:center; }
         .im-sandbox { margin-top:16px; border:2px dashed #94a3b8; border-radius:12px; padding:10px 12px; background:#f8fafc; }
@@ -239,6 +251,8 @@
                     <div class="d-flex align-items-center gap-3 ms-3 text-white text-nowrap">
                         <span><strong>SKU:</strong> <span id="modalSkuLabel"></span></span>
                         <span><strong>Parent:</strong> <span id="modalProductLabel"></span></span>
+                        <button type="button" class="btn btn-light btn-sm" id="specsBtn" title="View the specifications of this SKU">Specs</button>
+                        <button type="button" class="btn btn-light btn-sm" id="descBtn" title="View the description of this SKU">Desc</button>
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap ms-3 me-auto small text-white">
                         <label class="btn btn-light btn-sm mb-0" for="modalFileInput" style="cursor:pointer;" title="Upload images (max 20)" aria-label="Upload images">
@@ -293,6 +307,22 @@
         </div>
     </div>
 
+    </div>
+
+    <div class="modal fade" id="skuTextModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-file-lines me-2"></i><span id="skuTextTitle">Specs</span> — <span id="skuTextSku"></span></h5>
+                    <button type="button" class="btn btn-light btn-sm ms-auto me-2" id="skuTextCopyBtn" title="Copy to clipboard" aria-label="Copy"><i class="fas fa-copy"></i></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2" id="skuTextTitleLine"></div>
+                    <div id="skuTextBody"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="modal fade" id="shopifyPullModal" tabindex="-1" aria-labelledby="shopifyPullModalTitle" aria-hidden="true">
@@ -1553,6 +1583,60 @@ document.addEventListener('DOMContentLoaded', () => {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).show();
     }
 
+    // ── Specs / Desc modal (read-only, from Technical Specifications + Description masters) ──
+    const skuTextCache = {};
+    let skuTextPlain = '';
+    async function openSkuText(mode) {
+        const sku = document.getElementById('modalSku').value;
+        if (!sku) return;
+        document.getElementById('skuTextTitle').textContent = mode === 'specs' ? 'Specifications' : 'Description';
+        document.getElementById('skuTextSku').textContent = sku;
+        document.getElementById('skuTextTitleLine').textContent = '';
+        const body = document.getElementById('skuTextBody');
+        body.innerHTML = '<div class="text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+        skuTextPlain = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('skuTextModal')).show();
+        try {
+            let j = skuTextCache[sku];
+            if (!j) {
+                const r = await fetch('/image-master/sku-text?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+                j = await r.json().catch(() => ({}));
+                if (!r.ok || !j.success) throw new Error(j.message || 'Could not load.');
+                skuTextCache[sku] = j;
+            }
+            document.getElementById('skuTextTitleLine').textContent = j.title || '';
+            if (mode === 'specs') {
+                if (!j.specs.length) { body.innerHTML = '<div class="text-muted py-3">No specifications saved for this SKU yet.</div>'; return; }
+                skuTextPlain = j.specs.map(x => x.key && x.value ? `${x.key}: ${x.value}` : (x.key || x.value)).join('\n');
+                body.innerHTML = '<table class="table table-sm table-bordered align-middle mb-0"><tbody>'
+                    + j.specs.map(x => `<tr><th style="width:38%;background:#f8fafc;">${esc(x.key)}</th><td>${esc(x.value)}</td></tr>`).join('')
+                    + '</tbody></table>';
+            } else {
+                if (!j.descriptions.length) { body.innerHTML = '<div class="text-muted py-3">No description saved for this SKU yet.</div>'; return; }
+                skuTextPlain = j.descriptions.map(x => j.descriptions.length > 1 ? `${x.label}\n${x.text}` : x.text).join('\n\n');
+                body.innerHTML = j.descriptions.map(x => `<div class="mb-3"><div class="fw-semibold small text-muted mb-1">${esc(x.label)} <span class="fw-normal">(${x.text.length} chars)</span></div><div style="white-space:pre-wrap;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;background:#f8fafc;font-size:13px;">${esc(x.text)}</div></div>`).join('');
+            }
+        } catch (e) {
+            body.innerHTML = `<div class="text-danger py-3">${esc(e.message || 'Could not load.')}</div>`;
+        }
+    }
+    document.getElementById('specsBtn')?.addEventListener('click', () => openSkuText('specs'));
+    document.getElementById('descBtn')?.addEventListener('click', () => openSkuText('desc'));
+    document.getElementById('skuTextCopyBtn')?.addEventListener('click', async () => {
+        if (!skuTextPlain) return;
+        try { await navigator.clipboard.writeText(skuTextPlain); toast('Copied'); } catch (_) { toast('Copy failed', false); }
+    });
+    // Opens on top of the product-images editor: lift it (and its backdrop) above.
+    document.getElementById('skuTextModal')?.addEventListener('shown.bs.modal', function () {
+        this.style.zIndex = 1075;
+        const bds = document.querySelectorAll('.modal-backdrop');
+        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
+    });
+    document.getElementById('skuTextModal')?.addEventListener('hidden.bs.modal', function () {
+        this.style.zIndex = '';
+        if (document.getElementById('editImModal')?.classList.contains('show')) document.body.classList.add('modal-open');
+    });
+
     // The AI editor can open on top of the product-images editor: lift it (and its backdrop) above.
     document.getElementById('aiEditModal')?.addEventListener('shown.bs.modal', function () {
         if (!document.getElementById('editImModal')?.classList.contains('show')) return;
@@ -1874,14 +1958,14 @@ document.addEventListener('DOMContentLoaded', () => {
                              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22100%22%3E%3Crect width=%22120%22 height=%22100%22 fill=%22%23f1f5f9%22/%3E%3Ctext x=%2260%22 y=%2254%22 font-size=%2211%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3ENo preview%3C/text%3E%3C/svg%3E'">
                         <span class="im-card-badge${isDefaultMain?' im-card-badge-main':''}">${isDefaultMain ? 'MAIN' : (idx + 1)}</span>
                         <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
-                    </div>
-                    <div class="im-card-footer">
-                        <div class="im-card-name" title="Image ${idx + 1}">${esc(slotName)}</div>
-                        <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
                         <div class="im-card-arrows">
                             <button type="button" class="im-dl" data-i="${idx}" title="Download this image"><i class="fas fa-download"></i></button>
                             <button type="button" class="im-ai" data-i="${idx}" title="Edit this image with AI (Nano Banana)"><i class="fas fa-pen"></i></button>
                         </div>
+                    </div>
+                    <div class="im-card-footer">
+                        <div class="im-card-name" title="Image ${idx + 1}">${esc(slotName)}</div>
+                        <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
                     </div>
                 </div>`;
         };
@@ -1896,15 +1980,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="im-card-footer"><div class="im-card-filename" title="${esc(url)}">${esc(nm)}</div></div>
             </div>`;
         }).join('');
-        el.innerHTML = '<div id="imGrid">'
-            + `<div class="im-grid im-grid-hero">${heroCards}${modalUrls.length ? endBox : ''}</div>`
-            + `<div class="im-grid">${restCards}</div>`
-            + '</div>'
-            + `<div class="im-sandbox" id="imSandbox">
-                <div class="im-sandbox-title"><i class="fas fa-box-open me-1"></i>Sandbox
-                    <span class="text-muted fw-normal">— temporary holding area. Drag images here to park them, then drag them back into any slot. Anything left here is added to the end when you save.</span></div>
+        const sandboxCell = `<div class="im-sandbox" id="imSandbox" title="Sandbox: drag images here to park them, then drag them back into any slot. Anything left here is added to the end when you save.">
+                <div class="im-sandbox-title mb-1"><i class="fas fa-box-open me-1"></i>Sandbox</div>
                 <div class="im-grid im-sandbox-grid">${sbCards}<div class="im-sb-empty"><i class="fas fa-image"></i><span>Drop image here</span></div></div>
             </div>`;
+        const showEnd = modalUrls.length && modalUrls.length < 14;
+        el.innerHTML = '<div id="imGrid">'
+            + `<div class="im-grid">${heroCards}${restCards}${showEnd ? endBox : ''}${sandboxCell}</div>`
+            + '</div>';
 
         const grid = document.getElementById('imGrid');
 

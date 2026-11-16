@@ -611,6 +611,67 @@ class ImageMasterController extends Controller
     /**
      * Saved prompt text per image slot (1–14), shared by all users.
      */
+    /**
+     * GET /image-master/sku-text?sku=
+     * Read-only specifications (Technical Specifications master) and descriptions (Description master)
+     * of one SKU, for the Specs / Desc modals on Image Master.
+     */
+    public function skuText(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $columns = ['sku', 'parent', 'title150', 'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600', 'description_v2_specifications'];
+        $columns = array_values(array_filter($columns, static fn ($c) => Schema::hasColumn('product_master', $c)));
+
+        $product = ProductMaster::query()->where('sku', $sku)->first($columns);
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'SKU not found.'], 404);
+        }
+
+        $specs = [];
+        $raw = $product->description_v2_specifications ?? null;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        foreach (is_array($raw) ? $raw : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? $row['Key'] ?? ''));
+            $value = trim((string) ($row['value'] ?? $row['Value'] ?? ''));
+            if ($key !== '' || $value !== '') {
+                $specs[] = ['key' => $key, 'value' => $value];
+            }
+        }
+
+        $descriptions = [];
+        foreach ([
+            'product_description' => 'Description',
+            'description_1500' => '1500 characters',
+            'description_1000' => '1000 characters',
+            'description_800' => '800 characters',
+            'description_600' => '600 characters',
+        ] as $col => $label) {
+            $text = trim((string) ($product->{$col} ?? ''));
+            if ($text !== '') {
+                $descriptions[] = ['label' => $label, 'text' => $text];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'sku' => $product->sku,
+            'parent' => $product->parent,
+            'title' => $product->title150,
+            'specs' => $specs,
+            'descriptions' => $descriptions,
+        ]);
+    }
+
     public function slotPrompts(): \Illuminate\Http\JsonResponse
     {
         $out = [];
