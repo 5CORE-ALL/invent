@@ -400,6 +400,9 @@
     #videoModal .btn-claim-save:hover { color: #fff; }
     #videoModal .btn-claim-cancel { background: #eef2f7; border: 0; color: #475569; border-radius: 12px; padding: 9px 18px; font-weight: 600; }
     #videoModal .btn-claim-remove { background: #fee2e2; border: 0; color: #b91c1c; border-radius: 12px; padding: 9px 18px; font-weight: 600; margin-right: auto; }
+    #videoModal .video-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 12px; color: #94a3b8; font-size: 12px; }
+    #videoModal .video-or::before, #videoModal .video-or::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
+    #videoModal .video-player { width: 100%; max-height: 300px; margin-top: 12px; border-radius: 12px; background: #000; }
     #videoModal .video-error { color: #b91c1c; font-size: 12px; margin-top: 6px; display: none; }
 
     /* Attachment: icon-only picker */
@@ -702,7 +705,7 @@
                   <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
-                  <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
+                  <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><input type="hidden" name="existing_video_file[]" class="existing-video-file"><input type="file" name="video_file[]" class="video-file-input" accept="video/*" style="display:none;"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
                   <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
@@ -764,6 +767,15 @@
         <input type="url" id="videoModalInput" class="form-control" placeholder="Paste video link (YouTube, Google Drive, Loom, etc.)" autocomplete="off">
         <div class="video-error" id="videoModalError">Please enter a valid link starting with http:// or https://</div>
         <div class="small mt-2" id="videoModalOpenWrap" style="display:none;"><a href="#" id="videoModalOpen" target="_blank" rel="noopener noreferrer"><i class="fas fa-up-right-from-square me-1"></i>Open link in new tab</a></div>
+
+        <div class="video-or"><span>or upload a video file</span></div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <button type="button" class="btn btn-claim-cancel" id="videoModalPick"><i class="fas fa-upload me-1"></i> Choose video</button>
+          <span class="small text-muted" id="videoModalFileInfo">No file selected</span>
+          <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-auto" id="videoModalFileRemove" style="display:none;"><i class="fas fa-xmark me-1"></i>Remove file</button>
+        </div>
+        <input type="file" id="videoModalFile" accept="video/*" style="display:none;">
+        <video id="videoModalPlayer" controls preload="metadata" class="video-player" style="display:none;"></video>
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-claim-remove" id="videoModalRemove"><i class="fas fa-trash-can me-1"></i> Remove</button>
@@ -1216,7 +1228,7 @@
               <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
-              <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
+              <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><input type="hidden" name="existing_video_file[]" class="existing-video-file"><input type="file" name="video_file[]" class="video-file-input" accept="video/*" style="display:none;"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
               <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
@@ -1253,8 +1265,9 @@
                   window.claimRefreshReasonBtn(newRow.querySelector('.reason-btn'));
               }
 
-              if (data.video_link) {
-                  newRow.querySelector('.video-value').value = data.video_link;
+              if (data.video_link || data.video_file) {
+                  newRow.querySelector('.video-value').value = data.video_link || '';
+                  newRow.querySelector('.existing-video-file').value = data.video_file || '';
                   if (typeof window.claimRefreshVideoBtn === 'function') {
                       window.claimRefreshVideoBtn(newRow.querySelector('.claim-video-btn'));
                   }
@@ -1493,6 +1506,67 @@
         const openWrap = document.getElementById('videoModalOpenWrap');
         const openLink = document.getElementById('videoModalOpen');
         const removeBtn = document.getElementById('videoModalRemove');
+        const pickBtn = document.getElementById('videoModalPick');
+        const fileInput = document.getElementById('videoModalFile');
+        const fileInfo = document.getElementById('videoModalFileInfo');
+        const fileRemoveBtn = document.getElementById('videoModalFileRemove');
+        const player = document.getElementById('videoModalPlayer');
+        const LINK_ERROR = errorEl.textContent;
+
+        // Staged until Save: pendingFile = newly chosen File, dropFile = remove the saved/chosen file.
+        let pendingFile = null;
+        let dropFile = false;
+        let objectUrl = null;
+
+        function isVideoFile(f) {
+            return /^video\//i.test(f.type) || (!f.type && /\.(mp4|mov|m4v|webm|mkv|avi|mpe?g|3gp)$/i.test(f.name));
+        }
+
+        function fmtSize(b) { return (b / 1048576).toFixed(1) + ' MB'; }
+
+        function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
+
+        function clearPlayer() {
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+            player.style.display = 'none';
+            if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+        }
+
+        // The file this row currently holds (staged choice, else the row's own input, else the saved path).
+        function currentFileState() {
+            const td = activeBtn.parentElement;
+            if (dropFile) return null;
+            if (pendingFile) return { file: pendingFile, name: pendingFile.name, size: pendingFile.size };
+            const rowInput = td.querySelector('.video-file-input');
+            if (rowInput && rowInput.files && rowInput.files[0]) {
+                const f = rowInput.files[0];
+                return { file: f, name: f.name, size: f.size };
+            }
+            const saved = td.querySelector('.existing-video-file').value;
+            if (saved) return { path: saved, name: String(saved).split('/').pop() };
+            return null;
+        }
+
+        function renderFile() {
+            const s = currentFileState();
+            clearPlayer();
+            if (!s) {
+                fileInfo.textContent = 'No file selected';
+                fileRemoveBtn.style.display = 'none';
+                return;
+            }
+            fileInfo.textContent = s.name + (s.size ? ' (' + fmtSize(s.size) + ')' : '');
+            fileRemoveBtn.style.display = input.readOnly ? 'none' : '';
+            if (s.file) {
+                objectUrl = URL.createObjectURL(s.file);
+                player.src = objectUrl;
+            } else {
+                player.src = '/' + String(s.path).replace(/^\/+/, '');
+            }
+            player.style.display = 'block';
+        }
 
         function isHttpUrl(v) {
             try { const u = new URL(v); return u.protocol === 'http:' || u.protocol === 'https:'; } catch (e) { return false; }
@@ -1506,10 +1580,15 @@
         }
 
         function refreshVideoBtn(btn) {
-            const hidden = btn.parentElement.querySelector('.video-value');
-            const url = (hidden && hidden.value || '').trim();
-            btn.classList.toggle('has-video', url !== '');
-            btn.title = url !== '' ? ('Video link: ' + url) : 'Add video link';
+            const td = btn.parentElement;
+            const url = (td.querySelector('.video-value').value || '').trim();
+            const rowInput = td.querySelector('.video-file-input');
+            const hasFile = !!((rowInput && rowInput.files && rowInput.files.length) || td.querySelector('.existing-video-file').value);
+            btn.classList.toggle('has-video', url !== '' || hasFile);
+            const parts = [];
+            if (url !== '') parts.push('link: ' + url);
+            if (hasFile) parts.push('uploaded video');
+            btn.title = parts.length ? ('Video (' + parts.join(', ') + ')') : 'Add video link / upload video';
         }
         window.claimRefreshVideoBtn = refreshVideoBtn;
 
@@ -1529,11 +1608,17 @@
             document.getElementById('videoModalSku').textContent = sku ? 'SKU: ' + sku : '';
             input.value = btn.parentElement.querySelector('.video-value').value || '';
             errorEl.style.display = 'none';
+            errorEl.textContent = LINK_ERROR;
             syncOpenLink();
             const readOnly = !!btn.closest('fieldset:disabled');
             input.readOnly = readOnly;
+            pendingFile = null;
+            dropFile = false;
+            fileInput.value = '';
             document.getElementById('videoModalSave').style.display = readOnly ? 'none' : '';
             removeBtn.style.display = readOnly ? 'none' : '';
+            pickBtn.style.display = readOnly ? 'none' : '';
+            renderFile();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }, true); // capture: buttons inside a disabled fieldset still open the viewer
 
@@ -1555,16 +1640,51 @@
         });
         modalEl.addEventListener('shown.bs.modal', function () { input.focus(); });
         modalEl.addEventListener('hidden.bs.modal', function () {
+            clearPlayer(); // stop playback and free the preview
             if (document.getElementById('claimModal').classList.contains('show')) {
                 document.body.classList.add('modal-open');
             }
         });
 
+        pickBtn.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () {
+            const f = fileInput.files && fileInput.files[0];
+            fileInput.value = '';
+            if (!f) return;
+            const lim = window.CLAIM_UPLOAD_LIMITS || {};
+            if (!isVideoFile(f)) { showError('"' + f.name + '" is not a video file.'); return; }
+            if (lim.fileMax && f.size > lim.fileMax) {
+                showError('"' + f.name + '" is ' + fmtSize(f.size) + ', larger than the server limit of ' + fmtSize(lim.fileMax) + ' per file. Paste a link instead.');
+                return;
+            }
+            errorEl.style.display = 'none';
+            pendingFile = f;
+            dropFile = false;
+            renderFile();
+        });
+        fileRemoveBtn.addEventListener('click', function () {
+            pendingFile = null;
+            dropFile = true;
+            renderFile();
+        });
+
         function save() {
             if (!activeBtn) return;
             const v = normalize(input.value);
-            if (v !== '' && !isHttpUrl(v)) { errorEl.style.display = 'block'; input.focus(); return; }
-            activeBtn.parentElement.querySelector('.video-value').value = v;
+            if (v !== '' && !isHttpUrl(v)) { showError(LINK_ERROR); input.focus(); return; }
+            const td = activeBtn.parentElement;
+            td.querySelector('.video-value').value = v;
+
+            const rowInput = td.querySelector('.video-file-input');
+            if (dropFile) {
+                rowInput.value = '';
+                td.querySelector('.existing-video-file').value = '';
+            } else if (pendingFile) {
+                // One file per row: video_file[] is matched to rows by position.
+                const dt = new DataTransfer();
+                dt.items.add(pendingFile);
+                rowInput.files = dt.files;
+            }
             refreshVideoBtn(activeBtn);
             bootstrap.Modal.getInstance(modalEl).hide();
         }
@@ -1575,6 +1695,8 @@
         });
         removeBtn.addEventListener('click', function () {
             input.value = '';
+            pendingFile = null;
+            dropFile = true;
             save();
         });
     })();
@@ -2213,9 +2335,11 @@
                     : '<span class="text-muted">N/A</span>';
                 // Only http(s) links become clickable (never javascript: etc.).
                 const videoUrl = /^https?:\/\//i.test(String(item.video_link || '')) ? String(item.video_link) : '';
-                const video = videoUrl
-                    ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(videoUrl)}"><i class="fas fa-video"></i> Watch</a>`
-                    : '<span class="text-muted">N/A</span>';
+                const videoFile = item.video_file ? '/' + String(item.video_file).replace(/^\/+/, '') : '';
+                const videoParts = [];
+                if (videoUrl) videoParts.push(`<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(videoUrl)}"><i class="fas fa-video"></i> Watch</a>`);
+                if (videoFile) videoParts.push(`<a href="${escapeHtml(videoFile)}" target="_blank" rel="noopener noreferrer" title="Play uploaded video"><i class="fas fa-circle-play"></i> Play</a>`);
+                const video = videoParts.length ? videoParts.join('<br>') : '<span class="text-muted">N/A</span>';
                 html += '<tr>'
                     + `<td>${escapeHtml(item.parent || '')}</td>`
                     + `<td>${escapeHtml(item.item || '')}</td>`

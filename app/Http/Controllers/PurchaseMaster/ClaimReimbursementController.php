@@ -276,6 +276,7 @@ class ClaimReimbursementController extends Controller
             'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
             'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
             'video_link.*' => ['nullable', 'string', 'max:1000', 'regex:/^https?:\/\/\S+$/i'],
+            'video_file.*' => 'nullable|file|mimes:mp4,mov,qt,m4v,webm,mkv,avi,mpeg,mpg,3gp|max:102400',
         ]);
 
         [$items, $totalAmount, $claimSupplierId] = $this->buildItemsFromForm($request);
@@ -351,6 +352,20 @@ class ClaimReimbursementController extends Controller
                 $screenshotPath = $uploadPath . '/' . $shotName;
             }
 
+            // Uploaded video: a new file replaces the saved one; otherwise the saved path is kept.
+            $videoPath = trim((string) $request->input("existing_video_file.$index", ''));
+            // Only ever keep a path inside our own upload folder (the field comes from the browser).
+            $videoPath = str_starts_with($videoPath, 'uploads/claim_videos/') && ! str_contains($videoPath, '..') ? $videoPath : null;
+
+            if ($request->hasFile("video_file.$index")) {
+                $uploadPath = 'uploads/claim_videos';
+                $video = $request->file("video_file.$index");
+                $videoExt = $video->guessExtension() ?: $video->getClientOriginalExtension();
+                $videoName = time() . '_' . $index . '_vid.' . $videoExt;
+                $video->move(public_path($uploadPath), $videoName);
+                $videoPath = $uploadPath . '/' . $videoName;
+            }
+
             $rowAmount = $request->amount[$index];
             $totalAmount += $rowAmount;
 
@@ -368,6 +383,7 @@ class ClaimReimbursementController extends Controller
                 'image' => $imagePath,
                 'screenshot' => $screenshotPath,
                 'video_link' => trim((string) $request->input("video_link.$index", '')) ?: null,
+                'video_file' => $videoPath,
             ];
         }
 
@@ -395,6 +411,8 @@ class ClaimReimbursementController extends Controller
             'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
             'existing_screenshot.*' => 'nullable|string|max:500',
             'video_link.*' => ['nullable', 'string', 'max:1000', 'regex:/^https?:\/\/\S+$/i'],
+            'video_file.*' => 'nullable|file|mimes:mp4,mov,qt,m4v,webm,mkv,avi,mpeg,mpg,3gp|max:102400',
+            'existing_video_file.*' => 'nullable|string|max:500',
         ]);
 
         $claim = ClaimReimbursement::findOrFail($id);
@@ -484,6 +502,7 @@ class ClaimReimbursementController extends Controller
                 'image' => $image,
                 'screenshot' => $existingItems[$index]['screenshot'] ?? null,
                 'video_link' => $existingItems[$index]['video_link'] ?? null,
+                'video_file' => $existingItems[$index]['video_file'] ?? null,
             ];
         }
 
