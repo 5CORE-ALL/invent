@@ -458,6 +458,12 @@ Route::get('/supplier-portal/download/{asset}', [\App\Http\Controllers\SupplierP
 Route::get('/supplier-portal/packing-data', [\App\Http\Controllers\SupplierPortalController::class, 'packingData'])->name('supplier-portal.packing-data');
 Route::get('/supplier-portal/dim-wt-data', [\App\Http\Controllers\SupplierPortalController::class, 'dimWtData'])->name('supplier-portal.dim-wt-data');
 
+// Forwarder quote form — public (no login), reached through a personal emailed link.
+Route::get('/quote-form/{token}', [\App\Http\Controllers\PurchaseMaster\ContainerQuoteRequestController::class, 'publicForm'])
+    ->where('token', '[A-Za-z0-9]{20,64}')->middleware('throttle:60,1')->name('container.quote.form');
+Route::post('/quote-form/{token}', [\App\Http\Controllers\PurchaseMaster\ContainerQuoteRequestController::class, 'publicSubmit'])
+    ->where('token', '[A-Za-z0-9]{20,64}')->middleware('throttle:20,1')->name('container.quote.form.submit');
+
 Route::middleware(['auth'])->prefix('supplier-portal/manage')->name('supplier-portal.admin.')->group(function () {
     Route::get('/', [\App\Http\Controllers\SupplierPortalAdminController::class, 'index'])->name('index');
     Route::get('/products/search', [\App\Http\Controllers\SupplierPortalAdminController::class, 'searchProducts'])->name('products.search');
@@ -6292,6 +6298,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/quotations-container/data', 'data')->name('container.quotations.data');
         Route::post('/quotations-container/save', 'save')->name('container.quotations.save');
         Route::post('/quotations-container/quotes', 'saveQuotes')->name('container.quotations.quotes.save');
+    });
+
+    Route::controller(\App\Http\Controllers\PurchaseMaster\ContainerQuoteRequestController::class)->group(function () {
+        Route::get('/quotations-container/forwarders', 'forwarders')->name('container.quotations.forwarders');
+        Route::post('/quotations-container/forwarders', 'saveForwarder')->name('container.quotations.forwarders.save');
+        Route::post('/quotations-container/forwarders/selection', 'saveSelection')->name('container.quotations.forwarders.selection');
+        Route::get('/quotations-container/forwarders/selected', 'selectedForwarders')->name('container.quotations.forwarders.selected');
+        Route::get('/quotations-container/mail-text', 'getText')->name('container.quotations.text');
+        Route::post('/quotations-container/mail-text', 'saveText')->name('container.quotations.text.save');
+        Route::get('/quotations-container/form-data', 'formData')->name('container.quotations.form.data');
+        Route::post('/quotations-container/send', 'send')->name('container.quotations.send');
+        Route::post('/quotations-container/ack-change', 'acknowledgeChange')->name('container.quotations.ack');
     });
 
     // api data view routes

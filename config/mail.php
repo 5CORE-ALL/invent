@@ -15,6 +15,9 @@ return [
 
     'default' => env('MAIL_MAILER', 'smtp'),
 
+    // Mailer used for forwarder quote requests (see the 'quotes' mailer below).
+    'quote_mailer' => env('QUOTE_MAILER', 'quotes'),
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations
@@ -42,6 +45,19 @@ return [
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
+            'timeout' => env('MAIL_TIMEOUT', 15),
+            'local_domain' => env('MAIL_EHLO_DOMAIN'),
+        ],
+
+        // Used for forwarder quote requests, sent as sourcing1@5core.com.
+        // Needs QUOTE_MAIL_PASSWORD (a Google app password for that mailbox) in .env.
+        'quotes' => [
+            'transport' => 'smtp',
+            'host' => env('QUOTE_MAIL_HOST', 'smtp.gmail.com'),
+            'port' => env('QUOTE_MAIL_PORT', 587),
+            'encryption' => env('QUOTE_MAIL_ENCRYPTION', 'tls'),
+            'username' => env('QUOTE_MAIL_USERNAME', 'sourcing1@5core.com'),
+            'password' => env('QUOTE_MAIL_PASSWORD'),
             'timeout' => env('MAIL_TIMEOUT', 15),
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],

@@ -10,7 +10,11 @@ class ContainerQuoteReceived extends Model
 
     protected $fillable = [
         'container_number',
+        'request_id',
+        'source',
         'forwarder',
+        'shipping_line',
+        'est_dt_sail',
         'pickup_charges',
         'freight',
         'total',
