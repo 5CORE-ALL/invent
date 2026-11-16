@@ -84,9 +84,14 @@
         .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
         .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
         .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
-        .im-slot-edit-th { min-width:54px; }
+        .im-slot-cell { position:relative; display:inline-block; line-height:0; }
+        .im-ai-edit-btn { position:absolute; right:-6px; bottom:-6px; width:22px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:#475569; background:#fff; border:1px solid #94a3b8; border-radius:5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+        .im-ai-edit-btn:hover { background:#2563eb; border-color:#2563eb; color:#fff; }
         .ai-edit-pane { border:1px solid #e2e8f0; border-radius:10px; padding:8px; text-align:center; background:#f8fafc; min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
         .ai-edit-pane img { max-width:100%; max-height:340px; object-fit:contain; border-radius:6px; background:#fff; }
+        .ai-edit-thumbs { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:8px; }
+        .ai-edit-thumbs img { width:64px; height:64px; object-fit:cover; border-radius:6px; border:2px solid #e2e8f0; cursor:pointer; background:#fff; }
+        .ai-edit-thumbs img.sel { border-color:#16a34a; box-shadow:0 0 0 2px rgba(22,163,74,.25); }
         .ai-edit-pane .ai-edit-cap { font-size:11px; font-weight:700; color:#475569; margin-bottom:6px; text-transform:uppercase; }
         .im-prompts-menu .ip-row { display:flex; align-items:center; gap:10px; padding:4px 6px; border-bottom:1px solid #f1f5f9; }
         .im-prompts-menu .ip-row:last-child { border-bottom:none; }
@@ -140,8 +145,6 @@
                 <div class="card-body">
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
-                        <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
-                        <button type="button" id="pullShopifyBtn" class="btn btn-warning btn-sm"><i class="fas fa-download"></i> Shopify Pull</button>
                         <div class="dropdown" id="promptsDropdown">
                             <button type="button" id="promptsBtn" class="btn btn-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="fas fa-wand-magic-sparkles"></i> Prompts</button>
                             <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
@@ -150,7 +153,6 @@
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <span class="text-muted small" id="selectedCountBadge">0 selected</span>
-                        <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
                     <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
                         <div class="d-flex align-items-center gap-2">
@@ -347,8 +349,12 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" id="aiEditSavePromptBtn"><i class="fas fa-save me-1"></i>Save prompt</button>
-                    <button type="button" class="btn btn-primary" id="aiEditGenerateBtn" title="Generate a new image from this prompt"><i class="fas fa-wand-magic-sparkles me-1"></i>Prompt</button>
-                    <button type="button" class="btn btn-success" id="aiEditApplyBtn" style="display:none;"><i class="fas fa-check me-1"></i>Use this image (overwrite)</button>
+                    <div class="d-flex align-items-center gap-1" title="How many images to generate each time">
+                        <label for="aiEditCount" class="small text-muted mb-0">Images</label>
+                        <select id="aiEditCount" class="form-select form-select-sm" style="width:64px;"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="aiEditGenerateBtn" title="Generate new image(s) from this prompt"><i class="fas fa-wand-magic-sparkles me-1"></i><span id="aiEditGenLabel">Prompt</span></button>
+                    <button type="button" class="btn btn-success" id="aiEditApplyBtn" style="display:none;"><i class="fas fa-check me-1"></i>Use selected image (overwrite)</button>
                     <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -983,12 +989,6 @@ document.addEventListener('DOMContentLoaded', () => {
             th.appendChild(inp);
             actionTh.parentNode.insertBefore(th, actionTh);
 
-            const eth = document.createElement('th');
-            eth.className = 'im-slot-edit-th';
-            eth.style.textAlign = 'center';
-            eth.textContent = 'Edit';
-            eth.title = 'Edit image ' + (i + 1) + ' with AI (Nano Banana)';
-            actionTh.parentNode.insertBefore(eth, actionTh);
         }
     })();
 
@@ -1010,7 +1010,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSortIndicators();
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="35" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="21" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -1021,8 +1021,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const slotUrls = pmImageUrls(r);
             const slotCells = Array.from({ length: IM_SLOT_COUNT }, (_, i) => {
                 const u = slotUrls[i];
-                return `<td class="text-center">${u ? `<img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">` : '<span class="text-muted">—</span>'}</td>`
-                    + `<td class="text-center">${u ? `<button type="button" class="btn btn-sm btn-outline-secondary im-ai-edit-btn" data-ai-edit="${esc(sku)}" data-slot="${i + 1}" title="Edit ${esc(imSlotNames[i])} with AI"><i class="fas fa-pen"></i></button>` : '<span class="text-muted">—</span>'}</td>`;
+                if (!u) return '<td class="text-center"><span class="text-muted">—</span></td>';
+                return `<td class="text-center"><div class="im-slot-cell">
+                    <img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">
+                    <button type="button" class="im-ai-edit-btn" data-ai-edit="${esc(sku)}" data-slot="${i + 1}" title="Edit ${esc(imSlotNames[i])} with AI" aria-label="Edit ${esc(imSlotNames[i])}"><i class="fas fa-pen"></i></button>
+                </div></td>`;
             }).join('');
             const imgCount = slotUrls.length;
             const IM_TARGET_IMAGES = 14; // green at 14 or more, red below
@@ -1470,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── AI edit (Nano Banana): per-image Edit modal ───────────────────────────
-    let aiEdit = { sku: '', slot: 0, path: '' };
+    let aiEdit = { sku: '', slot: 0, path: '', results: [], selected: -1 };
 
     function aiEditMsg(text, cls) {
         const m = document.getElementById('aiEditMsg');
@@ -1478,18 +1481,42 @@ document.addEventListener('DOMContentLoaded', () => {
         m.textContent = text || '';
     }
 
+    function renderAiResults() {
+        const box = document.getElementById('aiEditResult');
+        const apply = document.getElementById('aiEditApplyBtn');
+        const r = aiEdit.results;
+        if (!r.length) {
+            box.innerHTML = '<span class="text-muted small">Click <strong>Prompt</strong> to generate.</span>';
+            apply.style.display = 'none';
+            aiEdit.path = '';
+            return;
+        }
+        if (aiEdit.selected < 0 || aiEdit.selected >= r.length) aiEdit.selected = r.length - 1;
+        aiEdit.path = r[aiEdit.selected].path;
+        box.innerHTML = `<img src="${esc(r[aiEdit.selected].url)}" alt="">`
+            + `<div class="ai-edit-thumbs">${r.map((x, i) => `<img src="${esc(x.url)}" data-i="${i}" class="${i === aiEdit.selected ? 'sel' : ''}" alt="Option ${i + 1}" title="Option ${i + 1}">`).join('')}</div>`;
+        apply.style.display = '';
+    }
+
+    document.getElementById('aiEditResult')?.addEventListener('click', (e) => {
+        const t = e.target.closest('.ai-edit-thumbs img');
+        if (!t) return;
+        aiEdit.selected = parseInt(t.dataset.i, 10) || 0;
+        renderAiResults();
+    });
+
     function openAiEditModal(sku, slot) {
         const row = bySku.get(String(sku));
         if (!row) return;
         const url = pmImageUrls(row)[slot - 1];
         if (!url) return;
-        aiEdit = { sku: String(sku), slot, path: '' };
+        aiEdit = { sku: String(sku), slot, path: '', results: [], selected: -1 };
+        document.getElementById('aiEditGenLabel').textContent = 'Prompt';
         document.getElementById('aiEditName').textContent = imSlotNames[slot - 1] || ('Image ' + slot);
         document.getElementById('aiEditSku').textContent = sku;
         document.getElementById('aiEditOriginal').innerHTML = `<img src="${esc(imgSrc(url))}" alt="">`;
-        document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">Click <strong>Prompt</strong> to generate.</span>';
+        renderAiResults();
         document.getElementById('aiEditPrompt').value = slotPrompts[slot] || '';
-        document.getElementById('aiEditApplyBtn').style.display = 'none';
         aiEditMsg(slotPrompts[slot] ? '' : 'No saved prompt for this image yet — write one below (or use the Prompts button in the toolbar).');
         bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).show();
     }
@@ -1518,34 +1545,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = document.getElementById('aiEditGenerateBtn');
         const prompt = document.getElementById('aiEditPrompt').value.trim();
         if (!prompt) { aiEditMsg('Write a prompt first.', 'text-danger'); return; }
+        const count = Math.max(1, Math.min(4, parseInt(document.getElementById('aiEditCount').value, 10) || 1));
         const label = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating…';
-        document.getElementById('aiEditApplyBtn').style.display = 'none';
-        document.getElementById('aiEditResult').innerHTML = '<div class="spinner-border text-primary"></div><div class="small text-muted mt-2">Nano Banana is generating… this can take up to a minute.</div>';
-        aiEditMsg('');
-        try {
-            const r = await fetch('/image-master/ai-edit/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku: aiEdit.sku, slot: aiEdit.slot, prompt }),
-            });
-            const j = await r.json().catch(() => ({}));
-            if (r.ok && j.success) {
-                aiEdit.path = j.path;
-                document.getElementById('aiEditResult').innerHTML = `<img src="${esc(j.preview_url)}" alt="">`;
-                document.getElementById('aiEditApplyBtn').style.display = '';
-                aiEditMsg('Generated. Use it to overwrite this image, or edit the prompt and try again.', 'text-success');
-            } else {
-                document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">No image generated.</span>';
-                aiEditMsg(j.message || 'Generation failed.', 'text-danger');
+        let made = 0;
+        let error = '';
+        for (let n = 1; n <= count; n++) {
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Generating ${n}/${count}…`;
+            aiEditMsg(`Nano Banana is generating image ${n} of ${count}… this can take up to a minute each.`);
+            try {
+                const r = await fetch('/image-master/ai-edit/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ sku: aiEdit.sku, slot: aiEdit.slot, prompt }),
+                });
+                const j = await r.json().catch(() => ({}));
+                if (r.ok && j.success) {
+                    aiEdit.results.push({ path: j.path, url: j.preview_url });
+                    aiEdit.selected = aiEdit.results.length - 1;
+                    made++;
+                    renderAiResults();
+                } else {
+                    error = j.message || 'Generation failed.';
+                    break;
+                }
+            } catch (e) {
+                error = e.message || 'Generation failed.';
+                break;
             }
-        } catch (e) {
-            document.getElementById('aiEditResult').innerHTML = '<span class="text-muted small">No image generated.</span>';
-            aiEditMsg(e.message || 'Generation failed.', 'text-danger');
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = label;
+        }
+        btn.disabled = false;
+        btn.innerHTML = label;
+        if (aiEdit.results.length) document.getElementById('aiEditGenLabel').textContent = 'Generate more';
+        if (error) {
+            aiEditMsg((made ? `${made} generated, then stopped: ` : '') + error, 'text-danger');
+        } else {
+            aiEditMsg(`${made} new image(s) generated (${aiEdit.results.length} total). Click a thumbnail to choose one, or generate more.`, 'text-success');
         }
     });
 
