@@ -135,7 +135,7 @@
         #imHistoryPop .hp-row .nm { font-weight:600; min-width:92px; }
         #imHistoryPop .hp-row .msg { color:#64748b; white-space:normal; word-break:break-word; }
         .im-slot-th { min-width:84px; text-align:center; }
-        .im-slot-th .im-slot-name { width:72px; max-width:100%; text-align:center; background:transparent; border:1px solid transparent; color:#fff; font-size:10px; font-weight:700; text-transform:uppercase; padding:1px 3px; border-radius:4px; }
+        .im-slot-th .im-slot-name { width:104px; max-width:100%; text-align:center; background:transparent; border:1px solid transparent; color:#fff; font-size:10px; font-weight:700; text-transform:uppercase; padding:1px 3px; border-radius:4px; }
         .im-slot-th .im-slot-name:hover, .im-slot-th .im-slot-name:focus { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.6); outline:none; }
         .im-slot-th .im-slot-name::placeholder { color:rgba(255,255,255,.7); }
         .im-slot-thumb { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; }
@@ -1127,11 +1127,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Image slot columns: one image per column (Hero 1, Hero 2, 3 … 14), editable headers ──
     const IM_SLOT_COUNT = 14;
     const IM_SLOT_KEY = 'im_slot_names_v1';
-    const imSlotDefault = (i) => i === 0 ? 'Hero 1' : i === 1 ? 'Hero 2' : String(i + 1);
+    // Columns 3-14 default to these titles (Hero 1 / Hero 2 keep their names).
+    const IM_SLOT_TITLES = ['LIFESTYLE', 'SOLUTION', 'PERFORMANCE', 'DIMENSIONS', 'COMPATIBILITY', 'MATERIAL', 'ANGLES', 'UGC', "WHAT'S INCLUDED", 'HOW TO USE', 'USE CASES', 'TRUST'];
+    const imSlotDefault = (i) => i === 0 ? 'Hero 1' : i === 1 ? 'Hero 2' : (IM_SLOT_TITLES[i - 2] || String(i + 1));
+    // Old numeric defaults ("3" … "14") saved in a browser are treated as "not renamed".
+    const imIsOldDefault = (i, v) => String(v).trim() === String(i + 1) && i >= 2;
     let imSlotNames = (() => {
         let saved = [];
         try { saved = JSON.parse(localStorage.getItem(IM_SLOT_KEY) || '[]'); } catch (_) {}
-        return Array.from({ length: IM_SLOT_COUNT }, (_, i) => (saved && typeof saved[i] === 'string' && saved[i].trim()) ? saved[i] : imSlotDefault(i));
+        return Array.from({ length: IM_SLOT_COUNT }, (_, i) => (saved && typeof saved[i] === 'string' && saved[i].trim() && !imIsOldDefault(i, saved[i])) ? saved[i] : imSlotDefault(i));
     })();
     (function buildSlotHeaders() {
         const actionTh = document.getElementById('imActionTh');
@@ -1591,7 +1595,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (j && j.prompts) slotPrompts = j.prompts;
             // Column titles saved on the server win over this browser's copy.
             if (j && j.names) {
-                for (let i = 0; i < IM_SLOT_COUNT; i++) imSlotNames[i] = (typeof j.names[i + 1] === 'string' && j.names[i + 1].trim()) ? j.names[i + 1] : imSlotDefault(i);
+                for (let i = 0; i < IM_SLOT_COUNT; i++) imSlotNames[i] = (typeof j.names[i + 1] === 'string' && j.names[i + 1].trim() && !imIsOldDefault(i, j.names[i + 1])) ? j.names[i + 1] : imSlotDefault(i);
                 try { localStorage.setItem(IM_SLOT_KEY, JSON.stringify(imSlotNames)); } catch (_) {}
                 document.querySelectorAll('.im-slot-th .im-slot-name').forEach((inp, i) => { if (imSlotNames[i] !== undefined) inp.value = imSlotNames[i]; });
                 renderPromptsMenu();

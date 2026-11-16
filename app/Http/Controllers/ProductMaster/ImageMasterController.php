@@ -614,6 +614,9 @@ class ImageMasterController extends Controller
     /**
      * Saved prompt text per image slot (1–14), shared by all users.
      */
+    /** Default titles of image columns 3–14 (keep in sync with IM_SLOT_TITLES in image-master.blade.php). */
+    private const SLOT_DEFAULT_TITLES = ['LIFESTYLE', 'SOLUTION', 'PERFORMANCE', 'DIMENSIONS', 'COMPATIBILITY', 'MATERIAL', 'ANGLES', 'UGC', "WHAT'S INCLUDED", 'HOW TO USE', 'USE CASES', 'TRUST'];
+
     private const AUDIT_ASSIGNEE_EMAIL = 'images3@5core.com';
 
     /**
@@ -748,7 +751,7 @@ class ImageMasterController extends Controller
         }
 
         $slot = (int) $validated['slot'];
-        $default = $slot === 1 ? 'Hero 1' : ($slot === 2 ? 'Hero 2' : (string) $slot);
+        $default = $slot === 1 ? 'Hero 1' : ($slot === 2 ? 'Hero 2' : (self::SLOT_DEFAULT_TITLES[$slot - 3] ?? (string) $slot));
         $name = trim((string) ($validated['name'] ?? ''));
         $kind = $this->slotNameKind($slot);
 
