@@ -77,6 +77,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2AutoEnrollEligibleAds::class,
+        \App\Console\Commands\Ebay2SwitchAdsToLiveListings::class,
         \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
         \App\Console\Commands\AssignMissingMappingDailyTask::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
@@ -632,6 +633,17 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log);
         }
+
+        // eBay 2: a relisted SKU gets a new item id and eBay drops the PMT ad on the old one while the campaign
+        // stays RUNNING. Hourly (plain schedule, not $ist(), so it also runs overnight): move the ad to the SKU's
+        // current live listing in the same campaign with the same bid. Does nothing when no ad is stale.
+        $schedule->command('ebay2:switch-ads-to-live-listings')
+            ->hourlyAt(25)
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-switch-ads-to-live-listings')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         // Once a day: refresh listing data for every marketplace (same job as the
         // "Refresh listings" button on each listing page). --queue: one isolated job per marketplace on the
