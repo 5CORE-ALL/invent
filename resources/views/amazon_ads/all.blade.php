@@ -1443,6 +1443,9 @@
                             <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 5 using the values shown on this page (SP/SB only).">
                                 <i class="fa fa-cloud-upload-alt"></i> SBID
                             </button>
+                            <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushBgtBtn" title="Manual BGT Push: push SBGT (daily budget) for the checked rows, or all eligible rows on this page (SP/SB only).">
+                                <i class="fa fa-cloud-upload-alt"></i> Manual BGT Push
+                            </button>
                         </div>
                     </div>
 
@@ -5394,6 +5397,13 @@
                         ? 'Pulls live Amazon bid, compares to SBID, pushes only if different, then verifies.'
                         : 'Switch to All / SP / SB reports to sync SBID';
                 }
+                var bgtBtn = document.getElementById('amazonAdsPushBgtBtn');
+                if (bgtBtn) {
+                    bgtBtn.disabled = !ok;
+                    bgtBtn.title = ok
+                        ? 'Manual BGT Push: pulls live Amazon budget, compares to SBGT, pushes only if different, then verifies.'
+                        : 'Switch to All / SP / SB reports to push BGT';
+                }
             }
             function amzUpdatePieButton() {
                 var btn = document.getElementById('amazonAdsU7PieOpenBtn');
@@ -7283,6 +7293,24 @@
                         label: 'SBID live sync',
                         confirmMsg: 'Sync SBID for ' + scope + '? Pulls live Amazon bid first, pushes only mismatches, and marks synced only after verify.',
                         loadingTitle: 'Verifying SBID…',
+                        loadingDetail: 'Pull → compare → push → verify for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
+                    });
+                });
+            }
+            var pushBgtBtn = document.getElementById('amazonAdsPushBgtBtn');
+            if (pushBgtBtn) {
+                pushBgtBtn.addEventListener('click', function () {
+                    var rows = amzCollectLiveSyncRows('bgt');
+                    var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
+                    var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
+                    amzRunPush({
+                        url: syncLiveBidBgtUrl,
+                        btn: pushBgtBtn,
+                        rows: rows,
+                        chunkSize: AMZ_PUSH_CHUNK_SIZE,
+                        label: 'Manual BGT push',
+                        confirmMsg: 'Push BGT (SBGT) for ' + scope + '? Pulls live Amazon budget first, pushes only mismatches, and marks synced only after verify. SBGT 0 pauses the campaign.',
+                        loadingTitle: 'Pushing BGT…',
                         loadingDetail: 'Pull → compare → push → verify for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
                 });
