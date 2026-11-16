@@ -628,7 +628,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -1119,7 +1119,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1860,7 +1860,7 @@
                     : '<span class="text-muted">N/A</span>';
                 const shotSrc = item.screenshot ? '/' + String(item.screenshot).replace(/^\/+/, '') : '';
                 const shot = shotSrc
-                    ? `<img src="${escapeHtml(shotSrc)}" data-sc-src="${escapeHtml(shotSrc)}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:zoom-in;" alt="Screenshot">`
+                    ? `<img class="no-img-hover" src="${escapeHtml(shotSrc)}" data-sc-src="${escapeHtml(shotSrc)}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:zoom-in;" alt="Screenshot">`
                     : '<span class="text-muted">N/A</span>';
                 html += '<tr>'
                     + `<td>${escapeHtml(item.parent || '')}</td>`
