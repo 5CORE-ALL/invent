@@ -751,12 +751,26 @@ class VariationMasterController extends Controller
             'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5',
             'Parent A+ Content', 'SKU A+ Content', 'Parent Images (count)', 'Parent Images', 'SKU Images (count)', 'SKU Images',
         ];
-        $line = function (array $row) use ($parentsByKey, $skuAplus): array {
+        // Excel (and a CSV opened in Excel) holds at most 32,767 characters per cell; longer text spills into the
+        // next cells and rows and the whole sheet shifts. A+ HTML can be far longer (embedded images), so what does
+        // not fit stays complete in extra "part n" columns at the far right.
+        $limit = 30000;
+        $split = static function (string $text) use ($limit): array {
+            return $text === '' ? [''] : (mb_strlen($text) <= $limit ? [$text] : mb_str_split($text, $limit));
+        };
+        $built = [];
+        $maxParentParts = 1;
+        $maxSkuParts = 1;
+        foreach ($rows as $row) {
             $parent = $parentsByKey[strtoupper((string) $row['parent_key'])] ?? null;
             $parentImages = $parent ? (array) ($parent['parent_images'] ?? []) : [];
             $skuImages = (array) ($row['parent_images'] ?? []);
+            $parentParts = $split($parent ? (string) ($parent['aplus'] ?? '') : '');
+            $skuParts = $split((string) ($skuAplus[$this->skuKey((string) $row['sku'])] ?? ''));
+            $maxParentParts = max($maxParentParts, count($parentParts));
+            $maxSkuParts = max($maxSkuParts, count($skuParts));
 
-            return [
+            $built[] = ['main' => [
                 $row['parent'],
                 $row['sku'],
                 $row['variation_type'],
@@ -768,22 +782,35 @@ class VariationMasterController extends Controller
                 $row['bullet_3'],
                 $row['bullet_4'],
                 $row['bullet_5'],
-                $parent ? (string) ($parent['aplus'] ?? '') : '',
-                $skuAplus[$this->skuKey((string) $row['sku'])] ?? '',
+                $parentParts[0],
+                $skuParts[0],
                 count($parentImages),
                 implode("\n", $parentImages),
                 count($skuImages),
                 implode("\n", $skuImages),
-            ];
+            ], 'parent_more' => array_slice($parentParts, 1), 'sku_more' => array_slice($skuParts, 1)];
+        }
+        for ($i = 2; $i <= $maxParentParts; $i++) {
+            $headers[] = 'Parent A+ Content (part '.$i.')';
+        }
+        for ($i = 2; $i <= $maxSkuParts; $i++) {
+            $headers[] = 'SKU A+ Content (part '.$i.')';
+        }
+        $line = static function (array $entry) use ($maxParentParts, $maxSkuParts): array {
+            return array_merge(
+                $entry['main'],
+                array_pad($entry['parent_more'], $maxParentParts - 1, ''),
+                array_pad($entry['sku_more'], $maxSkuParts - 1, '')
+            );
         };
 
         if ($format === 'csv') {
-            return response()->streamDownload(function () use ($rows, $headers, $line) {
+            return response()->streamDownload(function () use ($built, $headers, $line) {
                 $out = fopen('php://output', 'w');
                 fwrite($out, "\xEF\xBB\xBF");
-                fputcsv($out, $headers);
-                foreach ($rows as $row) {
-                    fputcsv($out, $line($row));
+                fputcsv($out, $headers, ',', '"', '');
+                foreach ($built as $entry) {
+                    fputcsv($out, $line($entry), ',', '"', '');
                 }
                 fclose($out);
             }, 'variation-master.csv', [
@@ -796,8 +823,8 @@ class VariationMasterController extends Controller
         $sheet->setTitle('Variation Master');
         $sheet->fromArray($headers, null, 'A1');
         $rowNum = 2;
-        foreach ($rows as $row) {
-            $sheet->fromArray($line($row), null, 'A'.$rowNum);
+        foreach ($built as $entry) {
+            $sheet->fromArray($line($entry), null, 'A'.$rowNum);
             $rowNum++;
         }
         $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($headers));
@@ -808,8 +835,11 @@ class VariationMasterController extends Controller
         ]);
         // Long text columns get a fixed width so the sheet stays readable (auto size would make them huge).
         $wide = ['E' => 40, 'F' => 60, 'G' => 40, 'H' => 40, 'I' => 40, 'J' => 40, 'K' => 40, 'L' => 40, 'M' => 40, 'O' => 50, 'Q' => 50];
-        foreach (range('A', $lastCol) as $col) {
-            if (isset($wide[$col])) {
+        for ($i = 1; $i <= count($headers); $i++) {
+            $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+            if ($i > 17) {
+                $sheet->getColumnDimension($col)->setWidth(30);
+            } elseif (isset($wide[$col])) {
                 $sheet->getColumnDimension($col)->setWidth($wide[$col]);
             } else {
                 $sheet->getColumnDimension($col)->setAutoSize(true);
