@@ -223,8 +223,12 @@
     <div class="modal fade" id="editImModal" tabindex="-1">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header modal-header-gradient">
+                <div class="modal-header modal-header-gradient flex-wrap gap-y-1">
                     <h5 class="modal-title text-nowrap"><i class="fas fa-images me-2"></i>Edit product images</h5>
+                    <div class="d-flex align-items-center gap-3 ms-3 text-white text-nowrap">
+                        <span><strong>SKU:</strong> <span id="modalSkuLabel"></span></span>
+                        <span><strong>Parent:</strong> <span id="modalProductLabel"></span></span>
+                    </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap ms-3 me-auto small text-white">
                         <label class="btn btn-light btn-sm mb-0" for="modalFileInput" style="cursor:pointer;" title="Upload images (max 20)" aria-label="Upload images">
                             <i class="fas fa-upload"></i>
@@ -239,6 +243,7 @@
                         <span style="opacity:.7;">Max 20 images</span>
                     </div>
                     <div class="d-flex align-items-center gap-1 me-2">
+                        <button type="button" class="btn btn-success btn-sm" id="savePmBtn" title="Save images" aria-label="Save images"><i class="fas fa-save"></i></button>
                         <button type="button" class="btn btn-light btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file" aria-label="Download all (ZIP)">
                             <i class="fas fa-download"></i>
                         </button>
@@ -250,8 +255,6 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
-                    <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
-                    <div class="mb-3"><strong>Parent:</strong> <span id="modalProductLabel"></span></div>
 
                     {{-- Upload controls live in the modal header; only the pre-upload preview stays here --}}
                     <div id="uploadPreviewList" class="border rounded p-2 mb-3" style="display:none;background:#f8fafc;">
@@ -274,10 +277,6 @@
                     <div class="alert alert-info small mt-3 mb-0">
                         Save images here first. Use the <strong>Hero Image</strong> button in the toolbar to choose Hero 1 / Hero 2 per marketplace, and the MP button in the table row to push.
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="savePmBtn"><i class="fas fa-save"></i> Save Images</button>
                 </div>
             </div>
         </div>
@@ -706,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadData() {
         document.getElementById('rainbow-loader').style.display = 'block';
-        fetch('/image-master-data').then(r=>r.json()).then(res => {
+        return fetch('/image-master-data').then(r=>r.json()).then(res => {
             const raw = Array.isArray(res.data) ? res.data : [];
             tableData = raw.filter(i => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
             bySku.clear();
@@ -1527,12 +1526,12 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAiResults();
     });
 
-    function openAiEditModal(sku, slot) {
+    function openAiEditModal(sku, slot, fromEdit) {
         const row = bySku.get(String(sku));
         if (!row) return;
         const url = pmImageUrls(row)[slot - 1];
         if (!url) return;
-        aiEdit = { sku: String(sku), slot, path: '', results: [], selected: -1 };
+        aiEdit = { sku: String(sku), slot, path: '', results: [], selected: -1, fromEdit: !!fromEdit };
         document.getElementById('aiEditGenLabel').textContent = 'Prompt';
         document.getElementById('aiEditName').textContent = imSlotNames[slot - 1] || ('Image ' + slot);
         document.getElementById('aiEditSku').textContent = sku;
@@ -1542,6 +1541,18 @@ document.addEventListener('DOMContentLoaded', () => {
         aiEditMsg(slotPrompts[slot] ? '' : 'No saved prompt for this image yet — write one below (or use the Prompts button in the toolbar).');
         bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).show();
     }
+
+    // The AI editor can open on top of the product-images editor: lift it (and its backdrop) above.
+    document.getElementById('aiEditModal')?.addEventListener('shown.bs.modal', function () {
+        if (!document.getElementById('editImModal')?.classList.contains('show')) return;
+        this.style.zIndex = 1075;
+        const bds = document.querySelectorAll('.modal-backdrop');
+        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
+    });
+    document.getElementById('aiEditModal')?.addEventListener('hidden.bs.modal', function () {
+        this.style.zIndex = '';
+        if (document.getElementById('editImModal')?.classList.contains('show')) document.body.classList.add('modal-open');
+    });
 
     document.getElementById('aiEditSavePromptBtn')?.addEventListener('click', async () => {
         const prompt = document.getElementById('aiEditPrompt').value;
@@ -1622,8 +1633,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const j = await r.json().catch(() => ({}));
             if (r.ok && j.success) {
                 toast(j.message || 'Image replaced');
+                const reopenSku = aiEdit.fromEdit ? aiEdit.sku : null;
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('aiEditModal')).hide();
-                loadData();
+                const reloaded = loadData();
+                // Editor was open underneath: refresh it so it shows the new image (not stale URLs).
+                if (reopenSku) reloaded.then(() => openEditModal(reopenSku));
             } else {
                 aiEditMsg(j.message || 'Could not save the image.', 'text-danger');
             }
@@ -1854,10 +1868,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="im-card-name" title="Image ${idx + 1}">${esc(slotName)}</div>
                         <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
                         <div class="im-card-arrows">
-                            <button type="button" class="im-up" data-i="${idx}" title="Move left">&#8592;</button>
-                            <button type="button" class="im-set-main" data-i="${idx}" title="Set as main (#1) for all marketplaces">&#9733;</button>
-                            <button type="button" class="im-down" data-i="${idx}" title="Move right">&#8594;</button>
                             <button type="button" class="im-dl" data-i="${idx}" title="Download this image"><i class="fas fa-download"></i></button>
+                            <button type="button" class="im-ai" data-i="${idx}" title="Edit this image with AI (Nano Banana)"><i class="fas fa-pen"></i></button>
                         </div>
                     </div>
                 </div>`;
@@ -1921,40 +1933,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        grid.querySelectorAll('.im-set-main').forEach(b => {
+        // ── Edit one image with AI ────────────────────────────────
+        grid.querySelectorAll('.im-ai').forEach(b => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const i = +b.dataset.i;
-                if (i <= 0) return;
-                const picked = modalUrls.splice(i, 1)[0];
-                modalUrls.unshift(picked);
-                modalMainByMp = defaultMainByMarketplace();
-                modalHero2ByMp = {};
-                renderSlots();
-            });
-        });
-
-        // ── Arrow buttons ─────────────────────────────────────────
-        grid.querySelectorAll('.im-up').forEach(b => {
-            b.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const i = +b.dataset.i;
-                if (i > 0) {
-                    remapMainIndicesAfterMove(i, i - 1);
-                    [modalUrls[i-1], modalUrls[i]] = [modalUrls[i], modalUrls[i-1]];
-                    renderSlots();
-                }
-            });
-        });
-        grid.querySelectorAll('.im-down').forEach(b => {
-            b.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const i = +b.dataset.i;
-                if (i < modalUrls.length - 1) {
-                    remapMainIndicesAfterMove(i, i + 1);
-                    [modalUrls[i+1], modalUrls[i]] = [modalUrls[i], modalUrls[i+1]];
-                    renderSlots();
-                }
+                const url = modalUrls[+b.dataset.i];
+                const sku = document.getElementById('modalSku').value;
+                const row = bySku.get(String(sku));
+                const slot = row ? pmImageUrls(row).indexOf(url) + 1 : 0;
+                if (!slot) { alert('Save the images first, then edit this one with AI.'); return; }
+                openAiEditModal(sku, slot, true);
             });
         });
 
@@ -2324,7 +2312,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saveBtn = document.getElementById('savePmBtn');
         if (saveBtn) {
             saveBtn.disabled = true;
-            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
         }
 
         try {
@@ -2368,7 +2356,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Images';
+                saveBtn.innerHTML = '<i class="fas fa-save"></i>';
             }
         }
     });
