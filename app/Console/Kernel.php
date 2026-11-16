@@ -77,6 +77,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2AutoEnrollEligibleAds::class,
+        \App\Console\Commands\Ebay1SwitchAdsToLiveListings::class,
         \App\Console\Commands\Ebay2SwitchAdsToLiveListings::class,
         \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
         \App\Console\Commands\AssignMissingMappingDailyTask::class,
@@ -641,6 +642,15 @@ class Kernel extends ConsoleKernel
             ->hourlyAt(25)
             ->timezone('Asia/Kolkata')
             ->name('ebay2-switch-ads-to-live-listings')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // eBay 1: same switch for its own ads table / account (offset from eBay 2 so the two never overlap).
+        $schedule->command('ebay:switch-ads-to-live-listings')
+            ->hourlyAt(35)
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-switch-ads-to-live-listings')
             ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
