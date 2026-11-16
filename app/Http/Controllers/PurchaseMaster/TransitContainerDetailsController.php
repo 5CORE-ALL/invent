@@ -402,6 +402,28 @@ class TransitContainerDetailsController extends Controller
     }
 
 
+    /**
+     * Suggest the next container name: the highest "Container N" number used
+     * by ANY tab (including ones already moved on to Arrived etc.) plus one.
+     */
+    public function nextTabName()
+    {
+        $max = 0;
+        $prefix = 'Container';
+
+        $names = TransitContainerDetail::query()->distinct()->pluck('tab_name');
+        foreach ($names as $name) {
+            if (preg_match('/^\s*(container)\s*[-_#]?\s*(\d+)\s*$/i', (string) $name, $m)) {
+                $max = max($max, (int) $m[2]);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'name' => $prefix.' '.($max + 1),
+        ]);
+    }
+
     public function addTab(Request $request)
     {
         $tabName = trim($request->tab_name);

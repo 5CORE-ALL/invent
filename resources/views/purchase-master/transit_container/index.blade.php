@@ -2244,7 +2244,14 @@ document.getElementById("push-arrived-container-btn").addEventListener("click", 
 });
 
 document.getElementById('add-tab-btn').addEventListener('click', async function () {
-    const tabName = prompt("Enter new container name:");
+    // Pre-fill with the next free number (last container + 1).
+    let suggested = '';
+    try {
+        const nr = await fetch('/transit-container/next-tab-name', { headers: { 'Accept': 'application/json' } });
+        const nj = await nr.json();
+        if (nj && nj.success) suggested = nj.name || '';
+    } catch (e) { /* fall back to an empty prompt */ }
+    const tabName = prompt("Enter new container name:", suggested);
     if (!tabName || tabName.trim() === "") {
         alert("Tab name is required.");
         return;

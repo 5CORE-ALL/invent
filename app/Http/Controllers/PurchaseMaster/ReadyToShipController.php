@@ -434,6 +434,8 @@ class ReadyToShipController extends Controller
         if (empty($transitTabs)) {
             $transitTabs = ['Container 1'];
         }
+        // Latest container first (natural order so Container 100 sorts above Container 99).
+        usort($transitTabs, fn ($a, $b) => strnatcasecmp((string) $b, (string) $a));
         $packingListSheetService = app(ReadyToShipPackingListSheetService::class);
         $packingListCsvMap = $packingListSheetService->getSkuToLinkMap();
         $packingListLinks = $packingListSheetService->mergeDbLinksOverCsv($packingListCsvMap);

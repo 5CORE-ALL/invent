@@ -3236,22 +3236,22 @@
                             <a href="{{ route('china.load') }}">Purchase China Load</a>
                         </li>
                         <li>
-                            <a href="{{ route('transit.container.details') }}">Purchase Transit Container INV</a>
+                            <a href="{{ route('transit.container.details') }}">Transit Container INV</a>
                         </li>
                         <li>
-                            <a href="{{ route('arrived.container') }}">Purchase Arrived Container</a>
+                            <a href="{{ route('arrived.container') }}">Arrived Container</a>
                         </li>
                         <li>
-                            <a href="{{ route('qc.container') }}">Purchase QC Container</a>
+                            <a href="{{ route('qc.container') }}">QC Container</a>
                         </li>
                         <li>
-                            <a href="{{ route('pricing.container') }}">Purchase Pricing Container</a>
+                            <a href="{{ route('pricing.container') }}">Pricing Container</a>
                         </li>
                         <li>
-                            <a href="{{ route('inv.verify.container') }}">Purchase Inv Verify Container</a>
+                            <a href="{{ route('inv.verify.container') }}">Inv Verify Container</a>
                         </li>
                         <li>
-                            <a href="{{ route('container.summary') }}">Purchase Container Summary</a>
+                            <a href="{{ route('container.summary') }}">Container Summary</a>
                         </li>
                         {{-- <li>
                             <a href="{{ route('transit.container.changes') }}">Purchase Transit Container Changes</a>
@@ -3260,7 +3260,7 @@
                             <a href="{{ route('transit.container.new') }}">Purchase Transit Container New</a>
                         </li> --}}
                         <li>
-                            <a href="{{ route('container.planning') }}">Purchase Container Planning</a>
+                            <a href="{{ route('container.planning') }}">Container Planning</a>
                         </li>
                         <li>
                             <a href="{{ route('on.sea.transit') }}">Purchase On Sea Transit</a>
