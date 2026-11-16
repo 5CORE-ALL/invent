@@ -1019,7 +1019,11 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         $total = (int) (clone $query)->count();
-        $ordered = $query->orderBy('ca.id', 'desc');
+        // Listings that actually have an ad (campaign_id set) first, then the not-yet-enrolled ones.
+        // Plain id DESC put the newest no-campaign listings on top, so page 1 looked like it had no ads.
+        $ordered = $query
+            ->orderByRaw("CASE WHEN ca.campaign_id IS NULL OR ca.campaign_id = '' THEN 1 ELSE 0 END")
+            ->orderBy('ca.id', 'desc');
         $data = $all ? $ordered->get() : $ordered->forPage($page, $size)->get();
         CpMasterDil::hydrate($data);
         EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
