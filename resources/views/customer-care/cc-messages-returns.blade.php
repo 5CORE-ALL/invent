@@ -433,9 +433,8 @@
                         <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
                     </span>
                 </div>
-                <a class="ccmr-tat-badge ccmr-tat-badge--pending" id="ccmrMessagesPendingTotal"
-                    href="{{ route('customer.care.messages.pending') }}"
-                    title="Total pending marketplace messages. Click to open Messages Pending.">
+                <div class="ccmr-tat-badge ccmr-tat-badge--pending" id="ccmrMessagesPendingTotal"
+                    title="Total pending marketplace messages.">
                     <span class="ccmr-tat-badge__icon">
                         <i class="fa-regular fa-envelope"></i>
                     </span>
@@ -444,7 +443,7 @@
                         <span class="ccmr-tat-badge__value" data-role="value">0</span>
                         <span class="ccmr-tat-badge__meta" data-role="meta">across all channels</span>
                     </span>
-                </a>
+                </div>
             </div>
         </div>
     </div>
@@ -1548,7 +1547,7 @@
             // failed, or are older than 15 minutes are pulled here one by one
             // (same endpoint as the Messages Pending page) and updated in place.
             (function autoRefreshPending() {
-                const urlPendingPull = @json(route('customer.care.messages.pending.pull'));
+                const urlPendingPull = @json(route('customer.care.cc.messages.returns.pending.pull'));
                 const STALE_MS = 15 * 60 * 1000;
 
                 function needsPull(d) {

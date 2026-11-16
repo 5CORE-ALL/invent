@@ -800,9 +800,9 @@
             <span
                 class="badge bg-primary text-white fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
-                onclick="window.location.href='{{ route('customer.care.messages.pending') }}'"
+                onclick="window.location.href='{{ route('customer.care.cc.messages.returns') }}'"
                 role="button"
-                title="Open Messages Pending"
+                title="Open CC Message (Messages Pending column)"
             >Messages Pending</span>
             <span
                 class="badge bg-info text-dark fs-6 p-2"

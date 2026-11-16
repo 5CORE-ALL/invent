@@ -629,20 +629,6 @@
                             <a href="{{ route('customer.care.cc.messages.returns') }}">CC Message</a>
                         </li>
                         <li>
-                            <a href="{{ route('customer.care.messages.pending') }}"
-                               class="{{ request()->routeIs('customer.care.messages.pending*') ? 'active' : '' }}">
-                                Messages Pending
-                                @php
-                                    $ccMessagesPendingMenuCount = $ccMessagesPendingCount ?? \App\Models\CcMessagesPending::pendingTotal();
-                                @endphp
-                                @if($ccMessagesPendingMenuCount > 0)
-                                    <span class="badge rounded-pill ms-auto cc-messages-pending-sidebar-badge" title="Messages pending">{{ number_format($ccMessagesPendingMenuCount) }}</span>
-                                @else
-                                    <span class="badge rounded-pill ms-auto cc-messages-pending-sidebar-badge" title="Messages pending" style="display:none">0</span>
-                                @endif
-                            </a>
-                        </li>
-                        <li>
                             <a href="{{ route('customer.care.report') }}">RETURNS REPORT</a>
                         </li>
                         <li>

@@ -281,6 +281,30 @@ class AuditMasterController extends Controller
     }
 
     /**
+     * Pull one channel's live pending-message count from its marketplace API
+     * (used by the "Messages Pending" column on the CC Message page).
+     */
+    public function pullCcPendingMessages(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|min:1',
+        ]);
+
+        $channel = ChannelMaster::query()->find((int) $validated['channel_id']);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Channel not found.'], 422);
+        }
+
+        $row = app(\App\Services\CustomerCare\MarketplacePendingMessagesService::class)->fetchAndStore($channel);
+
+        return response()->json([
+            'success' => true,
+            'row' => $row,
+            'pending_total' => \App\Models\CcMessagesPending::pendingTotal(),
+        ]);
+    }
+
+    /**
      * Display the "RETURNS REPORT" page — same Returns columns / data as
      * /customer-care/cc-messages-returns (R link, R Status, R History,
      * R TAT, R Next), without the Messages-side columns.

@@ -94,7 +94,6 @@ use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
 use App\Http\Controllers\ChannelTabulatorColumnController;
 use App\Http\Controllers\AuditMasterController;
-use App\Http\Controllers\CustomerCare\CcMessagesPendingController;
 use App\Http\Controllers\CustomerCare\CustomerFaqController;
 use App\Http\Controllers\CustomerCare\CustomerFollowupController;
 use App\Http\Controllers\CustomerCare\DARController;
@@ -1226,14 +1225,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // the Customer Care team as the landing for message + return follow-ups.
     Route::get('/customer-care/cc-messages-returns', [AuditMasterController::class, 'ccMessagesReturns'])
         ->name('customer.care.cc.messages.returns');
-    Route::get('/customer-care/messages-pending', [CcMessagesPendingController::class, 'index'])
-        ->name('customer.care.messages.pending');
-    Route::post('/customer-care/messages-pending/count', [CcMessagesPendingController::class, 'saveCount'])
-        ->name('customer.care.messages.pending.count.save');
-    Route::post('/customer-care/messages-pending/pull', [CcMessagesPendingController::class, 'pull'])
-        ->name('customer.care.messages.pending.pull');
-    Route::post('/customer-care/messages-pending/link', [CcMessagesPendingController::class, 'saveLink'])
-        ->name('customer.care.messages.pending.link.save');
+    // Live pending-message pull for the "Messages Pending" column on CC Message.
+    Route::post('/customer-care/cc-messages-returns/pending/pull', [AuditMasterController::class, 'pullCcPendingMessages'])
+        ->name('customer.care.cc.messages.returns.pending.pull');
     Route::post('/customer-care/cc-messages-returns/checklist', [AuditMasterController::class, 'storeCcChecklist'])
         ->name('customer.care.cc.messages.returns.checklist.store');
     Route::get('/customer-care/cc-messages-returns/checklist/history', [AuditMasterController::class, 'getCcChecklistHistory'])
