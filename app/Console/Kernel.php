@@ -1285,14 +1285,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Today block on /all-marketplace-master — every 15 min, 9 AM–9 PM Pacific (PST/PDT).
-        // Runs at :00/:15/:30/:45 from 9:00 through 21:00 inclusive (the :59 pads the seconds
-        // the scheduler tick lands on, so the 9:00 PM run is not skipped).
+        // Today block on /all-marketplace-master — every 15 min, 9 AM–8:45 PM Pacific (PST/PDT).
+        // Runs at :00/:15/:30/:45 from 9:00 through 20:45 inclusive (the :59 pads the seconds
+        // the scheduler tick lands on, so the 8:45 PM run is not skipped).
+        // The last run MUST stay before 9:00 PM Pacific = 12:00 AM Eastern. A run at/after Eastern
+        // midnight sees a brand-new "Today" with almost no sales (only Doba, NPFT 31.0%) and
+        // overwrites the day's saved Nprft/Groi/NROI/Ads/Orders/Views, which the 23:57 history
+        // snapshot then stores — that made yNprft% read 31.00% on 14 and 15 Nov instead of ~21%.
         // Lightweight persist so the column does not sit at $0 while calculate-data holds its lock.
         $schedule->command('channel:refresh-today-sales')
             ->everyFifteenMinutes()
             ->timezone('America/Los_Angeles')
-            ->between('9:00', '21:00:59')
+            ->between('9:00', '20:45:59')
             ->name('channel-refresh-today-sales')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
             ->runInBackground()
@@ -1300,7 +1304,7 @@ class Kernel extends ConsoleKernel
 
         // T Spend for T Ads% (Amazon): today's SP + SB spend so far, pulled 10 min before each
         // Today refresh (:50/:05/:20/:35) so the refresh always sees a fresh figure.
-        // Window 8:50 AM–8:50 PM Pacific feeds the 9:00 AM … 9:00 PM refreshes.
+        // Window 8:50 AM–8:59 PM Pacific feeds the 9:00 AM … 8:45 PM refreshes.
         $schedule->command('amazon:pull-today-ad-spend')
             ->cron('5,20,35,50 * * * *')
             ->timezone('America/Los_Angeles')
