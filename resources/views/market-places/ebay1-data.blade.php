@@ -1479,6 +1479,8 @@
                     const v = String(spec[name] == null ? '' : spec[name]).trim();
                     if (v !== '' && gKey(name) !== 'upc') specifics[name] = v;
                 });
+                // A UPC that was not pushed yet is sent too (the server compares it with eBay and sends only a changed code).
+                if (!E1_TEMU && row.upc_pending && String(row.upc_value || '').trim() !== '') specifics['UPC'] = String(row.upc_value).trim();
                 const item = { sku: row.sku, item_id: String(row.item_id).trim(), specifics: specifics };
                 if (row.title_pending && String(row.ebay_title || '').trim() !== '') item.title = String(row.ebay_title).trim();
                 if (row.price_pending && Number(row.ebay_price) > 0) item.price = Number(row.ebay_price);

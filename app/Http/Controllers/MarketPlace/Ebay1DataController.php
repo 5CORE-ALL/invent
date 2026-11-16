@@ -170,6 +170,7 @@ class Ebay1DataController extends Controller
             // Item specifics edited by hand and not pushed yet, and the stored value of every SKU before autofill:
             // the cells of both kinds are what Auto Push sends.
             $pendingByKey = $this->pendingSpecificsBySku();
+            $upcPushed = $this->upcPushedMap();
             $origByIndex = [];
 
             $data = [];
@@ -244,6 +245,11 @@ class Ebay1DataController extends Controller
                 // Specifications and Push use). It replaces "Does not apply", "Not Applicable" and a blank cell, and every
                 // SKU with a UPC gets the column. A SKU with no UPC anywhere leaves the cell as it was.
                 $upc = (string) ($cpUpc[$sku]['upc'] ?? '');
+                // Auto Push also sends the UPC: it is waiting when it is a real code that was not pushed to eBay yet.
+                $upcDigits = preg_replace('/\D+/', '', $upc) ?? '';
+                $upcPending = $this->hasUpcColumn()
+                    && preg_match('/^\d{8,14}$/', $upcDigits) === 1
+                    && ($upcPushed[$this->upcMarkerKey($sku)] ?? '') !== $upcDigits;
                 if ($upc !== '' && $this->hasUpcColumn()) {
                     $upcName = null;
                     foreach (array_keys($specifics) as $specName) {
@@ -301,6 +307,8 @@ class Ebay1DataController extends Controller
                     'category' => $category,
                     'specs_pulled' => $live !== null,
                     'specifics' => $specifics,
+                    'upc_pending' => $upcPending,
+                    'upc_value' => $upcPending ? $upcDigits : '',
                 ];
             }
 
@@ -348,7 +356,7 @@ class Ebay1DataController extends Controller
             }
 
             // push_cols: the item specifics Auto Push sends for the SKU. Those edited by hand and not pushed yet,
-            // plus those autofill changed (UPC is not an item specific, it is pushed from Technical Specifications).
+            // plus those autofill changed (UPC is not an item specific: Auto Push sends it separately, see upc_pending).
             $autofillKeys = array_merge(array_keys($skuColumns), array_keys($alwaysColumns), array_keys($missingColumns));
             foreach ($data as $i => $entry) {
                 $pendingKeys = $pendingByKey[$this->skuKey((string) $entry['sku'])] ?? [];
@@ -716,18 +724,28 @@ class Ebay1DataController extends Controller
             }
 
             $overrides = [];
+            $upc = '';
             foreach ((array) ($entry['specifics'] ?? []) as $name => $value) {
                 $name = trim((string) $name);
                 $value = is_scalar($value) ? trim((string) $value) : '';
-                // UPC is not an item specific. It is pushed from Technical Specifications.
-                if ($name === '' || $value === '' || strcasecmp($name, 'UPC') === 0) {
+                // UPC is not an item specific: it lives in the listing's ProductListingDetails and is sent
+                // with its own call (below). Only a real code is sent (8 to 14 digits), never "Does not apply".
+                if ($name !== '' && $this->aspectKey($name) === 'upc') {
+                    $digits = preg_replace('/\D+/', '', $value) ?? '';
+                    if (preg_match('/^\d{8,14}$/', $digits)) {
+                        $upc = $digits;
+                    }
+
+                    continue;
+                }
+                if ($name === '' || $value === '') {
                     continue;
                 }
                 $overrides[] = ['name' => $name, 'value' => $value];
             }
             $title = trim((string) ($entry['title'] ?? ''));
             $price = is_numeric($entry['price'] ?? null) ? round((float) $entry['price'], 2) : 0.0;
-            if ($overrides === [] && $title === '' && $price <= 0) {
+            if ($overrides === [] && $upc === '' && $title === '' && $price <= 0) {
                 $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'No values to send.'];
 
                 continue;
@@ -735,9 +753,10 @@ class Ebay1DataController extends Controller
 
             $ctx = null;
             $result = ['success' => true, 'message' => ''];
+            $upcResult = null;
             try {
                 $ctx = $service->tradingReviseContext();
-                if ($overrides !== []) {
+                if ($overrides !== [] || $upc !== '') {
                     $item = $service->getItem($itemId);
                     if (! is_array($item)) {
                         $why = trim((string) ($service->lastGetItemError ?? ''));
@@ -745,6 +764,8 @@ class Ebay1DataController extends Controller
 
                         continue;
                     }
+                }
+                if ($overrides !== []) {
                     $result = EbayTradingReviseItem::reviseTechnicalSpecifications(
                         $ctx['endpoint'],
                         $ctx['compatLevel'],
@@ -757,6 +778,26 @@ class Ebay1DataController extends Controller
                         $sku,
                         $overrides
                     );
+                }
+                // The UPC goes to ProductListingDetails; nothing is sent when eBay already has this code.
+                if ($upc !== '' && ($result['success'] ?? false)) {
+                    $upcResult = EbayTradingReviseItem::reviseUpc(
+                        $ctx['endpoint'],
+                        $ctx['compatLevel'],
+                        $ctx['devId'],
+                        $ctx['appId'],
+                        $ctx['certId'],
+                        $ctx['siteId'],
+                        $ctx['authToken'],
+                        $item,
+                        $sku,
+                        $upc
+                    );
+                    if (! ($upcResult['success'] ?? false)) {
+                        $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'UPC: '.(string) ($upcResult['message'] ?? 'eBay rejected the UPC.')];
+
+                        continue;
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('Ebay1Data: push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
@@ -773,6 +814,9 @@ class Ebay1DataController extends Controller
 
             // These cells are on eBay now, so they are no longer waiting for Auto Push.
             $this->clearPendingSpecifics($sku, array_column($overrides, 'name'));
+            if ($upc !== '' && $upcResult !== null) {
+                $this->markUpcPushed($sku, $upc);
+            }
 
             // The stored copy follows eBay once eBay accepted the values.
             if ($overrides !== [] && Schema::hasTable($this->t('item_specifics'))) {
@@ -857,8 +901,11 @@ class Ebay1DataController extends Controller
                 $priceMessage = 'Price set to '.number_format($price, 2).'.';
             }
 
-            $message = trim((string) ($result['message'] ?? '').($titleMessage !== '' ? ' '.$titleMessage : '').($priceMessage !== '' ? ' '.$priceMessage : ''));
-            $unchanged = $title === '' && $price <= 0 && stripos((string) ($result['message'] ?? ''), 'No values changed') === 0;
+            $upcMessage = $upcResult !== null ? (string) ($upcResult['message'] ?? '') : '';
+            $upcChanged = $upcResult !== null && stripos($upcMessage, 'already on the listing') === false;
+            $message = trim((string) ($result['message'] ?? '').($upcMessage !== '' ? ' '.$upcMessage : '').($titleMessage !== '' ? ' '.$titleMessage : '').($priceMessage !== '' ? ' '.$priceMessage : ''));
+            $specsUnchanged = $overrides === [] || stripos((string) ($result['message'] ?? ''), 'No values changed') === 0;
+            $unchanged = $title === '' && $price <= 0 && ! $upcChanged && $specsUnchanged;
             $results[] = ['sku' => $sku, 'status' => $unchanged ? 'unchanged' : 'pushed', 'message' => $message];
         }
 
@@ -1957,6 +2004,36 @@ class Ebay1DataController extends Controller
     protected function clearPendingPrice(string $sku): void
     {
         $this->clearPending($sku, '__ebay_price');
+    }
+
+    /** Settings key that remembers the UPC last accepted by eBay for a SKU (settings keys are limited to 100 characters). */
+    protected function upcMarkerKey(string $sku): string
+    {
+        return 'u.'.md5($this->skuKey($sku));
+    }
+
+    /** @return array<string, string> marker key => UPC last pushed */
+    protected function upcPushedMap(): array
+    {
+        if (! Schema::hasTable($this->t('settings'))) {
+            return [];
+        }
+
+        return DB::table($this->t('settings'))->where('key', 'like', 'u.%')->pluck('value', 'key')
+            ->map(static fn ($v) => (string) $v)->all();
+    }
+
+    protected function markUpcPushed(string $sku, string $upc): void
+    {
+        if (! Schema::hasTable($this->t('settings'))) {
+            return;
+        }
+        $key = $this->upcMarkerKey($sku);
+        if (DB::table($this->t('settings'))->where('key', $key)->exists()) {
+            DB::table($this->t('settings'))->where('key', $key)->update(['value' => $upc, 'updated_at' => now()]);
+        } else {
+            DB::table($this->t('settings'))->insert(['key' => $key, 'value' => $upc, 'created_at' => now(), 'updated_at' => now()]);
+        }
     }
 
     protected function skuKey(string $sku): string
