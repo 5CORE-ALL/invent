@@ -481,9 +481,15 @@ class TitleMasterDataService
 
         if ($qParent !== '') {
             if ($this->isMysql()) {
+                // sqlWhitespaceCollapsed() mixes in UNHEX('C2A0'), a BINARY string, so MySQL returns a
+                // binary result and LOWER()/LIKE turn case-sensitive. CONVERT it back to utf8mb4 so the
+                // search is case-insensitive, and also match the raw column so a plain substring always hits.
                 $col = $this->sqlWhitespaceCollapsed('COALESCE(pm.parent, \'\')');
                 $pattern = $this->likeContainsPattern($qParent);
-                $query->whereRaw("LOWER({$col}) LIKE LOWER(?)", [$pattern]);
+                $query->where(function ($q) use ($col, $pattern) {
+                    $q->whereRaw("LOWER(CONVERT({$col} USING utf8mb4)) LIKE LOWER(?)", [$pattern])
+                        ->orWhere('pm.parent', 'like', $pattern);
+                });
             } else {
                 $safe = addcslashes($qParent, '%_\\');
                 $query->where('pm.parent', 'like', '%'.$safe.'%');
@@ -496,9 +502,11 @@ class TitleMasterDataService
                 $pattern = $this->likeContainsPattern($qSku);
                 $compact = strtoupper(preg_replace('/\s+/u', '', $qSku) ?? '');
                 $query->where(function ($q) use ($colKey, $pattern, $compact) {
-                    $q->whereRaw("LOWER({$colKey}) LIKE LOWER(?)", [$pattern]);
+                    // CONVERT: see note in the parent search above (binary REPLACE result is case-sensitive).
+                    $q->whereRaw("LOWER(CONVERT({$colKey} USING utf8mb4)) LIKE LOWER(?)", [$pattern])
+                        ->orWhere('skus.sku', 'like', $pattern);
                     if ($compact !== '') {
-                        $q->orWhereRaw("REPLACE(UPPER({$colKey}), ' ', '') LIKE ?", ['%'.$compact.'%']);
+                        $q->orWhereRaw("REPLACE(UPPER(CONVERT({$colKey} USING utf8mb4)), ' ', '') LIKE ?", ['%'.$compact.'%']);
                     }
                 });
             } else {
