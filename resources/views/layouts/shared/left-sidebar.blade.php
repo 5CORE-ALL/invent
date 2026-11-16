@@ -3263,6 +3263,9 @@
                             <a href="{{ route('container.planning') }}">Container Planning</a>
                         </li>
                         <li>
+                            <a href="{{ route('container.quotations') }}">Quotations Container</a>
+                        </li>
+                        <li>
                             <a href="{{ route('on.sea.transit') }}">Purchase On Sea Transit</a>
                         </li>
                         <li>
