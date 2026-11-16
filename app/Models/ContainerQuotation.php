@@ -14,10 +14,9 @@ class ContainerQuotation extends Model
         'container_size',
         'pickup_address',
         'loading_port',
+        'via_port',
         'discharge_port',
         'gross_weight',
-        'freight_all_inclusive',
-        'forwarder',
         'updated_by',
     ];
 }

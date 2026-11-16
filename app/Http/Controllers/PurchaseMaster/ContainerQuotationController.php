@@ -5,35 +5,36 @@ namespace App\Http\Controllers\PurchaseMaster;
 use App\Http\Controllers\Controller;
 use App\Models\ContainerQuotation;
 use App\Models\ContainerQuoteReceived;
+use App\Models\ContainerQuoteRequest;
 use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ContainerQuotationController extends Controller
 {
     private const FIELDS = [
-        'supplier', 'container_size', 'pickup_address', 'loading_port', 'discharge_port',
-        'gross_weight', 'freight_all_inclusive', 'forwarder',
+        'supplier', 'container_size', 'pickup_address', 'loading_port', 'via_port', 'discharge_port',
+        'gross_weight',
     ];
 
     public function index()
     {
-        $forwarders = ContainerQuotation::query()
+        $forwarders = ContainerQuoteReceived::query()
             ->whereNotNull('forwarder')->where('forwarder', '!=', '')
             ->pluck('forwarder')
-            ->merge(ContainerQuoteReceived::query()
-                ->whereNotNull('forwarder')->where('forwarder', '!=', '')
-                ->pluck('forwarder'))
             ->map(fn ($f) => trim((string) $f))->filter()->unique()->sort()->values();
 
         $suppliers = Supplier::where('type', 'Supplier')
             ->whereNotNull('name')->where('name', '!=', '')
             ->distinct()->orderBy('name')->pluck('name');
 
-        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers'));
+        $canEdit = $this->canFill();
+
+        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit'));
     }
 
     /**
@@ -46,6 +47,14 @@ class ContainerQuotationController extends Controller
         $quotes = ContainerQuotation::whereIn('container_number', $containers)->get()->keyBy('container_number');
         $received = ContainerQuoteReceived::whereIn('container_number', $containers)
             ->orderBy('id')->get()->groupBy('container_number');
+        $canFill = $this->canFill();
+        $requests = [];
+        if ($canFill && Schema::hasTable('container_quote_requests')) {
+            $requestController = app(ContainerQuoteRequestController::class);
+            foreach (ContainerQuoteRequest::whereIn('container_number', $containers)->pluck('container_number')->unique() as $cn) {
+                $requests[$cn] = $requestController->requestRows($cn, true);
+            }
+        }
 
         $rows = [];
         foreach ($containers as $name) {
@@ -57,13 +66,13 @@ class ContainerQuotationController extends Controller
                 'container_size' => $q->container_size ?? null,
                 'pickup_address' => $q->pickup_address ?? null,
                 'loading_port' => $q->loading_port ?? null,
+                'via_port' => $q->via_port ?? null,
                 'discharge_port' => $q->discharge_port ?? null,
                 'gross_weight' => $q->gross_weight ?? null,
-                'freight_all_inclusive' => $q && $q->freight_all_inclusive !== null ? (float) $q->freight_all_inclusive : null,
-                'forwarder' => $q->forwarder ?? null,
                 'updated_by' => $q->updated_by ?? null,
                 'updated_at' => $q && $q->updated_at ? $q->updated_at->format('d M Y, H:i') : null,
                 'quotes' => $this->quoteRows($received->get($name)),
+                'requests' => $requests[$name] ?? [],
             ];
         }
 
@@ -72,16 +81,19 @@ class ContainerQuotationController extends Controller
 
     public function save(Request $request): JsonResponse
     {
+        if (! $this->canFill()) {
+            return $this->forbidden();
+        }
+
         $data = $request->validate([
             'container_number' => 'required|string|max:255',
             'supplier' => 'nullable|string|max:255',
             'container_size' => 'nullable|string|max:50',
             'pickup_address' => 'nullable|string|max:2000',
             'loading_port' => 'nullable|string|max:255',
+            'via_port' => 'nullable|string|max:255',
             'discharge_port' => 'nullable|string|max:255',
             'gross_weight' => 'nullable|string|max:100',
-            'freight_all_inclusive' => 'nullable|numeric|min:0',
-            'forwarder' => 'nullable|string|max:255',
         ]);
 
         $container = trim($data['container_number']);
@@ -107,10 +119,9 @@ class ContainerQuotationController extends Controller
                 'container_size' => $quote->container_size,
                 'pickup_address' => $quote->pickup_address,
                 'loading_port' => $quote->loading_port,
+                'via_port' => $quote->via_port,
                 'discharge_port' => $quote->discharge_port,
                 'gross_weight' => $quote->gross_weight,
-                'freight_all_inclusive' => $quote->freight_all_inclusive !== null ? (float) $quote->freight_all_inclusive : null,
-                'forwarder' => $quote->forwarder,
                 'updated_by' => $quote->updated_by,
                 'updated_at' => $quote->updated_at ? $quote->updated_at->format('d M Y, H:i') : null,
             ],
@@ -122,10 +133,17 @@ class ContainerQuotationController extends Controller
      */
     public function saveQuotes(Request $request): JsonResponse
     {
+        if (! $this->canFill()) {
+            return $this->forbidden();
+        }
+
         $data = $request->validate([
             'container_number' => 'required|string|max:255',
             'quotes' => 'nullable|array|max:50',
+            'quotes.*.request_id' => 'nullable|integer',
             'quotes.*.forwarder' => 'nullable|string|max:255',
+            'quotes.*.shipping_line' => 'nullable|string|max:255',
+            'quotes.*.est_dt_sail' => 'nullable|date',
             'quotes.*.pickup_charges' => 'nullable|numeric|min:0',
             'quotes.*.freight' => 'nullable|numeric|min:0',
         ]);
@@ -136,12 +154,17 @@ class ContainerQuotationController extends Controller
         }
 
         $user = trim((string) (Auth::user()->name ?? '')) ?: 'System';
+        $validRequestIds = ContainerQuoteRequest::where('container_number', $container)->pluck('id')->all();
         $rows = [];
         foreach (($data['quotes'] ?? []) as $i => $q) {
             $fwd = trim((string) ($q['forwarder'] ?? ''));
             $pickup = ($q['pickup_charges'] ?? '') === '' ? null : (float) $q['pickup_charges'];
             $freight = ($q['freight'] ?? '') === '' ? null : (float) $q['freight'];
-            if ($fwd === '' && $pickup === null && $freight === null) {
+            $reqId = isset($q['request_id']) && in_array((int) $q['request_id'], $validRequestIds, true)
+                ? (int) $q['request_id'] : null;
+            $line = trim((string) ($q['shipping_line'] ?? ''));
+            $sail = trim((string) ($q['est_dt_sail'] ?? ''));
+            if ($fwd === '' && $line === '' && $sail === '' && $pickup === null && $freight === null) {
                 continue; // completely empty row
             }
             if ($fwd === '') {
@@ -152,7 +175,11 @@ class ContainerQuotationController extends Controller
             }
             $rows[] = [
                 'container_number' => $container,
+                'request_id' => $reqId,
+                'source' => $reqId ? 'forwarder' : 'internal',
                 'forwarder' => $fwd,
+                'shipping_line' => $line === '' ? null : $line,
+                'est_dt_sail' => $sail === '' ? null : date('Y-m-d', strtotime($sail)),
                 'pickup_charges' => $pickup,
                 'freight' => $freight,
                 'total' => round(($pickup ?? 0) + ($freight ?? 0), 2),
@@ -178,6 +205,22 @@ class ContainerQuotationController extends Controller
         ]);
     }
 
+    /** The quotation forms may only be filled in by 5Core team members (@5core.com). */
+    private function canFill(): bool
+    {
+        $user = Auth::user();
+
+        return $user && method_exists($user, 'is5CoreMember') && $user->is5CoreMember();
+    }
+
+    private function forbidden(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Only 5Core users can fill in this form.',
+        ], 403);
+    }
+
     /**
      * @param  \Illuminate\Support\Collection|null  $rows
      * @return array<int, array<string, mixed>>
@@ -189,7 +232,11 @@ class ContainerQuotationController extends Controller
         }
 
         return $rows->map(fn ($r) => [
+            'request_id' => $r->request_id,
+            'source' => $r->source,
             'forwarder' => $r->forwarder,
+            'shipping_line' => $r->shipping_line,
+            'est_dt_sail' => $r->est_dt_sail ? substr((string) $r->est_dt_sail, 0, 10) : null,
             'pickup_charges' => $r->pickup_charges !== null ? (float) $r->pickup_charges : null,
             'freight' => $r->freight !== null ? (float) $r->freight : null,
             'total' => $r->total !== null ? (float) $r->total : null,
@@ -201,7 +248,7 @@ class ContainerQuotationController extends Controller
      *
      * @return array<int, string>
      */
-    private function readyToShipContainers(): array
+    public function readyToShipContainers(): array
     {
         $names = TransitContainerDetail::where(function ($q) {
             $q->whereNull('status')->orWhereRaw("TRIM(status) = ''");
