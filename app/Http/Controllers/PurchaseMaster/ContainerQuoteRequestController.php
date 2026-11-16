@@ -7,6 +7,7 @@ use App\Models\ContainerQuotation;
 use App\Models\ContainerQuoteReceived;
 use App\Models\ContainerQuoteRequest;
 use App\Models\Supplier;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -617,8 +618,31 @@ class ContainerQuoteRequestController extends Controller
         $html = nl2br(e($body));
         $html = str_replace(e($url), '<a href="'.e($url).'">'.e($url).'</a>', $html);
 
-        Mail::mailer($mailer)->html($html, function ($m) use ($toEmails, $toName, $subject) {
+        // The quotation form (container details filled in from our Quotations page) goes along as a PDF.
+        $pdf = null;
+        $filename = 'Quotation-Form-'.(preg_replace('/[^A-Za-z0-9_-]+/', '-', $container) ?: 'container').'.pdf';
+        try {
+            $logoPath = public_path('images/5core_logo_tight.png');
+            $logo = is_file($logoPath) ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath)) : '';
+            $pdf = Pdf::loadView('purchase-master.container_quotations.form-pdf', [
+                'container' => $container,
+                'forwarder' => $toName,
+                'd' => $d,
+                'url' => $url,
+                'logo' => $logo,
+                'date' => now()->format('d M Y'),
+            ])->setPaper('a4')->output();
+            $html .= '<br><br><small>Attached: quotation form (PDF) with the container details filled in.</small>';
+        } catch (\Throwable $e) {
+            Log::warning('Quote form PDF could not be generated: '.$e->getMessage());
+            $pdf = null;
+        }
+
+        Mail::mailer($mailer)->html($html, function ($m) use ($toEmails, $toName, $subject, $pdf, $filename) {
             $m->from(self::SENDER_EMAIL, self::SENDER_NAME)->subject($subject);
+            if ($pdf !== null) {
+                $m->attachData($pdf, $filename, ['mime' => 'application/pdf']);
+            }
             foreach ($toEmails as $i => $addr) {
                 $m->to($addr, $i === 0 ? $toName : null);
             }
