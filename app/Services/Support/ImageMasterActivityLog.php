@@ -48,9 +48,11 @@ class ImageMasterActivityLog
      * Most recent events per SKU (newest first).
      *
      * @param  list<string>  $skus
+     * @param  list<string>  $only    keep only these actions (empty = all)
+     * @param  list<string>  $except  drop these actions
      * @return array<string, list<array{id: int, action: string, summary: string, user_name: string, user_email: string, at: string, details: array<string, mixed>|null}>>
      */
-    public static function recentForSkus(array $skus, int $perSku = 15): array
+    public static function recentForSkus(array $skus, int $perSku = 15, array $only = [], array $except = []): array
     {
         if (! self::tableExists()) {
             return [];
@@ -60,8 +62,14 @@ class ImageMasterActivityLog
 
         try {
             foreach (array_chunk($skus, 500) as $chunk) {
-                $rows = DB::table(self::TABLE)
-                    ->whereIn('sku', $chunk)
+                $query = DB::table(self::TABLE)->whereIn('sku', $chunk);
+                if ($only !== []) {
+                    $query->whereIn('action', $only);
+                }
+                if ($except !== []) {
+                    $query->whereNotIn('action', $except);
+                }
+                $rows = $query
                     ->orderByDesc('id')
                     ->get(['id', 'sku', 'action', 'user_name', 'user_email', 'summary', 'details', 'created_at']);
 

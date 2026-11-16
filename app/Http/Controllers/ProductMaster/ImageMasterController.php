@@ -11,6 +11,7 @@ use App\Models\ProductImage;
 use App\Models\ProductRawImageAiPrompt;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Models\User;
 use App\Models\ShopifyVariant;
 use App\Services\AmazonSpApiService;
 use App\Services\Ebay2ApiService;
@@ -86,7 +87,8 @@ class ImageMasterController extends Controller
             $skuList = array_map(fn ($row) => $this->normalizeSku($row['SKU'] ?? null), $products);
             $mainBySku = $this->loadImageMainByMarketplaceForSkus($skuList);
             $historyBySku = array_change_key_case(\App\Services\Support\ImageMasterPushHistory::summaryForSkus($skuList), CASE_UPPER);
-            $activityBySku = ImageMasterActivityLog::recentForSkus($skuList);
+            $activityBySku = ImageMasterActivityLog::recentForSkus($skuList, 15, [], ['audit']);
+            $auditsBySku = $this->auditsWithTaskStatus(ImageMasterActivityLog::recentForSkus($skuList, 15, ['audit']));
 
             foreach ($products as &$row) {
                 $sku = $this->normalizeSku($row['SKU'] ?? null);
@@ -98,6 +100,7 @@ class ImageMasterController extends Controller
                 $row['image_main_by_marketplace'] = $mainBySku[$sku] ?? [];
                 $row['push_history'] = $historyBySku[strtoupper($sku)] ?? null;
                 $row['activity'] = $activityBySku[strtoupper($sku)] ?? [];
+                $row['audits'] = $auditsBySku[strtoupper($sku)] ?? [];
                 $row['preview_thumb'] = $this->firstPreviewUrl($row);
             }
 
@@ -611,6 +614,157 @@ class ImageMasterController extends Controller
     /**
      * Saved prompt text per image slot (1–14), shared by all users.
      */
+    private const AUDIT_ASSIGNEE_EMAIL = 'images3@5core.com';
+
+    /**
+     * Attach the live status of the linked Task Manager task to each audit entry.
+     *
+     * @param  array<string, list<array<string, mixed>>>  $bySku
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function auditsWithTaskStatus(array $bySku): array
+    {
+        $ids = [];
+        foreach ($bySku as $list) {
+            foreach ($list as $a) {
+                foreach (($a['details']['task_ids'] ?? []) as $id) {
+                    $ids[(int) $id] = true;
+                }
+            }
+        }
+        $tasks = [];
+        if ($ids !== [] && Schema::hasTable('tasks')) {
+            try {
+                foreach (DB::table('tasks')->whereIn('id', array_keys($ids))->get(['id', 'status', 'deleted_at']) as $t) {
+                    $tasks[(int) $t->id] = $t->deleted_at ? 'Deleted' : (string) $t->status;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ImageMaster audit task status failed', ['error' => $e->getMessage()]);
+            }
+        }
+        foreach ($bySku as &$list) {
+            foreach ($list as &$a) {
+                $statuses = [];
+                foreach (($a['details']['task_ids'] ?? []) as $id) {
+                    $statuses[] = $tasks[(int) $id] ?? '';
+                }
+                $a['task_status'] = trim((string) ($statuses[0] ?? ''));
+            }
+            unset($a);
+        }
+        unset($list);
+
+        return $bySku;
+    }
+
+    /**
+     * POST /image-master/audit — create a Task Manager task for the SKU's image text audit
+     * (assignor = the signed-in user, assignee = images3@5core.com) and log it as audit history.
+     */
+    public function auditCreate(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'group' => 'nullable|string|max:255',
+            'title' => 'required|string|max:1000',
+            'priority' => 'nullable|in:low,normal,high',
+            'etc_minutes' => 'nullable|integer|min:1|max:100000',
+            'screenshots' => 'nullable|array|max:12',
+            'screenshots.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:10240',
+        ]);
+
+        $user = $request->user();
+        $assignee = User::query()->whereRaw('LOWER(email) = ?', [self::AUDIT_ASSIGNEE_EMAIL])->first();
+        if (! $assignee) {
+            return response()->json(['success' => false, 'message' => 'Assignee '.self::AUDIT_ASSIGNEE_EMAIL.' was not found in Users.'], 422);
+        }
+
+        $taskRequest = Request::create('/tasks', 'POST', [
+            'group' => (string) ($validated['group'] ?? ''),
+            'title' => $validated['title'],
+            'priority' => $validated['priority'] ?? 'normal',
+            'assignor_id' => $user->id,
+            'assignee_ids' => [$assignee->id],
+            'etc_minutes' => $validated['etc_minutes'] ?? 10,
+            'tid' => now()->format('Y-m-d\TH:i'),
+        ], [], $request->allFiles());
+        $taskRequest->headers->set('Accept', 'application/json');
+        $taskRequest->setUserResolver(static fn () => $user);
+
+        try {
+            $response = app(\App\Http\Controllers\TaskController::class)->store($taskRequest);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'message' => collect($e->errors())->flatten()->first() ?: 'Task validation failed.'], 422);
+        } catch (\Throwable $e) {
+            Log::error('ImageMaster audit task create failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not create the task: '.$e->getMessage()], 500);
+        }
+
+        $payload = method_exists($response, 'getData') ? (array) $response->getData(true) : [];
+        if (empty($payload['success'])) {
+            return response()->json(['success' => false, 'message' => (string) ($payload['message'] ?? 'Could not create the task.')], 500);
+        }
+
+        $taskIds = array_values(array_map('intval', (array) ($payload['task_ids'] ?? [])));
+        ImageMasterActivityLog::record(
+            (string) $validated['sku'],
+            'audit',
+            'Audit task: '.mb_substr($validated['title'], 0, 200),
+            [
+                'task_ids' => $taskIds,
+                'title' => $validated['title'],
+                'group' => (string) ($validated['group'] ?? ''),
+                'assignee' => $assignee->email,
+                'assignee_name' => $assignee->name,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Audit task created'.($taskIds ? ' (#'.implode(', #', $taskIds).')' : '').' and assigned to '.$assignee->email.'.',
+            'task_ids' => $taskIds,
+        ]);
+    }
+
+    private function slotNameKind(int $slot): string
+    {
+        return 'im_name_'.str_pad((string) $slot, 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * POST /image-master/slot-names — rename an image column (Hero 1, Hero 2, 3 … 14) for everyone.
+     * An empty name resets the column to its default title.
+     */
+    public function saveSlotName(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'slot' => 'required|integer|min:1|max:'.self::SLOT_PROMPT_COUNT,
+            'name' => 'nullable|string|max:24',
+        ]);
+
+        if (! Schema::hasTable('product_raw_image_ai_prompts')) {
+            return response()->json(['success' => false, 'message' => 'Storage table is missing (run migrations).'], 500);
+        }
+
+        $slot = (int) $validated['slot'];
+        $default = $slot === 1 ? 'Hero 1' : ($slot === 2 ? 'Hero 2' : (string) $slot);
+        $name = trim((string) ($validated['name'] ?? ''));
+        $kind = $this->slotNameKind($slot);
+
+        try {
+            if ($name === '' || $name === $default) {
+                ProductRawImageAiPrompt::query()->where('kind', $kind)->delete();
+            } else {
+                ProductRawImageAiPrompt::query()->updateOrCreate(['kind' => $kind], ['prompt' => $name]);
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
     /**
      * GET /image-master/sku-text?sku=
      * Read-only specifications (Technical Specifications master) and descriptions (Description master)
@@ -689,7 +843,22 @@ class ImageMasterController extends Controller
             Log::warning('ImageMaster slotPrompts failed', ['error' => $e->getMessage()]);
         }
 
-        return response()->json(['success' => true, 'prompts' => (object) $out]);
+        $names = [];
+        try {
+            if (Schema::hasTable('product_raw_image_ai_prompts')) {
+                $kinds = [];
+                for ($i = 1; $i <= self::SLOT_PROMPT_COUNT; $i++) {
+                    $kinds[$this->slotNameKind($i)] = $i;
+                }
+                foreach (ProductRawImageAiPrompt::query()->whereIn('kind', array_keys($kinds))->get() as $row) {
+                    $names[$kinds[$row->kind]] = (string) $row->prompt;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster slot names failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['success' => true, 'prompts' => (object) $out, 'names' => (object) $names]);
     }
 
     public function saveSlotPrompt(Request $request): \Illuminate\Http\JsonResponse

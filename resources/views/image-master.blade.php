@@ -56,6 +56,10 @@
         #imGrid .im-card .im-card-img-wrap img { object-fit:contain; }
         #imGrid .im-card.im-card-hero .im-card-img-wrap { height:calc(var(--im-h) * 2); }
         #imGrid .im-card-name, #imGrid .im-card-filename { max-width:100%; }
+        /* Hover zoom: 2x (Hero cards 1.25x, they are already large). Origin is set by JS so edge cards grow inward. */
+        #imGrid .im-card[data-idx] { transition:transform .15s ease, box-shadow .15s; }
+        #imGrid .im-card[data-idx]:hover:not(.im-card-dragging) { transform:scale(2); z-index:30; box-shadow:0 10px 30px rgba(15,23,42,.35); }
+        #imGrid .im-card.im-card-hero[data-idx]:hover:not(.im-card-dragging) { transform:scale(1.25); }
         /* Download / Edit: shown only on hover, over the bottom of the image */
         #imGrid .im-card-arrows { position:absolute; left:0; right:0; bottom:6px; margin:0; justify-content:center; gap:6px; z-index:4; opacity:0; pointer-events:none; transition:opacity .12s; }
         #imGrid .im-card:hover .im-card-arrows { opacity:1; pointer-events:auto; }
@@ -116,6 +120,11 @@
         .im-hist-counts .bad { color:#dc2626; font-weight:700; }
         #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
         .im-hist-act { font-weight:700; color:#2563eb; }
+        .im-audit-st { display:inline-block; padding:0 6px; border-radius:8px; font-size:9px; font-weight:700; background:#e2e8f0; color:#334155; }
+        .im-audit-st.done { background:#dcfce7; color:#166534; }
+        .im-audit-st.work { background:#dbeafe; color:#1d4ed8; }
+        .im-audit-st.todo { background:#fef3c7; color:#92400e; }
+        .im-audit-st.bad { background:#fee2e2; color:#991b1b; }
         #imHistoryPop .hp-title { font-weight:700; font-size:12px; margin-bottom:4px; }
         #imHistoryPop .hp-meta { color:#475569; margin-bottom:6px; }
         #imHistoryPop .hp-section { font-weight:700; margin:6px 0 3px; text-transform:uppercase; font-size:9px; letter-spacing:.3px; color:#64748b; }
@@ -201,6 +210,7 @@
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="badge bg-success" id="missingImagesBadge" title="SKUs with fewer than 14 images (red in the Images column)">Missing images: 0</span>
                         <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                     </div>
                     <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
@@ -233,6 +243,7 @@
                                         </div>
                                     </th>
                                     <th data-sort="history" title="Hover a row's History to see the last image change or push">History</th>
+                                    <th data-sort="audit" title="Audit tasks raised for this SKU (hover for details)">Audit History</th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -263,15 +274,15 @@
                             <i class="fas fa-upload"></i>
                         </label>
                         <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
-                        <span id="fileChosenLabel" style="opacity:.85;">No file chosen</span>
+                        <span id="fileChosenLabel" style="opacity:.85;"></span>
                         <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
                             <i class="fas fa-plus me-1"></i>Add to list
                         </button>
                         <div class="spinner-border spinner-border-sm text-light" id="uploadSpinner" role="status" style="display:none;"></div>
                         <span class="fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
-                        <span style="opacity:.7;">Max 20 images</span>
                     </div>
                     <div class="d-flex align-items-center gap-1 me-2">
+                        <button type="button" class="btn btn-warning btn-sm fw-semibold" id="auditBtn" title="Raise an audit task for this SKU in Task Manager"><i class="fas fa-clipboard-check me-1"></i>Audit</button>
                         <button type="button" class="btn btn-success btn-sm" id="savePmBtn" title="Save images" aria-label="Save images"><i class="fas fa-save"></i></button>
                         <button type="button" class="btn btn-light btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file" aria-label="Download all (ZIP)">
                             <i class="fas fa-download"></i>
@@ -311,6 +322,58 @@
         </div>
     </div>
 
+    </div>
+
+    <div class="modal fade" id="auditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-clipboard-check me-2"></i>Audit</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="auditAlert" class="small mb-2"></div>
+                    <div class="mb-2">
+                        <label for="auditGroup" class="form-label fw-bold small mb-1">Group</label>
+                        <input type="text" class="form-control form-control-sm" id="auditGroup" placeholder="Group" autocomplete="off">
+                    </div>
+                    <div class="mb-2">
+                        <label for="auditTitle" class="form-label fw-bold small mb-1">Task <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="auditTitle" placeholder="Enter Task" autocomplete="off">
+                    </div>
+                    <div class="mb-2">
+                        <label for="auditScreens" class="form-label fw-bold small mb-1"><i class="fas fa-camera me-1"></i>Screenshots</label>
+                        <input type="file" class="form-control form-control-sm" id="auditScreens" accept="image/*" multiple>
+                        <div class="form-text" style="font-size:10px;">Optional. Max 12.</div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold small mb-1">Assignee</label>
+                        <input type="text" class="form-control form-control-sm" id="auditAssignee" value="images3@5core.com" readonly style="background:#e9ecef;">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <label for="auditEtc" class="form-label fw-bold small mb-1">ETC (Min)</label>
+                            <input type="number" class="form-control form-control-sm" id="auditEtc" value="10" min="1">
+                        </div>
+                        <div class="col-4">
+                            <label for="auditPriority" class="form-label fw-bold small mb-1">Priority</label>
+                            <select class="form-select form-select-sm" id="auditPriority">
+                                <option value="normal">Normal</option>
+                                <option value="high">Urgent</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-bold small mb-1">Assignor</label>
+                            <input type="text" class="form-control form-control-sm" value="{{ auth()->user()->name ?? '' }}" readonly style="background:#e9ecef;" title="{{ auth()->user()->email ?? '' }}">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success btn-sm" id="auditSaveBtn"><i class="fas fa-save me-1"></i>Save</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="modal fade" id="skuTextModal" tabindex="-1" aria-hidden="true">
@@ -935,12 +998,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pop || !tbody) return;
         const hide = () => { pop.style.display = 'none'; };
         tbody.addEventListener('mouseover', (e) => {
-            const el = e.target.closest('[data-history-sku]');
+            const el = e.target.closest('[data-history-sku],[data-audit-sku]');
             if (!el) return;
-            const sku = el.dataset.historySku;
+            const isAudit = el.dataset.auditSku !== undefined;
+            const sku = isAudit ? el.dataset.auditSku : el.dataset.historySku;
             const hr = bySku.get(sku);
-            if (!hr || !historyLatest(hr)) return;
-            pop.innerHTML = historyPopHtml(sku, hr);
+            if (!hr) return;
+            if (isAudit) {
+                if (!Array.isArray(hr.audits) || !hr.audits.length) return;
+                pop.innerHTML = auditPopHtml(sku, hr);
+            } else {
+                if (!historyLatest(hr)) return;
+                pop.innerHTML = historyPopHtml(sku, hr);
+            }
             pop.style.display = 'block';
             const r = el.getBoundingClientRect();
             const pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -952,11 +1022,42 @@ document.addEventListener('DOMContentLoaded', () => {
             pop.style.top = top + 'px';
         });
         tbody.addEventListener('mouseout', (e) => {
-            const el = e.target.closest('[data-history-sku]');
+            const el = e.target.closest('[data-history-sku],[data-audit-sku]');
             if (el && !el.contains(e.relatedTarget)) hide();
         });
         document.querySelector('.table-responsive')?.addEventListener('scroll', hide, { passive: true });
     })();
+
+    // ── Audit History column: Task Manager tasks raised from the Audit button ──
+    const auditStClass = (st) => {
+        const x = String(st || '').toLowerCase();
+        if (['done', 'approved', 'archived'].includes(x)) return 'done';
+        if (['working', 'monitor', 'need approval'].includes(x)) return 'work';
+        if (['todo', 'hold', 'dependent'].includes(x)) return 'todo';
+        if (['rework', 'need help', 'deleted'].includes(x)) return 'bad';
+        return '';
+    };
+    function auditCellHtml(sku, r) {
+        const list = Array.isArray(r.audits) ? r.audits : [];
+        if (!list.length) return '<span class="text-muted">—</span>';
+        const a = list[0];
+        return `<span class="im-hist" data-audit-sku="${esc(sku)}">
+            <span class="im-hist-date"><i class="far fa-clipboard me-1"></i>${esc(fmtHistoryShort(a.at))}</span>
+            <span class="im-hist-counts">${a.task_status ? `<span class="im-audit-st ${auditStClass(a.task_status)}">${esc(a.task_status)}</span>` : '<span class="im-hist-act">Audit</span>'}${list.length > 1 ? ` <span class="text-muted">· ${list.length}</span>` : ''}</span>
+        </span>`;
+    }
+    function auditPopHtml(sku, r) {
+        const list = Array.isArray(r.audits) ? r.audits : [];
+        return `<div class="hp-title">${esc(sku)} — audit history</div>` + list.map(a => {
+            const d = a.details || {};
+            const ids = Array.isArray(d.task_ids) && d.task_ids.length ? d.task_ids.map(i => '#' + i).join(', ') : '';
+            const who = a.user_name || a.user_email || 'Unknown';
+            return `<div class="hp-row"><span class="mk ok">●</span><span class="msg" style="color:#0f172a;">
+                <b>${esc(d.title || a.summary || 'Audit')}</b>${a.task_status ? ` <span class="im-audit-st ${auditStClass(a.task_status)}">${esc(a.task_status)}</span>` : ''}<br>
+                ${d.group ? `<span style="color:#64748b;">${esc(d.group)}</span><br>` : ''}
+                <span style="color:#64748b;">${esc(fmtHistoryDate(a.at))} · by ${esc(who)}${d.assignee ? ' → ' + esc(d.assignee) : ''}${ids ? ' · Task ' + esc(ids) : ''}</span></span></div>`;
+        }).join('');
+    }
 
     let imSort = { key: null, dir: 'asc' };
 
@@ -980,6 +1081,10 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'history': {
                 const l = historyLatest(r);
                 return l ? l.ts : null;
+            }
+            case 'audit': {
+                const a = Array.isArray(r.audits) && r.audits[0] ? histTs(r.audits[0].at) : null;
+                return a;
             }
             case 'mp': {
                 const im = r.image_master || {};
@@ -1052,6 +1157,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 imSlotNames[i] = inp.value.trim() || imSlotDefault(i);
                 inp.value = imSlotNames[i];
                 try { localStorage.setItem(IM_SLOT_KEY, JSON.stringify(imSlotNames)); } catch (_) {}
+                // Save on the server so every user sees the same column titles.
+                fetch('/image-master/slot-names', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ slot: i + 1, name: imSlotNames[i] }),
+                }).then(r => r.json()).then(j => { if (!j.success) toast(j.message || 'Could not save the column title', false); })
+                  .catch(() => toast('Could not save the column title', false));
             });
             inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
             th.appendChild(inp);
@@ -1077,8 +1189,16 @@ document.addEventListener('DOMContentLoaded', () => {
         rows = sortRows(rows);
         updateSortIndicators();
         visibleFilteredRows = rows;
+        // "Missing images" badge: rows whose Images count is red (below 14). Red when any, green when none.
+        const missingBadge = document.getElementById('missingImagesBadge');
+        if (missingBadge) {
+            const missing = rows.filter(r => pmImageUrls(r).length < 14).length;
+            missingBadge.textContent = 'Missing images: ' + missing;
+            missingBadge.classList.toggle('bg-danger', missing > 0);
+            missingBadge.classList.toggle('bg-success', missing === 0);
+        }
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="22" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="23" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -1112,6 +1232,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
                 <td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary im-mp-open" data-mp-open="${esc(sku)}" title="Marketplaces for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
                 <td>${historyCellHtml(sku, r)}</td>
+                <td>${auditCellHtml(sku, r)}</td>
             </tr>`;
         }).join('');
         bindRowCheckboxEvents(tbody);
@@ -1466,7 +1587,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let slotPrompts = {};
     let slotPromptCurrent = 0;
     fetch('/image-master/slot-prompts', { headers: { 'Accept': 'application/json' } })
-        .then(r => r.json()).then(j => { if (j && j.prompts) slotPrompts = j.prompts; })
+        .then(r => r.json()).then(j => {
+            if (j && j.prompts) slotPrompts = j.prompts;
+            // Column titles saved on the server win over this browser's copy.
+            if (j && j.names) {
+                for (let i = 0; i < IM_SLOT_COUNT; i++) imSlotNames[i] = (typeof j.names[i + 1] === 'string' && j.names[i + 1].trim()) ? j.names[i + 1] : imSlotDefault(i);
+                try { localStorage.setItem(IM_SLOT_KEY, JSON.stringify(imSlotNames)); } catch (_) {}
+                document.querySelectorAll('.im-slot-th .im-slot-name').forEach((inp, i) => { if (imSlotNames[i] !== undefined) inp.value = imSlotNames[i]; });
+                renderPromptsMenu();
+                if (tableData && tableData.length) renderTable(tableData);
+            }
+        })
         .catch(() => {});
 
     function renderPromptsMenu() {
@@ -1630,6 +1761,60 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!skuTextPlain) return;
         try { await navigator.clipboard.writeText(skuTextPlain); toast('Copied'); } catch (_) { toast('Copy failed', false); }
     });
+    // ── Audit: raise a Task Manager task (assignor = you, assignee = images3@5core.com) ──
+    document.getElementById('auditBtn')?.addEventListener('click', () => {
+        const sku = document.getElementById('modalSku').value;
+        if (!sku) return;
+        const row = bySku.get(String(sku)) || {};
+        document.getElementById('auditGroup').value = [row.Parent || '', sku, 'Image Text'].filter(Boolean).join(' / ');
+        document.getElementById('auditTitle').value = '';
+        document.getElementById('auditScreens').value = '';
+        document.getElementById('auditEtc').value = 10;
+        document.getElementById('auditPriority').value = 'normal';
+        document.getElementById('auditAlert').innerHTML = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('auditModal')).show();
+        setTimeout(() => document.getElementById('auditTitle').focus(), 300);
+    });
+    document.getElementById('auditSaveBtn')?.addEventListener('click', async () => {
+        const alertEl = document.getElementById('auditAlert');
+        const title = document.getElementById('auditTitle').value.trim();
+        if (!title) { alertEl.innerHTML = '<span class="text-danger">Please enter a task.</span>'; return; }
+        const fd = new FormData();
+        fd.append('sku', document.getElementById('modalSku').value);
+        fd.append('group', document.getElementById('auditGroup').value.trim());
+        fd.append('title', title);
+        fd.append('priority', document.getElementById('auditPriority').value);
+        fd.append('etc_minutes', document.getElementById('auditEtc').value || 10);
+        Array.from(document.getElementById('auditScreens').files || []).forEach(f => fd.append('screenshots[]', f));
+        const btn = document.getElementById('auditSaveBtn');
+        const label = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        try {
+            const r = await fetch('/image-master/audit', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' }, body: fd });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.success) throw new Error(j.message || (j.errors ? Object.values(j.errors).flat()[0] : 'Could not create the task.'));
+            toast(j.message || 'Audit task created');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('auditModal')).hide();
+            loadData();
+        } catch (e) {
+            alertEl.innerHTML = `<span class="text-danger">${esc(e.message || 'Could not create the task.')}</span>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = label;
+        }
+    });
+    document.getElementById('auditModal')?.addEventListener('shown.bs.modal', function () {
+        if (!document.getElementById('editImModal')?.classList.contains('show')) return;
+        this.style.zIndex = 1075;
+        const bds = document.querySelectorAll('.modal-backdrop');
+        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
+    });
+    document.getElementById('auditModal')?.addEventListener('hidden.bs.modal', function () {
+        this.style.zIndex = '';
+        if (document.getElementById('editImModal')?.classList.contains('show')) document.body.classList.add('modal-open');
+    });
+
     // Opens on top of the product-images editor: lift it (and its backdrop) above.
     document.getElementById('skuTextModal')?.addEventListener('shown.bs.modal', function () {
         this.style.zIndex = 1075;
@@ -2068,6 +2253,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Hover zoom: grow the card toward the free space (left/right/top/bottom edges of the modal body).
+    document.getElementById('imSlots')?.addEventListener('mouseover', (e) => {
+        const card = e.target.closest ? e.target.closest('.im-card[data-idx]') : null;
+        if (!card || (e.relatedTarget && card.contains(e.relatedTarget))) return; // only when entering the card
+        const body = document.querySelector('#editImModal .modal-body');
+        if (!body) return;
+        const c = card.getBoundingClientRect(), b = body.getBoundingClientRect();
+        const k = card.classList.contains('im-card-hero') ? 0.25 : 1;
+        const x = c.left - c.width * k / 2 < b.left ? 'left' : (c.right + c.width * k / 2 > b.right ? 'right' : 'center');
+        const y = c.top - c.height * k / 2 < b.top ? 'top' : (c.bottom + c.height * k / 2 > b.bottom ? 'bottom' : 'center');
+        card.style.transformOrigin = x + ' ' + y;
+    });
+
     let imDrag = null; // { from: 'main' | 'sb', idx }
     (function bindSlotsDnD() {
         const root = document.getElementById('imSlots');
@@ -2228,7 +2426,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById('modalFileInput');
 
         if (!pendingFiles.length) {
-            if (label) label.textContent = 'No file chosen';
+            if (label) label.textContent = '';
             if (list) list.style.display = 'none';
             if (btn) btn.style.display = 'none';
             if (items) items.innerHTML = '';

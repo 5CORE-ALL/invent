@@ -2793,6 +2793,7 @@ class TaskController extends Controller
 
         $flash = 'success';
         $message = 'Task created successfully!';
+        $createdTaskIds = []; // returned in the JSON response so callers (e.g. Image Master audit) can link to the task
         $splitIntoCopies = $request->boolean('split_tasks') && count($assigneeIds) > 1;
 
         // Frequency is multi-select: the user may pick any combination of
@@ -2895,6 +2896,7 @@ class TaskController extends Controller
             });
 
             $createdCount = count($created);
+            $createdTaskIds = array_map(static fn ($t) => $t->id, $created);
             $message = 'Created '.$createdCount.' separate task'.($createdCount === 1 ? '' : 's').'. Other details are the same.';
             $notified = [];
             foreach ($created as $createdTask) {
@@ -2931,6 +2933,7 @@ class TaskController extends Controller
                 $created[] = $createdTask;
             }
 
+            $createdTaskIds = array_map(static fn ($t) => $t->id, $created);
             $message = 'Split into '.count($created).' tasks. Each assignee has their own copy.';
             $sent = 0;
             foreach ($created as $createdTask) {
@@ -2949,6 +2952,7 @@ class TaskController extends Controller
             }
         } else {
             $task = $this->createManualTask($taskData);
+            $createdTaskIds = [$task->id];
             $this->linkChatMessageToTask($request, $task);
 
             if ($assigneeEmail) {
@@ -2985,6 +2989,7 @@ class TaskController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => $displayMessage,
+                'task_ids' => $createdTaskIds,
             ]);
         }
 
@@ -2993,6 +2998,7 @@ class TaskController extends Controller
             return response()->json([
                 'success' => $flash !== 'error',
                 'message' => $message,
+                'task_ids' => $createdTaskIds,
             ]);
         }
 
