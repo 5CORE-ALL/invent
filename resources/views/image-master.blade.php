@@ -143,6 +143,8 @@
         .im-view-btn:hover { opacity:.65; }
         .im-slot-cell { position:relative; display:inline-block; line-height:0; }
         .im-ai-edit-btn { position:absolute; right:-6px; bottom:-6px; width:22px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:9px; line-height:1; color:#475569; background:#fff; border:1px solid #94a3b8; border-radius:5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+        .im-ai-edit-btn { opacity:0; pointer-events:none; transition:opacity .12s; }
+        .im-slot-cell:hover .im-ai-edit-btn, .im-ai-edit-btn:focus-visible { opacity:1; pointer-events:auto; }
         .im-ai-edit-btn:hover { background:#2563eb; border-color:#2563eb; color:#fff; }
         .ai-edit-pane { border:1px solid #e2e8f0; border-radius:10px; padding:8px; text-align:center; background:#f8fafc; min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
         .ai-edit-pane img { max-width:100%; max-height:340px; object-fit:contain; border-radius:6px; background:#fff; }
@@ -154,7 +156,7 @@
         .im-prompts-menu .ip-row:last-child { border-bottom:none; }
         .im-prompts-menu .ip-name { flex:1; font-size:12px; font-weight:600; color:#334155; white-space:nowrap; }
         .im-prompts-menu .ip-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; margin-left:6px; }
-        .hero-row { display:grid; grid-template-columns:150px 1fr 1fr 74px; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
+        .hero-row { display:grid; grid-template-columns:150px 1fr 74px; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid #f1f5f9; font-size:12px; }
         .hero-row-head { font-weight:700; font-size:10px; text-transform:uppercase; color:#64748b; border-bottom:2px solid #e2e8f0; }
         .hero-row-all { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
         .hero-mp { font-weight:600; color:#334155; }
@@ -202,7 +204,7 @@
                 <div class="card-body">
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
-                        <button type="button" id="heroImageBtn" class="btn btn-warning btn-sm" title="Choose Hero 1 / Hero 2 per marketplace for the selected rows (or all rows in view if none selected)"><i class="fas fa-star"></i> Hero Image</button>
+                        <button type="button" id="heroImageBtn" class="btn btn-warning btn-sm" title="Choose the main image per marketplace for the selected rows (or all rows in view if none selected)"><i class="fas fa-star"></i> Main Image</button>
                         <div class="dropdown" id="promptsDropdown">
                             <button type="button" id="promptsBtn" class="btn btn-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="fas fa-wand-magic-sparkles"></i> Prompts</button>
                             <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
@@ -315,7 +317,7 @@
                     </div>
                     <div id="imSlots"></div>
                     <div class="alert alert-info small mt-3 mb-0">
-                        Save images here first. Use the <strong>Hero Image</strong> button in the toolbar to choose Hero 1 / Hero 2 per marketplace, and the MP button in the table row to push.
+                        Save images here first. Use the <strong>Main Image</strong> button in the toolbar to choose the main image per marketplace, and the MP button in the table row to push.
                     </div>
                 </div>
             </div>
@@ -510,20 +512,16 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-star me-2"></i>Hero Image — <span id="heroSkuLabel"></span></h5>
+                    <h5 class="modal-title"><i class="fas fa-star me-2"></i>Main Image — <span id="heroSkuLabel"></span></h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">When you push, <strong>Hero 1</strong> is sent first (main image) and <strong>Hero 2</strong> second on each marketplace. Hero 2 &ldquo;Auto&rdquo; keeps the natural order. Default is Image 1.</p>
+                    <p class="small text-muted mb-3">When you push, the <strong>Main image</strong> chosen here is sent first on each marketplace. Default is Image 1.</p>
                     <div id="heroScopeNote" class="alert alert-warning small py-2 mb-3" style="display:none;"></div>
                     <div class="hero-row hero-row-all mb-2">
                         <span class="hero-mp fw-bold">Apply to all marketplaces</span>
                         <select id="heroAllMain" class="form-select form-select-sm"></select>
-                        <select id="heroAllHero2" class="form-select form-select-sm"></select>
                         <button type="button" class="btn btn-outline-primary btn-sm" id="heroApplyAllBtn">Apply</button>
-                    </div>
-                    <div class="hero-row hero-row-head">
-                        <span class="hero-mp">Marketplace</span><span>Hero image 1</span><span>Hero image 2</span><span></span>
                     </div>
                     <div id="heroRows"></div>
                 </div>
@@ -1937,11 +1935,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ── Hero Image modal: Hero 1 / Hero 2 per marketplace ─────────────────────
+    // ── Main Image modal: main (Hero 1) image per marketplace ─────────────────────
     let heroRows = [];        // rows the settings will be applied to
     let heroUsingSelection = false;
     let heroMain = {};   // mp -> index
-    let heroHero2 = {};  // mp -> index (absent = Auto)
 
     function heroOptionsHtml(n, selected, withAuto) {
         let h = withAuto ? `<option value="auto"${selected == null ? ' selected' : ''}>Auto</option>` : '';
@@ -1951,9 +1948,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function heroThumbsHtml(urls, mp) {
         const m = heroMain[mp] ?? 0;
-        const h = heroHero2[mp];
         const t = (i) => urls[i] ? `<img src="${esc(imgSrc(urls[i]))}" alt="">` : '';
-        return `<span class="hero-thumbs">${t(m)}${h != null && h !== m ? t(h) : ''}</span>`;
+        return `<span class="hero-thumbs">${t(m)}</span>`;
     }
 
     function renderHeroRows() {
@@ -1965,13 +1961,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="hero-row" data-mp="${esc(mp)}">
                 <span class="hero-mp">${esc(LABELS[mp] || mp)}</span>
                 <select class="form-select form-select-sm hero-sel-main" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroMain[mp] ?? 0, false)}</select>
-                <select class="form-select form-select-sm hero-sel-2" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroHero2[mp] ?? null, true)}</select>
                 <span class="hero-thumbs-cell">${single ? heroThumbsHtml(single, mp) : ''}</span>
             </div>`).join('');
         const allMain = document.getElementById('heroAllMain');
-        const allH2 = document.getElementById('heroAllHero2');
         if (allMain) allMain.innerHTML = heroOptionsHtml(n, 0, false);
-        if (allH2) allH2.innerHTML = heroOptionsHtml(n, null, true);
     }
 
     function openHeroModal() {
@@ -1985,10 +1978,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (heroRows.length === 1) {
             heroMain = normalizeMainByMarketplace(heroRows[0].image_main_by_marketplace);
-            heroHero2 = hero2FromRaw(heroRows[0].image_main_by_marketplace);
         } else {
             heroMain = defaultMainByMarketplace();
-            heroHero2 = {};
         }
         document.getElementById('heroSkuLabel').textContent = heroRows.length === 1
             ? String(heroRows[0].SKU)
@@ -2005,33 +1996,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     document.getElementById('heroImageBtn')?.addEventListener('click', openHeroModal);
 
-    function heroSetFor(mp, which, rawVal) {
-        const val = rawVal === 'auto' ? null : (parseInt(rawVal, 10) || 0);
-        if (which === 'main') heroMain[mp] = val ?? 0;
-        else if (val === null) delete heroHero2[mp];
-        else heroHero2[mp] = val;
+    function heroSetFor(mp, rawVal) {
+        heroMain[mp] = parseInt(rawVal, 10) || 0;
     }
 
     document.getElementById('heroRows')?.addEventListener('change', (e) => {
         const sel = e.target.closest('select[data-mp]');
         if (!sel) return;
-        heroSetFor(sel.dataset.mp, sel.classList.contains('hero-sel-main') ? 'main' : 'h2', sel.value);
+        heroSetFor(sel.dataset.mp, sel.value);
         const cell = sel.closest('.hero-row')?.querySelector('.hero-thumbs-cell');
         if (cell && heroRows.length === 1) cell.innerHTML = heroThumbsHtml(pmImageUrls(heroRows[0]), sel.dataset.mp);
     });
 
     document.getElementById('heroApplyAllBtn')?.addEventListener('click', () => {
         const m = document.getElementById('heroAllMain').value;
-        const h = document.getElementById('heroAllHero2').value;
-        MARKETPLACES.forEach(mp => { heroSetFor(mp, 'main', m); heroSetFor(mp, 'h2', h); });
+        MARKETPLACES.forEach(mp => heroSetFor(mp, m));
         renderHeroRows();
         document.getElementById('heroAllMain').value = m;
-        document.getElementById('heroAllHero2').value = h;
     });
 
     document.getElementById('heroResetBtn')?.addEventListener('click', () => {
         heroMain = defaultMainByMarketplace();
-        heroHero2 = {};
         renderHeroRows();
     });
 
@@ -2046,10 +2031,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = heroRows[i];
             const urls = pmImageUrls(row);
             const payload = {};
+            const keepHero2 = hero2FromRaw(row.image_main_by_marketplace); // Hero 2 choices are not edited here; keep them
             MARKETPLACES.forEach(mp => {
                 const m = Math.max(0, Math.min(urls.length - 1, heroMain[mp] ?? 0));
                 if (m > 0) payload[mp] = m;
-                const h = heroHero2[mp];
+                const h = keepHero2[mp];
                 if (h != null && h !== m && h <= urls.length - 1) payload[mp + HERO2_SUFFIX] = h + 1;
             });
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving ${i + 1}/${heroRows.length}…`;
