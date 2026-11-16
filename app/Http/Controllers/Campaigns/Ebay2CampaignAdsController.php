@@ -1019,10 +1019,15 @@ class Ebay2CampaignAdsController extends Controller
         }
 
         $total = (int) (clone $query)->count();
-        // Listings that actually have an ad (campaign_id set) first, then the not-yet-enrolled ones.
-        // Plain id DESC put the newest no-campaign listings on top, so page 1 looked like it had no ads.
+        // Live ads first (RUNNING, then paused), then listings with no campaign yet, ended ads last.
+        // Plain id DESC put the newest no-campaign / ended rows on top, so page 1 looked like it had no ads.
+        $statusUp = "UPPER(TRIM(COALESCE(ca.campaign_status, '')))";
         $ordered = $query
-            ->orderByRaw("CASE WHEN ca.campaign_id IS NULL OR ca.campaign_id = '' THEN 1 ELSE 0 END")
+            ->orderByRaw("CASE"
+                ." WHEN {$statusUp} = 'RUNNING' THEN 0"
+                ." WHEN {$statusUp} IN ('PAUSED', 'SYSTEM_PAUSED') THEN 1"
+                ." WHEN {$statusUp} IN ('ENDED', 'INACTIVE') THEN 3"
+                ." ELSE 2 END")
             ->orderBy('ca.id', 'desc');
         $data = $all ? $ordered->get() : $ordered->forPage($page, $size)->get();
         CpMasterDil::hydrate($data);

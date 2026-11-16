@@ -746,10 +746,10 @@ class EbayCampaignAdsController extends Controller
         }
 
         $total = (clone $query)->count();
-        // Listings that actually have an ad (campaign_id set) first, then the not-yet-enrolled ones.
-        // Plain id DESC put the newest no-campaign listings on top, so the page looked like it had no ads.
+        // Live ads first (RUNNING, then paused), then listings with no campaign yet, ended ads last.
+        // Plain id DESC put the newest no-campaign / ended rows on top, so the page looked like it had no ads.
         $data  = $query
-            ->orderByRaw("CASE WHEN ca.campaign_id IS NULL OR ca.campaign_id = '' THEN 1 ELSE 0 END")
+            ->orderByRaw("CASE {$bucket} WHEN 'RUNNING' THEN 0 WHEN 'INACTIVE' THEN 1 WHEN 'NO_CAMPAIGN' THEN 2 ELSE 3 END")
             ->orderBy('ca.id', 'desc')
             ->get();
         $this->fillSkuFromHistory($data);
