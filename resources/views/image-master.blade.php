@@ -44,6 +44,15 @@
         .im-card.im-card-hero .im-card-name { max-width:162px; font-size:13px; }
         .im-card.im-card-hero .im-card-filename { max-width:162px; font-size:10px; }
         .im-card.im-card-hero .im-card-arrows button { font-size:13px; padding:3px 0; }
+        .im-drop-end { border:2px dashed #cbd5e1; background:#f8fafc; box-shadow:none; min-height:150px; display:flex; align-items:center; justify-content:center; }
+        .im-drop-end-inner, .im-sb-empty { display:flex; flex-direction:column; align-items:center; gap:4px; color:#94a3b8; font-size:11px; font-weight:600; text-align:center; }
+        .im-sandbox { margin-top:16px; border:2px dashed #94a3b8; border-radius:12px; padding:10px 12px; background:#f8fafc; }
+        .im-sandbox-title { font-size:12px; font-weight:700; color:#334155; margin-bottom:6px; }
+        .im-sandbox-grid { align-items:flex-start; }
+        .im-sb-empty { width:120px; min-height:100px; border:2px dashed #cbd5e1; border-radius:10px; justify-content:center; background:#fff; }
+        .im-sb-card .im-card-img-wrap { height:90px; }
+        .im-drop-over { border-color:#6366f1 !important; box-shadow:0 0 0 3px rgba(99,102,241,.25) !important; background:#eef2ff; }
+        .im-sandbox.im-drop-over { background:#eef2ff; }
         .im-card-badge { position:absolute; top:4px; left:4px; background:rgba(0,0,0,.55); color:#fff; border-radius:4px; font-size:9px; font-weight:700; padding:1px 5px; line-height:1.5; pointer-events:none; z-index:3; }
         .im-card-del { position:absolute; top:4px; right:4px; background:rgba(220,38,38,.88); border:none; color:#fff; border-radius:50%; width:22px; height:22px; font-size:11px; cursor:pointer; display:none; align-items:center; justify-content:center; padding:0; line-height:1; transition:background .12s; z-index:5; }
         .im-card-del:hover { background:#b91c1c; }
@@ -254,7 +263,7 @@
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="fetchEbay3Btn">eBay3</button>
                     </div> -->
                     <div class="fw-semibold small mb-1 d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                        <span>Order (drag to reorder)</span>
+                        <span>Order — drag a card onto another to <strong>swap</strong> (hold <kbd>Shift</kbd> to insert), or park it in the sandbox below</span>
                         <div class="d-flex align-items-center gap-2">
                             <button type="button" class="btn btn-outline-primary btn-sm" id="downloadAllImagesBtn" style="display:none;" title="Download all images of this SKU in the shown order as a ZIP file">
                                 <i class="fas fa-download me-1"></i>Download all (ZIP)
@@ -528,6 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let shopifyPullAdvancingChunk = false;
     const SHOPIFY_PULL_CHUNK_SIZE = 25;
     let modalUrls = [];
+    let modalSandbox = [];   // images parked in the drag & drop sandbox (not part of the saved order)
     let knownImageUrls = []; // every image URL seen this modal session (loaded + uploaded/fetched), to detect removals on Save
     let modalMainByMp = {};
     let modalHero2ByMp = {};   // mp -> image index (absent = automatic)
@@ -1786,6 +1796,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modalProductLabel').textContent = row.Parent || sku;
         storedImageMeta.clear();
         modalUrls = pmImageUrls(row);
+        modalSandbox = [];
         knownImageUrls = [...modalUrls];
         modalMainByMp = normalizeMainByMarketplace(row.image_main_by_marketplace);
         modalHero2ByMp = hero2FromRaw(row.image_main_by_marketplace);
@@ -1821,7 +1832,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (removeAllBtn) removeAllBtn.style.display = modalUrls.length ? 'inline-flex' : 'none';
         const downloadAllBtn = document.getElementById('downloadAllImagesBtn');
         if (downloadAllBtn) downloadAllBtn.style.display = modalUrls.length ? 'inline-flex' : 'none';
-        if (!modalUrls.length) {
+        if (!modalUrls.length && !modalSandbox.length) {
             el.innerHTML = '<div class="text-muted small py-2">No images yet. Upload or fetch from a marketplace above.</div>';
             return;
         }
@@ -1857,10 +1868,24 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const heroCards = modalUrls.slice(0, 2).map((u, i) => cardHtml(u, i)).join('');
         const restCards = modalUrls.slice(2).map((u, i) => cardHtml(u, i + 2)).join('');
+        const endBox = '<div class="im-card im-drop-end" data-drop="end" title="Drop an image here to move it to the end"><div class="im-drop-end-inner"><i class="fas fa-arrow-right-to-bracket"></i><span>Move to end</span></div></div>';
+        const sbCards = modalSandbox.map((url, i) => {
+            const meta = storedImageMeta.get(url);
+            const nm = meta?.name ?? decodeURIComponent(url.split('/').pop().split('?')[0]);
+            return `<div class="im-card im-sb-card" draggable="true" data-sb="${i}" title="Drag back into any slot">
+                <div class="im-card-img-wrap"><img src="${esc(imgSrc(url))}" alt=""></div>
+                <div class="im-card-footer"><div class="im-card-filename" title="${esc(url)}">${esc(nm)}</div></div>
+            </div>`;
+        }).join('');
         el.innerHTML = '<div id="imGrid">'
             + `<div class="im-grid im-grid-hero">${heroCards}</div>`
-            + (restCards ? `<div class="im-grid">${restCards}</div>` : '')
-            + '</div>';
+            + `<div class="im-grid">${restCards}${modalUrls.length ? endBox : ''}</div>`
+            + '</div>'
+            + `<div class="im-sandbox" id="imSandbox">
+                <div class="im-sandbox-title"><i class="fas fa-box-open me-1"></i>Sandbox
+                    <span class="text-muted fw-normal">— temporary holding area. Drag images here to park them, then drag them back into any slot. Anything left here is added to the end when you save.</span></div>
+                <div class="im-grid im-sandbox-grid">${sbCards}<div class="im-sb-empty"><i class="fas fa-image"></i><span>Drop image here</span></div></div>
+            </div>`;
 
         const grid = document.getElementById('imGrid');
 
@@ -1937,30 +1962,128 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // ── Drag to reorder ───────────────────────────────────────
-        let dragFrom = null;
-        grid.querySelectorAll('.im-card').forEach(card => {
-            card.addEventListener('dragstart', e => {
-                dragFrom = +card.dataset.idx;
-                card.classList.add('im-card-dragging');
-                e.dataTransfer.effectAllowed = 'move';
-            });
-            card.addEventListener('dragend', () => card.classList.remove('im-card-dragging'));
-            card.addEventListener('dragover', e => e.preventDefault());
-            card.addEventListener('drop', e => {
-                e.preventDefault();
-                const to = +card.dataset.idx;
-                if (dragFrom === null || dragFrom === to) return;
-                remapMainIndicesAfterMove(dragFrom, to);
-                const moved = modalUrls.splice(dragFrom, 1)[0];
-                modalUrls.splice(to, 0, moved);
-                dragFrom = null;
-                renderSlots();
-            });
-        });
-
         clampMainIndicesToLength();
     }
+
+
+    // ── Drag & drop between slots, with a sandbox holding area ───────────────
+    function remapSwapIndices(a, b) {
+        const sw = (v) => (v === a ? b : v === b ? a : v);
+        MARKETPLACES.forEach(mp => {
+            modalMainByMp[mp] = sw(modalMainByMp[mp] ?? 0);
+            if (modalHero2ByMp[mp] != null) modalHero2ByMp[mp] = sw(modalHero2ByMp[mp]);
+        });
+    }
+    function remapInsertAt(pos) {
+        MARKETPLACES.forEach(mp => {
+            if ((modalMainByMp[mp] ?? 0) >= pos) modalMainByMp[mp] = (modalMainByMp[mp] ?? 0) + 1;
+            if (modalHero2ByMp[mp] != null && modalHero2ByMp[mp] >= pos) modalHero2ByMp[mp]++;
+        });
+    }
+    function resetRefsAt(pos) {
+        MARKETPLACES.forEach(mp => {
+            if ((modalMainByMp[mp] ?? 0) === pos) modalMainByMp[mp] = 0;
+            if (modalHero2ByMp[mp] === pos) delete modalHero2ByMp[mp];
+        });
+    }
+
+    let imDrag = null; // { from: 'main' | 'sb', idx }
+    (function bindSlotsDnD() {
+        const root = document.getElementById('imSlots');
+        if (!root) return;
+        const clearOver = () => root.querySelectorAll('.im-drop-over').forEach(x => x.classList.remove('im-drop-over'));
+        const resolveTarget = (t) => {
+            if (!t || !t.closest) return null;
+            const end = t.closest('.im-drop-end');
+            if (end) return { kind: 'end', el: end };
+            const sbPanel = t.closest('.im-sandbox');
+            if (sbPanel) return { kind: 'sandbox', el: sbPanel };
+            const card = t.closest('.im-card[data-idx]');
+            if (card) return { kind: 'main', idx: +card.dataset.idx, el: card };
+            return null;
+        };
+
+        root.addEventListener('dragstart', (e) => {
+            const card = e.target.closest ? e.target.closest('.im-card') : null;
+            if (!card) return;
+            if (card.dataset.sb !== undefined) imDrag = { from: 'sb', idx: +card.dataset.sb };
+            else if (card.dataset.idx !== undefined) imDrag = { from: 'main', idx: +card.dataset.idx };
+            else return;
+            card.classList.add('im-card-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', String(imDrag.idx)); } catch (_) {}
+        });
+        root.addEventListener('dragend', () => {
+            imDrag = null;
+            clearOver();
+            root.querySelectorAll('.im-card-dragging').forEach(x => x.classList.remove('im-card-dragging'));
+        });
+        root.addEventListener('dragover', (e) => {
+            if (!imDrag) return;
+            const tg = resolveTarget(e.target);
+            if (!tg) return;
+            if (tg.kind === 'sandbox' && imDrag.from === 'sb') return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            clearOver();
+            tg.el.classList.add('im-drop-over');
+        });
+        root.addEventListener('drop', (e) => {
+            if (!imDrag) return;
+            const tg = resolveTarget(e.target);
+            if (!tg) return;
+            e.preventDefault();
+            const src = imDrag;
+            imDrag = null;
+            const insert = e.shiftKey || e.altKey;
+
+            if (tg.kind === 'main') {
+                const t = tg.idx;
+                if (src.from === 'main') {
+                    const f = src.idx;
+                    if (f === t) { clearOver(); return; }
+                    if (insert) {
+                        remapMainIndicesAfterMove(f, t);
+                        const moved = modalUrls.splice(f, 1)[0];
+                        modalUrls.splice(t, 0, moved);
+                    } else {
+                        remapSwapIndices(f, t);
+                        [modalUrls[f], modalUrls[t]] = [modalUrls[t], modalUrls[f]];
+                    }
+                } else {
+                    const sbUrl = modalSandbox[src.idx];
+                    if (sbUrl === undefined) return;
+                    if (insert) {
+                        remapInsertAt(t);
+                        modalUrls.splice(t, 0, sbUrl);
+                        modalSandbox.splice(src.idx, 1);
+                    } else {
+                        const old = modalUrls[t];
+                        resetRefsAt(t);
+                        modalUrls[t] = sbUrl;
+                        modalSandbox.splice(src.idx, 1, old);
+                    }
+                }
+            } else if (tg.kind === 'end') {
+                if (src.from === 'main') {
+                    const f = src.idx;
+                    const last = modalUrls.length - 1;
+                    if (f === last) { clearOver(); return; }
+                    remapMainIndicesAfterMove(f, last);
+                    modalUrls.push(modalUrls.splice(f, 1)[0]);
+                } else {
+                    const sbUrl = modalSandbox.splice(src.idx, 1)[0];
+                    if (sbUrl !== undefined) modalUrls.push(sbUrl);
+                }
+            } else if (tg.kind === 'sandbox') {
+                if (src.from !== 'main') return;
+                clampMainIndicesAfterDelete(src.idx);
+                modalSandbox.push(modalUrls.splice(src.idx, 1)[0]);
+            }
+            clearOver();
+            renderSlots();
+        });
+    })();
 
     // Fetch a file from the server and save it with the name the server gives it.
     async function downloadFromServer(url, options, fallbackName) {
@@ -2006,6 +2129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!modalUrls.length) return;
         if (!confirm('Remove all images from this list? Click Save Images afterward to apply the change to Product Master.')) return;
         modalUrls = [];
+        modalSandbox = [];
         storedImageMeta.clear();
         modalMainByMp = defaultMainByMarketplace();
         modalHero2ByMp = {};
@@ -2208,6 +2332,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            if (modalSandbox.length) {
+                if (!window.confirm(`${modalSandbox.length} image(s) are still in the sandbox. They will be added to the end of the list when saving. Continue?`)) return;
+                modalUrls = modalUrls.concat(modalSandbox);
+                modalSandbox = [];
+                renderSlots();
+            }
             const uploaded = await uploadPendingFiles();
             if (!uploaded) return;
 
