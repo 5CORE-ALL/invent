@@ -381,7 +381,7 @@
                         '(LP ' + temuRuleMoney(lp) + ' × (1 + ' + target + '%) + Ship ' + temuRuleMoney(ship) + ') ÷ (0.80 − Ads ' + ads.toFixed(1) + '%) = <b>' + temuRuleMoney(base) + '</b>'));
                 }
                 n = steps.length + 1;
-                // Custom rule cards that change the price by a %, in the order they run (Seq). No LMP cap any more.
+                // Custom rule cards that change the price by a %, in the order they run (Seq). The LMP cap runs after them (below).
                 if (base > 0 && typeof window.amzPriceOrder === 'function'
                     && !(typeof window.amzClearanceExactNroi === 'function' && window.amzClearanceExactNroi(d) !== null)) {
                     window.amzPriceOrder().forEach(function(k) {
@@ -400,6 +400,27 @@
                             steps.push(temuRuleStep('skip', no, cond + ' is not met. No change.'));
                         }
                     });
+                }
+                // LMP cap (Sprc Dil): when LMP is lower than the price, S PRC = LMP less the Reduce % of the SKU's Dil band
+                // (default 3%). No SNROI condition. Same as amazonCapSpriceToLmp and AmazonSprcDilAutoPushService.
+                if (base > 0) {
+                    const lmpOn = !(typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('lmp'));
+                    const lmpTitle = n + ' · LMP cap';
+                    if (!lmpOn) {
+                        steps.push(temuRuleStep('skip', lmpTitle, 'The LMP rule is <b>OFF</b>. No LMP cap.'));
+                    } else if (!(lmp > 0)) {
+                        steps.push(temuRuleStep('skip', lmpTitle, 'No LMP available, so no LMP cap applies.'));
+                    } else if (base <= lmp + 0.0001) {
+                        steps.push(temuRuleStep('skip', lmpTitle, 'Price ' + temuRuleMoney(base) + ' is not above LMP ' + temuRuleMoney(lmp) + '. The price is kept.'));
+                    } else {
+                        const pctRaw = (typeof window.amzLmpReducePct === 'function') ? Number(window.amzLmpReducePct(d)) : 3;
+                        const lmpPct = isFinite(pctRaw) ? Math.min(99, Math.max(0, pctRaw)) : 3;
+                        const afterLmp = +(lmp * (1 - lmpPct / 100)).toFixed(2);
+                        steps.push(temuRuleStep('ok', lmpTitle,
+                            'Price ' + temuRuleMoney(base) + ' is above LMP ' + temuRuleMoney(lmp) + ' → LMP − ' + lmpPct + '% (Dil band, LMP cap table) = LMP × ' + temuRulePctText(lmpPct) + ' = <b>' + temuRuleMoney(afterLmp) + '</b>'));
+                        base = afterLmp;
+                    }
+                    n++;
                 }
                 if (!(std > 0)) {
                     steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
