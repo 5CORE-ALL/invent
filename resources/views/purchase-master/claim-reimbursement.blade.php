@@ -603,7 +603,7 @@
                   <th class="col-num6">Amount</th>
                   <th class="col-reason" style="min-width: 240px;">Reason/Notes</th>
                   <th class="col-attach" title="Image (if any)"><i class="fas fa-paperclip"></i></th>
-                  <th class="col-shot">Screenshot <button type="button" id="claimShotPasteBtn" class="claim-shot-paste" title="Paste a copied screenshot / snippet (or press Cmd/Ctrl+V)"><i class="fas fa-paste"></i></button></th>
+                  <th class="col-shot">Screenshot <button type="button" id="claimShotPasteBtn" class="claim-shot-paste" title="Paste a copied screenshot / snippet (or press Cmd/Ctrl+V)"><i class="fas fa-paste"></i></button> <button type="button" id="claimShotMultiBtn" class="claim-shot-paste" title="Upload multiple screenshots at once (fills empty rows, adds rows as needed)"><i class="fas fa-images"></i></button><input type="file" id="claimShotMultiInput" accept="image/*" multiple style="display:none;"></th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -625,7 +625,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*"></label></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -1116,7 +1116,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*"></label></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1402,6 +1402,16 @@
         if (!input || !input.classList || !input.classList.contains('claim-shot-input')) return;
         const label = input.closest('.claim-shot');
         const file = input.files && input.files[0];
+        if (input.files && input.files.length > 1 && typeof window.claimFillShots === 'function') {
+            // Several files picked from one row: first goes here, the rest fill the following empty rows.
+            const picked = Array.from(input.files).filter(function (f) { return /^image\//.test(f.type); });
+            if (picked.length) {
+                const rowEl = label.closest('tr');
+                const idx = Array.from(document.querySelectorAll('#claimTableBody tr')).indexOf(rowEl);
+                window.claimFillShots(picked, idx, true, 1);
+                return;
+            }
+        }
         if (!file) {
             // Cleared: fall back to the saved screenshot (if editing), otherwise empty.
             const saved = label.closest('td').querySelector('.existing-screenshot').value;
@@ -1690,19 +1700,59 @@
             const files = Array.from(e.dataTransfer.files).filter(function (f) { return /^image\//.test(f.type); });
             if (!files.length) return;
 
-            const rows = function () { return Array.from(document.querySelectorAll('#claimTableBody tr')); };
-            let startIdx = t.row ? rows().indexOf(t.row) : rows().findIndex(function (r) {
+            const startIdx = t.row ? rows().indexOf(t.row) : firstEmptyRowIndex();
+            fillShots(files, startIdx, false, 0);
+        });
+
+        // ---- Multiple upload at once ----
+        function rows() { return Array.from(document.querySelectorAll('#claimTableBody tr')); }
+
+        function firstEmptyRowIndex() {
+            const idx = rows().findIndex(function (r) {
                 return !r.querySelector('.claim-shot').classList.contains('has-shot');
             });
-            if (startIdx < 0) startIdx = rows().length; // nothing free: append new rows
+            return idx < 0 ? rows().length : idx; // nothing free: append new rows
+        }
 
+        // Put each file into consecutive rows starting at startIdx, adding rows as needed.
+        // skipFilled: skip rows that already have a screenshot (applies from file number skipFrom onward).
+        function fillShots(files, startIdx, skipFilled, skipFrom) {
+            let idx = Math.max(0, startIdx);
             files.forEach(function (file, i) {
-                let r = rows()[startIdx + i];
+                if (skipFilled && i >= (skipFrom || 0)) {
+                    const all = rows();
+                    while (idx < all.length && all[idx].querySelector('.claim-shot').classList.contains('has-shot')) idx++;
+                }
+                let r = rows()[idx];
                 if (!r && typeof window.claimAddRow === 'function') r = window.claimAddRow();
                 const label = r && r.querySelector('.claim-shot');
                 if (label) setShotFile(label, file);
+                idx++;
             });
-        });
+            if (files.length > 1) shotToast(files.length + ' screenshots added.');
+        }
+        window.claimFillShots = fillShots;
+
+        const multiBtn = document.getElementById('claimShotMultiBtn');
+        const multiInput = document.getElementById('claimShotMultiInput');
+        if (multiBtn && multiInput) {
+            multiBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                if (!claimOpenAndEditable()) return;
+                multiInput.value = '';
+                multiInput.click();
+            });
+            multiInput.addEventListener('change', function () {
+                const all = Array.from(multiInput.files || []);
+                const imgs = all.filter(function (f) { return /^image\//.test(f.type); });
+                multiInput.value = '';
+                if (!imgs.length) return;
+                if (!claimOpenAndEditable()) return;
+                fillShots(imgs, firstEmptyRowIndex(), true, 0);
+                if (imgs.length === 1) shotToast('Screenshot added.');
+                if (imgs.length < all.length) shotToast((all.length - imgs.length) + ' non-image file(s) skipped.');
+            });
+        }
     })();
 
     // One floating large preview shared by every [data-sc-src] element (modal rows + list table).
