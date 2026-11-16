@@ -1810,7 +1810,7 @@
 
             $('#bulk-publish-btn').on('click', function () {
                 if (!temu3ListingTable) return;
-                const selected = (temu3ListingTable.getSelectedData() || [])
+                const selected = ((window.ListingSelection ? window.ListingSelection.activeSelectedData(temu3ListingTable) : temu3ListingTable.getSelectedData()) || [])
                     .map(function (row) { return String(row.sku || '').trim(); })
                     .filter(function (sku) { return sku && !isParentSku(sku); });
                 if (!selected.length) {
