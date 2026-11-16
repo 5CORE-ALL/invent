@@ -275,6 +275,7 @@ class ClaimReimbursementController extends Controller
             'amount.*' => 'required|numeric',
             'image.*' => 'nullable|file|mimes:jpg,jpeg,png,pdf',
             'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
+            'video_link.*' => ['nullable', 'string', 'max:1000', 'regex:/^https?:\/\/\S+$/i'],
         ]);
 
         [$items, $totalAmount, $claimSupplierId] = $this->buildItemsFromForm($request);
@@ -366,6 +367,7 @@ class ClaimReimbursementController extends Controller
                 'reason' => $request->reason[$index] ?? '',
                 'image' => $imagePath,
                 'screenshot' => $screenshotPath,
+                'video_link' => trim((string) $request->input("video_link.$index", '')) ?: null,
             ];
         }
 
@@ -392,6 +394,7 @@ class ClaimReimbursementController extends Controller
             'existing_image.*' => 'nullable|string|max:500',
             'screenshot.*' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
             'existing_screenshot.*' => 'nullable|string|max:500',
+            'video_link.*' => ['nullable', 'string', 'max:1000', 'regex:/^https?:\/\/\S+$/i'],
         ]);
 
         $claim = ClaimReimbursement::findOrFail($id);
@@ -480,6 +483,7 @@ class ClaimReimbursementController extends Controller
                 'reason' => trim((string) ($row['reason'] ?? '')),
                 'image' => $image,
                 'screenshot' => $existingItems[$index]['screenshot'] ?? null,
+                'video_link' => $existingItems[$index]['video_link'] ?? null,
             ];
         }
 

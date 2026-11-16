@@ -374,6 +374,34 @@
     #reasonModal .btn-claim-cancel { background: #eef2f7; border: 0; color: #475569; border-radius: 12px; padding: 9px 18px; font-weight: 600; }
     #reasonModal .btn-claim-cancel:hover { background: #e2e8f0; }
 
+    /* Video link: icon button that opens a small editor */
+    #claimModal #claimTable th.col-video,
+    #claimModal #claimTable td.col-video { width: 64px; min-width: 64px; max-width: 64px; padding-left: 4px; padding-right: 4px; }
+    #claimModal .claim-video-btn {
+        position: relative; width: 38px; height: 38px; padding: 0; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 10px; border: 1px solid #dbe2ee; background: #f8fafc; color: #64748b; font-size: 15px;
+        transition: all .15s;
+    }
+    #claimModal .claim-video-btn:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #claimModal .claim-video-btn.has-video { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+    #claimModal .claim-video-btn.has-video::after {
+        content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900;
+        position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%;
+        background: #22c55e; color: #fff; font-size: 9px; display: flex; align-items: center; justify-content: center;
+    }
+    #videoModal .reason-modal-content { border: 0; border-radius: 18px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+    #videoModal .reason-modal-header { background: linear-gradient(120deg, #0ea5a4 0%, #2563eb 55%, #7c3aed 100%); color: #fff; border: 0; padding: 14px 20px; }
+    #videoModal .reason-modal-header .modal-title { font-weight: 700; font-size: 1.05rem; }
+    #videoModal .claim-close { width: 34px; height: 34px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, .18); color: #fff; }
+    #videoModal .form-control { border-radius: 12px; border: 1px solid #dbe2ee; background: #f8fafc; }
+    #videoModal .form-control:focus { background: #fff; border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .12); }
+    #videoModal .btn-claim-save { background: linear-gradient(120deg, #2563eb, #7c3aed); border: 0; color: #fff; font-weight: 700; border-radius: 12px; padding: 9px 24px; box-shadow: 0 8px 18px rgba(37, 99, 235, .3); }
+    #videoModal .btn-claim-save:hover { color: #fff; }
+    #videoModal .btn-claim-cancel { background: #eef2f7; border: 0; color: #475569; border-radius: 12px; padding: 9px 18px; font-weight: 600; }
+    #videoModal .btn-claim-remove { background: #fee2e2; border: 0; color: #b91c1c; border-radius: 12px; padding: 9px 18px; font-weight: 600; margin-right: auto; }
+    #videoModal .video-error { color: #b91c1c; font-size: 12px; margin-top: 6px; display: none; }
+
     /* Attachment: icon-only picker */
     #claimModal #claimTable th.col-attach,
     #claimModal #claimTable td.col-attach { width: 64px; min-width: 64px; max-width: 64px; padding-left: 4px; padding-right: 4px; }
@@ -652,6 +680,7 @@
                   <th class="col-num6">Amount</th>
                   <th class="col-reason" style="min-width: 240px;">Reason/Notes</th>
                   <th class="col-attach" title="Image (if any)"><i class="fas fa-paperclip"></i></th>
+                  <th class="col-video" title="Video link (if any)"><i class="fas fa-video"></i></th>
                   <th class="col-shot">Screenshot <button type="button" id="claimShotPasteBtn" class="claim-shot-paste" title="Paste a copied screenshot / snippet (or press Cmd/Ctrl+V)"><i class="fas fa-paste"></i></button> <button type="button" id="claimShotMultiBtn" class="claim-shot-paste" title="Upload multiple screenshots at once (fills empty rows, adds rows as needed)"><i class="fas fa-images"></i></button><input type="file" id="claimShotMultiInput" accept="image/*" multiple style="display:none;"></th>
                   <th>Action</th>
                 </tr>
@@ -673,7 +702,7 @@
                   <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
-                  <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+                  <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
                   <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
@@ -717,6 +746,29 @@
           <button type="button" class="btn btn-claim-cancel" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" id="claimSaveBtn" form="claimForm" class="btn btn-claim-save"><i class="fas fa-check me-1"></i> Save Claim</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Video link editor (opened from the claim modal rows) --}}
+<div class="modal fade" id="videoModal" tabindex="-1" aria-labelledby="videoModalLabel" aria-hidden="true" style="z-index: 1070;">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content reason-modal-content">
+      <div class="modal-header reason-modal-header">
+        <h5 class="modal-title" id="videoModalLabel"><i class="fas fa-video me-2"></i>Video link</h5>
+        <button type="button" class="claim-close" data-bs-dismiss="modal" aria-label="Close"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="videoModalSku"></div>
+        <input type="url" id="videoModalInput" class="form-control" placeholder="Paste video link (YouTube, Google Drive, Loom, etc.)" autocomplete="off">
+        <div class="video-error" id="videoModalError">Please enter a valid link starting with http:// or https://</div>
+        <div class="small mt-2" id="videoModalOpenWrap" style="display:none;"><a href="#" id="videoModalOpen" target="_blank" rel="noopener noreferrer"><i class="fas fa-up-right-from-square me-1"></i>Open link in new tab</a></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-claim-remove" id="videoModalRemove"><i class="fas fa-trash-can me-1"></i> Remove</button>
+        <button type="button" class="btn btn-claim-cancel" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-claim-save" id="videoModalSave"><i class="fas fa-check me-1"></i> Save</button>
       </div>
     </div>
   </div>
@@ -1164,7 +1216,7 @@
               <td class="col-num4"><input type="number" step="0.01" name="rate[]" class="form-control rate" required></td>
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
-              <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
+              <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td><td class="col-video"><input type="hidden" name="video_link[]" class="video-value"><span class="claim-video-btn" role="button" tabindex="0" title="Add video link"><i class="fas fa-video"></i></span></td>
               <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
@@ -1199,6 +1251,13 @@
               reasonHidden.value = data.reason || '';
               if (typeof window.claimRefreshReasonBtn === 'function') {
                   window.claimRefreshReasonBtn(newRow.querySelector('.reason-btn'));
+              }
+
+              if (data.video_link) {
+                  newRow.querySelector('.video-value').value = data.video_link;
+                  if (typeof window.claimRefreshVideoBtn === 'function') {
+                      window.claimRefreshVideoBtn(newRow.querySelector('.claim-video-btn'));
+                  }
               }
 
               if (data.screenshot) {
@@ -1421,6 +1480,102 @@
                 e.preventDefault();
                 saveReason();
             }
+        });
+    })();
+
+    // Video link: icon opens a small editor; the URL is kept in the row's hidden input (video_link[]).
+    (function () {
+        let activeBtn = null;
+        const modalEl = document.getElementById('videoModal');
+        if (!modalEl) return;
+        const input = document.getElementById('videoModalInput');
+        const errorEl = document.getElementById('videoModalError');
+        const openWrap = document.getElementById('videoModalOpenWrap');
+        const openLink = document.getElementById('videoModalOpen');
+        const removeBtn = document.getElementById('videoModalRemove');
+
+        function isHttpUrl(v) {
+            try { const u = new URL(v); return u.protocol === 'http:' || u.protocol === 'https:'; } catch (e) { return false; }
+        }
+
+        // "youtube.com/watch?v=1" -> "https://youtube.com/watch?v=1"
+        function normalize(v) {
+            v = String(v || '').trim();
+            if (v && !/^[a-z][a-z0-9+.-]*:/i.test(v)) v = 'https://' + v;
+            return v;
+        }
+
+        function refreshVideoBtn(btn) {
+            const hidden = btn.parentElement.querySelector('.video-value');
+            const url = (hidden && hidden.value || '').trim();
+            btn.classList.toggle('has-video', url !== '');
+            btn.title = url !== '' ? ('Video link: ' + url) : 'Add video link';
+        }
+        window.claimRefreshVideoBtn = refreshVideoBtn;
+
+        function syncOpenLink() {
+            const v = normalize(input.value);
+            const ok = v !== '' && isHttpUrl(v);
+            openWrap.style.display = ok ? '' : 'none';
+            if (ok) openLink.href = v;
+        }
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest ? e.target.closest('#claimTableBody .claim-video-btn') : null;
+            if (!btn) return;
+            activeBtn = btn;
+            const row = btn.closest('tr');
+            const sku = row && row.querySelector('.sku-select') ? (row.querySelector('.sku-select').value || '') : '';
+            document.getElementById('videoModalSku').textContent = sku ? 'SKU: ' + sku : '';
+            input.value = btn.parentElement.querySelector('.video-value').value || '';
+            errorEl.style.display = 'none';
+            syncOpenLink();
+            const readOnly = !!btn.closest('fieldset:disabled');
+            input.readOnly = readOnly;
+            document.getElementById('videoModalSave').style.display = readOnly ? 'none' : '';
+            removeBtn.style.display = readOnly ? 'none' : '';
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }, true); // capture: buttons inside a disabled fieldset still open the viewer
+
+        document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('claim-video-btn')) {
+                e.preventDefault();
+                e.target.click();
+            }
+        });
+
+        input.addEventListener('input', function () { errorEl.style.display = 'none'; syncOpenLink(); });
+
+        // Stack above the (full-screen) claim modal and its backdrop.
+        modalEl.addEventListener('show.bs.modal', function () {
+            setTimeout(function () {
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                if (backdrops.length) backdrops[backdrops.length - 1].style.zIndex = '1065';
+            }, 10);
+        });
+        modalEl.addEventListener('shown.bs.modal', function () { input.focus(); });
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (document.getElementById('claimModal').classList.contains('show')) {
+                document.body.classList.add('modal-open');
+            }
+        });
+
+        function save() {
+            if (!activeBtn) return;
+            const v = normalize(input.value);
+            if (v !== '' && !isHttpUrl(v)) { errorEl.style.display = 'block'; input.focus(); return; }
+            activeBtn.parentElement.querySelector('.video-value').value = v;
+            refreshVideoBtn(activeBtn);
+            bootstrap.Modal.getInstance(modalEl).hide();
+        }
+
+        document.getElementById('videoModalSave').addEventListener('click', save);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
+        });
+        removeBtn.addEventListener('click', function () {
+            input.value = '';
+            save();
         });
     })();
 
@@ -2046,7 +2201,7 @@
         if (items.length > 0) {
             html += '<table class="table table-sm table-bordered mb-1" style="font-size: 12px;">';
             html += '<thead class="table-light"><tr>'
-                + '<th>Parent</th><th>SKU</th><th>Supplier</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th><th>Screenshot</th>'
+                + '<th>Parent</th><th>SKU</th><th>Supplier</th><th>Qty</th><th>Rate</th><th>Amount</th><th>Reason/Notes</th><th>Image</th><th>Screenshot</th><th>Video</th>'
                 + '</tr></thead><tbody>';
             items.forEach(item => {
                 const img = item.image
@@ -2055,6 +2210,11 @@
                 const shotSrc = item.screenshot ? '/' + String(item.screenshot).replace(/^\/+/, '') : '';
                 const shot = shotSrc
                     ? `<img class="no-img-hover" src="${escapeHtml(shotSrc)}" data-sc-src="${escapeHtml(shotSrc)}" style="height:28px;width:28px;object-fit:cover;border-radius:4px;cursor:zoom-in;" alt="Screenshot">`
+                    : '<span class="text-muted">N/A</span>';
+                // Only http(s) links become clickable (never javascript: etc.).
+                const videoUrl = /^https?:\/\//i.test(String(item.video_link || '')) ? String(item.video_link) : '';
+                const video = videoUrl
+                    ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(videoUrl)}"><i class="fas fa-video"></i> Watch</a>`
                     : '<span class="text-muted">N/A</span>';
                 html += '<tr>'
                     + `<td>${escapeHtml(item.parent || '')}</td>`
@@ -2066,6 +2226,7 @@
                     + `<td>${escapeHtml(item.reason || '')}</td>`
                     + `<td class="text-center">${img}</td>`
                     + `<td class="text-center">${shot}</td>`
+                    + `<td class="text-center">${video}</td>`
                     + '</tr>';
             });
             html += '</tbody></table>';
