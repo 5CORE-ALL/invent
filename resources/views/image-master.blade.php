@@ -34,6 +34,16 @@
         .im-card.im-card-dragging { opacity:.45; border:2px dashed #6366f1; }
         .im-card-img-wrap { position:relative; width:120px; height:100px; background:#f1f5f9; overflow:hidden; }
         .im-card-img-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+        /* Edit product images modal: full height, top to bottom */
+        #editImModal .modal-dialog { --bs-modal-margin:0; height:100vh; margin:0 auto; }
+        #editImModal .modal-content { height:100vh; max-height:100vh; border-radius:0; }
+        /* Hero 1 / Hero 2 cards: 1.5x size in the top row */
+        .im-grid-hero { gap:14px; margin-bottom:6px; }
+        .im-card.im-card-hero { width:180px; }
+        .im-card.im-card-hero .im-card-img-wrap { width:180px; height:150px; }
+        .im-card.im-card-hero .im-card-name { max-width:162px; font-size:13px; }
+        .im-card.im-card-hero .im-card-filename { max-width:162px; font-size:10px; }
+        .im-card.im-card-hero .im-card-arrows button { font-size:13px; padding:3px 0; }
         .im-card-badge { position:absolute; top:4px; left:4px; background:rgba(0,0,0,.55); color:#fff; border-radius:4px; font-size:9px; font-weight:700; padding:1px 5px; line-height:1.5; pointer-events:none; z-index:3; }
         .im-card-del { position:absolute; top:4px; right:4px; background:rgba(220,38,38,.88); border:none; color:#fff; border-radius:50%; width:22px; height:22px; font-size:11px; cursor:pointer; display:none; align-items:center; justify-content:center; padding:0; line-height:1; transition:background .12s; z-index:5; }
         .im-card-del:hover { background:#b91c1c; }
@@ -145,6 +155,7 @@
                 <div class="card-body">
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
+                        <button type="button" id="heroImageBtn" class="btn btn-warning btn-sm" title="Choose Hero 1 / Hero 2 per marketplace for the selected rows (or all rows in view if none selected)"><i class="fas fa-star"></i> Hero Image</button>
                         <div class="dropdown" id="promptsDropdown">
                             <button type="button" id="promptsBtn" class="btn btn-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="fas fa-wand-magic-sparkles"></i> Prompts</button>
                             <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
@@ -199,7 +210,7 @@
     </div>
 
     <div class="modal fade" id="editImModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title"><i class="fas fa-images me-2"></i>Edit product images</h5>
@@ -256,7 +267,7 @@
                     </div>
                     <div id="imSlots"></div>
                     <div class="alert alert-info small mt-3 mb-0">
-                        Save images here first. Use the <strong>Hero Image</strong> button in the table row to choose Hero 1 / Hero 2 per marketplace, and the MP button to push.
+                        Save images here first. Use the <strong>Hero Image</strong> button in the toolbar to choose Hero 1 / Hero 2 per marketplace, and the MP button in the table row to push.
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -392,6 +403,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted mb-3">When you push, <strong>Hero 1</strong> is sent first (main image) and <strong>Hero 2</strong> second on each marketplace. Hero 2 &ldquo;Auto&rdquo; keeps the natural order. Default is Image 1.</p>
+                    <div id="heroScopeNote" class="alert alert-warning small py-2 mb-3" style="display:none;"></div>
                     <div class="hero-row hero-row-all mb-2">
                         <span class="hero-mp fw-bold">Apply to all marketplaces</span>
                         <select id="heroAllMain" class="form-select form-select-sm"></select>
@@ -969,6 +981,12 @@ document.addEventListener('DOMContentLoaded', () => {
     (function buildSlotHeaders() {
         const actionTh = document.getElementById('imActionTh');
         if (!actionTh) return;
+        // Column before Hero 1: opens the image editor for the row (magnifying glass).
+        const viewTh = document.createElement('th');
+        viewTh.style.cssText = 'width:54px;text-align:center;';
+        viewTh.title = 'Open the image editor for this row';
+        viewTh.innerHTML = '<i class="fas fa-search" aria-hidden="true"></i>';
+        actionTh.parentNode.insertBefore(viewTh, actionTh);
         for (let i = 0; i < IM_SLOT_COUNT; i++) {
             const th = document.createElement('th');
             th.className = 'im-slot-th';
@@ -1010,7 +1028,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSortIndicators();
         visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="21" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="22" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -1036,11 +1054,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="text-center">${imgCountHtml}</td>
                 <td>${esc(r.Parent||sku)}</td>
                 <td>${historyCellHtml(sku, r)}</td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}" title="View / edit images" aria-label="View / edit images for ${esc(sku)}"><i class="fas fa-search"></i></button></td>
                 ${slotCells}
                 <td>
                     <div class="d-flex gap-1 flex-wrap align-items-center">
-                        <button type="button" class="btn btn-sm btn-primary edit-btn" data-edit="${esc(sku)}" title="Edit images" aria-label="Edit ${esc(sku)}"><i class="fas fa-edit"></i></button>
-                        <button type="button" class="btn btn-sm btn-warning im-icon-expand hero-open-btn" data-hero-open="${esc(sku)}" title="Hero Image" aria-label="Hero Image for ${esc(sku)}"><i class="fas fa-star"></i><span class="im-icon-expand-text">Hero Image</span></button>
                         <button type="button" class="shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify images for this SKU"><i class="fas fa-download"></i></button>
                     </div>
                 </td>
@@ -1052,7 +1069,6 @@ document.addEventListener('DOMContentLoaded', () => {
         syncSelectAllCheckbox();
         document.querySelectorAll('.im-mp-open[data-mp-open]').forEach(b => b.addEventListener('click', () => openMpPicker(b.dataset.mpOpen)));
         document.querySelectorAll('.im-ai-edit-btn[data-ai-edit]').forEach(b => b.addEventListener('click', () => openAiEditModal(b.dataset.aiEdit, parseInt(b.dataset.slot, 10))));
-        document.querySelectorAll('.hero-open-btn[data-hero-open]').forEach(b => b.addEventListener('click', () => openHeroModal(b.dataset.heroOpen)));
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
@@ -1614,7 +1630,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Hero Image modal: Hero 1 / Hero 2 per marketplace ─────────────────────
-    let heroSku = '';
+    let heroRows = [];        // rows the settings will be applied to
+    let heroUsingSelection = false;
     let heroMain = {};   // mp -> index
     let heroHero2 = {};  // mp -> index (absent = Auto)
 
@@ -1632,9 +1649,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderHeroRows() {
-        const row = bySku.get(String(heroSku));
-        const urls = row ? pmImageUrls(row) : [];
-        const n = urls.length;
+        const single = heroRows.length === 1 ? pmImageUrls(heroRows[0]) : null;
+        const n = Math.max(1, ...heroRows.map(r => pmImageUrls(r).length));
         const wrap = document.getElementById('heroRows');
         if (!wrap) return;
         wrap.innerHTML = MARKETPLACES.map(mp => `
@@ -1642,7 +1658,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="hero-mp">${esc(LABELS[mp] || mp)}</span>
                 <select class="form-select form-select-sm hero-sel-main" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroMain[mp] ?? 0, false)}</select>
                 <select class="form-select form-select-sm hero-sel-2" data-mp="${esc(mp)}">${heroOptionsHtml(n, heroHero2[mp] ?? null, true)}</select>
-                <span class="hero-thumbs-cell">${heroThumbsHtml(urls, mp)}</span>
+                <span class="hero-thumbs-cell">${single ? heroThumbsHtml(single, mp) : ''}</span>
             </div>`).join('');
         const allMain = document.getElementById('heroAllMain');
         const allH2 = document.getElementById('heroAllHero2');
@@ -1650,20 +1666,36 @@ document.addEventListener('DOMContentLoaded', () => {
         if (allH2) allH2.innerHTML = heroOptionsHtml(n, null, true);
     }
 
-    function openHeroModal(sku) {
-        const row = bySku.get(String(sku));
-        if (!row) return;
-        if (pmImageUrls(row).length === 0) {
-            toast('No images on Product Master for this SKU — open Edit and add images first.', false);
+    function openHeroModal() {
+        const withImages = (r) => pmImageUrls(r).length > 0;
+        const selected = tableData.filter(r => selectedSkus.has(String(r.SKU || '')) && withImages(r));
+        heroUsingSelection = selected.length > 0;
+        heroRows = heroUsingSelection ? selected : currentFilteredRowsForPull().filter(withImages);
+        if (!heroRows.length) {
+            toast('No products with images to set hero images for.', false);
             return;
         }
-        heroSku = String(sku);
-        heroMain = normalizeMainByMarketplace(row.image_main_by_marketplace);
-        heroHero2 = hero2FromRaw(row.image_main_by_marketplace);
-        document.getElementById('heroSkuLabel').textContent = sku;
+        if (heroRows.length === 1) {
+            heroMain = normalizeMainByMarketplace(heroRows[0].image_main_by_marketplace);
+            heroHero2 = hero2FromRaw(heroRows[0].image_main_by_marketplace);
+        } else {
+            heroMain = defaultMainByMarketplace();
+            heroHero2 = {};
+        }
+        document.getElementById('heroSkuLabel').textContent = heroRows.length === 1
+            ? String(heroRows[0].SKU)
+            : `${heroRows.length} SKUs (${heroUsingSelection ? 'selected' : 'all in current view'})`;
+        const note = document.getElementById('heroScopeNote');
+        if (note) {
+            note.textContent = heroRows.length > 1
+                ? `These settings will be applied to ${heroRows.length} SKUs, replacing their current hero choices. Image numbers that a SKU does not have are skipped for that SKU.`
+                : '';
+            note.style.display = note.textContent ? '' : 'none';
+        }
         renderHeroRows();
         bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).show();
     }
+    document.getElementById('heroImageBtn')?.addEventListener('click', openHeroModal);
 
     function heroSetFor(mp, which, rawVal) {
         const val = rawVal === 'auto' ? null : (parseInt(rawVal, 10) || 0);
@@ -1676,9 +1708,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const sel = e.target.closest('select[data-mp]');
         if (!sel) return;
         heroSetFor(sel.dataset.mp, sel.classList.contains('hero-sel-main') ? 'main' : 'h2', sel.value);
-        const row = bySku.get(String(heroSku));
         const cell = sel.closest('.hero-row')?.querySelector('.hero-thumbs-cell');
-        if (cell && row) cell.innerHTML = heroThumbsHtml(pmImageUrls(row), sel.dataset.mp);
+        if (cell && heroRows.length === 1) cell.innerHTML = heroThumbsHtml(pmImageUrls(heroRows[0]), sel.dataset.mp);
     });
 
     document.getElementById('heroApplyAllBtn')?.addEventListener('click', () => {
@@ -1697,41 +1728,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('heroSaveBtn')?.addEventListener('click', async () => {
-        const row = bySku.get(String(heroSku));
-        if (!row) return;
-        const urls = pmImageUrls(row);
-        const payload = {};
-        MARKETPLACES.forEach(mp => {
-            const m = Math.max(0, Math.min(urls.length - 1, heroMain[mp] ?? 0));
-            if (m > 0) payload[mp] = m;
-            const h = heroHero2[mp];
-            if (h != null && h !== m && h <= urls.length - 1) payload[mp + HERO2_SUFFIX] = h + 1;
-        });
+        if (!heroRows.length) return;
+        if (heroRows.length > 1 && !window.confirm(`Apply these hero image settings to ${heroRows.length} SKUs${heroUsingSelection ? '' : ' (everything in the current view)'}?`)) return;
         const btn = document.getElementById('heroSaveBtn');
         const label = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-        try {
-            const r = await fetch('/image-master/save-pm', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ sku: heroSku, images: urls, main_by_marketplace: payload, removed_urls: [] }),
+        let ok = 0, fail = 0, firstErr = '';
+        for (let i = 0; i < heroRows.length; i++) {
+            const row = heroRows[i];
+            const urls = pmImageUrls(row);
+            const payload = {};
+            MARKETPLACES.forEach(mp => {
+                const m = Math.max(0, Math.min(urls.length - 1, heroMain[mp] ?? 0));
+                if (m > 0) payload[mp] = m;
+                const h = heroHero2[mp];
+                if (h != null && h !== m && h <= urls.length - 1) payload[mp + HERO2_SUFFIX] = h + 1;
             });
-            const j = await r.json();
-            if (j.success) {
-                row.image_main_by_marketplace = j.image_main_by_marketplace || payload;
-                toast('Hero images saved');
-                bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).hide();
-                loadData();
-            } else {
-                toast(j.message || 'Save failed', false);
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving ${i + 1}/${heroRows.length}…`;
+            try {
+                const r = await fetch('/image-master/save-pm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: JSON.stringify({ sku: String(row.SKU), images: urls, main_by_marketplace: payload, removed_urls: [] }),
+                });
+                const j = await r.json().catch(() => ({}));
+                if (j.success) {
+                    row.image_main_by_marketplace = j.image_main_by_marketplace || payload;
+                    ok++;
+                } else {
+                    fail++;
+                    if (!firstErr) firstErr = `${row.SKU}: ${j.message || 'Save failed'}`;
+                }
+            } catch (e) {
+                fail++;
+                if (!firstErr) firstErr = `${row.SKU}: ${e.message || 'Save failed'}`;
             }
-        } catch (e) {
-            toast(e.message || 'Save failed', false);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = label;
         }
+        btn.disabled = false;
+        btn.innerHTML = label;
+        if (fail === 0) {
+            toast(`Hero images saved for ${ok} SKU(s)`);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('heroImageModal')).hide();
+        } else {
+            toast(`Saved ${ok}, failed ${fail}. ${firstErr}`, false);
+        }
+        loadData();
     });
 
     // storedImageIds: url → DB id (so we can delete from server)
@@ -1785,14 +1826,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        el.innerHTML = '<div class="im-grid" id="imGrid">' +
-            modalUrls.map((url, idx) => {
+        const cardHtml = (url, idx) => {
                 const meta     = storedImageMeta.get(url);
                 const isStored = !!meta;
                 const name     = meta?.name ?? decodeURIComponent(url.split('/').pop().split('?')[0]);
                 const dbId     = meta?.id ?? '';
                 const isDefaultMain = idx === 0;
-                return `<div class="im-card${isStored?' is-stored':''}${isDefaultMain?' is-main-default':''}"
+                const slotName = imSlotNames[idx] || ('Image ' + (idx + 1));
+                const heroCls  = idx < 2 ? ' im-card-hero' : '';
+                return `<div class="im-card${heroCls}${isStored?' is-stored':''}${isDefaultMain?' is-main-default':''}"
                             draggable="true" data-idx="${idx}"
                             data-url="${esc(url)}" data-dbid="${esc(String(dbId))}">
                     <div class="im-card-img-wrap">
@@ -1802,7 +1844,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                     </div>
                     <div class="im-card-footer">
-                        <div class="im-card-name">Image ${idx + 1}</div>
+                        <div class="im-card-name" title="Image ${idx + 1}">${esc(slotName)}</div>
                         <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
                         <div class="im-card-arrows">
                             <button type="button" class="im-up" data-i="${idx}" title="Move left">&#8592;</button>
@@ -1812,7 +1854,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </div>`;
-            }).join('') + '</div>';
+        };
+        const heroCards = modalUrls.slice(0, 2).map((u, i) => cardHtml(u, i)).join('');
+        const restCards = modalUrls.slice(2).map((u, i) => cardHtml(u, i + 2)).join('');
+        el.innerHTML = '<div id="imGrid">'
+            + `<div class="im-grid im-grid-hero">${heroCards}</div>`
+            + (restCards ? `<div class="im-grid">${restCards}</div>` : '')
+            + '</div>';
 
         const grid = document.getElementById('imGrid');
 
