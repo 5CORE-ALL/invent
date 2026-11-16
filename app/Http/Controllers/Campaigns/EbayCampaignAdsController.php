@@ -746,7 +746,12 @@ class EbayCampaignAdsController extends Controller
         }
 
         $total = (clone $query)->count();
-        $data  = $query->orderBy('ca.id', 'desc')->get();
+        // Listings that actually have an ad (campaign_id set) first, then the not-yet-enrolled ones.
+        // Plain id DESC put the newest no-campaign listings on top, so the page looked like it had no ads.
+        $data  = $query
+            ->orderByRaw("CASE WHEN ca.campaign_id IS NULL OR ca.campaign_id = '' THEN 1 ELSE 0 END")
+            ->orderBy('ca.id', 'desc')
+            ->get();
         $this->fillSkuFromHistory($data);
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
