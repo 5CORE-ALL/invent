@@ -1138,7 +1138,7 @@
     @if($listingPageToolsJs)
         <script>{!! $listingPageToolsJs !!}</script>
     @else
-        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261029-parent"></script>
+        <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
     @endif
 @include('partials.listing-sku-search')
 @endsection

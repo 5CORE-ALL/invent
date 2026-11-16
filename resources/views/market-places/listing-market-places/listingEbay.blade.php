@@ -1467,6 +1467,6 @@
             publishUrl: '/listing_ebay/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261108-draft-{{ @filemtime(public_path('js/listing-page-tools.js')) ?: 0 }}"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}{{ @filemtime(public_path('js/listing-page-tools.js')) ?: 0 }}"></script>
 @include('partials.listing-sku-search')
 @endsection
