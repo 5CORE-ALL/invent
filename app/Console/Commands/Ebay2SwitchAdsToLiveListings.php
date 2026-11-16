@@ -60,7 +60,7 @@ class Ebay2SwitchAdsToLiveListings extends Command
             return self::FAILURE;
         }
 
-        $stats = ['switched' => 0, 'already_ok' => 0, 'pruned' => 0, 'no_live_listing' => 0, 'no_bid' => 0, 'ebay_still_has_ad' => 0, 'failed' => 0];
+        $stats = ['switched' => 0, 'already_ok' => 0, 'pruned' => 0, 'no_live_listing' => 0, 'no_bid' => 0, 'ebay_still_has_ad' => 0, 'already_elsewhere' => 0, 'failed' => 0];
         $done = 0;
         $checks = 0;
 
@@ -149,6 +149,15 @@ class Ebay2SwitchAdsToLiveListings extends Command
                     ]);
                 if (! ($resp->successful() || $resp->status() === 201)) {
                     $msg = (string) ($resp->json()['errors'][0]['message'] ?? $resp->status());
+                    // eBay allows one PMT ad per listing. The live listing already has its ad in ANOTHER campaign,
+                    // so nothing to create; the old row points at a dead listing and only misleads, drop it.
+                    // (sync-campaign-listings mirrors the live ad's real campaign on its next run.)
+                    if (stripos($msg, 'already exists') !== false) {
+                        DB::table(self::TABLE)->where('id', $row->id)->delete();
+                        $this->line("  = {$tag} → new={$newId} already has an ad in another campaign, dead row removed");
+                        $stats['already_elsewhere']++;
+                        continue;
+                    }
                     $this->error("  ✗ {$tag} → new={$newId}: {$msg}");
                     $stats['failed']++;
                     continue;
@@ -168,6 +177,7 @@ class Ebay2SwitchAdsToLiveListings extends Command
 
         $this->info('Switched: '.$stats['switched']
             .' | No live listing: '.$stats['no_live_listing']
+            .' | Already in another campaign: '.$stats['already_elsewhere']
             .' | Pruned: '.$stats['pruned']
             .' | No bid: '.$stats['no_bid']
             .' | eBay still has ad: '.$stats['ebay_still_has_ad']
