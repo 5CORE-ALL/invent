@@ -764,7 +764,7 @@
       </div>
       <div class="modal-body">
         <div class="small text-muted mb-2" id="videoModalSku"></div>
-        <div class="alert alert-warning py-2 small" id="videoModalReadOnly" style="display:none;"><i class="fas fa-lock me-1"></i> View only. Open this claim with <b>Edit</b> (directors) to add or change a video link or file.</div>
+        <div class="alert alert-info py-2 small" id="videoModalReadOnly" style="display:none;"><i class="fas fa-circle-info me-1"></i> The rest of this claim is view-only, but a video added here is <b>saved straight away</b>.</div>
         <input type="url" id="videoModalInput" class="form-control" placeholder="Paste video link (YouTube, Google Drive, Loom, etc.)" autocomplete="off">
         <div class="video-error" id="videoModalError">Please enter a valid link starting with http:// or https://</div>
         <div class="small mt-2" id="videoModalOpenWrap" style="display:none;"><a href="#" id="videoModalOpen" target="_blank" rel="noopener noreferrer"><i class="fas fa-up-right-from-square me-1"></i>Open link in new tab</a></div>
@@ -1518,6 +1518,8 @@
         let pendingFile = null;
         let dropFile = false;
         let objectUrl = null;
+        // View-only claim that already exists: the video is saved straight to the server (no claim Update needed).
+        let quickSave = false;
 
         function isVideoFile(f) {
             return /^video\//i.test(f.type) || (!f.type && /\.(mp4|mov|m4v|webm|mkv|avi|mpe?g|3gp)$/i.test(f.name));
@@ -1612,15 +1614,21 @@
             errorEl.textContent = LINK_ERROR;
             syncOpenLink();
             const readOnly = !!btn.closest('fieldset:disabled');
-            input.readOnly = readOnly;
+            quickSave = readOnly && !!window.claimEditId;
+            const viewOnly = readOnly && !quickSave;
+            input.readOnly = viewOnly;
             pendingFile = null;
             dropFile = false;
             fileInput.value = '';
-            document.getElementById('videoModalSave').style.display = readOnly ? 'none' : '';
-            removeBtn.style.display = readOnly ? 'none' : '';
-            pickBtn.style.display = readOnly ? 'none' : '';
-            document.getElementById('videoModalReadOnly').style.display = readOnly ? '' : 'none';
-            input.placeholder = readOnly ? 'No video link added' : 'Paste video link (YouTube, Google Drive, Loom, etc.)';
+            const saveBtn = document.getElementById('videoModalSave');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> ' + (quickSave ? 'Save video' : 'Save');
+            saveBtn.style.display = viewOnly ? 'none' : '';
+            removeBtn.style.display = viewOnly ? 'none' : '';
+            pickBtn.style.display = viewOnly ? 'none' : '';
+            const note = document.getElementById('videoModalReadOnly');
+            note.style.display = quickSave ? '' : 'none';
+            input.placeholder = viewOnly ? 'No video link added' : 'Paste video link (YouTube, Google Drive, Loom, etc.)';
             renderFile();
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }, true); // capture: buttons inside a disabled fieldset still open the viewer
@@ -1660,6 +1668,10 @@
                 showError('"' + f.name + '" is ' + fmtSize(f.size) + ', larger than the server limit of ' + fmtSize(lim.fileMax) + ' per file. Paste a link instead.');
                 return;
             }
+            if (lim.postMax && f.size > lim.postMax * 0.95) {
+                showError('"' + f.name + '" (' + fmtSize(f.size) + ') is larger than the server accepts per save (about ' + fmtSize(lim.postMax) + '). Paste a link instead.');
+                return;
+            }
             errorEl.style.display = 'none';
             pendingFile = f;
             dropFile = false;
@@ -1671,11 +1683,63 @@
             renderFile();
         });
 
+        // View-only claim: send just this row's video to the server and refresh the row + list.
+        function persistVideo(url, td) {
+            const id = window.claimEditId;
+            const row = activeBtn.closest('tr');
+            const idx = Array.from(document.querySelectorAll('#claimTableBody tr')).indexOf(row);
+            const saveBtn = document.getElementById('videoModalSave');
+            const btnHtml = saveBtn.innerHTML;
+
+            const fd = new FormData();
+            fd.append('_token', '{{ csrf_token() }}');
+            fd.append('row_index', idx);
+            fd.append('video_link', url);
+            if (pendingFile) fd.append('video_file', pendingFile);
+            else if (dropFile) fd.append('remove_file', '1');
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+
+            fetch('/claim-reimbursement/' + id + '/video', {
+                method: 'POST',
+                body: fd,
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) {
+                return r.json().catch(function () { return null; }).then(function (data) {
+                    if (r.ok && data && data.success) return data;
+                    let msg = 'Could not save the video. The file may be larger than the server allows - try a link instead.';
+                    if (data && data.errors) msg = Object.values(data.errors)[0][0];
+                    else if (data && data.message) msg = data.message;
+                    throw new Error(msg);
+                });
+            })
+            .then(function (data) {
+                td.querySelector('.video-value').value = data.video_link || '';
+                td.querySelector('.existing-video-file').value = data.video_file || '';
+                td.querySelector('.video-file-input').value = '';
+                refreshVideoBtn(activeBtn);
+
+                const tableRow = window.claimTable ? window.claimTable.getRow(id) : null;
+                if (tableRow) tableRow.update({ details: data.items, action_history: data.action_history });
+                if (typeof renderClaimActions === 'function') renderClaimActions(data.action_history);
+
+                bootstrap.Modal.getInstance(modalEl).hide();
+            })
+            .catch(function (err) { showError(err.message); })
+            .finally(function () {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = btnHtml;
+            });
+        }
+
         function save() {
             if (!activeBtn) return;
             const v = normalize(input.value);
             if (v !== '' && !isHttpUrl(v)) { showError(LINK_ERROR); input.focus(); return; }
             const td = activeBtn.parentElement;
+            if (quickSave) { persistVideo(v, td); return; }
             td.querySelector('.video-value').value = v;
 
             const rowInput = td.querySelector('.video-file-input');

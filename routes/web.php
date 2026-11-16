@@ -7049,6 +7049,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/claim-reimbursement/save', 'saveClaimReimbursement')->name('claim.reimbursement.save');
         Route::post('/claim-reimbursement/{id}/update', 'updateClaim')->name('claim.reimbursement.update');
         Route::post('/claim-reimbursement/{id}/items', 'updateClaimItems')->name('claim.reimbursement.items');
+        Route::post('/claim-reimbursement/{id}/video', 'updateVideo')->name('claim.reimbursement.video');
         Route::post('/claim-reimbursement/{id}/received-amount', 'updateReceivedAmount')->name('claim.reimbursement.received-amount');
         Route::post('/claim-reimbursement/{id}/action', 'addAction')->name('claim.reimbursement.action');
         Route::post('/claim-reimbursement/{id}/details-note', 'updateDetailsNote')->name('claim.reimbursement.details-note');

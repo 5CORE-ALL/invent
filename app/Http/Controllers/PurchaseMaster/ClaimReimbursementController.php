@@ -443,6 +443,80 @@ class ClaimReimbursementController extends Controller
     }
 
     /**
+     * A claim's line items as a plain list. Claims created from the form were stored double-encoded
+     * (a JSON string inside the JSON column), so `$claim->items` can come back as a string.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function claimItemsArray(ClaimReimbursement $claim): array
+    {
+        $items = $claim->items;
+        for ($i = 0; $i < 2 && is_string($items); $i++) {
+            $items = json_decode($items, true);
+        }
+
+        return is_array($items) ? array_values($items) : [];
+    }
+
+    /**
+     * Set / replace / remove the video link and video file of ONE line item on an existing claim.
+     * Open to everyone who can open the claim (like Actions and Recd Amt), so the claim can stay read-only
+     * for non-directors while still letting them attach a video. Logged in the claim's action history.
+     */
+    public function updateVideo(Request $request, $id)
+    {
+        $request->validate([
+            'row_index' => 'required|integer|min:0',
+            'video_link' => ['nullable', 'string', 'max:1000', 'regex:/^https?:\/\/\S+$/i'],
+            'video_file' => 'nullable|file|mimes:mp4,mov,qt,m4v,webm,mkv,avi,mpeg,mpg,3gp|max:102400',
+            'remove_file' => 'nullable|boolean',
+        ]);
+
+        $claim = ClaimReimbursement::findOrFail($id);
+        $items = $this->claimItemsArray($claim);
+        $index = (int) $request->input('row_index');
+
+        if (! isset($items[$index])) {
+            return response()->json(['success' => false, 'message' => 'That claim line no longer exists. Reload the page.'], 422);
+        }
+
+        $items[$index]['video_link'] = trim((string) $request->input('video_link', '')) ?: null;
+
+        if ($request->hasFile('video_file')) {
+            $uploadPath = 'uploads/claim_videos';
+            $video = $request->file('video_file');
+            $videoExt = $video->guessExtension() ?: $video->getClientOriginalExtension();
+            $videoName = time() . '_' . $index . '_vid.' . $videoExt;
+            $video->move(public_path($uploadPath), $videoName);
+            $items[$index]['video_file'] = $uploadPath . '/' . $videoName;
+        } elseif ($request->boolean('remove_file')) {
+            $items[$index]['video_file'] = null;
+        }
+
+        $history = $claim->action_history ?: [];
+        $history[] = [
+            'action' => 'Video updated (' . ($items[$index]['item'] ?? 'row ' . ($index + 1)) . ')',
+            'user' => Auth::user()->name ?? 'System',
+            'date' => now()->format('j M'),
+            'datetime' => now()->format('j M Y, g:i A'),
+        ];
+
+        $claim->update([
+            'items' => $items,
+            'action_history' => $history,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Video saved.',
+            'video_link' => $items[$index]['video_link'],
+            'video_file' => $items[$index]['video_file'] ?? null,
+            'items' => $items,
+            'action_history' => $history,
+        ]);
+    }
+
+    /**
      * Update claim line items (+ optional received_amount / details_note).
      * Used by PO proforma Claim & Reimb. section.
      */
@@ -461,7 +535,7 @@ class ClaimReimbursementController extends Controller
         ]);
 
         $claim = ClaimReimbursement::findOrFail($id);
-        $existingItems = is_array($claim->items) ? $claim->items : [];
+        $existingItems = $this->claimItemsArray($claim);
         $items = [];
         $totalAmount = 0.0;
 
