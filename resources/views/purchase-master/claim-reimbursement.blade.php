@@ -261,9 +261,9 @@
     }
     #claimModal .claim-shot-paste { border: 1px solid #cbd5e1; background: #fff; color: #2563eb; border-radius: 6px; padding: 0 5px; font-size: 11px; line-height: 18px; cursor: pointer; }
     #claimModal .claim-shot-paste:hover { background: #eaf2ff; border-color: #2563eb; }
-    #claimModal td.col-shot { position: relative; }
+    #claimModal .claim-shot-wrap { position: relative; display: flex; justify-content: center; width: 64px; margin: 0 auto; }
     #claimModal .claim-shot-expand {
-        display: none; position: absolute; top: 5px; right: 9px; width: 22px; height: 22px;
+        display: none; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
         align-items: center; justify-content: center; border-radius: 6px;
         background: rgba(15, 23, 42, .72); color: #fff; font-size: 11px; cursor: zoom-in; z-index: 2;
     }
@@ -572,8 +572,28 @@
                     </div>
                 </div>
 
-@php $canArchive = $canArchive ?? false; @endphp
+@php
+    $canArchive = $canArchive ?? false;
+    // PHP upload limits, so the browser can warn before a big multi-upload is silently dropped by the server.
+    $claimIniBytes = function ($v) {
+        $v = trim((string) $v);
+        if ($v === '') return 0;
+        $n = (float) $v;
+        switch (strtolower(substr($v, -1))) {
+            case 'g': $n *= 1024;
+            case 'm': $n *= 1024;
+            case 'k': $n *= 1024;
+        }
+        return (int) $n;
+    };
+    $claimUploadLimits = [
+        'postMax' => $claimIniBytes(ini_get('post_max_size')),
+        'fileMax' => $claimIniBytes(ini_get('upload_max_filesize')),
+        'maxFiles' => (int) ini_get('max_file_uploads'),
+    ];
+@endphp
 <script>
+    window.CLAIM_UPLOAD_LIMITS = @json($claimUploadLimits);
     window.CLAIM_CAN_ARCHIVE = @json($canArchive);
     window.CLAIM_SUPPLIER_OPTIONS = '<option value="">Select Supplier</option>' + @json($suppliers->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->values())
         .map(function (s) { return '<option value="' + s.id + '">' + String(s.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') + '</option>'; })
@@ -654,7 +674,7 @@
                   <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
                   <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
                   <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+                  <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
                   <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
                 </tr>
               </tbody>
@@ -1145,7 +1165,7 @@
               <td class="col-num6"><input type="number" name="amount[]" class="form-control amount" readonly></td>
               <td class="col-reason"><input type="hidden" name="reason[]" class="reason-value"><button type="button" class="btn reason-btn" title="Add reason / notes"><i class="fas fa-pen-to-square"></i><span class="reason-text">Add reason / notes</span></button></td>
               <td class="col-attach"><input type="hidden" name="existing_image[]" class="existing-image"><label class="claim-attach" title="Attach image / PDF"><i class="fas fa-paperclip"></i><input type="file" name="image[]" class="claim-attach-input" accept=".jpg,.jpeg,.png,.pdf"></label></td>
-              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
+              <td class="col-shot"><input type="hidden" name="existing_screenshot[]" class="existing-screenshot"><span class="claim-shot-wrap"><label class="claim-shot" tabindex="0" title="Click to select, then press Cmd/Ctrl+V to paste a snippet. Double-click to choose a file."><i class="fas fa-camera"></i><img class="claim-shot-thumb no-img-hover" alt="" style="display:none;"><input type="file" name="screenshot[]" class="claim-shot-input" accept="image/*" multiple></label><span class="claim-shot-expand" role="button" tabindex="0" title="View full image"><i class="fas fa-expand"></i></span></span><button type="button" class="claim-shot-choose" title="Choose one or more screenshots from your computer"><i class="fas fa-folder-open"></i> Choose</button></td>
               <td><button type="button" class="btn remove-row" title="Remove row"><i class="fas fa-trash-can"></i></button></td>
           `;
           claimTableBody.appendChild(newRow);
@@ -1431,15 +1451,23 @@
         if (!input || !input.classList || !input.classList.contains('claim-shot-input')) return;
         const label = input.closest('.claim-shot');
         const file = input.files && input.files[0];
-        if (input.files && input.files.length > 1 && typeof window.claimFillShots === 'function') {
+        if (input.files && input.files.length > 1) {
             // Several files picked from one row: first goes here, the rest fill the following empty rows.
-            const picked = Array.from(input.files).filter(function (f) { return /^image\//.test(f.type); });
-            if (picked.length) {
-                const rowEl = label.closest('tr');
-                const idx = Array.from(document.querySelectorAll('#claimTableBody tr')).indexOf(rowEl);
+            // Each row's input must end up holding exactly ONE file (screenshot[] is matched to rows by
+            // position), so setShotFile() below replaces this input's list with a single file.
+            const picked = Array.from(input.files).filter(function (f) {
+                return /^image\//.test(f.type) || (!f.type && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name));
+            });
+            const rowEl = label.closest('tr');
+            const idx = Array.from(document.querySelectorAll('#claimTableBody tr')).indexOf(rowEl);
+            if (picked.length && typeof window.claimFillShots === 'function') {
                 window.claimFillShots(picked, idx, true, 1);
-                return;
+            } else {
+                input.value = ''; // nothing usable: drop the selection; preview falls back to the saved screenshot
+                const saved = label.closest('td').querySelector('.existing-screenshot').value;
+                setShotPreview(label, saved ? '/' + saved.replace(/^\/+/, '') : '');
             }
+            return;
         }
         if (!file) {
             // Cleared: fall back to the saved screenshot (if editing), otherwise empty.
@@ -1783,13 +1811,16 @@
             });
             multiInput.addEventListener('change', function () {
                 const all = Array.from(multiInput.files || []);
-                const imgs = all.filter(function (f) { return /^image\//.test(f.type); });
+                const imgs = all.filter(function (f) {
+                    return /^image\//.test(f.type) || (!f.type && /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name));
+                });
                 multiInput.value = '';
                 if (!imgs.length) return;
                 if (!claimOpenAndEditable()) return;
                 fillShots(imgs, firstEmptyRowIndex(), true, 0);
-                if (imgs.length === 1) shotToast('Screenshot added.');
-                if (imgs.length < all.length) shotToast((all.length - imgs.length) + ' non-image file(s) skipped.');
+                const skipped = all.length - imgs.length;
+                if (skipped > 0) shotToast(imgs.length + ' screenshot(s) added, ' + skipped + ' non-image file(s) skipped.');
+                else if (imgs.length === 1) shotToast('Screenshot added.');
             });
         }
     })();
@@ -1833,6 +1864,35 @@
         });
         // Never leave the preview stuck open (e.g. a modal closes or the user clicks).
         document.addEventListener('click', function () { box.style.display = 'none'; });
+    })();
+
+    // Block a save that the server would silently truncate (too many / too large files in one request).
+    (function () {
+        const form = document.getElementById('claimForm');
+        if (!form) return;
+        const fmt = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
+
+        form.addEventListener('submit', function (e) {
+            const lim = window.CLAIM_UPLOAD_LIMITS || {};
+            const files = [];
+            form.querySelectorAll('input[type="file"]').forEach(function (inp) {
+                Array.from(inp.files || []).forEach(function (f) { files.push(f); });
+            });
+            if (!files.length) return;
+
+            const total = files.reduce(function (s, f) { return s + f.size; }, 0);
+            let msg = '';
+            const big = files.find(function (f) { return lim.fileMax && f.size > lim.fileMax; });
+            if (big) msg = '"' + big.name + '" is ' + fmt(big.size) + ', larger than the server limit of ' + fmt(lim.fileMax) + ' per file.';
+            else if (lim.maxFiles && files.length > lim.maxFiles) msg = 'You selected ' + files.length + ' files but the server accepts at most ' + lim.maxFiles + ' per save. Remove some, or save in batches.';
+            else if (lim.postMax && total > lim.postMax * 0.95) msg = 'The files total ' + fmt(total) + ' but the server accepts about ' + fmt(lim.postMax) + ' per save. Remove some, or save in batches.';
+
+            if (msg) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                alert(msg);
+            }
+        }, true);
     })();
 
     // Full-size viewer: expand icon on a modal thumbnail, or click a screenshot in the claims list.
