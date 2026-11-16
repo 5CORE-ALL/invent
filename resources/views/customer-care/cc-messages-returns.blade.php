@@ -1337,6 +1337,7 @@
                 pending_count:            Number(row.pending_count || 0),
                 pending_status:           row.pending_status || '',
                 pending_note:             row.pending_note || '',
+                pending_fetched_at:       row.pending_fetched_at || null,
             }));
 
             window.__ccmrTable = new Tabulator('#ccMessagesReturnsTable', {
@@ -1418,7 +1419,10 @@
                             }
                             const v = Number(cell.getValue() || 0);
                             const color = v === 0 ? '#198754' : '#dc3545';
-                            return '<span style="color:' + color + ';font-weight:700;">' + v.toLocaleString('en-US') + '</span>';
+                            const stale = /^Stale/i.test(d.pending_note || '');
+                            return '<span style="color:' + color + ';font-weight:700;' + (stale ? 'opacity:.6;' : '') + '"'
+                                + (stale ? ' title="' + note + '"' : '') + '>'
+                                + v.toLocaleString('en-US') + (stale ? '*' : '') + '</span>';
                         },
                     },
                     {
@@ -1538,6 +1542,65 @@
             // Cheap safety net for any environment where the Tabulator
             // event system isn't available — fire once on the next tick.
             setTimeout(refreshAvgTatBadges, 0);
+
+            // Live-refresh Messages Pending: the column only reads what the
+            // 15-min cron stored, so rows that were never pulled (shown as "…"),
+            // failed, or are older than 15 minutes are pulled here one by one
+            // (same endpoint as the Messages Pending page) and updated in place.
+            (function autoRefreshPending() {
+                const urlPendingPull = @json(route('customer.care.messages.pending.pull'));
+                const STALE_MS = 15 * 60 * 1000;
+
+                function needsPull(d) {
+                    if (!d || !d.id) return false;
+                    if (d.pending_status === 'unsupported') return false;
+                    if (d.pending_status !== 'ok') return true; // '', 'pending', 'error'
+                    const t = d.pending_fetched_at ? Date.parse(d.pending_fetched_at) : NaN;
+                    return isNaN(t) || (Date.now() - t) > STALE_MS || /^Stale/i.test(d.pending_note || '');
+                }
+
+                function applyRow(id, row) {
+                    if (!window.__ccmrTable || !row) return;
+                    window.__ccmrTable.getRows().forEach(r => {
+                        if (String(r.getData().id) !== String(id)) return;
+                        r.update({
+                            pending_count:      Number(row.pending_count || 0),
+                            pending_status:     row.fetch_status || '',
+                            pending_note:       row.fetch_note || '',
+                            pending_fetched_at: row.last_fetched_at || null,
+                        });
+                    });
+                    refreshPendingTotalBadge();
+                }
+
+                function run() {
+                    if (!window.__ccmrTable) return;
+                    const ids = window.__ccmrTable.getData().filter(needsPull).map(d => d.id);
+                    let i = 0;
+                    (function next() {
+                        if (i >= ids.length) return;
+                        const id = ids[i++];
+                        api(urlPendingPull, { method: 'POST', body: JSON.stringify({ channel_id: id }) })
+                            .then(resp => applyRow(id, resp && resp.row))
+                            .catch(e => {
+                                // Network/HTTP failure: keep any good count already shown.
+                                const cur = (window.__ccmrTable.getData().find(x => String(x.id) === String(id))) || {};
+                                if (cur.pending_status === 'ok') return;
+                                applyRow(id, {
+                                    pending_count: 0,
+                                    fetch_status: 'error',
+                                    fetch_note: (e && e.body && e.body.message) || 'Pull failed',
+                                    last_fetched_at: null,
+                                });
+                            })
+                            .then(next);
+                    })();
+                }
+
+                if (window.__ccmrTable && typeof window.__ccmrTable.on === 'function') {
+                    window.__ccmrTable.on('tableBuilt', run);
+                }
+            })();
 
             // Re-format every row once a minute so the "Status" icon flips
             // back from green ✓ to red ✕ as soon as the Next-hours window

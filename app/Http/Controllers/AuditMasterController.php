@@ -732,6 +732,9 @@ class AuditMasterController extends Controller
                     : 0,
                 'pending_status'           => $pendingStatus,
                 'pending_note'             => $pendingRow ? ($pendingRow->fetch_note ?? null) : null,
+                'pending_fetched_at'       => $pendingRow && $pendingRow->last_fetched_at
+                    ? $pendingRow->last_fetched_at->toIso8601String()
+                    : null,
                 'id'                       => $c->id,
                 'channel'                  => $c->channel,
                 'logo'                     => $hasLogo ? ($c->logo ?? null) : null,

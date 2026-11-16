@@ -62,6 +62,24 @@ class MarketplacePendingMessagesService
             $result = $this->makeResult(0, self::STATUS_ERROR, $e->getMessage(), null);
         }
 
+        // A transient API failure must not wipe a previously good count (that
+        // is what left rows blank / showing 0). Keep the last good number and
+        // flag it as stale in the note instead.
+        $fetchedAt = now();
+        if ($result['fetch_status'] === self::STATUS_ERROR) {
+            $previous = CcMessagesPending::query()->where('channel_id', (int) $channel->id)->first();
+            if ($previous !== null && (string) $previous->fetch_status === self::STATUS_OK) {
+                // Keep the old timestamp so the page retries on next load.
+                $fetchedAt = $previous->last_fetched_at;
+                $result = $this->makeResult(
+                    (int) $previous->pending_count,
+                    self::STATUS_OK,
+                    'Stale — last refresh failed: '.($result['fetch_note'] ?? 'unknown error'),
+                    $previous->source
+                );
+            }
+        }
+
         $user = Auth::user();
         $row = CcMessagesPending::query()->updateOrCreate(
             ['channel_id' => (int) $channel->id],
@@ -70,7 +88,7 @@ class MarketplacePendingMessagesService
                 'fetch_status' => $result['fetch_status'],
                 'fetch_note' => $result['fetch_note'],
                 'source' => $result['source'],
-                'last_fetched_at' => now(),
+                'last_fetched_at' => $fetchedAt,
                 'updated_by_user_id' => $user?->id,
                 'updated_by_name' => $user?->name,
             ]
@@ -531,7 +549,7 @@ class MarketplacePendingMessagesService
             if (is_numeric($total)) {
                 return $this->makeResult((int) $total, self::STATUS_OK, null, 'walmart');
             }
-            $list = $json['questions'] ?? $json['payload'] ?? $json['items'] ?? [];
+            $list = $json['questions'] ?? $json['payload'] ?? $json['items'] ?? null;
             if (is_array($list)) {
                 return $this->makeResult(count($list), self::STATUS_OK, null, 'walmart');
             }
@@ -701,9 +719,12 @@ class MarketplacePendingMessagesService
         if (is_numeric($total)) {
             return $this->makeResult((int) $total, self::STATUS_OK, null, 'reverb');
         }
-        $list = $json['conversations'] ?? $json['messages'] ?? [];
+        $list = $json['conversations'] ?? $json['messages'] ?? null;
+        if (! is_array($list)) {
+            return $this->makeResult(0, self::STATUS_ERROR, 'Reverb returned an unrecognised conversations payload.', 'reverb');
+        }
 
-        return $this->makeResult(is_array($list) ? count($list) : 0, self::STATUS_OK, null, 'reverb');
+        return $this->makeResult(count($list), self::STATUS_OK, null, 'reverb');
     }
 
     /**
