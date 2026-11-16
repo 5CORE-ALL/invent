@@ -44,13 +44,17 @@
         .im-card.im-card-hero .im-card-name { max-width:162px; font-size:13px; }
         .im-card.im-card-hero .im-card-filename { max-width:162px; font-size:10px; }
         .im-card.im-card-hero .im-card-arrows button { font-size:13px; padding:3px 0; }
-        /* Auto-fit layout: one 4-per-row grid. Hero 1 + Hero 2 (1.5x) share row 1 with image 3; the sandbox is the last cell. */
-        #editImModal { --im-h:clamp(70px, min(calc((100vh - 400px) / 4.5), calc((min(96vw, 1140px) - 110px) / 5.2)), 230px); --im-w:calc(var(--im-h) * 1.3); }
-        #imGrid .im-grid { display:grid; grid-template-columns:repeat(8, calc((var(--im-w) - 10px) / 2)); gap:10px; align-items:start; justify-content:start; }
-        #imGrid .im-card, #imGrid .im-sandbox { grid-column:span 2; width:100%; margin:0; }
-        #imGrid .im-card.im-card-hero { grid-column:span 3; }
-        #imGrid .im-card .im-card-img-wrap { width:100%; height:var(--im-h); }
-        #imGrid .im-card.im-card-hero .im-card-img-wrap { height:calc(var(--im-h) * 1.5); }
+        /* Auto-fit layout: wide modal, 7 columns. Row 1 = Hero 1 + Hero 2 only (2 columns each, 2x height);
+           rows 2-3 = the other images spread across the width, then Move-to-end and Sandbox as the last cells. */
+        #editImModal .modal-dialog.modal-xl { max-width:min(98vw, 1900px); }
+        #editImModal { --im-h:clamp(80px, min(calc((100vh - 350px) / 4), calc((min(98vw, 1900px) - 100px) / 7 * 0.95)), 260px); }
+        #imGrid .im-grid { display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); gap:10px; align-items:start; }
+        #imGrid .im-card, #imGrid .im-sandbox { width:100%; margin:0; }
+        #imGrid .im-card.im-card-hero { grid-column:span 2; }
+        #imGrid .im-card-hero + .im-card:not(.im-card-hero) { grid-column-start:1; }
+        #imGrid .im-card .im-card-img-wrap { width:100%; height:var(--im-h); background:#fff; }
+        #imGrid .im-card .im-card-img-wrap img { object-fit:contain; }
+        #imGrid .im-card.im-card-hero .im-card-img-wrap { height:calc(var(--im-h) * 2); }
         #imGrid .im-card-name, #imGrid .im-card-filename { max-width:100%; }
         /* Download / Edit: shown only on hover, over the bottom of the image */
         #imGrid .im-card-arrows { position:absolute; left:0; right:0; bottom:6px; margin:0; justify-content:center; gap:6px; z-index:4; opacity:0; pointer-events:none; transition:opacity .12s; }
@@ -60,8 +64,8 @@
         #imGrid .im-card-arrows .im-dl:hover { background:#15803d; color:#fff; }
         #imGrid .im-card-arrows .im-ai { background:#d4a017; }
         #imGrid .im-card-arrows .im-ai:hover { background:#b8860b; color:#fff; }
-        #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) + 56px); }
-        #imGrid .im-sandbox { min-height:calc(var(--im-h) + 56px); padding:6px 8px; border-radius:10px; }
+        #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) + 34px); }
+        #imGrid .im-sandbox { min-height:calc(var(--im-h) + 34px); padding:6px 8px; border-radius:10px; }
         #imGrid .im-sandbox-grid { display:flex; flex-wrap:wrap; gap:5px; }
         #imGrid .im-sb-card { width:54px; grid-column:auto; }
         #imGrid .im-sb-card .im-card-img-wrap { height:46px; }
@@ -1964,8 +1968,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="im-card-footer">
-                        <div class="im-card-name" title="Image ${idx + 1}">${esc(slotName)}</div>
-                        <div class="im-card-filename" title="${esc(url)}">${esc(name)}</div>
+                        <div class="im-card-name" title="${esc(name)}">${esc(slotName)}</div>
                     </div>
                 </div>`;
         };
