@@ -806,6 +806,114 @@ class ImageMasterController extends Controller
         return response()->json(['success' => true, 'channels' => $out, 'others' => $others]);
     }
 
+    private const FLAG_DEFAULT_TYPES = ['Missing', 'Wrong details', 'Need improvement'];
+
+    /** Error types for flagged images: the defaults plus any added from the editor (stored once, shared by everyone). */
+    private function flagTypes(): array
+    {
+        $types = self::FLAG_DEFAULT_TYPES;
+        try {
+            if (Schema::hasTable('product_raw_image_ai_prompts')) {
+                $raw = ProductRawImageAiPrompt::query()->where('kind', 'im_flag_types')->value('prompt');
+                $extra = is_string($raw) ? json_decode($raw, true) : [];
+                foreach (is_array($extra) ? $extra : [] as $t) {
+                    $t = trim((string) $t);
+                    if ($t !== '' && ! in_array(mb_strtolower($t), array_map('mb_strtolower', $types), true)) {
+                        $types[] = $t;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster flag types failed', ['error' => $e->getMessage()]);
+        }
+
+        return $types;
+    }
+
+    /** GET /image-master/flags?sku= — flagged images of one SKU + the error types list. */
+    public function flagsGet(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        $flags = [];
+        try {
+            if ($sku !== '' && Schema::hasTable('image_master_image_flags')) {
+                foreach (DB::table('image_master_image_flags')->where('sku', $sku)->get(['url', 'error_type']) as $r) {
+                    $flags[] = ['url' => (string) $r->url, 'type' => (string) ($r->error_type ?? '')];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMaster flags failed', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json(['success' => true, 'flags' => $flags, 'types' => $this->flagTypes()]);
+    }
+
+    /** POST /image-master/flag — tick / untick the red-triangle flag on one image and set its error type. */
+    public function flagSave(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $v = $request->validate([
+            'sku' => 'required|string|max:255',
+            'url' => 'required|string|max:2000',
+            'flagged' => 'required|boolean',
+            'type' => 'nullable|string|max:120',
+        ]);
+        if (! Schema::hasTable('image_master_image_flags')) {
+            return response()->json(['success' => false, 'message' => 'Flag storage is missing (run migrations).'], 500);
+        }
+
+        $hash = sha1($v['url']);
+        try {
+            if (! $v['flagged']) {
+                DB::table('image_master_image_flags')->where('sku', $v['sku'])->where('url_hash', $hash)->delete();
+            } else {
+                $user = $request->user();
+                $now = now();
+                $exists = DB::table('image_master_image_flags')->where('sku', $v['sku'])->where('url_hash', $hash)->exists();
+                $data = [
+                    'url' => $v['url'],
+                    'error_type' => trim((string) ($v['type'] ?? '')) ?: null,
+                    'user_id' => $user?->id,
+                    'user_name' => $user?->name,
+                    'updated_at' => $now,
+                ];
+                if ($exists) {
+                    DB::table('image_master_image_flags')->where('sku', $v['sku'])->where('url_hash', $hash)->update($data);
+                } else {
+                    DB::table('image_master_image_flags')->insert($data + ['sku' => $v['sku'], 'url_hash' => $hash, 'created_at' => $now]);
+                }
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /** POST /image-master/flag-types — add a new error type to the dropdown. */
+    public function flagTypeAdd(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $v = $request->validate(['name' => 'required|string|max:60']);
+        $name = trim($v['name']);
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Enter a name.'], 422);
+        }
+        if (! Schema::hasTable('product_raw_image_ai_prompts')) {
+            return response()->json(['success' => false, 'message' => 'Storage table is missing (run migrations).'], 500);
+        }
+        $types = $this->flagTypes();
+        if (! in_array(mb_strtolower($name), array_map('mb_strtolower', $types), true)) {
+            $extra = array_values(array_diff($types, self::FLAG_DEFAULT_TYPES));
+            $extra[] = $name;
+            try {
+                ProductRawImageAiPrompt::query()->updateOrCreate(['kind' => 'im_flag_types'], ['prompt' => json_encode($extra, JSON_UNESCAPED_UNICODE)]);
+            } catch (\Throwable $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            }
+        }
+
+        return response()->json(['success' => true, 'types' => $this->flagTypes(), 'name' => $name]);
+    }
+
     private function slotNameKind(int $slot): string
     {
         return 'im_name_'.str_pad((string) $slot, 2, '0', STR_PAD_LEFT);

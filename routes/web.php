@@ -4758,6 +4758,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/image-master/sku-text', [ImageMasterController::class, 'skuText'])->name('image.master.sku.text');
     Route::get('/image-master/slot-prompts', [ImageMasterController::class, 'slotPrompts'])->name('image.master.slot.prompts');
     Route::post('/image-master/slot-names', [ImageMasterController::class, 'saveSlotName'])->name('image.master.slot.names.save');
+    Route::get('/image-master/flags', [ImageMasterController::class, 'flagsGet'])->name('image.master.flags');
+    Route::post('/image-master/flag', [ImageMasterController::class, 'flagSave'])->name('image.master.flag.save');
+    Route::post('/image-master/flag-types', [ImageMasterController::class, 'flagTypeAdd'])->name('image.master.flag.types.add');
     Route::post('/image-master/slot-prompts', [ImageMasterController::class, 'saveSlotPrompt'])->name('image.master.slot.prompts.save');
     Route::post('/image-master/ai-edit/generate', [ImageMasterController::class, 'aiEditGenerate'])->name('image.master.ai.edit.generate');
     Route::post('/image-master/ai-edit/apply', [ImageMasterController::class, 'aiEditApply'])->name('image.master.ai.edit.apply');

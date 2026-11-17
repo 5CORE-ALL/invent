@@ -82,6 +82,13 @@
         #imGrid .im-sb-card { width:54px; grid-column:auto; }
         #imGrid .im-sb-card .im-card-img-wrap { height:46px; }
         #imGrid .im-sb-card .im-card-footer { display:none; }
+        /* Flag an image (checkbox) → red triangle + error-type dropdown */
+        #imGrid .im-flag-footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; }
+        #imGrid .im-flag-footer .im-card-name { flex:1 1 0; min-width:0; max-width:none; }
+        #imGrid .im-flag-cb { margin:0; cursor:pointer; flex-shrink:0; }
+        #imGrid .im-flag-tri { color:#dc2626; font-size:13px; flex-shrink:0; }
+        #imGrid .im-flag-sel { flex:1 0 100%; font-size:11px; padding:1px 4px; height:auto; border-color:#dc2626; color:#991b1b; }
+        #imGrid .im-card.im-flagged { outline:2px solid #dc2626; outline-offset:-1px; }
         #imGrid .im-sb-empty { width:100%; min-height:calc(var(--im-h) * 0.55); border-radius:8px; }
         .im-drop-end { border:2px dashed #cbd5e1; background:#f8fafc; box-shadow:none; min-height:150px; display:flex; align-items:center; justify-content:center; }
         .im-drop-end-inner, .im-sb-empty { display:flex; flex-direction:column; align-items:center; gap:4px; color:#94a3b8; font-size:11px; font-weight:600; text-align:center; }
@@ -204,6 +211,8 @@
         .mpg-add-bar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
         #im-master-table thead th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; }
         #im-master-table thead th[data-sort]:hover { filter:brightness(1.12); }
+        #autoPushWrap.on { border-color:#16a34a !important; background:#f0fdf4 !important; }
+        #autoPushWrap.on #autoPushLabel { color:#15803d; }
         .im-badge-row { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:8px; align-items:center; width:max-content; }
         .im-badge-row .im-stat-badge { display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; padding:6px 12px; min-width:130px; white-space:nowrap; }
         #im-master-table thead th .im-sort-ind { display:inline-block; margin-left:4px; font-size:9px; opacity:.45; }
@@ -230,6 +239,10 @@
                             <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
                         </div>
                         <button type="button" id="pushPickerBtn" class="btn btn-outline-primary btn-sm" title="Push selected rows to marketplaces" aria-label="Push"><i class="fas fa-cloud-upload-alt"></i></button>
+                        <div class="form-check form-switch m-0 d-flex align-items-center gap-2 px-3 py-1 border rounded bg-white" id="autoPushWrap" title="When ON, only products whose images were edited, replaced, added or re-ordered are pushed automatically after saving">
+                            <input class="form-check-input m-0" type="checkbox" role="switch" id="autoPushSwitch" style="cursor:pointer;">
+                            <label class="form-check-label small fw-semibold mb-0" for="autoPushSwitch" id="autoPushLabel" style="cursor:pointer;">Auto Push: OFF</label>
+                        </div>
                         <input type="text" id="parentSearchIm" class="form-control form-control-sm" style="width:150px;" placeholder="Search Parent" title="Search Parent">
                         <input type="text" id="skuSearchIm" class="form-control form-control-sm" style="width:150px;" placeholder="Search SKU" title="Search SKU">
                         <select id="statusFilter" class="form-select form-select-sm" style="width:auto;" title="Filter by status"><option value="all">Status: All</option></select>
@@ -677,6 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const SHOPIFY_PULL_CHUNK_SIZE = 25;
     let modalUrls = [];
     let modalSandbox = [];   // images parked in the drag & drop sandbox (not part of the saved order)
+    let modalOrigUrls = []; // image list as it was when the Edit modal opened (Auto Push compares against it)
     let knownImageUrls = []; // every image URL seen this modal session (loaded + uploaded/fetched), to detect removals on Save
     let modalMainByMp = {};
     let modalHero2ByMp = {};   // mp -> image index (absent = automatic)
@@ -2090,6 +2104,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const reloaded = loadData();
                 // Editor was open underneath: refresh it so it shows the new image (not stale URLs).
                 if (reopenSku) reloaded.then(() => openEditModal(reopenSku));
+                // Auto Push: the AI-edited image replaced a slot, so push this SKU.
+                const apSku = aiEdit.sku;
+                reloaded.then(() => queueAutoPush(apSku, 'image edited'));
             } else {
                 aiEditMsg(j.message || 'Could not save the image.', 'text-danger');
             }
@@ -2283,6 +2300,8 @@ document.addEventListener('DOMContentLoaded', () => {
         modalUrls = pmImageUrls(row);
         modalSandbox = [];
         knownImageUrls = [...modalUrls];
+        modalOrigUrls = [...modalUrls];
+        modalFlags.clear();
         modalMainByMp = normalizeMainByMarketplace(row.image_main_by_marketplace);
         modalHero2ByMp = hero2FromRaw(row.image_main_by_marketplace);
         renderSlots();
@@ -2294,6 +2313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Load stored-image metadata for saved URLs in the background.
         // Do not append every upload here; the modal list must reflect Product Master.
         loadStoredSkuImages(sku);
+        loadImageFlags(sku);
     }
 
     async function loadStoredSkuImages(sku) {
@@ -2309,6 +2329,32 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             renderSlots();
         } catch (_) {}
+    }
+
+    // Image flags (checkbox → red triangle + error type). url → error type ('' = flagged, no type chosen yet)
+    const modalFlags = new Map();
+    const FLAG_DEFAULT_TYPES = ['Missing', 'Wrong details', 'Need improvement'];
+    let flagTypeList = [...FLAG_DEFAULT_TYPES];
+    async function loadImageFlags(sku) {
+        try {
+            const r = await fetch('/image-master/flags?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+            const j = await r.json();
+            if (!j.success) return;
+            if (Array.isArray(j.types) && j.types.length) flagTypeList = j.types;
+            if (document.getElementById('modalSku').value !== String(sku)) return;
+            modalFlags.clear();
+            (j.flags || []).forEach(f => { if (modalUrls.includes(f.url)) modalFlags.set(f.url, f.type || ''); });
+            renderSlots();
+        } catch (_) {}
+    }
+    function saveImageFlag(url) {
+        const flagged = modalFlags.has(url);
+        fetch('/image-master/flag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ sku: document.getElementById('modalSku').value, url, flagged, type: modalFlags.get(url) || '' }),
+        }).then(r => r.json()).then(j => { if (!j.success) toast(j.message || 'Could not save the flag', false); })
+          .catch(() => toast('Could not save the flag', false));
     }
 
     let imClipBlob = null; // last image copied with the card Copy button
@@ -2340,7 +2386,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isDefaultMain = idx === 0;
                 const slotName = imSlotNames[idx] || ('Image ' + (idx + 1));
                 const heroCls  = idx < 2 ? ' im-card-hero' : '';
-                return `<div class="im-card${heroCls}${isStored?' is-stored':''}${isDefaultMain?' is-main-default':''}"
+                const isFlagged = modalFlags.has(url);
+                const flagType  = modalFlags.get(url) || '';
+                return `<div class="im-card${heroCls}${isStored?' is-stored':''}${isDefaultMain?' is-main-default':''}${isFlagged?' im-flagged':''}"
                             draggable="true" data-idx="${idx}"
                             data-url="${esc(url)}" data-dbid="${esc(String(dbId))}">
                     <div class="im-card-img-wrap">
@@ -2355,8 +2403,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                         </div>
                     </div>
-                    <div class="im-card-footer">
+                    <div class="im-card-footer im-flag-footer">
+                        <input type="checkbox" class="form-check-input im-flag-cb" data-i="${idx}" ${isFlagged ? 'checked' : ''} title="Flag this image with an issue" aria-label="Flag ${esc(slotName)}">
                         <div class="im-card-name" title="${esc(name)}">${esc(slotName)}</div>
+                        ${isFlagged ? `<i class="fas fa-exclamation-triangle im-flag-tri" title="${esc(flagType || 'Issue flagged')}"></i>
+                        <select class="im-flag-sel form-select form-select-sm" data-i="${idx}" aria-label="Error type">
+                            <option value=""${flagType === '' ? ' selected' : ''}>Select error…</option>
+                            ${flagTypeList.map(t => `<option value="${esc(t)}"${t === flagType ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+                            ${flagType && !flagTypeList.includes(flagType) ? `<option value="${esc(flagType)}" selected>${esc(flagType)}</option>` : ''}
+                            <option value="__new">＋ Add new type…</option>
+                        </select>` : ''}
                     </div>
                 </div>`;
         };
@@ -2415,6 +2471,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 } finally {
                     b.disabled = false;
                 }
+            });
+        });
+
+        // ── Flag checkbox + error-type dropdown ───────────────────────────
+        grid.querySelectorAll('.im-flag-cb, .im-flag-sel').forEach(el => {
+            el.addEventListener('click', (e) => e.stopPropagation());
+            el.addEventListener('mousedown', (e) => e.stopPropagation());
+        });
+        grid.querySelectorAll('.im-flag-cb').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const url = modalUrls[+cb.dataset.i];
+                if (!url) return;
+                if (cb.checked) modalFlags.set(url, ''); else modalFlags.delete(url);
+                saveImageFlag(url);
+                renderSlots();
+            });
+        });
+        grid.querySelectorAll('.im-flag-sel').forEach(sel => {
+            sel.addEventListener('change', async () => {
+                const url = modalUrls[+sel.dataset.i];
+                if (!url) return;
+                let val = sel.value;
+                if (val === '__new') {
+                    const name = (window.prompt('New error type name:') || '').trim();
+                    if (!name) { renderSlots(); return; }
+                    try {
+                        const r = await fetch('/image-master/flag-types', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                            body: JSON.stringify({ name }),
+                        });
+                        const j = await r.json();
+                        if (!j.success) throw new Error(j.message || 'Could not add the type');
+                        flagTypeList = j.types || flagTypeList;
+                        val = j.name || name;
+                    } catch (e) { toast(e.message || 'Could not add the type', false); renderSlots(); return; }
+                }
+                modalFlags.set(url, val);
+                saveImageFlag(url);
+                renderSlots();
             });
         });
 
@@ -2916,7 +3012,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (savedRow && j.image_main_by_marketplace) {
                     savedRow.image_main_by_marketplace = j.image_main_by_marketplace;
                 }
-                loadData();
+                // Auto Push: anything added, replaced, removed or re-ordered compared with when the editor opened.
+                const imagesChanged = JSON.stringify(modalOrigUrls) !== JSON.stringify(modalUrls);
+                modalOrigUrls = [...modalUrls];
+                const reloaded = loadData();
+                if (autoPushOn && imagesChanged) reloaded.then(() => queueAutoPush(sku, 'images changed'));
                 if (editModal) editModal.hide();
             } else {
                 toast(j.message || 'Save failed', false);
@@ -3253,6 +3353,70 @@ document.addEventListener('DOMContentLoaded', () => {
         toast(`Bulk push done: ${okSkus} ok, ${failSkus} failed`, !hasError);
         loadData();
         // Progress stays visible until the user closes it (the ✕ on the progress box).
+    }
+
+    // ── Auto Push: when ON, a SKU whose images were edited / replaced / added / reordered is pushed right after it is saved ──
+    const AUTO_PUSH_KEY = 'im_auto_push_v1';
+    let autoPushOn = false;
+    try { autoPushOn = localStorage.getItem(AUTO_PUSH_KEY) === '1'; } catch (_) {}
+    let autoPushChain = Promise.resolve();
+    const autoPushTargets = () => {
+        const base = ENABLED_MARKETPLACES;
+        return typeof filterConfiguredMarketplaces === 'function'
+            ? filterConfiguredMarketplaces(base)
+            : base.filter(mp => isMarketplaceApiConfigured(mp));
+    };
+    function syncAutoPushUi() {
+        const sw = document.getElementById('autoPushSwitch');
+        const lb = document.getElementById('autoPushLabel');
+        if (sw) sw.checked = autoPushOn;
+        if (lb) lb.textContent = 'Auto Push: ' + (autoPushOn ? 'ON' : 'OFF');
+        document.getElementById('autoPushWrap')?.classList.toggle('on', autoPushOn);
+    }
+    document.getElementById('autoPushSwitch')?.addEventListener('change', function () {
+        if (this.checked) {
+            const n = autoPushTargets().length;
+            if (!n) { toast('No marketplaces have API credentials configured.', false); this.checked = false; return; }
+            if (!window.confirm(`Turn Auto Push ON?\n\nFrom now on, whenever a product's images are edited, replaced, added, removed or re-ordered and saved, that product is pushed (replace mode) to ${n} configured marketplace(s) automatically. Unchanged products are never pushed.\n\neBay 3 has a different listing structure, so please verify its images.`)) { this.checked = false; return; }
+        }
+        autoPushOn = this.checked;
+        try { localStorage.setItem(AUTO_PUSH_KEY, autoPushOn ? '1' : '0'); } catch (_) {}
+        syncAutoPushUi();
+        toast(autoPushOn ? 'Auto Push is ON' : 'Auto Push is OFF');
+    });
+    syncAutoPushUi();
+
+    /** Queue an automatic push for one changed SKU (no-op when the switch is OFF). Call after loadData() so the row is fresh. */
+    function queueAutoPush(sku, reason) {
+        if (!autoPushOn) return;
+        autoPushChain = autoPushChain.then(() => runAutoPush(String(sku), reason || 'images changed')).catch(() => {});
+    }
+    async function runAutoPush(sku, reason) {
+        while (bulkPushAllRunning) await sleepMs(2000);
+        const row = bySku.get(sku);
+        if (!row) return;
+        const urls = pmImageUrls(row);
+        if (!urls.length) { toast(`Auto Push skipped for ${sku}: no images.`, false); return; }
+        const mps = autoPushTargets();
+        if (!mps.length) { toast('Auto Push skipped: no marketplaces have API credentials configured.', false); return; }
+        setPushProgress(true, `Auto Push: ${sku} (${reason})…`, '', false, true);
+        try {
+            const { res, j } = await queueImagePushAndWait(
+                { sku, mode: 'replace', updates: mps.map(mp => ({ marketplace: mp, images: urls })), main_by_marketplace: mainByMarketplacePayloadFromRow(row) },
+                (st) => renderImagePushJobProgress(st, `Auto Push: ${sku}…`)
+            );
+            const failed = Number(j?.total_failed ?? 0);
+            const ok = Number(j?.total_success ?? 0);
+            const good = res.ok && j && failed === 0 && (ok > 0 || j.success);
+            const failedMps = failed ? failedMarketplaceSummary(j?.results) : '';
+            setPushProgress(true, good ? `Auto Push finished: ${sku} → ${ok}/${mps.length} marketplace(s)` : `Auto Push had failures: ${sku}`,
+                good ? '' : esc(j?.message || `${failed} marketplace(s) failed`) + (failedMps ? ` (${esc(failedMps)})` : ''), !good);
+            toast(good ? `Auto Push done: ${sku}` : `Auto Push failed for ${sku}`, !!good);
+            loadData();
+        } catch (e) {
+            setPushProgress(true, `Auto Push failed: ${sku}`, esc(e.message || 'Request failed'), true);
+            toast(e.message || 'Auto Push failed', false);
+        }
     }
 
     document.getElementById('selectAllRowsIm')?.addEventListener('change', function() {
