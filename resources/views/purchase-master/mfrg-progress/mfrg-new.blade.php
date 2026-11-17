@@ -374,14 +374,6 @@
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'mip'])
 
                             <div class="mip-field">
-                                <select id="mip-stage-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Stage filter" title="Stage filter">
-                                    <option value="">Stage (all)</option>
-                                    <option value="mip" selected>MIP only</option>
-                                    <option value="r2s">R2S only</option>
-                                </select>
-                            </div>
-
-                            <div class="mip-field">
                                 <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field exec-typeahead" aria-label="Executive" title="Executive" data-eta-placeholder="Executive">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
@@ -850,12 +842,8 @@
                 const marker = v === 'transit'
                     ? '<i class="fas fa-truck stage-transit-icon"></i>'
                     : '<span class="stage-status-dot" style="background-color:' + color + ';"></span>';
-                const mk = function (val, label) { return '<option value="' + val + '"' + (v === val ? ' selected' : '') + '>' + label + '</option>'; };
-                return '<div class="mip-stage-dot" title="' + esc(stageLabel) + '"><span class="mip-stage-marker">' + marker + '</span>' +
-                    '<select class="stage-stage-select editable-stage" title="' + esc(stageLabel) + '">' +
-                    '<option value="">Select</option>' + mk('mip', 'MIP') + mk('r2s', 'R2S') +
-                    mk('transit', 'Transit') + mk('all_good', '😊 All Good') + mk('to_order_analysis', 'Order') +
-                    '</select></div>';
+                // Read-only: the dot just shows the stage (hover for the name); no dropdown.
+                return '<div class="mip-stage-dot" title="' + esc(stageLabel) + '"><span class="mip-stage-marker">' + marker + '</span></div>';
             }
             function dotToggleFormatter(column) {
                 return function (cell) {
@@ -1451,6 +1439,7 @@
                 ],
                 ajaxResponse: function (url, params, response) {
                     let data = response.data || [];
+                    window.mipReadyToShipItems = response.ready_to_ship || [];
                     const normSku = function (s) { return String(s == null ? '' : s).trim().toUpperCase(); };
                     // SKUs that already exist as real MIP rows (anything not from ready_to_ship).
                     const mipSkus = new Set(
@@ -1677,16 +1666,12 @@
 
             // ---- combined filtering (stage dropdown + global search + supplier play) ----
             function rowPassesMipFilters(row, skipSupplierPlay) {
-                const stage = (document.getElementById('mip-stage-filter').value || 'both').toLowerCase();
                 const execFilter = (document.getElementById('mip-exec-filter').value || '').trim();
                 const search = (document.getElementById('search-input').value || '').trim().toLowerCase();
                 const skuSearch = (document.getElementById('mip-sku-search').value || '').trim().toLowerCase();
                 const supplierSearch = (document.getElementById('mip-supplier-search').value || '').trim().toLowerCase();
 
                 let keep = true;
-                const rs = (row.stage || '').toLowerCase().trim();
-                if (stage === 'mip') keep = keep && rs === 'mip';
-                else if (stage === 'r2s') keep = keep && rs === 'r2s';
                 if (execFilter) {
                     const rowExec = String(row.exec || '').trim();
                     if (execFilter === '__un__') {
@@ -1760,7 +1745,6 @@
                 pruneMipSelectionToActive();
                 updateStats();
             });
-            document.getElementById('mip-stage-filter').addEventListener('change', applyToolbarFilters);
             document.getElementById('mip-exec-filter').addEventListener('change', applyToolbarFilters);
             document.getElementById('search-input').addEventListener('input', function () { clearTimeout(window._mipS); window._mipS = setTimeout(applyToolbarFilters, 300); });
             document.getElementById('mip-sku-search').addEventListener('input', function () { clearTimeout(window._mipSkuS); window._mipSkuS = setTimeout(applyToolbarFilters, 300); });
@@ -2129,9 +2113,6 @@
                 { key: 'artwork_manual_book', label: 'Artwork Manual Book', type: 'text' },
                 { key: 'o_links', label: 'O Links', type: 'text' },
                 { key: 'notes', label: 'Notes', type: 'textarea' },
-                { key: 'stage', label: 'Stage', type: 'select', options: function () {
-                    return [['', 'Select'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', 'Order']];
-                } },
             ];
             function openEditModal(row) {
                 mipRowEditState.row = row;
@@ -2614,13 +2595,10 @@
                 // Items of this supplier that are ready to ship but NOT in the overdue table above.
                 const listed = new Set(items.map(function (x) { return x.r; }));
                 const readyBySku = {};
-                mine.forEach(function (r) {
-                    if (listed.has(r)) return;
-                    const isReady = String(r.stage || '').toLowerCase() === 'r2s'
-                        || String(r.source_table || '') === 'ready_to_ship'
-                        || String(r.ready_to_ship || '').toLowerCase() === 'yes';
-                    if (!isReady) return;
+                (window.mipReadyToShipItems || []).forEach(function (r) {
+                    if (String(r.supplier || '').trim() !== supplier) return;
                     const key = String(r.sku || '').trim();
+                    if (!key) return;
                     readyBySku[key] = (readyBySku[key] || 0) + (parseFloat(r.qty) || 0);
                 });
                 const readyParts = Object.keys(readyBySku).map(function (k) {

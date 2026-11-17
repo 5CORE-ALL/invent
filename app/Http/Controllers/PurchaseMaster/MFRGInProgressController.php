@@ -157,51 +157,25 @@ class MFRGInProgressController extends Controller
             supplierCache: $supplierCache,
         );
 
-        // Also include Ready-to-Ship data if not archived.
-        // Only rows still on Ready to Ship (transit_inv_status = 0); rows moved to transit
-        // are flagged transit_inv_status = 1 and must drop off the MIP (MIP + R2S) page,
-        // matching the Ready to Ship page query.
-        if (!$archived) {
-            $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
+        // The MIP page lists ONLY orders that are still under MIP (mfrg_progress). Ready-to-Ship rows are
+        // no longer grid rows. We still send a tiny read-only summary (sku / supplier / qty) so the
+        // overdue-status email can mention items from the same supplier that are already ready to ship.
+        $readyToShipSummary = [];
+        if (! $archived) {
+            $readyToShipSummary = ReadyToShip::where('transit_inv_status', 0)
                 ->whereNull('deleted_at')
-                ->where('qty', '>', 0) // zero-qty rows are not in MIP / R2S
-                ->orderBy('created_at', 'desc')
-                ->get();
-            
-            // Mark RTS items simply. See note on canonical 'r2s' value above.
-            foreach ($readyToShipData as $item) {
-                $item->stage = 'r2s';
-                $item->source_table = 'ready_to_ship';
-                $item->nr = 'RTS';
-                $item->order_qty = $item->qty ?? 0;
-                $item->ready_to_ship = 'No';
-            }
-
-            self::attachProductCpToRows($readyToShipData);
-
-            $mfrgData = $mfrgData->concat($readyToShipData);
-        } else {
-            // Archived view: also show archived (soft-deleted) Ready-to-Ship rows so they
-            // can be restored from "Show archived".
-            $trashedRts = ReadyToShip::onlyTrashed()
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            foreach ($trashedRts as $item) {
-                $item->stage = 'r2s';
-                $item->source_table = 'ready_to_ship';
-                $item->nr = 'RTS';
-                $item->order_qty = $item->qty ?? 0;
-                $item->ready_to_ship = 'No';
-            }
-
-            self::attachProductCpToRows($trashedRts);
-
-            $mfrgData = $mfrgData->concat($trashedRts);
+                ->where('qty', '>', 0)
+                ->get(['sku', 'supplier', 'qty'])
+                ->map(fn ($r) => [
+                    'sku' => trim((string) $r->sku),
+                    'supplier' => trim((string) $r->supplier),
+                    'qty' => (float) $r->qty,
+                ])
+                ->values()
+                ->all();
         }
 
-        // Attach exec to the full set (incl. Ready-to-Ship rows). Exec is keyed by SKU in
-        // to_order_analysis, so RTS rows that aren't in mfrg_progress still show their saved exec.
+        // Exec is keyed by SKU in to_order_analysis.
         self::attachExecBySku($mfrgData);
 
         // MOQ shown on To Order / Forecast — same source, so all three pages agree.
@@ -225,6 +199,7 @@ class MFRGInProgressController extends Controller
         // which manifested as "two users seeing different data after a refresh".
         return response()->json([
             'data' => $mfrgData->values()->all(),
+            'ready_to_ship' => $readyToShipSummary,
         ])->withHeaders([
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma'        => 'no-cache',
@@ -579,13 +554,7 @@ class MFRGInProgressController extends Controller
         // Attach exec from to_order_analysis (single source of truth shared with to-order-analysis page)
         self::attachExecBySku($mfrgData);
 
-        // Filter to show items with stage='mip' or stage='r2s' (exclude transit, all good, etc.)
-        // The MIP In Progress page now lists both MIP and R2S stage rows from forecast_analysis.
-        $mfrgData = $mfrgData->filter(function($row) {
-            $rowStage = strtolower(trim($row->stage ?? ''));
-            // Allow MIP, R2S, or empty (empty defaults to mip for items in mfrg_progress)
-            return $rowStage === 'mip' || $rowStage === 'r2s' || $rowStage === '';
-        });
+        // No stage-based exclusion: every row with a MIP qty belongs on this page (matches Forecast MIP count).
 
         self::attachMipPoNumbers($mfrgData);
 
@@ -699,17 +668,16 @@ class MFRGInProgressController extends Controller
             $currencyFromPO = $skuToPriceMap[$sku]['currency'];
         }
 
-            // Get stage from forecast_analysis if available, otherwise default to 'mip'
-            // This is used to filter out items that are in r2s or transit stage
-            $stage = 'mip'; // Default to 'mip' if no forecast data
+            // Every mfrg_progress row reaching this point has qty > 0 and is not ready-to-ship,
+            // i.e. it IS a MIP quantity — exactly what /forecast.analysis counts in its MIP column.
+            // We must NOT take the stage from forecast_analysis here: that column holds only the
+            // single "primary" stage, so a SKU that is also in Transit/R2S/Order would be stored as
+            // that stage and silently vanish from this page (86 on Forecast vs 48 here).
+            $stage = 'mip';
             $nr = '';
             if ($forecastData->has($sku)) {
                 $forecast = $forecastData->get($sku);
                 $nr = strtoupper(trim($forecast->nr ?? ''));
-                $forecastStage = $forecast->stage ?? '';
-                if (! empty($forecastStage)) {
-                    $stage = strtolower(trim($forecastStage));
-                }
             }
 
             $row->stage = $stage;
