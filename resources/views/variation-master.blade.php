@@ -104,6 +104,8 @@
             text-align: left;
             max-height: 72px;
             overflow: auto;
+            /* The box only shows the text. Clicks pass through to the cell, so a double click opens the editor. */
+            pointer-events: none;
         }
 
         #vm-tabulator .tabulator-row.vm-parent-row .tabulator-cell {
@@ -818,6 +820,14 @@
                 });
                 return snapshot;
             }
+
+            // Open the editor on a double click. The default also opens on focus, so one click is enough to start
+            // typing and a second click inside the same cell closes it again before anything is saved.
+            table.on('cellDblClick', function (_e, cell) {
+                if (cell.getColumn().getDefinition().editor) {
+                    cell.edit(true);
+                }
+            });
 
             table.on('cellEdited', function (cell) {
                 const field = cell.getField();
