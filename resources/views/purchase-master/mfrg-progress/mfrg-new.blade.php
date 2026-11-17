@@ -1351,12 +1351,6 @@
                           }
                       } },
                     { title: "Stage", field: "stage", width: 80, hozAlign: "center", formatter: stageFormatter },
-                    ...(CAN_EDIT_ALL ? [{
-                        title: "Action", field: "row_action", width: 80, hozAlign: "center", headerSort: false,
-                        formatter: function () {
-                            return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
-                        }
-                    }] : []),
                     { title: "Executive", field: "exec", width: 120, hozAlign: "center",
                       cssClass: "mip-exec-cell",
                       editor: "list",
@@ -1409,6 +1403,13 @@
                             return '<button type="button" class="btn btn-sm btn-outline-danger mip-delete-row-btn" title="Delete row"><i class="fas fa-trash-alt"></i></button>';
                         }
                     }] : []),
+                    // Edit column (last): opens the "Edit Row" modal for this row, or for every ticked row.
+                    {
+                        title: "Edit", field: "row_edit", width: 64, minWidth: 64, hozAlign: "center", headerSort: false,
+                        formatter: function () {
+                            return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
+                        }
+                    },
                 ],
                 ajaxResponse: function (url, params, response) {
                     let data = response.data || [];
@@ -1540,7 +1541,7 @@
                 table.getColumns().forEach(function (col) {
                     const field = col.getField();
                     if (!field) return;
-                    if (field === 'row_action' || field === 'row_delete') return;
+                    if (field === 'row_action' || field === 'row_edit' || field === 'row_delete') return;
                     const cat = mipClassifyColumn(field);
                     const list = lists[cat];
                     if (!list) return;
