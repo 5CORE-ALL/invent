@@ -2030,18 +2030,37 @@
         }
 
         let lowFromInvSkus = [];
-        const lowFromInvAlerted = {};
+        // Remember which SKUs were already announced so a refresh / reload after a transfer
+        // does not show the same "FROM INV is below 1" toast again. Kept per browser for 24h.
+        const LOW_FROM_INV_ALERT_KEY = 'stock_balance_low_from_inv_alerted';
+        const LOW_FROM_INV_ALERT_TTL = 24 * 60 * 60 * 1000;
+        const lowFromInvAlerted = (function() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(LOW_FROM_INV_ALERT_KEY) || '{}') || {};
+            } catch (e) {
+                saved = {};
+            }
+            const now = Date.now();
+            Object.keys(saved).forEach(function(k) {
+                if (!saved[k] || now - saved[k] > LOW_FROM_INV_ALERT_TTL) delete saved[k];
+            });
+            return saved;
+        })();
 
         function alertLowFromInv() {
             const fresh = [];
             lowFromInvSkus.forEach(function(sku) {
                 const key = normalizeSkuKey(sku);
                 if (!key || lowFromInvAlerted[key]) return;
-                lowFromInvAlerted[key] = true;
+                lowFromInvAlerted[key] = Date.now();
                 fresh.push(sku);
             });
             lowFromInvSkus = [];
             if (!fresh.length) return;
+            try {
+                localStorage.setItem(LOW_FROM_INV_ALERT_KEY, JSON.stringify(lowFromInvAlerted));
+            } catch (e) {}
             const preview = fresh.slice(0, 8).join(', ');
             const more = fresh.length > 8 ? ' and ' + (fresh.length - 8) + ' more' : '';
             showToast('FROM INV is below 1 for ' + preview + more + '. Transfer was not sent and those rows are hidden.', 'error', 8000);
