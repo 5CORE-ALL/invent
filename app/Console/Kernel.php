@@ -2001,6 +2001,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Amazon LMP list: Revenue (30d) / Units (30d) / Buy Box / Type (JungleScout).
+        // Was never scheduled, so these columns froze at the last manual run.
+        $ist($schedule->command('app:process-competitor-sales-data')
+            ->dailyAt('16:30')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-competitor-sales-data-daily')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('google:update-sku-prices --skip-search-refresh')
             ->weekly()
             ->mondays()

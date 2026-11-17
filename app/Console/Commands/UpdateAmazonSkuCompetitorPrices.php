@@ -204,8 +204,13 @@ class UpdateAmazonSkuCompetitorPrices extends Command
                 continue;
             }
 
-            $competitorIds = collect($competitorRefs)->pluck('id');
-            $competitors = AmazonSkuCompetitor::whereIn('id', $competitorIds)->get();
+            // Update every copy of this ASIN (all SKUs), not only the eligible ones.
+            // Copies on Inv=0 / ignored SKUs would otherwise stay stale and still win the
+            // per-ASIN dedupe in the LMP list, so the row never looks updated.
+            $competitors = AmazonSkuCompetitor::copiesForAsin(
+                $asin,
+                AmazonSkuCompetitor::whereIn('id', collect($competitorRefs)->pluck('id'))->get()
+            );
 
             foreach ($competitors as $competitor) {
                 $oldPrice = floatval($competitor->price ?? 0);

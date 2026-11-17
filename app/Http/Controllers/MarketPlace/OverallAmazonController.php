@@ -6252,7 +6252,10 @@ class OverallAmazonController extends Controller
                         continue;
                     }
 
-                    foreach ($asinToCompetitors[$asin] ?? [] as $competitor) {
+                    // Write every copy of the ASIN (all SKUs). The list dedupes by ASIN and keeps the
+                    // lowest price, so a stale sibling copy would otherwise hide this fresh price.
+                    $copies = AmazonSkuCompetitor::copiesForAsin((string) $asin, $asinToCompetitors[$asin] ?? []);
+                    foreach ($copies as $competitor) {
                         try {
                             $competitor->update([
                                 'asin' => $asin,

@@ -402,6 +402,40 @@ class AmazonSkuCompetitor extends Model
     }
 
     /**
+     * Every amazon_sku_competitors row for one ASIN across ALL SKUs (plus any known rows
+     * that resolve to the ASIN via product_link).
+     *
+     * A live pull must write to all of them. The same ASIN is stored once per SKU, and the
+     * LMP list keeps only the lowest-priced copy per ASIN (dedupeByAsin). If a pull only
+     * touches the SKUs that were eligible (Inv > 0, not ignored), the other copies keep an
+     * old price and keep winning dedupe, so the LMP row looks "not updated".
+     *
+     * @param  iterable<self>  $knownRows
+     */
+    public static function copiesForAsin(string $asin, iterable $knownRows = []): \Illuminate\Support\Collection
+    {
+        $asin = strtoupper(trim($asin));
+        $byId = collect();
+
+        foreach ($knownRows as $row) {
+            if ($row instanceof self && $row->id) {
+                $byId[$row->id] = $row;
+            }
+        }
+
+        if ($asin !== '' && preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            $sameAsin = self::query()
+                ->whereRaw('UPPER(TRIM(asin)) = ?', [$asin])
+                ->get();
+            foreach ($sameAsin as $row) {
+                $byId[$row->id] = $row;
+            }
+        }
+
+        return $byId->values();
+    }
+
+    /**
      * Landed L1 LMP for a Sku Link LMP group — same steps as /amazon-tabulator-view:
      * ignore all copies of an ignored ASIN, dedupe by ASIN, lowest non-ignored landed price.
      *
