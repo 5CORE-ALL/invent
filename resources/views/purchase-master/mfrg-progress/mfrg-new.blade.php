@@ -459,7 +459,8 @@
                     <div id="mip-bulk-edit-badge" class="d-none mb-2 p-2 rounded border bg-light d-flex align-items-center gap-2 flex-wrap" style="min-height: 40px;">
                         <span class="fw-semibold text-dark" id="mip-bulk-edit-count">0 selected</span>
                         <span class="text-muted small">Select rows with checkboxes, then click <strong>Edit</strong> on any row to apply changes to all selected.</span>
-                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" id="mip-bulk-cl-btn" title="Bulk edit Pre-MIP checklist for selected rows">
+                        <button type="button" class="btn btn-sm btn-primary ms-auto" id="mip-bulk-edit-btn" title="Edit all ticked rows at once"><i class="fas fa-pen me-1"></i> Edit selected</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="mip-bulk-cl-btn" title="Bulk edit Pre-MIP checklist for selected rows">
                             <i class="mdi mdi-magnify me-1"></i> CL Bulk Edit
                         </button>
                     </div>
@@ -658,6 +659,10 @@
             let table;
             let mipBulkSelectionCache = [];
             const mipRowEditState = { row: null, targetRows: null, pendingBulkTargets: null };
+            // Fields the user actually touched in the Edit modal. In bulk mode a touched field is applied to
+            // EVERY selected row even when its value equals the first row's value (otherwise "set all to X"
+            // silently skipped rows when X happened to match the row the modal was opened from).
+            let mipEditDirty = {};
 
             function isSelectableMipRow(row) {
                 const d = (row && typeof row.getData === 'function') ? row.getData() : {};
@@ -2154,6 +2159,7 @@
                     subEl.textContent = sku ? (baseline.parent ? sku + ' · ' + baseline.parent : sku) : '';
                 }
                 if (statusEl) statusEl.innerHTML = '';
+                mipEditDirty = {};
 
                 let html = '';
                 EDIT_FIELDS.forEach(function (f) {
@@ -2180,8 +2186,25 @@
                 const editForm = document.getElementById('mip-edit-form');
                 editForm.innerHTML = html;
                 if (window.SelectSearchable) window.SelectSearchable.init(editForm);
-                new bootstrap.Modal(document.getElementById('mipEditModal')).show();
+                mipEditDirty = {}; // ignore any change events fired while the form was being filled in
+                if (!editForm._dirtyBound) {
+                    editForm._dirtyBound = true;
+                    ['input', 'change'].forEach(function (evt) {
+                        editForm.addEventListener(evt, function (ev) {
+                            const k = ev.target && ev.target.dataset ? ev.target.dataset.key : '';
+                            if (k) mipEditDirty[k] = true;
+                        });
+                    });
+                }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('mipEditModal')).show();
             }
+            // "Edit selected" in the selection bar: opens the Edit modal for every ticked row (bulk).
+            document.getElementById('mip-bulk-edit-btn').addEventListener('click', function () {
+                const sel = getMipActiveSelectedRows();
+                if (!sel.length) { alert('Tick one or more rows first.'); return; }
+                mipRowEditState.pendingBulkTargets = sel;
+                openEditModal(sel[0]);
+            });
             document.getElementById('mip-edit-save').addEventListener('click', async function () {
                 const row = mipRowEditState.row;
                 if (!row) return;
@@ -2209,7 +2232,8 @@
                     let newVal = el.value;
                     let oldVal = baseline[key] == null ? '' : baseline[key];
                     if (field.type === 'date') oldVal = toDateInput(oldVal);
-                    if (String(newVal) === String(oldVal)) return; // unchanged for the baseline row
+                    // unchanged -> skip, unless (bulk) the user explicitly touched this field
+                    if (String(newVal) === String(oldVal) && !(isBulk && mipEditDirty[key])) return;
                     let kind;
                     if (key === 'exec')      kind = 'exec';
                     else if (key === 'stage') kind = 'stage';
