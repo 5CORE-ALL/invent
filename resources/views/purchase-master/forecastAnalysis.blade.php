@@ -2604,6 +2604,28 @@
             return a !== b;
         }
 
+        /** Re-read Category from the server for the given rows only and patch the cells in place. */
+        function refreshForecastRowsCategory(rows) {
+            const bySku = {};
+            (rows || []).forEach(function (r) {
+                const sku = String((r.getData() || {}).SKU || '').trim();
+                if (sku) bySku[sku.toUpperCase()] = bySku[sku.toUpperCase()] || [];
+                if (sku) bySku[sku.toUpperCase()].push(r);
+            });
+            const skus = Object.keys(bySku);
+            if (!skus.length) return Promise.resolve();
+            return $.get('{{ route('forecast.analysis.row.categories') }}', { skus: skus })
+                .then(function (res) {
+                    if (!res || !res.success || !res.categories) return;
+                    Object.keys(bySku).forEach(function (key) {
+                        if (!Object.prototype.hasOwnProperty.call(res.categories, key)) return;
+                        const cat = res.categories[key] == null ? '' : res.categories[key];
+                        bySku[key].forEach(function (r) { r.update({ Category: cat }); });
+                    });
+                })
+                .catch(function () { /* keep the locally patched value */ });
+        }
+
         $(document).on('click', '#forecastRowEditSaveBtn', function() {
             const row = forecastRowEditState.row;
             if (!row) return;
@@ -2724,6 +2746,12 @@
                             failed.push(tSku + ' · Stage ' + op.stage + ': ' + (e.message || 'error'));
                         }
                     }
+                }
+
+                // Category is a per-SKU override or derived from the supplier — pull the
+                // authoritative value for just these rows so the Cat cell is right instantly.
+                if (fieldChanges.some(function (fc) { return fc.column === 'Category' || fc.column === 'supplier'; })) {
+                    await refreshForecastRowsCategory(targetRows);
                 }
 
                 if (failed.length === 0) {

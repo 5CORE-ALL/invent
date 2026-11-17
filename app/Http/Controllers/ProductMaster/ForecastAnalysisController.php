@@ -1427,6 +1427,28 @@ class ForecastAnalysisController extends Controller
         ];
     }
 
+    /**
+     * Lightweight per-SKU category lookup used to refresh single rows after a save
+     * (category is an override on the SKU, or derived from its supplier), so the
+     * grid never needs a full reload.
+     */
+    public function rowCategories(\Illuminate\Http\Request $request)
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            (array) $request->input('skus', [])
+        ))));
+        $skus = array_slice($skus, 0, 300);
+
+        try {
+            $map = $skus ? SupplierCategorySync::resolveCategoryMapForSkus($skus) : [];
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        return response()->json(['success' => true, 'categories' => $map]);
+    }
+
     public function getViewForecastAnalysisData()
     {
         try {

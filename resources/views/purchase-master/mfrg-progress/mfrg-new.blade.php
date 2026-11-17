@@ -1046,6 +1046,23 @@
                 const full = short + ' ' + d.getFullYear();
                 return '<span title="' + full + '">' + short + '</span>';
             }
+            // O Date shown as days elapsed since the order date; > 30 days -> red. Missing date -> red dot.
+            // Hover shows the actual date; click still opens the date editor.
+            function orderDaysFormatter(cell) {
+                const raw = cell.getValue();
+                const noDate = '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
+                if (!raw) return noDate;
+                const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(raw);
+                if (isNaN(d.getTime())) return noDate;
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                const days = Math.max(0, Math.round((today - start) / 86400000));
+                const full = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear();
+                const over = days > 30;
+                return '<span title="' + full + '" style="font-weight:700;' + (over ? 'color:#dc3545;' : '') + '">' + days + ' d</span>';
+            }
             function supplierFirstName(name) {
                 const v = String(name || '').trim();
                 if (!v) return '';
@@ -1232,7 +1249,7 @@
                               .catch(err => alert('Could not save QTY: ' + (err && err.message ? err.message : err)));
                       }
                     },
-                    { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
+                    { title: "O Days", field: "created_at", width: 90, hozAlign: "center", formatter: orderDaysFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,

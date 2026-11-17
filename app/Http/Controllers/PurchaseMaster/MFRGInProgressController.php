@@ -284,6 +284,40 @@ class MFRGInProgressController extends Controller
     }
 
     /**
+     * Communication links for a supplier name. Exact match first, then a forgiving match
+     * (case / extra spaces) so the same supplier typed slightly differently on different
+     * rows still shows the same contact count.
+     *
+     * @param  array<string, list<array>>  $platformsByName
+     * @return list<array>
+     */
+    private static function platformsForSupplier(array $platformsByName, string $supplierName): array
+    {
+        $supplierName = trim($supplierName);
+        if ($supplierName === '') {
+            return [];
+        }
+        if (isset($platformsByName[$supplierName])) {
+            return $platformsByName[$supplierName];
+        }
+
+        static $indexCache = [];
+        $sig = md5(implode("\n", array_keys($platformsByName)));
+        if (! isset($indexCache[$sig])) {
+            $norm = fn (string $s) => mb_strtoupper(preg_replace('/\s+/u', ' ', trim($s)));
+            $idx = [];
+            foreach ($platformsByName as $name => $links) {
+                $idx[$norm((string) $name)] ??= $links;
+            }
+            $indexCache[$sig] = $idx;
+        }
+
+        $key = mb_strtoupper(preg_replace('/\s+/u', ' ', $supplierName));
+
+        return $indexCache[$sig][$key] ?? [];
+    }
+
+    /**
      * @return array{map: array<string, list<string>>, names: \Illuminate\Support\Collection<int, string>, platformsByName: array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>}
      */
     private static function buildSupplierMapFromDb(): array
@@ -686,9 +720,7 @@ class MFRGInProgressController extends Controller
         $row->product_cp = $productCp;
 
         $supplierName = trim((string) ($row->supplier ?? ''));
-        $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
-            ? $platformsByName[$supplierName]
-            : [];
+        $row->supplier_platform_links = self::platformsForSupplier($platformsByName, $supplierName);
     }
 
     public function convert(Request $request)
@@ -1680,9 +1712,7 @@ class MFRGInProgressController extends Controller
             
             // Supplier platform links
             $supplierName = trim((string) ($row->supplier ?? ''));
-            $row->supplier_platform_links = ($supplierName !== '' && isset($platformsByName[$supplierName]))
-                ? $platformsByName[$supplierName]
-                : [];
+            $row->supplier_platform_links = self::platformsForSupplier($platformsByName, $supplierName);
         }
 
         return $rtsData;

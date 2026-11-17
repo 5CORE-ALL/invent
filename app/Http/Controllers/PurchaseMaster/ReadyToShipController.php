@@ -469,8 +469,8 @@ class ReadyToShipController extends Controller
     }
 
     /**
-     * Return current R2S total (same logic as Ready to Ship blade: sum of qty*CP for stage r2s, nr != NR).
-     * Ready to Ship uses CP from product_master Values->cp, not rate. Used by Forecast Analysis etc.
+     * Return current R2S total: sum of qty × saved R2S rate, excluding NR (same as the Ready to Ship
+     * Amount and forecast.analysis R2S value). Used by Forecast Analysis etc.
      */
     public function r2sTotal(Request $request)
     {
@@ -495,8 +495,6 @@ class ReadyToShipController extends Controller
                 return $group->first();
             });
 
-        $productMaster = DB::table('product_master')->get()->keyBy(fn($row) => strtoupper(trim($row->sku ?? '')));
-
         $readyToShipRows = ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get();
         $total = 0;
 
@@ -511,31 +509,11 @@ class ReadyToShipController extends Controller
                 continue;
             }
 
-            $cp = null;
-            $productRow = $productMaster[$sku] ?? null;
-            if (!$productRow) {
-                foreach ([$sku, str_replace(' ', '', $sku)] as $skuVar) {
-                    if (isset($productMaster[$skuVar])) {
-                        $productRow = $productMaster[$skuVar];
-                        break;
-                    }
-                }
-            }
-            if (!$productRow && !empty($item->sku)) {
-                $productRow = DB::table('product_master')
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-                    ->orWhereRaw('UPPER(TRIM(sku)) LIKE ?', ['%' . str_replace(' ', '%', $sku) . '%'])
-                    ->first();
-            }
-            if ($productRow) {
-                $values = json_decode($productRow->Values ?? '{}', true);
-                if (is_array($values) && isset($values['cp'])) {
-                    $cp = (float) $values['cp'];
-                }
-            }
+            // Amount = qty × saved R2S rate (same rule as the Ready to Ship page and forecast.analysis)
             $qty = is_numeric($item->qty) ? (float) $item->qty : 0;
-            if ($qty > 0 && $cp !== null && $cp > 0) {
-                $total += $qty * $cp;
+            $rate = is_numeric($item->rate ?? null) ? (float) $item->rate : 0;
+            if ($qty > 0 && $rate > 0) {
+                $total += $qty * $rate;
             }
         }
 
