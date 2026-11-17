@@ -1595,8 +1595,8 @@ final class EbayTradingReviseItem
         } else {
             $node->addChild('ShippingProfileName', htmlspecialchars((string) $profile['name'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
         }
-        // Drop the old shipping block: the policy supplies it again.
-        $xml->addChild('DeletedField', 'Item.ShippingDetails');
+        // Only the policy is sent. eBay rejects "Item.ShippingDetails" as a DeletedField path (#10201), so the old
+        // shipping block is left alone and the policy supplies the service on the revise.
     }
 
     private static function isMissingShippingError(string $message): bool
@@ -1643,8 +1643,7 @@ final class EbayTradingReviseItem
                 } else {
                     $profile->addChild('ShippingProfileName', htmlspecialchars($policyName, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
                 }
-                // Drop the old shipping block. An empty or retired service is what eBay is rejecting.
-                $xml->addChild('DeletedField', 'Item.ShippingDetails');
+                // The old shipping block is not deleted: eBay rejects "Item.ShippingDetails" as a DeletedField path (#10201).
             }
         }
         if ($shippingProfile !== null && ! $ensureShippingPolicy) {
