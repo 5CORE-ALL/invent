@@ -685,7 +685,10 @@
                     { title: 'Updated', field: 'updated_at', formatter: function (cell) {
                           const d = cell.getData();
                           if (!d.updated_at) return '<span class="text-muted">—</span>';
-                          return '<span class="small">' + esc(d.updated_at) + '<br><span class="text-muted">' + esc(d.updated_by || '') + '</span></span>';
+                          // Compact: date only (e.g. "17 Nov 2026"); hover shows the full time and who updated it.
+                          const dateOnly = String(d.updated_at).split(',')[0].trim();
+                          const full = d.updated_at + (d.updated_by ? ' — ' + d.updated_by : '');
+                          return '<span class="small" title="' + esc(full) + '" style="cursor:help;">' + esc(dateOnly) + '</span>';
                       } },
                     { title: 'Quotes', field: 'quotes', width: 80, hozAlign: 'center', headerHozAlign: 'center',
                       headerSort: false, visible: false,
@@ -698,7 +701,7 @@
                       cellClick: function (e, cell) {
                           if (canEdit && e.target.closest('.qc-qr-btn')) openQrModal(cell.getRow().getData());
                       } },
-                    { title: 'QR Form', field: 'requests', width: 105, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                    { title: 'QR', field: 'requests', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                       formatter: function (cell) {
                           const reqs = cell.getValue() || [];
                           const done = reqs.filter(r => r.submitted_at).length;
@@ -709,7 +712,7 @@
                           const tip = changed ? 'A forwarder changed their quote after saving — open to review'
                               : (canEdit ? 'Open the combined quote form' : 'Only 5Core users can open this');
                           return '<button type="button" class="qc-qf-btn' + cls + '" title="' + tip + '"' +
-                              (canEdit ? '' : ' disabled') + '>' + tri + '<i class="fas fa-file-lines"></i> Form' + label + '</button>';
+                              (canEdit ? '' : ' disabled') + '>' + tri + '<i class="fas fa-file-lines"></i>' + label + '</button>';
                       },
                       cellClick: function (e, cell) {
                           if (canEdit && e.target.closest('.qc-qf-btn')) openFormModal(cell.getRow().getData());
