@@ -1399,7 +1399,11 @@ final class EbayTradingReviseItem
         }
         $current = preg_replace('/\D+/', '', self::xmlText($details['UPC'] ?? '')) ?? '';
         if ($current === $upc) {
-            return ['success' => true, 'message' => 'UPC '.$upc.' is already on the listing.'];
+            // The listing details have it. A "UPC" item specific that still says "Does not apply" is what the eBay
+            // listing page shows, so that one is brought in line too.
+            $specificNote = self::syncUpcItemSpecific($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $getItemResponse, $sku, $upc);
+
+            return ['success' => true, 'message' => $specificNote === '' ? 'UPC '.$upc.' is already on the listing.' : 'UPC '.$upc.' '.$specificNote];
         }
 
         $root = $variation !== null ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
@@ -1425,10 +1429,57 @@ final class EbayTradingReviseItem
 
         $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'UPC', $callName);
 
-        return [
-            'success' => (bool) ($result['success'] ?? false),
-            'message' => ($result['success'] ?? false) ? 'UPC '.$upc.' sent. '.($result['message'] ?? '') : (string) ($result['message'] ?? 'UPC update failed.'),
-        ];
+        if (! ($result['success'] ?? false)) {
+            return ['success' => false, 'message' => (string) ($result['message'] ?? 'UPC update failed.')];
+        }
+        $specificNote = self::syncUpcItemSpecific($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $getItemResponse, $sku, $upc);
+
+        return ['success' => true, 'message' => 'UPC '.$upc.' sent. '.($result['message'] ?? '').($specificNote !== '' ? ' '.$specificNote : '')];
+    }
+
+    /**
+     * When the listing carries a "UPC" item specific (often "Does not apply") that is not this code, set it to the code.
+     * Best effort: the UPC in the listing details is already saved, so a refusal here is only reported.
+     * Returns a short note, or '' when there was nothing to change.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     */
+    private static function syncUpcItemSpecific(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $sku,
+        string $upc,
+    ): string {
+        $item = self::itemFromGetItem($getItemResponse);
+        $specName = null;
+        foreach (self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null) as $row) {
+            if (self::aspectKey((string) ($row['name'] ?? '')) !== 'upc') {
+                continue;
+            }
+            $value = trim(implode(', ', array_map(static fn ($v) => trim((string) $v), $row['values'] ?? [])));
+            if ((preg_replace('/\D+/', '', $value) ?? '') !== $upc) {
+                $specName = (string) $row['name'];
+            }
+            break;
+        }
+        if ($specName === null) {
+            return '';
+        }
+        try {
+            $sync = self::reviseTechnicalSpecifications($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $getItemResponse, $sku, [['name' => $specName, 'value' => $upc]]);
+        } catch (\Throwable $e) {
+            return 'UPC item specific not changed: '.$e->getMessage();
+        }
+
+        return ($sync['success'] ?? false)
+            ? 'UPC item specific "'.$specName.'" set.'
+            : 'UPC item specific "'.$specName.'" not changed: '.(string) ($sync['message'] ?? '');
     }
 
     /**

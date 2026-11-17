@@ -308,7 +308,9 @@ class Ebay1DataController extends Controller
                     'specs_pulled' => $live !== null,
                     'specifics' => $specifics,
                     'upc_pending' => $upcPending,
-                    'upc_value' => $upcPending ? $upcDigits : '',
+                    // The code itself is always given (a real code only): the Push UPC button and Auto Push send it
+                    // even when the app thinks it was pushed before, and the server compares it with the live listing.
+                    'upc_value' => ($this->hasUpcColumn() && preg_match('/^\d{8,14}$/', $upcDigits) === 1) ? $upcDigits : '',
                 ];
             }
 
@@ -2006,10 +2008,13 @@ class Ebay1DataController extends Controller
         $this->clearPending($sku, '__ebay_price');
     }
 
-    /** Settings key that remembers the UPC last accepted by eBay for a SKU (settings keys are limited to 100 characters). */
+    /**
+     * Settings key that remembers the UPC last confirmed on eBay for a SKU (settings keys are limited to 100 characters).
+     * "u2.": the first version ("u.") could be saved while eBay still showed "Does not apply", so every SKU is checked again once.
+     */
     protected function upcMarkerKey(string $sku): string
     {
-        return 'u.'.md5($this->skuKey($sku));
+        return 'u2.'.md5($this->skuKey($sku));
     }
 
     /** @return array<string, string> marker key => UPC last pushed */
@@ -2019,7 +2024,7 @@ class Ebay1DataController extends Controller
             return [];
         }
 
-        return DB::table($this->t('settings'))->where('key', 'like', 'u.%')->pluck('value', 'key')
+        return DB::table($this->t('settings'))->where('key', 'like', 'u2.%')->pluck('value', 'key')
             ->map(static fn ($v) => (string) $v)->all();
     }
 
