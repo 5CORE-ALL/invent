@@ -525,6 +525,19 @@
                 gross_weight: '< 15000 Kgs',
                 discharge_port: 'CMH, Ohio, USA',
             };
+            // Pickup address last saved per supplier (from the DB) — prefilled when the same supplier is chosen again.
+            const supplierAddresses = @json((object) $supplierAddresses);
+            const supKey = s => String(s || '').trim().toLowerCase();
+            let pickupAutoValue = null;   // last value we filled in automatically (so we never overwrite the user's own typing)
+            function autofillPickup() {
+                const pa = document.getElementById('qc_pickup_address');
+                const saved = supplierAddresses[supKey(document.getElementById('qc_supplier').value)];
+                if (!saved) return;
+                if (pa.value.trim() === '' || pa.value === pickupAutoValue) {
+                    pa.value = saved;
+                    pickupAutoValue = saved;
+                }
+            }
             const fields = ['supplier', 'container_size', 'gross_weight', 'pickup_address',
                 'loading_port', 'via_port', 'discharge_port'];
 
@@ -1337,8 +1350,12 @@
                     if (String(val).trim() === '' && DEFAULTS[f]) val = DEFAULTS[f];
                     el.value = val;
                 });
+                // No address saved for this container yet: reuse the one saved earlier for this supplier.
+                pickupAutoValue = null;
+                autofillPickup();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             }
+            ['input', 'change'].forEach(ev => document.getElementById('qc_supplier').addEventListener(ev, autofillPickup));
             modalEl.addEventListener('shown.bs.modal', () => document.getElementById('qc_supplier').focus());
 
             document.getElementById('qcForm').addEventListener('submit', async function (e) {
@@ -1365,6 +1382,10 @@
                         throw new Error(msg);
                     }
                     table.updateData([json.row]);
+                    // Remember this supplier's address for next time.
+                    if (json.row.supplier && json.row.pickup_address) {
+                        supplierAddresses[supKey(json.row.supplier)] = json.row.pickup_address;
+                    }
                     bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 } catch (err) {
                     errEl.textContent = err.message || 'Could not save.';
