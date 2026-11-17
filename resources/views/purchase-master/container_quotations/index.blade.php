@@ -47,6 +47,8 @@
         }
         .qc-qf-btn:hover, .qc-send-btn:hover, .qc-draft-btn:hover { border-color: #2563eb; color: #2563eb; }
         .qc-qf-btn.filled { background: #16a34a; border-color: #16a34a; color: #fff; }
+        .qc-qf-btn.low { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+        .qc-qf-btn.low:hover { border-color: #b91c1c; color: #b91c1c; }
         .qc-qf-btn.changed { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220, 38, 38, .25); }
         .qc-alert-tri { color: #dc2626; font-size: 14px; margin-right: 4px; animation: qcPulse 1.4s ease-in-out infinite; }
         .qc-qf-btn.filled .qc-alert-tri { color: #fecaca; }
@@ -687,7 +689,7 @@
                     { title: 'Size', field: 'container_size', formatter: textCell },
                     { title: 'Pickup Address Supplier', field: 'pickup_address', formatter: wrapCell, width: 260 },
                     { title: 'Load Port', field: 'loading_port', formatter: textCell },
-                    { title: 'Via Port', field: 'via_port', formatter: textCell },
+                    { title: 'Via Port', field: 'via_port', formatter: textCell, visible: false },
                     { title: 'Discharge Port', field: 'discharge_port', formatter: textCell, visible: false },
                     { title: 'Gross Weight', field: 'gross_weight', formatter: textCell, visible: false },
                     { title: 'Updated', field: 'updated_at', formatter: function (cell) {
@@ -718,7 +720,8 @@
                           const done = reqs.filter(r => r.submitted_at).length;
                           const label = reqs.length ? ' ' + done + '/' + reqs.length : '';
                           const changed = reqs.some(r => r.changed);
-                          const cls = (done ? ' filled' : '') + (changed ? ' changed' : '');
+                          // Red until 5 quotes are in (e.g. 0/5 .. 4/5); green once there are 5 or more.
+                          const cls = (done >= 5 ? ' filled' : ' low') + (changed ? ' changed' : '');
                           const tri = changed ? '<i class="fas fa-triangle-exclamation qc-alert-tri"></i>' : '';
                           const tip = changed ? 'A forwarder changed their quote after saving — open to review'
                               : (canEdit ? 'Open the combined quote form' : 'Only 5Core users can open this');
@@ -770,6 +773,27 @@
                       } },
                     Object.assign(lowestColumn('L2', 1), { visible: false }),
                     Object.assign(lowestColumn('L3', 2), { visible: false }),
+                    // Approved: tick once; then it shows who approved and when (California time) and stays locked.
+                    { title: 'Approved', field: 'approved_at', minWidth: 170, hozAlign: 'center', headerHozAlign: 'center',
+                      headerSort: false,
+                      formatter: function (cell) {
+                          const d = cell.getData();
+                          if (d.approved_at) {
+                              return '<div style="line-height:1.3" title="Approved — locked">' +
+                                  '<input type="checkbox" class="form-check-input qc-approve-cb" checked disabled style="opacity:1;accent-color:#16a34a;">' +
+                                  '<div class="small fw-semibold">' + esc(d.approved_by || '') + '</div>' +
+                                  '<div class="small text-muted">' + esc(d.approved_at) + '</div></div>';
+                          }
+                          return '<input type="checkbox" class="form-check-input qc-approve-cb" title="' +
+                              (canEdit ? 'Tick to approve (cannot be undone)' : 'Only 5Core users can approve') + '"' +
+                              (canEdit ? '' : ' disabled') + '>';
+                      },
+                      cellClick: function (e, cell) {
+                          const cb = e.target.closest('.qc-approve-cb');
+                          if (!cb || cb.disabled) return;
+                          e.preventDefault();
+                          approveContainer(cell.getRow().getData(), cb);
+                      } },
                 ],
             });
 
@@ -1032,6 +1056,28 @@
                 if (!msg) { el.classList.add('d-none'); return; }
                 el.textContent = msg;
                 el.classList.remove('d-none');
+            }
+
+            // Approved checkbox (one-way: locked once ticked)
+            async function approveContainer(row, cb) {
+                if (!confirm('Approve ' + row.container_number + '?\n\nThis is locked after approval and cannot be undone.')) return;
+                cb.disabled = true;
+                try {
+                    const res = await fetch(@json(route('container.quotations.approve')), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json', 'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify({ container_number: row.container_number }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok || !json.success) throw new Error(json.message || 'Could not approve.');
+                    table.updateData([{ container_number: json.container_number, approved_by: json.approved_by, approved_at: json.approved_at }]);
+                } catch (err) {
+                    cb.disabled = false;
+                    alert(err.message);
+                }
             }
 
             // L1 / L2 / L3 popup

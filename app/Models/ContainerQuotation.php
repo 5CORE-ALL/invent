@@ -18,5 +18,11 @@ class ContainerQuotation extends Model
         'discharge_port',
         'gross_weight',
         'updated_by',
+        'approved_by',
+        'approved_at',
+    ];
+
+    protected $casts = [
+        'approved_at' => 'datetime',
     ];
 }

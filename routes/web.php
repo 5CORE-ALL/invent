@@ -6306,6 +6306,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/quotations-container/data', 'data')->name('container.quotations.data');
         Route::post('/quotations-container/save', 'save')->name('container.quotations.save');
         Route::post('/quotations-container/quotes', 'saveQuotes')->name('container.quotations.quotes.save');
+        Route::post('/quotations-container/approve', 'approve')->name('container.quotations.approve');
     });
 
     Route::controller(\App\Http\Controllers\PurchaseMaster\ContainerQuoteRequestController::class)->group(function () {

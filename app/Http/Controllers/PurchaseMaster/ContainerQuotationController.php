@@ -107,12 +107,72 @@ class ContainerQuotationController extends Controller
                 'gross_weight' => $q->gross_weight ?? null,
                 'updated_by' => $q->updated_by ?? null,
                 'updated_at' => $q && $q->updated_at ? $q->updated_at->format('d M Y, H:i') : null,
+                'approved_by' => $q->approved_by ?? null,
+                'approved_at' => $this->approvedAtLabel($q),
                 'quotes' => $this->quoteRows($received->get($name)),
                 'requests' => $requests[$name] ?? [],
             ];
         }
 
         return response()->json($rows);
+    }
+
+    /** Approval time in California time (America/Los_Angeles), e.g. "18 NOV 26, 10:33 AM PST". */
+    private function approvedAtLabel($quote): ?string
+    {
+        if (! $quote || empty($quote->approved_at)) {
+            return null;
+        }
+
+        $t = \Illuminate\Support\Carbon::parse($quote->approved_at)->setTimezone('America/Los_Angeles');
+
+        return strtoupper($t->format('j M y')).', '.$t->format('g:i A T');
+    }
+
+    /**
+     * Tick the "Approved" checkbox. One-way: once approved it is locked and cannot be undone here.
+     */
+    public function approve(Request $request): JsonResponse
+    {
+        if (! $this->canFill()) {
+            return $this->forbidden();
+        }
+
+        $data = $request->validate(['container_number' => 'required|string|max:255']);
+        $container = trim($data['container_number']);
+
+        if (! in_array($container, $this->readyToShipContainers(), true)) {
+            return response()->json(['success' => false, 'message' => 'Unknown container.'], 422);
+        }
+        if (! Schema::hasColumn('container_quotations', 'approved_at')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Approval is not set up on the server yet — run: php artisan migrate',
+            ], 500);
+        }
+
+        $quote = ContainerQuotation::firstOrNew(['container_number' => $container]);
+        if ($quote->exists && $quote->approved_at) {
+            // Already approved and locked — nothing to change.
+            return response()->json([
+                'success' => true,
+                'container_number' => $container,
+                'approved_by' => $quote->approved_by,
+                'approved_at' => $this->approvedAtLabel($quote),
+            ]);
+        }
+
+        $user = trim((string) (Auth::user()->name ?? '')) ?: 'System';
+        $quote->approved_by = $user;
+        $quote->approved_at = now();
+        $quote->save();
+
+        return response()->json([
+            'success' => true,
+            'container_number' => $container,
+            'approved_by' => $quote->approved_by,
+            'approved_at' => $this->approvedAtLabel($quote),
+        ]);
     }
 
     public function save(Request $request): JsonResponse
