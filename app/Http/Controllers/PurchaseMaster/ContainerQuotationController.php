@@ -34,18 +34,22 @@ class ContainerQuotationController extends Controller
 
         $canEdit = $this->canFill();
 
-        // Last pickup address saved for each supplier — reused to prefill the Q form next time.
-        $supplierAddresses = [];
+        // Last pickup address + loading port saved for each supplier — reused to prefill the Q form next time.
+        $supplierDefaults = [];
         ContainerQuotation::query()
             ->whereNotNull('supplier')->where('supplier', '!=', '')
-            ->whereNotNull('pickup_address')->where('pickup_address', '!=', '')
             ->orderBy('updated_at')->orderBy('id')
-            ->get(['supplier', 'pickup_address'])
-            ->each(function ($q) use (&$supplierAddresses) {
-                $supplierAddresses[mb_strtolower(trim((string) $q->supplier))] = $q->pickup_address;
+            ->get(['supplier', 'pickup_address', 'loading_port'])
+            ->each(function ($q) use (&$supplierDefaults) {
+                $key = mb_strtolower(trim((string) $q->supplier));
+                foreach (['pickup_address', 'loading_port'] as $f) {
+                    if (trim((string) $q->{$f}) !== '') {
+                        $supplierDefaults[$key][$f] = $q->{$f};
+                    }
+                }
             });
 
-        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierAddresses'));
+        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierDefaults'));
     }
 
     /**

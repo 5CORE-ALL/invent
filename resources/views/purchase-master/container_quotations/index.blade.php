@@ -526,17 +526,23 @@
                 discharge_port: 'CMH, Ohio, USA',
             };
             // Pickup address last saved per supplier (from the DB) — prefilled when the same supplier is chosen again.
-            const supplierAddresses = @json((object) $supplierAddresses);
+            const supplierDefaults = @json((object) $supplierDefaults);
             const supKey = s => String(s || '').trim().toLowerCase();
-            let pickupAutoValue = null;   // last value we filled in automatically (so we never overwrite the user's own typing)
-            function autofillPickup() {
-                const pa = document.getElementById('qc_pickup_address');
-                const saved = supplierAddresses[supKey(document.getElementById('qc_supplier').value)];
+            const SUPPLIER_FIELDS = ['pickup_address', 'loading_port'];
+            const autoValues = {};   // last value filled in automatically per field (so we never overwrite the user's own choice)
+            function autofillFromSupplier() {
+                const saved = supplierDefaults[supKey(document.getElementById('qc_supplier').value)];
                 if (!saved) return;
-                if (pa.value.trim() === '' || pa.value === pickupAutoValue) {
-                    pa.value = saved;
-                    pickupAutoValue = saved;
-                }
+                SUPPLIER_FIELDS.forEach(function (f) {
+                    const val = saved[f];
+                    const el = document.getElementById('qc_' + f);
+                    if (!val || !el) return;
+                    if (f === 'loading_port' && ![...el.options].some(o => o.value === val)) el.add(new Option(val, val));
+                    if (el.value.trim() === '' || el.value === autoValues[f]) {
+                        el.value = val;
+                        autoValues[f] = val;
+                    }
+                });
             }
             const fields = ['supplier', 'container_size', 'gross_weight', 'pickup_address',
                 'loading_port', 'via_port', 'discharge_port'];
@@ -1351,11 +1357,11 @@
                     el.value = val;
                 });
                 // No address saved for this container yet: reuse the one saved earlier for this supplier.
-                pickupAutoValue = null;
-                autofillPickup();
+                SUPPLIER_FIELDS.forEach(f => { autoValues[f] = null; });
+                autofillFromSupplier();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             }
-            ['input', 'change'].forEach(ev => document.getElementById('qc_supplier').addEventListener(ev, autofillPickup));
+            ['input', 'change'].forEach(ev => document.getElementById('qc_supplier').addEventListener(ev, autofillFromSupplier));
             modalEl.addEventListener('shown.bs.modal', () => document.getElementById('qc_supplier').focus());
 
             document.getElementById('qcForm').addEventListener('submit', async function (e) {
@@ -1383,8 +1389,11 @@
                     }
                     table.updateData([json.row]);
                     // Remember this supplier's address for next time.
-                    if (json.row.supplier && json.row.pickup_address) {
-                        supplierAddresses[supKey(json.row.supplier)] = json.row.pickup_address;
+                    if (json.row.supplier) {
+                        const key = supKey(json.row.supplier);
+                        SUPPLIER_FIELDS.forEach(function (f) {
+                            if (json.row[f]) (supplierDefaults[key] = supplierDefaults[key] || {})[f] = json.row[f];
+                        });
                     }
                     bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 } catch (err) {
