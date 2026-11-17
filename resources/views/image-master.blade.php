@@ -120,7 +120,6 @@
         .im-hist-counts .bad { color:#dc2626; font-weight:700; }
         #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
         .im-hist-act { font-weight:700; color:#2563eb; }
-        #statusFilter { min-width:84px; font-size:11px; padding:1px 4px; }
         .im-status-cell { display:inline-flex; align-items:center; gap:6px; font-weight:500; color:#4a5568; white-space:nowrap; }
         .im-status-marble { display:inline-block; width:12px; height:12px; border-radius:50%; flex-shrink:0; box-shadow:inset 2px 2px 3px rgba(255,255,255,.55), inset -2px -2px 4px rgba(0,0,0,.35); }
         .im-status-marble--active { background:radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d); }
@@ -174,7 +173,8 @@
         .hero-thumbs { display:flex; gap:4px; }
         .hero-thumbs img { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e2e8f0; background:#f8fafc; }
         .im-icon-expand { display:inline-flex; align-items:center; }
-        #pushSelectedBtn, #pushSelectedBtn:hover, #pushSelectedBtn:focus, #pushSelectedBtn i, #pushSelectedBtn .im-icon-expand-text { color:#000 !important; }
+        #pushSelectedBtn, #pushSelectedBtn:hover, #pushSelectedBtn:focus, #pushSelectedBtn:active, #pushSelectedBtn i, #pushSelectedBtn .im-icon-expand-text { color:#000 !important; }
+        #pushSelectedBtn, #pushSelectedBtn:hover, #pushSelectedBtn:focus, #pushSelectedBtn:active { background:#fff !important; border:1px solid #ced4da !important; }
         .im-icon-expand .im-icon-expand-text { max-width:0; overflow:hidden; white-space:nowrap; opacity:0; margin-left:0; transition:max-width .25s ease, opacity .2s ease, margin-left .25s ease; }
         .im-icon-expand:hover .im-icon-expand-text, .im-icon-expand:focus-visible .im-icon-expand-text { max-width:140px; opacity:1; margin-left:6px; }
         .im-col-hidden { display:none!important; }
@@ -225,6 +225,9 @@
                         </div>
                         <button type="button" id="pushPickerBtn" class="btn btn-outline-primary btn-sm" title="Choose marketplaces and push the selected rows"><i class="fas fa-search"></i> Push</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
+                        <input type="text" id="parentSearchIm" class="form-control form-control-sm" style="width:150px;" placeholder="Search Parent" title="Search Parent">
+                        <input type="text" id="skuSearchIm" class="form-control form-control-sm" style="width:150px;" placeholder="Search SKU" title="Search SKU">
+                        <select id="statusFilter" class="form-select form-select-sm" style="width:auto;" title="Filter by status"><option value="all">Status: All</option></select>
                         <select id="rowTypeFilter" class="form-select form-select-sm" style="width:auto;" title="Which rows to list: SKU rows, PARENT rows, or both">
                             <option value="sku" selected>SKU</option>
                             <option value="parent">Parent</option>
@@ -259,10 +262,10 @@
                                     <th style="width:36px;text-align:center;" data-sort="selected" title="Sort by selected">
                                         <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
                                     </th>
-                                    <th data-sort="parent">Parent <input type="text" id="parentSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
-                                    <th data-sort="sku">SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
+                                    <th data-sort="parent">Parent</th>
+                                    <th data-sort="sku">SKU</th>
                                     <th data-sort="inv" style="text-align:center;" title="Shopify inventory (parents show the total of their SKUs)">INV</th>
-                                    <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status <select id="statusFilter" class="form-select form-select-sm mt-1" title="Filter by status"><option value="all">All</option></select></th>
+                                    <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status</th>
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
                                     <th data-sort="name">Product Name</th>
                                     <th id="imActionTh">Action</th>
@@ -1097,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ia = order.indexOf(a), ib = order.indexOf(b);
             return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
         });
-        sel.innerHTML = '<option value="all">All</option>'
+        sel.innerHTML = '<option value="all">Status: All</option>'
             + keys.map(k => `<option value="${esc(k)}">${esc(seen.get(k))}</option>`).join('')
             + (missing ? '<option value="__none">Missing</option>' : '');
         sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
