@@ -30,7 +30,8 @@
             font-size: 0.85rem;
         }
         .tabulator .tabulator-cell.mip-new-image-cell { padding: 0 !important; line-height: 0; }
-        .mip-new-img-aspect { width: 44px; height: 44px; margin: 0 auto; }
+        .mip-new-img-aspect { width: 52px; height: 52px; margin: 0 auto; }
+        .tabulator .tabulator-cell.mip-new-image-cell a { display: block; line-height: 0; }
         .mip-new-img-aspect img { width: 100%; height: 100%; object-fit: contain; cursor: pointer; display: block; }
 
         /* Executive pill cell (matches Forecast Analysis) */
@@ -1225,10 +1226,14 @@
                 paginationCounter: "rows",
                 columns: [
                     {
-                        title: "#", field: "Image", headerSort: false, cssClass: "mip-new-image-cell", width: 50,
+                        // Field key is "product_image" (not "Image"): the shared saved column settings had the
+                        // old "Image" column switched off for everyone, so this new key shows by default.
+                        title: "Image", field: "product_image", headerSort: false, cssClass: "mip-new-image-cell", width: 68, minWidth: 68, hozAlign: "center",
                         formatter: function (cell) {
-                            const url = cell.getValue();
-                            return url ? '<div class="mip-new-img-aspect"><img src="' + esc(url) + '"></div>' : '<span class="text-muted">N/A</span>';
+                            const url = (cell.getRow().getData() || {}).Image;
+                            return url
+                                ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" title="Open image"><div class="mip-new-img-aspect"><img src="' + esc(url) + '" loading="lazy"></div></a>'
+                                : '<span class="text-muted">N/A</span>';
                         }
                     },
                     { title: "Supplier", field: "supplier", width: 72, minWidth: 56, maxWidth: 96, widthGrow: 0, hozAlign: "center",
@@ -1467,7 +1472,7 @@
             const MIP_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
             const MIP_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
             const MIP_COL_GROUPS = {
-                basic: ['Image', 'supplier', 'Category', 'sku', 'stage', 'exec'],
+                basic: ['product_image', 'supplier', 'Category', 'sku', 'stage', 'exec'],
                 grp1: ['moq', 'qty', 'created_at', 'delivery_date', 'mip_po_number', 'total_cbm', 'CBM', 'row_cp', 'row_amount'],
                 grp2: ['pkg_inst', 'u_manual', 'compliance', 'pre_mip_checklist_status', 'supplier_platform_links'],
                 others: [],
