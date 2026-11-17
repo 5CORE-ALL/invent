@@ -63,7 +63,7 @@
                         'Container' => $details['container_number'],
                         'Container Size' => $details['container_size'],
                         'Gross Weight' => $details['gross_weight'],
-                        'Loading Port' => $details['loading_port'],
+                        'Load Port' => $details['loading_port'],
                         'Via Port' => $details['via_port'],
                         'Discharge Port' => $details['discharge_port'],
                     ] as $label => $value)

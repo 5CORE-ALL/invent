@@ -23,6 +23,14 @@
         .qc-qr-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
         .qc-qr-btn.filled:hover { background: #1d4ed8; border-color: #1d4ed8; }
         .qc-qr-btn .qc-qr-count { font-weight: 600; margin-left: 4px; opacity: .9; }
+        .qc-l-dot {
+            width: 16px; height: 16px; border-radius: 50%; border: 2px solid #15803d; background: #22c55e;
+            padding: 0; cursor: pointer; box-shadow: 0 0 0 3px rgba(34, 197, 94, .2); vertical-align: middle;
+        }
+        .qc-l-dot:hover { background: #16a34a; box-shadow: 0 0 0 4px rgba(34, 197, 94, .3); }
+        /* Draft email: grow to fit the whole message (the page scrolls if the screen is short) */
+        #draftModal .modal-body { overflow: visible; }
+        #draftModal #dfBody { min-height: 40vh; }
         .qc-wrap2 {
             white-space: normal; line-height: 1.25; max-height: 2.5em; overflow: hidden;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;
@@ -215,13 +223,13 @@
                                     placeholder="e.g. &lt; 15000 Kgs" maxlength="100">
                             </div>
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Pickup Address Port</label>
+                                <label class="form-label fw-semibold">Pickup Address Supplier</label>
                                 <textarea name="pickup_address" id="qc_pickup_address" class="form-control" rows="2" maxlength="2000"></textarea>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-semibold">Loading Port</label>
+                                <label class="form-label fw-semibold">Load Port</label>
                                 <select name="loading_port" id="qc_loading_port" class="form-select">
-                                    <option value="">Select loading port</option>
+                                    <option value="">Select load port</option>
                                     <option value="Ningbo">Ningbo</option>
                                     <option value="Guangzhou">Guangzhou</option>
                                     <option value="Tianjin">Tianjin</option>
@@ -305,8 +313,13 @@
                     <div class="alert alert-warning py-2 d-none" id="qfNoQ">The Q details are not filled in yet — fill them with the Q button first.</div>
                     <div class="fw-bold text-uppercase small text-muted mb-2">Container details (from Q — auto-filled, not editable)</div>
                     <div class="row g-3 mb-4" id="qfQ"></div>
-                    <div class="fw-bold text-uppercase small text-muted mb-1">Forwarder quote</div>
-                    <div class="text-muted small mb-2">This section is filled in by the forwarder through the link emailed to them. 5Core users cannot fill it.</div>
+                    <div class="d-flex align-items-center mb-1">
+                        <div class="fw-bold text-uppercase small text-muted">Forwarder quote</div>
+                        @if ($canEdit)
+                            <button type="button" class="btn btn-sm btn-primary ms-auto" id="qfAddQuote" title="Add another forwarder quote"><i class="fas fa-plus me-1"></i> Add</button>
+                        @endif
+                    </div>
+                    <div class="text-muted small mb-2">Forwarders fill this in through the link emailed to them. Use <b>+ Add</b> to enter another forwarder's quote yourself.</div>
                     <div class="row g-3 mb-4">
                         <div class="col-md-4"><label class="form-label small fw-semibold">Forwarder</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Shipping Line</label><input class="form-control qf-locked" disabled></div>
@@ -396,9 +409,33 @@
         </div>
     </div>
 
+    {{-- L1 / L2 / L3: the three lowest quotes for a container --}}
+    <div class="modal fade" id="lModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-ranking-star me-2"></i>Lowest quotes — <span id="lContainer"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light"><tr>
+                                <th style="width:60px;">Rank</th><th>Forwarder</th><th>Shipping Line</th><th>Est Dt Sail</th>
+                                <th class="text-end">Pickup Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th>
+                            </tr></thead>
+                            <tbody id="lBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button></div>
+            </div>
+        </div>
+    </div>
+
     {{-- Draft email (what will be sent), shown before sending --}}
     <div class="modal fade" id="draftModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl my-2">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold"><i class="fas fa-envelope-open-text me-2"></i>Draft email — <span id="draftContainer"></span></h5>
@@ -578,7 +615,7 @@
             // L1 / L2 / L3 = lowest / second lowest / third lowest quote, with forwarder name.
             function lowestColumn(title, rank) {
                 return {
-                    title: title, field: 'quotes', minWidth: 130,
+                    title: title, field: 'quotes', minWidth: 130, visible: false,
                     sorter: function (a, b) {
                         const x = rankedQuotes(a)[rank], y = rankedQuotes(b)[rank];
                         if (!x && !y) return 0;
@@ -623,8 +660,8 @@
                       } },
                     { title: 'Supplier', field: 'supplier', formatter: textCell, minWidth: 140 },
                     { title: 'Size', field: 'container_size', formatter: textCell },
-                    { title: 'Pickup Address Port', field: 'pickup_address', formatter: wrapCell, width: 260 },
-                    { title: 'Loading Port', field: 'loading_port', formatter: textCell },
+                    { title: 'Pickup Address Supplier', field: 'pickup_address', formatter: wrapCell, width: 260 },
+                    { title: 'Load Port', field: 'loading_port', formatter: textCell },
                     { title: 'Via Port', field: 'via_port', formatter: textCell },
                     { title: 'Discharge Port', field: 'discharge_port', formatter: textCell, visible: false },
                     { title: 'Gross Weight', field: 'gross_weight', formatter: textCell, visible: false },
@@ -684,9 +721,25 @@
                           const n = (cell.getValue() || []).length;
                           return n ? '<b>' + n + '</b>' : '<span class="text-muted">0</span>';
                       } },
-                    lowestColumn('L1', 0),
-                    lowestColumn('L2', 1),
-                    lowestColumn('L3', 2),                ],
+                    // L1: green dot when the lowest quote exists; click to see L1, L2 and L3 in a popup.
+                    { title: 'L1', field: 'quotes', width: 70, hozAlign: 'center', headerHozAlign: 'center',
+                      sorter: function (a, b) {
+                          const x = rankedQuotes(a)[0], y = rankedQuotes(b)[0];
+                          if (!x && !y) return 0;
+                          if (!x) return 1;
+                          if (!y) return -1;
+                          return Number(x.total) - Number(y.total);
+                      },
+                      formatter: function (cell) {
+                          if (!rankedQuotes(cell.getValue())[0]) return '<span class="text-muted">—</span>';
+                          return '<button type="button" class="qc-l-dot" title="View L1, L2 and L3 quotes"></button>';
+                      },
+                      cellClick: function (e, cell) {
+                          if (e.target.closest('.qc-l-dot')) openLModal(cell.getRow().getData());
+                      } },
+                    Object.assign(lowestColumn('L2', 1), { visible: false }),
+                    Object.assign(lowestColumn('L3', 2), { visible: false }),
+                ],
             });
 
             function refreshCount() {
@@ -905,6 +958,25 @@
                 el.classList.remove('d-none');
             }
 
+            // L1 / L2 / L3 popup
+            const lModalEl = document.getElementById('lModal');
+            function openLModal(row) {
+                document.getElementById('lContainer').textContent = row.container_number;
+                const fm = v => (v === null || v === undefined || v === '') ? '<span class="text-muted">—</span>'
+                    : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const ranked = rankedQuotes(row.quotes);
+                document.getElementById('lBody').innerHTML = ['L1', 'L2', 'L3'].map(function (label, i) {
+                    const q = ranked[i];
+                    if (!q) return '<tr><td><b>' + label + '</b></td><td colspan="6" class="text-muted">—</td></tr>';
+                    return '<tr' + (i === 0 ? ' class="table-success"' : '') + '><td><b>' + label + '</b></td>' +
+                        '<td>' + esc(q.forwarder || '') + '</td><td>' + (esc(q.shipping_line || '') || '<span class="text-muted">—</span>') + '</td>' +
+                        '<td>' + (esc(q.est_dt_sail || '') || '<span class="text-muted">—</span>') + '</td>' +
+                        '<td class="text-end">' + fm(q.pickup_charges) + '</td><td class="text-end">' + fm(q.freight) + '</td>' +
+                        '<td class="text-end fw-bold">' + fm(q.total) + '</td></tr>';
+                }).join('');
+                bootstrap.Modal.getOrCreateInstance(lModalEl).show();
+            }
+
             // QR Form (combined preview)
             const qfModalEl = document.getElementById('qfModal');
             async function openFormModal(row) {
@@ -920,12 +992,12 @@
                     document.getElementById('qfNoQ').classList.toggle('d-none', !!d.has_details);
                     const fieldsQ = [
                         ['Container', d.container_number, 4], ['Container Size', d.container_size, 4], ['Gross Weight', d.gross_weight, 4],
-                        ['Loading Port', d.loading_port, 4], ['Via Port', d.via_port, 4], ['Discharge Port', d.discharge_port, 4],
+                        ['Load Port', d.loading_port, 4], ['Via Port', d.via_port, 4], ['Discharge Port', d.discharge_port, 4],
                     ];
                     qBox.innerHTML = fieldsQ.map(f =>
                         '<div class="col-md-' + f[2] + '"><label class="form-label small fw-semibold">' + f[0] + '</label>' +
                         '<input class="form-control qf-locked" disabled value="' + esc(f[1] || '') + '"></div>').join('') +
-                        '<div class="col-12"><label class="form-label small fw-semibold">Pickup Address Port</label>' +
+                        '<div class="col-12"><label class="form-label small fw-semibold">Pickup Address Supplier</label>' +
                         '<textarea class="form-control qf-locked" rows="2" disabled>' + esc(d.pickup_address || '') + '</textarea></div>';
                     renderRequestRows(j.requests);
                 } catch (err) {
@@ -960,6 +1032,17 @@
                         '<td><button type="button" class="btn btn-sm btn-outline-secondary qf-copy" data-url="' + esc(r.url || '') + '" title="Copy the forwarder\'s form link"><i class="fas fa-link"></i></button></td></tr>' + alertRow;
                 }).join('');
             }
+            // "+ Add": enter one more forwarder quote by hand (opens the quotes table with a fresh empty row)
+            document.getElementById('qfAddQuote')?.addEventListener('click', function () {
+                const cn = document.getElementById('qfContainer').textContent;
+                const row = table.getData().find(r => r.container_number === cn);
+                if (!row) return;
+                qfModalEl.addEventListener('hidden.bs.modal', function () {
+                    openQrModal(row);
+                    if ((row.quotes || []).length) qrAddRow().querySelector('.qr-forwarder').focus();
+                }, { once: true });
+                bootstrap.Modal.getOrCreateInstance(qfModalEl).hide();
+            });
             qfModalEl.addEventListener('click', async function (e) {
                 const ack = e.target.closest('.qf-ack');
                 if (ack) {

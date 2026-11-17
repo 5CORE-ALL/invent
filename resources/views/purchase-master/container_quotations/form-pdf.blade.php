@@ -40,7 +40,7 @@
             <td><div class="lbl">Gross Weight</div><div class="val">{{ $d['gross_weight'] ?: '-' }}</div></td>
         </tr>
         <tr>
-            <td><div class="lbl">Loading Port</div><div class="val">{{ $d['loading_port'] ?: '-' }}</div></td>
+            <td><div class="lbl">Load Port</div><div class="val">{{ $d['loading_port'] ?: '-' }}</div></td>
             <td><div class="lbl">Via Port</div><div class="val">{{ $d['via_port'] ?: '-' }}</div></td>
             <td><div class="lbl">Discharge Port</div><div class="val">{{ $d['discharge_port'] ?: '-' }}</div></td>
         </tr>

@@ -41,7 +41,7 @@ class ContainerQuoteRequestController extends Controller
         ."Container: {container}\n"
         ."Container size: {container_size}\n"
         ."Pickup address: {pickup_address}\n"
-        ."Loading port: {loading_port}\n"
+        ."Load port: {loading_port}\n"
         ."Via port: {via_port}\n"
         ."Discharge port: {discharge_port}\n"
         ."Gross weight: {gross_weight}\n\n"
