@@ -1408,7 +1408,7 @@ final class EbayTradingReviseItem
 
         $root = $variation !== null ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
         $callName = $variation !== null ? 'ReviseFixedPriceItem' : 'ReviseItem';
-        $buildXml = function (?array $shippingProfile) use ($root, $authToken, $itemId, $variation, $sku, $upc): string|false {
+        $buildXml = function (?array $shippingProfile, bool $fixPackage = false) use ($root, $authToken, $itemId, $variation, $sku, $upc, $getItemResponse): string|false {
             $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
             $creds = $xml->addChild('RequesterCredentials');
             $creds->addChild('eBayAuthToken', $authToken);
@@ -1418,6 +1418,9 @@ final class EbayTradingReviseItem
             $itemNode->addChild('ItemID', $itemId);
             if ($shippingProfile !== null) {
                 self::addShippingProfile($xml, $itemNode, $shippingProfile);
+            }
+            if ($fixPackage) {
+                self::addPackageDetails($itemNode, $getItemResponse);
             }
             if ($variation !== null) {
                 $node = $itemNode->addChild('Variations')->addChild('Variation');
@@ -1435,14 +1438,31 @@ final class EbayTradingReviseItem
         }
 
         $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'UPC', $callName);
-        // eBay checks the whole listing on every revise. When it says the shipping service is missing (21915409) although
-        // the listing has a shipping policy, send the listing's own policy again with the UPC so the check passes.
-        if (! ($result['success'] ?? false) && self::isMissingShippingError((string) ($result['message'] ?? ''))) {
-            $profile = self::shippingRetryProfile($getItemResponse);
-            $retryBody = $profile !== null ? $buildXml($profile) : false;
-            if ($retryBody !== false) {
-                $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $retryBody, 'UPC (with shipping policy)', $callName);
+        // eBay checks the whole listing on every revise and reports one problem at a time. When it says the shipping
+        // service is missing (21915409) send the listing's own shipping policy along; when it then asks for a valid
+        // package type (#739) send the package details too. At most two retries, each adding what eBay asked for.
+        $profile = null;
+        $fixPackage = false;
+        for ($retry = 0; $retry < 2 && ! ($result['success'] ?? false); $retry++) {
+            $message = (string) ($result['message'] ?? '');
+            $nextProfile = $profile;
+            $nextPackage = $fixPackage;
+            if ($profile === null && self::isMissingShippingError($message)) {
+                $nextProfile = self::shippingRetryProfile($getItemResponse);
             }
+            if (! $fixPackage && self::isPackageTypeError($message)) {
+                $nextPackage = true;
+            }
+            if ($nextProfile === $profile && $nextPackage === $fixPackage) {
+                break;
+            }
+            $profile = $nextProfile;
+            $fixPackage = $nextPackage;
+            $retryBody = $buildXml($profile, $fixPackage);
+            if ($retryBody === false) {
+                break;
+            }
+            $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $retryBody, 'UPC (with listing shipping details)', $callName);
         }
 
         if (! ($result['success'] ?? false)) {
@@ -1599,6 +1619,52 @@ final class EbayTradingReviseItem
         // shipping block is left alone and the policy supplies the service on the revise.
     }
 
+    /**
+     * Send the package block of the listing again with a valid package type. eBay (#739) refuses a revise of a listing
+     * whose package type is blank or retired; the sizes and weight already on the listing are sent back unchanged.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     */
+    private static function addPackageDetails(\SimpleXMLElement $itemNode, array $getItemResponse): void
+    {
+        $item = self::itemFromGetItem($getItemResponse);
+        $current = is_array($item['ShippingPackageDetails'] ?? null) ? $item['ShippingPackageDetails'] : [];
+
+        $system = 'English';
+        foreach (['PackageDepth', 'PackageLength', 'PackageWidth', 'WeightMajor'] as $field) {
+            $found = is_array($current[$field] ?? null) ? ($current[$field]['@attributes']['measurementSystem'] ?? null) : null;
+            if (is_string($found) && strcasecmp($found, 'Metric') === 0) {
+                $system = 'Metric';
+                break;
+            }
+        }
+
+        $package = $itemNode->addChild('ShippingPackageDetails');
+        $package->addChild('MeasurementUnit', $system);
+        foreach (['PackageDepth', 'PackageLength', 'PackageWidth'] as $field) {
+            $value = self::xmlText($current[$field] ?? '');
+            if (is_numeric($value) && (float) $value > 0) {
+                $package->addChild($field, $value);
+            }
+        }
+        $type = self::xmlText($current['ShippingPackage'] ?? '');
+        if ($type === '' || strcasecmp($type, 'None') === 0) {
+            $type = 'PackageThickEnvelope';
+        }
+        $package->addChild('ShippingPackage', htmlspecialchars($type, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+        $major = self::xmlText($current['WeightMajor'] ?? '');
+        $minor = self::xmlText($current['WeightMinor'] ?? '');
+        if ((is_numeric($major) && (float) $major > 0) || (is_numeric($minor) && (float) $minor > 0)) {
+            $package->addChild('WeightMajor', is_numeric($major) ? $major : '0');
+            $package->addChild('WeightMinor', is_numeric($minor) ? $minor : '0');
+        }
+    }
+
+    private static function isPackageTypeError(string $message): bool
+    {
+        return (bool) preg_match('/shipping package|package type|#739\b|\b739\b/i', $message);
+    }
+
     private static function isMissingShippingError(string $message): bool
     {
         return (bool) preg_match('/shipping service|21915409/i', $message);
@@ -1625,6 +1691,7 @@ final class EbayTradingReviseItem
         bool $ensureShippingPolicy = false,
         ?array $getItemResponse = null,
         ?array $shippingProfile = null,
+        bool $fixPackage = false,
     ): array {
         $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $creds = $xml->addChild('RequesterCredentials');
@@ -1648,6 +1715,9 @@ final class EbayTradingReviseItem
         }
         if ($shippingProfile !== null && ! $ensureShippingPolicy) {
             self::addShippingProfile($xml, $itemNode, $shippingProfile);
+        }
+        if ($fixPackage && $getItemResponse !== null) {
+            self::addPackageDetails($itemNode, $getItemResponse);
         }
         $specParent = $itemNode;
         if ($variationSku !== null && $specificsNode !== null) {
@@ -1673,12 +1743,20 @@ final class EbayTradingReviseItem
         }
 
         $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'technical specifications', $callName);
-        // eBay refused the shipping block of a listing that has a shipping policy: send that policy along once.
-        if (! ($result['success'] ?? false) && $getItemResponse !== null && $shippingProfile === null && ! $ensureShippingPolicy
-            && self::isMissingShippingError((string) ($result['message'] ?? ''))) {
-            $profile = self::shippingRetryProfile($getItemResponse);
-            if ($profile !== null) {
-                return self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, $callName, $root, $variationSku, $specificsNode, false, null, $profile);
+        // eBay reports one listing problem at a time. Missing shipping service: send the listing's shipping policy along.
+        // Invalid package type (#739): send the package block too. Each flag is added once, so this ends after two retries.
+        if (! ($result['success'] ?? false) && $getItemResponse !== null && ! $ensureShippingPolicy) {
+            $message = (string) ($result['message'] ?? '');
+            $nextProfile = $shippingProfile;
+            $nextPackage = $fixPackage;
+            if ($shippingProfile === null && self::isMissingShippingError($message)) {
+                $nextProfile = self::shippingRetryProfile($getItemResponse);
+            }
+            if (! $fixPackage && self::isPackageTypeError($message)) {
+                $nextPackage = true;
+            }
+            if ($nextProfile !== $shippingProfile || $nextPackage !== $fixPackage) {
+                return self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, $callName, $root, $variationSku, $specificsNode, false, $getItemResponse, $nextProfile, $nextPackage);
             }
         }
 
