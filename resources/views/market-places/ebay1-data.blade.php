@@ -291,6 +291,11 @@
                         <button type="button" class="btn btn-sm btn-primary" id="e1dPush" title="Push the item specifics of the ticked rows, or of the whole open tab, to the live {{ $ebayCfg['label'] }} listings" disabled>
                             <i class="fas fa-cloud-upload-alt"></i> <span id="e1dPushLabel">0</span>
                         </button>
+                        @unless($isTemu)
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="e1dPushUpc" title="Push UPC to {{ $ebayCfg['label'] }}" disabled>
+                            <i class="fas fa-barcode"></i> Push UPC <span class="badge bg-primary" id="e1dPushUpcLabel">0</span>
+                        </button>
+                        @endunless
                         <button type="button" class="btn btn-sm btn-success" id="e1dAddCol" title="Add Column: add a column to the open category tab" aria-label="Add Column" disabled>
                             <i class="fas fa-plus"></i>
                         </button>
@@ -1334,7 +1339,82 @@
                 return { selected: selected.length > 0, targets: targets };
             }
 
+            // ---- Push UPC: the UPC of the ticked rows, else of the open tab, goes to the live listings (UPC only). ----
+            // Every SKU with a real UPC is sent whether or not anything was edited here; the server compares the code
+            // with the live listing and changes it only when it differs.
+            function upcScope() {
+                const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
+                const base = selected.length ? selected : rows.filter(passesTab);
+                const targets = base.filter(function (row) {
+                    return E1_ID_RE.test(String(row.item_id || '').trim()) && /^\d{8,14}$/.test(String(row.upc_value || '').trim());
+                });
+                return { selected: selected.length > 0, targets: targets };
+            }
+
+            function updateUpcButton() {
+                const btn = document.getElementById('e1dPushUpc');
+                if (!btn || btn.dataset.busy === '1') return;
+                const scope = upcScope();
+                btn.disabled = scope.targets.length === 0;
+                document.getElementById('e1dPushUpcLabel').textContent = String(scope.targets.length);
+                btn.title = 'Push UPC to {{ $ebayCfg['label'] }} (' + scope.targets.length + (scope.selected ? ' ticked' : '') + '): '
+                    + (scope.selected ? 'send the UPC of the ticked rows' : (activeTab === ALL ? 'send the UPC of every listed SKU of all categories' : 'send the UPC of the whole open category'))
+                    + ' to the live {{ $ebayCfg['label'] }} listings';
+            }
+
+            let upcRunning = false;
+            async function pushUpcToEbay() {
+                if (upcRunning) return;
+                const scope = upcScope();
+                const todo = scope.targets;
+                if (!todo.length) { rowToast('No listed SKU with a UPC here.', false); return; }
+                const where = scope.selected
+                    ? todo.length + ' ticked SKU' + (todo.length === 1 ? '' : 's')
+                    : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
+                if (!window.confirm('Push the UPC of ' + where + ' to the live {{ $ebayCfg['label'] }} listings?\n\nOnly the UPC is sent. A UPC that is already on the listing is left alone. It takes a second or two per SKU; you can keep working.')) return;
+                const btn = document.getElementById('e1dPushUpc');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                upcRunning = true;
+                btn.dataset.busy = '1';
+                btn.disabled = true;
+                let pushed = 0, unchanged = 0, failed = 0, skipped = 0, doneCount = 0;
+                const problems = [];
+                const size = 5;
+                for (let i = 0; i < todo.length; i += size) {
+                    const chunk = todo.slice(i, i + size).map(function (row) {
+                        return { sku: row.sku, item_id: String(row.item_id || '').trim(), specifics: { UPC: String(row.upc_value).trim() } };
+                    });
+                    jobShow('Pushing UPC to {{ $ebayCfg['label'] }}…', todo.length, pushed + unchanged, failed, true, problems);
+                    try {
+                        const res = await fetch('{{ $ebayCfg['base'] }}/push', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ items: chunk, specifics: true }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        if (!res.ok || json.success === false) throw new Error(json.message || ('HTTP ' + res.status));
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'failed') { failed++; problems.push(r.sku + ': ' + r.message); }
+                            else if (r.status === 'pushed') pushed++;
+                            else if (r.status === 'unchanged') unchanged++;
+                            else { skipped++; problems.push(r.sku + ': ' + r.message); }
+                        });
+                    } catch (e) {
+                        failed += chunk.length;
+                        problems.push(e.message || 'Request failed');
+                    }
+                }
+                upcRunning = false;
+                btn.dataset.busy = '0';
+                const summary = 'UPC: pushed ' + pushed + ', already on eBay ' + unchanged + (skipped ? ', skipped ' + skipped : '') + (failed ? ', failed ' + failed : '') + '.';
+                jobShow(summary, todo.length, pushed + unchanged, failed + skipped, false, problems);
+                document.getElementById('e1dPullStatus').textContent = summary;
+                rowToast(summary, !failed);
+                await loadData();
+            }
+
             function updatePushButton() {
+                updateUpcButton();
                 const btn = document.getElementById('e1dPush');
                 if (!btn || btn.dataset.busy === '1') return;
                 const scope = pushScope();
@@ -3901,6 +3981,8 @@
                 });
                 document.getElementById('e1dRefresh').addEventListener('click', loadData);
                 document.getElementById('e1dPush').addEventListener('click', pushToEbay);
+                const upcBtn = document.getElementById('e1dPushUpc');
+                if (upcBtn) upcBtn.addEventListener('click', pushUpcToEbay);
                 document.getElementById('e1dAuto').addEventListener('click', toggleAutoPush);
                 document.getElementById('e1dAddCol').addEventListener('click', openAddModal);
                 document.getElementById('e1dAddCancel').addEventListener('click', closeAddModal);
