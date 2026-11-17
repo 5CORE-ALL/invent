@@ -68,6 +68,14 @@
         #imGrid .im-card-arrows .im-dl:hover { background:#15803d; color:#fff; }
         #imGrid .im-card-arrows .im-ai { background:#d4a017; }
         #imGrid .im-card-arrows .im-ai:hover { background:#b8860b; color:#fff; }
+        #imGrid .im-card-arrows { flex-wrap:wrap; gap:4px; }
+        #imGrid .im-card-arrows button { width:28px; height:26px; font-size:12px; display:inline-flex; align-items:center; justify-content:center; }
+        #imGrid .im-card-arrows .im-cp { background:#2563eb; }
+        #imGrid .im-card-arrows .im-cp:hover { background:#1d4ed8; color:#fff; }
+        #imGrid .im-card-arrows .im-ps { background:#7c3aed; }
+        #imGrid .im-card-arrows .im-ps:hover { background:#6d28d9; color:#fff; }
+        #imGrid .im-card-arrows .im-card-del { position:static; display:inline-flex; border-radius:6px; background:#dc2626; }
+        #imGrid .im-card-arrows .im-card-del:hover { background:#b91c1c; }
         #imGrid .im-card.im-drop-end { min-height:calc(var(--im-h) + 34px); }
         #imGrid .im-sandbox { min-height:calc(var(--im-h) + 34px); padding:6px 8px; border-radius:10px; }
         #imGrid .im-sandbox-grid { display:flex; flex-wrap:wrap; gap:5px; }
@@ -238,6 +246,8 @@
                         <div class="im-badge-row">
                             <span class="badge bg-secondary im-stat-badge" id="rowCountBadge">0 products</span>
                             <span class="badge bg-success im-stat-badge" id="missingImagesBadge" title="SKUs with fewer than 14 images (red in the Images column)">Missing images: 0</span>
+                            <span class="badge bg-success im-stat-badge" id="auditAlertBadge" title="Rows with an open audit task (red triangle)">Audit alerts: 0</span>
+                            <span class="badge bg-success im-stat-badge" id="auditOverdueBadge" title="Rows not audited in over 30 days (yellow dot)">Audit overdue: 0</span>
                             <span class="badge bg-dark im-stat-badge" id="selectedCountBadge">0 selected</span>
                         </div>
                     </div>
@@ -261,6 +271,7 @@
                                     </th>
                                     <th data-sort="parent">Parent</th>
                                     <th data-sort="sku">SKU</th>
+                                    <th data-sort="auditst" style="text-align:center;" title="Red triangle = audit task still open · Yellow dot = not audited in over 30 days · Green = audited, nothing open">Audit</th>
                                     <th data-sort="inv" style="text-align:center;" title="Shopify inventory (parents show the total of their SKUs)">INV</th>
                                     <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status</th>
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
@@ -1113,6 +1124,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (['rework', 'need help', 'deleted'].includes(x)) return 'bad';
         return '';
     };
+    // Audit state: 'red' = an audit task is still open, 'yellow' = no audit in the last 30 days, 'green' = audited recently.
+    const AUDIT_DONE_STATES = ['done', 'approved', 'archived', 'deleted'];
+    function auditState(r) {
+        const list = Array.isArray(r.audits) ? r.audits : [];
+        const open = list.some(a => {
+            const st = String(a.task_status || '').trim().toLowerCase();
+            return st !== '' && !AUDIT_DONE_STATES.includes(st);
+        });
+        if (open) return 'red';
+        const latest = list.reduce((m, a) => Math.max(m, histTs(a.at) || 0), 0);
+        if (!latest || Date.now() - latest > 30 * 86400000) return 'yellow';
+        return 'green';
+    }
+    function auditStateHtml(r) {
+        const s = auditState(r);
+        if (s === 'red') return '<i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:15px;" title="Audit task still open"></i>';
+        const c = s === 'yellow' ? '#eab308' : '#22c55e';
+        const t = s === 'yellow' ? 'Not audited in over 30 days' : 'Audited within 30 days';
+        return `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};" title="${t}"></span>`;
+    }
     function auditCellHtml(sku, r) {
         const list = Array.isArray(r.audits) ? r.audits : [];
         if (!list.length) return '<span class="text-muted">—</span>';
@@ -1161,6 +1192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const l = historyLatest(r);
                 return l ? l.ts : null;
             }
+            case 'auditst': return { green: 1, yellow: 2, red: 3 }[auditState(r)];
             case 'audit': {
                 const a = Array.isArray(r.audits) && r.audits[0] ? histTs(r.audits[0].at) : null;
                 return a;
@@ -1293,8 +1325,25 @@ document.addEventListener('DOMContentLoaded', () => {
             missingBadge.classList.toggle('bg-danger', missing > 0);
             missingBadge.classList.toggle('bg-success', missing === 0);
         }
+        // Audit badges: rows with an open audit task (red triangle) / not audited in 30+ days (yellow dot).
+        const auditStates = rows.map(auditState);
+        const aRed = auditStates.filter(s => s === 'red').length;
+        const aYellow = auditStates.filter(s => s === 'yellow').length;
+        const aRedBadge = document.getElementById('auditAlertBadge');
+        if (aRedBadge) {
+            aRedBadge.textContent = 'Audit alerts: ' + aRed;
+            aRedBadge.classList.toggle('bg-danger', aRed > 0);
+            aRedBadge.classList.toggle('bg-success', aRed === 0);
+        }
+        const aYellowBadge = document.getElementById('auditOverdueBadge');
+        if (aYellowBadge) {
+            aYellowBadge.textContent = 'Audit overdue: ' + aYellow;
+            aYellowBadge.classList.toggle('bg-warning', aYellow > 0);
+            aYellowBadge.classList.toggle('text-dark', aYellow > 0);
+            aYellowBadge.classList.toggle('bg-success', aYellow === 0);
+        }
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="26" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="27" class="text-center text-muted py-3">No products</td></tr>';
             updateSelectedCount();
             syncSelectAllCheckbox();
             return;
@@ -1318,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
                 <td>${esc(r.Parent || '')}</td>
                 <td>${esc(sku)}</td>
+                <td class="text-center">${auditStateHtml(r)}</td>
                 <td class="text-center">${r._inv}</td>
                 <td class="text-center">${statusCellHtml(r)}</td>
                 <td class="text-center">${imgCountHtml}</td>
@@ -2261,6 +2311,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (_) {}
     }
 
+    let imClipBlob = null; // last image copied with the card Copy button
+    async function imToPngBlob(blob) {
+        if (blob.type === 'image/png') return blob;
+        const bmp = await createImageBitmap(blob);
+        const cv = document.createElement('canvas');
+        cv.width = bmp.width; cv.height = bmp.height;
+        cv.getContext('2d').drawImage(bmp, 0, 0);
+        return await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Convert failed')), 'image/png'));
+    }
+
     function renderSlots() {
         const el = document.getElementById('imSlots');
         const removeAllBtn = document.getElementById('removeAllImagesBtn');
@@ -2287,10 +2347,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <img src="${esc(imgSrc(url))}" alt=""
                              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%22100%22%3E%3Crect width=%22120%22 height=%22100%22 fill=%22%23f1f5f9%22/%3E%3Ctext x=%2260%22 y=%2254%22 font-size=%2211%22 fill=%22%2394a3b8%22 text-anchor=%22middle%22%3ENo preview%3C/text%3E%3C/svg%3E'">
                         <span class="im-card-badge${isDefaultMain?' im-card-badge-main':''}">${isDefaultMain ? 'MAIN' : (idx + 1)}</span>
-                        <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                         <div class="im-card-arrows">
                             <button type="button" class="im-dl" data-i="${idx}" title="Download this image"><i class="fas fa-download"></i></button>
+                            <button type="button" class="im-cp" data-i="${idx}" title="Copy this image"><i class="fas fa-copy"></i></button>
+                            <button type="button" class="im-ps" data-i="${idx}" title="Paste copied image here (replaces this slot)"><i class="fas fa-paste"></i></button>
                             <button type="button" class="im-ai" data-i="${idx}" title="Edit this image with AI (Nano Banana)"><i class="fas fa-pen"></i></button>
+                            <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                         </div>
                     </div>
                     <div class="im-card-footer">
@@ -2351,6 +2413,78 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     alert(err.message || 'Download failed.');
                 } finally {
+                    b.disabled = false;
+                }
+            });
+        });
+
+        // ── Copy one image (system clipboard + in-page fallback) ──────────
+        grid.querySelectorAll('.im-cp').forEach(b => {
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                const url = modalUrls[i];
+                if (!url) return;
+                b.disabled = true;
+                try {
+                    const res = await fetch('/image-master/download?url=' + encodeURIComponent(url)
+                        + '&sku=' + encodeURIComponent(document.getElementById('modalSku').value) + '&n=' + (i + 1),
+                        { headers: { 'Accept': 'image/*' } });
+                    if (!res.ok) throw new Error('Could not read the image (' + res.status + ').');
+                    imClipBlob = await res.blob();
+                    let sys = false;
+                    try {
+                        const png = await imToPngBlob(imClipBlob);
+                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+                        sys = true;
+                    } catch (_) {}
+                    toast(sys ? 'Image copied' : 'Image copied (paste works inside this page only)');
+                } catch (err) {
+                    toast(err.message || 'Copy failed', false);
+                } finally {
+                    b.disabled = false;
+                }
+            });
+        });
+
+        // ── Paste the copied image into this slot (replaces it) ───────────
+        grid.querySelectorAll('.im-ps').forEach(b => {
+            b.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const i = +b.dataset.i;
+                const oldUrl = modalUrls[i];
+                if (!oldUrl) return;
+                let blob = null;
+                try {
+                    const items = await navigator.clipboard.read();
+                    for (const it of items) {
+                        const t = it.types.find(x => x.startsWith('image/'));
+                        if (t) { blob = await it.getType(t); break; }
+                    }
+                } catch (_) {}
+                if (!blob) blob = imClipBlob;
+                if (!blob) { toast('Nothing to paste. Copy an image first.', false); return; }
+                b.disabled = true;
+                try {
+                    const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                    const fd = new FormData();
+                    fd.append('sku', document.getElementById('modalSku').value);
+                    fd.append('files[]', new File([blob], 'pasted_' + Date.now() + '.' + ext, { type: blob.type || 'image/png' }));
+                    const r = await fetch('/image-master/upload', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                        body: fd,
+                    });
+                    const j = await r.json();
+                    if (!(j.success && j.urls?.length)) throw new Error(j.message || 'Paste failed');
+                    (j.images || []).forEach(img => storedImageMeta.set(img.url, { id: img.id, name: img.name }));
+                    storedImageMeta.delete(oldUrl);
+                    modalUrls[i] = j.urls[0];
+                    knownImageUrls = knownImageUrls.concat(j.urls);
+                    renderSlots();
+                    toast('Image pasted. Click Save to keep the change.');
+                } catch (err) {
+                    toast(err.message || 'Paste failed', false);
                     b.disabled = false;
                 }
             });
