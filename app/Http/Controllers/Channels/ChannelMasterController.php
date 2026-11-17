@@ -1385,7 +1385,8 @@ class ChannelMasterController extends Controller
                 : $this->resolveTemuL60SalesAndOrders($isTemu2);
             $l60Sales = (float) $liveL60['sales'];
 
-            if ($liveSales && (float) ($liveSales['total_revenue'] ?? 0) > 0) {
+            // Temu 2: a live $0 is valid (matches /temu2-tabulator), so it must overwrite the cache.
+            if ($liveSales && ($isTemu2 || (float) ($liveSales['total_revenue'] ?? 0) > 0)) {
                 $l30Sales = (float) $liveSales['total_revenue'];
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
@@ -1405,7 +1406,9 @@ class ChannelMasterController extends Controller
                 ? $this->computeTemu3YSalesLikeAmazon()
                 : $this->computeTemuYSalesLikeAmazon($isTemu2);
             if ($ySales !== null) {
-                $this->applyLiveYSalesIfPositive($row, $ySales);
+                $isTemu2
+                    ? $this->applyLiveYSalesAllowZero($row, $ySales)
+                    : $this->applyLiveYSalesIfPositive($row, $ySales);
             }
             $l7Sales = $isTemu3
                 ? $this->computeTemu3L7SalesLikeAmazon()
@@ -1496,7 +1499,8 @@ class ChannelMasterController extends Controller
                 $liveSales = null;
             }
 
-            if ($liveSales && (float) ($liveSales['total_revenue'] ?? 0) > 0) {
+            // Temu 2: a live $0 is valid (matches /temu2-tabulator), so it must overwrite the cache.
+            if ($liveSales && ($isTemu2 || (float) ($liveSales['total_revenue'] ?? 0) > 0)) {
                 $l30Sales = (float) $liveSales['total_revenue'];
                 $row['L30 Sales'] = (int) round($l30Sales);
                 $row['L30 Orders'] = (int) $liveSales['total_orders'];
@@ -1531,7 +1535,7 @@ class ChannelMasterController extends Controller
                     ? $this->resolveTemu3L60SalesAndOrders()
                     : $this->resolveTemuL60SalesAndOrders($isTemu2);
                 $l60Sales = (float) ($liveL60['sales'] ?? 0);
-                if ($l60Sales > 0 || (int) ($liveL60['orders'] ?? 0) > 0) {
+                if ($isTemu2 || $l60Sales > 0 || (int) ($liveL60['orders'] ?? 0) > 0) {
                     $row['L-60 Sales'] = (int) round($l60Sales);
                     $row['L60 Orders'] = (int) ($liveL60['orders'] ?? 0);
                 }
@@ -1544,12 +1548,14 @@ class ChannelMasterController extends Controller
                     ? $this->computeTemu3YSalesLikeAmazon()
                     : $this->computeTemuYSalesLikeAmazon($isTemu2);
                 if ($ySales !== null) {
-                    $this->applyLiveYSalesIfPositive($row, $ySales);
+                    $isTemu2
+                        ? $this->applyLiveYSalesAllowZero($row, $ySales)
+                        : $this->applyLiveYSalesIfPositive($row, $ySales);
                 }
                 $l7Sales = $isTemu3
                     ? $this->computeTemu3L7SalesLikeAmazon()
                     : $this->computeTemuL7SalesLikeAmazon($isTemu2);
-                if ($l7Sales !== null && (float) $l7Sales > 0) {
+                if ($l7Sales !== null && ($isTemu2 || (float) $l7Sales > 0)) {
                     $row['L7 Sales'] = $l7Sales;
                 }
             } catch (\Throwable $e) {
@@ -13480,6 +13486,13 @@ class ChannelMasterController extends Controller
      */
     private function overlayLiveTemu2TabulatorSalesOnChannelRows(array $rows): array
     {
+        // Without the orders table we cannot compute a live value, so leave the saved row alone.
+        // When the table exists, a live $0 is the real answer (same as /temu2-tabulator) and must
+        // replace the saved snapshot instead of leaving stale L30 sales on the row.
+        if (! Schema::hasTable('temu2_orders')) {
+            return $rows;
+        }
+
         [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
         [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
         $l30 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemu2TabulatorMetrics($l30Start, $l30End));
@@ -13488,9 +13501,6 @@ class ChannelMasterController extends Controller
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             if ($key !== 'temu2') {
-                continue;
-            }
-            if ($l30['l30'] <= 0 && $l30['qty'] <= 0) {
                 continue;
             }
 
