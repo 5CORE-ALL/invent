@@ -1337,7 +1337,7 @@ final class EbayTradingReviseItem
 
         $messages = [];
         if ($itemChanged) {
-            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $itemRows, 'ReviseItem', 'ReviseItemRequest', null, null);
+            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $itemRows, 'ReviseItem', 'ReviseItemRequest', null, null, false, $getItemResponse);
             $messages[] = $result['message'];
             if (! $result['success']) {
                 return ['success' => false, 'message' => implode(' ', $messages)];
@@ -1350,7 +1350,7 @@ final class EbayTradingReviseItem
                     $rows[] = ['name' => (string) $name, 'values' => [(string) $value]];
                 }
             }
-            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, 'ReviseFixedPriceItem', 'ReviseFixedPriceItemRequest', $sku, 'VariationSpecifics');
+            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, 'ReviseFixedPriceItem', 'ReviseFixedPriceItemRequest', $sku, 'VariationSpecifics', false, $getItemResponse);
             $messages[] = $result['message'];
             if (! $result['success']) {
                 return ['success' => false, 'message' => implode(' ', $messages)];
@@ -1408,26 +1408,42 @@ final class EbayTradingReviseItem
 
         $root = $variation !== null ? 'ReviseFixedPriceItemRequest' : 'ReviseItemRequest';
         $callName = $variation !== null ? 'ReviseFixedPriceItem' : 'ReviseItem';
-        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
-        $creds = $xml->addChild('RequesterCredentials');
-        $creds->addChild('eBayAuthToken', $authToken);
-        $xml->addChild('ErrorLanguage', 'en_US');
-        $xml->addChild('WarningLevel', 'High');
-        $itemNode = $xml->addChild('Item');
-        $itemNode->addChild('ItemID', $itemId);
-        if ($variation !== null) {
-            $node = $itemNode->addChild('Variations')->addChild('Variation');
-            $node->addChild('SKU', htmlspecialchars($sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
-            $node->addChild('VariationProductListingDetails')->addChild('UPC', $upc);
-        } else {
-            $itemNode->addChild('ProductListingDetails')->addChild('UPC', $upc);
-        }
-        $xmlBody = $xml->asXML();
+        $buildXml = function (?array $shippingProfile) use ($root, $authToken, $itemId, $variation, $sku, $upc): string|false {
+            $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $creds = $xml->addChild('RequesterCredentials');
+            $creds->addChild('eBayAuthToken', $authToken);
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+            $itemNode = $xml->addChild('Item');
+            $itemNode->addChild('ItemID', $itemId);
+            if ($shippingProfile !== null) {
+                self::addShippingProfile($xml, $itemNode, $shippingProfile);
+            }
+            if ($variation !== null) {
+                $node = $itemNode->addChild('Variations')->addChild('Variation');
+                $node->addChild('SKU', htmlspecialchars($sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                $node->addChild('VariationProductListingDetails')->addChild('UPC', $upc);
+            } else {
+                $itemNode->addChild('ProductListingDetails')->addChild('UPC', $upc);
+            }
+
+            return $xml->asXML();
+        };
+        $xmlBody = $buildXml(null);
         if ($xmlBody === false) {
             return ['success' => false, 'message' => 'Failed to build '.$callName.' XML for UPC.'];
         }
 
         $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'UPC', $callName);
+        // eBay checks the whole listing on every revise. When it says the shipping service is missing (21915409) although
+        // the listing has a shipping policy, send the listing's own policy again with the UPC so the check passes.
+        if (! ($result['success'] ?? false) && self::isMissingShippingError((string) ($result['message'] ?? ''))) {
+            $profile = self::shippingRetryProfile($getItemResponse);
+            $retryBody = $profile !== null ? $buildXml($profile) : false;
+            if ($retryBody !== false) {
+                $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $retryBody, 'UPC (with shipping policy)', $callName);
+            }
+        }
 
         if (! ($result['success'] ?? false)) {
             return ['success' => false, 'message' => (string) ($result['message'] ?? 'UPC update failed.')];
@@ -1545,6 +1561,44 @@ final class EbayTradingReviseItem
         ];
     }
 
+    /**
+     * The shipping policy the listing already uses (from GetItem), else the configured default. Used to retry a revise
+     * that eBay refused with "add at least one valid shipping service".
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @return array{id: string, name: string}|null
+     */
+    private static function shippingRetryProfile(array $getItemResponse): ?array
+    {
+        $item = self::itemFromGetItem($getItemResponse);
+        $own = $item['SellerProfiles']['SellerShippingProfile'] ?? null;
+        if (is_array($own)) {
+            $id = trim(self::xmlText($own['ShippingProfileID'] ?? ''));
+            $name = trim(self::xmlText($own['ShippingProfileName'] ?? ''));
+            if ($id !== '' || $name !== '') {
+                return ['id' => $id, 'name' => $name];
+            }
+        }
+
+        $id = trim((string) config('listing_manager.ebay1_defaults.shipping_policy_id', ''));
+        $name = trim((string) config('listing_manager.ebay1_defaults.shipping_policy_name', 'As Per Weight'));
+
+        return ($id !== '' || $name !== '') ? ['id' => $id, 'name' => $name] : null;
+    }
+
+    /** @param  array{id: string, name: string}  $profile */
+    private static function addShippingProfile(\SimpleXMLElement $xml, \SimpleXMLElement $itemNode, array $profile): void
+    {
+        $node = $itemNode->addChild('SellerProfiles')->addChild('SellerShippingProfile');
+        if (($profile['id'] ?? '') !== '') {
+            $node->addChild('ShippingProfileID', $profile['id']);
+        } else {
+            $node->addChild('ShippingProfileName', htmlspecialchars((string) $profile['name'], ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+        }
+        // Drop the old shipping block: the policy supplies it again.
+        $xml->addChild('DeletedField', 'Item.ShippingDetails');
+    }
+
     private static function isMissingShippingError(string $message): bool
     {
         return (bool) preg_match('/shipping service|21915409/i', $message);
@@ -1569,6 +1623,8 @@ final class EbayTradingReviseItem
         ?string $variationSku,
         ?string $specificsNode,
         bool $ensureShippingPolicy = false,
+        ?array $getItemResponse = null,
+        ?array $shippingProfile = null,
     ): array {
         $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $creds = $xml->addChild('RequesterCredentials');
@@ -1590,6 +1646,9 @@ final class EbayTradingReviseItem
                 // Drop the old shipping block. An empty or retired service is what eBay is rejecting.
                 $xml->addChild('DeletedField', 'Item.ShippingDetails');
             }
+        }
+        if ($shippingProfile !== null && ! $ensureShippingPolicy) {
+            self::addShippingProfile($xml, $itemNode, $shippingProfile);
         }
         $specParent = $itemNode;
         if ($variationSku !== null && $specificsNode !== null) {
@@ -1614,7 +1673,17 @@ final class EbayTradingReviseItem
             return ['success' => false, 'message' => 'Failed to build '.$callName.' XML.'];
         }
 
-        return self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'technical specifications', $callName);
+        $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'technical specifications', $callName);
+        // eBay refused the shipping block of a listing that has a shipping policy: send that policy along once.
+        if (! ($result['success'] ?? false) && $getItemResponse !== null && $shippingProfile === null && ! $ensureShippingPolicy
+            && self::isMissingShippingError((string) ($result['message'] ?? ''))) {
+            $profile = self::shippingRetryProfile($getItemResponse);
+            if ($profile !== null) {
+                return self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, $callName, $root, $variationSku, $specificsNode, false, null, $profile);
+            }
+        }
+
+        return $result;
     }
 
     private static function aspectKey(string $name): string
