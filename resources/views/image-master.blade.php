@@ -120,6 +120,7 @@
         .im-hist-counts .bad { color:#dc2626; font-weight:700; }
         #imHistoryPop { position:fixed; z-index:2000; display:none; width:320px; max-height:420px; overflow:auto; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.18); padding:10px 12px; font-size:11px; color:#0f172a; pointer-events:none; }
         .im-hist-act { font-weight:700; color:#2563eb; }
+        #statusFilter { min-width:84px; font-size:11px; padding:1px 4px; }
         .im-status-cell { display:inline-flex; align-items:center; gap:6px; font-weight:500; color:#4a5568; white-space:nowrap; }
         .im-status-marble { display:inline-block; width:12px; height:12px; border-radius:50%; flex-shrink:0; box-shadow:inset 2px 2px 3px rgba(255,255,255,.55), inset -2px -2px 4px rgba(0,0,0,.35); }
         .im-status-marble--active { background:radial-gradient(circle at 32% 28%, #bbf7d0, #22c55e 42%, #14532d); }
@@ -173,6 +174,7 @@
         .hero-thumbs { display:flex; gap:4px; }
         .hero-thumbs img { width:32px; height:32px; object-fit:cover; border-radius:4px; border:1px solid #e2e8f0; background:#f8fafc; }
         .im-icon-expand { display:inline-flex; align-items:center; }
+        #pushSelectedBtn, #pushSelectedBtn:hover, #pushSelectedBtn:focus, #pushSelectedBtn i, #pushSelectedBtn .im-icon-expand-text { color:#000 !important; }
         .im-icon-expand .im-icon-expand-text { max-width:0; overflow:hidden; white-space:nowrap; opacity:0; margin-left:0; transition:max-width .25s ease, opacity .2s ease, margin-left .25s ease; }
         .im-icon-expand:hover .im-icon-expand-text, .im-icon-expand:focus-visible .im-icon-expand-text { max-width:140px; opacity:1; margin-left:6px; }
         .im-col-hidden { display:none!important; }
@@ -196,6 +198,8 @@
         .mpg-add-bar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
         #im-master-table thead th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; }
         #im-master-table thead th[data-sort]:hover { filter:brightness(1.12); }
+        .im-badge-row { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:8px; align-items:center; width:max-content; }
+        .im-badge-row .im-stat-badge { display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; padding:6px 12px; min-width:130px; white-space:nowrap; }
         #im-master-table thead th .im-sort-ind { display:inline-block; margin-left:4px; font-size:9px; opacity:.45; }
         #im-master-table thead th.im-sorted .im-sort-ind { opacity:1; }
     </style>
@@ -213,12 +217,13 @@
             <div class="card im-master-card">
                 <div class="card-body">
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                        <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
+                        <button type="button" id="exportBtn" class="btn btn-primary btn-sm" title="Export" aria-label="Export"><i class="fas fa-download"></i></button>
                         <button type="button" id="heroImageBtn" class="btn btn-warning btn-sm" title="Choose the main image per marketplace for the selected rows (or all rows in view if none selected)"><i class="fas fa-star"></i> Main Image</button>
                         <div class="dropdown" id="promptsDropdown">
                             <button type="button" id="promptsBtn" class="btn btn-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="fas fa-wand-magic-sparkles"></i> Prompts</button>
                             <div class="dropdown-menu im-prompts-menu p-2" id="promptsMenu" style="min-width:260px;max-height:70vh;overflow:auto;"></div>
                         </div>
+                        <button type="button" id="pushPickerBtn" class="btn btn-outline-primary btn-sm" title="Choose marketplaces and push the selected rows"><i class="fas fa-search"></i> Push</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <select id="rowTypeFilter" class="form-select form-select-sm" style="width:auto;" title="Which rows to list: SKU rows, PARENT rows, or both">
@@ -231,9 +236,11 @@
                             <option value="eq0">Inv=0</option>
                             <option value="all">All</option>
                         </select>
-                        <span class="text-muted small" id="rowCountBadge">0 products</span>
-                        <span class="badge bg-success" id="missingImagesBadge" title="SKUs with fewer than 14 images (red in the Images column)">Missing images: 0</span>
-                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
+                        <div class="im-badge-row">
+                            <span class="badge bg-secondary im-stat-badge" id="rowCountBadge">0 products</span>
+                            <span class="badge bg-success im-stat-badge" id="missingImagesBadge" title="SKUs with fewer than 14 images (red in the Images column)">Missing images: 0</span>
+                            <span class="badge bg-dark im-stat-badge" id="selectedCountBadge">0 selected</span>
+                        </div>
                     </div>
                     <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
                         <div class="d-flex align-items-center gap-2">
@@ -253,10 +260,10 @@
                                     <th style="width:36px;text-align:center;" data-sort="selected" title="Sort by selected">
                                         <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
                                     </th>
-                                    <th data-sort="parent">Parent</th>
+                                    <th data-sort="parent">Parent <input type="text" id="parentSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
                                     <th data-sort="sku">SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
                                     <th data-sort="inv" style="text-align:center;" title="Shopify inventory (parents show the total of their SKUs)">INV</th>
-                                    <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status</th>
+                                    <th data-sort="status" style="text-align:center;" title="Status from Product Master">Status <select id="statusFilter" class="form-select form-select-sm mt-1" title="Filter by status"><option value="all">All</option></select></th>
                                     <th style="width:72px;text-align:center;" data-sort="images" title="Saved Product Master images for this SKU">Images</th>
                                     <th data-sort="name">Product Name</th>
                                     <th id="imActionTh">Action</th>
@@ -834,6 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetch('/image-master-data').then(r=>r.json()).then(res => {
             const raw = Array.isArray(res.data) ? res.data : [];
             tableData = raw.filter(i => i && i.SKU); // PARENT rows are listed too (bulk push / pull still skip them)
+            refreshStatusFilter();
             // INV = Shopify inventory; a PARENT row shows the total of its SKUs (like Product Master).
             const parentInv = {};
             tableData.forEach(r => {
@@ -1069,7 +1077,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const lower = raw.toLowerCase(), upper = raw.toUpperCase();
         const mod = lower === 'active' ? 'active' : lower === 'inactive' ? 'inactive' : upper === 'DC' ? 'dc' : lower === 'upcoming' ? 'upcoming' : upper === '2BDC' ? '2bdc' : 'muted';
         const label = lower === 'upcoming' ? 'Coming' : lower === 'active' ? 'Active' : lower === 'inactive' ? 'Inactive' : raw;
-        return `<span class="im-status-cell"><span class="im-status-marble im-status-marble--${mod}" title="${esc(raw)}"></span><span>${esc(label)}</span></span>`;
+        return `<span class="im-status-cell"><span class="im-status-marble im-status-marble--${mod}" title="${esc(label)}" aria-label="${esc(label)}"></span></span>`;
+    }
+    const statusLabelOf = (raw) => { const l = String(raw).toLowerCase(); return l === 'upcoming' ? 'Coming' : l === 'active' ? 'Active' : l === 'inactive' ? 'Inactive' : raw; };
+
+    /** Status dropdown (header): one option per value that exists in the data, plus Missing. */
+    function refreshStatusFilter() {
+        const sel = document.getElementById('statusFilter');
+        if (!sel) return;
+        const prev = sel.value || 'all';
+        const seen = new Map();
+        let missing = false;
+        tableData.forEach(r => {
+            const raw = pmStatusRaw(r);
+            if (!raw) { missing = true; return; }
+            if (!seen.has(raw.toLowerCase())) seen.set(raw.toLowerCase(), statusLabelOf(raw));
+        });
+        const order = ['active', 'inactive', 'dc', 'upcoming', '2bdc'];
+        const keys = [...seen.keys()].sort((a, b) => {
+            const ia = order.indexOf(a), ib = order.indexOf(b);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+        });
+        sel.innerHTML = '<option value="all">All</option>'
+            + keys.map(k => `<option value="${esc(k)}">${esc(seen.get(k))}</option>`).join('')
+            + (missing ? '<option value="__none">Missing</option>' : '');
+        sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
     }
 
     // ── Audit History column: Task Manager tasks raised from the Audit button ──
@@ -1237,11 +1269,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
+        const pq = (document.getElementById('parentSearchIm')?.value || '').trim().toLowerCase();
+        if (pq) rows = rows.filter(r => String(r.Parent || '').toLowerCase().includes(pq));
         const rowType = document.getElementById('rowTypeFilter')?.value || 'sku';
         if (rowType !== 'both') {
             const wantParent = rowType === 'parent';
             rows = rows.filter(r => String(r.SKU || '').toUpperCase().includes('PARENT') === wantParent);
         }
+        const stFilter = document.getElementById('statusFilter')?.value || 'all';
+        if (stFilter !== 'all') rows = rows.filter(r => { const raw = pmStatusRaw(r).toLowerCase(); return stFilter === '__none' ? !raw : raw === stFilter; });
         const invMode = document.getElementById('invFilter')?.value || 'gt0';
         if (invMode === 'gt0') rows = rows.filter(r => (r._inv || 0) > 0);
         else if (invMode === 'eq0') rows = rows.filter(r => !(r._inv > 0));
@@ -1388,10 +1424,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (c) c.textContent = mpPickerSelected.size + ' selected';
     }
 
-    function openMpPicker(sku) {
-        mpPickerSku = String(sku);
+    let mpPickerBulk = false;
+    function openMpPicker(sku, bulk = false) {
+        mpPickerBulk = !!bulk;
+        mpPickerSku = bulk ? '' : String(sku);
         mpPickerSelected.clear();
-        document.getElementById('mpPickerSku').textContent = sku;
+        document.getElementById('mpPickerSku').textContent = bulk ? (selectedSkus.size + ' selected product(s)') : sku;
         renderMpPicker();
         bootstrap.Modal.getOrCreateInstance(document.getElementById('mpPickerModal')).show();
     }
@@ -1490,6 +1528,13 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
 
     function pushFromMpPicker() {
+        if (mpPickerBulk) {
+            const bulkMps = ENABLED_MARKETPLACES.filter(mp => mpPickerSelected.has(mp) && !mpItemState(mp).disabled);
+            if (!bulkMps.length) { toast('Select at least one marketplace.', false); return; }
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('mpPickerModal')).hide();
+            bulkPushAll('selected', bulkMps);
+            return;
+        }
         const sku = mpPickerSku;
         const row = bySku.get(String(sku));
         const mps = ENABLED_MARKETPLACES.filter(mp => mpPickerSelected.has(mp) && !mpItemState(mp).disabled);
@@ -2890,8 +2935,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('skuSearchIm')?.addEventListener('input', () => renderTable(tableData));
+    document.getElementById('parentSearchIm')?.addEventListener('input', () => renderTable(tableData));
     document.getElementById('rowTypeFilter')?.addEventListener('change', () => renderTable(tableData));
     document.getElementById('invFilter')?.addEventListener('change', () => renderTable(tableData));
+    document.getElementById('statusFilter')?.addEventListener('change', () => renderTable(tableData));
 
     document.getElementById('exportBtn')?.addEventListener('click', () => {
         const rows = tableData.map(row => {
@@ -2956,7 +3003,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return filtered;
     }
 
-    async function bulkPushAll(mode = 'all') {
+    async function bulkPushAll(mode = 'all', customMps = null) {
         if (bulkPushAllRunning) {
             toast('Bulk push is already running.', false);
             return;
@@ -2972,9 +3019,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 : 'No products with images in the current view.', false);
             return;
         }
+        const baseMps = Array.isArray(customMps) && customMps.length ? customMps : ENABLED_MARKETPLACES;
         const configuredMps = typeof filterConfiguredMarketplaces === 'function'
-            ? filterConfiguredMarketplaces(ENABLED_MARKETPLACES)
-            : ENABLED_MARKETPLACES.filter(mp => isMarketplaceApiConfigured(mp));
+            ? filterConfiguredMarketplaces(baseMps)
+            : baseMps.filter(mp => isMarketplaceApiConfigured(mp));
         if (!configuredMps.length) {
             toast('No marketplaces have API credentials configured.', false);
             return;
@@ -3060,6 +3108,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('selectAllRowsIm')?.addEventListener('change', function() {
         fillAllVisibleRows(!!this.checked);
+    });
+    document.getElementById('pushPickerBtn')?.addEventListener('click', () => {
+        if (selectedSkus.size === 0) { toast('Select at least one row (checkbox) before Push.', false); return; }
+        openMpPicker('', true);
     });
     document.getElementById('pushSelectedBtn')?.addEventListener('click', () => bulkPushAll('selected'));
     document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll('all'));
