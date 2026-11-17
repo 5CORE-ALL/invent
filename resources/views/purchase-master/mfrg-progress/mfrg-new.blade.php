@@ -375,8 +375,8 @@
 
                             <div class="mip-field">
                                 <select id="mip-stage-filter" class="form-select form-select-sm border-primary mip-filter-field" aria-label="Stage filter" title="Stage filter">
-                                    <option value="">Stage</option>
-                                    <option value="mip">MIP only</option>
+                                    <option value="">Stage (all)</option>
+                                    <option value="mip" selected>MIP only</option>
                                     <option value="r2s">R2S only</option>
                                 </select>
                             </div>
