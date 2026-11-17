@@ -1225,7 +1225,7 @@
 
                         return box;
                     },
-                    headerSort: false, frozen: true, hozAlign: "center", width: 45
+                    headerSort: false, frozen: true, hozAlign: "center", width: 38
                 },
                 // Autofit columns to the actual data they hold instead of stretching the
                 // fixed `width:` value on each column proportionally across the page —
@@ -1250,7 +1250,7 @@
                     {
                         // Field key is "product_image" (not "Image"): the shared saved column settings had the
                         // old "Image" column switched off for everyone, so this new key shows by default.
-                        title: "Image", field: "product_image", headerSort: false, cssClass: "mip-new-image-cell", width: 68, minWidth: 68, hozAlign: "center",
+                        title: "Image", field: "product_image", headerSort: false, cssClass: "mip-new-image-cell", width: 60, minWidth: 60, hozAlign: "center",
                         formatter: function (cell) {
                             const url = (cell.getRow().getData() || {}).Image;
                             return url
@@ -1258,7 +1258,7 @@
                                 : '<span class="text-muted">N/A</span>';
                         }
                     },
-                    { title: "Supplier", field: "supplier", width: 72, minWidth: 56, maxWidth: 96, widthGrow: 0, hozAlign: "center",
+                    { title: "Supplier", field: "supplier", width: 66, minWidth: 52, maxWidth: 96, widthGrow: 0, hozAlign: "center",
                       formatter: supplierFormatter,
                       editor: "list",
                       editorParams: {
@@ -1277,13 +1277,13 @@
                               .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
                               .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                       } },
-                    { title: "Category", field: "Category", width: 120, minWidth: 64, hozAlign: "center",
+                    { title: "Category", field: "Category", minWidth: 64, widthGrow: 1, hozAlign: "center",
                       headerTooltip: "Category (per SKU, or from supplier when not set)",
                       formatter: function (cell) {
                           const v = (cell.getValue() || "").trim();
                           return v ? v : '<span class="text-muted">—</span>';
                       } },
-                    { title: "SKU", field: "sku", width: 190, minWidth: 110,
+                    { title: "SKU", field: "sku", minWidth: 150, widthGrow: 3,
                       formatter: function (cell) {
                           const v = cell.getValue() || '';
                           if (!v) return '';
@@ -1291,7 +1291,7 @@
                               '<i class="far fa-copy mip-sku-copy" data-sku="' + esc(v) + '" title="Copy SKU"></i>';
                       } },
                     window.QcIssueCol.column('sku'),
-                    { title: "MOQ", field: "moq", width: 70, hozAlign: "center",
+                    { title: "MOQ", field: "moq", width: 52, hozAlign: "center",
                       headerTooltip: "Minimum Order Quantity — same value as To Order Analysis & Forecast (read-only here)",
                       formatter: function (cell) {
                           const v = cell.getValue();
@@ -1301,7 +1301,7 @@
                           return '<span style="font-weight:600;">' + esc(String(v)) + '</span>';
                       }
                     },
-                    { title: "QTY", field: "qty", width: 90, hozAlign: "center",
+                    { title: "QTY", field: "qty", width: 56, hozAlign: "center",
                       // Read-only display by default; click to open a number editor.
                       // Previously rendered an always-open <input> so the value looked editable
                       // straight away (with spinner arrows) — confusing for users who only want
@@ -1327,13 +1327,13 @@
                               .catch(err => alert('Could not save QTY: ' + (err && err.message ? err.message : err)));
                       }
                     },
-                    { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
+                    { title: "O Date", field: "created_at", width: 64, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData();
                           // An automatic D Date follows the O Date (O Date + 30 days).
                           if (d.delivery_date_auto || !d.delivery_date) { const a = mipAutoDueDate(cell.getValue()); try { cell.getRow().update({ delivery_date: a, delivery_date_auto: !!a }); } catch (e) {} }
                           try { cell.getRow().reformat(); } catch (e) {} postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: deliveryDaysFormatter,
+                    { title: "D Date", field: "delivery_date", width: 68, hozAlign: "center", formatter: deliveryDaysFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData();
                           // Typed date = real D Date. Cleared = fall back to the automatic O Date + 30 days.
@@ -1344,26 +1344,26 @@
                               cell.getRow().reformat();
                           } catch (e) {}
                           postInline(d.sku || '', d.id || 0, 'delivery_date', typed, d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
-                    { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
-                    { title: "T-CBM", field: "total_cbm", width: 90, hozAlign: "center", formatter: function (cell) {
+                    { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 46, headerSort: false, formatter: commFormatter },
+                    { title: "PO", field: "mip_po_number", width: 54, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
+                    { title: "T-CBM", field: "total_cbm", width: 58, hozAlign: "center", formatter: function (cell) {
                         const d = cell.getRow().getData();
                         const cbm = parseFloat(d.CBM) || 0;
                         const qty = parseFloat(d.qty) || 0;
                         const total = cbm * qty;
                         return total > 0 ? total.toFixed(2) : '<span class="text-muted">-</span>';
                     } },
-                    { title: "CBM", field: "CBM", width: 80, hozAlign: "center", formatter: function (cell) {
+                    { title: "CBM", field: "CBM", width: 54, hozAlign: "center", formatter: function (cell) {
                         const v = parseFloat(cell.getValue());
                         return (!isNaN(v) && v > 0) ? v.toFixed(2) : '<span class="text-muted">-</span>';
                     } },
-                    { title: "CP", field: "row_cp", width: 90, hozAlign: "center",
+                    { title: "CP", field: "row_cp", width: 56, hozAlign: "center",
                       sorter: function (a, b, aRow, bRow) { return rowCp(aRow.getData()) - rowCp(bRow.getData()); },
                       formatter: function (cell) {
                           const cp = rowCp(cell.getRow().getData());
                           return cp > 0 ? cp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '<span class="text-muted">-</span>';
                       } },
-                    { title: "Amount", field: "row_amount", width: 100, hozAlign: "center",
+                    { title: "Amount", field: "row_amount", width: 68, hozAlign: "center",
                       sorter: function (a, b, aRow, bRow) {
                           const av = rowAmount(aRow.getData()); const bv = rowAmount(bRow.getData());
                           return av - bv;
@@ -1372,10 +1372,10 @@
                           const amt = rowAmount(cell.getRow().getData());
                           return amt > 0 ? Math.round(amt).toLocaleString() : '<span class="text-muted">-</span>';
                       } },
-                    { title: "Pkg Inst", field: "pkg_inst", width: 80, hozAlign: "center", formatter: dotToggleFormatter('pkg_inst') },
-                    { title: "U-Manual", field: "u_manual", width: 90, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
-                    { title: "Compliance", field: "compliance", width: 100, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
-                    { title: "CL", field: "pre_mip_checklist_status", width: 64, hozAlign: "center", headerSort: false,
+                    { title: "Pkg Inst", field: "pkg_inst", width: 50, hozAlign: "center", formatter: dotToggleFormatter('pkg_inst') },
+                    { title: "U-Manual", field: "u_manual", width: 50, hozAlign: "center", formatter: dotToggleFormatter('u_manual') },
+                    { title: "Compliance", field: "compliance", width: 50, hozAlign: "center", formatter: dotToggleFormatter('compliance') },
+                    { title: "CL", field: "pre_mip_checklist_status", width: 50, hozAlign: "center", headerSort: false,
                       formatter: clFormatter,
                       cellClick: function (e, cell) {
                           if (e.target.closest('.mip-cl-open-btn')) {
@@ -1383,8 +1383,8 @@
                               openMipClModal('single', [cell.getRow()]);
                           }
                       } },
-                    { title: "Stage", field: "stage", width: 80, hozAlign: "center", formatter: stageFormatter },
-                    { title: "Executive", field: "exec", width: 120, hozAlign: "center",
+                    { title: "Stage", field: "stage", width: 50, hozAlign: "center", formatter: stageFormatter },
+                    { title: "Executive", field: "exec", width: 84, hozAlign: "center",
                       cssClass: "mip-exec-cell",
                       editor: "list",
                       editorParams: {
@@ -1431,14 +1431,14 @@
                       },
                       formatter: execFormatter },
                     ...(CAN_DELETE ? [{
-                        title: "Del", field: "row_delete", width: 52, hozAlign: "center", headerSort: false,
+                        title: "Del", field: "row_delete", width: 44, hozAlign: "center", headerSort: false,
                         formatter: function () {
                             return '<button type="button" class="btn btn-sm btn-outline-danger mip-delete-row-btn" title="Delete row"><i class="fas fa-trash-alt"></i></button>';
                         }
                     }] : []),
                     // Edit column (last): opens the "Edit Row" modal for this row, or for every ticked row.
                     {
-                        title: "Edit", field: "row_edit", width: 64, minWidth: 64, hozAlign: "center", headerSort: false,
+                        title: "Edit", field: "row_edit", width: 52, minWidth: 48, hozAlign: "center", headerSort: false,
                         formatter: function () {
                             return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
                         }
