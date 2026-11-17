@@ -146,6 +146,7 @@ class ContainerQuotationController extends Controller
             'quotes.*.est_dt_sail' => 'nullable|date',
             'quotes.*.pickup_charges' => 'nullable|numeric|min:0',
             'quotes.*.freight' => 'nullable|numeric|min:0',
+            'quotes.*.total' => 'nullable|numeric|min:0',
         ]);
 
         $container = trim($data['container_number']);
@@ -160,17 +161,24 @@ class ContainerQuotationController extends Controller
             $fwd = trim((string) ($q['forwarder'] ?? ''));
             $pickup = ($q['pickup_charges'] ?? '') === '' ? null : (float) $q['pickup_charges'];
             $freight = ($q['freight'] ?? '') === '' ? null : (float) $q['freight'];
+            $total = ($q['total'] ?? '') === '' ? null : round((float) $q['total'], 2);
             $reqId = isset($q['request_id']) && in_array((int) $q['request_id'], $validRequestIds, true)
                 ? (int) $q['request_id'] : null;
             $line = trim((string) ($q['shipping_line'] ?? ''));
             $sail = trim((string) ($q['est_dt_sail'] ?? ''));
-            if ($fwd === '' && $line === '' && $sail === '' && $pickup === null && $freight === null) {
+            if ($fwd === '' && $line === '' && $sail === '' && $pickup === null && $freight === null && $total === null) {
                 continue; // completely empty row
             }
-            if ($fwd === '') {
+            if ($fwd === '' || $line === '' || $sail === '' || $pickup === null || $freight === null || $total === null) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Row '.($i + 1).': please enter the forwarder.',
+                    'message' => 'Row '.($i + 1).': all fields are mandatory (Forwarder, Shipping Line, Est Dt Sail, Pickup Charges, Freight, Total).',
+                ], 422);
+            }
+            if ($total < round($pickup + $freight, 2)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Row '.($i + 1).': Total must include all charges (at least Pickup Charges + Freight).',
                 ], 422);
             }
             $rows[] = [
@@ -182,7 +190,7 @@ class ContainerQuotationController extends Controller
                 'est_dt_sail' => $sail === '' ? null : date('Y-m-d', strtotime($sail)),
                 'pickup_charges' => $pickup,
                 'freight' => $freight,
-                'total' => round(($pickup ?? 0) + ($freight ?? 0), 2),
+                'total' => $total,
                 'updated_by' => $user,
                 'created_at' => now(),
                 'updated_at' => now(),

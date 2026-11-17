@@ -29,6 +29,8 @@ class AmmColumnHistory
         // INV block: Inv@SP / Inv@LP $ per DIL band (all channels), one point per day.
         'inv_sp_zero', 'inv_sp_red', 'inv_sp_red1', 'inv_sp_red2', 'inv_sp_green', 'inv_sp_pink',
         'inv_lp_zero', 'inv_lp_red', 'inv_lp_red1', 'inv_lp_red2', 'inv_lp_green', 'inv_lp_pink',
+        // Inv@Amz $ per DIL band (Sales by Dil Slab page).
+        'inv_amz_zero', 'inv_amz_red', 'inv_amz_red1', 'inv_amz_red2', 'inv_amz_green', 'inv_amz_pink',
     ];
 
     /**
@@ -116,6 +118,9 @@ class AmmColumnHistory
             }
             $data['inv_sp_'.$key] = (float) ($s['inv_at_sp'] ?? 0);
             $data['inv_lp_'.$key] = (float) ($s['inv_at_lp'] ?? 0);
+            if (array_key_exists('inv_at_amz', $s)) {
+                $data['inv_amz_'.$key] = (float) $s['inv_at_amz'];
+            }
         }
         if ($data !== []) {
             BadgeDataHistory::recordPage(self::ALL_PAGE, $data, $day);

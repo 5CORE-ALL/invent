@@ -207,6 +207,51 @@ class ContainerQuoteRequestController extends Controller
         ]);
     }
 
+    /**
+     * Preview of the email each selected forwarder will receive (before pressing Send).
+     * Uses the saved email text + the container's Q details.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        if ($deny = $this->denyUnlessInternal()) {
+            return $deny;
+        }
+
+        $data = $request->validate([
+            'container' => 'required|string|max:255',
+            'forwarder_id' => 'nullable|integer',
+        ]);
+
+        $container = trim($data['container']);
+        $fwd = ! empty($data['forwarder_id']) ? Supplier::whereNull('deleted_at')->find($data['forwarder_id']) : null;
+        if (! empty($data['forwarder_id']) && ! $fwd) {
+            return response()->json(['success' => false, 'message' => 'Forwarder not found.'], 404);
+        }
+        // No forwarder chosen yet: show the draft with a generic name.
+        $fwdName = $fwd ? $fwd->name : '[Forwarder name]';
+
+        $emails = $fwd ? $this->extractEmails((string) $fwd->email) : [];
+        $existing = ContainerQuoteRequest::where('container_number', $container)
+            ->where('forwarder_email', $emails[0] ?? '')->first();
+        // A personal link is only created on Send; show the existing one if this forwarder already has it.
+        $url = $existing
+            ? route('container.quote.form', $existing->token)
+            : str_replace('PERSONALLINKPERSONALLINK', '[personal-link-created-on-send]', route('container.quote.form', 'PERSONALLINKPERSONALLINK'));
+
+        $mail = $this->renderMail($fwdName, $container, $this->containerDetails($container), $this->mailText(), $url);
+
+        return response()->json([
+            'success' => true,
+            'from' => self::SENDER_NAME.' <'.self::SENDER_EMAIL.'>',
+            'to' => $emails ? implode(', ', $emails) : '',
+            'forwarder' => $fwdName,
+            'subject' => $mail['subject'],
+            'html' => $mail['html'].'<br><br><small>Attached: quotation form (PDF) with the container details filled in.</small>',
+            'attachment' => 'Quotation-Form-'.(preg_replace('/[^A-Za-z0-9_-]+/', '-', $container) ?: 'container').'.pdf',
+            'has_details' => (bool) ContainerQuotation::where('container_number', $container)->exists(),
+        ]);
+    }
+
     public function send(Request $request): JsonResponse
     {
         if ($deny = $this->denyUnlessInternal()) {
@@ -324,16 +369,23 @@ class ContainerQuoteRequestController extends Controller
         }
 
         $data = $request->validate([
-            'shipping_line' => 'nullable|string|max:255',
-            'est_dt_sail' => 'nullable|date',
-            'pickup_charges' => 'nullable|numeric|min:0|max:99999999',
+            'shipping_line' => 'required|string|max:255',
+            'est_dt_sail' => 'required|date',
+            'pickup_charges' => 'required|numeric|min:0|max:99999999',
             'freight' => 'required|numeric|min:0|max:99999999',
+            'total' => 'required|numeric|min:0|max:99999999',
         ]);
 
-        $pickup = ($data['pickup_charges'] ?? '') === '' ? null : (float) $data['pickup_charges'];
+        $pickup = (float) $data['pickup_charges'];
         $freight = (float) $data['freight'];
-        $line = trim((string) ($data['shipping_line'] ?? ''));
-        $sail = trim((string) ($data['est_dt_sail'] ?? ''));
+        $total = round((float) $data['total'], 2);
+        if ($total < round($pickup + $freight, 2)) {
+            return back()->withInput()->withErrors([
+                'total' => 'Total must include all charges (at least Pickup Charges + Freight).',
+            ]);
+        }
+        $line = trim((string) $data['shipping_line']);
+        $sail = trim((string) $data['est_dt_sail']);
 
         $values = [
             'forwarder' => $req->forwarder_name,
@@ -341,7 +393,7 @@ class ContainerQuoteRequestController extends Controller
             'est_dt_sail' => $sail === '' ? null : date('Y-m-d', strtotime($sail)),
             'pickup_charges' => $pickup,
             'freight' => $freight,
-            'total' => round(($pickup ?? 0) + $freight, 2),
+            'total' => $total,
             'source' => 'forwarder',
             'updated_by' => $req->forwarder_name.' (forwarder)',
         ];
@@ -594,7 +646,12 @@ class ContainerQuoteRequestController extends Controller
             })->values()->all();
     }
 
-    private function sendOne(string $mailer, array $toEmails, string $toName, string $container, array $d, array $text, string $url): void
+    /**
+     * Render the subject + HTML body exactly as it goes out (used by both send and preview).
+     *
+     * @return array{subject: string, html: string}
+     */
+    private function renderMail(string $toName, string $container, array $d, array $text, string $url): array
     {
         $vals = [
             'forwarder' => $toName,
@@ -617,6 +674,13 @@ class ContainerQuoteRequestController extends Controller
 
         $html = nl2br(e($body));
         $html = str_replace(e($url), '<a href="'.e($url).'">'.e($url).'</a>', $html);
+
+        return ['subject' => $subject, 'html' => $html];
+    }
+
+    private function sendOne(string $mailer, array $toEmails, string $toName, string $container, array $d, array $text, string $url): void
+    {
+        ['subject' => $subject, 'html' => $html] = $this->renderMail($toName, $container, $d, $text, $url);
 
         // The quotation form (container details filled in from our Quotations page) goes along as a PDF.
         $pdf = null;

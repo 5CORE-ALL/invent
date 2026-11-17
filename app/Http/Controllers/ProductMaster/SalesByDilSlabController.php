@@ -220,6 +220,65 @@ class SalesByDilSlabController extends Controller
         ]);
     }
 
+    private const HISTORY_PAGE = 'sales-by-dil-slab';
+
+    /**
+     * Save today's per-slab Count / Inv Val@LP / Inv@Amz Prc (computed in the page from the same rows the
+     * Master Dil Slab Rule modal shows). One value per field per day (PT), so reloading the page only updates today.
+     */
+    public function saveHistory(Request $request): JsonResponse
+    {
+        $values = $request->input('values');
+        $clean = [];
+        if (is_array($values)) {
+            foreach ($values as $field => $value) {
+                $field = (string) $field;
+                if (! preg_match('/^(count|lp|amz)_[0-9.\-]{1,40}$/', $field) || ! is_numeric($value)) {
+                    continue;
+                }
+                $clean[$field] = round((float) $value, 2);
+            }
+        }
+        if (count($clean) > 200) {
+            $clean = array_slice($clean, 0, 200, true);
+        }
+        if ($clean !== []) {
+            \App\Models\BadgeDataHistory::recordPage(self::HISTORY_PAGE, $clean);
+        }
+
+        return response()->json(['success' => true, 'saved' => count($clean)]);
+    }
+
+    /**
+     * Daily history of the per-slab values saved by saveHistory(): [{date, label, count_<slab>, lp_<slab>, amz_<slab>}].
+     */
+    public function history(Request $request): JsonResponse
+    {
+        $days = max(7, min(90, (int) $request->input('days', 30)));
+        $data = [];
+        try {
+            if (Schema::hasTable('badges_data_histories')) {
+                $start = now(\App\Models\BadgeDataHistory::TZ)->subDays($days - 1)->toDateString();
+                $rows = \App\Models\BadgeDataHistory::query()
+                    ->where('page_name', self::HISTORY_PAGE)
+                    ->whereDate('snapshot_date', '>=', $start)
+                    ->orderBy('snapshot_date')
+                    ->get(['field', 'snapshot_date', 'value']);
+                foreach ($rows as $r) {
+                    $d = $r->snapshot_date instanceof \DateTimeInterface
+                        ? $r->snapshot_date->format('Y-m-d')
+                        : substr((string) $r->snapshot_date, 0, 10);
+                    $data[$d] ??= ['date' => $d, 'label' => substr($d, 5)];
+                    $data[$d][(string) $r->field] = (float) $r->value;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Sales by Dil slab history failed: '.$e->getMessage());
+        }
+
+        return response()->json(['success' => true, 'days' => $days, 'data' => array_values($data)]);
+    }
+
     /**
      * Latest per-SKU Avg NPFT % / Avg NROI % from the Pricing Master (CVR) daily snapshot,
      * the same numbers Forecast Analysis shows.

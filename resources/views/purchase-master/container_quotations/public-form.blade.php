@@ -87,19 +87,19 @@
                             <input type="text" class="form-control qf-locked" value="{{ $req->forwarder_name }}" readonly disabled>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold small">Shipping Line</label>
-                            <input type="text" name="shipping_line" class="form-control" maxlength="255"
+                            <label class="form-label fw-semibold small">Shipping Line <span class="text-danger">*</span></label>
+                            <input type="text" name="shipping_line" class="form-control" maxlength="255" required
                                 value="{{ old('shipping_line', $existing->shipping_line ?? '') }}">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold small">Est Dt Sail</label>
-                            <input type="date" name="est_dt_sail" class="form-control"
+                            <label class="form-label fw-semibold small">Est Dt Sail <span class="text-danger">*</span></label>
+                            <input type="date" name="est_dt_sail" class="form-control" required
                                 value="{{ old('est_dt_sail', $existing && $existing->est_dt_sail ? substr((string) $existing->est_dt_sail, 0, 10) : '') }}">
                         </div>
                         <div class="col-md-6"></div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold small">Pickup Charges ($)</label>
-                            <input type="number" step="0.01" min="0" name="pickup_charges" id="qfPickup" class="form-control"
+                            <label class="form-label fw-semibold small">Pickup Charges ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" name="pickup_charges" id="qfPickup" class="form-control" required
                                 value="{{ old('pickup_charges', $existing->pickup_charges ?? '') }}">
                         </div>
                         <div class="col-md-4">
@@ -108,8 +108,10 @@
                                 value="{{ old('freight', $existing->freight ?? '') }}">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold small">Total ($)</label>
-                            <input type="text" id="qfTotal" class="form-control fw-bold qf-locked" readonly disabled value="—">
+                            <label class="form-label fw-semibold small">Total ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" name="total" id="qfTotal" class="form-control fw-bold" required
+                                value="{{ old('total', $existing->total ?? '') }}">
+                            <div class="form-text">Incl. of all charges</div>
                         </div>
                     </div>
                     <div class="mt-4 d-flex justify-content-end">
@@ -124,14 +126,17 @@
 </div>
 <script>
     (function () {
+        // Total is entered by the forwarder (incl. of all charges); the sum of pickup + freight
+        // is only a minimum, so warn if the total is lower than that.
         var p = document.getElementById('qfPickup'), f = document.getElementById('qfFreight'), t = document.getElementById('qfTotal');
         if (!p || !f || !t) return;
-        function calc() {
-            var has = p.value !== '' || f.value !== '';
-            var n = (parseFloat(p.value) || 0) + (parseFloat(f.value) || 0);
-            t.value = has ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+        function check() {
+            var min = (parseFloat(p.value) || 0) + (parseFloat(f.value) || 0);
+            var v = parseFloat(t.value);
+            t.setCustomValidity(!isNaN(v) && v < min ? 'Total must include all charges (at least Pickup + Freight).' : '');
         }
-        p.addEventListener('input', calc); f.addEventListener('input', calc); calc();
+        [p, f, t].forEach(function (el) { el.addEventListener('input', check); });
+        check();
     })();
 </script>
 </body>

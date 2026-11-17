@@ -6072,6 +6072,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-by-dil-slab', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'index'])->name('sales.by.dil.slab');
     Route::get('/sales-by-dil-slab-badges', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'badges'])->name('sales.by.dil.slab.badges');
     Route::get('/sales-by-dil-slab-data', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'data'])->name('sales.by.dil.slab.data');
+    Route::get('/sales-by-dil-slab-history', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'history'])->name('sales.by.dil.slab.history');
+    Route::post('/sales-by-dil-slab-history', [\App\Http\Controllers\ProductMaster\SalesByDilSlabController::class, 'saveHistory'])->name('sales.by.dil.slab.history.save');
     Route::post('/sales-by-dil-slab/master-rule', [\App\Http\Controllers\MarketPlace\ChannelPromoPricingController::class, 'saveMasterDilSlabs'])->name('sales.by.dil.slab.master.rule');
     Route::post('/update-smsl', [MovementAnalysisController::class, 'updateSmsl'])->name('update-smsl');
 
@@ -6314,6 +6316,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/quotations-container/mail-text', 'getText')->name('container.quotations.text');
         Route::post('/quotations-container/mail-text', 'saveText')->name('container.quotations.text.save');
         Route::get('/quotations-container/form-data', 'formData')->name('container.quotations.form.data');
+        Route::get('/quotations-container/mail-preview', 'preview')->name('container.quotations.preview');
         Route::post('/quotations-container/send', 'send')->name('container.quotations.send');
         Route::post('/quotations-container/ack-change', 'acknowledgeChange')->name('container.quotations.ack');
     });

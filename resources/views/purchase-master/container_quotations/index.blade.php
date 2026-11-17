@@ -23,18 +23,22 @@
         .qc-qr-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
         .qc-qr-btn.filled:hover { background: #1d4ed8; border-color: #1d4ed8; }
         .qc-qr-btn .qc-qr-count { font-weight: 600; margin-left: 4px; opacity: .9; }
-        .qc-qf-btn, .qc-send-btn {
+        .qc-wrap2 {
+            white-space: normal; line-height: 1.25; max-height: 2.5em; overflow: hidden;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;
+        }
+        .qc-qf-btn, .qc-send-btn, .qc-draft-btn {
             height: 28px; border-radius: 14px; border: 2px solid #94a3b8; background: #fff; color: #64748b;
             font-weight: 700; font-size: 12px; line-height: 1; padding: 0 10px; cursor: pointer; white-space: nowrap;
         }
-        .qc-qf-btn:hover, .qc-send-btn:hover { border-color: #2563eb; color: #2563eb; }
+        .qc-qf-btn:hover, .qc-send-btn:hover, .qc-draft-btn:hover { border-color: #2563eb; color: #2563eb; }
         .qc-qf-btn.filled { background: #16a34a; border-color: #16a34a; color: #fff; }
         .qc-qf-btn.changed { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220, 38, 38, .25); }
         .qc-alert-tri { color: #dc2626; font-size: 14px; margin-right: 4px; animation: qcPulse 1.4s ease-in-out infinite; }
         .qc-qf-btn.filled .qc-alert-tri { color: #fecaca; }
         @keyframes qcPulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
         .qc-send-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
-        .qc-qf-btn[disabled], .qc-send-btn[disabled] { opacity: .5; cursor: not-allowed; }
+        .qc-qf-btn[disabled], .qc-send-btn[disabled], .qc-draft-btn[disabled] { opacity: .5; cursor: not-allowed; }
         .qf-locked { background: #f8fafc !important; }
         #qrModal .modal-dialog { max-width: 98vw; width: 98vw; margin-left: auto; margin-right: auto; }
         #qrTable input { min-width: 110px; }
@@ -211,7 +215,7 @@
                                     placeholder="e.g. &lt; 15000 Kgs" maxlength="100">
                             </div>
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Pickup Address</label>
+                                <label class="form-label fw-semibold">Pickup Address Port</label>
                                 <textarea name="pickup_address" id="qc_pickup_address" class="form-control" rows="2" maxlength="2000"></textarea>
                             </div>
                             <div class="col-md-4">
@@ -279,7 +283,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary mt-1" id="qrAddRow">
                         <i class="fas fa-plus me-1"></i> Add forwarder quote
                     </button>
-                    <span class="text-muted small ms-2">Total = Pickup Charges + Freight. The cheapest total is highlighted.</span>
+                    <span class="text-muted small ms-2">All fields are mandatory. Total ($) is incl. of all charges. The cheapest total is highlighted.</span>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
@@ -309,7 +313,7 @@
                         <div class="col-md-4"><label class="form-label small fw-semibold">Est Dt Sail</label><input type="date" class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Pickup Charges ($)</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Freight ($)</label><input class="form-control qf-locked" disabled></div>
-                        <div class="col-md-4"><label class="form-label small fw-semibold">Total ($)</label><input class="form-control qf-locked" disabled></div>
+                        <div class="col-md-4"><label class="form-label small fw-semibold">Total ($) <span class="text-muted fw-normal">(incl. of all charges)</span></label><input class="form-control qf-locked" disabled></div>
                     </div>
                     <div class="fw-bold text-uppercase small text-muted mb-2">Requests sent for this container</div>
                     <div class="table-responsive">
@@ -366,12 +370,60 @@
                         </div>
                         <div class="small text-muted mt-1">Saved with the type currently chosen in the filter.</div>
                     </div>
-                    <div id="sendList" class="list-group mb-2"></div>                    <div id="sendResults" class="mt-3"></div>
+                    <div id="sendList" class="list-group mb-2"></div>
+                    <div id="sendPreviewWrap" class="border rounded mt-3 d-none">
+                        <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light border-bottom">
+                            <span class="fw-bold text-uppercase small text-muted"><i class="fas fa-eye me-1"></i>Email preview</span>
+                            <select id="sendPreviewWho" class="form-select form-select-sm ms-auto" style="max-width: 260px;"></select>
+                        </div>
+                        <div class="px-3 py-2 small">
+                            <div><span class="text-muted">From:</span> <span id="pvFrom"></span></div>
+                            <div><span class="text-muted">To:</span> <span id="pvTo"></span></div>
+                            <div><span class="text-muted">Subject:</span> <b id="pvSubject"></b></div>
+                            <div><span class="text-muted">Attachment:</span> <i class="fas fa-file-pdf text-danger"></i> <span id="pvAttach"></span></div>
+                            <hr class="my-2">
+                            <div id="pvBody" style="line-height:1.5; word-break:break-word;"></div>
+                        </div>
+                    </div>
+                    <div id="sendResults" class="mt-3"></div>
                 </div>
                 <div class="modal-footer">
                     <span class="badge bg-light text-dark me-auto" id="sendSelectedCount">0 selected</span>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="sendBtn"><i class="fas fa-paper-plane me-1"></i> Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Draft email (what will be sent), shown before sending --}}
+    <div class="modal fade" id="draftModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-envelope-open-text me-2"></i>Draft email — <span id="draftContainer"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2 d-none" id="draftError"></div>
+                    <div class="alert alert-warning py-2 d-none" id="draftNoQ">The Q details are not filled in yet — the container fields below will show “-” until you fill them with the Q button.</div>
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="small text-muted" id="draftHint"></span>
+                        <select id="draftWho" class="form-select form-select-sm ms-auto d-none" style="max-width: 280px;"></select>
+                    </div>
+                    <div class="border rounded px-3 py-2 small">
+                        <div><span class="text-muted">From:</span> <span id="dfFrom"></span></div>
+                        <div><span class="text-muted">To:</span> <span id="dfTo"></span></div>
+                        <div><span class="text-muted">Subject:</span> <b id="dfSubject"></b></div>
+                        <div><span class="text-muted">Attachment:</span> <i class="fas fa-file-pdf text-danger"></i> <span id="dfAttach"></span></div>
+                        <hr class="my-2">
+                        <div id="dfBody" style="line-height:1.5; word-break:break-word;"></div>
+                    </div>
+                    <div class="small text-muted mt-2">To change the wording use the <b>Text</b> button above the table.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="draftToSend"><i class="fas fa-paper-plane me-1"></i> Go to Send</button>
                 </div>
             </div>
         </div>
@@ -483,6 +535,12 @@
                 const v = String(cell.getValue() ?? '').trim();
                 return v ? esc(v) : '<span class="text-muted">—</span>';
             }
+            // Long text (e.g. pickup address) wraps onto at most 2 lines instead of one very wide line.
+            function wrapCell(cell) {
+                const v = String(cell.getValue() ?? '').trim();
+                if (!v) return '<span class="text-muted">—</span>';
+                return '<div class="qc-wrap2" title="' + esc(v) + '">' + esc(v) + '</div>';
+            }
             function numCell(prefix, suffix) {
                 return function (cell) {
                     const v = cell.getValue();
@@ -546,7 +604,7 @@
                       } },
                     { title: 'Supplier', field: 'supplier', formatter: textCell, minWidth: 140 },
                     { title: 'Size', field: 'container_size', formatter: textCell },
-                    { title: 'Pickup Address', field: 'pickup_address', formatter: textCell, minWidth: 220, widthGrow: 2 },
+                    { title: 'Pickup Address Port', field: 'pickup_address', formatter: wrapCell, width: 260 },
                     { title: 'Loading Port', field: 'loading_port', formatter: textCell },
                     { title: 'Via Port', field: 'via_port', formatter: textCell },
                     { title: 'Discharge Port', field: 'discharge_port', formatter: textCell, visible: false },
@@ -557,7 +615,7 @@
                           return '<span class="small">' + esc(d.updated_at) + '<br><span class="text-muted">' + esc(d.updated_by || '') + '</span></span>';
                       } },
                     { title: 'Quotes', field: 'quotes', width: 80, hozAlign: 'center', headerHozAlign: 'center',
-                      headerSort: false,
+                      headerSort: false, visible: false,
                       formatter: function (cell) {
                           const n = (cell.getValue() || []).length;
                           const cls = n ? ' filled' : '';
@@ -582,6 +640,14 @@
                       },
                       cellClick: function (e, cell) {
                           if (canEdit && e.target.closest('.qc-qf-btn')) openFormModal(cell.getRow().getData());
+                      } },
+                    { title: 'Draft', field: 'container_number', width: 80, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                      formatter: function () {
+                          return '<button type="button" class="qc-draft-btn" title="' + (canEdit ? 'View the draft email before sending' : 'Only 5Core users can open this') + '"' +
+                              (canEdit ? '' : ' disabled') + '><i class="fas fa-envelope-open-text"></i></button>';
+                      },
+                      cellClick: function (e, cell) {
+                          if (canEdit && e.target.closest('.qc-draft-btn')) openDraftModal(cell.getRow().getData());
                       } },
                     { title: 'Send', field: 'requests', width: 70, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                       formatter: function (cell) {
@@ -674,11 +740,9 @@
                 let lowest = null;
                 const rows = [...qrBody.querySelectorAll('tr')];
                 rows.forEach(function (tr) {
-                    const pickup = tr.querySelector('.qr-pickup').value;
-                    const freight = tr.querySelector('.qr-freight').value;
-                    const has = String(pickup).trim() !== '' || String(freight).trim() !== '';
-                    const total = num(pickup) + num(freight);
-                    tr.querySelector('.qr-total').textContent = has ? fmtMoney(total) : '—';
+                    const totalVal = tr.querySelector('.qr-total').value;
+                    const has = String(totalVal).trim() !== '';
+                    const total = num(totalVal);
                     tr.dataset.total = has ? String(total) : '';
                     if (has && (lowest === null || total < lowest)) lowest = total;
                 });
@@ -692,12 +756,12 @@
                 q = q || {};
                 const tr = document.createElement('tr');
                 tr.innerHTML =
-                    '<td><input type="text" class="form-control form-control-sm qr-forwarder" list="qcForwarderList" maxlength="255" placeholder="Forwarder"></td>' +
-                    '<td><input type="text" class="form-control form-control-sm qr-line" maxlength="255" placeholder="Shipping line"></td>' +
-                    '<td><input type="date" class="form-control form-control-sm qr-sail"></td>' +
-                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-pickup"></td>' +
-                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-freight"></td>' +
-                    '<td class="fw-bold qr-total">—</td>' +
+                    '<td><input type="text" class="form-control form-control-sm qr-forwarder" list="qcForwarderList" maxlength="255" placeholder="Forwarder" required></td>' +
+                    '<td><input type="text" class="form-control form-control-sm qr-line" maxlength="255" placeholder="Shipping line" required></td>' +
+                    '<td><input type="date" class="form-control form-control-sm qr-sail" required></td>' +
+                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-pickup" required></td>' +
+                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-freight" required></td>' +
+                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-bold qr-total" placeholder="Incl. all charges" required></td>' +
                     '<td><button type="button" class="btn btn-sm btn-link text-danger p-0 qr-del" title="Remove"><i class="fas fa-trash-alt"></i></button></td>';
                 tr.dataset.requestId = q.request_id || '';
                 if (q.request_id) {
@@ -709,6 +773,7 @@
                 tr.querySelector('.qr-sail').value = q.est_dt_sail ?? '';
                 tr.querySelector('.qr-pickup').value = q.pickup_charges ?? '';
                 tr.querySelector('.qr-freight').value = q.freight ?? '';
+                tr.querySelector('.qr-total').value = q.total ?? '';
                 qrBody.appendChild(tr);
                 qrRecalc();
                 return tr;
@@ -749,7 +814,17 @@
                     est_dt_sail: tr.querySelector('.qr-sail').value,
                     pickup_charges: tr.querySelector('.qr-pickup').value,
                     freight: tr.querySelector('.qr-freight').value,
+                    total: tr.querySelector('.qr-total').value,
                 }));
+                // All fields are mandatory.
+                const invalid = [...qrBody.querySelectorAll('input')].find(i => !i.checkValidity());
+                if (invalid) {
+                    qrErr.textContent = 'All fields are mandatory — please fill every field (Total is incl. of all charges).';
+                    qrErr.classList.remove('d-none');
+                    invalid.focus();
+                    qrSave.disabled = false;
+                    return;
+                }
                 try {
                     const res = await fetch(qrUrl, {
                         method: 'POST',
@@ -783,6 +858,7 @@
                 forwarderSelected: @json(route('container.quotations.forwarders.selected')),
                 text: @json(route('container.quotations.text')),
                 formData: @json(route('container.quotations.form.data')),
+                preview: @json(route('container.quotations.preview')),
                 send: @json(route('container.quotations.send')),
                 ack: @json(route('container.quotations.ack')),
             };
@@ -830,7 +906,7 @@
                     qBox.innerHTML = fieldsQ.map(f =>
                         '<div class="col-md-' + f[2] + '"><label class="form-label small fw-semibold">' + f[0] + '</label>' +
                         '<input class="form-control qf-locked" disabled value="' + esc(f[1] || '') + '"></div>').join('') +
-                        '<div class="col-12"><label class="form-label small fw-semibold">Pickup Address</label>' +
+                        '<div class="col-12"><label class="form-label small fw-semibold">Pickup Address Port</label>' +
                         '<textarea class="form-control qf-locked" rows="2" disabled>' + esc(d.pickup_address || '') + '</textarea></div>';
                     renderRequestRows(j.requests);
                 } catch (err) {
@@ -1011,7 +1087,43 @@
                 const shown = sendList.querySelectorAll('.send-cb:not(:disabled)');
                 const checked = sendList.querySelectorAll('.send-cb:checked');
                 document.getElementById('sendAll').checked = shown.length > 0 && checked.length === shown.length;
+                sendPreviewRefresh();
             }
+            // Email preview (what each ticked forwarder will receive)
+            const pvWrap = document.getElementById('sendPreviewWrap');
+            const pvWho = document.getElementById('sendPreviewWho');
+            const sendNames = {};
+            let pvTimer = null;
+            let pvSeq = 0;
+            function sendPreviewRefresh() {
+                clearTimeout(pvTimer);
+                pvTimer = setTimeout(sendPreviewLoad, 150);
+            }
+            async function sendPreviewLoad() {
+                const ids = selectedForwarderIds();
+                if (!sendRow || !ids.length) { pvWrap.classList.add('d-none'); return; }
+                // keep the dropdown in sync with the ticked forwarders (names may come from any type filter)
+                const prev = Number(pvWho.value);
+                sendRows.forEach(r => { sendNames[r.id] = r.name; });
+                const names = sendNames;
+                pvWho.innerHTML = ids.map(id => '<option value="' + id + '">' + esc(names[id] || ('Forwarder #' + id)) + '</option>').join('');
+                pvWho.value = ids.includes(prev) ? String(prev) : String(ids[0]);
+                pvWho.classList.toggle('d-none', ids.length < 2);
+                const seq = ++pvSeq;
+                try {
+                    const j = await api(urls.preview + '?container=' + encodeURIComponent(sendRow.container_number) + '&forwarder_id=' + encodeURIComponent(pvWho.value));
+                    if (seq !== pvSeq) return;
+                    document.getElementById('pvFrom').textContent = j.from;
+                    document.getElementById('pvTo').innerHTML = j.to ? esc(j.to) : '<span class="text-danger">No email address saved for ' + esc(j.forwarder) + '</span>';
+                    document.getElementById('pvSubject').textContent = j.subject;
+                    document.getElementById('pvAttach').textContent = j.attachment;
+                    document.getElementById('pvBody').innerHTML = j.html;
+                    pvWrap.classList.remove('d-none');
+                } catch (err) {
+                    if (seq === pvSeq) pvWrap.classList.add('d-none');
+                }
+            }
+            pvWho.addEventListener('change', function () { sendPreviewLoad(); });
             function sendRender() {
                 const q = document.getElementById('sendSearch').value.toLowerCase().trim();
                 const rows = sendRows.filter(r => !q || (r.name + ' ' + (r.company || '') + ' ' + (r.email || '')).toLowerCase().indexOf(q) !== -1);
@@ -1056,6 +1168,7 @@
                 document.getElementById('sendNoQ').classList.toggle('d-none', !!row.has_details);
                 showMsg(sendErr, '');
                 sendResults.innerHTML = '';
+                pvWrap.classList.add('d-none');
                 document.getElementById('sendSearch').value = '';
                 document.getElementById('sendAddBox').classList.add('d-none');
                 bootstrap.Modal.getOrCreateInstance(sendModalEl).show();
@@ -1128,6 +1241,51 @@
                     btn.disabled = false;
                 }
             });
+            // Draft (column before Send): the email as it will go out, for the forwarders chosen with the Forwarder button
+            const draftModalEl = document.getElementById('draftModal');
+            const draftErr = document.getElementById('draftError');
+            const draftWho = document.getElementById('draftWho');
+            let draftRow = null;
+            let draftSeq = 0;
+            async function draftLoad() {
+                const seq = ++draftSeq;
+                showMsg(draftErr, '');
+                try {
+                    const j = await api(urls.preview + '?container=' + encodeURIComponent(draftRow.container_number) +
+                        (draftWho.value ? '&forwarder_id=' + encodeURIComponent(draftWho.value) : ''));
+                    if (seq !== draftSeq) return;
+                    document.getElementById('dfFrom').textContent = j.from;
+                    document.getElementById('dfTo').innerHTML = j.to ? esc(j.to) : '<span class="text-muted">— (choose forwarders with the Forwarder button)</span>';
+                    document.getElementById('dfSubject').textContent = j.subject;
+                    document.getElementById('dfAttach').textContent = j.attachment;
+                    document.getElementById('dfBody').innerHTML = j.html;
+                    document.getElementById('draftNoQ').classList.toggle('d-none', !!j.has_details);
+                } catch (err) { showMsg(draftErr, err.message); }
+            }
+            async function openDraftModal(row) {
+                draftRow = row;
+                document.getElementById('draftContainer').textContent = row.container_number;
+                draftWho.innerHTML = '';
+                draftWho.classList.add('d-none');
+                document.getElementById('draftHint').textContent = '';
+                bootstrap.Modal.getOrCreateInstance(draftModalEl).show();
+                try {
+                    const sel = (await api(urls.forwarderSelected)).selected_list || [];
+                    draftWho.innerHTML = sel.map(r => '<option value="' + r.id + '">' + esc(r.name) + '</option>').join('');
+                    draftWho.classList.toggle('d-none', sel.length < 2);
+                    document.getElementById('draftHint').textContent = sel.length
+                        ? 'Draft for ' + sel.length + ' selected forwarder' + (sel.length === 1 ? '' : 's') + (sel.length > 1 ? ' — pick one to preview:' : '')
+                        : 'No forwarder selected yet — showing a sample with a generic name.';
+                } catch (err) { /* fall back to the generic draft */ }
+                draftLoad();
+            }
+            draftWho.addEventListener('change', draftLoad);
+            document.getElementById('draftToSend').addEventListener('click', function () {
+                const row = draftRow;
+                draftModalEl.addEventListener('hidden.bs.modal', function () { openSendModal(row); }, { once: true });
+                bootstrap.Modal.getOrCreateInstance(draftModalEl).hide();
+            });
+
             // Text (editable predefined email text)
             const textModalEl = document.getElementById('textModal');
             const textErr = document.getElementById('textError');

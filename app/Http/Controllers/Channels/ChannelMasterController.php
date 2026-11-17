@@ -6499,6 +6499,7 @@ class ChannelMasterController extends Controller
                 $day[$k.'_units'] = (float) ($s['units'] ?? 0);
                 $day[$k.'_lp'] = (float) ($s['inv_at_lp'] ?? 0);
                 $day[$k.'_sp'] = (float) ($s['inv_at_sp'] ?? 0);
+                $day[$k.'_amz'] = (float) ($s['inv_at_amz'] ?? 0);
             }
             $hist[$today] = $day;
             ksort($hist);
@@ -6569,6 +6570,7 @@ class ChannelMasterController extends Controller
             foreach (array_keys($this->invDilBandDefs()) as $band) {
                 $fields['inv_sp_'.$band] = $band.'_sp';
                 $fields['inv_lp_'.$band] = $band.'_lp';
+                $fields['inv_amz_'.$band] = $band.'_amz';
             }
             $since = now('America/Los_Angeles')->subDays($days)->toDateString();
             $rows = \App\Models\BadgeDataHistory::query()
