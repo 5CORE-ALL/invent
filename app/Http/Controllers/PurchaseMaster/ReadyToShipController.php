@@ -29,65 +29,10 @@ class ReadyToShipController extends Controller
         if ($qty <= 0) {
             return false;
         }
-        // Forecast Analysis only knows SKUs that are in the (non-archived) product master, so its R2S
-        // column never includes any other SKU. Apply the same rule here so both pages list the same rows.
-        $key = self::normalizeReadyToShipSku($item->sku ?? '');
-        if ($key === '' || ! isset(self::activeProductMasterKeys()[$key])) {
-            return false;
-        }
-        if ($forecast === null) {
-            return true;
-        }
-        $stage = strtolower(trim((string) ($forecast->stage ?? '')));
-
-        return $stage !== 'all_good';
-    }
-
-    /** @var array<string,bool>|null */
-    private static ?array $activePmKeys = null;
-
-    /** Normalised SKUs of non-archived product_master rows (same universe as /forecast.analysis). */
-    private static function activeProductMasterKeys(): array
-    {
-        if (self::$activePmKeys === null) {
-            self::$activePmKeys = [];
-            foreach (DB::table('product_master')->whereNull('deleted_at')->pluck('sku') as $sku) {
-                $k = self::normalizeReadyToShipSku($sku);
-                if ($k !== '') {
-                    self::$activePmKeys[$k] = true;
-                }
-            }
-        }
-
-        return self::$activePmKeys;
-    }
-
-    /**
-     * Exactly the Ready-to-Ship rows listed on /ready-to-ship (same filters), for other pages that must
-     * reflect that page, e.g. the ready-to-ship line in the MIP overdue email.
-     *
-     * @return \Illuminate\Support\Collection<int, ReadyToShip>
-     */
-    public static function rowsListedOnPage(): \Illuminate\Support\Collection
-    {
-        $forecastData = DB::table('forecast_analysis')
-            ->select('sku', 'stage', 'nr')
-            ->get()
-            ->groupBy(fn ($item) => self::normalizeReadyToShipSku($item->sku))
-            ->map(function ($group) {
-                $withStage = $group->firstWhere('stage', '!=', null);
-
-                return ($withStage && ! empty(trim((string) $withStage->stage))) ? $withStage : $group->first();
-            });
-
-        return self::mergeRowsBySku(
-            ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
-                ->filter(function ($item) use ($forecastData) {
-                    $sku = self::normalizeReadyToShipSku($item->sku);
-
-                    return self::readyToShipRowBelongsOnPage($item, $forecastData->get($sku));
-                })
-        );
+        // A product can be in several stages at once (e.g. MIP + R2S + Transit). Any row with a ready-to-ship
+        // quantity belongs on this page whatever single "stage" label Forecast stores (all_good, transit, mip...),
+        // exactly like Forecast's R2S column, which counts quantity only.
+        return self::normalizeReadyToShipSku($item->sku ?? '') !== '';
     }
 
     /**

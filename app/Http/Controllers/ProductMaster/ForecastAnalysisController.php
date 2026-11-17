@@ -421,7 +421,7 @@ class ForecastAnalysisController extends Controller
             ->where('transit_inv_status', 0)
             ->whereNull('deleted_at')
             ->get([
-                'sku', 'qty', 'rec_qty', 'rate', 'payment', 'pay_term',
+                'sku', 'parent', 'qty', 'rec_qty', 'rate', 'payment', 'pay_term',
                 'packing_list', 'photo_mail_send', 'area',
             ]);
         $mergeReadyToShipRows = function($rows) {
@@ -520,7 +520,7 @@ class ForecastAnalysisController extends Controller
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->get([
-                'sku', 'supplier', 'ready_to_ship', 'qty', 'rate',
+                'sku', 'parent', 'supplier', 'ready_to_ship', 'qty', 'rate',
                 'pkg_inst', 'u_manual', 'compliance', 'created_at',
             ])
             ->groupBy(fn ($item) => $normalizeSku($item->sku))
@@ -680,6 +680,57 @@ class ForecastAnalysisController extends Controller
         };
 
 
+
+        // ROOT-CAUSE FIX (stages / missing SKUs): this grid is built by walking product_master, so a SKU that has
+        // real quantity in the pipeline (MIP, Ready-to-Ship or Transit) but is missing/archived in product_master
+        // used to vanish from Forecast while MIP / R2S still listed it, and the pages disagreed. Any SKU with
+        // pipeline quantity is added as a row here, so Forecast, MIP and R2S always show the same items.
+        $pmKnown = [];
+        foreach ($productListData as $p) {
+            $pk = $normalizeSku($p->sku ?? '');
+            if ($pk !== '') {
+                $pmKnown[$pk] = true;
+            }
+        }
+        $orphans = []; // normalizedSku => parent
+        $addOrphan = function ($sku, $parent) use (&$orphans, $pmKnown, $normalizeSku) {
+            $k = $normalizeSku($sku);
+            if ($k === '' || isset($pmKnown[$k])) {
+                return;
+            }
+            if (! isset($orphans[$k]) || ($orphans[$k] === '' && trim((string) $parent) !== '')) {
+                $orphans[$k] = $normalizeSku($parent ?? '');
+            }
+        };
+        foreach ($mfrg as $r) {
+            $rts = $r->ready_to_ship ?? 'No';
+            if (($rts === 'No' || $rts === '' || $rts === null) && (float) ($r->qty ?? 0) > 0) {
+                $addOrphan($r->sku, $r->parent ?? '');
+            }
+        }
+        foreach ($readyToShipRows as $r) {
+            if ((float) ($r->qty ?? 0) > 0) {
+                $addOrphan($r->sku, $r->parent ?? '');
+            }
+        }
+        $transitParentBySku = [];
+        foreach ($transitContainer as $tk => $t) {
+            if ((float) ($t->transit ?? 0) > 0 && ! isset($pmKnown[$tk])) {
+                if ($transitParentBySku === []) {
+                    foreach (DB::table('transit_container_details')->whereNull('deleted_at')->get(['our_sku', 'parent']) as $tr) {
+                        $kk = $normalizeSku($tr->our_sku ?? '');
+                        if ($kk !== '' && trim((string) ($tr->parent ?? '')) !== '') {
+                            $transitParentBySku[$kk] = $tr->parent;
+                        }
+                    }
+                    $transitParentBySku['__loaded__'] = '';
+                }
+                $addOrphan($tk, $transitParentBySku[$tk] ?? '');
+            }
+        }
+        foreach ($orphans as $k => $parent) {
+            $productListData->push((object) ['sku' => $k, 'parent' => $parent, 'Values' => null]);
+        }
 
         $processedData = [];
         $stagePendingUpdates = []; // [normalizedSku => derivedStage] — flushed after loop

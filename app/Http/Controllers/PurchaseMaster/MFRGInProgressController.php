@@ -511,22 +511,9 @@ class MFRGInProgressController extends Controller
         $skuToPriceMap = self::buildSkuToPriceMapForMipRows($mfrgData, $normalizeSku);
         $platformsByName = $supplierCache['platformsByName'] ?? [];
 
-        // Filter out SKUs that don't exist in product_master (to match Forecast page behavior)
-        // Forecast page only shows MIP for SKUs that exist in product_master table
-        $mfrgData = $mfrgData->filter(function($row) use ($productMasterByKey, $normalizeSku) {
-            $sku = $normalizeSku($row->sku ?? '');
-            if ($sku === '') {
-                return false;
-            }
-            // Check all SKU variations
-            $skuVariations = self::mipRowSkuVariations($row->sku ?? null, $normalizeSku);
-            foreach ($skuVariations as $skuVar) {
-                if ($skuVar !== '' && isset($productMasterByKey[$skuVar])) {
-                    return true; // SKU exists in product_master
-                }
-            }
-            return false; // SKU not found in product_master
-        });
+        // No product_master gate: a SKU with an open MIP quantity is listed even if it is missing/archived in
+        // product master (Forecast Analysis now adds such SKUs too, so both pages show the same items).
+        $mfrgData = $mfrgData->filter(fn ($row) => $normalizeSku($row->sku ?? '') !== '');
 
         foreach ($mfrgData as $row) {
             self::enrichSingleMipProgressRow(
@@ -1443,9 +1430,7 @@ class MFRGInProgressController extends Controller
             if ($chunk === []) {
                 continue;
             }
-            // whereNull('deleted_at'): Forecast Analysis ignores archived product_master rows, so MIP must too
-            // (otherwise archived SKUs such as CDKC11 / HISE 15X5 4PCS / HISE 3X7 4PCS show here but not on Forecast).
-            foreach (DB::table('product_master')->whereNull('deleted_at')->whereIn('sku', $chunk)->select('sku', 'parent', 'Values')->get() as $item) {
+            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'parent', 'Values')->get() as $item) {
                 $norm = $normalizeSku($item->sku);
                 if ($norm === '') {
                     continue;
@@ -1470,7 +1455,6 @@ class MFRGInProgressController extends Controller
             $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
             if ($chunk === []) continue;
             foreach (DB::table('product_master')
-                ->whereNull('deleted_at')
                 ->whereIn(DB::raw('UPPER(TRIM(sku))'), $chunk)
                 ->select('sku', 'parent', 'Values')
                 ->get() as $item) {
