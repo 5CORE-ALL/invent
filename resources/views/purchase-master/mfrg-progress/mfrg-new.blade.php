@@ -1283,6 +1283,7 @@
                           const v = (cell.getValue() || "").trim();
                           return v ? v : '<span class="text-muted">—</span>';
                       } },
+                    { title: "Stage", field: "stage", width: 50, hozAlign: "center", formatter: stageFormatter },
                     { title: "SKU", field: "sku", minWidth: 150, widthGrow: 3,
                       formatter: function (cell) {
                           const v = cell.getValue() || '';
@@ -1383,7 +1384,6 @@
                               openMipClModal('single', [cell.getRow()]);
                           }
                       } },
-                    { title: "Stage", field: "stage", width: 50, hozAlign: "center", formatter: stageFormatter },
                     { title: "Executive", field: "exec", width: 84, hozAlign: "center",
                       cssClass: "mip-exec-cell",
                       editor: "list",
@@ -1514,7 +1514,7 @@
             const MIP_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
             const MIP_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
             const MIP_COL_GROUPS = {
-                basic: ['product_image', 'supplier', 'Category', 'sku', 'stage', 'exec'],
+                basic: ['product_image', 'supplier', 'Category', 'stage', 'sku', 'exec'],
                 grp1: ['moq', 'qty', 'created_at', 'delivery_date', 'mip_po_number', 'total_cbm', 'CBM', 'row_cp', 'row_amount'],
                 grp2: ['pkg_inst', 'u_manual', 'compliance', 'pre_mip_checklist_status', 'supplier_platform_links'],
                 others: [],
