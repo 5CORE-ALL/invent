@@ -586,7 +586,7 @@
                     </div>
                     <div class="form-check form-switch mb-2">
                         <input class="form-check-input" type="checkbox" id="odm-overdue-only" checked>
-                        <label class="form-check-label small" for="odm-overdue-only">Overdue items only <span class="text-muted">(past D Date, or no D Date and ordered more than 30 days ago)</span></label>
+                        <label class="form-check-label small" for="odm-overdue-only">Overdue items only <span class="text-muted">(past the D Date; D Date defaults to O Date + 30 days)</span></label>
                     </div>
                     <label class="form-label fw-semibold small mb-1">Message <span class="text-muted fw-normal">(editable)</span></label>
                     <textarea id="odm-body" class="form-control" rows="18" style="font-family:Menlo,Consolas,monospace;font-size:12.5px;white-space:pre;"></textarea>
@@ -1094,24 +1094,37 @@
                 const full = short + ' ' + d.getFullYear();
                 return '<span title="' + full + '">' + short + '</span>';
             }
-            // D Date column: when a D Date is set it shows that date (as before). When it is NOT set
-            // (the old red dot) it shows the days elapsed since the O Date; > 30 days -> red.
-            // Hover shows the O Date; click still opens the D Date editor.
+            // D Date = due date. When nobody has entered one it defaults to O Date + 30 days (flagged
+            // delivery_date_auto, shown in italics). Past the due date it turns red with "N d late".
+            function mipParseYmd(v) {
+                if (!v) return null;
+                const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(v);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            function mipAutoDueDate(createdAt) {
+                const d = mipParseYmd(createdAt);
+                if (!d) return '';
+                d.setDate(d.getDate() + 30);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            }
             function deliveryDaysFormatter(cell) {
-                if (cell.getValue()) return dateDisplayFormatter(cell);
-                const raw = (cell.getRow().getData() || {}).created_at;
-                const noDate = '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
-                if (!raw) return noDate;
-                const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
-                const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(raw);
-                if (isNaN(d.getTime())) return noDate;
+                const dot = '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
+                const due = mipParseYmd(cell.getValue());
+                if (!due) return dot;
+                const row = cell.getRow().getData() || {};
+                const auto = !!row.delivery_date_auto;
                 const now = new Date();
                 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-                const days = Math.max(0, Math.round((today - start) / 86400000));
-                const full = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear();
-                const over = days > 30;
-                return '<span title="No D Date — ordered ' + full + '" style="font-weight:700;' + (over ? 'color:#dc3545;' : '') + '">' + days + ' d</span>';
+                const late = Math.round((today - due) / 86400000);
+                const short = due.getDate() + ' ' + due.toLocaleString('en-US', { month: 'short' });
+                const full = short + ' ' + due.getFullYear();
+                let title = (auto ? 'Auto due date (O Date + 30 days): ' : 'Due: ') + full;
+                if (late > 0) title += ' — ' + late + ' days overdue';
+                const style = (late > 0 ? 'color:#dc3545;font-weight:700;' : '') + (auto ? 'font-style:italic;' : '');
+                return '<div title="' + title + '" style="line-height:1.15;"><span style="' + style + '">' + short + '</span>'
+                    + (late > 0 ? '<div style="font-size:10px;font-weight:700;color:#dc3545;">' + late + ' d late</div>' : '')
+                    + '</div>';
             }
             function supplierFirstName(name) {
                 const v = String(name || '').trim();
@@ -1314,10 +1327,21 @@
                     },
                     { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
-                      cellEdited: function (cell) { const d = cell.getRow().getData(); try { cell.getRow().reformat(); } catch (e) {} postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
+                      cellEdited: function (cell) { const d = cell.getRow().getData();
+                          // An automatic D Date follows the O Date (O Date + 30 days).
+                          if (d.delivery_date_auto || !d.delivery_date) { const a = mipAutoDueDate(cell.getValue()); try { cell.getRow().update({ delivery_date: a, delivery_date_auto: !!a }); } catch (e) {} }
+                          try { cell.getRow().reformat(); } catch (e) {} postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: deliveryDaysFormatter,
                       editor: "date",
-                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
+                      cellEdited: function (cell) { const d = cell.getRow().getData();
+                          // Typed date = real D Date. Cleared = fall back to the automatic O Date + 30 days.
+                          const typed = cell.getValue();
+                          try {
+                              if (typed) cell.getRow().update({ delivery_date_auto: false });
+                              else { const a = mipAutoDueDate(d.created_at); cell.getRow().update({ delivery_date: a, delivery_date_auto: !!a }); }
+                              cell.getRow().reformat();
+                          } catch (e) {}
+                          postInline(d.sku || '', d.id || 0, 'delivery_date', typed, d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
                     { title: "PO", field: "mip_po_number", width: 80, hozAlign: "center", formatter: function (c) { const v = c.getValue(); return v ? '<span class="badge bg-info">' + esc(v) + '</span>' : '<span class="mip-status-dot" style="background-color:#dc3545;" title="No PO"></span>'; } },
                     { title: "T-CBM", field: "total_cbm", width: 90, hozAlign: "center", formatter: function (cell) {
@@ -1437,6 +1461,14 @@
                         return true;
                     });
                     uniqueSuppliers = [...new Set(filtered.map(i => i.supplier))].filter(Boolean).sort();
+                    // D Date not entered -> default it to O Date + 30 days (display default, not saved
+                    // until someone edits the D Date). Flagged so the cell can show it as automatic.
+                    filtered.forEach(function (i) {
+                        if (!i.delivery_date) {
+                            const a = mipAutoDueDate(i.created_at);
+                            if (a) { i.delivery_date = a; i.delivery_date_auto = true; }
+                        }
+                    });
                     return filtered;
                 },
             });
@@ -2553,6 +2585,33 @@
                     lines.push(odmPad(r.sku, W.sku) + odmPad(qty ? qty.toLocaleString('en-US') : '-', 8) + odmPad(odmFmt(odmParseDate(r.created_at)), 14) + odmPad(due ? odmFmt(due) : 'not set', 14) + delay);
                 });
 
+                // Items of this supplier that are ready to ship but NOT in the overdue table above.
+                const listed = new Set(items.map(function (x) { return x.r; }));
+                const readyBySku = {};
+                mine.forEach(function (r) {
+                    if (listed.has(r)) return;
+                    const isReady = String(r.stage || '').toLowerCase() === 'r2s'
+                        || String(r.source_table || '') === 'ready_to_ship'
+                        || String(r.ready_to_ship || '').toLowerCase() === 'yes';
+                    if (!isReady) return;
+                    const key = String(r.sku || '').trim();
+                    readyBySku[key] = (readyBySku[key] || 0) + (parseFloat(r.qty) || 0);
+                });
+                const readyParts = Object.keys(readyBySku).map(function (k) {
+                    return k + (readyBySku[k] ? ' (' + readyBySku[k].toLocaleString('en-US') + ')' : '');
+                });
+                const readyLines = [];
+                if (readyParts.length) {
+                    // wrap the list so it stays readable in the editor
+                    let cur = '';
+                    readyParts.forEach(function (p, i) {
+                        const piece = p + (i < readyParts.length - 1 ? ', ' : '.');
+                        if ((cur + piece).length > 95 && cur) { readyLines.push(cur.trimEnd()); cur = ''; }
+                        cur += piece;
+                    });
+                    if (cur) readyLines.push(cur.trimEnd());
+                }
+
                 const body = [
                     'Dear ' + first + ',',
                     '',
@@ -2567,6 +2626,12 @@
                     '',
                     'Total: ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ', ' + totalQty.toLocaleString('en-US') + ' units.',
                     '',
+                    ...(readyLines.length ? [
+                        'Ready to ship (not in the list above) – QTY in brackets:',
+                        ...readyLines.map(function (l) { return '  ' + l; }),
+                        'Kindly confirm the pickup / dispatch date for these items as well.',
+                        '',
+                    ] : []),
                     'Please reply with the status of each SKU at your earliest, as these are delayed and we need to plan accordingly.',
                     '',
                     'Thank you and best regards,',
