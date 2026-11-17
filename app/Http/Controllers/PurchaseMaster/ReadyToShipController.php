@@ -29,12 +29,37 @@ class ReadyToShipController extends Controller
         if ($qty <= 0) {
             return false;
         }
+        // Forecast Analysis only knows SKUs that are in the (non-archived) product master, so its R2S
+        // column never includes any other SKU. Apply the same rule here so both pages list the same rows.
+        $key = self::normalizeReadyToShipSku($item->sku ?? '');
+        if ($key === '' || ! isset(self::activeProductMasterKeys()[$key])) {
+            return false;
+        }
         if ($forecast === null) {
             return true;
         }
         $stage = strtolower(trim((string) ($forecast->stage ?? '')));
 
         return $stage !== 'all_good';
+    }
+
+    /** @var array<string,bool>|null */
+    private static ?array $activePmKeys = null;
+
+    /** Normalised SKUs of non-archived product_master rows (same universe as /forecast.analysis). */
+    private static function activeProductMasterKeys(): array
+    {
+        if (self::$activePmKeys === null) {
+            self::$activePmKeys = [];
+            foreach (DB::table('product_master')->whereNull('deleted_at')->pluck('sku') as $sku) {
+                $k = self::normalizeReadyToShipSku($sku);
+                if ($k !== '') {
+                    self::$activePmKeys[$k] = true;
+                }
+            }
+        }
+
+        return self::$activePmKeys;
     }
 
     private static function normalizeReadyToShipSku(?string $sku): string
