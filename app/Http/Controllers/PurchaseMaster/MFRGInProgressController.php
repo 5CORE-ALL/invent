@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
 class MFRGInProgressController extends Controller
@@ -1718,6 +1719,77 @@ class MFRGInProgressController extends Controller
         }
 
         return $rtsData;
+    }
+
+    /**
+     * Send the "overdue items status" email drafted in the MIP modal directly to the supplier.
+     * Goes out through the same company mailbox as the forwarder quote requests (the logged-in
+     * user's own mailbox when one is configured, e.g. Candy); replies go to the logged-in user.
+     */
+    public function sendOverdueMail(Request $request)
+    {
+        $data = $request->validate([
+            'to' => ['required', 'string', 'max:500'],
+            'subject' => ['required', 'string', 'max:250'],
+            'body' => ['required', 'string', 'max:20000'],
+            'supplier' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $recipients = array_values(array_unique(array_filter(array_map(
+            'trim',
+            preg_split('/[;,\s]+/', $data['to']) ?: []
+        ))));
+        if ($recipients === []) {
+            return response()->json(['success' => false, 'message' => 'Enter the supplier email address.'], 422);
+        }
+        foreach ($recipients as $addr) {
+            if (! filter_var($addr, FILTER_VALIDATE_EMAIL)) {
+                return response()->json(['success' => false, 'message' => 'Invalid email address: '.$addr], 422);
+            }
+        }
+
+        $sender = app(ContainerQuoteRequestController::class)->sender();
+        $user = Auth::user();
+        $replyTo = trim((string) ($user->email ?? ''));
+        $replyName = trim((string) ($user->name ?? ''));
+
+        // Monospace block keeps the SKU table aligned in any mail client; plain text is attached too.
+        $html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;">'
+            .'<pre style="font-family:Menlo,Consolas,\'Courier New\',monospace;font-size:13px;white-space:pre-wrap;margin:0;">'
+            .e($data['body']).'</pre></div>';
+
+        try {
+            Mail::mailer($sender['mailer'])->html($html, function ($m) use ($sender, $recipients, $data, $replyTo, $replyName) {
+                // Show "Purchase Team" as the sender name (the mailbox address stays the same).
+                $m->from($sender['email'], 'Purchase Team')->subject($data['subject']);
+                $m->text($data['body']);
+                if ($replyTo !== '' && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+                    $m->replyTo($replyTo, $replyName !== '' ? $replyName : null);
+                }
+                foreach ($recipients as $addr) {
+                    $m->to($addr);
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('mip.overdue_mail_failed', ['to' => $recipients, 'error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not send the email: '.$e->getMessage(),
+            ], 500);
+        }
+
+        Log::info('mip.overdue_mail_sent', [
+            'to' => $recipients,
+            'supplier' => $data['supplier'] ?? '',
+            'by' => $replyTo,
+            'from' => $sender['email'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email sent to '.implode(', ', $recipients).' from Purchase Team ('.$sender['email'].').',
+        ]);
     }
 
     public function getPreMipChecklist(Request $request)

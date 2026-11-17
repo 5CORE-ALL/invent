@@ -588,6 +588,7 @@
                     <div id="odm-note" class="small text-muted mt-2"></div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-success me-auto" id="odm-send-btn"><i class="fas fa-paper-plane me-1"></i> Send</button>
                     <button type="button" class="btn btn-outline-secondary" id="odm-copy-btn"><i class="fas fa-copy me-1"></i> Copy</button>
                     <a class="btn btn-outline-primary" id="odm-gmail-btn" target="_blank" rel="noopener"><i class="fab fa-google me-1"></i> Open in Gmail</a>
                     <a class="btn btn-primary" id="odm-mailto-btn"><i class="fas fa-paper-plane me-1"></i> Open in mail app</a>
@@ -1088,10 +1089,12 @@
                 const full = short + ' ' + d.getFullYear();
                 return '<span title="' + full + '">' + short + '</span>';
             }
-            // O Date shown as days elapsed since the order date; > 30 days -> red. Missing date -> red dot.
-            // Hover shows the actual date; click still opens the date editor.
-            function orderDaysFormatter(cell) {
-                const raw = cell.getValue();
+            // D Date column: when a D Date is set it shows that date (as before). When it is NOT set
+            // (the old red dot) it shows the days elapsed since the O Date; > 30 days -> red.
+            // Hover shows the O Date; click still opens the D Date editor.
+            function deliveryDaysFormatter(cell) {
+                if (cell.getValue()) return dateDisplayFormatter(cell);
+                const raw = (cell.getRow().getData() || {}).created_at;
                 const noDate = '<span class="mip-status-dot" style="background-color:#dc3545;" title="No date"></span>';
                 if (!raw) return noDate;
                 const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -1103,7 +1106,7 @@
                 const days = Math.max(0, Math.round((today - start) / 86400000));
                 const full = d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear();
                 const over = days > 30;
-                return '<span title="' + full + '" style="font-weight:700;' + (over ? 'color:#dc3545;' : '') + '">' + days + ' d</span>';
+                return '<span title="No D Date — ordered ' + full + '" style="font-weight:700;' + (over ? 'color:#dc3545;' : '') + '">' + days + ' d</span>';
             }
             function supplierFirstName(name) {
                 const v = String(name || '').trim();
@@ -1297,10 +1300,10 @@
                               .catch(err => alert('Could not save QTY: ' + (err && err.message ? err.message : err)));
                       }
                     },
-                    { title: "O Days", field: "created_at", width: 90, hozAlign: "center", formatter: orderDaysFormatter,
+                    { title: "O Date", field: "created_at", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
                       editor: "date",
-                      cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
-                    { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: dateDisplayFormatter,
+                      cellEdited: function (cell) { const d = cell.getRow().getData(); try { cell.getRow().reformat(); } catch (e) {} postInline(d.sku || '', d.id || 0, 'created_at', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
+                    { title: "D Date", field: "delivery_date", width: 90, hozAlign: "center", formatter: deliveryDaysFormatter,
                       editor: "date",
                       cellEdited: function (cell) { const d = cell.getRow().getData(); postInline(d.sku || '', d.id || 0, 'delivery_date', cell.getValue(), d.source_table).then(r => { if (!r || !r.success) alert((r && r.message) || 'Save failed'); }).catch(err => alert('Could not save date: ' + (err && err.message ? err.message : err))); } },
                     { title: '<i class="fas fa-comments" title="Communication"></i>', field: "supplier_platform_links", width: 56, headerSort: false, formatter: commFormatter },
@@ -2601,6 +2604,42 @@
             document.getElementById('odm-to').addEventListener('input', function () { this.dataset.touched = '1'; odmSyncLinks(); });
             document.getElementById('odm-subject').addEventListener('input', odmSyncLinks);
             document.getElementById('odm-body').addEventListener('input', odmSyncLinks);
+            document.getElementById('odm-send-btn').addEventListener('click', function () {
+                const btn = this;
+                const note = document.getElementById('odm-note');
+                const to = document.getElementById('odm-to').value.trim();
+                const subject = document.getElementById('odm-subject').value.trim();
+                const body = document.getElementById('odm-body').value;
+                if (!to) { note.innerHTML = '<span class="text-danger">Enter the supplier email address in "To".</span>'; document.getElementById('odm-to').focus(); return; }
+                if (!body.trim()) { note.innerHTML = '<span class="text-danger">The message is empty.</span>'; return; }
+                if (!confirm('Send this email to ' + to + '?')) return;
+
+                const orig = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Sending…';
+                note.innerHTML = '<span class="text-muted">Sending…</span>';
+                fetch('{{ route('mfrg.in.progress.send.overdue.mail') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ to: to, subject: subject, body: body, supplier: document.getElementById('odm-supplier').value })
+                })
+                    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+                    .then(function (res) {
+                        if (res.ok && res.j && res.j.success) {
+                            btn.innerHTML = '<i class="fas fa-check me-1"></i> Sent';
+                            note.innerHTML = '<span class="text-success fw-semibold">' + esc(res.j.message || 'Email sent.') + '</span>';
+                            setTimeout(function () { btn.innerHTML = orig; btn.disabled = false; }, 2500);
+                        } else {
+                            const errs = res.j && res.j.errors ? Object.values(res.j.errors).flat().join(' ') : '';
+                            note.innerHTML = '<span class="text-danger">' + esc((res.j && res.j.message) || errs || 'Could not send the email.') + '</span>';
+                            btn.innerHTML = orig; btn.disabled = false;
+                        }
+                    })
+                    .catch(function (e) {
+                        note.innerHTML = '<span class="text-danger">Network error: ' + esc(e && e.message ? e.message : e) + '</span>';
+                        btn.innerHTML = orig; btn.disabled = false;
+                    });
+            });
             document.getElementById('odm-copy-btn').addEventListener('click', function () {
                 const btn = this;
                 const text = 'To: ' + document.getElementById('odm-to').value.trim() + '\nSubject: ' + document.getElementById('odm-subject').value + '\n\n' + document.getElementById('odm-body').value;

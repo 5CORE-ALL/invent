@@ -6110,6 +6110,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::get('/mfrg-in-progress/new', 'newMfrgView')->name('mfrg.in.progress.new');
         Route::get('/mfrg-in-progress/data', 'getMfrgProgressData')->name('mfrg.in.progress.data');
+        Route::post('/mfrg-in-progress/send-overdue-mail', 'sendOverdueMail')->name('mfrg.in.progress.send.overdue.mail');
         Route::get('/mfrg-in-progress/pre-mip-checklist', 'getPreMipChecklist')->name('mfrg.pre.mip.checklist.get');
         Route::post('/mfrg-in-progress/pre-mip-checklist', 'savePreMipChecklist')->name('mfrg.pre.mip.checklist.save');
         Route::post('/mfrg-in-progress/pre-mip-checklist/bulk', 'bulkSavePreMipChecklist')->name('mfrg.pre.mip.checklist.bulk');
