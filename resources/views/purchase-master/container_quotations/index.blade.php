@@ -112,7 +112,8 @@
         }
         .qz-page .tabulator-row { border-bottom: 1px solid #eef3f6; }
         .qz-page .tabulator-row:hover { background: #f0f8f8; }
-        .qz-page .tabulator-row .tabulator-cell { border-right-color: #f0f4f7; }
+        .qz-page .tabulator-row .tabulator-cell { border-right-color: #f0f4f7; text-align: center; }
+        .qz-page .tabulator-row .tabulator-cell .qc-wrap2 { text-align: center; }
         .qz-page .tabulator .tabulator-footer { background: var(--qz-soft); border-top: 1px solid var(--qz-line); }
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page { border-radius: 999px; }
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active { background: var(--qz-teal, #2a9d9f); color: #fff; }
@@ -662,8 +663,9 @@
                 placeholder: 'No containers found on the Ready To Ship page.',
                 index: 'container_number',
                 columns: [
-                    { title: 'Container', field: 'container_number', frozen: true, headerSort: true, minWidth: 120,
-                      formatter: c => '<b>' + esc(c.getValue()) + '</b>' },
+                    { title: 'CNTR', field: 'container_number', frozen: true, headerSort: true, minWidth: 100,
+                      // Shown short ("Container 108" -> "CNTR 108"); the real name stays in the data and in the hover.
+                      formatter: c => '<b title="' + esc(c.getValue()) + '">' + esc(String(c.getValue() ?? '').replace(/^container\s*/i, 'CNTR ')) + '</b>' },
                     { title: 'Q', field: 'has_details', frozen: true, width: 56, hozAlign: 'center', headerSort: false,
                       headerHozAlign: 'center',
                       formatter: function (cell) {
@@ -685,8 +687,11 @@
                     { title: 'Updated', field: 'updated_at', formatter: function (cell) {
                           const d = cell.getData();
                           if (!d.updated_at) return '<span class="text-muted">—</span>';
-                          // Compact: date only (e.g. "17 Nov 2026"); hover shows the full time and who updated it.
-                          const dateOnly = String(d.updated_at).split(',')[0].trim();
+                          // Compact: "17 NOV 26" (day, month, 2-digit year); hover shows the full time and who updated it.
+                          const parts = String(d.updated_at).split(',')[0].trim().split(/\s+/);   // ["17", "Nov", "2026"]
+                          const dateOnly = parts.length === 3
+                              ? (String(parseInt(parts[0], 10)) + ' ' + parts[1].toUpperCase() + ' ' + parts[2].slice(-2))
+                              : parts.join(' ');
                           const full = d.updated_at + (d.updated_by ? ' — ' + d.updated_by : '');
                           return '<span class="small" title="' + esc(full) + '" style="cursor:help;">' + esc(dateOnly) + '</span>';
                       } },
@@ -763,12 +768,19 @@
             });
 
             function refreshCount() {
-                const n = table.getDataCount('active');
+                let n = 0;
+                try {
+                    const searching = (document.getElementById('qc-search')?.value || '').trim() !== '';
+                    // all containers when nothing is searched, otherwise only the ones matching the search
+                    n = searching ? table.getRows('active').length : table.getDataCount();
+                } catch (e) { return; }
                 document.getElementById('qc-count').textContent = n + ' container' + (n === 1 ? '' : 's');
                 const heroCount = document.getElementById('qz-hero-count'); if (heroCount) heroCount.textContent = n;
             }
-            table.on('dataLoaded', refreshCount);
-            table.on('dataFiltered', refreshCount);
+            // Update on every way the data can arrive or change (load, filter, edit, redraw).
+            ['tableBuilt', 'dataLoaded', 'dataProcessed', 'dataFiltered', 'renderComplete'].forEach(function (ev) {
+                table.on(ev, refreshCount);
+            });
 
             const searchEl = document.getElementById('qc-search');
             searchEl.addEventListener('input', function () {
