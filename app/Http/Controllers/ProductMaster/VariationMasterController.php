@@ -107,12 +107,16 @@ class VariationMasterController extends Controller
         $listing = null;
         if ($listingChanged) {
             $parent = ListingManagerFamily::normalizeParentKey((string) ($request->input('parent') ?: $product->parent));
+            // The row being edited is the PARENT row itself. Write onto it directly: a second lookup by a
+            // guessed SKU spelling is what rejected PARENT 06 CS even though that row is already on CP master.
+            $parentRow = ListingManagerFamily::isParentSku((string) $product->sku) ? $product : null;
             $error = $this->writeListingText(
                 $parent,
                 $request->exists('title') ? $this->normalizeDisplay($request->input('title')) : null,
                 $request->exists('description') ? $this->keepLines($request->input('description')) : null,
                 $this->requestHasBullet($request) ? $this->joinBullets($this->bulletSlotsFromRequest($request)) : null,
-                $this->extraFromRequest($request)
+                $this->extraFromRequest($request),
+                $parentRow
             );
             if ($error !== null) {
                 return response()->json(['success' => false, 'message' => $error], 422);
@@ -1299,14 +1303,19 @@ class VariationMasterController extends Controller
     /**
      * @param  array<string, string>  $extra  'aplus' (HTML)
      */
-    private function writeListingText(string $parent, ?string $title, ?string $description, ?string $bullets, array $extra = []): ?string
+    private function writeListingText(string $parent, ?string $title, ?string $description, ?string $bullets, array $extra = [], ?ProductMaster $row = null): ?string
     {
         $parent = ListingManagerFamily::normalizeParentKey($parent);
+        if ($parent === '' && $row) {
+            $parent = VariationListingContent::parentKeyFor($row);
+        }
         if ($parent === '') {
             return 'Parent is required before saving title, description, or bullet points.';
         }
 
-        $row = VariationListingContent::parentProduct($parent);
+        if (! $row || ! ListingManagerFamily::isParentSku((string) $row->sku)) {
+            $row = VariationListingContent::parentProduct($parent);
+        }
         if (! $row) {
             return 'Add a PARENT row for '.$parent.' on CP master before saving listing text.';
         }

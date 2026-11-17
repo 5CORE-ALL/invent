@@ -190,22 +190,53 @@ class ListingManagerFamily
             return null;
         }
 
+        $live = DB::table('product_master');
+        if (Schema::hasColumn('product_master', 'deleted_at')) {
+            $live->whereNull('deleted_at');
+        }
+
         $upper = strtoupper($parent);
-        $row = DB::table('product_master')
+        $row = (clone $live)
             ->where(function ($q) use ($parent, $upper) {
                 $q->where('sku', 'PARENT '.$parent)
                     ->orWhereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.$upper])
                     ->orWhere(function ($q2) use ($parent) {
                         $q2->where('parent', $parent)
-                            ->whereRaw("UPPER(TRIM(sku)) LIKE 'PARENT %'");
+                            ->whereRaw("UPPER(TRIM(sku)) LIKE 'PARENT%'");
                     });
             })
-            ->orderByRaw("CASE WHEN UPPER(TRIM(sku)) LIKE 'PARENT %' THEN 0 ELSE 1 END")
-            ->first();
+            ->orderByRaw("CASE WHEN UPPER(TRIM(sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END")
+            ->first(['sku']);
 
         $found = trim((string) ($row->sku ?? ''));
+        if ($found !== '') {
+            return $found;
+        }
 
-        return $found !== '' ? $found : null;
+        // The table shows a parent from its parent column, or from the SKU after the PARENT prefix.
+        // Spacing differs between those ("PARENT 06 CS", "PARENT  06 CS", "PARENT06 CS"), so match on the
+        // letters once the exact SKU spellings above have missed.
+        $fold = static fn (string $value): string => strtoupper(preg_replace('/\s+/', '', $value) ?? $value);
+        $want = $fold($parent);
+        if ($want === '') {
+            return null;
+        }
+
+        foreach ((clone $live)->whereRaw("UPPER(sku) LIKE 'PARENT%'")->get(['sku', 'parent']) as $candidate) {
+            $key = self::normalizeParentKey((string) ($candidate->parent ?? ''));
+            if ($key === '') {
+                $key = self::normalizeParentKey((string) ($candidate->sku ?? ''));
+            }
+            if ($fold($key) !== $want) {
+                continue;
+            }
+            $sku = trim((string) $candidate->sku);
+            if ($sku !== '') {
+                return $sku;
+            }
+        }
+
+        return null;
     }
 
     /**
