@@ -80,11 +80,53 @@ class ReadyToShipController extends Controller
                 return ($withStage && ! empty(trim((string) $withStage->stage))) ? $withStage : $group->first();
             });
 
-        return ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
-            ->filter(function ($item) use ($forecastData) {
-                $sku = self::normalizeReadyToShipSku($item->sku);
+        return self::mergeRowsBySku(
+            ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
+                ->filter(function ($item) use ($forecastData) {
+                    $sku = self::normalizeReadyToShipSku($item->sku);
 
-                return self::readyToShipRowBelongsOnPage($item, $forecastData->get($sku));
+                    return self::readyToShipRowBelongsOnPage($item, $forecastData->get($sku));
+                })
+        );
+    }
+
+    /**
+     * One row per SKU, exactly like Forecast Analysis: if a SKU has several active ready_to_ship rows their
+     * quantities are added up and each other field takes the first non-empty value (e.g. the rate).
+     * The newest row is kept as the representative because the inline editors save to the newest row by SKU.
+     *
+     * @param  \Illuminate\Support\Collection<int, ReadyToShip>  $rows
+     * @return \Illuminate\Support\Collection<int, ReadyToShip>
+     */
+    private static function mergeRowsBySku(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
+    {
+        return $rows
+            ->groupBy(fn ($item) => self::normalizeReadyToShipSku($item->sku))
+            ->map(function ($group) {
+                if ($group->count() === 1) {
+                    return $group->first();
+                }
+                $asc = $group->sortBy('id')->values();
+                $pick = function (string $field) use ($asc) {
+                    foreach ($asc as $r) {
+                        $v = $r->{$field} ?? null;
+                        if ($v !== null && trim((string) $v) !== '') {
+                            return $v;
+                        }
+                    }
+
+                    return null;
+                };
+                $rep = clone $group->sortByDesc('id')->first();
+                $rep->qty = $asc->sum(fn ($r) => (float) ($r->qty ?? 0));
+                foreach (['rec_qty', 'rate', 'pay_term', 'payment', 'packing_list', 'photo_mail_send', 'area'] as $f) {
+                    $v = $pick($f);
+                    if ($v !== null) {
+                        $rep->{$f} = $v;
+                    }
+                }
+
+                return $rep;
             })
             ->values();
     }
@@ -314,6 +356,8 @@ class ReadyToShipController extends Controller
 
             return self::readyToShipRowBelongsOnPage($item, $forecast);
         });
+        // One row per SKU (same as Forecast Analysis).
+        $readyToShipData = self::mergeRowsBySku($readyToShipData);
 
         $categoryBySku = SupplierCategorySync::resolveCategoryMapForSkus(
             $readyToShipData->map(fn ($item) => $normalizeSku($item->sku ?? ''))->filter()->unique()->values()->all()
@@ -547,7 +591,14 @@ class ReadyToShipController extends Controller
                 return $group->first();
             });
 
-        $readyToShipRows = ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get();
+        $readyToShipRows = self::mergeRowsBySku(
+            ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
+                ->filter(function ($item) use ($forecastData, $normalizeSku) {
+                    $k = $normalizeSku($item->sku);
+
+                    return self::readyToShipRowBelongsOnPage($item, $forecastData->has($k) ? $forecastData->get($k) : null);
+                })
+        );
         $total = 0;
 
         foreach ($readyToShipRows as $item) {
@@ -643,7 +694,19 @@ class ReadyToShipController extends Controller
             if (! is_numeric($value) || (float) $value < 0) {
                 return response()->json(['success' => false, 'message' => 'Or. QTY must be a number, 0 or more.']);
             }
-            $item->qty = (int) $value;
+            // The page shows ONE row per SKU with the combined qty of all its active rows, so the typed value is the
+            // SKU's total: store (value - qty of the other rows) on the row being edited.
+            $othersQty = (float) ReadyToShip::query()
+                ->whereRaw('TRIM(sku) = ?', [$normalizedSku])
+                ->where('transit_inv_status', 0)
+                ->whereNull('deleted_at')
+                ->where('id', '!=', $item->id)
+                ->sum('qty');
+            $newQty = (int) $value - (int) $othersQty;
+            if ($newQty < 0) {
+                return response()->json(['success' => false, 'message' => 'Or. QTY cannot be less than '.(int) $othersQty.' (already on other rows of this SKU).']);
+            }
+            $item->qty = $newQty;
             $item->save();
 
             return response()->json(['success' => true]);
