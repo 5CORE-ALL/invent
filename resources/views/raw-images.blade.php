@@ -253,6 +253,8 @@
 
     #missing-raw-images-badge { cursor: pointer; }
     #missing-raw-images-badge.active-filter { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc3545; }
+    #missing-history-badge { cursor: pointer; }
+    #missing-history-badge.active-filter { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc3545; }
     #available-images-badge { cursor: pointer; }
     #available-images-badge.active-filter { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #198754; }
 
@@ -586,6 +588,11 @@
                         <span class="badge bg-danger fs-6 p-2" id="missing-raw-images-badge" title="SKUs with INV &gt; 0 that are missing {{ $manualColumnTitle }} (0 inventory is not counted)">
                             {{ $missingBadgeLabel }}: <span id="missingRawImagesCount">0</span>
                         </span>
+                        @if ($isHero2)
+                        <span class="badge bg-danger fs-6 p-2" id="missing-history-badge" title="Click to show only the SKUs whose History column is blank (not pushed to any eBay account yet)">
+                            Missing: <span id="missingHistoryCount">0</span>
+                        </span>
+                        @endif
                         <span class="badge bg-primary fs-6 p-2">
                             SKUs: <span id="skuCountBadge">0</span>
                         </span>
@@ -607,6 +614,9 @@
                                         <option value="all">All SKUs</option>
                                         <option value="available">Available Images</option>
                                         <option value="missing">Missing Only (INV &gt; 0)</option>
+                                        @if ($isHero2)
+                                        <option value="history_missing">Missing History (blank)</option>
+                                        @endif
                                     </select>
                                 </div>
                             </div>
@@ -1058,6 +1068,15 @@
                 || rawImageSourceImages(row, 'ai').length > 0;
         }
 
+        // The History column is blank (a dash) when the SKU was not pushed to any eBay account.
+        function hero2HistoryIsBlank(row) {
+            const pushes = hero2EbayPushes(row);
+            return !hero2EbayAccounts.some(function (a) {
+                const p = pushes[a.id];
+                return !!(p && p.pushed_at);
+            });
+        }
+
         function hero2HistoryCellHtml(row) {
             if (!hero2HasImage(row)) {
                 return '<span class="text-muted" title="No Hero Image 2 to push">—</span>';
@@ -1117,6 +1136,9 @@
             const current = Object.assign({}, hero2EbayPushes(item || {}));
             current[account] = next;
             patchRowsBySku(sku, { hero2_ebay_pushes: current });
+            // The SKU now has a History entry: refresh the Missing count and drop it from the Missing view.
+            updateCounts();
+            if (document.getElementById('filterRawImages').value === 'history_missing') applyFilters();
             if (document.getElementById('modalSku') && skuKey(document.getElementById('modalSku').value) === skuKey(sku)) {
                 renderHero2EbayPushStatus(findDataItemBySku(sku));
                 const grid = document.getElementById('rawImageGrid');
@@ -1820,6 +1842,17 @@
                 syncBadges();
                 applyFilters();
             });
+            const missingHistoryBadge = document.getElementById('missing-history-badge');
+            if (missingHistoryBadge) {
+                missingHistoryBadge.addEventListener('click', function () {
+                    const select = document.getElementById('filterRawImages');
+                    select.value = select.value === 'history_missing' ? 'all' : 'history_missing';
+                    missingFilterOn = false;
+                    imageFilterOn = false;
+                    syncBadges();
+                    applyFilters();
+                });
+            }
             document.getElementById('missing-raw-images-badge').addEventListener('click', function () {
                 const select = document.getElementById('filterRawImages');
                 select.value = select.value === 'missing' ? 'all' : 'missing';
@@ -2213,6 +2246,12 @@
                     return !hasAvailableImage(data);
                 });
             }
+            if (filterMode === 'history_missing') {
+                filters.push(function (data) {
+                    if (data.SKU && String(data.SKU).toUpperCase().includes('PARENT')) return false;
+                    return hero2HistoryIsBlank(data);
+                });
+            }
 
             table.clearFilter();
             if (filters.length) table.setFilter(filters);
@@ -2227,11 +2266,13 @@
             let skuCount = 0;
             let missing = 0;
             let available = 0;
+            let historyMissing = 0;
 
             tableData.forEach(function (item) {
                 if (item.Parent) parentSet.add(item.Parent);
                 if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
                     skuCount++;
+                    if (rawImagesIsHero2 && hero2HistoryIsBlank(item)) historyMissing++;
                     if (hasAvailableImage(item)) available++;
                     if (hasPositiveInv(item.shopify_inv) && !hasAvailableImage(item)) missing++;
                 }
@@ -2242,6 +2283,8 @@
             document.getElementById('skuCountBadge').textContent = skuCount;
             document.getElementById('availableImagesCount').textContent = available;
             document.getElementById('missingRawImagesCount').textContent = missing;
+            const historyCountEl = document.getElementById('missingHistoryCount');
+            if (historyCountEl) historyCountEl.textContent = historyMissing;
             syncBadges();
         }
 
@@ -2254,6 +2297,8 @@
             const imageEl = document.getElementById('available-images-badge');
             if (missingEl) missingEl.classList.toggle('active-filter', missingFilterOn);
             if (imageEl) imageEl.classList.toggle('active-filter', imageFilterOn);
+            const historyEl = document.getElementById('missing-history-badge');
+            if (historyEl) historyEl.classList.toggle('active-filter', document.getElementById('filterRawImages').value === 'history_missing');
         }
 
         function hideLoader() {
