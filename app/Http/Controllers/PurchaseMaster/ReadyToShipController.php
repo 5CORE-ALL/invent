@@ -76,6 +76,20 @@ class ReadyToShipController extends Controller
             ->values();
     }
 
+    /**
+     * Exactly the Ready-to-Ship rows listed on /ready-to-ship (same filters, one row per SKU), for other
+     * pages that must reflect that page, e.g. the ready-to-ship line in the MIP overdue email.
+     *
+     * @return \Illuminate\Support\Collection<int, ReadyToShip>
+     */
+    public static function rowsListedOnPage(): \Illuminate\Support\Collection
+    {
+        return self::mergeRowsBySku(
+            ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
+                ->filter(fn ($item) => self::readyToShipRowBelongsOnPage($item, null))
+        );
+    }
+
     private static function normalizeReadyToShipSku(?string $sku): string
     {
         if (empty($sku)) {
