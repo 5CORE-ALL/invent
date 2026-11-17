@@ -1434,6 +1434,7 @@
                                 </td>
                                 <td data-column="4" class="text-center" style="background-color: #e9ecef;">
                                     <input type="number" 
+                                        data-column="qty"
                                         value="{{ $item->qty }}" 
                                         readonly
                                         style="width:80px; text-align:center; background-color: #e9ecef; cursor: not-allowed; border: none;"
@@ -1797,6 +1798,15 @@
                     if (sel) sel.value = value;
                     return;
                 }
+                if (column === 'qty') {
+                    // Or. QTY cell: update the (read-only) input, then let recalcR2sAmount refresh Amount / totals.
+                    const inp = row.querySelector('td[data-column="4"] input');
+                    if (inp) {
+                        inp.value = value;
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                    return;
+                }
                 if (column === 'rec_qty') {
                     const inp = row.querySelector('input.r2s-rec-qty-input, input.auto-save[data-column="rec_qty"]');
                     if (inp) {
@@ -2015,7 +2025,7 @@
                 { key: 'supplier', label: 'R2S Supplier', type: 'text', source: 'r2s', column: 'supplier' },
                 { key: 'stage', label: 'Stage', type: 'select', source: 'forecast', column: 'Stage', options: function () { return STAGE_OPTS; } },
                 { key: 'nr', label: 'NRP', type: 'select', source: 'forecast', column: 'NR', options: function () { return NR_OPTS; } },
-                { key: 'or_qty', label: 'Or. QTY', type: 'text', readonly: true },
+                { key: 'or_qty', label: 'Or. QTY', type: 'number', source: 'r2s', column: 'qty' },
                 { key: 'rec_qty', label: 'Rec. QTY', type: 'number', source: 'r2s', column: 'rec_qty' },
                 { key: 'rate', label: 'Rate', type: 'number', source: 'r2s', column: 'rate' },
                 { key: 'cbm', label: 'CBM (unit)', type: 'text', readonly: true },
@@ -2141,7 +2151,7 @@
                             try {
                                 if (ch.source === 'r2s') {
                                     let sendVal = ch.newVal;
-                                    if (ch.column === 'rec_qty' && sendVal !== '' && !isNaN(Number(sendVal))) {
+                                    if ((ch.column === 'rec_qty' || ch.column === 'qty') && sendVal !== '' && !isNaN(Number(sendVal))) {
                                         sendVal = parseInt(sendVal, 10);
                                     }
                                     const res = await inlineUpdateAsync(sku, ch.column, sendVal);
@@ -2149,7 +2159,7 @@
                                         rowOk = false;
                                         errors.push(sku + ' · ' + ch.key + ': ' + (res.message || 'failed'));
                                     } else {
-                                        syncDomAfterR2sField(row, ch.column, ch.column === 'rec_qty' ? String(sendVal) : ch.newVal);
+                                        syncDomAfterR2sField(row, ch.column, (ch.column === 'rec_qty' || ch.column === 'qty') ? String(sendVal) : ch.newVal);
                                     }
                                 } else if (ch.source === 'forecast') {
                                     const stageSel = row.querySelector('.editable-select-stage');

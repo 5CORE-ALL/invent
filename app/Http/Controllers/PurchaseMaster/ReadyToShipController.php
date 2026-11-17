@@ -586,6 +586,17 @@ class ReadyToShipController extends Controller
             ]);
         }
 
+        // Or. QTY (the row's ordered quantity) — editable from the Edit Row modal.
+        if ($column === 'qty') {
+            if (! is_numeric($value) || (float) $value < 0) {
+                return response()->json(['success' => false, 'message' => 'Or. QTY must be a number, 0 or more.']);
+            }
+            $item->qty = (int) $value;
+            $item->save();
+
+            return response()->json(['success' => true]);
+        }
+
         if (!in_array($column, [
             'rec_qty',
             'rate',
