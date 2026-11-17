@@ -30,6 +30,9 @@
             font-size: 0.85rem;
         }
         .tabulator .tabulator-cell.mip-new-image-cell { padding: 0 !important; line-height: 0; }
+        /* Tighter cell padding so more columns fit on one screen */
+        #mfrg-table .tabulator-col .tabulator-col-content { padding-left: 3px; padding-right: 3px; }
+        #mfrg-table .tabulator-cell { padding-left: 3px; padding-right: 3px; }
         .mip-new-img-aspect { width: 52px; height: 52px; margin: 0 auto; }
         .tabulator .tabulator-cell.mip-new-image-cell a { display: block; line-height: 0; }
         .mip-new-img-aspect img { width: 100%; height: 100%; object-fit: contain; cursor: pointer; display: block; }
@@ -171,11 +174,12 @@
         /* Column show/hide menu — 4 groups */
         .mip-columns-wrap { position: relative; }
         .mip-columns-menu {
-            position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
+            /* Centered on screen (it used to hang off the toolbar button and spill off the right edge) */
+            position: fixed; z-index: 4000; top: 90px; left: 50%; transform: translateX(-50%); margin-top: 0;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
-            padding: 8px 10px; min-width: min(92vw, 720px); max-width: min(96vw, 780px);
-            max-height: 70vh; overflow: auto;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+            padding: 8px 10px; width: min(92vw, 760px);
+            max-height: 80vh; overflow: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
         }
         .mip-columns-menu .mip-columns-head {
             display: flex; justify-content: space-between; align-items: center;
@@ -1216,9 +1220,12 @@
                 // their content (the "data doesn't fit" look). With fitDataStretch each
                 // column sizes itself to its widest cell, then all columns are stretched
                 // proportionally to fill the page width.
-                layout: "fitDataStretch",
+                // Autofit to ONE screen: "fitColumns" squeezes every visible column to fit the page width
+                // (no horizontal scrollbar). Columns shrink down to minWidth, so the table re-fits itself
+                // whenever columns are shown/hidden or the window is resized.
+                layout: "fitColumns",
                 layoutColumnsOnNewData: true,
-                columnDefaults: { minWidth: 60, resizable: true, tooltip: true },
+                columnDefaults: { minWidth: 40, resizable: true, tooltip: true },
                 height: "70vh",
                 pagination: true,
                 paginationSize: 50,
