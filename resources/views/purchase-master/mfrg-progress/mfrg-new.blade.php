@@ -439,6 +439,7 @@
                                     <i class="fas fa-table-list"></i>
                                 </button>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="mip-followup-btn" title="Follow-Up"><i class="fas fa-comment-dots"></i></button>
+                                <button type="button" class="btn btn-sm btn-warning" id="mip-overdue-mail-btn" title="Draft email to supplier asking status of overdue items"><i class="fas fa-envelope"></i></button>
                                 @if ($canMipDelete)
                                 <button type="button" class="btn btn-sm btn-danger d-none" id="delete-selected-btn" title="Delete selected rows"><i class="fas fa-trash-alt"></i></button>
                                 @endif
@@ -549,6 +550,47 @@
                     <button type="button" class="btn btn-outline-secondary" id="mip-supplier-summary-csv-btn" title="Download summary as CSV">
                         <i class="fas fa-file-csv me-1"></i> Export CSV
                     </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Overdue status email draft --}}
+    <div class="modal fade" id="mipOverdueMailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title"><i class="fas fa-envelope me-2"></i> Draft: overdue items status</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-5">
+                            <label class="form-label fw-semibold small mb-1">Supplier</label>
+                            <select id="odm-supplier" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label fw-semibold small mb-1">To</label>
+                            <input type="text" id="odm-to" class="form-control form-control-sm" placeholder="supplier@email.com">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold small mb-1">Subject</label>
+                        <input type="text" id="odm-subject" class="form-control form-control-sm">
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="odm-overdue-only" checked>
+                        <label class="form-check-label small" for="odm-overdue-only">Overdue items only <span class="text-muted">(past D Date, or no D Date and ordered more than 30 days ago)</span></label>
+                    </div>
+                    <label class="form-label fw-semibold small mb-1">Message <span class="text-muted fw-normal">(editable)</span></label>
+                    <textarea id="odm-body" class="form-control" rows="18" style="font-family:Menlo,Consolas,monospace;font-size:12.5px;white-space:pre;"></textarea>
+                    <div id="odm-note" class="small text-muted mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="odm-copy-btn"><i class="fas fa-copy me-1"></i> Copy</button>
+                    <a class="btn btn-outline-primary" id="odm-gmail-btn" target="_blank" rel="noopener"><i class="fab fa-google me-1"></i> Open in Gmail</a>
+                    <a class="btn btn-primary" id="odm-mailto-btn"><i class="fas fa-paper-plane me-1"></i> Open in mail app</a>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1243,7 +1285,13 @@
                           const d = cell.getRow().getData();
                           postInline(d.sku || '', d.id || 0, 'qty', cell.getValue(), d.source_table)
                               .then(r => {
-                                  if (r && r.success) { updateStats(); }
+                                  if (r && r.success) {
+                                      // Zero-qty items are not "in progress" — drop the row now (same as after a reload).
+                                      if (!showArchived && !(parseFloat(cell.getValue()) > 0)) {
+                                          try { cell.getRow().delete(); } catch (e) {}
+                                      }
+                                      updateStats();
+                                  }
                                   else { alert((r && r.message) || 'Save failed'); }
                               })
                               .catch(err => alert('Could not save QTY: ' + (err && err.message ? err.message : err)));
@@ -2399,6 +2447,176 @@
             }
 
             document.getElementById('mip-supplier-summary-btn').addEventListener('click', openMipSupplierSummaryModal);
+
+            // ---------- Overdue status email draft ----------
+            const ODM_SENDER_NAME = @json(trim((string) (auth()->user()->name ?? '')));
+            const ODM_OVERDUE_AFTER_DAYS = 30; // used only when a row has no D Date
+            function odmParseDate(v) {
+                if (!v) return null;
+                const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(v);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            function odmFmt(d) {
+                return d ? d.getDate() + ' ' + d.toLocaleString('en-US', { month: 'short' }) + ' ' + d.getFullYear() : '-';
+            }
+            function odmToday() { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+            /** Returns { overdue, days, basis } for a row. days = days past the due date (or since order when no D Date). */
+            function odmOverdueInfo(r) {
+                const today = odmToday();
+                const due = odmParseDate(r.delivery_date);
+                if (due) {
+                    const days = Math.round((today - due) / 86400000);
+                    return { overdue: days > 0, days: Math.max(0, days), basis: 'due' };
+                }
+                const ordered = odmParseDate(r.created_at);
+                if (ordered) {
+                    const days = Math.round((today - ordered) / 86400000);
+                    return { overdue: days > ODM_OVERDUE_AFTER_DAYS, days: Math.max(0, days), basis: 'order' };
+                }
+                return { overdue: false, days: 0, basis: 'none' };
+            }
+            /** Rows the draft is built from: ticked rows if any, otherwise everything currently visible. */
+            function odmSourceRows() {
+                if (!table) return { rows: [], fromSelection: false };
+                const sel = getMipActiveSelectedRows().map(function (r) { return r.getData() || {}; });
+                if (sel.length) return { rows: sel, fromSelection: true };
+                return { rows: table.getData('active') || [], fromSelection: false };
+            }
+            function odmPad(s, n) { s = String(s == null ? '' : s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
+
+            function odmBuildDraft() {
+                const supplier = document.getElementById('odm-supplier').value;
+                const overdueOnly = document.getElementById('odm-overdue-only').checked;
+                const src = odmSourceRows();
+                const mine = src.rows.filter(function (r) {
+                    return String(r.supplier || '').trim() === supplier && String(r.sku || '').trim();
+                });
+                const items = mine
+                    .map(function (r) { return { r: r, info: odmOverdueInfo(r) }; })
+                    .filter(function (x) { return !overdueOnly || x.info.overdue; })
+                    .sort(function (a, b) { return b.info.days - a.info.days; });
+
+                const note = document.getElementById('odm-note');
+                const first = supplierFirstName(supplier) || 'Sir/Madam';
+                const subject = 'Status update required – overdue items' + (supplier ? ' (' + supplier + ')' : '');
+                document.getElementById('odm-subject').value = subject;
+
+                // Email recipient from the supplier's saved contact links.
+                const withLinks = mine.find(function (r) { return (r.supplier_platform_links || []).length; });
+                const emailLink = withLinks ? (withLinks.supplier_platform_links || []).find(function (p) { return p.label === 'Email'; }) : null;
+                const toEl = document.getElementById('odm-to');
+                if (!toEl.dataset.touched || toEl.dataset.forSupplier !== supplier) {
+                    toEl.value = emailLink && emailLink.url ? String(emailLink.url).replace(/^mailto:/i, '') : '';
+                    toEl.dataset.forSupplier = supplier;
+                    delete toEl.dataset.touched;
+                }
+
+                if (!items.length) {
+                    document.getElementById('odm-body').value = '';
+                    note.textContent = overdueOnly
+                        ? 'No overdue items for ' + supplier + (src.fromSelection ? ' in the selected rows.' : ' in the current view.') + ' Turn off "Overdue items only" to list everything.'
+                        : 'No items for this supplier.';
+                    odmSyncLinks();
+                    return;
+                }
+
+                const W = { sku: Math.max(3, ...items.map(function (x) { return String(x.r.sku || '').length; })) + 2 };
+                const lines = [];
+                lines.push(odmPad('SKU', W.sku) + odmPad('QTY', 8) + odmPad('ORDER DATE', 14) + odmPad('DUE DATE', 14) + 'DELAY');
+                lines.push('-'.repeat(W.sku + 8 + 14 + 14 + 12));
+                let totalQty = 0;
+                items.forEach(function (x) {
+                    const r = x.r;
+                    const qty = parseFloat(r.qty) || 0;
+                    totalQty += qty;
+                    const due = odmParseDate(r.delivery_date);
+                    const delay = x.info.basis === 'due'
+                        ? x.info.days + ' days past due'
+                        : (x.info.basis === 'order' ? x.info.days + ' days since order' : '-');
+                    lines.push(odmPad(r.sku, W.sku) + odmPad(qty ? qty.toLocaleString('en-US') : '-', 8) + odmPad(odmFmt(odmParseDate(r.created_at)), 14) + odmPad(due ? odmFmt(due) : 'not set', 14) + delay);
+                });
+
+                const body = [
+                    'Dear ' + first + ',',
+                    '',
+                    'Hope you are doing well.',
+                    '',
+                    'We are following up on the orders listed below, which are overdue. Could you please share an update on each item:',
+                    '  - current production / readiness status',
+                    '  - confirmed ready date and expected shipping date',
+                    '  - reason for the delay, if any, and any support you need from us',
+                    '',
+                    lines.join('\n'),
+                    '',
+                    'Total: ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ', ' + totalQty.toLocaleString('en-US') + ' units.',
+                    '',
+                    'Please reply with the status of each SKU at your earliest, as these are delayed and we need to plan accordingly.',
+                    '',
+                    'Thank you and best regards,',
+                    ODM_SENDER_NAME || '',
+                ].join('\n');
+
+                document.getElementById('odm-body').value = body;
+                note.textContent = items.length + ' item(s) listed' + (src.fromSelection ? ' from your selected rows' : ' from the current view') + '. You can edit the message before sending.';
+                odmSyncLinks();
+            }
+
+            function odmSyncLinks() {
+                const to = document.getElementById('odm-to').value.trim();
+                const su = document.getElementById('odm-subject').value;
+                const bo = document.getElementById('odm-body').value;
+                document.getElementById('odm-mailto-btn').href = 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(su) + '&body=' + encodeURIComponent(bo);
+                document.getElementById('odm-gmail-btn').href = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(su) + '&body=' + encodeURIComponent(bo);
+            }
+
+            function openOverdueMailModal() {
+                const src = odmSourceRows();
+                const names = [];
+                src.rows.forEach(function (r) {
+                    const n = String(r.supplier || '').trim();
+                    if (n && names.indexOf(n) === -1) names.push(n);
+                });
+                names.sort(function (a, b) { return a.localeCompare(b); });
+                if (!names.length) {
+                    alert('No suppliers in the current view. Pick a supplier (or tick rows) first.');
+                    return;
+                }
+                const sel = document.getElementById('odm-supplier');
+                sel.innerHTML = names.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
+                const preferred = (currentSupplierFilter && names.indexOf(currentSupplierFilter) !== -1) ? currentSupplierFilter : names[0];
+                sel.value = preferred;
+                const toEl = document.getElementById('odm-to');
+                delete toEl.dataset.touched;
+                odmBuildDraft();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('mipOverdueMailModal')).show();
+            }
+
+            document.getElementById('mip-overdue-mail-btn').addEventListener('click', openOverdueMailModal);
+            document.getElementById('odm-supplier').addEventListener('change', function () {
+                delete document.getElementById('odm-to').dataset.touched;
+                odmBuildDraft();
+            });
+            document.getElementById('odm-overdue-only').addEventListener('change', odmBuildDraft);
+            document.getElementById('odm-to').addEventListener('input', function () { this.dataset.touched = '1'; odmSyncLinks(); });
+            document.getElementById('odm-subject').addEventListener('input', odmSyncLinks);
+            document.getElementById('odm-body').addEventListener('input', odmSyncLinks);
+            document.getElementById('odm-copy-btn').addEventListener('click', function () {
+                const btn = this;
+                const text = 'To: ' + document.getElementById('odm-to').value.trim() + '\nSubject: ' + document.getElementById('odm-subject').value + '\n\n' + document.getElementById('odm-body').value;
+                const done = function () {
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied';
+                    setTimeout(function () { btn.innerHTML = orig; }, 1500);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(done).catch(function () {
+                        const ta = document.getElementById('odm-body'); ta.select(); document.execCommand('copy'); done();
+                    });
+                } else {
+                    const ta = document.getElementById('odm-body'); ta.select(); document.execCommand('copy'); done();
+                }
+            });
 
             document.getElementById('mip-supplier-summary-csv-btn').addEventListener('click', function () {
                 if (!mipSupplierSummaryCsvLines.length || mipSupplierSummaryCsvLines.length <= 1) {

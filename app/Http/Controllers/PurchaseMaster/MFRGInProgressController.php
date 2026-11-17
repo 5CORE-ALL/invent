@@ -51,6 +51,7 @@ class MFRGInProgressController extends Controller
         // transit are flagged transit_inv_status = 1 and must not appear on the MIP page.
         $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
             ->whereNull('deleted_at')
+            ->where('qty', '>', 0) // zero-qty rows are not in MIP / R2S
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -162,6 +163,7 @@ class MFRGInProgressController extends Controller
         if (!$archived) {
             $readyToShipData = ReadyToShip::where('transit_inv_status', 0)
                 ->whereNull('deleted_at')
+                ->where('qty', '>', 0) // zero-qty rows are not in MIP / R2S
                 ->orderBy('created_at', 'desc')
                 ->get();
             
