@@ -13205,14 +13205,16 @@ class ChannelMasterController extends Controller
         $l60Orders = $l60Badge['orders'];
 
         // L30 sales / GPFT / GROI: same rounded badges as /temu2-tabulator.
-        $useLiveSales = $liveRevenue > 0 || $liveBadge['qty'] > 0;
-        $l30Sales = $useLiveSales ? $liveBadge['l30'] : ($metrics?->total_sales ?? 0);
-        $l30Orders = $useLiveSales ? $liveBadge['orders'] : ($metrics?->total_orders ?? 0);
-        $totalQuantity = $useLiveSales ? $liveBadge['qty'] : ($metrics?->total_quantity ?? 0);
-        $totalProfit = $useLiveSales ? $liveBadge['pft'] : ($metrics?->total_pft ?? 0);
-        $totalCogs = $useLiveSales ? $liveBadge['cogs'] : ($metrics?->total_cogs ?? 0);
-        $gProfitPct = $useLiveSales ? $liveBadge['gpft'] : ($metrics?->pft_percentage ?? 0);
-        $gRoi = $useLiveSales ? $liveBadge['groi'] : ($metrics?->roi_percentage ?? 0);
+        // temu2_orders is the source of truth (same as /temu2-tabulator). A live $0 is real, so never
+        // fall back to the old marketplace_daily_metrics row: it still holds sales from when Temu 2
+        // had orders and made this channel show ~$25k while the tabulator showed $0.
+        $l30Sales = $liveBadge['l30'];
+        $l30Orders = $liveBadge['orders'];
+        $totalQuantity = $liveBadge['qty'];
+        $totalProfit = $liveBadge['pft'];
+        $totalCogs = $liveBadge['cogs'];
+        $gProfitPct = $liveBadge['gpft'];
+        $gRoi = $liveBadge['groi'];
         // Live Spend from temu2_campaign_reports (/temu2/ads) — same as Temu 1 path
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
         $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
