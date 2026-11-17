@@ -1441,21 +1441,10 @@
                     let data = response.data || [];
                     window.mipReadyToShipItems = response.ready_to_ship || [];
                     const normSku = function (s) { return String(s == null ? '' : s).trim().toUpperCase(); };
-                    // SKUs that already exist as real MIP rows (anything not from ready_to_ship).
-                    const mipSkus = new Set(
-                        data.filter(i => (i.source_table || '').toString() !== 'ready_to_ship')
-                            .map(i => normSku(i.sku))
-                            .filter(Boolean)
-                    );
-                    // Match the old MIP page: skip genuine NR rows (never skip RTS for the NR rule),
-                    // and drop the bare Ready-to-Ship duplicate when the same SKU is already a MIP row.
-                    let filtered = data.filter(function (item) {
-                        const isRts = (item.source_table || '').toString() === 'ready_to_ship';
-                        const nr = (item.nr || '').toString().trim().toUpperCase();
-                        if (!isRts && nr === 'NR') return false;
-                        if (isRts && mipSkus.has(normSku(item.sku))) return false;
-                        return true;
-                    });
+                    // Show EVERY order under MIP. Rows were previously hidden here when the SKU was flagged
+                    // NR in Forecast, but Forecast still counts those orders in its MIP column, so the two
+                    // pages disagreed (e.g. 72 vs 60).
+                    let filtered = data;
                     uniqueSuppliers = [...new Set(filtered.map(i => i.supplier))].filter(Boolean).sort();
                     // D Date not entered -> default it to O Date + 30 days (display default, not saved
                     // until someone edits the D Date). Flagged so the cell can show it as automatic.
