@@ -2116,7 +2116,7 @@
                 { key: 'qty', label: 'QTY', type: 'number' },
                 { key: 'created_at', label: 'O Date', type: 'date' },
                 { key: 'delivery_date', label: 'D Date', type: 'date' },
-                { key: 'supplier', label: 'Supplier', type: 'select', options: function () { return [['', '']].concat(ALL_SUPPLIERS.map(function (s) { return [s, s]; })); } },
+                { key: 'supplier', label: 'Supplier', type: 'select', searchable: true, options: function () { return [['', '']].concat(ALL_SUPPLIERS.map(function (s) { return [s, s]; })); } },
                 { key: 'supplier_sku', label: 'Supplier SKU', type: 'text' },
                 { key: 'rate', label: 'Rate (CP)', type: 'number' },
                 { key: 'CBM', label: 'CBM', type: 'number', note: 'Saved to product master' },
