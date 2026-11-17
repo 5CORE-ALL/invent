@@ -867,6 +867,10 @@
                         });
                     }
                     setStatus('Saved ' + (row.sku || row.parent || ''), true);
+                    // The save added the missing PARENT row for this family: reload so its row shows up.
+                    if (result.json.parent_created) {
+                        table.replaceData();
+                    }
                 }).catch(function (err) {
                     cell.restoreOldValue();
                     setStatus(err && err.message ? err.message : 'Could not save ' + (row.sku || ''), false);

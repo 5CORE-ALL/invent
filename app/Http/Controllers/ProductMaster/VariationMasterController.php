@@ -21,6 +21,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VariationMasterController extends Controller
 {
+    /** True when this request added a missing PARENT row, so the page reloads its rows to show it. */
+    private bool $parentRowCreated = false;
+
     public function index(Request $request): View
     {
         return view('variation-master', [
@@ -129,6 +132,7 @@ class VariationMasterController extends Controller
 
         return response()->json([
             'success' => true,
+            'parent_created' => $this->parentRowCreated,
             'parent' => $this->normalizeDisplay($product->parent),
             'variation_type' => $values['variation_type'] ?? '',
             'variation_name' => $values['variation_name'] ?? '',
@@ -156,9 +160,9 @@ class VariationMasterController extends Controller
         ]);
 
         $parent = ListingManagerFamily::normalizeParentKey((string) $request->input('parent'));
-        $row = $parent !== '' ? VariationListingContent::parentProduct($parent) : null;
+        $row = $parent !== '' ? VariationListingContent::ensureParentProduct($parent) : null;
         if (! $row) {
-            return response()->json(['success' => false, 'message' => 'Add a PARENT row for '.$parent.' on CP master before uploading parent images.'], 422);
+            return response()->json(['success' => false, 'message' => 'No SKU with parent '.$parent.' was found on CP master.'], 422);
         }
 
         $values = is_array($row->Values) ? $row->Values : [];
@@ -408,6 +412,7 @@ class VariationMasterController extends Controller
 
         return response()->json([
             'success' => $childUpdated > 0 || $parentsUpdated > 0,
+            'parent_created' => $this->parentRowCreated,
             'message' => $message,
             'sku_updated' => $childUpdated,
             'parents_updated' => $parentsUpdated,
@@ -1314,10 +1319,14 @@ class VariationMasterController extends Controller
         }
 
         if (! $row || ! ListingManagerFamily::isParentSku((string) $row->sku)) {
-            $row = VariationListingContent::parentProduct($parent);
+            // A family with SKUs but no PARENT row gets its PARENT row here, so the text can be typed straight away.
+            $row = VariationListingContent::ensureParentProduct($parent, $created);
+            if ($created) {
+                $this->parentRowCreated = true;
+            }
         }
         if (! $row) {
-            return 'Add a PARENT row for '.$parent.' on CP master before saving listing text.';
+            return 'No SKU with parent '.$parent.' was found on CP master, so there is nothing to save the listing text for.';
         }
 
         $values = is_array($row->Values) ? $row->Values : [];

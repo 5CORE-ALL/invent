@@ -118,6 +118,55 @@ class VariationListingContent
             ?: ProductMaster::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
     }
 
+    /**
+     * The PARENT row of a family, created when the family has SKUs but no PARENT row yet (the same row Product Master
+     * adds with a new product: sku "PARENT {parent}", parent column = the parent). An archived PARENT row comes back.
+     * Returns null only when no SKU of that parent exists, so a typo never creates a row.
+     */
+    public static function ensureParentProduct(string $parent, ?bool &$created = null): ?ProductMaster
+    {
+        $created = false;
+        $parent = ListingManagerFamily::normalizeParentKey($parent);
+        if ($parent === '') {
+            return null;
+        }
+
+        $existing = self::parentProduct($parent);
+        if ($existing) {
+            return $existing;
+        }
+
+        $upper = strtoupper($parent);
+        $archived = ProductMaster::onlyTrashed()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.$upper])
+            ->first();
+        if ($archived) {
+            $archived->restore();
+            self::forget($parent);
+            $created = true;
+
+            return $archived;
+        }
+
+        $hasChild = ProductMaster::query()
+            ->whereRaw('UPPER(TRIM(parent)) IN (?, ?)', [$upper, 'PARENT '.$upper])
+            ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
+            ->exists();
+        if (! $hasChild) {
+            return null;
+        }
+
+        $row = ProductMaster::create([
+            'sku' => 'PARENT '.$parent,
+            'parent' => $parent,
+            'Values' => null,
+        ]);
+        self::forget($parent);
+        $created = true;
+
+        return $row;
+    }
+
     public static function parentKeyFor(ProductMaster $product): string
     {
         $fromColumn = ListingManagerFamily::normalizeParentKey((string) ($product->parent ?? ''));
