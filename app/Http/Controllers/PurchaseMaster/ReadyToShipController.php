@@ -62,6 +62,33 @@ class ReadyToShipController extends Controller
         return self::$activePmKeys;
     }
 
+    /**
+     * Exactly the Ready-to-Ship rows listed on /ready-to-ship (same filters), for other pages that must
+     * reflect that page, e.g. the ready-to-ship line in the MIP overdue email.
+     *
+     * @return \Illuminate\Support\Collection<int, ReadyToShip>
+     */
+    public static function rowsListedOnPage(): \Illuminate\Support\Collection
+    {
+        $forecastData = DB::table('forecast_analysis')
+            ->select('sku', 'stage', 'nr')
+            ->get()
+            ->groupBy(fn ($item) => self::normalizeReadyToShipSku($item->sku))
+            ->map(function ($group) {
+                $withStage = $group->firstWhere('stage', '!=', null);
+
+                return ($withStage && ! empty(trim((string) $withStage->stage))) ? $withStage : $group->first();
+            });
+
+        return ReadyToShip::where('transit_inv_status', 0)->whereNull('deleted_at')->get()
+            ->filter(function ($item) use ($forecastData) {
+                $sku = self::normalizeReadyToShipSku($item->sku);
+
+                return self::readyToShipRowBelongsOnPage($item, $forecastData->get($sku));
+            })
+            ->values();
+    }
+
     private static function normalizeReadyToShipSku(?string $sku): string
     {
         if (empty($sku)) {

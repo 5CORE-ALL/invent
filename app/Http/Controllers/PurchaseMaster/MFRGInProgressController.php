@@ -162,10 +162,8 @@ class MFRGInProgressController extends Controller
         // overdue-status email can mention items from the same supplier that are already ready to ship.
         $readyToShipSummary = [];
         if (! $archived) {
-            $readyToShipSummary = ReadyToShip::where('transit_inv_status', 0)
-                ->whereNull('deleted_at')
-                ->where('qty', '>', 0)
-                ->get(['sku', 'supplier', 'qty'])
+            // Same rows as the /ready-to-ship page (qty > 0, active product master, not all_good, not in transit).
+            $readyToShipSummary = \App\Http\Controllers\PurchaseMaster\ReadyToShipController::rowsListedOnPage()
                 ->map(fn ($r) => [
                     'sku' => trim((string) $r->sku),
                     'supplier' => trim((string) $r->supplier),
