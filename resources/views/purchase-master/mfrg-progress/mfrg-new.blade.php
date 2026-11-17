@@ -1238,7 +1238,9 @@
                 // whenever columns are shown/hidden or the window is resized.
                 layout: "fitColumns",
                 layoutColumnsOnNewData: true,
-                columnDefaults: { minWidth: 40, resizable: true, tooltip: true },
+                // widthShrink: 1 is what lets columns that have a fixed `width:` actually shrink under
+                // fitColumns (without it they stay at their set width and the table scrolls sideways).
+                columnDefaults: { minWidth: 40, widthShrink: 1, resizable: true, tooltip: true },
                 height: "70vh",
                 pagination: true,
                 paginationSize: 50,
@@ -1275,13 +1277,13 @@
                               .then(r => { if (!r || !r.success) alert((r && r.message) || 'Could not save supplier.'); })
                               .catch(err => { alert('Could not save supplier: ' + (err && err.message ? err.message : err)); });
                       } },
-                    { title: "Category", field: "Category", width: 120, hozAlign: "center",
+                    { title: "Category", field: "Category", width: 120, minWidth: 64, hozAlign: "center",
                       headerTooltip: "Category (per SKU, or from supplier when not set)",
                       formatter: function (cell) {
                           const v = (cell.getValue() || "").trim();
                           return v ? v : '<span class="text-muted">—</span>';
                       } },
-                    { title: "SKU", field: "sku", width: 190,
+                    { title: "SKU", field: "sku", width: 190, minWidth: 110,
                       formatter: function (cell) {
                           const v = cell.getValue() || '';
                           if (!v) return '';
