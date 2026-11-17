@@ -225,7 +225,6 @@
                         </div>
                         <button type="button" id="pushPickerBtn" class="btn btn-outline-primary btn-sm" title="Choose marketplaces and push the selected rows"><i class="fas fa-search"></i> Push</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm im-icon-expand" title="Push Selected" aria-label="Push Selected"><i class="fas fa-cloud-upload-alt"></i><span class="im-icon-expand-text">Push Selected</span></button>
-                        <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <select id="rowTypeFilter" class="form-select form-select-sm" style="width:auto;" title="Which rows to list: SKU rows, PARENT rows, or both">
                             <option value="sku" selected>SKU</option>
                             <option value="parent">Parent</option>
