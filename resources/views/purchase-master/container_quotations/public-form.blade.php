@@ -130,13 +130,25 @@
         // is only a minimum, so warn if the total is lower than that.
         var p = document.getElementById('qfPickup'), f = document.getElementById('qfFreight'), t = document.getElementById('qfTotal');
         if (!p || !f || !t) return;
+        function sum() { return Math.round(((parseFloat(p.value) || 0) + (parseFloat(f.value) || 0)) * 100) / 100; }
         function check() {
-            var min = (parseFloat(p.value) || 0) + (parseFloat(f.value) || 0);
             var v = parseFloat(t.value);
-            t.setCustomValidity(!isNaN(v) && v < min ? 'Total must include all charges (at least Pickup + Freight).' : '');
+            t.setCustomValidity(!isNaN(v) && v < sum() ? 'Total must include all charges (at least Pickup + Freight).' : '');
         }
-        [p, f, t].forEach(function (el) { el.addEventListener('input', check); });
-        check();
+        // Total fills itself with Pickup + Freight; type over it if there are other charges (then it stays as typed).
+        var manual = t.value !== '' && Math.round(parseFloat(t.value) * 100) / 100 !== sum();
+        function auto() {
+            if (manual) return;
+            t.value = (p.value === '' && f.value === '') ? '' : sum();
+        }
+        p.addEventListener('input', function () { auto(); check(); });
+        f.addEventListener('input', function () { auto(); check(); });
+        t.addEventListener('input', function () {
+            manual = t.value.trim() !== '';
+            if (!manual) auto();
+            check();
+        });
+        auto(); check();
     })();
 </script>
 </body>

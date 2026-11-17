@@ -891,6 +891,10 @@
                 tr.querySelector('.qr-pickup').value = q.pickup_charges ?? '';
                 tr.querySelector('.qr-freight').value = q.freight ?? '';
                 tr.querySelector('.qr-total').value = q.total ?? '';
+                // A saved total that differs from Pickup + Freight was typed by hand (other charges): keep it as is.
+                const sum = round2(num(q.pickup_charges) + num(q.freight));
+                tr.dataset.totalManual = (q.total !== null && q.total !== undefined && q.total !== '' && round2(num(q.total)) !== sum) ? '1' : '0';
+                if (tr.dataset.totalManual === '0') qrAutoTotal(tr);
                 qrBody.appendChild(tr);
                 qrRecalc();
                 return tr;
@@ -911,7 +915,26 @@
                 qrRecalc();
                 bootstrap.Modal.getOrCreateInstance(qrModalEl).show();
             }
-            qrBody.addEventListener('input', qrRecalc);
+            // Total fills itself with Pickup + Freight; type over it if there are other charges (then it stays as typed).
+            const round2 = n => Math.round(n * 100) / 100;
+            function qrAutoTotal(tr) {
+                if (tr.dataset.totalManual === '1') return;
+                const p = tr.querySelector('.qr-pickup').value, f = tr.querySelector('.qr-freight').value;
+                tr.querySelector('.qr-total').value = (String(p).trim() === '' && String(f).trim() === '') ? '' : round2(num(p) + num(f));
+            }
+            qrBody.addEventListener('input', function (e) {
+                const tr = e.target.closest('tr');
+                if (tr) {
+                    if (e.target.classList.contains('qr-total')) {
+                        // typing a total by hand locks it; clearing it hands control back to the automatic sum
+                        tr.dataset.totalManual = e.target.value.trim() === '' ? '0' : '1';
+                        if (tr.dataset.totalManual === '0') qrAutoTotal(tr);
+                    } else if (e.target.classList.contains('qr-pickup') || e.target.classList.contains('qr-freight')) {
+                        qrAutoTotal(tr);
+                    }
+                }
+                qrRecalc();
+            });
             qrBody.addEventListener('click', function (e) {
                 const del = e.target.closest('.qr-del');
                 if (!del) return;
