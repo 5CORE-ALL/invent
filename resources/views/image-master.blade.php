@@ -579,6 +579,7 @@
                         <span class="text-muted small ms-auto">Drag marketplaces between columns to regroup. Green dot = already pushed.</span>
                     </div>
                     <div id="mpgWrap" class="mpg-wrap"></div>
+                    <div id="mpgOthers" class="mt-3"></div>
                 </div>
                 <div class="modal-footer">
                     <span class="me-auto small text-muted" id="mpgSelCount">0 selected</span>
@@ -1403,12 +1404,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         return `<label class="mpg-item ${st.disabled ? 'disabled' : ''}" draggable="true" data-mp="${esc(mp)}" title="${esc(st.title || '')}">
                             <input type="checkbox" class="form-check-input mpg-chk m-0" data-mp="${esc(mp)}" ${st.disabled ? 'disabled' : ''} ${mpPickerSelected.has(mp) && !st.disabled ? 'checked' : ''}>
                             <span class="marketplace-btn ${MP_TILE[mp] || 'btn-secondary'}">${esc(MP_SHORT[mp] || mp)}</span>
-                            <span class="mpg-lbl">${esc(LABELS[mp] || mp)}</span>
+                            <span class="mpg-lbl">${esc(cmName(mp))}</span>
                             <span class="bp-mp-dot ${pushed ? 'pushed' : ''}"></span>
                         </label>`;
                     }).join('')}
                 </div>
             </div>`).join('');
+        const oth = document.getElementById('mpgOthers');
+        if (oth) {
+            oth.innerHTML = cmOthers.length
+                ? `<div class="small fw-semibold text-muted mb-2">Other channels in Channel Master (image push not available)</div>
+                   <div class="d-flex flex-wrap gap-2">${cmOthers.map(c => `<span class="mpg-item disabled" style="cursor:default;min-width:180px;">
+                        <input type="checkbox" class="form-check-input m-0" disabled>
+                        ${c.logo ? `<img src="${esc(c.logo)}" alt="" style="width:26px;height:22px;object-fit:contain;" onerror="this.style.display='none'">` : ''}
+                        <span class="mpg-lbl">${esc(c.channel)}</span></span>`).join('')}</div>`
+                : '';
+        }
         refreshMpPickerChecks();
     }
 
@@ -1545,7 +1556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const urls = pmImageUrls(row);
         if (!urls.length) { toast('No images on Product Master for this SKU — open Edit first.', false); return; }
         if (!confirmEbay3Push(mps)) return;
-        if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${mps.length} marketplace(s)?\n\n${mps.map(mp => LABELS[mp] || mp).join(', ')}\n\nThis will replace existing marketplace images.`)) return;
+        if (!window.confirm(`Push ${urls.length} image(s) for ${sku} to ${mps.length} marketplace(s)?\n\n${mps.map(mp => cmName(mp)).join(', ')}\n\nThis will replace existing marketplace images.`)) return;
         bootstrap.Modal.getOrCreateInstance(document.getElementById('mpPickerModal')).hide();
         setPushProgress(true, `Queuing push for ${mps.length} marketplace(s)…`, '', false, true);
         queueImagePushAndWait({
@@ -2064,13 +2075,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Marketplaces shown in this modal = active channels (with logos) from the Active Channel pages.
     let heroChannels = [];
+    let cmOthers = [];
     fetch('/image-master/active-channels', { headers: { 'Accept': 'application/json' } })
         .then(r => r.json()).then(j => {
             heroChannels = (j && Array.isArray(j.channels)) ? j.channels : [];
+            cmOthers = (j && Array.isArray(j.others)) ? j.others : [];
             if (document.getElementById('heroImageModal')?.classList.contains('show')) renderHeroRows();
+            if (document.getElementById('mpPickerModal')?.classList.contains('show')) renderMpPicker();
         }).catch(() => {});
     const heroMpList = () => heroChannels.length ? heroChannels.map(c => c.key) : MARKETPLACES;
-    const heroMpInfo = (mp) => heroChannels.find(c => c.key === mp) || { key: mp, label: LABELS[mp] || mp, logo: null };
+    // Channel name exactly as in Channel Master (falls back to the registry label).
+    const cmName = (mp) => { const c = heroChannels.find(x => x.key === mp); return (c && c.channel) || LABELS[mp] || mp; };
+    const heroMpInfo = (mp) => { const c = heroChannels.find(x => x.key === mp); return c ? { ...c, label: c.channel || c.label } : { key: mp, label: LABELS[mp] || mp, logo: null }; };
 
     let heroChecked = new Set(); // ticked marketplaces: changing one ticked dropdown sets all ticked ones
     function syncHeroSelAll() {

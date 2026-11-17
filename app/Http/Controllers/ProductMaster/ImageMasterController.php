@@ -738,6 +738,7 @@ class ImageMasterController extends Controller
     public function activeChannels(): \Illuminate\Http\JsonResponse
     {
         $out = [];
+        $others = [];
         try {
             if (Schema::hasTable('channel_master')) {
                 $norm = static fn ($v) => strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $v));
@@ -769,22 +770,32 @@ class ImageMasterController extends Controller
                         }
                     }
                 }
+                $matchedIds = [];
                 foreach ($registry->channels() as $ch) {
-                    if (! ($ch['image'] ?? false)) {
-                        continue;
-                    }
                     $cands = array_merge([$norm($ch['label']), $norm($ch['key'])], $extra[$ch['key']] ?? []);
                     foreach ($cands as $cand) {
                         if (isset($byName[$cand])) {
                             $r = $byName[$cand];
-                            $out[] = [
-                                'key' => $ch['key'],
-                                'label' => $ch['label'],
-                                'channel' => (string) $r->channel,
-                                'logo' => $hasLogo && ! empty($r->logo) ? '/storage/'.ltrim((string) $r->logo, '/') : null,
-                            ];
+                            $matchedIds[$r->id ?? spl_object_id($r)] = true;
+                            if ($ch['image'] ?? false) {
+                                $out[] = [
+                                    'key' => $ch['key'],
+                                    'label' => $ch['label'],
+                                    'channel' => (string) $r->channel,
+                                    'logo' => $hasLogo && ! empty($r->logo) ? '/storage/'.ltrim((string) $r->logo, '/') : null,
+                                ];
+                            }
                             break;
                         }
+                    }
+                }
+                // Active channel-master channels with no image-push support: listed (read-only) so every channel is visible.
+                foreach ($rows as $r) {
+                    if (! isset($matchedIds[$r->id ?? spl_object_id($r)])) {
+                        $others[] = [
+                            'channel' => (string) $r->channel,
+                            'logo' => $hasLogo && ! empty($r->logo) ? '/storage/'.ltrim((string) $r->logo, '/') : null,
+                        ];
                     }
                 }
             }
@@ -792,7 +803,7 @@ class ImageMasterController extends Controller
             Log::warning('ImageMaster activeChannels failed', ['error' => $e->getMessage()]);
         }
 
-        return response()->json(['success' => true, 'channels' => $out]);
+        return response()->json(['success' => true, 'channels' => $out, 'others' => $others]);
     }
 
     private function slotNameKind(int $slot): string
