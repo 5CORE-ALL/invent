@@ -300,6 +300,11 @@
                             <tbody id="qrBody"></tbody>
                         </table>
                     </div>
+                    <datalist id="qcShippingLineList">
+                        @foreach ($shippingLines as $sl)
+                            <option value="{{ $sl }}"></option>
+                        @endforeach
+                    </datalist>
                     <datalist id="qcForwarderList">
                         @foreach ($forwarders as $f)
                             <option value="{{ $f }}"></option>
@@ -581,6 +586,7 @@
                 discharge_port: 'CMH, Ohio, USA',
             };
             // Pickup address last saved per supplier (from the DB) — prefilled when the same supplier is chosen again.
+            const FORWARDER_NAMES = @json($forwarders->values());
             const supplierDefaults = @json((object) $supplierDefaults);
             const supKey = s => String(s || '').trim().toLowerCase();
             const SUPPLIER_FIELDS = ['pickup_address', 'loading_port'];
@@ -860,8 +866,8 @@
                 q = q || {};
                 const tr = document.createElement('tr');
                 tr.innerHTML =
-                    '<td><input type="text" class="form-control form-control-sm qr-forwarder" list="qcForwarderList" maxlength="255" placeholder="Forwarder" required></td>' +
-                    '<td><input type="text" class="form-control form-control-sm qr-line" maxlength="255" placeholder="Shipping line" required></td>' +
+                    '<td><select class="form-select form-select-sm qr-forwarder" required></select></td>' +
+                    '<td><input type="text" class="form-control form-control-sm qr-line" list="qcShippingLineList" maxlength="255" placeholder="Shipping line" autocomplete="off" required></td>' +
                     '<td><input type="date" class="form-control form-control-sm qr-sail" required></td>' +
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-pickup" required></td>' +
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-freight" required></td>' +
@@ -872,7 +878,14 @@
                     tr.querySelector('.qr-forwarder').closest('td').insertAdjacentHTML('beforeend',
                         '<div class="small text-muted">via forwarder form</div>');
                 }
-                tr.querySelector('.qr-forwarder').value = q.forwarder ?? '';
+                // Forwarder dropdown (names from the Suppliers page); keep a saved name even if it is no longer in the list.
+                const fwSel = tr.querySelector('.qr-forwarder');
+                const fwNames = FORWARDER_NAMES.slice();
+                const fwCur = String(q.forwarder ?? '').trim();
+                if (fwCur && !fwNames.some(n => n.toLowerCase() === fwCur.toLowerCase())) fwNames.push(fwCur);
+                fwSel.innerHTML = '<option value="">Select forwarder</option>' +
+                    fwNames.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+                fwSel.value = fwNames.find(n => n.toLowerCase() === fwCur.toLowerCase()) || '';
                 tr.querySelector('.qr-line').value = q.shipping_line ?? '';
                 tr.querySelector('.qr-sail').value = q.est_dt_sail ?? '';
                 tr.querySelector('.qr-pickup').value = q.pickup_charges ?? '';
@@ -947,6 +960,14 @@
                         throw new Error(msg);
                     }
                     table.updateData([{ container_number: json.container_number, quotes: json.quotes }]);
+                    // Newly typed shipping lines become dropdown choices straight away (and stay for next time via the DB).
+                    const slList = document.getElementById('qcShippingLineList');
+                    (json.quotes || []).forEach(function (q) {
+                        const name = String(q.shipping_line || '').trim();
+                        if (name && ![...slList.options].some(o => o.value.toLowerCase() === name.toLowerCase())) {
+                            slList.appendChild(new Option(name, name));
+                        }
+                    });
                     bootstrap.Modal.getOrCreateInstance(qrModalEl).hide();
                 } catch (err) {
                     qrErr.textContent = err.message || 'Could not save.';

@@ -23,10 +23,28 @@ class ContainerQuotationController extends Controller
 
     public function index()
     {
-        $forwarders = ContainerQuoteReceived::query()
-            ->whereNotNull('forwarder')->where('forwarder', '!=', '')
-            ->pluck('forwarder')
-            ->map(fn ($f) => trim((string) $f))->filter()->unique()->sort()->values();
+        // Forwarder dropdown: everyone saved as type "Forwarders" on the Suppliers page,
+        // plus any name already used on a received quote.
+        $forwarders = Supplier::query()
+            ->whereNull('deleted_at')->where('type', 'Forwarders')
+            ->whereNotNull('name')->where('name', '!=', '')
+            ->pluck('name')
+            ->merge(
+                ContainerQuoteReceived::query()
+                    ->whereNotNull('forwarder')->where('forwarder', '!=', '')
+                    ->pluck('forwarder')
+            )
+            ->map(fn ($f) => trim((string) $f))->filter()
+            ->unique(fn ($f) => mb_strtolower($f))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        // Shipping lines used on any quote so far — offered as a dropdown next time.
+        $shippingLines = ContainerQuoteReceived::query()
+            ->whereNotNull('shipping_line')->where('shipping_line', '!=', '')
+            ->pluck('shipping_line')
+            ->map(fn ($s) => trim((string) $s))->filter()
+            ->unique(fn ($s) => mb_strtolower($s))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)->values();
 
         $suppliers = Supplier::where('type', 'Supplier')
             ->whereNotNull('name')->where('name', '!=', '')
@@ -52,7 +70,7 @@ class ContainerQuotationController extends Controller
         // Mailbox the logged-in user's quote requests go out from (shown in the Send popup).
         $senderEmail = $canEdit ? app(ContainerQuoteRequestController::class)->sender()['email'] : 'sourcing1@5core.com';
 
-        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierDefaults', 'senderEmail'));
+        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierDefaults', 'senderEmail', 'shippingLines'));
     }
 
     /**
