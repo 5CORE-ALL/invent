@@ -1104,8 +1104,18 @@
             return String(fromQtyRaw ?? '').trim() !== '' && String(fromInvRaw ?? '').trim() !== '' && !isNaN(fromQty) && !isNaN(fromInv) && fromInv < fromQty;
         }
 
+        // Same bands as the DIL colors / filter: red < 25%, green 25-49%, pink >= 50%.
+        function dilBandIndex(dil) {
+            const percent = Math.round(dilToPercent(dil));
+            if (percent < 25) return 0;
+            if (percent < 50) return 1;
+            return 2;
+        }
+
+        // A transfer is blocked only when the FROM SKU sits in a higher DIL band than the TO SKU.
+        // Two SKUs in the same band (e.g. 23% and 24%, both red) are not "high" vs each other.
         function dilSubmitBlocked(rowDil, fromDil) {
-            return Math.round(dilToPercent(fromDil)) > Math.round(dilToPercent(rowDil));
+            return dilBandIndex(fromDil) > dilBandIndex(rowDil);
         }
 
         function fromInvBelowOne(fromInv) {
@@ -2029,78 +2039,10 @@
             return savedFromSku || null;
         }
 
-        let lowFromInvSkus = [];
-        // Remember which SKUs were already announced so a refresh / reload after a transfer
-        // does not show the same "FROM INV is below 1" toast again. Kept per browser for 24h.
-        const LOW_FROM_INV_ALERT_KEY = 'stock_balance_low_from_inv_alerted';
-        const LOW_FROM_INV_ALERT_TTL = 24 * 60 * 60 * 1000;
-        const lowFromInvAlerted = (function() {
-            let saved = {};
-            try {
-                saved = JSON.parse(localStorage.getItem(LOW_FROM_INV_ALERT_KEY) || '{}') || {};
-            } catch (e) {
-                saved = {};
-            }
-            const now = Date.now();
-            Object.keys(saved).forEach(function(k) {
-                if (!saved[k] || now - saved[k] > LOW_FROM_INV_ALERT_TTL) delete saved[k];
-            });
-            return saved;
-        })();
-
-        function alertLowFromInv() {
-            const fresh = [];
-            lowFromInvSkus.forEach(function(sku) {
-                const key = normalizeSkuKey(sku);
-                if (!key || lowFromInvAlerted[key]) return;
-                lowFromInvAlerted[key] = Date.now();
-                fresh.push(sku);
-            });
-            lowFromInvSkus = [];
-            if (!fresh.length) return;
-            try {
-                localStorage.setItem(LOW_FROM_INV_ALERT_KEY, JSON.stringify(lowFromInvAlerted));
-            } catch (e) {}
-            const preview = fresh.slice(0, 8).join(', ');
-            const more = fresh.length > 8 ? ' and ' + (fresh.length - 8) + ' more' : '';
-            showToast('FROM INV is below 1 for ' + preview + more + '. Transfer was not sent and those rows are hidden.', 'error', 8000);
-        }
-
-        function rowSubmitBlocked(data) {
-            if (!data) return false;
-            if (recentlySubmitted(data.SKU)) return true;
-            const fromSku = data._from_sku || resolveFromSkuForRow(data);
-            if (!fromSku) return false;
-            const meta = getFromSkuMeta(fromSku);
-            let fromQty = data._from_qty;
-            if (fromQty == null || fromQty === '') {
-                const saved = savedTransferQtyForRow(data);
-                fromQty = saved != null ? saved : meta.inv;
-            }
-            if (meta.found && meta.inv < 1) {
-                lowFromInvSkus.push(data.SKU);
-                return true;
-            }
-            if (isComboRatio(data._ratio || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).ratio))) {
-                const extra = ((data._from_items || (getRuleForSku(data.SKU) && getRuleForSku(data.SKU).fromItems) || [])[0]) || null;
-                const need = parseInt(fromQty, 10) || 0;
-                if (extra && extra.sku) {
-                    const extraMeta = getFromSkuMeta(extra.sku);
-                    if (extraMeta.found && Number(extraMeta.inv) < 1) {
-                        lowFromInvSkus.push(extra.sku);
-                        return true;
-                    }
-                    if (extraMeta.found && need > Number(extraMeta.inv)) return true;
-                }
-            }
-            return transferIsBlocked(fromQty, meta.inv) || dilSubmitBlocked(data.DIL, meta.dil);
-        }
-
         // Apply all filters together (guarded to avoid renderComplete recursion)
         function applyAllFilters() {
             if (!table || isApplyingFilters || restoringFromSku) return;
             isApplyingFilters = true;
-            lowFromInvSkus = [];
             try {
                 const rowVal = $('#row-filter').val() || 'sku';
                 const dilVal = $('#dil-filter').val();
@@ -2145,13 +2087,14 @@
                         return false;
                     }
 
-                    // NRB means do not transfer. Keep those rows visible in the NRB list
-                    // even when FROM inventory or DIL would block a transfer.
-                    if (data.ACTION !== 'NRB' && rowSubmitBlocked(data)) return false;
+                    // Only rows already transferred in the last 24 hours are hidden. Rows whose
+                    // FROM SKU is short, out of stock, or in a higher DIL band stay visible: the
+                    // Execute button shows the block reason (updateSubmitButton) and submit is
+                    // refused (validateTransferFields), so SKUs never silently disappear.
+                    if (data.ACTION !== 'NRB' && recentlySubmitted(data.SKU)) return false;
 
                     return true;
                 });
-                alertLowFromInv();
             } finally {
                 setTimeout(function() {
                     isApplyingFilters = false;
