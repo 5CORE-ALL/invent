@@ -1293,7 +1293,7 @@
                                     }
                                     $r2sStageNorm = strtolower(trim((string) ($item->stage ?? '')));
                                 @endphp
-                            <tr data-stage="{{ e($r2sStageNorm) }}" class="stage-row" data-sku="{{ e($item->sku) }}" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}">
+                            <tr data-stage="{{ e($r2sStageNorm) }}" class="stage-row" data-sku="{{ e($item->sku) }}" data-r2s-supplier="{{ e($item->supplier ?? '') }}" data-mfrg-supplier="{{ e($mfrgSup) }}" data-nr="{{ e(strtoupper(trim((string) ($item->nr ?? '')))) }}">
                                 <td data-column="27" class="text-center align-middle">
                                     @if(!empty($item->Image))
                                         @php
@@ -1472,9 +1472,10 @@
                                     @php $cpValue = $item->CP ?? null; @endphp
                                     {{ is_numeric($cpValue) ? number_format($cpValue, 2, '.', '') : '' }}
                                 </td>
-                                <td data-column="24" class="text-center">
-                                    @php $cpValue = $item->CP ?? null; @endphp
-                                    {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? number_format($item->qty * $cpValue, 0, '.', '') : '' }}
+                                <td data-column="24" class="text-center r2s-amount-cell">
+                                    {{-- Amount = Or. QTY × R2S Rate (same rule as forecast.analysis R2S value) --}}
+                                    @php $r2sRateValue = (float) ($item->rate ?? 0); @endphp
+                                    {{ is_numeric($item->qty ?? null) && $r2sRateValue > 0 ? number_format($item->qty * $r2sRateValue, 0, '.', '') : '' }}
                                 </td>
                                 <td data-column="8" hidden>{{ $item->shipped_cbm_in_container }}</td>
                                 <td data-column="15" class="text-center r2s-packing-list-cell" data-r2s-sku-norm="{{ $r2sPackingNorm }}">
@@ -1540,8 +1541,12 @@
                                 <td data-column="16" hidden>{{ $item->container_rfq }}</td>
                                 <td data-column="17" hidden>{{ $item->quote_result }}</td>
                                  <td class="total-value d-none">
-                                    @php $cpValue = $item->CP ?? null; @endphp
-                                    {{ is_numeric($item->qty ?? null) && is_numeric($cpValue) ? round($item->qty * $cpValue) : '' }}
+                                    {{-- Qty × R2S Rate; NR rows excluded (matches forecast.analysis R2S value) --}}
+                                    @php
+                                        $r2sRateTotal = (float) ($item->rate ?? 0);
+                                        $r2sIsNr = strtoupper(trim((string) ($item->nr ?? ''))) === 'NR';
+                                    @endphp
+                                    {{ (! $r2sIsNr && is_numeric($item->qty ?? null) && $r2sRateTotal > 0) ? round($item->qty * $r2sRateTotal) : 0 }}
                                 </td>
                                 <td data-column="28" class="text-center align-middle">
                                     <button type="button" class="btn btn-sm btn-outline-primary r2s-row-edit-btn" title="Edit all fields" aria-label="Edit row">
@@ -1684,6 +1689,25 @@
             timer = setTimeout(fitR2sTable, 120);
         }
         window.fitR2sTable = fitR2sTable;
+        // Keep Amount (qty × R2S rate) live when Rate or Or. QTY is edited
+        function recalcR2sAmount(e) {
+            const t = e.target;
+            if (!t || !t.closest) return;
+            const row = t.closest('tr.stage-row');
+            if (!row || !(t.matches('input[data-column="rate"]') || t.matches('input[data-column="qty"]'))) return;
+            const q = parseFloat(row.querySelector('input[data-column="qty"]')?.value);
+            const rate = parseFloat(row.querySelector('input[data-column="rate"]')?.value);
+            const qty = isFinite(q) ? q : parseFloat(String(row.querySelector('td[data-column="4"]')?.textContent || '').replace(/,/g, ''));
+            const amt = (isFinite(qty) && isFinite(rate) && rate > 0) ? Math.round(qty * rate) : 0;
+            const cell = row.querySelector('td.r2s-amount-cell');
+            if (cell) cell.textContent = amt > 0 ? String(amt) : '';
+            const isNr = String(row.getAttribute('data-nr') || '').toUpperCase() === 'NR';
+            const tot = row.querySelector('.total-value');
+            if (tot) tot.textContent = isNr ? '0' : String(amt);
+            if (typeof window.calculateTotalAmount === 'function') window.calculateTotalAmount();
+        }
+        document.addEventListener('input', recalcR2sAmount);
+        document.addEventListener('change', recalcR2sAmount);
         document.addEventListener('DOMContentLoaded', function () {
             fitR2sTable();
             // again once images / fonts have settled
