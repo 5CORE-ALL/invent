@@ -107,8 +107,6 @@ class ContainerQuotationController extends Controller
                 'gross_weight' => $q->gross_weight ?? null,
                 'updated_by' => $q->updated_by ?? null,
                 'updated_at' => $q && $q->updated_at ? $q->updated_at->format('d M Y, H:i') : null,
-                'approved_by' => $q->approved_by ?? null,
-                'approved_at' => $this->approvedAtLabel($q),
                 'quotes' => $this->quoteRows($received->get($name)),
                 'requests' => $requests[$name] ?? [],
             ];
@@ -118,19 +116,20 @@ class ContainerQuotationController extends Controller
     }
 
     /** Approval time in California time (America/Los_Angeles), e.g. "18 NOV 26, 10:33 AM PST". */
-    private function approvedAtLabel($quote): ?string
+    private function approvedAtLabel($approvedAt): ?string
     {
-        if (! $quote || empty($quote->approved_at)) {
+        if (empty($approvedAt)) {
             return null;
         }
 
-        $t = \Illuminate\Support\Carbon::parse($quote->approved_at)->setTimezone('America/Los_Angeles');
+        $t = \Illuminate\Support\Carbon::parse($approvedAt)->setTimezone('America/Los_Angeles');
 
         return strtoupper($t->format('j M y')).', '.$t->format('g:i A T');
     }
 
     /**
-     * Tick the "Approved" checkbox. One-way: once approved it is locked and cannot be undone here.
+     * Tick "Approved" on one received quote (L1 / L2 / L3 popup). One-way: once approved it is locked
+     * and cannot be undone or edited, and only one quote per container can be approved.
      */
     public function approve(Request $request): JsonResponse
     {
@@ -138,40 +137,41 @@ class ContainerQuotationController extends Controller
             return $this->forbidden();
         }
 
-        $data = $request->validate(['container_number' => 'required|string|max:255']);
-        $container = trim($data['container_number']);
+        $data = $request->validate(['quote_id' => 'required|integer']);
 
-        if (! in_array($container, $this->readyToShipContainers(), true)) {
-            return response()->json(['success' => false, 'message' => 'Unknown container.'], 422);
-        }
-        if (! Schema::hasColumn('container_quotations', 'approved_at')) {
+        if (! Schema::hasColumn('container_quote_received', 'approved_at')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Approval is not set up on the server yet — run: php artisan migrate',
             ], 500);
         }
 
-        $quote = ContainerQuotation::firstOrNew(['container_number' => $container]);
-        if ($quote->exists && $quote->approved_at) {
-            // Already approved and locked — nothing to change.
-            return response()->json([
-                'success' => true,
-                'container_number' => $container,
-                'approved_by' => $quote->approved_by,
-                'approved_at' => $this->approvedAtLabel($quote),
-            ]);
+        $quote = ContainerQuoteReceived::find($data['quote_id']);
+        if (! $quote || ! in_array($quote->container_number, $this->readyToShipContainers(), true)) {
+            return response()->json(['success' => false, 'message' => 'Quote not found.'], 404);
         }
 
-        $user = trim((string) (Auth::user()->name ?? '')) ?: 'System';
-        $quote->approved_by = $user;
-        $quote->approved_at = now();
-        $quote->save();
+        $already = ContainerQuoteReceived::where('container_number', $quote->container_number)
+            ->whereNotNull('approved_at')->first();
+        if ($already && (int) $already->id !== (int) $quote->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A quote ('.$already->forwarder.') is already approved for this container.',
+            ], 422);
+        }
+
+        if (! $quote->approved_at) {
+            $quote->approved_by = trim((string) (Auth::user()->name ?? '')) ?: 'System';
+            $quote->approved_at = now();
+            $quote->save();
+        }
 
         return response()->json([
             'success' => true,
-            'container_number' => $container,
-            'approved_by' => $quote->approved_by,
-            'approved_at' => $this->approvedAtLabel($quote),
+            'container_number' => $quote->container_number,
+            'quotes' => $this->quoteRows(
+                ContainerQuoteReceived::where('container_number', $quote->container_number)->orderBy('id')->get()
+            ),
         ]);
     }
 
@@ -236,6 +236,7 @@ class ContainerQuotationController extends Controller
         $data = $request->validate([
             'container_number' => 'required|string|max:255',
             'quotes' => 'nullable|array|max:50',
+            'quotes.*.id' => 'nullable|integer',
             'quotes.*.request_id' => 'nullable|integer',
             'quotes.*.forwarder' => 'nullable|string|max:255',
             'quotes.*.shipping_line' => 'nullable|string|max:255',
@@ -252,8 +253,15 @@ class ContainerQuotationController extends Controller
 
         $user = trim((string) (Auth::user()->name ?? '')) ?: 'System';
         $validRequestIds = ContainerQuoteRequest::where('container_number', $container)->pluck('id')->all();
+        // Approved quotes are locked: they are never edited, replaced or deleted from this table.
+        $approvedIds = Schema::hasColumn('container_quote_received', 'approved_at')
+            ? ContainerQuoteReceived::where('container_number', $container)->whereNotNull('approved_at')->pluck('id')->all()
+            : [];
         $rows = [];
         foreach (($data['quotes'] ?? []) as $i => $q) {
+            if (isset($q['id']) && in_array((int) $q['id'], $approvedIds, true)) {
+                continue;
+            }
             $fwd = trim((string) ($q['forwarder'] ?? ''));
             $pickup = ($q['pickup_charges'] ?? '') === '' ? null : (float) $q['pickup_charges'];
             $freight = ($q['freight'] ?? '') === '' ? null : (float) $q['freight'];
@@ -293,8 +301,10 @@ class ContainerQuotationController extends Controller
             ];
         }
 
-        DB::transaction(function () use ($container, $rows) {
-            ContainerQuoteReceived::where('container_number', $container)->delete();
+        DB::transaction(function () use ($container, $rows, $approvedIds) {
+            ContainerQuoteReceived::where('container_number', $container)
+                ->when($approvedIds, fn ($qb) => $qb->whereNotIn('id', $approvedIds))
+                ->delete();
             if ($rows) {
                 ContainerQuoteReceived::insert($rows);
             }
@@ -336,6 +346,9 @@ class ContainerQuotationController extends Controller
         }
 
         return $rows->map(fn ($r) => [
+            'id' => $r->id,
+            'approved_by' => $r->approved_by ?? null,
+            'approved_at' => $this->approvedAtLabel($r->approved_at ?? null),
             'request_id' => $r->request_id,
             'source' => $r->source,
             'forwarder' => $r->forwarder,

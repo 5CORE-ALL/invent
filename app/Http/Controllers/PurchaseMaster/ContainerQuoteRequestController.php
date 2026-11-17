@@ -369,6 +369,12 @@ class ContainerQuoteRequestController extends Controller
             abort(410, 'This quotation request is closed.');
         }
 
+        // Once 5Core has approved this quote it is locked.
+        $current = ContainerQuoteReceived::where('request_id', $req->id)->first();
+        if ($current && ! empty($current->approved_at)) {
+            return back()->withErrors(['quote' => 'This quotation has been approved and is now locked — it can no longer be changed.']);
+        }
+
         $data = $request->validate([
             'shipping_line' => 'required|string|max:255',
             'est_dt_sail' => 'required|date',

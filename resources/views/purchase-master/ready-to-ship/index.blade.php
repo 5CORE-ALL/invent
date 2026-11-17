@@ -75,13 +75,13 @@
     /* Product image — beat .wide-table td overflow + Bootstrap img max-width */
     #readyToShipTable.wide-table th[data-column="27"],
     #readyToShipTable.wide-table td[data-column="27"] {
-        min-width: 116px !important;
+        min-width: 81px !important;
         overflow: visible !important;
         white-space: normal !important;
     }
     #readyToShipTable .r2s-product-thumb {
-        width: 96px !important;
-        height: 96px !important;
+        width: 67px !important;
+        height: 67px !important;
         max-width: none !important;
         object-fit: cover;
         border-radius: 8px;
@@ -221,6 +221,21 @@
         font-size: 0.75rem;
         padding: 6px 8px;
     }
+    /* Dark header */
+    #readyToShipTable.wide-table thead,
+    #readyToShipTable.wide-table thead tr,
+    #readyToShipTable.wide-table thead th {
+        background: #0f2a3d !important;
+        color: #fff !important;
+        border-color: #2b4a5f !important;
+    }
+    #readyToShipTable.wide-table thead th * {
+        color: inherit;
+    }
+    #readyToShipTable.wide-table thead th input,
+    #readyToShipTable.wide-table thead th select {
+        color: #212529 !important;
+    }
     /* Vertical column titles (same pattern as /forecast.analysis); checkbox + SKU stay horizontal */
     #readyToShipTable.wide-table thead th:not([data-column="0"]):not([data-column="3"]) {
         writing-mode: vertical-rl;
@@ -268,12 +283,12 @@
         transform: none;
     }
     #readyToShipTable .r2s-product-thumb {
-        width: 72px !important;
-        height: 72px !important;
+        width: 50px !important;
+        height: 50px !important;
     }
     #readyToShipTable.wide-table th[data-column="27"],
     #readyToShipTable.wide-table td[data-column="27"] {
-        min-width: 88px !important;
+        min-width: 62px !important;
     }
     .r2s-page-tight .card-body {
         padding-top: 0.85rem;
@@ -1645,6 +1660,50 @@
 
 <script>
     document.body.style.zoom = '85%';
+
+    // Auto-fit: shrink the table so every column fits on one screen (no sideways scrolling).
+    (function () {
+        const MIN_ZOOM = 0.45;
+        let busy = false;
+        let timer = null;
+        function fitR2sTable() {
+            const wrap = document.getElementById('r2sTableScrollWrap');
+            const table = document.getElementById('readyToShipTable');
+            if (!wrap || !table || busy) return;
+            busy = true;
+            table.style.zoom = '1';
+            const needed = table.scrollWidth;
+            const avail = wrap.clientWidth;
+            if (needed > avail && avail > 0) {
+                table.style.zoom = String(Math.max(MIN_ZOOM, Math.floor((avail / needed) * 1000) / 1000 - 0.002));
+            }
+            busy = false;
+        }
+        function fitSoon() {
+            clearTimeout(timer);
+            timer = setTimeout(fitR2sTable, 120);
+        }
+        window.fitR2sTable = fitR2sTable;
+        document.addEventListener('DOMContentLoaded', function () {
+            fitR2sTable();
+            // again once images / fonts have settled
+            setTimeout(fitR2sTable, 600);
+            setTimeout(fitR2sTable, 2000);
+            const wrap = document.getElementById('r2sTableScrollWrap');
+            if (wrap && window.MutationObserver) {
+                new MutationObserver(function (muts) {
+                    // ignore our own zoom change on the table element
+                    if (muts.every(m => m.target && m.target.id === 'readyToShipTable' && m.type === 'attributes')) return;
+                    fitSoon();
+                }).observe(wrap, { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+            }
+            // column show/hide controls
+            document.addEventListener('change', e => { if (e.target.closest && e.target.closest('.column-controls')) fitSoon(); });
+            document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.column-controls')) fitSoon(); });
+        });
+        window.addEventListener('load', fitSoon);
+        window.addEventListener('resize', fitSoon);
+    })();
 
     const r2sImagePreviewPopup = document.createElement('img');
     r2sImagePreviewPopup.className = 'preview-popup';

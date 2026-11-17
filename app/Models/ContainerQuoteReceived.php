@@ -19,5 +19,11 @@ class ContainerQuoteReceived extends Model
         'freight',
         'total',
         'updated_by',
+        'approved_by',
+        'approved_at',
+    ];
+
+    protected $casts = [
+        'approved_at' => 'datetime',
     ];
 }

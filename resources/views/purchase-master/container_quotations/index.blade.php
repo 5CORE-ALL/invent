@@ -448,6 +448,7 @@
                             <thead class="table-light"><tr>
                                 <th style="width:60px;">Rank</th><th>Forwarder</th><th>Shipping Line</th><th>Est Dt Sail</th>
                                 <th class="text-end">Pickup Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th>
+                                <th class="text-center" style="min-width:150px;">Approved</th>
                             </tr></thead>
                             <tbody id="lBody"></tbody>
                         </table>
@@ -773,26 +774,25 @@
                       } },
                     Object.assign(lowestColumn('L2', 1), { visible: false }),
                     Object.assign(lowestColumn('L3', 2), { visible: false }),
-                    // Approved: tick once; then it shows who approved and when (California time) and stays locked.
-                    { title: 'Approved', field: 'approved_at', minWidth: 170, hozAlign: 'center', headerHozAlign: 'center',
+                    // Approved: shows the approved quote's approver + time (California). Approve from the L1 popup.
+                    { title: 'Approved', field: 'quotes', minWidth: 170, hozAlign: 'center', headerHozAlign: 'center',
                       headerSort: false,
                       formatter: function (cell) {
-                          const d = cell.getData();
-                          if (d.approved_at) {
-                              return '<div style="line-height:1.3" title="Approved — locked">' +
+                          const ap = (cell.getValue() || []).find(q => q.approved_at);
+                          if (ap) {
+                              return '<div style="line-height:1.3" title="Approved quote: ' + esc(ap.forwarder || '') + ' — locked">' +
                                   '<input type="checkbox" class="form-check-input qc-approve-cb" checked disabled style="opacity:1;accent-color:#16a34a;">' +
-                                  '<div class="small fw-semibold">' + esc(d.approved_by || '') + '</div>' +
-                                  '<div class="small text-muted">' + esc(d.approved_at) + '</div></div>';
+                                  '<div class="small fw-semibold">' + esc(ap.approved_by || '') + '</div>' +
+                                  '<div class="small text-muted">' + esc(ap.approved_at) + '</div></div>';
                           }
-                          return '<input type="checkbox" class="form-check-input qc-approve-cb" title="' +
-                              (canEdit ? 'Tick to approve (cannot be undone)' : 'Only 5Core users can approve') + '"' +
-                              (canEdit ? '' : ' disabled') + '>';
+                          return '<input type="checkbox" class="form-check-input qc-approve-cb" title="Open the L1 / L2 / L3 popup to approve a quote">';
                       },
                       cellClick: function (e, cell) {
-                          const cb = e.target.closest('.qc-approve-cb');
-                          if (!cb || cb.disabled) return;
+                          if (!e.target.closest('.qc-approve-cb')) return;
                           e.preventDefault();
-                          approveContainer(cell.getRow().getData(), cb);
+                          const d = cell.getRow().getData();
+                          if (rankedQuotes(d.quotes).length) openLModal(d);
+                          else alert('No quotes received yet for ' + d.container_number + '.');
                       } },
                 ],
             });
@@ -898,6 +898,7 @@
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-bold qr-total" placeholder="Incl. all charges" required></td>' +
                     '<td><button type="button" class="btn btn-sm btn-link text-danger p-0 qr-del" title="Remove"><i class="fas fa-trash-alt"></i></button></td>';
                 tr.dataset.requestId = q.request_id || '';
+                tr.dataset.quoteId = q.id || '';
                 if (q.request_id) {
                     tr.querySelector('.qr-forwarder').closest('td').insertAdjacentHTML('beforeend',
                         '<div class="small text-muted">via forwarder form</div>');
@@ -919,6 +920,13 @@
                 const sum = round2(num(q.pickup_charges) + num(q.freight));
                 tr.dataset.totalManual = (q.total !== null && q.total !== undefined && q.total !== '' && round2(num(q.total)) !== sum) ? '1' : '0';
                 if (tr.dataset.totalManual === '0') qrAutoTotal(tr);
+                if (q.approved_at) {
+                    // approved quotes are locked: no editing, no deleting
+                    tr.dataset.approved = '1';
+                    tr.classList.add('table-success');
+                    tr.querySelectorAll('input, select').forEach(el => { el.disabled = true; });
+                    tr.querySelector('.qr-del').outerHTML = '<i class="fas fa-lock text-success" title="Approved by ' + esc(q.approved_by || '') + ' — ' + esc(q.approved_at) + ' — locked"></i>';
+                }
                 qrBody.appendChild(tr);
                 qrRecalc();
                 return tr;
@@ -972,6 +980,7 @@
                 qrErr.classList.add('d-none');
                 qrSave.disabled = true;
                 const quotes = [...qrBody.querySelectorAll('tr')].map(tr => ({
+                    id: tr.dataset.quoteId || null,
                     request_id: tr.dataset.requestId || null,
                     forwarder: tr.querySelector('.qr-forwarder').value,
                     shipping_line: tr.querySelector('.qr-line').value,
@@ -1058,9 +1067,11 @@
                 el.classList.remove('d-none');
             }
 
-            // Approved checkbox (one-way: locked once ticked)
-            async function approveContainer(row, cb) {
-                if (!confirm('Approve ' + row.container_number + '?\n\nThis is locked after approval and cannot be undone.')) return;
+            // Approve one quote from the L1 / L2 / L3 popup (one-way: locked once ticked)
+            let lRow = null;
+            async function approveQuote(q, cb) {
+                if (!confirm('Approve the quote from ' + (q.forwarder || 'this forwarder') + ' ($' + Number(q.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) +
+                    ')?\n\nThis is locked after approval and cannot be undone.')) { cb.checked = false; return; }
                 cb.disabled = true;
                 try {
                     const res = await fetch(@json(route('container.quotations.approve')), {
@@ -1069,12 +1080,14 @@
                             'Content-Type': 'application/json', 'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrf,
                         },
-                        body: JSON.stringify({ container_number: row.container_number }),
+                        body: JSON.stringify({ quote_id: q.id }),
                     });
                     const json = await res.json().catch(() => ({}));
                     if (!res.ok || !json.success) throw new Error(json.message || 'Could not approve.');
-                    table.updateData([{ container_number: json.container_number, approved_by: json.approved_by, approved_at: json.approved_at }]);
+                    table.updateData([{ container_number: json.container_number, quotes: json.quotes }]);
+                    if (lRow) { lRow.quotes = json.quotes; renderLModal(lRow); }
                 } catch (err) {
+                    cb.checked = false;
                     cb.disabled = false;
                     alert(err.message);
                 }
@@ -1082,22 +1095,48 @@
 
             // L1 / L2 / L3 popup
             const lModalEl = document.getElementById('lModal');
-            function openLModal(row) {
-                document.getElementById('lContainer').textContent = row.container_number;
+            function renderLModal(row) {
                 const fm = v => (v === null || v === undefined || v === '') ? '<span class="text-muted">—</span>'
                     : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 const ranked = rankedQuotes(row.quotes);
-                document.getElementById('lBody').innerHTML = ['L1', 'L2', 'L3'].map(function (label, i) {
-                    const q = ranked[i];
-                    if (!q) return '<tr><td><b>' + label + '</b></td><td colspan="6" class="text-muted">—</td></tr>';
-                    return '<tr' + (i === 0 ? ' class="table-success"' : '') + '><td><b>' + label + '</b></td>' +
+                const approvedQ = (row.quotes || []).find(q => q.approved_at);
+                const approveCell = function (q) {
+                    if (q.approved_at) {
+                        return '<div style="line-height:1.3"><input type="checkbox" class="form-check-input" checked disabled style="opacity:1;accent-color:#16a34a;" title="Approved — locked">' +
+                            '<div class="small fw-semibold">' + esc(q.approved_by || '') + '</div><div class="small text-muted">' + esc(q.approved_at) + '</div></div>';
+                    }
+                    // one approved quote per container: the other boxes are switched off
+                    const off = !canEdit || !!approvedQ;
+                    return '<input type="checkbox" class="form-check-input lm-approve" data-id="' + q.id + '"' + (off ? ' disabled' : '') +
+                        ' title="' + (!canEdit ? 'Only 5Core users can approve' : (approvedQ ? 'Another quote is already approved' : 'Tick to approve (cannot be undone)')) + '">';
+                };
+                const line = function (label, q, hl) {
+                    if (!q) return '<tr><td><b>' + label + '</b></td><td colspan="7" class="text-muted">—</td></tr>';
+                    return '<tr' + (hl ? ' class="table-success"' : '') + '><td><b>' + label + '</b></td>' +
                         '<td>' + esc(q.forwarder || '') + '</td><td>' + (esc(q.shipping_line || '') || '<span class="text-muted">—</span>') + '</td>' +
                         '<td>' + (esc(q.est_dt_sail || '') || '<span class="text-muted">—</span>') + '</td>' +
                         '<td class="text-end">' + fm(q.pickup_charges) + '</td><td class="text-end">' + fm(q.freight) + '</td>' +
-                        '<td class="text-end fw-bold">' + fm(q.total) + '</td></tr>';
-                }).join('');
+                        '<td class="text-end fw-bold">' + fm(q.total) + '</td><td class="text-center">' + approveCell(q) + '</td></tr>';
+                };
+                let html = ['L1', 'L2', 'L3'].map((label, i) => line(label, ranked[i], i === 0)).join('');
+                // an approved quote that is not in the lowest three is still shown
+                if (approvedQ && !ranked.slice(0, 3).some(q => q.id === approvedQ.id)) html += line('✓', approvedQ, false);
+                document.getElementById('lBody').innerHTML = html;
+                document.getElementById('lBody').dataset.container = row.container_number;
+            }
+            function openLModal(row) {
+                lRow = row;
+                document.getElementById('lContainer').textContent = row.container_number;
+                renderLModal(row);
                 bootstrap.Modal.getOrCreateInstance(lModalEl).show();
             }
+            document.getElementById('lBody').addEventListener('change', function (e) {
+                const cb = e.target.closest('.lm-approve');
+                if (!cb || !lRow) return;
+                if (!cb.checked) return;
+                const q = (lRow.quotes || []).find(x => String(x.id) === cb.dataset.id);
+                if (q) approveQuote(q, cb);
+            });
 
             // QR Form (combined preview)
             const qfModalEl = document.getElementById('qfModal');
