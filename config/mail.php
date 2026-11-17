@@ -18,6 +18,18 @@ return [
     // Mailer used for forwarder quote requests (see the 'quotes' mailer below).
     'quote_mailer' => env('QUOTE_MAILER', 'quotes'),
 
+    // Users who send quote requests from their own mailbox instead of sourcing1@5core.com.
+    // 'match' = lower-case name / login email fragments (same idea as the PO "Approved BY" buttons).
+    // If the mailbox password is not set in .env, that user falls back to the default sender.
+    'quote_senders' => [
+        'candy' => [
+            'match' => ['candy', 'purchase@5core.com'],
+            'mailer' => 'quotes_candy',
+            'from_email' => env('QUOTE_MAIL_CANDY_USERNAME', 'purchase@5core.com'),
+            'from_name' => env('QUOTE_MAIL_CANDY_NAME', 'Candy - 5Core Purchase'),
+        ],
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations
@@ -58,6 +70,19 @@ return [
             'encryption' => env('QUOTE_MAIL_ENCRYPTION', 'tls'),
             'username' => env('QUOTE_MAIL_USERNAME', 'sourcing1@5core.com'),
             'password' => env('QUOTE_MAIL_PASSWORD'),
+            'timeout' => env('MAIL_TIMEOUT', 15),
+            'local_domain' => env('MAIL_EHLO_DOMAIN'),
+        ],
+
+        // Candy's own mailbox: forwarder quote requests sent by Candy go out from here (see 'quote_senders').
+        // Needs QUOTE_MAIL_CANDY_PASSWORD (a Google app password for that mailbox) in .env.
+        'quotes_candy' => [
+            'transport' => 'smtp',
+            'host' => env('QUOTE_MAIL_HOST', 'smtp.gmail.com'),
+            'port' => env('QUOTE_MAIL_PORT', 587),
+            'encryption' => env('QUOTE_MAIL_ENCRYPTION', 'tls'),
+            'username' => env('QUOTE_MAIL_CANDY_USERNAME', 'purchase@5core.com'),
+            'password' => env('QUOTE_MAIL_CANDY_PASSWORD'),
             'timeout' => env('MAIL_TIMEOUT', 15),
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],

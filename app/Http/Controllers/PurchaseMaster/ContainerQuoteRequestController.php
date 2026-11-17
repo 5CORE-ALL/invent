@@ -242,7 +242,7 @@ class ContainerQuoteRequestController extends Controller
 
         return response()->json([
             'success' => true,
-            'from' => self::SENDER_NAME.' <'.self::SENDER_EMAIL.'>',
+            'from' => $this->sender()['name'].' <'.$this->sender()['email'].'>',
             'to' => $emails ? implode(', ', $emails) : '',
             'forwarder' => $fwdName,
             'subject' => $mail['subject'],
@@ -277,8 +277,9 @@ class ContainerQuoteRequestController extends Controller
             ], 422);
         }
 
-        $mailer = (string) config('mail.quote_mailer', 'quotes');
-        if ($mailer === 'quotes' && trim((string) config('mail.mailers.quotes.password')) === '') {
+        $sender = $this->sender();
+        $mailer = $sender['mailer'];
+        if (str_starts_with($mailer, 'quotes') && trim((string) config('mail.mailers.'.$mailer.'.password')) === '') {
             return response()->json([
                 'success' => false,
                 'message' => 'The sourcing1@5core.com mailbox is not connected yet: QUOTE_MAIL_PASSWORD is missing in .env.',
@@ -316,7 +317,7 @@ class ContainerQuoteRequestController extends Controller
             $url = route('container.quote.form', $req->token);
 
             try {
-                $this->sendOne($mailer, $emails, $fwd->name, $container, $details, $text, $url);
+                $this->sendOne($sender, $emails, $fwd->name, $container, $details, $text, $url);
                 $req->update(['sent_at' => now(), 'sent_by' => $user, 'last_error' => null]);
                 $results[] = ['forwarder' => $fwd->name, 'email' => implode(', ', $emails), 'ok' => true];
             } catch (\Throwable $e) {
@@ -678,7 +679,50 @@ class ContainerQuoteRequestController extends Controller
         return ['subject' => $subject, 'html' => $html];
     }
 
-    private function sendOne(string $mailer, array $toEmails, string $toName, string $container, array $d, array $text, string $url): void
+    /**
+     * Mailbox the quote request goes out from: the logged-in user's own mailbox when one is
+     * configured and connected (config mail.quote_senders, e.g. Candy), otherwise sourcing1@5core.com.
+     *
+     * @return array{mailer: string, email: string, name: string}
+     */
+    public function sender(): array
+    {
+        $default = [
+            'mailer' => (string) config('mail.quote_mailer', 'quotes'),
+            'email' => self::SENDER_EMAIL,
+            'name' => self::SENDER_NAME,
+        ];
+
+        $user = Auth::user();
+        if (! $user) {
+            return $default;
+        }
+
+        $hay = mb_strtolower(trim((string) ($user->name ?? '')).' '.trim((string) ($user->email ?? '')));
+        foreach ((array) config('mail.quote_senders', []) as $def) {
+            foreach ((array) ($def['match'] ?? []) as $needle) {
+                $needle = mb_strtolower(trim((string) $needle));
+                if ($needle === '' || ! str_contains($hay, $needle)) {
+                    continue;
+                }
+                $mailer = (string) ($def['mailer'] ?? '');
+                // Only use the personal mailbox once its app password is in .env; otherwise fall back.
+                if ($mailer !== '' && trim((string) config('mail.mailers.'.$mailer.'.password')) !== '') {
+                    return [
+                        'mailer' => $mailer,
+                        'email' => (string) ($def['from_email'] ?? self::SENDER_EMAIL),
+                        'name' => (string) ($def['from_name'] ?? self::SENDER_NAME),
+                    ];
+                }
+
+                return $default;
+            }
+        }
+
+        return $default;
+    }
+
+    private function sendOne(array $sender, array $toEmails, string $toName, string $container, array $d, array $text, string $url): void
     {
         ['subject' => $subject, 'html' => $html] = $this->renderMail($toName, $container, $d, $text, $url);
 
@@ -702,8 +746,8 @@ class ContainerQuoteRequestController extends Controller
             $pdf = null;
         }
 
-        Mail::mailer($mailer)->html($html, function ($m) use ($toEmails, $toName, $subject, $pdf, $filename) {
-            $m->from(self::SENDER_EMAIL, self::SENDER_NAME)->subject($subject);
+        Mail::mailer($sender['mailer'])->html($html, function ($m) use ($sender, $toEmails, $toName, $subject, $pdf, $filename) {
+            $m->from($sender['email'], $sender['name'])->subject($subject);
             if ($pdf !== null) {
                 $m->attachData($pdf, $filename, ['mime' => 'application/pdf']);
             }

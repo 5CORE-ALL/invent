@@ -49,7 +49,10 @@ class ContainerQuotationController extends Controller
                 }
             });
 
-        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierDefaults'));
+        // Mailbox the logged-in user's quote requests go out from (shown in the Send popup).
+        $senderEmail = $canEdit ? app(ContainerQuoteRequestController::class)->sender()['email'] : 'sourcing1@5core.com';
+
+        return view('purchase-master.container_quotations.index', compact('forwarders', 'suppliers', 'canEdit', 'supplierDefaults', 'senderEmail'));
     }
 
     /**

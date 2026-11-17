@@ -23,6 +23,12 @@
         .qc-qr-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
         .qc-qr-btn.filled:hover { background: #1d4ed8; border-color: #1d4ed8; }
         .qc-qr-btn .qc-qr-count { font-weight: 600; margin-left: 4px; opacity: .9; }
+        .qc-gmail-fab {
+            position: fixed; top: 78px; right: 22px; z-index: 1040; width: 48px; height: 48px; border-radius: 50%;
+            background: #fff; border: 1px solid #e3ebf0; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 8px 22px -6px rgba(15, 42, 61, .45); transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .qc-gmail-fab:hover { transform: translateY(-2px) scale(1.06); box-shadow: 0 12px 26px -6px rgba(15, 42, 61, .55); }
         .qc-l-dot {
             width: 16px; height: 16px; border-radius: 50%; border: 2px solid #15803d; background: #22c55e;
             padding: 0; cursor: pointer; box-shadow: 0 0 0 3px rgba(34, 197, 94, .2); vertical-align: middle;
@@ -130,6 +136,17 @@
         }    </style>
 @endsection
 @section('content')
+    {{-- Floating Gmail shortcut: opens the sourcing1@5core.com inbox (where forwarder replies arrive) --}}
+    <a href="https://mail.google.com/mail/?authuser=sourcing1@5core.com" target="_blank" rel="noopener"
+       class="qc-gmail-fab" title="Open Gmail — sourcing1@5core.com" aria-label="Open Gmail (sourcing1@5core.com)">
+        <svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true">
+            <path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75V40h7c1.66 0 3-1.34 3-3V16.2z"/>
+            <path fill="#1e88e5" d="M3 16.2l3.61 1.96L13 23.7V40H6c-1.66 0-3-1.34-3-3V16.2z"/>
+            <polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/>
+            <path fill="#c62828" d="M3 12.3v3.9l10 7.5V11.2L9.88 8.87C8.44 7.8 6.67 7.47 5.2 7.9 3.9 8.26 3 9.38 3 12.3z"/>
+            <path fill="#fbc02d" d="M45 12.3v3.9l-10 7.5V11.2l3.12-2.33c1.44-1.07 3.21-1.4 4.68-.97C44.1 8.26 45 9.38 45 12.3z"/>
+        </svg>
+    </a>
     <div class="qz-page">
     <div class="qz-hero">
         <div class="qz-hero-inner">
@@ -354,7 +371,7 @@
                 <div class="modal-body">
                     <div class="alert alert-warning py-2 d-none" id="sendNoQ">Fill in the Q details for this container before sending.</div>
                     <div class="alert alert-danger py-2 d-none" id="sendError"></div>
-                    <div class="small text-muted mb-2">Each ticked forwarder gets a separate email from <b>sourcing1@5core.com</b> with their own personal form link.</div>
+                    <div class="small text-muted mb-2">Each ticked forwarder gets a separate email from <b>{{ $senderEmail }}</b> with their own personal form link.</div>
                     <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
                         <select id="sendTypeFilter" class="form-select form-select-sm" style="width: 180px;" title="Filter by type">
                             <option value="Supplier">Supplier</option>
