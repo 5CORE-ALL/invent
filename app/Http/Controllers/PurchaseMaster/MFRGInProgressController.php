@@ -1445,7 +1445,9 @@ class MFRGInProgressController extends Controller
             if ($chunk === []) {
                 continue;
             }
-            foreach (DB::table('product_master')->whereIn('sku', $chunk)->select('sku', 'parent', 'Values')->get() as $item) {
+            // whereNull('deleted_at'): Forecast Analysis ignores archived product_master rows, so MIP must too
+            // (otherwise archived SKUs such as CDKC11 / HISE 15X5 4PCS / HISE 3X7 4PCS show here but not on Forecast).
+            foreach (DB::table('product_master')->whereNull('deleted_at')->whereIn('sku', $chunk)->select('sku', 'parent', 'Values')->get() as $item) {
                 $norm = $normalizeSku($item->sku);
                 if ($norm === '') {
                     continue;
@@ -1470,6 +1472,7 @@ class MFRGInProgressController extends Controller
             $chunk = array_values(array_filter($chunk, fn ($s) => $s !== ''));
             if ($chunk === []) continue;
             foreach (DB::table('product_master')
+                ->whereNull('deleted_at')
                 ->whereIn(DB::raw('UPPER(TRIM(sku))'), $chunk)
                 ->select('sku', 'parent', 'Values')
                 ->get() as $item) {
