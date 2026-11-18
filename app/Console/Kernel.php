@@ -77,6 +77,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonBgtHl::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2AutoEnrollEligibleAds::class,
+        \App\Console\Commands\EbayAutoEnrollEligibleAds::class,
         \App\Console\Commands\Ebay1SwitchAdsToLiveListings::class,
         \App\Console\Commands\Ebay2SwitchAdsToLiveListings::class,
         \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
@@ -2643,6 +2644,15 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('ebay2-sync-campaign-listings')
             ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // After campaign-ads sync: Eligible (RECOMMENDED) listings → RUNNING PMT campaign with the SBID-rule bid.
+        $schedule->command('ebay:auto-enroll-eligible')
+            ->dailyAt('20:45')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-auto-enroll-eligible')
+            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log);
 

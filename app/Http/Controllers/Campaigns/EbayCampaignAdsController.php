@@ -581,6 +581,177 @@ class EbayCampaignAdsController extends Controller
         ]);
     }
 
+    /**
+     * Eligible (RECOMMENDED) listings with stock and a price, not already RUNNING/PAUSED, are enrolled with the
+     * same S Bid the Enroll button uses. eBay 1 campaigns are named "Campaign <date>" (no parent naming like eBay 2),
+     * so they go into the newest RUNNING cost-per-sale campaign. A listing whose S Bid works out to 0 is skipped.
+     *
+     * @return array{success:int,failed:int,skipped:int,created_campaigns:int,results:array<int,array<string,mixed>>,error?:string}
+     */
+    public function autoEnrollEligible(bool $dryRun = false, ?int $limit = null): array
+    {
+        $empty = ['success' => 0, 'failed' => 0, 'skipped' => 0, 'created_campaigns' => 0, 'results' => []];
+
+        $listingIds = $this->eligibleListingIdsForAutoEnroll();
+        if ($limit !== null && $limit > 0) {
+            $listingIds = array_slice($listingIds, 0, $limit);
+        }
+        if ($listingIds === []) {
+            return $empty;
+        }
+
+        try {
+            $token = (new \App\Services\EbayApiService())->generateBearerToken();
+        } catch (\Exception $e) {
+            $empty['error'] = 'Token error: '.$e->getMessage();
+
+            return $empty;
+        }
+
+        $campaign = $this->newestRunningCpsCampaign($token);
+        if (! $campaign) {
+            $empty['error'] = 'No RUNNING cost-per-sale campaign to enroll into.';
+
+            return $empty;
+        }
+
+        $out = $empty;
+        foreach (array_chunk($listingIds, 20) as $batch) {
+            if ($dryRun) {
+                foreach ($batch as $lid) {
+                    $out['results'][] = [
+                        'listing_id' => $lid,
+                        'sku' => $this->skuForListing((string) $lid),
+                        'status' => 'would_enroll',
+                        'reason' => $campaign['campaign_name'],
+                        'campaign_id' => $campaign['campaign_id'],
+                    ];
+                    $out['success']++;
+                }
+                continue;
+            }
+
+            $data = $this->enrollInCampaign(new Request([
+                'listing_ids' => $batch,
+                'campaign_id' => $campaign['campaign_id'],
+            ]))->getData(true);
+
+            if (! empty($data['error'])) {
+                foreach ($batch as $lid) {
+                    $out['results'][] = ['listing_id' => $lid, 'sku' => $this->skuForListing((string) $lid), 'status' => 'failed', 'reason' => $data['error']];
+                    $out['failed']++;
+                }
+                continue;
+            }
+            foreach ($data['results'] ?? [] as $row) {
+                $row['campaign_name'] = $campaign['campaign_name'];
+                $out['results'][] = $row;
+            }
+            $out['success'] += (int) ($data['success'] ?? 0);
+            $out['failed'] += (int) ($data['failed'] ?? 0);
+            $out['skipped'] += (int) ($data['skipped'] ?? 0);
+            usleep(200000);
+        }
+
+        return $out;
+    }
+
+    public function autoEnrollEligibleHttp()
+    {
+        $out = $this->autoEnrollEligible();
+        if (! empty($out['error'])) {
+            return response()->json(['error' => $out['error']], 500);
+        }
+
+        return response()->json($out);
+    }
+
+    /** @return list<string> */
+    private function eligibleListingIdsForAutoEnroll(): array
+    {
+        $liveIds = DB::table('ebay_campaign_ads')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->whereRaw("UPPER(TRIM(COALESCE(campaign_status, ''))) IN ('RUNNING', 'PAUSED', 'SYSTEM_PAUSED')")
+            ->pluck('listing_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = DB::table('ebay_campaign_ads as ca')
+            ->leftJoin('ebay_metrics as em', 'em.item_id', '=', 'ca.listing_id')
+            ->where('ca.promote_with_ad', 'RECOMMENDED')
+            ->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) = 'ACTIVE'")
+            ->whereRaw("COALESCE(em.sku, ca.sku) IS NOT NULL")
+            ->whereRaw("COALESCE(em.sku, ca.sku) != ''")
+            ->whereRaw('COALESCE(em.ebay_price, ca.price) > 0')
+            ->whereRaw('(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) > 0');
+
+        if ($liveIds !== []) {
+            $query->whereNotIn('ca.listing_id', $liveIds);
+        }
+
+        return $query->distinct()
+            ->pluck('ca.listing_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function skuForListing(string $listingId): string
+    {
+        $sku = EbayMetric::where('item_id', $listingId)->value('sku');
+        if (trim((string) $sku) === '') {
+            $sku = DB::table('ebay_campaign_ads')->where('listing_id', $listingId)->value('sku');
+        }
+
+        return trim((string) $sku);
+    }
+
+    /** @return array{campaign_id:string,campaign_name:string}|null */
+    private function newestRunningCpsCampaign(string $token): ?array
+    {
+        $best = null;
+        try {
+            $offset = 0;
+            $limit = 200;
+            do {
+                $data = Http::withToken($token)
+                    ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', ['limit' => $limit, 'offset' => $offset])
+                    ->json();
+                $batch = $data['campaigns'] ?? [];
+                $total = (int) ($data['total'] ?? 0);
+                foreach ($batch as $c) {
+                    $id = (string) ($c['campaignId'] ?? '');
+                    if ($id === '' || ($c['fundingStrategy']['fundingModel'] ?? null) !== 'COST_PER_SALE'
+                        || strtoupper((string) ($c['campaignStatus'] ?? '')) !== 'RUNNING') {
+                        continue;
+                    }
+                    if ($best === null || (int) $id > (int) $best['campaign_id']) {
+                        $best = ['campaign_id' => $id, 'campaign_name' => (string) ($c['campaignName'] ?? '')];
+                    }
+                }
+                $offset += $limit;
+            } while ($offset < $total && $batch !== []);
+        } catch (\Exception $e) {
+            // fall back to the local table below
+        }
+        if ($best) {
+            return $best;
+        }
+
+        $row = DB::table('ebay_campaign_ads')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->where('campaign_status', 'RUNNING')
+            ->whereNotNull('campaign_id')
+            ->orderByRaw('CAST(campaign_id AS UNSIGNED) DESC')
+            ->first(['campaign_id', 'campaign_name']);
+
+        return $row ? ['campaign_id' => (string) $row->campaign_id, 'campaign_name' => (string) $row->campaign_name] : null;
+    }
+
     /** True when an eBay error message indicates the listing has ended / is invalid. */
     private function isEndedOrInvalidListing(string $msg): bool
     {
@@ -654,9 +825,69 @@ class EbayCampaignAdsController extends Controller
             ." ELSE 'NO_CAMPAIGN' END)";
     }
 
+    /**
+     * This page reads ebay_campaign_ads, which `ebay:sync-campaign-listings` fills once a day (20:30 IST), and its
+     * eligible step only keeps listings the Recommendation API answers for. A listing eBay just pulled into
+     * ebay_metrics therefore stayed off the page (and off the Missing Ad badge) until the next sync, or for good.
+     * Add every live listing that has no row yet as a no-campaign row. promote_with_ad = UNDETERMINED until the next
+     * sync's recommendation refresh sets the real value (so it is not counted as Eligible by guess).
+     */
+    private function addNewListingsMissingFromAds(): void
+    {
+        try {
+            $ended = "'".implode("','", \App\Support\Marketplace\EbayListingEnded::STATUSES)."'";
+            $hasStatus = Schema::hasColumn('ebay_metrics', 'listing_status');
+
+            $query = DB::table('ebay_metrics as em')
+                ->whereNotNull('em.item_id')
+                ->where('em.item_id', '!=', '')
+                ->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('ebay_campaign_ads as ca')
+                        ->whereColumn('ca.listing_id', 'em.item_id');
+                });
+            if ($hasStatus) {
+                $query->whereRaw("UPPER(TRIM(COALESCE(em.listing_status, ''))) NOT IN ({$ended}, 'MISSING', 'NOT_LISTED')");
+            }
+
+            $query->orderBy('em.id')->select('em.item_id', 'em.sku', 'em.ebay_price');
+
+            // Inserted rows drop out of the NOT EXISTS set, so re-read the first page instead of paging by offset.
+            for ($guard = 0; $guard < 100; $guard++) {
+                $metrics = (clone $query)->limit(500)->get();
+                if ($metrics->isEmpty()) {
+                    break;
+                }
+                $now = now();
+                $rows = [];
+                foreach ($metrics as $m) {
+                    $rows[(string) $m->item_id] = [
+                        'campaign_id' => null,
+                        'campaign_name' => null,
+                        'funding_strategy' => null,
+                        'campaign_status' => null,
+                        'ad_id' => null,
+                        'listing_id' => (string) $m->item_id,
+                        'sku' => $m->sku,
+                        'bid_percentage' => null,
+                        'suggested_bid' => null,
+                        'price' => $m->ebay_price,
+                        'promote_with_ad' => 'UNDETERMINED',
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+                DB::table('ebay_campaign_ads')->insert(array_values($rows));
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('eBay campaign-ads: adding new listings failed: '.$e->getMessage());
+        }
+    }
+
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay_campaign_ads');
+        $this->addNewListingsMissingFromAds();
 
         $query = DB::table('ebay_campaign_ads as ca')
             ->leftJoin('ebay_metrics as em', 'em.item_id', '=', 'ca.listing_id')

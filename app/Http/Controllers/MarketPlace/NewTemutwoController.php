@@ -891,10 +891,6 @@ class NewTemutwoController extends Controller
         }
     }
 
-    /**
-     * The Sprc Dil switch / slab Save on /new-temu2 paints a new S PRC (the Promo Base Prc the server job pushes).
-     * Save that same dollar to NT2_SPRICE so the page and the 04:20 / 20:20 server job agree. Nothing is pushed.
-     */
     public function saveSprice(Request $request)
     {
         $updates = $request->input('updates');

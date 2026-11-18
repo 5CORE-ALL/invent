@@ -337,18 +337,23 @@ class Ebay2CampaignAdsController extends Controller
             $parent = $this->productMasterParent($sku);
             $match = $this->matchCampaignForSku($sku, $campaigns, $parent);
 
-            if (! $match && $this->isEbay2ParentSku($sku)) {
+            // No campaign yet: a PARENT sku gets its own, a child (or open-box) sku gets "PARENT <parent>" when
+            // Product Master knows its parent. SKUs with no known parent stay skipped.
+            $newCampaignName = $this->isEbay2ParentSku($sku)
+                ? $sku
+                : (($parent !== null && trim($parent) !== '') ? 'PARENT '.strtoupper(trim($parent)) : '');
+            if (! $match && $newCampaignName !== '') {
                 if ($dryRun) {
                     $allResults[] = [
                         'listing_id' => $lid,
                         'sku' => $sku,
                         'status' => 'would_create_campaign',
-                        'reason' => $sku,
+                        'reason' => $newCampaignName,
                     ];
                     $skipped++;
                     continue;
                 }
-                $createdCampaign = $this->createParentCpsCampaign($token, $sku);
+                $createdCampaign = $this->createParentCpsCampaign($token, $newCampaignName);
                 if ($createdCampaign) {
                     $campaigns[] = $createdCampaign;
                     $match = $createdCampaign;
@@ -479,6 +484,16 @@ class Ebay2CampaignAdsController extends Controller
                     ->orWhereRaw('UPPER(TRIM(sku)) = ?', ['PARENT '.$this->ebay2ParentKey($norm)]);
             })
             ->first(['parent', 'sku']);
+
+        // Open-box listings ("GRack 5N1 OPEN BOX") are not in Product Master; they follow the base SKU's parent.
+        if (! $row) {
+            $base = trim((string) preg_replace('/\s+OPEN\s*BOX$/i', '', $norm));
+            if ($base !== '' && $base !== $norm) {
+                $row = ProductMaster::whereNull('deleted_at')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$base])
+                    ->first(['parent', 'sku']);
+            }
+        }
 
         $parent = trim((string) ($row->parent ?? ''));
         if ($parent !== '') {

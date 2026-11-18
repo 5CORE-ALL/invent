@@ -7457,6 +7457,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay/campaign-ads/push-selected', 'pushSelected')->name('ebay.campaign.ads.push.selected');
         Route::get('/ebay/campaign-ads/campaigns', 'getCampaignList')->name('ebay.campaign.ads.campaigns');
         Route::post('/ebay/campaign-ads/enroll', 'enrollInCampaign')->name('ebay.campaign.ads.enroll');
+        Route::post('/ebay/campaign-ads/auto-enroll-eligible', 'autoEnrollEligibleHttp')->name('ebay.campaign.ads.auto.enroll');
     });
 
     Route::controller(Ebay2CampaignAdsController::class)->group(function () {
