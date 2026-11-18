@@ -4845,8 +4845,23 @@
             return plan && plan.effective > 0 ? Number(plan.effective) : 0;
         }
         window.amzClearanceViewSprice = amzClearanceViewSprice;
+        /**
+         * SKUs whose S PRC was cleared with the Sprice button. They stay blank (no rule price shown, none re-saved) until the
+         * page is reloaded or the ON rule is switched. Upper-case SKU keys.
+         */
+        window.amzSpriceClearedSkus = window.amzSpriceClearedSkus || new Set();
+        function amzSpriceIsCleared(d) {
+            return !!d && window.amzSpriceClearedSkus.size > 0 && window.amzSpriceClearedSkus.has(amzPefSku(d).toUpperCase());
+        }
+        /** True when no rule price may be shown or saved for this row: both rules OFF, or the SKU was just cleared. */
+        function amzSpriceAutoFillOff(d) {
+            return (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') || amzSpriceIsCleared(d);
+        }
+        window.amzSpriceIsCleared = amzSpriceIsCleared;
+        window.amzSpriceAutoFillOff = amzSpriceAutoFillOff;
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            if (amzSpriceIsCleared(d)) return 0;
             // Clearance SKUs have no S PRC unless the Clearance SNROI block has a target for their Dil. The column shows "C".
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
             // Sprc Dil and Std prc vs dil both switched OFF: no rule price (the stored S PRC stays as it is).
@@ -5082,6 +5097,7 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
+            if (amzSpriceIsCleared(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return null;
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {

@@ -1004,6 +1004,33 @@
                         <i class="fas fa-eraser"></i> Sprice
                     </button>
 
+                    <button type="button" id="summary-stats-toggle" class="btn btn-sm btn-outline-secondary ms-auto"
+                        title="Minimize the summary blocks" aria-expanded="true" aria-controls="summary-stats">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <script>
+                        (function() {
+                            var KEY = 'amazon_summary_stats_minimized';
+                            function paint(min) {
+                                var box = document.getElementById('summary-stats');
+                                var btn = document.getElementById('summary-stats-toggle');
+                                if (box) box.style.display = min ? 'none' : '';
+                                if (!btn) return;
+                                btn.setAttribute('aria-expanded', min ? 'false' : 'true');
+                                btn.title = min ? 'Show the summary blocks' : 'Minimize the summary blocks';
+                                btn.innerHTML = '<i class="fas fa-chevron-' + (min ? 'down' : 'up') + '"></i>';
+                            }
+                            function isMin() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+                            document.addEventListener('click', function(e) {
+                                if (!e.target.closest || !e.target.closest('#summary-stats-toggle')) return;
+                                var min = !isMin();
+                                try { localStorage.setItem(KEY, min ? '1' : '0'); } catch (err) { /* ignore */ }
+                                paint(min);
+                            });
+                            document.addEventListener('DOMContentLoaded', function() { paint(isMin()); });
+                        })();
+                    </script>
+
                 </div>
 
                 <!-- Summary Stats -->
@@ -1854,7 +1881,8 @@
             if (typeof amzDisplayedSprice === 'function') {
                 raw = Number(amzDisplayedSprice(rowData)) || 0;
             }
-            if (!(raw > 0) && typeof computeAmzPushPrcPlan === 'function') {
+            const autoFillOff = typeof window.amzSpriceAutoFillOff === 'function' && window.amzSpriceAutoFillOff(rowData);
+            if (!(raw > 0) && !autoFillOff && typeof computeAmzPushPrcPlan === 'function') {
                 const plan = computeAmzPushPrcPlan(rowData);
                 if (plan && plan.effective > 0) raw = Number(plan.effective);
             }
@@ -4229,11 +4257,22 @@
                 let clearedCount = 0;
                 const updates = [];
 
-                // Iterate rows and clear SPRICE where selected
-                table.getRows().forEach(row => {
+                // The S PRC cell repaints the live rule price when nothing is stored, so remember the cleared SKUs:
+                // they stay blank and are not re-saved until the page reloads or the ON rule is switched.
+                const clearedSet = window.amzSpriceClearedSkus || (window.amzSpriceClearedSkus = new Set());
+
+                // Iterate rows and clear SPRICE where selected ('all' = also rows hidden by a filter)
+                table.getRows('all').forEach(row => {
                     const rowData = row.getData();
                     const sku = rowData['(Child) sku'];
-                    if (selectedSkus.has(sku)) {
+                    if (sku && selectedSkus.has(sku)) {
+                        clearedSet.add(String(sku).trim().toUpperCase());
+                        // Also the full-data copy the page re-reads when it redraws.
+                        (allTableData || []).some(function(r) {
+                            if (String((r && r['(Child) sku']) || '').trim().toUpperCase() !== String(sku).trim().toUpperCase()) return false;
+                            r.SPRICE = 0; r.has_custom_sprice = false; r._amz_persisted_sprice = 0;
+                            return true;
+                        });
                         // Clear in table
                         row.update({
                             SPRICE: 0,
@@ -4242,8 +4281,10 @@
                             SROI: 0,
                             SGROI: 0,
                             SPRICE_STATUS: null,
-                            has_custom_sprice: false
+                            has_custom_sprice: false,
+                            _amz_persisted_sprice: 0
                         });
+                        try { row.reformat(); } catch (e) { /* ignore */ }
 
                         updates.push({ sku: sku, sprice: 0 });
                         clearedCount++;
@@ -5640,7 +5681,8 @@
                             } else if (typeof amzLiveRuleSprice === 'function') {
                                 raw = Number(amzLiveRuleSprice(rowData)) || 0;
                             }
-                            if (!(raw > 0) && typeof computeAmzPushPrcPlan === 'function') {
+                            const autoFillOff = typeof window.amzSpriceAutoFillOff === 'function' && window.amzSpriceAutoFillOff(rowData);
+                            if (!(raw > 0) && !autoFillOff && typeof computeAmzPushPrcPlan === 'function') {
                                 const plan = computeAmzPushPrcPlan(rowData);
                                 if (plan && plan.effective > 0) raw = Number(plan.effective);
                             }

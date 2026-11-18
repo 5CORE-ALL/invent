@@ -159,6 +159,8 @@
             }
             function spriceApplyOnRule() {
                 const rule = spriceActiveRule();
+                // A rule switch refills S PRC: SKUs cleared with the Sprice button are included again.
+                if (window.amzSpriceClearedSkus && typeof window.amzSpriceClearedSkus.clear === 'function') window.amzSpriceClearedSkus.clear();
                 // A page can take over the switch: repaint at once from the ON rule, then save in the background.
                 if (typeof window.spriceOnRuleSwitched === 'function') {
                     try { window.spriceOnRuleSwitched(rule); } catch (e) { /* ignore */ }
