@@ -4501,6 +4501,26 @@
                 return 'equal';
             }
 
+            /** LT O CVR (%): overall CVR over the last 60 days, ads + organic. (A L30 + L60 orders) ÷ (Sess30 + Sess60) × 100. Null with no sessions. */
+            function amazonRowLtoCvr(rd) {
+                if (!rd) return null;
+                const sess = (parseFloat(rd['Sess30']) || 0) + (parseFloat(rd['sessions_l60']) || 0);
+                if (sess <= 0) return null;
+                const units = (parseFloat(rd['A_L30']) || 0) + (parseFloat(rd['units_ordered_l60']) || 0);
+                const n = (units / sess) * 100;
+                return isFinite(n) ? n : null;
+            }
+
+            /** CVR vs LT O CVR: 1 = more than 20% above, -1 = more than 20% below, 0 = within ±20%, null = no LT O CVR. */
+            function amazonCvrVsLtoTrend(rd) {
+                const lto = amazonRowLtoCvr(rd);
+                if (lto === null) return null;
+                const cvr = amazonRowCvrL30(rd);
+                if (cvr > lto * 1.2) return 1;
+                if (cvr < lto * 0.8) return -1;
+                return 0;
+            }
+
             function amazonCvrSlab(cvr, low, mid, high) {
                 const v = parseFloat(cvr) || 0;
                 const pinkAfter = high + 0.01;
@@ -5048,38 +5068,15 @@
                             const row = cell.getRow().getData();
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
                             const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                            const sess45 = (sess30 + sess60) / 2;
-                            const cvr45 = sess45 === 0 ? 0 : (((aL30 + aL60) / 2) / sess45) * 100;
                             let color = '#e83e8c';
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
                             const pctLabel = sess30 === 0 ? '0.0%' : (Math.round(cvr) + '%');
-                            let arrowHtml = '';
-                            if (!row.is_parent_summary) {
-                                const tol = 0.1;
-                                let arrowColor = '#ffc107';
-                                let arrowIcon = 'fa-minus';
-                                let tip = 'Same as CVR L45 ' + cvr45.toFixed(1) + '%';
-                                if (cvr === 0 || cvr < cvr45 - tol) {
-                                    arrowColor = '#a00211';
-                                    arrowIcon = 'fa-arrow-down';
-                                    tip = (cvr === 0 ? 'CVR L30 is 0 → Down' : 'Down vs CVR L45 ' + cvr45.toFixed(1) + '%');
-                                } else if (cvr > cvr45 + tol) {
-                                    arrowColor = '#28a745';
-                                    arrowIcon = 'fa-arrow-up';
-                                    tip = 'Up vs CVR L45 ' + cvr45.toFixed(1) + '%';
-                                }
-                                arrowHtml = ' <span title="' + escAttr(tip) + '" style="vertical-align:middle;">'
-                                    + '<i class="fas ' + arrowIcon + '" style="color:' + arrowColor
-                                    + ';font-size:12px;"></i></span>';
-                            }
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                                 + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
-                                + arrowHtml + '</span>';
+                                + '</span>';
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
@@ -5090,6 +5087,52 @@
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
                         width: 78
+                    },
+                    {
+                        title: "LT O CVR",
+                        field: "LT_O_CVR",
+                        hozAlign: "center",
+                        headerTooltip: "Overall CVR, ads + organic together: (A L30 + units ordered L60) ÷ (Sess30 + Sess60) × 100 (the last 60 days, the longest window stored).",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const lto = amazonRowLtoCvr(row);
+                            if (lto === null) return '<span class="text-muted">—</span>';
+                            const units = (parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0);
+                            const sess = (parseFloat(row['Sess30']) || 0) + (parseFloat(row['sessions_l60']) || 0);
+                            return '<span title="' + escAttr(units + ' orders ÷ ' + sess + ' sessions (L30 + L60)') + '">' + lto.toFixed(1) + '%</span>';
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const x = amazonRowLtoCvr(aRow.getData());
+                            const y = amazonRowLtoCvr(bRow.getData());
+                            return (x === null ? -1 : x) - (y === null ? -1 : y);
+                        },
+                        width: 78
+                    },
+                    {
+                        title: "CVR Δ",
+                        field: "CVR_VS_LTO",
+                        hozAlign: "center",
+                        headerTooltip: "CVR L30 vs LT O CVR: within ±20% shows --, more than 20% above shows the up arrow, more than 20% below shows the down arrow.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const t = amazonCvrVsLtoTrend(row);
+                            if (t === null) return '<span class="text-muted">—</span>';
+                            const lto = amazonRowLtoCvr(row);
+                            const tip = 'CVR ' + amazonRowCvrL30(row).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
+                            if (t > 0) {
+                                return '<span title="' + escAttr(tip + ' · more than 20% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            }
+                            if (t < 0) {
+                                return '<span title="' + escAttr(tip + ' · more than 20% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                            }
+                            return '<span title="' + escAttr(tip + ' · within ±20%') + '">--</span>';
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const x = amazonCvrVsLtoTrend(aRow.getData());
+                            const y = amazonCvrVsLtoTrend(bRow.getData());
+                            return (x === null ? -2 : x) - (y === null ? -2 : y);
+                        },
+                        width: 60
                     },
                     {
                         title: "Reviews",

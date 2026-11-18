@@ -259,6 +259,32 @@ final class AmazonAdsCampaignSkuMetrics
         return is_finite($n) ? round($n, 2) : null;
     }
 
+    /** How far CVR may sit from LT O CVR (relative, ±20%) before it counts as up or down. */
+    public const CVR_TREND_TOLERANCE = 0.20;
+
+    /**
+     * CVR vs LT O CVR: 1 = CVR is more than 20% above LT O CVR, -1 = more than 20% below, 0 = within ±20%.
+     * Null when LT O CVR is unknown (no sessions).
+     *
+     * @param  array<string, mixed>  $pc  a row from parentListingCvrForCampaignNames()
+     */
+    public static function cvrTrendVsOverall(array $pc): ?int
+    {
+        $lto = self::overallCvrFromParent($pc);
+        if ($lto === null) {
+            return null;
+        }
+        $cvr = isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : 0.0;
+        if ($cvr > $lto * (1 + self::CVR_TREND_TOLERANCE)) {
+            return 1;
+        }
+        if ($cvr < $lto * (1 - self::CVR_TREND_TOLERANCE)) {
+            return -1;
+        }
+
+        return 0;
+    }
+
     /**
      * Amz tabulator parent-row CVR L30 (Σ A L30 ÷ Σ Sess30 × 100) for each campaign.
      * Child campaigns resolve to their product_master parent and use that parent summary.

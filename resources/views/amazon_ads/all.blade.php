@@ -2400,7 +2400,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory', 'audit', 'auditBudget', 'auditBid', 'auditKeywords', 'auditStock', 'auditListing'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'ltoCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'ltoCvr', 'pageCvr', 'cvrTrend', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2715,8 +2715,7 @@
                 if (v !== null && v !== undefined && v !== '') {
                     var n = typeof v === 'number' ? v : parseFloat(v);
                     if (!isNaN(n)) {
-                        text = Math.round(n) + '%';
-                        color = amzPageCvrColor(n);
+                        text = n.toFixed(1) + '%';
                     }
                 }
                 var row = cell.getRow ? cell.getRow().getData() : {};
@@ -2741,7 +2740,7 @@
                 var parent = String(row.page_parent || '').trim();
                 var tip = 'LT O CVR = ' + units + ' orders ÷ ' + sess + ' sessions (L30 + L60, ads + organic)';
                 if (parent) tip += ' · ' + parent;
-                return '<span class="fw-semibold" style="color:' + amzPageCvrColor(n) + ';" title="' + amzEsc(tip) + '">' + Math.round(n) + '%</span>';
+                return '<span title="' + amzEsc(tip) + '">' + n.toFixed(1) + '%</span>';
             }
             function fmtMoneyHistoryDot(cell, kind, label) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
@@ -2867,7 +2866,7 @@
             function fmtCvr(cell) {
                 var n = amzFiniteNumber(cell.getValue());
                 if (isNaN(n)) return amzDash();
-                return '<span class="fw-semibold" style="color:' + amzPageCvrColor(n) + ';">' + Math.round(n) + '%</span>';
+                return '<span>' + n.toFixed(1) + '%</span>';
             }
             function amzPageCvrColor(cvr) {
                 if (cvr <= 4) return '#a00211';
@@ -2894,34 +2893,34 @@
                 if (isNaN(n)) return amzDash();
                 var sess30 = parseFloat(row.page_cvr_sess30) || 0;
                 var aL30 = parseFloat(row.page_cvr_a_l30) || 0;
-                var sess60 = parseFloat(row.page_cvr_sess60) || 0;
-                var aL60 = parseFloat(row.page_cvr_a_l60) || 0;
                 var cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
                 if (!isFinite(cvr)) cvr = n;
-                var sess45 = (sess30 + sess60) / 2;
-                var cvr45 = sess45 === 0 ? 0 : (((aL30 + aL60) / 2) / sess45) * 100;
                 var color = amzPageCvrColor(cvr);
                 var pctLabel = sess30 === 0 ? '0.0%' : (Math.round(cvr) + '%');
                 var parent = String(row.page_parent || '').trim();
                 var tip = 'Amz page parent CVR L30 = A L30 ÷ Sess30';
                 if (parent) tip += ' · ' + parent;
-                var tol = 0.1;
-                var arrowColor = '#ffc107';
-                var arrowIcon = 'fa-minus';
-                var arrowTip = 'Same as CVR L45 ' + cvr45.toFixed(1) + '%';
-                if (cvr === 0 || cvr < cvr45 - tol) {
-                    arrowColor = '#a00211';
-                    arrowIcon = 'fa-arrow-down';
-                    arrowTip = (cvr === 0 ? 'CVR L30 is 0 → Down' : 'Down vs CVR L45 ' + cvr45.toFixed(1) + '%');
-                } else if (cvr > cvr45 + tol) {
-                    arrowColor = '#28a745';
-                    arrowIcon = 'fa-arrow-up';
-                    arrowTip = 'Up vs CVR L45 ' + cvr45.toFixed(1) + '%';
-                }
-                return '<span title="' + String(tip + ' · ' + arrowTip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
+                return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;">'
                     + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
-                    + ' <span style="vertical-align:middle;"><i class="fas ' + arrowIcon + '" style="color:' + arrowColor + ';font-size:12px;"></i></span>'
                     + '</span>';
+            }
+            /** CVR Δ column: CVR vs LT O CVR. Within ±20% shows "--", above +20% the up arrow, below -20% the down arrow. */
+            function fmtCvrTrend(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = parseInt(v, 10);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cvr = parseFloat(row.pageCvr);
+                var lto = parseFloat(row.ltoCvr);
+                var tip = 'CVR ' + (isFinite(cvr) ? cvr.toFixed(1) + '%' : '—') + ' vs LT O CVR ' + (isFinite(lto) ? lto.toFixed(1) + '%' : '—');
+                if (t > 0) {
+                    return '<span title="' + amzEsc(tip + ' · more than 20% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                }
+                if (t < 0) {
+                    return '<span title="' + amzEsc(tip + ' · more than 20% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                }
+                return '<span title="' + amzEsc(tip + ' · within ±20%') + '">--</span>';
             }
             /** Green flag when ACOS% is below the row's GPFT% (server rule: needs L30 spend, so idle campaigns are not flagged). */
             function amzAcosBelowGpft(row) {
@@ -3964,6 +3963,15 @@
                     col.formatter = fmtLtoCvr;
                     col.minWidth = 64;
                     col.width = 76;
+                    return;
+                }
+                if (c === 'cvrTrend') {
+                    col.title = 'CVR Δ';
+                    col.headerTooltip = 'CVR vs LT O CVR: within ±20% of LT O CVR shows --, more than 20% above shows the up arrow, more than 20% below shows the down arrow.';
+                    col.formatter = fmtCvrTrend;
+                    col.hozAlign = 'center';
+                    col.minWidth = 52;
+                    col.width = 60;
                     return;
                 }
                 if (c === 'pageCvr') {
@@ -5107,7 +5115,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (f === 'ltoCvr') return 'price';
+                if (f === 'ltoCvr' || f === 'cvrTrend') return 'price';
                 if (/^(cost|ACOS|yAcos|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|projectedSpend|projectedSales|ySpend|ySales|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
