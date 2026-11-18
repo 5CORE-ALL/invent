@@ -637,7 +637,32 @@ class NewTemutwoController extends Controller
                 }
             };
 
-            $tallyOrders(TemuShopifySalesService::channelMasterL30Window(), $l30ByNormalizedSku);
+            // L30 = Σ Qty of the exact rows /temu2-tabulator lists (TemuShopifySalesService::getTemu2OrdersTableRows over
+            // the same L30 window), with the same row filter its badges use: an order id, not a PARENT sku, matched to
+            // Product Master. So "Total Quantity" there and Σ L30 here always agree.
+            [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
+            foreach (TemuShopifySalesService::getTemu2OrdersTableRows($l30Start, $l30End) as $tabRow) {
+                $rawSku = trim((string) ($tabRow['contribution_sku'] ?? ''));
+                if ($rawSku === '' || trim((string) ($tabRow['order_id'] ?? '')) === '' || stripos($rawSku, 'PARENT') !== false) {
+                    continue;
+                }
+                if (($tabRow['pm_matched'] ?? true) === false) {
+                    continue;
+                }
+                $qty = (int) ($tabRow['quantity_purchased'] ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+                $n = $normalizeSku($rawSku);
+                if (isset($l30ByNormalizedSku[$n])) {
+                    $l30ByNormalizedSku[$n] += $qty;
+                } else {
+                    $nNoSpace = str_replace(' ', '', $n);
+                    if (isset($noSpaceToNormalized[$nNoSpace])) {
+                        $l30ByNormalizedSku[$noSpaceToNormalized[$nNoSpace]] += $qty;
+                    }
+                }
+            }
             // Prior 30 complete Pacific days (31–60). Feeds CVR 45 / CVR 60, which is what
             // the CVR up/down arrow and the Sprc Dil CVR overlay compare against.
             $tallyOrders(TemuShopifySalesService::channelMasterL60Window(), $l60ByNormalizedSku);
