@@ -88,15 +88,10 @@
                         </div>
                     </div>
                     <div class="text-muted" style="font-size:12px;" id="amz-cvr-rule-note"></div>
-                    <div class="border-top pt-2 mt-2" id="amz-cvr-rule-buttons">
-                        <div class="text-muted mb-1" style="font-size:12px;">Open a price rule. Each button opens its own rules on its own, and does not turn the Sprc Dil / Std prc vs dil switch on or off.</div>
-                        <div class="d-flex flex-wrap gap-2">
-                            @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'buttons'])
-                            <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
-                                title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
-                                <i class="fas fa-sliders-h"></i> Sprc Dil
-                            </button>
-                        </div>
+                    <div class="border-top pt-2 mt-2" id="amz-cvr-rule-switches">
+                        <div class="fw-semibold mb-1" style="font-size:13px;">S PRC rule ON / OFF</div>
+                        <div class="text-muted mb-1" style="font-size:12px;">Only the rule that is ON fills S PRC. Turning one ON turns the other OFF. The Sprc Dil and Std prc vs dil buttons stay in the toolbar.</div>
+                        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => 'amazon'])
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -314,26 +309,6 @@
             amzCvrRulePaintCounts();
             $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose price cut would be held by the Lower cap (based on each SKU\'s current price).');
         }
-
-        // The rule buttons sit inside this modal. Close this modal first, then run the button's own handler, so the two
-        // Bootstrap modals never stack. The click is held in the capture phase and re-sent once this modal has hidden.
-        (function() {
-            const modalEl = document.getElementById('amzCvrRuleModal');
-            if (!modalEl || modalEl._amzRuleBtnBound) return;
-            modalEl._amzRuleBtnBound = true;
-            modalEl.addEventListener('click', function(e) {
-                const b = e.target.closest ? e.target.closest('#amz-std-prc-btn, #amz-dil-groi-btn') : null;
-                if (!b || b._amzPass) return;
-                e.stopPropagation();
-                e.preventDefault();
-                modalEl.addEventListener('hidden.bs.modal', function() {
-                    b._amzPass = true;
-                    b.click();
-                    b._amzPass = false;
-                }, { once: true });
-                if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-            }, true);
-        })();
 
         $(document).ready(function() {
             amzCvrRuleRefreshLabels(amzCvrRule);

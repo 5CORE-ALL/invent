@@ -914,9 +914,13 @@
                             </li>
                         </ul>
                     </div>
-                    {{-- The Std prc vs dil and Sprc Dil buttons now live inside the CVR Price Rule modal (partials/amazon-cvr-price-rule). --}}
+                    @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'buttons'])
                     @include('partials.amazon-ship-slabs', ['amazonShipPart' => 'buttons'])
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => 'amazon'])
+                    <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
+                        title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                        <i class="fas fa-sliders-h"></i> Sprc Dil
+                    </button>
+                    {{-- The Sprc Dil / Std prc vs dil ON/OFF switch now lives inside the CVR Price Rule modal (partials/amazon-cvr-price-rule). --}}
 @endif
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
