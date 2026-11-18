@@ -33,6 +33,57 @@
         .sam-stat-badge--ssales { background: #0d9488; }
         .sam-stat-badge--active { background: #059669; }
 
+        /* Today / Yesterday / L30 / Projected panels — same look as /all-marketplace-master. */
+        #sam-panels {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.5rem;
+        }
+        @media (max-width: 1200px) { #sam-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 640px)  { #sam-panels { grid-template-columns: minmax(0, 1fr); } }
+        #sam-panels .sam-panel {
+            min-width: 0;
+            border-radius: 12px;
+            padding: 0.55rem 0.6rem 0.65rem;
+            background: #fef9c3;
+            border: 1px solid #facc15;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        #sam-panels .sam-panel-title {
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0 0 0.35rem;
+            color: #854d0e;
+        }
+        #sam-panels .sam-panel-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.3rem;
+        }
+        #sam-panels .sam-panel--l30 .sam-panel-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        #sam-panels .sam-pbadge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            min-height: 31px;
+            padding: 0.1rem 0.25rem;
+            border-radius: 0.375rem;
+            font-size: 0.92rem;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            text-align: center;
+            color: #fff;
+        }
+        #sam-panels .sam-pbadge.sam-dark-text { color: #111; }
+        #sam-panels .sam-pbadge.sam-up   { background: #198754 !important; color: #fff; }
+        #sam-panels .sam-pbadge.sam-down { background: #dc3545 !important; color: #fff; }
+        #sam-panels .sam-pbadge .sam-vs { font-size: 0.7rem; margin-left: 0.2rem; }
+
         #shopify-ads-master-wrap {
             overflow-x: auto;
             overflow-y: visible;
@@ -190,6 +241,10 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    {{-- Today / Yesterday / L30 / Projected for Shopify — same figures as the
+                         Shopify B2C row on /all-marketplace-master (filled by script below). --}}
+                    <div id="sam-panels" class="mb-2"></div>
+
                     {{-- Badge strip + Search + Refresh --}}
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="d-flex align-items-center flex-wrap gap-2 flex-grow-1 py-1" style="min-width:0;">
@@ -832,6 +887,275 @@
             document.getElementById('samTrendsModal')?.addEventListener('shown.bs.modal', function () {
                 if (samTrendChart) samTrendChart.resize();
             });
+        });
+    </script>
+    <script>
+        /* Today / Yesterday / L30 / Projected panels for Shopify.
+           Reads the Shopify B2C row of /all-marketplace-master (saved Active Channel
+           table) and applies the same formulas that page uses for its badges, so the
+           numbers match. */
+        document.addEventListener('DOMContentLoaded', function () {
+            const host = document.getElementById('sam-panels');
+            if (!host) return;
+            const summaryUrl = "{{ route('shopify.ads.master.channel.summary') }}";
+
+            const PANELS = [
+                { key: 'today', title: 'Today', badges: [
+                    ['sales', 'Sales', '#fd7e14'], ['orders', 'Orders', '#0dcaf0', true],
+                    ['npft', 'Nprft%', '#17a2b8'], ['groi', 'Groi%', '#dc3545'],
+                    ['nroi', 'NROI%', '#0d6efd'], ['ads', 'Ads%', '#d63384'],
+                    ['views', 'Views', '#0dcaf0', true], ['cvr', 'CVR', '#6f42c1'],
+                ] },
+                { key: 'yest', title: 'Yesterday', badges: [
+                    ['sales', 'Sales', '#17a2b8'], ['orders', 'Orders', '#0dcaf0', true],
+                    ['npft', 'Nprft%', '#17a2b8'], ['groi', 'Groi%', '#dc3545'],
+                    ['nroi', 'NROI%', '#0d6efd'], ['ads', 'Ads%', '#d63384'],
+                    ['views', 'Views', '#0dcaf0', true], ['cvr', 'CVR', '#6f42c1'],
+                ] },
+                { key: 'l30', title: 'L30', badges: [
+                    ['sales', 'Sales', '#198754', true], ['orders', 'Orders', '#0dcaf0', true],
+                    ['gpft', 'GPFT', '#ffc107', true], ['groi', 'G ROI', '#dc3545'],
+                    ['spend', 'Spend', '#6c757d'], ['ads', 'Ads', '#d63384'],
+                    ['views', 'Views', '#0dcaf0', true], ['cvr', 'CVR', '#0d6efd'],
+                    ['npftAmt', 'NPFT', '#ffc107', true], ['npft', 'NPFT', '#ffc107', true],
+                    ['nroi', 'NROI', '#0d6efd'],
+                ] },
+                { key: 'proj', title: 'Projected', badges: [
+                    ['sales', 'Sales', '#0d6efd'], ['orders', 'Orders', '#0dcaf0', true],
+                    ['groi', 'GROI%', '#0d6efd'], ['npft', 'Npft%', '#0d6efd'],
+                    ['nroi', 'NROI%', '#0d6efd'], ['ads', 'Ads%', '#d63384'],
+                    ['views', 'Views', '#0d6efd'], ['cvr', 'CVR', '#6f42c1'],
+                ] },
+            ];
+
+            host.innerHTML = PANELS.map(function (p) {
+                return '<div class="sam-panel sam-panel--' + p.key + '"><div class="sam-panel-title">' + p.title + '</div>'
+                    + '<div class="sam-panel-row">'
+                    + p.badges.map(function (b) {
+                        return '<span class="sam-pbadge' + (b[3] ? ' sam-dark-text' : '') + '" id="sam-p-' + p.key + '-' + b[0]
+                            + '" style="background:' + b[2] + ';">' + b[1] + ': <span class="sam-pval">—</span></span>';
+                    }).join('')
+                    + '</div></div>';
+            }).join('');
+
+            function num(v) {
+                if (v === null || v === undefined || v === '' || v === 'N/A') return 0;
+                if (typeof v === 'number') return v;
+                const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
+                return isFinite(n) ? n : 0;
+            }
+            const has = function (v) { return v !== undefined && v !== null && v !== ''; };
+            const money = function (v) { return '$' + Math.round(v).toLocaleString('en-US'); };
+            const compact = function (v) {
+                const r = Math.round(v);
+                if (Math.abs(r) >= 1000000) return (r / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                if (Math.abs(r) >= 1000) return Math.round(r / 1000) + 'K';
+                return String(r);
+            };
+            const pct = function (v, d) {
+                return (v === null || v === undefined || !isFinite(v)) ? '—' : (Math.round(v * Math.pow(10, d || 1)) / Math.pow(10, d || 1)).toFixed(d || 1) + '%';
+            };
+            const int = function (v) { return Math.round(v).toLocaleString('en-US'); };
+
+            // out[panel][key] = { text, cur, base, invert }
+            function compute(row, y) {
+                const l30 = num(row['L30 Sales']);
+                const l30Orders = num(row['L30 Orders']);
+                const gp = num(row['Gprofit%']);
+                const cogs = num(row['cogs']);
+                const views = num(row['Total Views']);
+                const qty = num(row['Qty']);
+                const spend = num(row['Total Ad Spend']);
+                const hasCvr = has(row['CVR']);
+                const listingCvr = hasCvr ? num(row['CVR']) : (views > 0 ? (qty / views) * 100 : null);
+
+                // ── L30 ──
+                const l30Pft = (gp / 100) * l30;
+                const l30Ads = l30 > 0 ? (spend / l30) * 100 : 0;
+                const l30Groi = cogs > 0 ? (l30Pft / cogs) * 100 : 0;
+                const l30Npft = gp - l30Ads;
+                const l30Nroi = num(row['N ROI']);
+
+                // ── Today ──
+                const tSales = num(row['Today Sales']);
+                let t = { sales: 0, gross: 0, net: 0, cogs: 0, spend: 0, views: 0, orders: 0 };
+                if (tSales > 0) {
+                    const npftCol = num(row['N PFT']);
+                    const yMeasuredRate = (row['Y Ads Measured'] === true)
+                        ? (function () {
+                            const ys = num(row['Y Sales']) > 0 ? num(row['Y Sales']) : num(row['Y Day Sales']);
+                            return ys > 0 ? (num(row['Y Ad Spend']) / ys) * 100 : null;
+                        })()
+                        : null;
+                    const adsRate = yMeasuredRate != null ? yMeasuredRate : num(has(row['Ads%']) ? row['Ads%'] : row['TACOS']);
+                    const tCogs = (l30 > 0 && cogs > 0) ? cogs * (tSales / l30) : tSales * Math.max(0, 1 - gp / 100);
+                    t = {
+                        sales: tSales,
+                        gross: (tSales * gp) / 100,
+                        net: (tSales * npftCol) / 100,
+                        cogs: tCogs,
+                        spend: (tSales * adsRate) / 100,
+                        views: (l30 > 0 && views > 0) ? views * (tSales / l30) : 0,
+                        orders: (l30 > 0 && l30Orders > 0) ? l30Orders * (tSales / l30) : 0,
+                    };
+                }
+                let tCvr = null;
+                if (tSales > 0 && l30 > 0) {
+                    const ratio = tSales / l30;
+                    const tv = views * ratio;
+                    let tu;
+                    if (l30Orders > 0) tu = l30Orders * ratio;
+                    else if (hasCvr) tu = (num(row['CVR']) / 100) * tv;
+                    else tu = qty * ratio;
+                    tCvr = tv > 0 ? (tu / tv) * 100 : null;
+                }
+
+                // ── Yesterday ──
+                const ySales = num(row['Y Sales']);
+                const yHasMeasured = has(row['Y GPFT $']) && has(row['Y COGS']);
+                const yM = yHasMeasured
+                    ? { pft: num(row['Y GPFT $']), cogs: num(row['Y COGS']), spend: num(row['Y Spend']), sales: num(row['Y Day Sales']) }
+                    : null;
+                const yGross = yM ? yM.pft : (ySales * gp) / 100;
+                const yNet = yM ? yM.pft - yM.spend : (ySales * num(row['N PFT'])) / 100;
+                let yCogs;
+                if (yM) yCogs = yM.cogs;
+                else if (!ySales) yCogs = 0;
+                else if (l30 > 0 && cogs > 0) yCogs = cogs * (ySales / l30);
+                else yCogs = ySales * Math.max(0, 1 - gp / 100);
+                const yPctSales = yM ? yM.sales : ySales;
+                const yDaySales = ySales > 0 ? ySales : num(row['Y Day Sales']);
+                let yAdsSpend = 0, yAdsSales = 0;
+                if (yDaySales > 0) {
+                    yAdsSales = yDaySales;
+                    yAdsSpend = (row['Y Ads Measured'] === true && num(row['Y Day Sales']) > 0)
+                        ? num(row['Y Ad Spend'])
+                        : (yDaySales * num(has(row['Ads%']) ? row['Ads%'] : row['TACOS'])) / 100;
+                }
+                const yNpft = yPctSales > 0 ? (yNet / yPctSales) * 100 : 0;
+                const yGroi = yCogs > 0 ? (yGross / yCogs) * 100 : 0;
+                const yNroi = yCogs > 0 ? (yNet / yCogs) * 100 : 0;
+                const yAds = yAdsSales > 0 ? (yAdsSpend / yAdsSales) * 100 : null;
+                const yOrders = y ? num(y.orders) : null;
+                const yViews = (y && has(y.views)) ? num(y.views) : null;
+                const yApprox = !!(y && (y.views_estimate || y.views_as_of));
+                let yCvr = null;
+                if (y && yViews > 0 && !yApprox) yCvr = (num(y.qty) / yViews) * 100;
+
+                // ── Projected ──
+                const pSales = (num(row['L7 Sales']) / 7) * 30;
+                const pGross = (gp / 100) * pSales;
+                const pCogs = pSales > 0
+                    ? ((l30 > 0 && cogs > 0) ? cogs * (pSales / l30) : pSales * Math.max(0, 1 - gp / 100))
+                    : 0;
+                const pRatio = (l30 > 0 && pSales > 0) ? pSales / l30 : 0;
+                const pViews = views > 0 ? (pRatio > 0 ? views * pRatio : views) : 0;
+                const pOrders = (l30Orders > 0 && pRatio > 0) ? l30Orders * pRatio : 0;
+                let pCvr = null;
+                if (pSales > 0 && l30 > 0 && views > 0) {
+                    const pv = views * pRatio;
+                    let pu;
+                    if (l30Orders > 0) pu = l30Orders * pRatio;
+                    else if (listingCvr != null) pu = (pv * listingCvr) / 100;
+                    else pu = null;
+                    pCvr = (pu != null && pv > 0) ? (pu / pv) * 100 : null;
+                }
+                const pNpft = pSales > 0 ? ((pGross - spend) / pSales) * 100 : 0;
+                const pGroi = pCogs > 0 ? (pGross / pCogs) * 100 : 0;
+                const pNroi = pCogs > 0 ? ((pGross - spend) / pCogs) * 100 : 0;
+                const pAds = pSales > 0 ? (spend / pSales) * 100 : 0;
+                const vsL30 = l30 > 0 ? ((pSales - l30) / l30) * 100 : null;
+
+                const base30Orders = l30Orders / 30;
+                const base30Views = views / 30;
+
+                return {
+                    today: {
+                        sales:  { text: money(t.sales), cur: t.sales, base: ySales },
+                        orders: { text: int(t.orders), cur: t.orders, base: base30Orders },
+                        npft:   { text: pct(tSales > 0 ? (t.net / t.sales) * 100 : 0), cur: tSales > 0 ? (t.net / t.sales) * 100 : null, base: yNpft },
+                        groi:   { text: pct(t.cogs > 0 ? (t.gross / t.cogs) * 100 : 0), cur: t.cogs > 0 ? (t.gross / t.cogs) * 100 : null, base: yGroi },
+                        nroi:   { text: pct(t.cogs > 0 ? (t.net / t.cogs) * 100 : 0), cur: t.cogs > 0 ? (t.net / t.cogs) * 100 : null, base: yNroi },
+                        ads:    { text: pct(tSales > 0 ? (t.spend / t.sales) * 100 : 0), cur: tSales > 0 ? (t.spend / t.sales) * 100 : null, base: yAds, invert: true },
+                        views:  { text: compact(t.views), cur: t.views, base: base30Views },
+                        cvr:    { text: tCvr === null ? '-' : pct(tCvr, 2), cur: tCvr, base: yCvr },
+                    },
+                    yest: {
+                        sales:  { text: ySales > 0 ? money(ySales) : 'NYS', cur: ySales, base: l30 / 30 },
+                        orders: { text: yOrders === null ? '-' : int(yOrders), cur: yOrders, base: base30Orders },
+                        npft:   { text: ySales > 0 ? pct(yNpft) : 'NYS', cur: ySales > 0 ? yNpft : null, base: l30Npft },
+                        groi:   { text: ySales > 0 ? pct(yGroi) : 'NYS', cur: ySales > 0 ? yGroi : null, base: l30Groi },
+                        nroi:   { text: ySales > 0 ? pct(yNroi) : 'NYS', cur: ySales > 0 ? yNroi : null, base: l30Nroi },
+                        ads:    { text: yAds === null ? 'NYS' : pct(yAds), cur: yAds, base: l30Ads, invert: true },
+                        views:  { text: yViews === null ? '-' : (compact(yViews) + (yApprox ? '~' : '')), cur: yViews, base: base30Views },
+                        cvr:    { text: yCvr === null ? '-' : pct(yCvr, 2), cur: yCvr, base: listingCvr },
+                    },
+                    l30: {
+                        sales:  { text: compact(l30) },
+                        orders: { text: int(l30Orders) },
+                        gpft:   { text: pct(gp) },
+                        groi:   { text: pct(l30Groi) },
+                        spend:  { text: compact(spend) },
+                        ads:    { text: pct(l30Ads) },
+                        views:  { text: compact(views) },
+                        cvr:    { text: listingCvr === null ? '-' : pct(listingCvr, 2) },
+                        npftAmt:{ text: compact(l30Pft - spend) },
+                        npft:   { text: pct(l30Npft) },
+                        nroi:   { text: pct(l30Nroi) },
+                    },
+                    proj: {
+                        sales:  { text: compact(pSales), vs: vsL30, cur: pSales, base: l30 },
+                        orders: { text: int(pOrders), cur: pOrders, base: l30Orders },
+                        groi:   { text: pct(pGroi), cur: pGroi, base: l30Groi },
+                        npft:   { text: pct(pNpft), cur: pNpft, base: l30Npft },
+                        nroi:   { text: pct(pNroi), cur: pNroi, base: l30Nroi },
+                        ads:    { text: pct(pAds), cur: pAds, base: l30Ads, invert: true },
+                        views:  { text: compact(pViews), cur: pViews, base: views },
+                        cvr:    { text: pCvr === null ? '-' : pct(pCvr, 2), cur: pCvr, base: listingCvr },
+                    },
+                };
+            }
+
+            function paint(out) {
+                PANELS.forEach(function (p) {
+                    p.badges.forEach(function (b) {
+                        const el = document.getElementById('sam-p-' + p.key + '-' + b[0]);
+                        const d = out && out[p.key] && out[p.key][b[0]];
+                        if (!el || !d) return;
+                        el.querySelector('.sam-pval').textContent = d.text;
+                        const old = el.querySelector('.sam-vs');
+                        if (old) old.remove();
+                        if (d.vs != null && isFinite(d.vs) && Math.abs(d.vs) >= 0.1) {
+                            const s = document.createElement('span');
+                            s.className = 'sam-vs';
+                            s.textContent = (d.vs > 0 ? '+' : '−') + Math.abs(d.vs).toFixed(0) + '%';
+                            el.appendChild(s);
+                        }
+                        el.classList.remove('sam-up', 'sam-down');
+                        if (d.cur != null && d.base != null && isFinite(d.cur) && isFinite(d.base) && Math.abs(d.cur - d.base) > 1e-9) {
+                            const better = d.invert ? d.cur < d.base : d.cur > d.base;
+                            el.classList.add(better ? 'sam-up' : 'sam-down');
+                        }
+                    });
+                });
+            }
+
+            function load() {
+                fetch(summaryUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.row) {
+                            host.title = 'Shopify row not found in Active Channel data (run channel:calculate-data).';
+                            return;
+                        }
+                        host.title = '';
+                        paint(compute(res.row, res.yesterday || null));
+                    })
+                    .catch(function () { host.title = 'Could not load Shopify Active Channel summary.'; });
+            }
+
+            load();
+            document.getElementById('sam-refresh')?.addEventListener('click', load);
         });
     </script>
 @endsection

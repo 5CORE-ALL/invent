@@ -289,6 +289,54 @@ class ShopifyAdsMasterController extends Controller
         ]);
     }
 
+    /**
+     * Shopify B2C row from /all-marketplace-master (same saved table the page
+     * reads, so Today / L30 / Projected agree) plus its yesterday metrics.
+     * Feeds the Today / Yesterday / L30 / Projected panels on this page.
+     */
+    public function channelSummary()
+    {
+        $isShopify = static function ($name): bool {
+            $k = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $name));
+
+            return $k === 'shopifyb2c' || $k === 'shopify';
+        };
+
+        $row = null;
+        try {
+            $resp = app(\App\Http\Controllers\Channels\ChannelMasterController::class)
+                ->getViewChannelDataFast(new Request(['size' => 10000, 'page' => 1]));
+            $payload = method_exists($resp, 'getData') ? $resp->getData(true) : [];
+            foreach (($payload['data'] ?? []) as $r) {
+                if ($isShopify($r['Channel '] ?? ($r['Channel'] ?? ''))) {
+                    $row = $r;
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster::channelSummary row failed: ' . $e->getMessage());
+        }
+
+        $yesterday = null;
+        try {
+            $built = app(\App\Services\Support\YesterdayMarketplaceMetricsService::class)->build();
+            foreach (($built['rows'] ?? []) as $r) {
+                if ($isShopify($r['channel'] ?? '')) {
+                    $yesterday = $r;
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('ShopifyAdsMaster::channelSummary yesterday failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'status' => 200,
+            'row' => $row,
+            'yesterday' => $yesterday,
+        ]);
+    }
+
     public function data()
     {
         // Google Shopping ↔ Google SERP partition the same `google_ads_campaigns` rows by
