@@ -5118,9 +5118,11 @@ class ChannelMasterController extends Controller
         // rollup /shopify and /shopify-ads-master use. The daily-sales badge only knows
         // Google Shopping spend over order totals, so it must not drive the net figures.
         $rolledSpend = 0.0;
+        $rolledTcos = 0.0;
         try {
             $rollup = app(ShopifyAdsMasterController::class)->getRolledUpSpend();
             $rolledSpend = (float) ($rollup['total_spend'] ?? 0);
+            $rolledTcos = (float) ($rollup['tcos_pct'] ?? 0);
         } catch (\Throwable $e) {
             Log::warning('Shopify B2C overlay rollup spend failed: '.$e->getMessage());
         }
@@ -5149,7 +5151,12 @@ class ChannelMasterController extends Controller
                 : ($rowSpend > 0 ? $rowSpend : (float) ($live['google'] ?? 0));
             $pft = (float) ($live['pft'] ?? 0);
             $cogs = (float) ($live['cogs'] ?? 0);
-            $adsPct = $l30Sales > 0 ? ($adSpend / $l30Sales) * 100 : 0.0;
+            // Ads% = /shopify-ads-master TCOS (rolled-up spend ÷ /shopify Net Sales) when the
+            // rollup supplied the spend, so this row matches that page's TCOS badge. The
+            // daily-sales L30 is a different sales basis and made this read higher.
+            $adsPct = ($rolledSpend > 0 && $rolledTcos > 0)
+                ? $rolledTcos
+                : ($l30Sales > 0 ? ($adSpend / $l30Sales) * 100 : 0.0);
             $gpftExact = $l30Sales > 0 ? ($pft / $l30Sales) * 100 : 0.0;
 
             $row['Total Ad Spend'] = round($adSpend, 2);
