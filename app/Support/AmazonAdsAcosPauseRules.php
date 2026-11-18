@@ -166,7 +166,7 @@ final class AmazonAdsAcosPauseRules
             return [];
         }
         try {
-            $rows = (new AmazonAdsMissingController)->data()->getData(true)['data'] ?? [];
+            $rows = (new AmazonAdsMissingController)->data(\Illuminate\Http\Request::create('/', 'GET', ['refresh' => 1]))->getData(true)['data'] ?? [];
         } catch (\Throwable $e) {
             Log::warning('Amazon Ads ACOS pause rules: could not load missing-ads data', ['error' => $e->getMessage()]);
 

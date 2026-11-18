@@ -36,6 +36,15 @@ class AmazonAdsMissingController extends Controller
 
     private const SIDEBAR_COUNTS_CACHE_KEY = 'amazon_ads_missing_sidebar_counts';
 
+    /** Finished /amazon-ads/missing grid payload (data()). */
+    private const DATA_CACHE_KEY = 'amazon_ads_missing_data_v1';
+
+    /**
+     * Safety-net lifetime only: freshness is decided by dataFingerprint(), so this just bounds how long an
+     * unchanged payload is kept. The 15-min link sync re-warms it, so a visitor rarely meets a cold build.
+     */
+    private const DATA_CACHE_MINUTES = 360;
+
     public function index()
     {
         return view('amazon_ads.amz_ads_missing');
@@ -92,6 +101,7 @@ class AmazonAdsMissingController extends Controller
     {
         Cache::forget(self::SIDEBAR_COUNT_CACHE_KEY);
         Cache::forget(self::SIDEBAR_COUNTS_CACHE_KEY);
+        Cache::forget(self::DATA_CACHE_KEY);
     }
 
     /**
@@ -101,7 +111,124 @@ class AmazonAdsMissingController extends Controller
      * SUM of the children's Shopify inv. This avoids the duplicate-parent rows that come from
      * multiple / whitespace-variant "PARENT …" SKUs in product_master.
      */
-    public function data(): JsonResponse
+    public function data(?Request $request = null): JsonResponse
+    {
+        $request ??= request();
+
+        // Building the grid scans the campaign report tables and auto-links campaigns, so the first load is
+        // slow. The finished payload is cached together with a fingerprint of the data it was built from
+        // (links, product master, inventory, campaign status + L30 metrics, new report rows, and the Amazon Ads
+        // grid's change version that bumps on every BGT / bid / rule push). A later load only recomputes the cheap
+        // fingerprint: same -> served from cache; changed -> rebuilt, so the page never shows outdated data.
+        // Any link / unlink / create / delete / import also drops it via forgetMissingTotalCache().
+        // ?refresh=1 forces a rebuild.
+        $fingerprint = $this->dataFingerprint();
+
+        if (! $request->boolean('refresh')) {
+            try {
+                $cached = Cache::get(self::DATA_CACHE_KEY);
+                if (is_array($cached) && ($cached['fp'] ?? null) === $fingerprint && is_array($cached['payload'] ?? null)) {
+                    return response()->json($cached['payload']);
+                }
+            } catch (\Throwable $e) {
+                // rebuild below
+            }
+        }
+
+        $response = $this->buildData();
+
+        if ($response->getStatusCode() === 200) {
+            try {
+                // Fingerprint taken BEFORE the build: if the build itself changed data (e.g. auto-linked a new
+                // campaign) the next load sees a different fingerprint and rebuilds once more, never serves stale.
+                Cache::put(
+                    self::DATA_CACHE_KEY,
+                    ['fp' => $fingerprint, 'payload' => $response->getData(true)],
+                    now()->addMinutes(self::DATA_CACHE_MINUTES)
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Amazon ads missing: data cache write failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return $response;
+    }
+
+    /**
+     * Cheap "has anything this page shows changed?" signature (a handful of small indexed queries instead of the
+     * ~hundreds the full build runs).
+     */
+    private function dataFingerprint(): string
+    {
+        $parts = [];
+
+        // Version bumped by every Amazon Ads push (BGT, bids, status, rules) in AmazonAdsController.
+        try {
+            $parts['ver'] = AmazonAdsController::rawDataVersion();
+        } catch (\Throwable $e) {
+            $parts['ver'] = '';
+        }
+
+        $probe = function (string $key, callable $fn) use (&$parts): void {
+            try {
+                $parts[$key] = $fn();
+            } catch (\Throwable $e) {
+                // An unreadable source must never serve a cached page as "unchanged".
+                $parts[$key] = 'err:'.microtime(true);
+            }
+        };
+
+        $probe('links', function () {
+            if (! Schema::hasTable('amazon_ads_missing_links')) {
+                return '';
+            }
+            $r = DB::selectOne('SELECT COUNT(*) c, MAX(id) m, MAX(updated_at) u FROM amazon_ads_missing_links');
+
+            return json_encode($r);
+        });
+
+        $probe('products', function () {
+            if (! Schema::hasTable('product_master')) {
+                return '';
+            }
+
+            return json_encode(DB::selectOne('SELECT COUNT(*) c, MAX(updated_at) u FROM product_master WHERE deleted_at IS NULL'));
+        });
+
+        $probe('inventory', function () {
+            if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
+                return '';
+            }
+
+            return json_encode(DB::selectOne('SELECT COUNT(*) c, SUM(inv) s FROM shopify_skus'));
+        });
+
+        // [table, sold column, sales column]
+        foreach ([[self::SP_TABLE, 'purchases30d', 'sales30d'], [self::SB_TABLE, 'purchases', 'sales']] as [$table, $sold, $sales]) {
+            $probe($table, function () use ($table, $sold, $sales) {
+                if (! Schema::hasTable($table)) {
+                    return '';
+                }
+                $cols = array_values(array_filter(
+                    ['campaignName', 'campaignStatus', 'cost', 'clicks', $sold, $sales],
+                    fn ($c) => Schema::hasColumn($table, $c)
+                ));
+                $concat = implode(', ', array_map(fn ($c) => "COALESCE(`{$c}`, '')", $cols));
+                // MAX(id): any newly inserted report row (daily fetch, new campaign). The L30 checksum: in-place
+                // changes to the summary rows (status paused / enabled by a rule, refreshed spend / sales).
+                $newest = DB::selectOne("SELECT MAX(id) m FROM `{$table}`");
+                $l30 = DB::selectOne(
+                    "SELECT COUNT(*) c, SUM(CRC32(CONCAT_WS('|', {$concat}))) s FROM `{$table}` WHERE report_date_range = 'L30'"
+                );
+
+                return json_encode([$newest, $l30]);
+            });
+        }
+
+        return md5(json_encode($parts));
+    }
+
+    private function buildData(): JsonResponse
     {
         if (! Schema::hasTable('product_master')) {
             return response()->json(['data' => []]);
@@ -447,7 +574,13 @@ class AmazonAdsMissingController extends Controller
             $notes[] = $e->getMessage();
         }
 
+        // Rebuild the page payload now so the next visit is a cache hit, not a cold build.
         self::forgetMissingTotalCache();
+        try {
+            $this->data(Request::create('/', 'GET', ['refresh' => 1]));
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: cache warm failed', ['error' => $e->getMessage()]);
+        }
         $result['message'] = "Linked {$result['kw_pt_created']} KW/PT and {$result['hl_imported']} HL campaign(s)."
             .($notes === [] ? '' : ' '.implode('; ', $notes));
 
