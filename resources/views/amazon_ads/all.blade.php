@@ -1456,7 +1456,7 @@
                                 <select id="amazonAdsFilterReportType" class="form-select form-select-sm amz-raw-filter-select">
                                     <option value="all_reports" selected>All (SP + SB)</option>
                                     <option value="sp_reports">SP reports</option>
-                                    <option value="sb_reports">SB reports</option>
+                                    <option value="sb_reports">SB reports (HL)</option>
                                     <option value="sd_reports">SD reports</option>
                                     <option value="sp_keywords">SP keywords</option>
                                     <option value="sp_negatives">SP negatives</option>
