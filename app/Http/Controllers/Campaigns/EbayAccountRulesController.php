@@ -93,6 +93,8 @@ class EbayAccountRulesController extends Controller
             if ($values['highest'] === null && $values['lowest'] === null && $values['manual'] === null) {
                 continue; // nothing set for this category
             }
+            // Rules column: which of the two values the category bid uses.
+            $values['use'] = (($pair['use'] ?? 'highest') === 'lowest') ? 'lowest' : 'highest';
 
             $bids[$category] = $values;
         }

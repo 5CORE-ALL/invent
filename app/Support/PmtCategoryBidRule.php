@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\DB;
  * Ads Rule PMT: per-category Highest / Lowest bid %, plus the On / Off switch.
  *
  * Rules, first match wins:
- *   1. INV = 0                              -> bid 0 and the ad is paused
- *   2. the category has a Highest           -> Highest
- *   3. no match                             -> the old Dil vs SBid S Bid of the listing (when enabled)
+ *   1. INV = 0 (or the pause conditions match) -> bid 0 and the ad is paused
+ *   2. eBay L30 sold = 0 (permanent rule)   -> the ES Bid of the listing
+ *   3. the category has the value its Rules dropdown picks (Highest or Lowest) -> that value
+ *   4. no match                             -> the old Dil vs SBid S Bid of the listing (when enabled)
  * The old Promoted ad rate Manual is gone (the column is now the read-only live CBID): a stored value is ignored.
- * Lowest is still stored and shown but no longer pushes a bid.
+ * Each category stores `use` = 'highest' (default) or 'lowest': the Rules column of the Ads Rule PMT window.
  *
  * The same logic runs in the browser (ebay_tabulator_view) for the PMT BID column.
  */
@@ -52,7 +53,7 @@ final class PmtCategoryBidRule
     }
 
     /**
-     * @return array<string, array{highest:?float,lowest:?float,manual:?float}>
+     * @return array<string, array{highest:?float,lowest:?float,manual:?float,use:string}>
      */
     public static function bids(string $account = 'ebay1'): array
     {
@@ -65,15 +66,18 @@ final class PmtCategoryBidRule
                 $hi = $value['highest'] ?? null;
                 $lo = $value['lowest'] ?? null;
                 $man = $value['manual'] ?? null;
+                $use = ($value['use'] ?? 'highest') === 'lowest' ? 'lowest' : 'highest';
             } else { // older data: a plain number = highest
                 $hi = $value;
                 $lo = null;
                 $man = null;
+                $use = 'highest';
             }
             $out[(string) $category] = [
                 'highest' => is_numeric($hi) ? (float) $hi : null,
                 'lowest' => is_numeric($lo) ? (float) $lo : null,
                 'manual' => null, // retired: stored values are ignored
+                'use' => $use,
             ];
         }
 
@@ -256,10 +260,14 @@ final class PmtCategoryBidRule
 
     /**
      * @param  bool  $pauseMatch  the dynamic pause rule fired for this row (see pauseMatches)
+     * @param  ?float  $lowest  the category Lowest
+     * @param  string  $use  'highest' | 'lowest': which category value the Rules dropdown picked
+     * @param  float  $sold  eBay L30 sold qty of the listing (the whole family on eBay 2)
+     * @param  ?float  $esBid  ES Bid (eBay suggested bid) of the listing
      * @return array{rule:string,pause:bool,bid:?float,label:string,fallback:bool}
      *         fallback = no match for the category: the caller uses the old Dil vs SBid bid
      */
-    public static function decide(float $inv, ?float $highest, ?float $manual = null, bool $pauseMatch = false): array
+    public static function decide(float $inv, ?float $highest, ?float $manual = null, bool $pauseMatch = false, ?float $lowest = null, string $use = 'highest', float $sold = 1.0, ?float $esBid = null): array
     {
         if ($inv <= 0) {
             return ['rule' => '1', 'pause' => true, 'bid' => null, 'label' => 'PMT rule 1: INV 0, ad paused', 'fallback' => false];
@@ -267,10 +275,16 @@ final class PmtCategoryBidRule
         if ($pauseMatch) {
             return ['rule' => '1', 'pause' => true, 'bid' => null, 'label' => 'PMT rule 1: pause conditions matched, ad paused', 'fallback' => false];
         }
-        if ($highest !== null) {
-            return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($highest, 2)), 'label' => 'PMT rule 2: category Highest', 'fallback' => false];
+        // Permanent rule: nothing sold on eBay in the last 30 days -> the ES Bid.
+        if ($sold <= 0 && $esBid !== null && $esBid > 0) {
+            return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($esBid, 2)), 'label' => 'PMT rule 2: eBay L30 sold 0, ES Bid', 'fallback' => false];
+        }
+        $isLowest = $use === 'lowest';
+        $picked = $isLowest ? $lowest : $highest;
+        if ($picked !== null) {
+            return ['rule' => '3', 'pause' => false, 'bid' => max(0.0, round($picked, 2)), 'label' => 'PMT rule 3: category '.($isLowest ? 'Lowest' : 'Highest'), 'fallback' => false];
         }
 
-        return ['rule' => '3', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 3: no Highest for this category, old S Bid', 'fallback' => true];
+        return ['rule' => '4', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 4: no '.($isLowest ? 'Lowest' : 'Highest').' for this category, old S Bid', 'fallback' => true];
     }
 }

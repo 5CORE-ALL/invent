@@ -300,8 +300,8 @@ class DilVsSbidApplyService
         $fallback = $this->pmtSbidFallback($account, $cfg['rule']);
         $pauseRule = PmtCategoryBidRule::pauseRule($account);
         $decider = fn (string $lid, object $ad, array $rolled): array => isset($families[(string) $lid])
-            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule)
-            : $this->pmtDecision($lid, $rolled, $bids, $categories, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule);
+            ? $this->pmtDecisionFromInputs($families[(string) $lid], $bids, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule, $this->pmtEsBid($ad))
+            : $this->pmtDecision($lid, $rolled, $bids, $categories, $fallback === null ? null : fn (): array => $fallback($ad, $rolled), $pauseRule, $this->pmtEsBid($ad));
 
         if ($onlyLocalMismatch) {
             $listingIds = $this->pmtLocalMismatches($listingIds, $adsTable, $cfg['metric'], $decider, $cfg['rule']);
@@ -416,7 +416,8 @@ class DilVsSbidApplyService
         $out['category_range'] = $bids[$in['category']] ?? null;
         $sbidFallback = ($account === 'ebay1' && isset($rolled)) ? $this->pmtSbidFallback($account, $cfg['rule']) : null;
         $out['pause_rule'] = PmtCategoryBidRule::pauseRule($account);
-        $out['wanted'] = $this->pmtDecisionFromInputs($in, $bids, $sbidFallback === null ? null : fn (): array => $sbidFallback($first, $rolled), $out['pause_rule']);
+        $out['es_bid'] = $ads->first() ? $this->pmtEsBid($ads->first()) : null;
+        $out['wanted'] = $this->pmtDecisionFromInputs($in, $bids, $sbidFallback === null ? null : fn (): array => $sbidFallback($first, $rolled), $out['pause_rule'], $out['es_bid']);
 
         // What eBay says is live.
         $out['live'] = [];
@@ -457,14 +458,22 @@ class DilVsSbidApplyService
      * @param  array<string, string>  $categories
      * @return array{skip:?string, off:bool, formatted:?string, label:string}
      */
-    private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories, ?callable $fallback = null, ?array $pauseRule = null): array
+    private function pmtDecision(string $listingId, array $rolled, array $bids, array $categories, ?callable $fallback = null, ?array $pauseRule = null, ?float $esBid = null): array
     {
         return $this->pmtDecisionFromInputs([
             'inv' => $rolled['shopify']->inv ?? null,
             'ovL30' => $rolled['shopify']->quantity ?? 0,
             'sold' => $rolled['metric']->ebay_l30 ?? 0,
             'category' => $categories[ExcelCategoryLookupService::normalizeItemId($listingId)] ?? '',
-        ], $bids, $fallback, $pauseRule);
+        ], $bids, $fallback, $pauseRule, $esBid);
+    }
+
+    /** ES Bid (eBay suggested bid) stored on an ad row, or null when there is none. */
+    private function pmtEsBid(object $ad): ?float
+    {
+        $v = $ad->suggested_bid ?? null;
+
+        return is_numeric($v) && (float) $v > 0 ? (float) $v : null;
     }
 
     /**
@@ -508,7 +517,7 @@ class DilVsSbidApplyService
      * @param  array<string, array{highest:?float,lowest:?float}>  $bids
      * @return array{skip:?string, off:bool, formatted:?string, label:string}
      */
-    private function pmtDecisionFromInputs(array $in, array $bids, ?callable $fallback = null, ?array $pauseRule = null): array
+    private function pmtDecisionFromInputs(array $in, array $bids, ?callable $fallback = null, ?array $pauseRule = null, ?float $esBid = null): array
     {
         $inv = $in['inv'] ?? null;
         if ($inv === null || ! is_numeric($inv)) {
@@ -521,8 +530,17 @@ class DilVsSbidApplyService
         $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0;
 
         $category = (string) ($in['category'] ?? '');
-        $range = $bids[$category] ?? ['highest' => null, 'lowest' => null, 'manual' => null];
-        $d = PmtCategoryBidRule::decide($inv, $range['highest'], $range['manual'] ?? null, PmtCategoryBidRule::pauseMatches($pauseRule, $inv, $ovL30));
+        $range = $bids[$category] ?? ['highest' => null, 'lowest' => null, 'manual' => null, 'use' => 'highest'];
+        $d = PmtCategoryBidRule::decide(
+            $inv,
+            $range['highest'],
+            $range['manual'] ?? null,
+            PmtCategoryBidRule::pauseMatches($pauseRule, $inv, $ovL30),
+            $range['lowest'] ?? null,
+            $range['use'] ?? 'highest',
+            $sold,
+            $esBid
+        );
 
         if ($d['pause']) {
             return ['skip' => null, 'off' => true, 'formatted' => null, 'label' => $d['label']];

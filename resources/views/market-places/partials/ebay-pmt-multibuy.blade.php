@@ -67,6 +67,7 @@
         .arp-rule.is-1 .arp-rule-num { background: #dc2626; }
         .arp-rule.is-2 .arp-rule-num { background: #16a34a; }
         .arp-rule.is-3 .arp-rule-num { background: #d97706; }
+        .arp-rule.is-4 .arp-rule-num { background: #64748b; }
         .arp-rule.is-5 .arp-rule-num { background: #db2777; }
         .arp-rule.is-base .arp-rule-num { background: #94a3b8; }
         .arp-rule-cond { font-size: 12.5px; font-weight: 600; color: #1e293b; line-height: 1.25; }
@@ -209,8 +210,8 @@
                             </div>
                             <select class="form-select form-select-sm arp-filter" id="ads-rule-pmt-filter" title="Show only the categories of one rule">
                                 <option value="">All categories</option>
-                                <option value="has">Has a Highest (rule 2)</option>
-                                <option value="nomatch">No match (rule 3)</option>
+                                <option value="has">Has a Highest / Lowest (rule 3)</option>
+                                <option value="nomatch">No match (rule 4)</option>
                             </select>
                             <div class="input-group input-group-sm arp-bulk">
                                 <input type="number" class="form-control" id="ads-rule-pmt-all-high" min="0" max="100" step="0.01" placeholder="All Highest">
@@ -233,6 +234,7 @@
                                         <th class="text-center arp-sortable" data-sort="cbid" style="width: 110px;" title="Click to sort. Live C BID of the category: the median current eBay bid of its listings (hover a value for the range). Read only.">CBID<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="high" style="width: 140px;" title="Click to sort">Highest (%)<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="low" style="width: 140px;" title="Click to sort">Lowest (%)<span class="arp-sort-ind"></span></th>
+                                        <th class="arp-sortable" data-sort="use" style="width: 130px;" title="Click to sort. Which value the category bid uses: its Highest or its Lowest. A {{ strtolower($pmtUnit) }} with eBay L30 sold = 0 always gets its ES Bid instead (permanent rule).">Rules<span class="arp-sort-ind"></span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="ads-rule-pmt-body"></tbody>
@@ -447,14 +449,32 @@
 
                 // ---- Rules (first match wins) ----
                 //  1. INV = 0                          -> bid 0, ads paused
-                //  2. category has a Highest           -> Highest
-                //  3. no match                         -> the old Dil vs SBid S Bid (when enabled; else no bid)
+                //  2. eBay L30 sold = 0 (permanent)    -> the ES Bid
+                //  3. category has the value its Rules dropdown picks -> Highest or Lowest
+                //  4. no match                         -> the old Dil vs SBid S Bid (when enabled; else no bid)
                 const PMT_SBID_FALLBACK = @json((bool) $pmtSbidFallback);
                 const RULE_DEFS = [
                     { key: '1', label: 'INV = 0', bid: '0 &mdash; ads paused' },
-                    { key: '2', label: 'Category has a Highest (match)', bid: 'Highest' },
-                    { key: '3', label: 'No match for the category', bid: PMT_SBID_FALLBACK ? 'Old rule: S BID' : 'no bid' }
+                    { key: '2', label: 'eBay L30 sold = 0 <i>(always on)</i>', bid: 'ES Bid' },
+                    { key: '3', label: 'Category has a Highest / Lowest (match)', bid: 'Highest or Lowest (Rules)' },
+                    { key: '4', label: 'No match for the category', bid: PMT_SBID_FALLBACK ? 'Old rule: S BID' : 'no bid' }
                 ];
+
+                /** eBay L30 sold qty of a row (grids: "eBay L30", Campaign Ads pages: ebay_l30). */
+                function rowSold(row) {
+                    const v = parseFloat(row['eBay L30'] != null && row['eBay L30'] !== '' ? row['eBay L30'] : row.ebay_l30);
+                    return isFinite(v) ? v : 0;
+                }
+                /** ES Bid of a row (grids: ca_suggested_bid, Campaign Ads pages: suggested_bid), or null. */
+                function rowEsBid(row) {
+                    const v = parseFloat(row.ca_suggested_bid != null && row.ca_suggested_bid !== '' ? row.ca_suggested_bid : row.suggested_bid);
+                    return isFinite(v) && v > 0 ? v : null;
+                }
+                /** The value the Rules dropdown of a saved category picks: { use: 'highest'|'lowest', value: number|null }. */
+                function pickedBid(saved) {
+                    const use = (saved && saved.use === 'lowest') ? 'lowest' : 'highest';
+                    return { use: use, value: num(saved ? saved[use] : null) };
+                }
 
                 function rowInv(row) {
                     return Number(String(row.INV == null ? '' : row.INV).replace(/[,\s\u00A0]/g, '')) || 0;
@@ -565,9 +585,10 @@
                 function classifyRow(row) {
                     if (rowInv(row) <= 0) return '1';
                     if (pauseMatchRow(row)) return '1';
+                    if (rowSold(row) <= 0 && rowEsBid(row) !== null) return '2'; // permanent: no eBay L30 sale -> ES Bid
                     const saved = savedBids[String(row.excel_category || '').trim()] || {};
-                    if (num(saved.highest) !== null) return '2';
-                    return '3';
+                    if (pickedBid(saved).value !== null) return '3';
+                    return '4';
                 }
                 /** The grid's S BID (old Dil vs SBid rule) of a row, or null when it has none. */
                 function rowSbid(row) {
@@ -592,12 +613,18 @@
                     const fmt = function(v) { return v === null || v === undefined ? 'not set' : v + '%'; };
                     out.data.push('Category: ' + (cat || 'none (no Category Masters category)'));
                     out.data.push((PMT_BY_PARENT ? 'Family INV: ' : 'INV: ') + rowInv(row));
-                    out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)));
+                    const pick = pickedBid(saved);
+                    const pickName = pick.use === 'lowest' ? 'Lowest' : 'Highest';
+                    out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)) + ' (Rules: ' + pickName + ')');
+                    out.data.push('eBay L30 sold: ' + rowSold(row) + ', ES Bid: ' + (rowEsBid(row) !== null ? rowEsBid(row) + '%' : 'none'));
                     out.steps.push('Is INV above 0?  ' + (rowInv(row) > 0 ? 'Yes (INV ' + rowInv(row) + ')' : 'No -> bid 0, the ad is left as it is (eBay cannot pause a cost-per-sale ad)'));
                     const pausedByConds = rowInv(row) > 0 && pauseMatchRow(row);
                     if (rowInv(row) > 0 && pauseRule.enabled) out.steps.push('Do the pause conditions match (DIL ' + Math.round(rowDil(row) * 100) / 100 + '%, L30 ' + (parseFloat(row.L30) || 0) + ', INV ' + rowInv(row) + ')?  ' + (pausedByConds ? 'Yes -> bid 0, the ad is paused' : 'No'));
-                    if (rowInv(row) > 0 && !pausedByConds) out.steps.push('Does the category have a Highest?  ' + (num(saved.highest) !== null ? 'Yes (' + num(saved.highest) + '%) -> use it' : 'No'));
-                    if (rowInv(row) > 0 && !pausedByConds && num(saved.highest) === null) {
+                    if (rowInv(row) > 0 && !pausedByConds) {
+                        out.steps.push('Is eBay L30 sold 0?  ' + (rowSold(row) <= 0 ? (rowEsBid(row) !== null ? 'Yes -> use the ES Bid (' + rowEsBid(row) + '%)' : 'Yes, but this row has no ES Bid') : 'No (sold ' + rowSold(row) + ')'));
+                    }
+                    if (rowInv(row) > 0 && !pausedByConds && rule !== '2') out.steps.push('Does the category have a ' + pickName + '?  ' + (pick.value !== null ? 'Yes (' + pick.value + '%) -> use it' : 'No'));
+                    if (rowInv(row) > 0 && !pausedByConds && rule === '4') {
                         out.steps.push(PMT_SBID_FALLBACK ? 'No match -> use the old Dil vs SBid S BID of this listing' : 'No match -> no bid is pushed for this ' + @json($pmtUnit));
                     }
                     let calc = null;
@@ -607,19 +634,22 @@
                         return out;
                     }
                     if (rule === '2') {
-                        calc = num(saved.highest);
-                        out.title = 'Rule 2: category "' + cat + '" has a Highest of ' + calc + '%\nBid = Highest (kept between 2 and 100).';
+                        calc = rowEsBid(row);
+                        out.title = 'Rule 2: eBay L30 sold = 0\nBid = the ES Bid of this listing (' + calc + '%), kept between 2 and 100.';
+                    } else if (rule === '3') {
+                        calc = pick.value;
+                        out.title = 'Rule 3: category "' + cat + '" has a ' + pickName + ' of ' + calc + '%\nBid = ' + pickName + ' (kept between 2 and 100).';
                     } else if (PMT_SBID_FALLBACK) {
                         calc = rowSbid(row);
                         let old = '';
                         try { old = (typeof getCombinedSbid === 'function' && getCombinedSbid(row).title) || ''; } catch (e) { old = ''; }
-                        out.title = 'Rule 3: ' + (cat ? 'category "' + cat + '"' : 'this row has no category') + ' has no Highest\nBid = the old Dil vs SBid S BID' + (old ? ':\n' + old : '');
+                        out.title = 'Rule 4: ' + (cat ? 'category "' + cat + '"' : 'this row has no category') + ' has no ' + pickName + '\nBid = the old Dil vs SBid S BID' + (old ? ':\n' + old : '');
                     } else {
-                        out.title = 'Rule 3: no Highest for ' + (cat ? '"' + cat + '"' : 'this row') + ' — set one in Ads Rule PMT';
+                        out.title = 'Rule 4: no ' + pickName + ' for ' + (cat ? '"' + cat + '"' : 'this row') + ' — set one in Ads Rule PMT';
                     }
                     if (calc === null) {
                         out.missing = true;
-                        if (rule === '3' && PMT_SBID_FALLBACK) out.title += ' (no S BID for this row)';
+                        if (rule === '4' && PMT_SBID_FALLBACK) out.title += ' (no S BID for this row)';
                         return out;
                     }
                     out.bid = Math.min(100, Math.max(2, Math.round(calc * 100) / 100)); // eBay accepts 2-100
@@ -655,7 +685,7 @@
                 }
 
                 function renderRuleCounts() {
-                    const counts = { '1': 0, '2': 0, '3': 0 };
+                    const counts = { '1': 0, '2': 0, '3': 0, '4': 0 };
                     let total = 0;
                     currentRows().forEach(function(row) {
                         if (!window.ebayPmtIsRuled(row)) return;
@@ -665,8 +695,8 @@
                     const $b = $('#ads-rule-pmt-rules-body').empty();
                     RULE_DEFS.forEach(function(r) {
                         $b.append(
-                            $('<div class="arp-rule">').addClass('is-' + r.key + (r.key === '1' ? '' : ' is-click'))
-                                .attr('title', r.key === '1' ? '' : 'Click to show only these categories')
+                            $('<div class="arp-rule">').addClass('is-' + r.key + (r.key === '3' || r.key === '4' ? ' is-click' : ''))
+                                .attr('title', r.key === '3' || r.key === '4' ? 'Click to show only these categories' : '')
                                 .append($('<span class="arp-rule-num">').text(r.key))
                                 .append($('<div>')
                                     .append($('<div class="arp-rule-cond">').html(r.key === '1' && pauseRule.enabled && pauseHasConditions() ? 'INV = 0 <i>or</i> pause conditions match' : r.label))
@@ -953,6 +983,7 @@
                     if (key === 'cbid') return numOf(cells.eq(3).text());
                     if (key === 'high') return numOf(cells.eq(4).find('input').val());
                     if (key === 'low') return numOf(cells.eq(5).find('input').val());
+                    if (key === 'use') return String(cells.eq(6).find('select').val() || '');
                     return null;
                 }
                 function applyArpSort() {
@@ -1011,11 +1042,16 @@
                         $tr.append($('<td>').append(
                             $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-low" min="0" max="100" step="0.01" placeholder="e.g. 2">').val(lo)
                         ));
+                        $tr.append($('<td>').append(
+                            $('<select class="form-select form-select-sm ads-rule-pmt-use" title="Which value this category bid uses">'
+                                + '<option value="highest">Highest</option><option value="lowest">Lowest</option></select>')
+                                .val(saved.use === 'lowest' ? 'lowest' : 'highest')
+                        ));
                         paintYoursCell($tr, null, sbids); // S BID until the benchmarks load
                         $body.append($tr);
                     });
                     if (!rows.length) {
-                        $body.append('<tr><td colspan="6" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
+                        $body.append('<tr><td colspan="7" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
                     applyArpSort();
                     updateSummary();
@@ -1057,22 +1093,24 @@
                     const q = String($('#ads-rule-pmt-search').val() || '').toLowerCase();
                     const f = $('#ads-rule-pmt-filter').val() || '';
                     $('#ads-rule-pmt-body tr[data-category]').each(function() {
-                        const hasHigh = $(this).find('.ads-rule-pmt-high').val() !== '';
+                        // "has" = the value its Rules dropdown picks (Highest or Lowest) is filled
+                        const picked = $(this).find('.ads-rule-pmt-use').val() === 'lowest' ? '.ads-rule-pmt-low' : '.ads-rule-pmt-high';
+                        const hasHigh = $(this).find(picked).val() !== '';
                         const ok = String($(this).attr('data-category')).toLowerCase().indexOf(q) !== -1
                             && (f === '' || (f === 'has' ? hasHigh : !hasHigh));
                         $(this).toggle(ok);
                     });
                     $('#ads-rule-pmt-rules-body .arp-rule.is-click').each(function() {
-                        $(this).toggleClass('is-active', (f === 'has' && $(this).hasClass('is-2')) || (f === 'nomatch' && $(this).hasClass('is-3')));
+                        $(this).toggleClass('is-active', (f === 'has' && $(this).hasClass('is-3')) || (f === 'nomatch' && $(this).hasClass('is-4')));
                     });
                 }
                 $('#ads-rule-pmt-search').on('input', applyArpFilter);
                 // Not on every keystroke in Highest: a row would vanish while it is being typed. Re-checked on change (leaving the field).
                 $('#ads-rule-pmt-filter').on('change', applyArpFilter);
-                $('#ads-rule-pmt-body').on('change', '.ads-rule-pmt-high', applyArpFilter);
-                // Click rule 2 / 3 on the left to filter the categories (click again to clear)
+                $('#ads-rule-pmt-body').on('change', '.ads-rule-pmt-high, .ads-rule-pmt-low, .ads-rule-pmt-use', applyArpFilter);
+                // Click rule 3 / 4 on the left to filter the categories (click again to clear)
                 $('#ads-rule-pmt-rules-body').on('click', '.arp-rule.is-click', function() {
-                    const want = $(this).hasClass('is-2') ? 'has' : 'nomatch';
+                    const want = $(this).hasClass('is-3') ? 'has' : 'nomatch';
                     $('#ads-rule-pmt-filter').val($('#ads-rule-pmt-filter').val() === want ? '' : want);
                     applyArpFilter();
                 });
@@ -1151,6 +1189,7 @@
                         bids[$(this).attr('data-category')] = {
                             highest: $(this).find('.ads-rule-pmt-high').val(),
                             lowest: $(this).find('.ads-rule-pmt-low').val(),
+                            use: $(this).find('.ads-rule-pmt-use').val() === 'lowest' ? 'lowest' : 'highest',
                             manual: '' // the Manual rate is gone: the old value is cleared on save
                         };
                     });
@@ -1436,7 +1475,7 @@
                         field: "pmt_rule_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; else the category Highest; no match = the old rule S BID (eBay 1).{{ $pmtByParent ? ' Decided per PARENT (family INV, OV L30 and eBay sold) and shown on the PARENT row; every ad listing of that parent gets this bid.' : '' }} Display only.",
+                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay L30 sold 0 = the ES Bid (always); else the category Highest or Lowest (Rules column); no match = the old rule S BID (eBay 1).{{ $pmtByParent ? ' Decided per PARENT (family INV, OV L30 and eBay sold) and shown on the PARENT row; every ad listing of that parent gets this bid.' : '' }} Display only.",
                         sorter: function(a, b, aRow, bRow) {
                             const f = function(row) {
                                 const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(row.getData()) : null;

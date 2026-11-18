@@ -785,11 +785,6 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil / Prmt% (markdown sale) — CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay1'])
-                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
-                        title="Set S Bid from Dil. eBay 1 keeps its own slabs.">
-                        Dil vs SBid
-                        </button>
-                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay1'])
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay1'])
 
@@ -1345,12 +1340,6 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay1'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay1'])
-    @include('campaign.partials.ebay-dil-sbid-rule', [
-        'part' => 'modal',
-        'account' => 'eBay 1',
-        'extended' => true,
-        'gpft' => true,
-    ])
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
@@ -1430,16 +1419,6 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay1'])
-        @include('campaign.partials.ebay-dil-sbid-rule', [
-            'part' => 'script',
-            'account' => 'eBay 1',
-            'extended' => true,
-            'gpft' => true,
-            'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
-            'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
-            'applyUrl' => url('/ebay/campaign-ads/push-selected'),
-        ])
-
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
          *   (gross profit $ − ad spend $) / COGS × 100
@@ -7093,9 +7072,6 @@
             });
 
             table.on('dataLoaded', function() {
-                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
-                    renderDilSbidTable();
-                }
                 if (typeof chPromoInvalidateListingDilCache === 'function') chPromoInvalidateListingDilCache();
                 // Build the unique parent list for Play/Next/Previous navigation.
                 var allRows = table.getData('all') || [];
