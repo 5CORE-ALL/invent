@@ -8620,7 +8620,7 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt' || fld === 'acos_from' || fld === 'acos_to')
                             ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
-                        if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
+                        amzAcosRefreshCounts();
                     };
                     inp.addEventListener('input', writeAcosBand);
                     inp.addEventListener('change', writeAcosBand);
@@ -8817,11 +8817,11 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
+                        amzBgtViewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
+                        amzBgtViewsRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -8987,11 +8987,11 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
+                        amzBgtCvrRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
+                        amzBgtCvrRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -9152,11 +9152,11 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
+                        amzBgtPrcRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
+                        amzBgtPrcRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -9337,11 +9337,11 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
+                        amzBgtReviewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
+                        amzBgtReviewsRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
@@ -9503,11 +9503,11 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
+                        amzBgtDilRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
+                        amzBgtDilRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
