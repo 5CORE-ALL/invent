@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\WayfairDailyData;
+use App\Services\MarketplaceManager\WayfairStatusReconciler;
 use App\Services\Wayfair\WayfairPriceSyncService;
 use App\Services\WayfairApiService;
 use App\Services\WayfairDailyOrderFetchService;
@@ -100,6 +101,7 @@ class FetchWayfairDailyData extends Command
      */
     protected function fetchAndStoreOrders(string $token, Carbon $cutoffDate): void
     {
+        $fetchStartedAt = now();
         $result = app(WayfairDailyOrderFetchService::class)
             ->fetchPurchaseOrders($cutoffDate, $token, ! $this->option('no-sleep'));
 
@@ -135,7 +137,45 @@ class FetchWayfairDailyData extends Command
 
         $this->info('Fetched '.count($purchaseOrders).' POs, stored '.$insertedProducts.' products.');
 
+        $this->reconcileOrderStatuses($result, $purchaseOrders, $cutoffDate, $fetchStartedAt);
+
         $this->syncPricesFromOrders($purchaseOrders);
+    }
+
+    /**
+     * Wayfair only lists open / accepted POs, so shipped and delivered ones would stay "open" / "accepted" here forever.
+     * Move them on from the carrier status, and, after a COMPLETE fetch, from "Wayfair no longer lists it".
+     * Never lets a status problem fail the order fetch.
+     *
+     * @param  array<string, mixed>  $result
+     * @param  array<int, array<string, mixed>>  $purchaseOrders
+     */
+    protected function reconcileOrderStatuses(array $result, array $purchaseOrders, Carbon $cutoffDate, Carbon $fetchStartedAt): void
+    {
+        try {
+            $complete = ($result['source'] ?? '') === 'dropship'
+                && ! empty($result['complete'])
+                && $purchaseOrders !== [];
+            $listed = $complete
+                ? array_values(array_filter(array_map(fn ($po) => (string) ($po['poNumber'] ?? ''), $purchaseOrders)))
+                : null;
+
+            $stats = app(WayfairStatusReconciler::class)->reconcile(
+                $listed,
+                $complete ? $cutoffDate : null,
+                $fetchStartedAt,
+            );
+            $this->info(sprintf(
+                'Wayfair status: checked %d open/accepted rows, delivered %d, shipped %d, closed %d%s.',
+                $stats['checked'],
+                $stats['delivered'],
+                $stats['shipped'],
+                $stats['closed'],
+                $complete ? '' : ' (Wayfair list incomplete, "no longer listed" rule skipped)'
+            ));
+        } catch (\Throwable $e) {
+            $this->warn('Wayfair status update failed: '.$e->getMessage());
+        }
     }
 
     /**
@@ -243,11 +283,15 @@ class FetchWayfairDailyData extends Command
         if (is_array($payload) && trim((string) ($payload['asn_sent_at'] ?? '')) !== '') {
             return 'shipped';
         }
+        $existingStatus = trim((string) $existingStatus);
+        // Wayfair keeps listing a PO until it sees a ship notice; once the carrier proved it shipped, do not reopen it.
+        if (in_array(strtolower($existingStatus), ['shipped', 'delivered'], true)) {
+            return strtolower($existingStatus);
+        }
         $reported = trim((string) ($order['status'] ?? ''));
         if ($reported !== '') {
             return $reported;
         }
-        $existingStatus = trim((string) $existingStatus);
 
         return $existingStatus !== '' ? $existingStatus : 'open';
     }

@@ -42,7 +42,9 @@ class WayfairDailyOrderFetchService
     }
 
     /**
-     * @return array{ok: bool, source: string, orders: array<int, array>, errors: array}
+     * `complete` is true only when the whole open + accepted list was read, so a PO missing from it is really not open at Wayfair.
+     *
+     * @return array{ok: bool, complete: bool, source: string, orders: array<int, array>, errors: array}
      */
     public function fetchViaDropship(string $token, Carbon $fromDate, bool $pauseBetweenPages = true): array
     {
@@ -50,10 +52,13 @@ class WayfairDailyOrderFetchService
         $seen = [];
         $errors = [];
         $ok = true;
+        // Only true when every page of both queries was read to the end (not stopped by an error or the page cap).
+        $complete = true;
 
         foreach ([false, true] as $hasResponse) {
             $cursor = $fromDate->copy()->utc()->startOfDay()->format('Y-m-d\TH:i:s\Z');
             $pages = 0;
+            $reachedEnd = false;
 
             while ($pages < 200) {
                 $pages++;
@@ -87,6 +92,7 @@ class WayfairDailyOrderFetchService
                 }
 
                 if (count($orders) < self::PAGE_LIMIT) {
+                    $reachedEnd = true;
                     break;
                 }
 
@@ -96,10 +102,15 @@ class WayfairDailyOrderFetchService
                     usleep(self::PAGE_PAUSE_USEC);
                 }
             }
+
+            if (! $reachedEnd) {
+                $complete = false;
+            }
         }
 
         return [
             'ok' => $ok,
+            'complete' => $ok && $complete,
             'source' => 'dropship',
             'orders' => $collected,
             'errors' => $errors,
