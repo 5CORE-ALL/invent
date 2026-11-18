@@ -5765,7 +5765,10 @@
                                     : ((typeof chPromoSavedOrLiveSprice === 'function')
                                         ? chPromoSavedOrLiveSprice(rowData)
                                         : (parseFloat(rowData.SPRICE) || 0)));
-                            if (!(saved > 0)) return '';
+                            // CVR Price Rule (ON): its price REPLACES the S PRC number (one price in the cell). Display only, never saved or pushed.
+                            let cvrShown = '';
+                            try { cvrShown = (typeof ebayCvrRuleShownHtml === 'function') ? ebayCvrRuleShownHtml(rowData, saved) : ''; } catch (e) { cvrShown = ''; }
+                            if (!(saved > 0)) return cvrShown ? '<span style="display:inline-flex;align-items:center;justify-content:center;">' + cvrShown + '</span>' : '';
                             const sprice = saved;
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')
@@ -5801,11 +5804,10 @@
                                 : '';
                             const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
 
-                            // CVR Price Rule (ON): the suggested new price beside S PRC. Display only, never saved or pushed.
-                            let cvrSuggest = '';
-                            try { cvrSuggest = (typeof ebayCvrRuleSuggestHtml === 'function') ? ebayCvrRuleSuggestHtml(rowData) : ''; } catch (e) { cvrSuggest = ''; }
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">'
-                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + cvrSuggest + '</span>';
+                            // The rule's price takes the place of the S PRC number (no second price in the cell).
+                            if (cvrShown) formattedValue = cvrShown;
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
+                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
                         },
                         width: 118
                     },

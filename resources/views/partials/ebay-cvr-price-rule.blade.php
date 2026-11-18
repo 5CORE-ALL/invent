@@ -235,29 +235,26 @@
             return res.price;
         }
         window.ebayCvrRuleSuggestedPrice = ebayCvrRuleSuggestedPrice;
-        function ebayCvrRuleSuggestHtml(row) {
+        /**
+         * The rule's price as the S PRC number itself (it replaces the S PRC value, the cell never shows two prices).
+         * '' when the rule has no suggestion for the row. Display only: nothing is saved or pushed from it.
+         */
+        function ebayCvrRuleShownHtml(row, savedSprice) {
             if (!ebayCvrRuleSuggestedPrice(row)) return '';
             const c = ebayCvrRuleCaseFor(row, ebayCvrRule);
             const pct = ebayCvrRuleSignedPct(c, ebayCvrRule[c]);
             const res = ebayCvrRulePriceFor(row, ebayCvrRule);
             const price = parseFloat(row['eBay Price']);
+            const saved = parseFloat(savedSprice);
             const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
             const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
-                + (res.capped ? ' — set to the Lower cap price' : '') + '. Suggestion only, not saved or pushed.';
+                + (res.capped ? ' — set to the Lower cap price' : '')
+                + (saved > 0 ? '. Replaces the S PRC $' + saved.toFixed(2) + ' on screen.' : '.')
+                + ' Display only, not saved or pushed.';
             const color = res.price < price ? '#a00211' : '#198754';
-            return ' <span class="ebay-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
+            return '<span class="ebay-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
                 + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
                 + (res.capped ? ' <i class="fas fa-lock" style="font-size:9px;"></i>' : '') + '</span>';
-        }
-        /** Wraps the S PRC cell formatter: its own output stays, the rule's suggestion is added after it. */
-        function ebayCvrRuleSpriceFormatter(inner) {
-            return function(cell) {
-                const out = inner.apply(this, arguments);
-                let sug = '';
-                try { sug = ebayCvrRuleSuggestHtml(cell.getRow().getData()); } catch (e) { sug = ''; }
-                if (!sug) return out;
-                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;flex-wrap:wrap;">' + (out || '') + sug + '</span>';
-            };
         }
         function ebayCvrRuleReadDraft() {
             const d = { enabled: $('#ebay-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#ebay-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#ebay-cvr-cap-npft').val(), min_nroi: $('#ebay-cvr-cap-nroi').val(), down_band: $('#ebay-cvr-band-down').val(), up_band: $('#ebay-cvr-band-up').val() };
