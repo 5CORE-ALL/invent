@@ -167,7 +167,7 @@
                         <span class="arp-pause-icon"><i class="fas fa-pause"></i></span>
                         <div class="me-auto">
                             <div class="fw-bold">Conditions <span class="arp-muted" id="arp-pause-state"></span></div>
-                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. Rules: pause the ad, or use the category Highest / Lowest. INV = 0 always pauses. Empty values are ignored. AND is checked before OR; the first matching group wins.</div>
+                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. Rules: pause the ad, or bid from the category Highest / Lowest (Avg, Highest+1, Lowest-1). INV = 0 always pauses. Empty values are ignored. AND is checked before OR; the first matching group wins.</div>
                         </div>
                         <div class="form-check form-switch mb-0" title="On: a {{ $pmtUnit }} that matches a group below gets that group's Rules value (pause, Highest or Lowest). Off: only INV = 0 pauses and the category Highest is used.">
                             <input class="form-check-input" type="checkbox" role="switch" id="arp-pause-enabled">
@@ -185,7 +185,8 @@
                                     <th>Condition</th>
                                     <th style="width: 130px;">Compare with</th>
                                     <th>Value</th>
-                                    <th style="width: 140px;" title="What happens when this IF / OR group matches: pause the ad, or bid the category Highest / Lowest (the table below). The AND rows under it share the same Rules value.">Rules</th>
+                                    <th class="text-center" style="width: 80px;" title="How many {{ strtolower($pmtUnit) }}s match this condition on its own (empty values show a dash).">Count</th>
+                                    <th style="width: 140px;" title="What happens when this IF / OR group matches: pause the ad, or bid from the category Highest / Lowest in the table below (Avg, Highest+1 or Lowest-1). The AND rows under it share the same Rules value.">Rules</th>
                                     <th style="width: 40px;"></th>
                                 </tr>
                             </thead>
@@ -456,7 +457,7 @@
                 const RULE_DEFS = [
                     { key: '1', label: 'INV = 0', bid: '0 &mdash; ads paused' },
                     { key: '2', label: 'eBay L30 sold = 0 <i>(always on)</i>', bid: 'ES Bid' },
-                    { key: '3', label: 'Category has a Highest / Lowest (match)', bid: 'Highest or Lowest (Rules)' },
+                    { key: '3', label: 'Category has the value the Rules pick (match)', bid: 'Highest / Lowest / Avg / Highest+1 / Lowest-1' },
                     { key: '4', label: 'No match for the category', bid: PMT_SBID_FALLBACK ? 'Old rule: S BID' : 'no bid' }
                 ];
 
@@ -470,10 +471,11 @@
                     const v = parseFloat(row.ca_suggested_bid != null && row.ca_suggested_bid !== '' ? row.ca_suggested_bid : row.suggested_bid);
                     return isFinite(v) && v > 0 ? v : null;
                 }
-                /** The category value the matching condition group's Rules picks: { use: 'highest'|'lowest', value: number|null }. */
+                /** The bid the matching condition group's Rules builds from the category: { use, value: number|null }. */
                 function pickedBid(saved, row) {
-                    const use = pauseAction(row) === 'lowest' ? 'lowest' : 'highest';
-                    return { use: use, value: num(saved ? saved[use] : null) };
+                    const act = pauseAction(row);
+                    const use = (act && act !== 'pause' && PICK_LABELS[act]) ? act : 'highest';
+                    return { use: use, value: pickValue(use, num(saved ? saved.highest : null), num(saved ? saved.lowest : null)) };
                 }
 
                 function rowInv(row) {
@@ -492,7 +494,16 @@
                 // ---- Pause conditions (dynamic): IF / AND / OR on DIL, L30, INV. A match = rule 1 (ad paused). ----
                 const PAUSE_COLS = { dil: 'DIL %', l30: 'L30', inv: 'INV' };
                 const PAUSE_OPS = { '<': '< less than', '<=': '<= less or equal', '=': '= equal to', '!=': '!= not equal to', '>=': '>= greater or equal', '>': '> greater than' };
-                const PAUSE_ACTIONS = { pause: 'Pause', highest: 'Highest', lowest: 'Lowest' };
+                const PAUSE_ACTIONS = { pause: 'Pause', highest: 'Highest', lowest: 'Lowest', avg: 'Avg', highest_plus1: 'Highest+1', lowest_minus1: 'Lowest-1' };
+                /** The bid each pick builds from a category's Highest / Lowest (same maths as the push). */
+                const PICK_LABELS = { highest: 'Highest', lowest: 'Lowest', avg: 'Avg (Highest + Lowest) / 2', highest_plus1: 'Highest + 1', lowest_minus1: 'Lowest - 1' };
+                function pickValue(use, hi, lo) {
+                    if (use === 'lowest') return lo;
+                    if (use === 'avg') return (hi !== null && lo !== null) ? (hi + lo) / 2 : null;
+                    if (use === 'highest_plus1') return hi !== null ? hi + 1 : null;
+                    if (use === 'lowest_minus1') return lo !== null ? lo - 1 : null;
+                    return hi;
+                }
                 function defaultPauseConditions() {
                     return [
                         { join: 'AND', rule: 'pause', column: 'dil', op: '<', mode: 'number', value: '' },
@@ -572,12 +583,30 @@
                             + '<td><select class="form-select form-select-sm pz-op">' + ops + '</select></td>'
                             + '<td><select class="form-select form-select-sm pz-mode"><option value="number"' + (c.mode !== 'column' ? ' selected' : '') + '>Number</option><option value="column"' + (c.mode === 'column' ? ' selected' : '') + '>Column</option></select></td>'
                             + '<td>' + valueCell + '</td>'
+                            + '<td class="text-center fw-semibold pz-count">&mdash;</td>'
                             + '<td>' + ruleCell + '</td>'
                             + '<td><button type="button" class="btn btn-sm btn-outline-danger pz-del" title="Remove"' + (pauseRule.conditions.length <= 1 ? ' disabled' : '') + '><i class="fas fa-trash"></i></button></td></tr>';
                     }).join('');
                     $('#arp-pause-rows').html(html);
                     $('#arp-pause-enabled').prop('checked', pauseRule.enabled);
                     paintPauseState();
+                    paintPauseCounts();
+                }
+                /** Count column: how many {{ strtolower($pmtUnit) }}s match each condition on its own. */
+                function paintPauseCounts() {
+                    const rows = currentRows().filter(function(r) { return window.ebayPmtIsRuled(r); });
+                    const vals = rows.map(pauseVals);
+                    $('#arp-pause-rows tr').each(function(i) {
+                        const c = pauseRule.conditions[i];
+                        const $cell = $(this).find('.pz-count');
+                        if (!c || !pauseCondActive(c)) { $cell.html('&mdash;').attr('title', 'No value yet'); return; }
+                        let n = 0;
+                        vals.forEach(function(v) {
+                            const right = c.mode === 'column' ? v[c.value] : parseFloat(c.value);
+                            if (pauseCmp(v[c.column], c.op, right)) n++;
+                        });
+                        $cell.text(n.toLocaleString()).attr('title', n + ' of ' + rows.length + ' {{ strtolower($pmtUnit) }}s match this condition');
+                    });
                 }
                 function paintPauseState() {
                     $('#arp-pause-state').text(!pauseRule.enabled ? '(off, only INV = 0 pauses)' : (pauseHasConditions() ? '(on)' : '(on, but no condition has a value yet)'));
@@ -638,7 +667,7 @@
                     out.data.push('Category: ' + (cat || 'none (no Category Masters category)'));
                     out.data.push((PMT_BY_PARENT ? 'Family INV: ' : 'INV: ') + rowInv(row));
                     const pick = pickedBid(saved, row);
-                    const pickName = pick.use === 'lowest' ? 'Lowest' : 'Highest';
+                    const pickName = PICK_LABELS[pick.use] || 'Highest';
                     out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)) + ' (conditions pick: ' + pickName + ')');
                     out.data.push('eBay L30 sold: ' + rowSold(row) + ', ES Bid: ' + (rowEsBid(row) !== null ? rowEsBid(row) + '%' : 'none'));
                     out.steps.push('Is INV above 0?  ' + (rowInv(row) > 0 ? 'Yes (INV ' + rowInv(row) + ')' : 'No -> bid 0, the ad is left as it is (eBay cannot pause a cost-per-sale ad)'));
@@ -647,7 +676,7 @@
                     if (rowInv(row) > 0 && !pausedByConds) {
                         out.steps.push('Is eBay L30 sold 0?  ' + (rowSold(row) <= 0 ? (rowEsBid(row) !== null ? 'Yes -> use the ES Bid (' + rowEsBid(row) + '%)' : 'Yes, but this row has no ES Bid') : 'No (sold ' + rowSold(row) + ')'));
                     }
-                    if (rowInv(row) > 0 && !pausedByConds && rule !== '2') out.steps.push('Does the category have a ' + pickName + '?  ' + (pick.value !== null ? 'Yes (' + pick.value + '%) -> use it' : 'No'));
+                    if (rowInv(row) > 0 && !pausedByConds && rule !== '2') out.steps.push('Bid from the category (' + pickName + '):  ' + (pick.value !== null ? 'Yes -> ' + (Math.round(pick.value * 100) / 100) + '%' : 'No, the category value it needs is not set'));
                     if (rowInv(row) > 0 && !pausedByConds && rule === '4') {
                         out.steps.push(PMT_SBID_FALLBACK ? 'No match -> use the old Dil vs SBid S BID of this listing' : 'No match -> no bid is pushed for this ' + @json($pmtUnit));
                     }
@@ -662,14 +691,14 @@
                         out.title = 'Rule 2: eBay L30 sold = 0\nBid = the ES Bid of this listing (' + calc + '%), kept between 2 and 100.';
                     } else if (rule === '3') {
                         calc = pick.value;
-                        out.title = 'Rule 3: category "' + cat + '" has a ' + pickName + ' of ' + calc + '%\nBid = ' + pickName + ' (kept between 2 and 100).';
+                        out.title = 'Rule 3: category "' + cat + '" -> ' + pickName + ' = ' + (Math.round(calc * 100) / 100) + '%\nBid kept between 2 and 100.';
                     } else if (PMT_SBID_FALLBACK) {
                         calc = rowSbid(row);
                         let old = '';
                         try { old = (typeof getCombinedSbid === 'function' && getCombinedSbid(row).title) || ''; } catch (e) { old = ''; }
-                        out.title = 'Rule 4: ' + (cat ? 'category "' + cat + '"' : 'this row has no category') + ' has no ' + pickName + '\nBid = the old Dil vs SBid S BID' + (old ? ':\n' + old : '');
+                        out.title = 'Rule 4: ' + (cat ? 'category "' + cat + '"' : 'this row has no category') + ' has no value for ' + pickName + '\nBid = the old Dil vs SBid S BID' + (old ? ':\n' + old : '');
                     } else {
-                        out.title = 'Rule 4: no ' + pickName + ' for ' + (cat ? '"' + cat + '"' : 'this row') + ' — set one in Ads Rule PMT';
+                        out.title = 'Rule 4: no value for ' + pickName + ' for ' + (cat ? '"' + cat + '"' : 'this row') + ' — set one in Ads Rule PMT';
                     }
                     if (calc === null) {
                         out.missing = true;
@@ -1152,6 +1181,7 @@
                     readPauseRows();
                     // A new IF / OR row needs its own Rules dropdown (and an AND row loses it): redraw.
                     if ($(this).hasClass('pz-join') || $(this).hasClass('pz-rule')) renderPauseRows();
+                    else paintPauseCounts();
                     paintPauseState();
                     renderRuleCounts();
                 });

@@ -539,7 +539,7 @@ class DilVsSbidApplyService
             $range['manual'] ?? null,
             $action === 'pause',
             $range['lowest'] ?? null,
-            $action === 'lowest' ? 'lowest' : 'highest',
+            in_array($action, PmtCategoryBidRule::BID_PICKS, true) ? $action : 'highest',
             $sold,
             $esBid
         );

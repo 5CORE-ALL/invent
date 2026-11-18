@@ -128,7 +128,7 @@ final class PmtCategoryBidRule
     public const PAUSE_OPERATORS = ['<', '<=', '=', '!=', '>=', '>'];
 
     /** The Rules column of a condition group: pause the ad, or bid the category Highest / Lowest. */
-    public const PAUSE_ACTIONS = ['pause', 'highest', 'lowest'];
+    public const PAUSE_ACTIONS = ['pause', 'highest', 'lowest', 'avg', 'highest_plus1', 'lowest_minus1'];
 
     public static function keyPause(string $account = 'ebay1'): string
     {
@@ -274,7 +274,7 @@ final class PmtCategoryBidRule
     /**
      * @param  bool  $pauseMatch  the dynamic pause rule fired for this row (see pauseMatches)
      * @param  ?float  $lowest  the category Lowest
-     * @param  string  $use  'highest' | 'lowest': which category value the Rules dropdown picked
+     * @param  string  $use  one of BID_PICKS: how the Rules dropdown builds the bid from the category Highest / Lowest
      * @param  float  $sold  eBay L30 sold qty of the listing (the whole family on eBay 2)
      * @param  ?float  $esBid  ES Bid (eBay suggested bid) of the listing
      * @return array{rule:string,pause:bool,bid:?float,label:string,fallback:bool}
@@ -292,12 +292,35 @@ final class PmtCategoryBidRule
         if ($sold <= 0 && $esBid !== null && $esBid > 0) {
             return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($esBid, 2)), 'label' => 'PMT rule 2: eBay L30 sold 0, ES Bid', 'fallback' => false];
         }
-        $isLowest = $use === 'lowest';
-        $picked = $isLowest ? $lowest : $highest;
+        $use = in_array($use, self::BID_PICKS, true) ? $use : 'highest';
+        $picked = self::pickValue($use, $highest, $lowest);
         if ($picked !== null) {
-            return ['rule' => '3', 'pause' => false, 'bid' => max(0.0, round($picked, 2)), 'label' => 'PMT rule 3: category '.($isLowest ? 'Lowest' : 'Highest'), 'fallback' => false];
+            return ['rule' => '3', 'pause' => false, 'bid' => max(0.0, round($picked, 2)), 'label' => 'PMT rule 3: category '.self::PICK_LABELS[$use], 'fallback' => false];
         }
 
-        return ['rule' => '4', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 4: no '.($isLowest ? 'Lowest' : 'Highest').' for this category, old S Bid', 'fallback' => true];
+        return ['rule' => '4', 'pause' => false, 'bid' => null, 'label' => 'PMT rule 4: no '.self::PICK_LABELS[$use].' for this category, old S Bid', 'fallback' => true];
+    }
+
+    /** What the Rules column can pick from the category Highest / Lowest. */
+    public const BID_PICKS = ['highest', 'lowest', 'avg', 'highest_plus1', 'lowest_minus1'];
+
+    public const PICK_LABELS = [
+        'highest' => 'Highest',
+        'lowest' => 'Lowest',
+        'avg' => 'Avg (Highest + Lowest) / 2',
+        'highest_plus1' => 'Highest + 1',
+        'lowest_minus1' => 'Lowest - 1',
+    ];
+
+    /** The bid % a pick gives for a category, or null when the value it needs is not set (Avg needs both). */
+    public static function pickValue(string $use, ?float $highest, ?float $lowest): ?float
+    {
+        return match ($use) {
+            'lowest' => $lowest,
+            'avg' => ($highest !== null && $lowest !== null) ? ($highest + $lowest) / 2 : null,
+            'highest_plus1' => $highest !== null ? $highest + 1 : null,
+            'lowest_minus1' => $lowest !== null ? $lowest - 1 : null,
+            default => $highest,
+        };
     }
 }
