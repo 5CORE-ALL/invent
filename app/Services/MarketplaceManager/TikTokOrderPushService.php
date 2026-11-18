@@ -27,6 +27,9 @@ class TikTokOrderPushService
     /** Tracking push creates many orders in one click; inventory sync can run after. */
     public bool $deferInventorySync = false;
 
+    /** SKUs of the last built plan that had no Shopify variant (line cannot decrement stock). */
+    public array $unmatchedSkus = [];
+
     public function importToShopify(TiktokOrder $order): ?string
     {
         $this->lastDuplicateLinkMessage = null;
@@ -419,9 +422,22 @@ class TikTokOrderPushService
             $qty = max(1, (int) ($line->quantity ?? 1));
             $price = number_format((float) ($line->sale_price ?? $line->original_price ?? 0), 2, '.', '');
             $title = mb_substr((string) ($line->product_name ?: $sku), 0, 255);
-            $item = ['title' => $title, 'price' => $price, 'quantity' => $qty];
-            if ($sku !== '') {
-                $item['sku'] = $sku;
+
+            // A line without variant_id is a custom item: Shopify creates the order but never
+            // touches inventory, so stock stays too high on Shopify and every marketplace.
+            $variantId = $this->findShopifyVariantIdBySku($sku);
+            if ($variantId) {
+                $item = ['variant_id' => $variantId, 'quantity' => $qty, 'title' => $title];
+                if ((float) $price > 0) {
+                    $item['price'] = $price;
+                }
+            } else {
+                Log::warning('TikTokOrderPushService: SKU has no Shopify variant, line will not decrement stock', [
+                    'order_id' => $orderId,
+                    'sku' => $sku,
+                ]);
+                $this->unmatchedSkus[] = $sku;
+                $item = ['title' => $title, 'price' => $price, 'quantity' => $qty, 'sku' => $sku];
             }
             $lineItems[] = $item;
         }
@@ -488,6 +504,17 @@ class TikTokOrderPushService
         }
 
         usleep(1500000);
+
+        // Only the SKUs of this order, to every marketplace (eBay, Amazon, ...), not just TikTok.
+        try {
+            \App\Jobs\PushLinkedSkuInventoryFromShopify::dispatchToEnabled($skus);
+        } catch (\Throwable $e) {
+            Log::warning('TikTokOrderPushService: could not queue per-SKU marketplace push', [
+                'order_id' => $order->order_id,
+                'skus' => $skus,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         try {
             $result = app(TikTokInventorySyncService::class)
