@@ -46,7 +46,7 @@
                                 <th style="width:40%;">CVR vs LT O CVR</th>
                                 <th style="width:14%;" class="text-end">SKUs</th>
                                 <th style="width:28%;">Price change %</th>
-                                <th style="width:18%;" class="text-end" title="SKUs whose price cut is held by the Lower cap">Capped</th>
+                                <th style="width:18%;" class="text-end" title="SKUs whose new price is set to the Lower cap price">Capped</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -75,7 +75,7 @@
                             <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-cap-enabled">
                             <label class="form-check-label fw-semibold" for="amz-cvr-cap-enabled">Lower cap</label>
                         </div>
-                        <div class="text-muted mb-2" style="font-size:12px;">A price cut is held as soon as either NPFT% or NROI% would fall below its minimum. Whichever limit is hit first sets the lowest allowed price.</div>
+                        <div class="text-muted mb-2" style="font-size:12px;">If the new price would make either NPFT% or NROI% fall below its minimum, the price is set to the Lower cap price instead. Whichever limit is hit first sets the lowest allowed price.</div>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-npft">Min NPFT%</label>
@@ -189,8 +189,8 @@
             return floor;
         }
         /**
-         * Price after the CVR Price Rule % for a row, with the Lower cap applied to cuts. A cut never goes below the cap price;
-         * a SKU already under the cap price is left where it is (the cap never raises a price).
+         * Price after the CVR Price Rule % for a row, with the Lower cap applied. The new price never goes below the cap price:
+         * if it would, it is set to the cap price (this can raise a SKU whose current price is already under the cap).
          * Returns { price, capped } or null when the row has no price or no LT O CVR.
          */
         /** The % with its direction fixed by the case: Down always cuts, Up always raises, within target keeps the typed sign. */
@@ -210,12 +210,12 @@
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
             let next = price * (1 + pct / 100);
             let capped = false;
-            if (next < price) {
-                const floor = amzCvrRuleFloorPrice(row, cfg);
-                if (floor !== null && next < floor) {
-                    next = Math.min(floor, price);
-                    capped = true;
-                }
+            // Lower cap: a new price below the cap price is brought up to the cap price (even when the current price is already
+            // below it). When a minimum can never be reached (no finite cap price) the price is left where it is.
+            const floor = amzCvrRuleFloorPrice(row, cfg);
+            if (floor !== null && next < floor) {
+                next = isFinite(floor) ? floor : price;
+                capped = true;
             }
             return { price: Math.round(next * 100) / 100, capped: capped };
         }
@@ -253,7 +253,7 @@
             const price = parseFloat(row.price);
             const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
             const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
-                + (res.capped ? ' — the cut is held by the Lower cap' : '') + '. Suggestion only, not saved or pushed.';
+                + (res.capped ? ' — set to the Lower cap price' : '') + '. Suggestion only, not saved or pushed.';
             const color = res.price < price ? '#a00211' : '#198754';
             return ' <span class="amz-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
                 + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
@@ -320,7 +320,7 @@
             $('#amz-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
             $('#amz-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose price cut would be held by the Lower cap (based on each SKU\'s current price).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s current price).');
         }
 
         $(document).ready(function() {
