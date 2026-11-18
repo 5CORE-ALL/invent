@@ -2400,7 +2400,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_gpft_color', 'bgt_gpft_label', 'bgt_gpft_value', 'bgt_flag_color', 'bgt_flag_label', 'bgt_flag_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory', 'audit', 'auditBudget', 'auditBid', 'auditKeywords', 'auditStock', 'auditListing'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'ltoCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'acosGpft', 'acosFlag', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2730,6 +2730,18 @@
                     + '<button type="button" class="amz-cpc-avg-history-dot" title="Daily CVR history" aria-label="Daily CVR history"'
                     + ' data-history="cvr" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
                     + valueHtml + '</span>';
+            }
+            // LT O CVR: overall (ads + organic) listing CVR over the last 60 days of datasheet data.
+            function fmtLtoCvr(cell) {
+                var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var units = parseFloat(row.lto_cvr_units) || 0;
+                var sess = parseFloat(row.lto_cvr_sess) || 0;
+                var parent = String(row.page_parent || '').trim();
+                var tip = 'LT O CVR = ' + units + ' orders ÷ ' + sess + ' sessions (L30 + L60, ads + organic)';
+                if (parent) tip += ' · ' + parent;
+                return '<span class="fw-semibold" style="color:' + amzPageCvrColor(n) + ';" title="' + amzEsc(tip) + '">' + Math.round(n) + '%</span>';
             }
             function fmtMoneyHistoryDot(cell, kind, label) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
@@ -3946,6 +3958,14 @@
                     col.width = 72;
                     return;
                 }
+                if (c === 'ltoCvr') {
+                    col.title = 'LT O CVR';
+                    col.headerTooltip = 'Overall CVR, ads + organic together: (Units ordered L30 + L60) ÷ (Sessions L30 + L60) × 100 from the Amazon datasheet (the last 60 days, the longest window stored). Same parent row as the CVR column.';
+                    col.formatter = fmtLtoCvr;
+                    col.minWidth = 64;
+                    col.width = 76;
+                    return;
+                }
                 if (c === 'pageCvr') {
                     col.title = 'CVR';
                     col.headerTooltip = 'Amz page parent CVR L30 — A L30 ÷ Sess30 × 100 (parent row related to this campaign)';
@@ -5087,6 +5107,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
+                if (f === 'ltoCvr') return 'price';
                 if (/^(cost|ACOS|yAcos|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|projectedSpend|projectedSales|ySpend|ySales|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';

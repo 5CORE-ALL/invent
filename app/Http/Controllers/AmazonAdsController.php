@@ -105,7 +105,7 @@ class AmazonAdsController extends Controller
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
         'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'bgtGpft', 'bgtFlag', 'sbgt',
-        'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
+        'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'ltoCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         'pageCvr', 'viewsL30', 'viewsL7',
@@ -511,10 +511,11 @@ class AmazonAdsController extends Controller
         // Ads CVR (%) = Ads Sold ÷ Ads Clicks × 100 — both from the same L30 summary row.
         // LT CVR is lifetime sold ÷ lifetime clicks on daily API rows, immediately after Ads CVR.
         if (in_array('Prchase', $ordered, true) && in_array('clicks', $ordered, true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr' && $c !== 'ltCvr'));
+            // LT O CVR (overall: ads + organic, last 60 days of listing data) sits right after LT CVR.
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'Cvr' && $c !== 'ltCvr' && $c !== 'ltoCvr'));
             $idxPrchaseForCvr = array_search('Prchase', $ordered, true);
             if ($idxPrchaseForCvr !== false) {
-                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr', 'ltCvr']);
+                array_splice($ordered, $idxPrchaseForCvr + 1, 0, ['Cvr', 'ltCvr', 'ltoCvr']);
             }
         }
 
@@ -524,7 +525,10 @@ class AmazonAdsController extends Controller
                 $ordered,
                 static fn (string $c): bool => ! in_array($c, ['pageCvr', 'viewsL30', 'viewsL7', ...self::AUDIT_DISPLAY_COLUMNS], true)
             ));
-            $idxPageCvr = array_search('ltCvr', $ordered, true);
+            $idxPageCvr = array_search('ltoCvr', $ordered, true);
+            if ($idxPageCvr === false) {
+                $idxPageCvr = array_search('ltCvr', $ordered, true);
+            }
             if ($idxPageCvr === false) {
                 $idxPageCvr = array_search('Cvr', $ordered, true);
             }
@@ -7642,7 +7646,8 @@ class AmazonAdsController extends Controller
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
             || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
             || in_array('bgtGpft', $columns, true) || in_array('bgtFlag', $columns, true) || in_array('acosGpft', $columns, true) || in_array('acosFlag', $columns, true)
-            || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true);
+            || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)
+            || in_array('ltoCvr', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
                 $needSkuMetrics = true;
@@ -7678,7 +7683,8 @@ class AmazonAdsController extends Controller
             $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($skuMetricsByCampaign);
             if (in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
                 || in_array('bgtCvr', $columns, true) || in_array('sbgt', $columns, true)
-                || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)) {
+                || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)
+                || in_array('ltoCvr', $columns, true)) {
                 $pageCvrByCampaign = AmazonAdsCampaignSkuMetrics::parentListingCvrForCampaignNames($ruleNames);
             }
         }
@@ -7957,10 +7963,17 @@ class AmazonAdsController extends Controller
                 }
                 if (in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
                     || in_array('bgtCvr', $columns, true) || in_array('sbgt', $columns, true)
-                    || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)) {
+                    || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true)
+                    || in_array('ltoCvr', $columns, true)) {
                     $pc = ($cnSku !== '' && isset($pageCvrByCampaign[$cnSku]))
                         ? $pageCvrByCampaign[$cnSku]
                         : AmazonAdsCampaignSkuMetrics::emptyParentListingCvr();
+                    if (in_array('ltoCvr', $columns, true)) {
+                        $arr['ltoCvr'] = AmazonAdsCampaignSkuMetrics::overallCvrFromParent($pc);
+                        $arr['lto_cvr_units'] = (float) ($pc['a_l30'] ?? 0) + (float) ($pc['a_l60'] ?? 0);
+                        $arr['lto_cvr_sess'] = (float) ($pc['sess30'] ?? 0) + (float) ($pc['sess60'] ?? 0);
+                        $arr['page_parent'] = $pc['page_parent'] ?? ($arr['page_parent'] ?? '');
+                    }
                     if (in_array('pageCvr', $columns, true)) {
                         $arr['pageCvr'] = $pc['page_cvr'];
                         $arr['page_parent'] = $pc['page_parent'];
@@ -8865,7 +8878,7 @@ class AmazonAdsController extends Controller
         $handled = [
             'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
             'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'sbgt',
-            'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
+            'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'ltoCvr', 'L1cost', 'L1clicks',
             'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos', 'ltSpend', 'ltSales', 'ltSold', 'ltBid', 'ltCps', 'ltTcps', 'ltTcos', 'ltCpc',
         ];
         if (! in_array($column, $handled, true)) {
@@ -8874,7 +8887,7 @@ class AmazonAdsController extends Controller
 
         $hasAd = in_array('ad_type', $dbColumns, true);
         $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'gpft', 'acosGpft', 'acosFlag', 'bgtGpft', 'bgtFlag', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
-        $needsViews = in_array($column, ['bgtViews', 'bgtCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'sbgt'], true);
+        $needsViews = in_array($column, ['bgtViews', 'bgtCvr', 'pageCvr', 'ltoCvr', 'viewsL30', 'viewsL7', 'sbgt'], true);
         $needsLtAcos = in_array($column, ['ltAcos', 'bgtAcos', 'sbgt'], true);
         $needsRatings = in_array($column, ['reviews', 'bgtReviews', 'sbgt'], true);
         $needsShopifyInv = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'bgtDil', 'sbgt'], true);
@@ -9008,6 +9021,8 @@ class AmazonAdsController extends Controller
                 $keys[] = $column !== 'bgtGpft' ? $gpftKey : AmazonAdsBgtGpftRule::apply($gpftKey)['bgt'];
             } elseif ($column === 'pageCvr') {
                 $keys[] = $pc['page_cvr'] ?? null;
+            } elseif ($column === 'ltoCvr') {
+                $keys[] = AmazonAdsCampaignSkuMetrics::overallCvrFromParent($pc);
             } elseif ($column === 'viewsL30') {
                 $keys[] = isset($pc['sess30']) && is_numeric($pc['sess30']) ? (int) round((float) $pc['sess30']) : null;
             } elseif ($column === 'viewsL7' || $column === 'bgtViews') {

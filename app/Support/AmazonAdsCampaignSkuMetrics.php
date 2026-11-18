@@ -241,6 +241,25 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * LT O CVR (%): overall listing CVR over every window the Amazon datasheet stores (L30 + L60 = the last 60 days),
+     * ads and organic together. (A L30 + A L60) ÷ (Sess30 + Sess60) × 100 on the same parent row as the CVR column.
+     * Null when there are no sessions.
+     *
+     * @param  array<string, mixed>  $pc  a row from parentListingCvrForCampaignNames()
+     */
+    public static function overallCvrFromParent(array $pc): ?float
+    {
+        $sess = (float) ($pc['sess30'] ?? 0) + (float) ($pc['sess60'] ?? 0);
+        if ($sess <= 0) {
+            return null;
+        }
+        $units = (float) ($pc['a_l30'] ?? 0) + (float) ($pc['a_l60'] ?? 0);
+        $n = ($units / $sess) * 100;
+
+        return is_finite($n) ? round($n, 2) : null;
+    }
+
+    /**
      * Amz tabulator parent-row CVR L30 (Σ A L30 ÷ Σ Sess30 × 100) for each campaign.
      * Child campaigns resolve to their product_master parent and use that parent summary.
      *
