@@ -3324,6 +3324,59 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * CVR Price Rule: a price change % (positive raises, negative lowers) for CVR down / within ±20% / up vs LT O CVR,
+     * plus a Lower cap: when it is on, a price cut never takes GPFT% below Min GPFT% or GROI% below Min GROI%
+     * (whichever is hit first holds the price). A blank or non-numeric value is stored as null.
+     *
+     * @return array{down: float|null, same: float|null, up: float|null, lower_cap: bool, min_gpft: float|null, min_groi: float|null}
+     */
+    private static function amazonNormalizeCvrPriceRule(mixed $raw): array
+    {
+        $raw = is_array($raw) ? $raw : [];
+        $num = static function ($v, float $lo, float $hi): ?float {
+            return (is_numeric($v) && $v !== '') ? round(min($hi, max($lo, (float) $v)), 2) : null;
+        };
+
+        return [
+            'down' => $num($raw['down'] ?? null, -100.0, 100.0),
+            'same' => $num($raw['same'] ?? null, -100.0, 100.0),
+            'up' => $num($raw['up'] ?? null, -100.0, 100.0),
+            'lower_cap' => filter_var($raw['lower_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'min_gpft' => $num($raw['min_gpft'] ?? null, -100.0, 79.0),
+            'min_groi' => $num($raw['min_groi'] ?? null, -100.0, 1000.0),
+        ];
+    }
+
+    /** Saved CVR Price Rule (used to render the page and by the GET endpoint). */
+    public static function amazonCvrPriceRuleConfig(): array
+    {
+        try {
+            $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_cvr_price_rule')->first();
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+
+        return self::amazonNormalizeCvrPriceRule($row?->visibility);
+    }
+
+    public function amazonCvrPriceRuleGet()
+    {
+        return response()->json(['success' => true] + self::amazonCvrPriceRuleConfig());
+    }
+
+    public function amazonCvrPriceRuleSave(Request $request)
+    {
+        $payload = self::amazonNormalizeCvrPriceRule($request->only(['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi']));
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'amazon_cvr_price_rule'],
+            ['visibility' => $payload, 'column_order' => ['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi']]
+        );
+
+        return response()->json(['success' => true] + $payload);
+    }
+
+    /**
      * Daily slab counts for Std prc vs dil history dots. One snapshot per PDT day.
      */
     public function amazonStdPrcVsDilHistory(Request $request)

@@ -874,6 +874,15 @@
                         <option value="same">Same</option>
                     </select>
 
+                    <select id="cvr-delta-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="CVR L30 vs LT O CVR (±20%)">
+                        <option value="all">CVR Δ</option>
+                        <option value="up">&#8593; Up (&gt; +20%)</option>
+                        <option value="same">-- Within ±20%</option>
+                        <option value="down">&#8595; Down (&lt; -20%)</option>
+                    </select>
+
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
                         <option value="all">DIL%</option>
                         <option value="red">Red &lt;25%</option>
@@ -916,6 +925,7 @@
 
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
                     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'buttons'])
+                    @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'buttons'])
 
                     <!-- Selected Rows Count -->
                     <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
@@ -1466,6 +1476,7 @@
 
     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
     @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'modals'])
+    @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'modals'])
 
 @endsection
 
@@ -1517,6 +1528,7 @@
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
         @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
+        @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'amazon'])
 
         function amazonNormalizeSkuKey(sku) {
@@ -5061,6 +5073,26 @@
                      
                     },
                     {
+                        title: "LT O CVR",
+                        field: "LT_O_CVR",
+                        hozAlign: "center",
+                        headerTooltip: "Overall CVR, ads + organic together: (A L30 + units ordered L60) ÷ (Sess30 + Sess60) × 100 (the last 60 days, the longest window stored).",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const lto = amazonRowLtoCvr(row);
+                            if (lto === null) return '<span class="text-muted">—</span>';
+                            const units = (parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0);
+                            const sess = (parseFloat(row['Sess30']) || 0) + (parseFloat(row['sessions_l60']) || 0);
+                            return '<span title="' + escAttr(units + ' orders ÷ ' + sess + ' sessions (L30 + L60)') + '">' + lto.toFixed(1) + '%</span>';
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const x = amazonRowLtoCvr(aRow.getData());
+                            const y = amazonRowLtoCvr(bRow.getData());
+                            return (x === null ? -1 : x) - (y === null ? -1 : y);
+                        },
+                        width: 78
+                    },
+                    {
                         title: "CVR L30",
                         field: "CVR_L30",
                         hozAlign: "center",
@@ -5085,26 +5117,6 @@
                                 return sess30 === 0 ? 0 : (aL30 / sess30) * 100;
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 78
-                    },
-                    {
-                        title: "LT O CVR",
-                        field: "LT_O_CVR",
-                        hozAlign: "center",
-                        headerTooltip: "Overall CVR, ads + organic together: (A L30 + units ordered L60) ÷ (Sess30 + Sess60) × 100 (the last 60 days, the longest window stored).",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const lto = amazonRowLtoCvr(row);
-                            if (lto === null) return '<span class="text-muted">—</span>';
-                            const units = (parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0);
-                            const sess = (parseFloat(row['Sess30']) || 0) + (parseFloat(row['sessions_l60']) || 0);
-                            return '<span title="' + escAttr(units + ' orders ÷ ' + sess + ' sessions (L30 + L60)') + '">' + lto.toFixed(1) + '%</span>';
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const x = amazonRowLtoCvr(aRow.getData());
-                            const y = amazonRowLtoCvr(bRow.getData());
-                            return (x === null ? -1 : x) - (y === null ? -1 : y);
                         },
                         width: 78
                     },
@@ -6595,6 +6607,7 @@
                 const diffFilter = $('#diff-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const cvrTrendFilter = $('#cvr-trend-filter').val();
+                const cvrDeltaFilter = $('#cvr-delta-filter').val();
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
@@ -6760,6 +6773,18 @@
                     });
                 }
 
+                // CVR Δ filter: CVR L30 vs LT O CVR (more than 20% above = up, more than 20% below = down, else within ±20%)
+                if (cvrDeltaFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return parentRowsBypassDataFilters;
+                        const t = amazonCvrVsLtoTrend(data);
+                        if (cvrDeltaFilter === 'up') return t === 1;
+                        if (cvrDeltaFilter === 'down') return t === -1;
+                        if (cvrDeltaFilter === 'same') return t === 0;
+                        return true;
+                    });
+                }
+
                 // DIL filter (sales velocity = L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
@@ -6911,7 +6936,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
+            $('#inventory-filter, #gpft-filter, #roi-filter, #diff-filter, #cvr-filter, #cvr-trend-filter, #cvr-delta-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #sprice-filter').on('change', function() {
                 applyFilters();
             });
 
