@@ -1468,6 +1468,12 @@ class StockBalanceController extends Controller
                 ]);
             }
 
+            // Keep the transfer rule's action in step with the inline ACTION dropdown, otherwise the
+            // rule modal keeps showing the old value.
+            StockBalanceRule::query()->get(['id', 'to_sku'])
+                ->filter(fn ($rule) => $normalizeSku($rule->to_sku ?? '') === $sku)
+                ->each(fn ($rule) => StockBalanceRule::whereKey($rule->id)->update(['action' => $action]));
+
             Log::info("Action updated successfully", [
                 'sku' => $sku,
                 'action' => $action
@@ -1987,6 +1993,20 @@ class StockBalanceController extends Controller
                 'fromQty' => $row->from_qty,
             ];
         }
+
+        // A combo rule is the source of truth for its TO SKU. A stale 1:1 preference must never hide
+        // the combo (it would show only one FROM SKU).
+        StockBalanceRule::query()
+            ->whereRaw('LOWER(ratio) = ?', ['combo'])
+            ->get()
+            ->each(function ($rule) use (&$preferences) {
+                $preferences[$rule->to_sku] = [
+                    'fromSku' => $rule->from_sku,
+                    'ratio' => 'combo',
+                    'fromQty' => $rule->from_qty,
+                ];
+            });
+
         return response()->json(['preferences' => $preferences]);
     }
 
@@ -2012,6 +2032,15 @@ class StockBalanceController extends Controller
         ];
         if ($request->exists('from_qty')) {
             $payload['from_qty'] = $request->filled('from_qty') ? (int) $request->from_qty : null;
+        }
+        // Inline edits must not turn a saved combo back into a single-FROM transfer.
+        $comboRule = StockBalanceRule::query()
+            ->where('to_sku', trim($request->to_sku))
+            ->whereRaw('LOWER(ratio) = ?', ['combo'])
+            ->first();
+        if ($comboRule) {
+            $payload['from_sku'] = $comboRule->from_sku;
+            $payload['ratio'] = 'combo';
         }
         StockBalanceTransferPreference::updateOrCreate(
             [
@@ -2114,11 +2143,13 @@ class StockBalanceController extends Controller
                         $existingCombo = StockBalanceRule::query()->where('to_sku', $toSku)->first();
                         $transferredAtCombo = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
                         $editedAfter = ! $force && $existingCombo && $transferredAtCombo && $existingCombo->updated_at && $existingCombo->updated_at->gt($transferredAtCombo);
+                        // Compare the full set of SKUs (primary + extras), not which one happens to be listed first.
                         $sameAsSaved = $existingCombo
                             && strcasecmp((string) $existingCombo->ratio, 'combo') === 0
-                            && strcasecmp((string) $existingCombo->from_sku, (string) $comboSources[0]->from_sku) === 0
-                            && collect($existingCombo->from_items ?: [])->pluck('sku')->map(fn ($s) => strtoupper(trim((string) $s)))->sort()->values()->all()
-                                === $comboSources->slice(1)->map(fn ($r) => strtoupper(trim((string) $r->from_sku)))->sort()->values()->all();
+                            && collect([$existingCombo->from_sku])
+                                ->merge(collect($existingCombo->from_items ?: [])->pluck('sku'))
+                                ->map(fn ($s) => strtoupper(trim((string) $s)))->filter()->unique()->sort()->values()->all()
+                                === $comboSources->map(fn ($r) => strtoupper(trim((string) $r->from_sku)))->unique()->sort()->values()->all();
                         if (! $editedAfter && ! $sameAsSaved) {
                             $this->saveComboRuleFromSources(
                                 $toSku,
@@ -2305,8 +2336,9 @@ class StockBalanceController extends Controller
         }
 
         if (strcasecmp($ratio, 'combo') === 0 && $action !== 'NRB') {
-            if (count($fromItems) !== 1) {
-                return response()->json(['error' => 'Combo needs 2 different FROM SKUs'], 422);
+            // Combo = primary FROM SKU + every extra FROM SKU (at least 2 SKUs in total); all of them are saved.
+            if (count($fromItems) < 1) {
+                return response()->json(['error' => 'Combo needs at least 2 different FROM SKUs'], 422);
             }
             if (!$fromQty || $fromQty < 1) {
                 return response()->json(['error' => 'FROM Qty must be at least 1'], 422);

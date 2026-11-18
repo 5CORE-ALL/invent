@@ -44,22 +44,43 @@
             cursor: pointer;
         }
 
+        /* ACTION is an editable dropdown. Unset ("--") is a white pill with a visible border so it
+           never looks greyed out / disabled; RB is green and NRB is red. */
         .tabulator .action-select.form-select {
-            width: 16px;
-            height: 16px;
-            min-height: 16px;
-            padding: 0;
-            border: none;
-            border-radius: 50%;
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            background-image: none !important;
-            font-size: 0;
-            line-height: 16px;
-            color: transparent;
+            width: 52px;
+            height: 24px;
+            min-height: 24px;
+            padding: 0 14px 0 6px;
+            border: 1px solid #6c757d;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 22px;
+            color: #495057;
+            background-color: #fff;
+            background-size: 8px 8px;
+            background-position: right 5px center;
             cursor: pointer;
             box-shadow: none;
+            opacity: 1;
+        }
+
+        .tabulator .action-select.form-select:hover,
+        .tabulator .action-select.form-select:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+        }
+
+        .tabulator .action-select.form-select.action-rb {
+            background-color: #28a745;
+            border-color: #28a745;
+            color: #fff;
+        }
+
+        .tabulator .action-select.form-select.action-nrb {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
         }
 
         .tabulator .action-select.form-select option {
@@ -839,8 +860,7 @@
                 table.getColumn('to_qty_calc').show();
                 table.getColumn('ratio').show();
                 table.getColumn('submit').show();
-                // Reduce ACTION column width to save space
-                table.getColumn('ACTION').updateDefinition({width: 36});
+                table.getColumn('ACTION').updateDefinition({width: 70});
                 
                 // Restore saved FROM SKU and ratio text
                 setTimeout(function() {
@@ -859,25 +879,21 @@
                 table.getColumn('to_qty_calc').hide();
                 table.getColumn('ratio').hide();
                 table.getColumn('submit').hide();
-                // Restore ACTION column width
-                table.getColumn('ACTION').updateDefinition({width: 36});
+                table.getColumn('ACTION').updateDefinition({width: 70});
             }
         });
         
         // ACTION dropdown change handler (save to database)
         $(document).on('change', '.action-select', function() {
             const $select = $(this);
-            const sku = $select.data('sku');
+            // attr(), not data(): data() turns numeric-looking SKUs into numbers and the lookups below fail.
+            const sku = String($select.attr('data-sku') || '');
             const action = $select.val();
             
             // Update styling based on selection
-            if (action === 'RB') {
-                $select.css('background-color', '#28a745');
-            } else if (action === 'NRB') {
-                $select.css('background-color', '#dc3545');
-            } else {
-                $select.css('background-color', '#6c757d');
-            }
+            $select.removeClass('action-rb action-nrb')
+                .addClass(action === 'RB' ? 'action-rb' : (action === 'NRB' ? 'action-nrb' : ''))
+                .attr('title', 'Action: ' + (action || '--') + ' (click to change)');
             
             // Save to database
             $.ajax({
@@ -895,6 +911,8 @@
                     showToast('ACTION updated for ' + sku, 'success');
                     const item = allTableData.find(function(i) { return i.SKU === sku; });
                     if (item) item.ACTION = action || '';
+                    const savedRule = getRuleForSku(sku);
+                    if (savedRule) savedRule.action = action || null;
                     const rows = table.searchRows("SKU", "=", sku);
                     if (rows.length > 0) {
                         rows[0].update({ACTION: action});
@@ -1133,11 +1151,14 @@
             const combo = isComboRatio(displayedRatio($row, rowData));
             const invBlocked = transferIsBlocked(fromQtyRaw, fromInvRaw);
             const fromSku = displayedFromSku($row, rowData);
-            const extra = combo ? ((rowData._from_items || [])[0] || null) : null;
-            const extraMeta = extra && extra.sku ? getFromSkuMeta(extra.sku) : null;
+            const extraMetas = combo
+                ? (rowData._from_items || []).filter(function(item) { return item && item.sku; }).map(function(item) {
+                    return getFromSkuMeta(item.sku);
+                }).filter(function(meta) { return meta.found; })
+                : [];
             const need = parseInt(fromQtyRaw, 10);
-            const extraShort = !!(extraMeta && extraMeta.found && !isNaN(need) && need > Number(extraMeta.inv));
-            const extraLow = !!(extraMeta && extraMeta.found && Number(extraMeta.inv) < 1);
+            const extraShort = extraMetas.some(function(meta) { return !isNaN(need) && need > Number(meta.inv); });
+            const extraLow = extraMetas.some(function(meta) { return Number(meta.inv) < 1; });
             const zeroInv = !!fromSku && fromInvBelowOne(fromInvRaw);
             const dilBlocked = !!fromSku && dilSubmitBlocked(rowData.DIL, getFromSkuMeta(fromSku).dil);
             const blocked = invBlocked || extraShort || dilBlocked || zeroInv || extraLow;
@@ -1217,12 +1238,14 @@
             if (fields.toQty <= 0) return 'TO Qty must be greater than 0';
             if (fields.fromQty > fields.fromInv) return 'Insufficient inventory for ' + fields.fromSku + '. Available: ' + fields.fromInv;
             if (isComboRatio(fields.ratio)) {
-                const extras = fields.fromItems || [];
-                if (extras.length !== 1 || !extras[0].sku) return 'Combo needs 2 FROM SKUs';
-                const extraMeta = getFromSkuMeta(extras[0].sku);
-                const extraInv = extraMeta.found ? Number(extraMeta.inv) : 0;
-                if (extraInv < 1) return 'FROM INV is below 1 for ' + extras[0].sku;
-                if (extraInv < fields.fromQty) return 'Insufficient inventory for ' + extras[0].sku + '. Available: ' + extraInv;
+                const extras = (fields.fromItems || []).filter(function(item) { return item && item.sku; });
+                if (extras.length < 1) return 'Combo needs 2 FROM SKUs';
+                for (let i = 0; i < extras.length; i++) {
+                    const extraMeta = getFromSkuMeta(extras[i].sku);
+                    const extraInv = extraMeta.found ? Number(extraMeta.inv) : 0;
+                    if (extraInv < 1) return 'FROM INV is below 1 for ' + extras[i].sku;
+                    if (extraInv < fields.fromQty) return 'Insufficient inventory for ' + extras[i].sku + '. Available: ' + extraInv;
+                }
             }
             return '';
         }
@@ -1732,19 +1755,14 @@
                     title: "ACTION",
                     field: "ACTION",
                     hozAlign: "center",
-                    width: 36,
+                    width: 70,
                     headerSort: false,
                     formatter: function(cell) {
                         const value = cell.getValue() || '';
-                        let selectBg = '#6c757d';
+                        const stateClass = value === 'RB' ? ' action-rb' : (value === 'NRB' ? ' action-nrb' : '');
+                        const skuAttr = String(cell.getRow().getData().SKU || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
-                        if (value === 'RB') {
-                            selectBg = '#28a745';
-                        } else if (value === 'NRB') {
-                            selectBg = '#dc3545';
-                        }
-
-                        return '<select class="form-select action-select" data-sku="' + cell.getRow().getData().SKU + '" title="' + (value || '--') + '" style="background-color:' + selectBg + ';">' +
+                        return '<select class="form-select action-select' + stateClass + '" data-sku="' + skuAttr + '" title="Action: ' + (value || '--') + ' (click to change)">' +
                             '<option value="" ' + (value === '' ? 'selected' : '') + '>--</option>' +
                             '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + '>RB</option>' +
                             '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + '>NRB</option>' +
@@ -2028,6 +2046,9 @@
         function resolveFromSkuForRow(rowData) {
             if (rowData._from_sku) return rowData._from_sku;
             const toSku = rowData.SKU;
+            // A combo rule defines the FROM SKUs; a stale 1:1 preference/history must not replace them.
+            const comboRule = getRuleForSku(toSku);
+            if (comboRule && isComboRatio(comboRule.ratio) && comboRule.fromSku) return comboRule.fromSku;
             const serverPref = getServerPref(toSku);
             if (serverPref && serverPref.fromSku) return serverPref.fromSku;
             const rule = getRuleForSku(toSku);
@@ -2123,7 +2144,9 @@
                     data._from_dil = null;
                     data._from_items = [];
                 }
-                data._ratio = (pref && pref.ratio) || (rule && rule.ratio) || (history && history.ratio) || null;
+                data._ratio = (rule && isComboRatio(rule.ratio))
+                    ? 'combo'
+                    : ((pref && pref.ratio) || (rule && rule.ratio) || (history && history.ratio) || null);
             });
         }
         
@@ -2162,8 +2185,16 @@
                     const savedRatio = savedData.ratio || '1:1';
                     const rule = getRuleForSku(toSku);
                     const history = historyAutofill(rowData);
-                    const fromSkuToRestore = rowData._from_sku || (serverPref && serverPref.fromSku) || (rule && rule.fromSku) || (history && history.fromSku) || resolveFromSkuForRow(rowData);
-                    const ratioToRestore = rowData._ratio || (serverPref && serverPref.ratio) || (rule && rule.ratio) || (history && history.ratio) || savedRatio || '1:1';
+                    const comboRule = !!(rule && isComboRatio(rule.ratio) && rule.fromSku);
+                    if (comboRule) {
+                        rowData._from_items = rule.fromItems || [];
+                    }
+                    const fromSkuToRestore = comboRule
+                        ? rule.fromSku
+                        : (rowData._from_sku || (serverPref && serverPref.fromSku) || (rule && rule.fromSku) || (history && history.fromSku) || resolveFromSkuForRow(rowData));
+                    const ratioToRestore = comboRule
+                        ? 'combo'
+                        : (rowData._ratio || (serverPref && serverPref.ratio) || (rule && rule.ratio) || (history && history.ratio) || savedRatio || '1:1');
                     const savedQty = savedTransferQtyForRow(rowData);
                     if (savedQty != null) {
                         rowData._from_qty = savedQty;
@@ -2486,6 +2517,20 @@
                 $('#rule-action').val((item && item.ACTION) || '');
                 $('#rule-ratio').val('1:1');
             }
+
+            // Load every extra FROM SKU saved for a combo (or clear the lines left from another SKU).
+            clearExtraFromLines();
+            const comboRule = !!(rule && isComboRatio(rule.ratio));
+            if (comboRule) {
+                (rule.fromItems || []).forEach(function(extra) {
+                    if (!extra || !extra.sku) return;
+                    addExtraFromLine(extra.sku, rule.fromQty != null ? rule.fromQty : (extra.fromQty != null ? extra.fromQty : extra.from_qty));
+                });
+                if ($('#rule-extra-from .rule-extra-line').length === 0) {
+                    addExtraFromLine('', rule.fromQty || '');
+                }
+                calcRuleToQty();
+            }
             syncRuleFromRow();
         });
 
@@ -2569,8 +2614,8 @@
             let extras = collectExtraFromItems();
             let saveFromQty = fromQty;
             if (isComboRatio(ratio) && action !== 'NRB') {
-                if (extras.length !== 1) {
-                    showToast('Combo needs 2 different FROM SKUs', 'error');
+                if (extras.length < 1) {
+                    showToast('Combo needs at least 2 different FROM SKUs', 'error');
                     return;
                 }
                 if (!saveFromQty || saveFromQty < 1) {
@@ -2638,6 +2683,7 @@
                     });
                     if (rows.length) {
                         applyRuleToItem(rows[0].getData());
+                        rows[0].update({ ACTION: rule.action || '' });
                         rows[0].reformat();
                         setTimeout(restoreSavedFromSku, 0);
                     } else {
