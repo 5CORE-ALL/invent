@@ -5,6 +5,7 @@
                     <button type="button" class="btn btn-sm btn-info" id="amz-cvr-rule-btn" style="font-weight:600;color:#000;"
                         title="Price change % for SKUs whose CVR L30 is down, within target of, or up vs LT O CVR (targets are set in the modal).">
                         <i class="fas fa-chart-line"></i> CVR Price Rule
+                        <span class="badge bg-dark ms-1" id="amz-cvr-rule-state" style="display:none;">ON</span>
                     </button>
 @endif
 
@@ -20,6 +21,15 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-3" id="amz-cvr-onoff-box">
+                        <div>
+                            <div class="fw-semibold">Rule <span id="amz-cvr-onoff-txt" class="badge bg-secondary">OFF</span></div>
+                            <div class="text-muted" style="font-size:12px;">ON: the S PRC column suggests a new price next to its own value, from the price change % of the SKU's CVR case. OFF: no suggestion. Click Save to apply.</div>
+                        </div>
+                        <div class="form-check form-switch mb-0 ms-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-rule-enabled" style="width:2.6em;height:1.3em;cursor:pointer;" aria-label="CVR Price Rule on or off">
+                        </div>
+                    </div>
                     <div class="row g-2 mb-3" id="amz-cvr-band-box">
                         <div class="col-6">
                             <label class="form-label small fw-bold mb-1" for="amz-cvr-band-down"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> CVR Down when below LT O CVR by</label>
@@ -65,19 +75,29 @@
                             <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-cap-enabled">
                             <label class="form-check-label fw-semibold" for="amz-cvr-cap-enabled">Lower cap</label>
                         </div>
-                        <div class="text-muted mb-2" style="font-size:12px;">A price cut is held as soon as either GPFT% or GROI% would fall below its minimum. Whichever limit is hit first sets the lowest allowed price.</div>
+                        <div class="text-muted mb-2" style="font-size:12px;">A price cut is held as soon as either NPFT% or NROI% would fall below its minimum. Whichever limit is hit first sets the lowest allowed price.</div>
                         <div class="row g-2">
                             <div class="col-6">
-                                <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-gpft">Min GPFT%</label>
-                                <div class="input-group input-group-sm"><input type="number" max="79" step="0.1" class="form-control" id="amz-cvr-cap-gpft" placeholder="no limit"><span class="input-group-text">%</span></div>
+                                <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-npft">Min NPFT%</label>
+                                <div class="input-group input-group-sm"><input type="number" max="79" step="0.1" class="form-control" id="amz-cvr-cap-npft" placeholder="no limit"><span class="input-group-text">%</span></div>
                             </div>
                             <div class="col-6">
-                                <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-groi">Min GROI%</label>
-                                <div class="input-group input-group-sm"><input type="number" step="0.1" class="form-control" id="amz-cvr-cap-groi" placeholder="no limit"><span class="input-group-text">%</span></div>
+                                <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-nroi">Min NROI%</label>
+                                <div class="input-group input-group-sm"><input type="number" step="0.1" class="form-control" id="amz-cvr-cap-nroi" placeholder="no limit"><span class="input-group-text">%</span></div>
                             </div>
                         </div>
                     </div>
                     <div class="text-muted" style="font-size:12px;" id="amz-cvr-rule-note"></div>
+                    <div class="border-top pt-2 mt-2" id="amz-cvr-rule-buttons">
+                        <div class="text-muted mb-1" style="font-size:12px;">Open a price rule. Each button opens its own rules on its own, and does not turn the Sprc Dil / Std prc vs dil switch on or off.</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'buttons'])
+                            <button type="button" class="btn btn-sm" id="amz-dil-groi-btn"
+                                title="Dil slabs → Target NROI% (0–0 on top for Dil = 0). CVR overlay (editable, with Count) adjusts Target NROI. Every INV &gt; 0 SKU uses the Dil-matching slab.">
+                                <i class="fas fa-sliders-h"></i> Sprc Dil
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>
@@ -136,25 +156,44 @@
             $f.find('option[value="down"]').text('\u2193 Down (< -' + p.down + '%)');
             $f.attr('title', 'CVR L30 vs LT O CVR (down below -' + p.down + '%, up above +' + p.up + '%)');
         }
+        /** Ads % used for the cap maths: the channel Ads% (the slab price-rule, when ON, is handled in amzDynAdsSolve). */
+        function amzCvrRuleChannelAds() {
+            if (typeof amzDynAdsChannelPct === 'function') return Number(amzDynAdsChannelPct()) || 0;
+            try { return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0; } catch (e) { return 0; }
+        }
         /**
-         * Lowest price the Lower cap allows: the higher of the price where GPFT% = Min GPFT% and the price where GROI% = Min GROI%.
-         * GPFT% = (p×0.80 − ship − LP) / p, GROI% = (p×0.80 − ship − LP) / LP. null when no limit applies to this row.
+         * Lowest price the Lower cap allows: the higher of the price where NPFT% = Min NPFT% and the price where NROI% = Min NROI%.
+         * Same formulas as the NPFT% / NROI% columns, with the Ads % that applies at that price:
+         *   NPFT% = (p×0.80 − ship − LP) / p × 100 − Ads%        ->  p = (ship + LP) / (0.80 − (Min NPFT + Ads%) / 100)
+         *   NROI% = (p×margin − ship − LP − p×Ads%) / LP × 100   ->  p = (LP × (1 + Min NROI / 100) + ship) / (margin − Ads% / 100)
+         * Infinity when a minimum cannot be reached. null when no limit applies to this row.
          */
         function amzCvrRuleFloorPrice(row, cfg) {
             if (!cfg || !cfg.lower_cap) return null;
             const lp = parseFloat(row && row.LP_productmaster);
             const ship = parseFloat(row && row.Ship_productmaster) || 0;
             const cost = (isFinite(lp) && lp > 0) ? lp : 0;
+            const marginRaw = parseFloat(row && row.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+            const chAds = amzCvrRuleChannelAds();
+            const solve = function(solveAt) {
+                return (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, chAds) : solveAt(chAds);
+            };
             let floor = null;
-            const g = parseFloat(cfg.min_gpft);
-            if (isFinite(g) && cfg.min_gpft !== null && cfg.min_gpft !== '') {
-                const k = 0.80 - g / 100;
-                const f = k > 0 ? (ship + cost) / k : Infinity;
+            const n = parseFloat(cfg.min_npft);
+            if (isFinite(n) && cfg.min_npft !== null && cfg.min_npft !== '') {
+                const f = solve(function(ads) {
+                    const k = 0.80 - (n + ads) / 100;
+                    return k > 0 ? (ship + cost) / k : Infinity;
+                });
                 floor = floor === null ? f : Math.max(floor, f);
             }
-            const r = parseFloat(cfg.min_groi);
-            if (isFinite(r) && cfg.min_groi !== null && cfg.min_groi !== '' && cost > 0) {
-                const f = (cost * (1 + r / 100) + ship) / 0.80;
+            const r = parseFloat(cfg.min_nroi);
+            if (isFinite(r) && cfg.min_nroi !== null && cfg.min_nroi !== '' && cost > 0) {
+                const f = solve(function(ads) {
+                    const k = margin - ads / 100;
+                    return k > 0 ? (cost * (1 + r / 100) + ship) / k : Infinity;
+                });
                 floor = floor === null ? f : Math.max(floor, f);
             }
             return floor;
@@ -182,8 +221,48 @@
             }
             return { price: Math.round(next * 100) / 100, capped: capped };
         }
+        /** Rule ON/OFF paint: the switch label in the modal and the badge on the toolbar button. */
+        function amzCvrRulePaintState() {
+            const on = !!(amzCvrRule && amzCvrRule.enabled);
+            $('#amz-cvr-rule-state').toggle(on);
+        }
+        function amzCvrRulePaintOnOffText() {
+            const on = $('#amz-cvr-rule-enabled').is(':checked');
+            $('#amz-cvr-onoff-txt').text(on ? 'ON' : 'OFF').toggleClass('bg-success', on).toggleClass('bg-secondary', !on);
+        }
+        /**
+         * The suggested new price for the S PRC cell, or '' when the rule is OFF, the SKU has no case / % / price, or the
+         * suggestion equals the current price. Display only: nothing is saved or pushed from it.
+         */
+        function amzCvrRuleSuggestHtml(row) {
+            if (!amzCvrRule || !amzCvrRule.enabled || !row || row.is_parent_summary) return '';
+            const c = amzCvrRuleCaseFor(row, amzCvrRule);
+            if (!c) return '';
+            const pct = parseFloat(amzCvrRule[c]);
+            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return '';
+            const res = amzCvrRulePriceFor(row, amzCvrRule);
+            const price = parseFloat(row.price);
+            if (!res || !(res.price > 0) || Math.abs(res.price - price) < 0.005) return '';
+            const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
+            const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
+                + (res.capped ? ' — the cut is held by the Lower cap' : '') + '. Suggestion only, not saved or pushed.';
+            const color = res.price < price ? '#a00211' : '#198754';
+            return ' <span class="amz-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
+                + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
+                + (res.capped ? ' <i class="fas fa-lock" style="font-size:9px;"></i>' : '') + '</span>';
+        }
+        /** Wraps the S PRC cell formatter: its own output stays, the rule's suggestion is added after it. */
+        function amzCvrRuleSpriceFormatter(inner) {
+            return function(cell) {
+                const out = inner.apply(this, arguments);
+                let sug = '';
+                try { sug = amzCvrRuleSuggestHtml(cell.getRow().getData()); } catch (e) { sug = ''; }
+                if (!sug) return out;
+                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;flex-wrap:wrap;">' + (out || '') + sug + '</span>';
+            };
+        }
         function amzCvrRuleReadDraft() {
-            const d = { lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_gpft: $('#amz-cvr-cap-gpft').val(), min_groi: $('#amz-cvr-cap-groi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
+            const d = { enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 d[$(this).data('key')] = $(this).find('.amz-cvr-rule-pct').val();
             });
@@ -216,7 +295,7 @@
                 $(this).find('.amz-cvr-rule-count').text(counts[k].toLocaleString());
                 $(this).find('.amz-cvr-rule-capped').text(cfg.lower_cap ? capped[k].toLocaleString() : '—');
             });
-            $('#amz-cvr-cap-gpft, #amz-cvr-cap-groi').prop('disabled', !cfg.lower_cap);
+            $('#amz-cvr-cap-npft, #amz-cvr-cap-nroi').prop('disabled', !cfg.lower_cap);
         }
         function amzCvrRulePaintModal() {
             const cfg = amzCvrRule || {};
@@ -225,17 +304,40 @@
                 const v = cfg[key];
                 $(this).find('.amz-cvr-rule-pct').val(v === null || v === undefined || v === '' ? '' : v);
             });
+            $('#amz-cvr-rule-enabled').prop('checked', !!cfg.enabled);
+            amzCvrRulePaintOnOffText();
             $('#amz-cvr-band-down').val(amzCvrRuleBandPcts(cfg).down);
             $('#amz-cvr-band-up').val(amzCvrRuleBandPcts(cfg).up);
             $('#amz-cvr-cap-enabled').prop('checked', !!cfg.lower_cap);
-            $('#amz-cvr-cap-gpft').val(cfg.min_gpft === null || cfg.min_gpft === undefined ? '' : cfg.min_gpft);
-            $('#amz-cvr-cap-groi').val(cfg.min_groi === null || cfg.min_groi === undefined ? '' : cfg.min_groi);
+            $('#amz-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
+            $('#amz-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
             amzCvrRulePaintCounts();
             $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose price cut would be held by the Lower cap (based on each SKU\'s current price).');
         }
 
+        // The rule buttons sit inside this modal. Close this modal first, then run the button's own handler, so the two
+        // Bootstrap modals never stack. The click is held in the capture phase and re-sent once this modal has hidden.
+        (function() {
+            const modalEl = document.getElementById('amzCvrRuleModal');
+            if (!modalEl || modalEl._amzRuleBtnBound) return;
+            modalEl._amzRuleBtnBound = true;
+            modalEl.addEventListener('click', function(e) {
+                const b = e.target.closest ? e.target.closest('#amz-std-prc-btn, #amz-dil-groi-btn') : null;
+                if (!b || b._amzPass) return;
+                e.stopPropagation();
+                e.preventDefault();
+                modalEl.addEventListener('hidden.bs.modal', function() {
+                    b._amzPass = true;
+                    b.click();
+                    b._amzPass = false;
+                }, { once: true });
+                if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }, true);
+        })();
+
         $(document).ready(function() {
             amzCvrRuleRefreshLabels(amzCvrRule);
+            amzCvrRulePaintState();
             $('#amz-cvr-rule-btn').off('click.amzcvr').on('click.amzcvr', function(e) {
                 e.preventDefault();
                 amzCvrRulePaintModal();
@@ -243,6 +345,7 @@
                 if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
             });
             $(document).off('input.amzcvrcount change.amzcvrcount').on('input.amzcvrcount change.amzcvrcount', '#amz-cvr-rule-table input, #amz-cvr-cap-box input, #amz-cvr-band-box input', amzCvrRulePaintCounts);
+            $(document).off('change.amzcvronoff').on('change.amzcvronoff', '#amz-cvr-rule-enabled', amzCvrRulePaintOnOffText);
             $('#amz-cvr-rule-save').off('click.amzcvr').on('click.amzcvr', function() {
                 const $btn = $(this).prop('disabled', true);
                 const payload = amzCvrRuleReadDraft();
@@ -254,12 +357,13 @@
                     headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
                 }).done(function(res) {
                     if (!res || !res.success) { amzPefToast('error', 'Could not save CVR Price Rule'); return; }
-                    amzCvrRule = { down: res.down, same: res.same, up: res.up, lower_cap: !!res.lower_cap, min_gpft: res.min_gpft, min_groi: res.min_groi, down_band: res.down_band, up_band: res.up_band };
+                    amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, down_band: res.down_band, up_band: res.up_band };
                     amzCvrRuleRefreshLabels(amzCvrRule);
+                    amzCvrRulePaintState();
                     if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');
-                    amzPefToast('success', 'CVR Price Rule saved.');
+                    amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC now shows the suggested prices.' : 'CVR Price Rule saved (OFF). No price suggestions.');
                     const el = document.getElementById('amzCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
                 }).fail(function() {

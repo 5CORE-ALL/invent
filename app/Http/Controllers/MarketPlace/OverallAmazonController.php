@@ -3325,13 +3325,15 @@ class OverallAmazonController extends Controller
 
     /**
      * CVR Price Rule: a price change % (positive raises, negative lowers) for CVR down / within ±20% / up vs LT O CVR,
-     * plus a Lower cap: when it is on, a price cut never takes GPFT% below Min GPFT% or GROI% below Min GROI%
+     * plus a Lower cap: when it is on, a price cut never takes NPFT% below Min NPFT% or NROI% below Min NROI%
      * (whichever is hit first holds the price). A blank or non-numeric value is stored as null.
      *
      * down_band / up_band are the CVR targets: CVR is "down" when it is more than down_band % below LT O CVR and "up" when it
      * is more than up_band % above it (both default to 20).
      *
-     * @return array{down: float|null, same: float|null, up: float|null, lower_cap: bool, min_gpft: float|null, min_groi: float|null, down_band: float, up_band: float}
+     * enabled: when on, the S PRC column suggests the rule's new price next to its own value (display only).
+     *
+     * @return array{enabled: bool, down: float|null, same: float|null, up: float|null, lower_cap: bool, min_npft: float|null, min_nroi: float|null, down_band: float, up_band: float}
      */
     private static function amazonNormalizeCvrPriceRule(mixed $raw): array
     {
@@ -3345,8 +3347,9 @@ class OverallAmazonController extends Controller
             'same' => $num($raw['same'] ?? null, -100.0, 100.0),
             'up' => $num($raw['up'] ?? null, -100.0, 100.0),
             'lower_cap' => filter_var($raw['lower_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'min_gpft' => $num($raw['min_gpft'] ?? null, -100.0, 79.0),
-            'min_groi' => $num($raw['min_groi'] ?? null, -100.0, 1000.0),
+            'min_npft' => $num($raw['min_npft'] ?? null, -100.0, 79.0),
+            'min_nroi' => $num($raw['min_nroi'] ?? null, -100.0, 1000.0),
+            'enabled' => filter_var($raw['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'down_band' => $num($raw['down_band'] ?? null, 0.0, 99.0) ?? 20.0,
             'up_band' => $num($raw['up_band'] ?? null, 0.0, 1000.0) ?? 20.0,
         ];
@@ -3371,11 +3374,11 @@ class OverallAmazonController extends Controller
 
     public function amazonCvrPriceRuleSave(Request $request)
     {
-        $payload = self::amazonNormalizeCvrPriceRule($request->only(['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi', 'down_band', 'up_band']));
+        $payload = self::amazonNormalizeCvrPriceRule($request->only(['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']));
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_cvr_price_rule'],
-            ['visibility' => $payload, 'column_order' => ['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi', 'down_band', 'up_band']]
+            ['visibility' => $payload, 'column_order' => ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']]
         );
 
         return response()->json(['success' => true] + $payload);

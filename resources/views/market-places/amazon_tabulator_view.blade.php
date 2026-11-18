@@ -5619,8 +5619,8 @@
                             return v > 0 ? v : null;
                         }),
                         editable: false,
-                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SNROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
-                        formatter: function(cell) {
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SNROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum. With the CVR Price Rule ON, its suggested price (a % of the current Price) is shown after S PRC.",
+                        formatter: amzCvrRuleSpriceFormatter(function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             // Clearance SKUs: show the rule price with a red "C" in front. It is display only —
@@ -5703,15 +5703,15 @@
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                 dot + formattedValue + clearanceBadge + blueTri + redTri + reviewTri + stdTri + '</span>';
-                        },
+                        }),
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
                                 e.stopPropagation();
                                 return false;
                             }
                         },
-                        width: 130,
-                        minWidth: 120
+                        width: 175,
+                        minWidth: 150
                     },
 
                     {
