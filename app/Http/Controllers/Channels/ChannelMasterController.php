@@ -4667,7 +4667,13 @@ class ChannelMasterController extends Controller
             $gpftPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
             $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
             $pft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
-            $tacosPct = $rowL30 > 0 ? ($totalAdSpend / $rowL30) * 100 : 0.0;
+            // Ads% = /shopify-ads-master TCOS (rolled-up spend ÷ /shopify Net Sales) so both
+            // pages show the same figure. Fall back to spend ÷ row L30 Sales when the
+            // rollup is unavailable or when spend came from the persisted value.
+            $liveTcos = (float) ($live['tcos_pct'] ?? 0);
+            $tacosPct = ($liveTcos > 0 && (float) ($live['total_ad_spend'] ?? 0) > 0)
+                ? $liveTcos
+                : ($rowL30 > 0 ? ($totalAdSpend / $rowL30) * 100 : 0.0);
             $row['Ads%'] = round($tacosPct, 1).'%';
             $row['TACOS %'] = round($tacosPct, 1).'%';
             $row['N PFT'] = round($gpftPct - $tacosPct, 1).'%';

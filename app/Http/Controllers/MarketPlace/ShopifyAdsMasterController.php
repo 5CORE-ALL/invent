@@ -89,17 +89,21 @@ class ShopifyAdsMasterController extends Controller
      */
     public function getRolledUpSpend(): array
     {
-        // Same set updateBadges() in the blade sums (parents only). loadFacebookContext()
-        // gracefully returns no-op rows when Meta data is absent, so this works even
-        // without an active Meta sheet.
+        // Same set updateBadges() in the blade sums: every non-sub-row from
+        // channelTableRows(). The "Facebook" row there is ALL Meta campaigns
+        // (FB + Instagram + anything else on the sheet) and the Instagram row is a
+        // reference-only sub-row that the badges skip. Summing FB-only + Instagram
+        // here previously made the Shopify row's Spend / Ads% on
+        // /all-marketplace-master drift from this page's SPEND / TCOS badges.
+        // loadFacebookContext() gracefully returns no-op rows when Meta data is
+        // absent, so this works even without an active Meta sheet.
         try {
             $rows = [
                 $this->googleShoppingMetrics(),
                 $this->googleSerpMetrics(),
                 $this->googleYoutubeAdsMetrics(),
                 $this->tiktokVideoAdsMetrics(),
-                $this->metaChannelMetrics('Facebook', 'FB'),
-                $this->metaChannelMetrics('Instagram', 'Insta'),
+                $this->metaAllChannelsMetrics('Facebook'),
             ];
         } catch (\Throwable $e) {
             \Log::warning('ShopifyAdsMaster::getRolledUpSpend rows failed: ' . $e->getMessage());
