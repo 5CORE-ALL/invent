@@ -276,6 +276,8 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'channel' => $channel,
             'rule' => \App\Support\SpriceActiveRule::forChannel($channel),
+            'dil' => \App\Support\SpriceActiveRule::state($channel)['dil'],
+            'std' => \App\Support\SpriceActiveRule::state($channel)['std'],
         ]);
     }
 
@@ -285,7 +287,16 @@ class ChannelPromoPricingController extends Controller
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
-        $rule = \App\Support\SpriceActiveRule::save($channel, (string) $request->input('rule', 'std'));
+        if ($channel === 'amazon' && $request->has('dil') && $request->has('std')) {
+            // Amazon: Sprc Dil and Std prc vs dil are ON / OFF on their own (both may be OFF).
+            $rule = \App\Support\SpriceActiveRule::saveState(
+                $channel,
+                $request->boolean('dil'),
+                $request->boolean('std')
+            );
+        } else {
+            $rule = \App\Support\SpriceActiveRule::save($channel, (string) $request->input('rule', 'std'));
+        }
         // eBay 1/2/3: switching Std prc vs dil <-> Sprc Dil re-saves S PRC from the rule that is now ON.
         \App\Support\EbayRuleSpriceApply::dispatch($channel);
         // Shopify B2C: same, S PRC is re-saved from the rule that is now ON (not pushed).

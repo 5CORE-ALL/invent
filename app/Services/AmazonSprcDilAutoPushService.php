@@ -78,6 +78,13 @@ class AmazonSprcDilAutoPushService
             'errors' => [],
         ];
 
+        // Both Sprc Dil and Std prc vs dil switched OFF on the page: no rule prices anything, so nothing is saved or pushed.
+        if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
+        }
+
         try {
             $rows = $this->loadCandidates($limit, $onlySkus);
         } catch (Throwable $e) {

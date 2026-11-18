@@ -1053,7 +1053,7 @@
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
                         <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
                     </h5>
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'dil_switch', 'spriceRuleChannel' => 'amazon'])
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'dil_switch', 'spriceRuleChannel' => 'amazon', 'spriceRuleIndependent' => true])
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
@@ -1335,7 +1335,7 @@
 @endif
 
 @if($amazonPefPromoPart === 'script' || $amazonPefPromoPart === 'all')
-        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => 'amazon'])
+        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => 'amazon', 'spriceRuleIndependent' => true])
         @include('partials.tabulator-column-autofit')
         @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
         @include('partials.amazon-std-prc-vs-dil', ['amazonStdPrcPart' => 'script'])
@@ -4849,6 +4849,8 @@
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
             // Clearance SKUs have no S PRC unless the Clearance SNROI block has a target for their Dil. The column shows "C".
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return 0;
+            // Sprc Dil and Std prc vs dil both switched OFF: no rule price (the stored S PRC stays as it is).
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
@@ -5080,6 +5082,7 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return null;
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const live = amzLiveRuleSprice(d);
@@ -5137,6 +5140,12 @@
             opts = opts || {};
             const done = $.Deferred();
             if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') {
+                done.resolve(0);
+                return done.promise();
+            }
+            // Both rules OFF: nothing fills S PRC, so nothing is cleared or saved. Existing S PRC values stay.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                 done.resolve(0);
                 return done.promise();
             }

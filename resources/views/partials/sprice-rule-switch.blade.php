@@ -1,7 +1,8 @@
-{{-- ON/OFF for Sprc Dil vs Std prc vs dil. One rule fills S PRC. Parts: buttons (both switches together), dil_switch / std_switch (one switch each, to put inside that rule's own modal), script. --}}
+{{-- ON/OFF for Sprc Dil vs Std prc vs dil. Normally one rule fills S PRC. With $spriceRuleIndependent (Amazon) each rule is ON / OFF on its own. Parts: buttons (both switches together), dil_switch / std_switch (one switch each, to put inside that rule's own modal), script. --}}
 @php
     $spriceRuleSwitchPart = $spriceRuleSwitchPart ?? 'all';
     $spriceRuleChannel = $spriceRuleChannel ?? 'ebay1';
+    $spriceRuleIndependent = (bool) ($spriceRuleIndependent ?? false);
 @endphp
 
 @if($spriceRuleSwitchPart === 'buttons' || $spriceRuleSwitchPart === 'all')
@@ -20,14 +21,14 @@
 @if($spriceRuleSwitchPart === 'dil_switch')
                     {{-- Marker the page scripts look for (the switches sit in separate modals, there is no single wrapper). --}}
                     <span id="sprice-rule-switch" data-channel="{{ $spriceRuleChannel }}" hidden></span>
-                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Sprc Dil rule ON / OFF. Only one rule fills S PRC, so turning this ON turns Std prc vs dil OFF, and turning it OFF turns Std prc vs dil ON. Cron uses the same choice.">
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Sprc Dil rule ON / OFF. Independent: it does not change the Std prc vs dil switch. Cron uses the same choice.">
                         <input class="form-check-input" type="checkbox" id="sprice-rule-dil-sw">
                         <label class="form-check-label small fw-semibold" for="sprice-rule-dil-sw">Rule ON / OFF</label>
                     </div>
 @endif
 
 @if($spriceRuleSwitchPart === 'std_switch')
-                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Std prc vs dil rule ON / OFF. Only one rule fills S PRC, so turning this ON turns Sprc Dil OFF, and turning it OFF turns Sprc Dil ON. Cron uses the same choice.">
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Std prc vs dil rule ON / OFF. Independent: it does not change the Sprc Dil switch. Cron uses the same choice.">
                         <input class="form-check-input" type="checkbox" id="sprice-rule-std-sw" checked>
                         <label class="form-check-label small fw-semibold" for="sprice-rule-std-sw">Rule ON / OFF</label>
                     </div>
@@ -39,6 +40,26 @@
             window._spriceRuleSwitchBound = true;
             const SPRICE_RULE_CHANNEL = @json($spriceRuleChannel);
             const SPRICE_RULE_KEY = 'sprice_active_rule_' + SPRICE_RULE_CHANNEL;
+            // Independent mode (Amazon): each rule has its own ON / OFF and both may be OFF. The ON rule is dil, std or none.
+            const SPRICE_INDEP = @json($spriceRuleIndependent);
+            const SPRICE_STATE_KEY = 'sprice_rule_state_' + SPRICE_RULE_CHANNEL;
+            function spriceRuleFromState(st) { return st.dil ? 'dil' : (st.std ? 'std' : 'none'); }
+            function spriceRuleState() {
+                if (window._spriceRuleState) return { dil: !!window._spriceRuleState.dil, std: !!window._spriceRuleState.std };
+                try {
+                    const raw = localStorage.getItem(SPRICE_STATE_KEY);
+                    if (raw) {
+                        const o = JSON.parse(raw);
+                        if (o && typeof o.dil === 'boolean' && typeof o.std === 'boolean') return { dil: o.dil, std: o.std };
+                    }
+                } catch (e) { /* default */ }
+                return { dil: false, std: true };
+            }
+            function spriceStoreState(st) {
+                window._spriceRuleState = { dil: !!st.dil, std: !!st.std };
+                window._spriceActiveRule = spriceRuleFromState(window._spriceRuleState);
+                try { localStorage.setItem(SPRICE_STATE_KEY, JSON.stringify(window._spriceRuleState)); } catch (e) { /* ignore */ }
+            }
             function spriceRuleCsrf() {
                 if (typeof chPromoCsrf === 'function') return chPromoCsrf();
                 if (typeof amzPefCsrf === 'function') return amzPefCsrf();
@@ -46,6 +67,7 @@
                 return m ? (m.getAttribute('content') || '') : '';
             }
             function spriceActiveRule() {
+                if (SPRICE_INDEP) return spriceRuleFromState(spriceRuleState());
                 if (window._spriceActiveRule === 'dil' || window._spriceActiveRule === 'std') return window._spriceActiveRule;
                 try {
                     const v = localStorage.getItem(SPRICE_RULE_KEY);
@@ -57,15 +79,26 @@
                 const rule = spriceActiveRule();
                 const dil = document.getElementById('sprice-rule-dil-sw');
                 const std = document.getElementById('sprice-rule-std-sw');
+                if (SPRICE_INDEP) {
+                    const st = spriceRuleState();
+                    if (dil) dil.checked = st.dil;
+                    if (std) std.checked = st.std;
+                    return;
+                }
                 if (dil) dil.checked = rule === 'dil';
                 if (std) std.checked = rule === 'std';
             }
             let spriceRuleResolve = null;
             window.spriceActiveRuleReady = new Promise(function(resolve) { spriceRuleResolve = resolve; });
-            function spriceSettleRule(rule) {
-                rule = rule === 'dil' ? 'dil' : 'std';
-                window._spriceActiveRule = rule;
-                try { localStorage.setItem(SPRICE_RULE_KEY, rule); } catch (e) { /* ignore */ }
+            function spriceSettleRule(rule, state) {
+                if (SPRICE_INDEP) {
+                    if (state) spriceStoreState(state);
+                    rule = spriceActiveRule();
+                } else {
+                    rule = rule === 'dil' ? 'dil' : 'std';
+                    window._spriceActiveRule = rule;
+                    try { localStorage.setItem(SPRICE_RULE_KEY, rule); } catch (e) { /* ignore */ }
+                }
                 spricePaintRuleSwitch();
                 if (typeof window.frRefreshSpriceCells === 'function') {
                     try { window.frRefreshSpriceCells(); } catch (e) { /* ignore */ }
@@ -172,6 +205,28 @@
                     showToast(rule === 'dil' ? 'S PRC uses Sprc Dil' : 'S PRC uses Std prc vs dil', 'success');
                 }
             }
+            /** Independent mode: set one rule's own switch. The other one is not touched. */
+            function spriceSetRuleSwitch(which, on) {
+                const before = spriceRuleState();
+                const beforeRule = spriceRuleFromState(before);
+                const next = { dil: before.dil, std: before.std };
+                next[which] = !!on;
+                if (next.dil === before.dil && next.std === before.std) return;
+                spriceStoreState(next);
+                spricePaintRuleSwitch();
+                // S PRC only needs to be re-filled when the rule that fills it has changed.
+                if (spriceRuleFromState(next) !== beforeRule) spriceApplyOnRule();
+                $.ajax({
+                    url: '/channel-promo-pricing/' + encodeURIComponent(SPRICE_RULE_CHANNEL) + '/sprice-active-rule',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': spriceRuleCsrf(), 'Accept': 'application/json' },
+                    data: { _token: spriceRuleCsrf(), rule: spriceRuleFromState(next), dil: next.dil ? 1 : 0, std: next.std ? 1 : 0 },
+                });
+                if (typeof showToast === 'function') {
+                    const name = which === 'dil' ? 'Sprc Dil' : 'Std prc vs dil';
+                    showToast(name + ' rule ' + (on ? 'ON' : 'OFF'), 'success');
+                }
+            }
             window.spriceActiveRule = spriceActiveRule;
             window.spriceSetActiveRule = spriceSetActiveRule;
             function spriceBindRuleSwitch() {
@@ -180,6 +235,10 @@
                 // Delegated on the document: the two switches may sit in different modals (Amazon) or in one wrapper (eBay etc.).
                 $(document).off('change.spricerule').on('change.spricerule', '#sprice-rule-dil-sw, #sprice-rule-std-sw', function() {
                     const picked = this.id === 'sprice-rule-dil-sw' ? 'dil' : 'std';
+                    if (SPRICE_INDEP) {
+                        spriceSetRuleSwitch(picked, this.checked);
+                        return;
+                    }
                     if (!this.checked) {
                         spriceSetActiveRule(picked === 'dil' ? 'std' : 'dil');
                         return;
@@ -194,6 +253,10 @@
                 }).done(function(res) {
                     // The saved rule is now known (the first settle above only used localStorage / the default).
                     window._spriceRuleFromServer = true;
+                    if (SPRICE_INDEP && res && typeof res.dil !== 'undefined' && typeof res.std !== 'undefined') {
+                        spriceSettleRule(null, { dil: !!res.dil, std: !!res.std });
+                        return;
+                    }
                     spriceSettleRule(res && res.rule === 'dil' ? 'dil' : 'std');
                 }).fail(function() {
                     window._spriceRuleFromServer = true;

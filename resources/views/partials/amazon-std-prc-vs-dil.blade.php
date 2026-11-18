@@ -382,7 +382,7 @@
                         </h5>
                         <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs are priced from the Clearance SNROI block (target SNROI by Dil); with no target for their Dil they stay on the discount price, shown only. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
                     </div>
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'std_switch', 'spriceRuleChannel' => 'amazon'])
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'std_switch', 'spriceRuleChannel' => 'amazon', 'spriceRuleIndependent' => true])
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">

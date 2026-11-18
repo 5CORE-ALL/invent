@@ -10,35 +10,71 @@ use App\Models\ChannelTabulatorColumnSetting;
  */
 class SpriceActiveRule
 {
+    /**
+     * The ON rule. dil / std, or none when both switches are OFF.
+     * none only exists for channels that save the two switches separately (Amazon). Other channels stay dil or std.
+     */
     public static function forChannel(string $channel): string
+    {
+        $state = self::state($channel);
+        if ($state['dil']) {
+            return 'dil';
+        }
+
+        return $state['std'] ? 'std' : 'none';
+    }
+
+    /**
+     * ON / OFF of each rule on its own. Old rows hold one rule only: that rule is ON, the other OFF.
+     *
+     * @return array{dil: bool, std: bool}
+     */
+    public static function state(string $channel): array
     {
         $channel = self::normalize($channel);
         if ($channel === '') {
-            return 'std';
+            return ['dil' => false, 'std' => true];
         }
         $row = ChannelTabulatorColumnSetting::query()
             ->where('channel_name', $channel.'_sprice_active_rule')
             ->first();
-        $rule = is_array($row?->visibility) ? ($row->visibility['rule'] ?? null) : null;
+        $v = is_array($row?->visibility) ? $row->visibility : [];
+        if (array_key_exists('dil', $v) && array_key_exists('std', $v)) {
+            return ['dil' => (bool) $v['dil'], 'std' => (bool) $v['std']];
+        }
+        $dil = ($v['rule'] ?? null) === 'dil';
 
-        return $rule === 'dil' ? 'dil' : 'std';
+        return ['dil' => $dil, 'std' => ! $dil];
+    }
+
+    public static function dilOn(string $channel): bool
+    {
+        return self::state($channel)['dil'];
     }
 
     public static function usesStdPrc(string $channel): bool
     {
-        return self::forChannel($channel) !== 'dil';
+        return self::forChannel($channel) === 'std';
     }
 
     public static function save(string $channel, string $rule): string
     {
-        $channel = self::normalize($channel);
         $rule = $rule === 'dil' ? 'dil' : 'std';
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => $channel.'_sprice_active_rule'],
-            ['visibility' => ['rule' => $rule], 'column_order' => []]
-        );
+        self::saveState($channel, $rule === 'dil', $rule === 'std');
 
         return $rule;
+    }
+
+    /** Each rule ON / OFF on its own (both may be OFF). */
+    public static function saveState(string $channel, bool $dil, bool $std): string
+    {
+        $channel = self::normalize($channel);
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_sprice_active_rule'],
+            ['visibility' => ['rule' => $dil ? 'dil' : 'std', 'dil' => $dil, 'std' => $std], 'column_order' => []]
+        );
+
+        return $dil ? 'dil' : ($std ? 'std' : 'none');
     }
 
     public static function normalize(string $channel): string
