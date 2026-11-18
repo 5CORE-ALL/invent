@@ -167,7 +167,7 @@
                         <span class="arp-pause-icon"><i class="fas fa-pause"></i></span>
                         <div class="me-auto">
                             <div class="fw-bold">Conditions <span class="arp-muted" id="arp-pause-state"></span></div>
-                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. Rules: pause the ad, or bid from the category Highest / Lowest (Avg, Highest+1, Lowest-1). INV = 0 always pauses. Empty values are ignored. AND is checked before OR; the first matching group wins.</div>
+                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. Rules: pause the ad, or bid from the category Highest / Lowest (Avg, Highest+1, Lowest-1). INV = 0 always pauses. Empty values are ignored. AND is checked before OR; the first matching group wins, and inside it the deepest matching row.</div>
                         </div>
                         <div class="form-check form-switch mb-0" title="On: a {{ $pmtUnit }} that matches a group below gets that group's Rules value (pause, Highest or Lowest). Off: only INV = 0 pauses and the category Highest is used.">
                             <input class="form-check-input" type="checkbox" role="switch" id="arp-pause-enabled">
@@ -186,7 +186,7 @@
                                     <th style="width: 130px;">Compare with</th>
                                     <th>Value</th>
                                     <th class="text-center" style="width: 80px;" title="How many {{ strtolower($pmtUnit) }}s match this condition on its own (empty values show a dash).">Count</th>
-                                    <th style="width: 140px;" title="What happens when this IF / OR group matches: pause the ad, or bid from the category Highest / Lowest in the table below (Avg, Highest+1 or Lowest-1). The AND rows under it share the same Rules value.">Rules</th>
+                                    <th style="width: 140px;" title="Every row has its own Rules value. When this row and the rows above it in its AND group match, its Rules value applies: bid from the category Highest / Lowest in the table below (Avg, Highest+1, Lowest-1). Pause only fires when the whole IF / AND group matches. The deepest matching row wins; the first matching group wins.">Rules</th>
                                     <th style="width: 40px;"></th>
                                 </tr>
                             </thead>
@@ -549,11 +549,22 @@
                         if (!pauseCondActive(c)) return;
                         const right = c.mode === 'column' ? v[c.value] : parseFloat(c.value);
                         const hit = pauseCmp(v[c.column], c.op, right);
-                        if (cur === null || c.join === 'OR') { cur = { act: PAUSE_ACTIONS[c.rule] ? c.rule : 'pause', hits: [] }; groups.push(cur); }
-                        cur.hits.push(hit);
+                        if (cur === null || c.join === 'OR') { cur = []; groups.push(cur); }
+                        cur.push({ hit: hit, rule: PAUSE_ACTIONS[c.rule] ? c.rule : 'pause' });
                     });
+                    // Every row has its own Rules value (same logic as the push):
+                    //  - the whole group holds   -> the Rules value of its last row (Pause allowed);
+                    //  - only the top rows hold  -> the deepest of them that is not Pause (Pause needs the whole group).
+                    // The first group that fires wins.
                     for (let i = 0; i < groups.length; i++) {
-                        if (groups[i].hits.every(Boolean)) return groups[i].act;
+                        const g = groups[i];
+                        let depth = 0;
+                        while (depth < g.length && g[depth].hit) depth++;
+                        if (depth === 0) continue;
+                        if (depth === g.length) return g[depth - 1].rule;
+                        for (let k = depth - 1; k >= 0; k--) {
+                            if (g[k].rule !== 'pause') return g[k].rule;
+                        }
                     }
                     return null;
                 }
@@ -571,13 +582,10 @@
                         const valueCell = c.mode === 'column'
                             ? '<select class="form-select form-select-sm pz-valcol">' + pauseColOptions(c.value) + '</select>'
                             : '<input type="number" step="any" class="form-control form-control-sm pz-valnum" placeholder="e.g. 5" value="' + arpEsc(c.value) + '">';
-                        // Only an IF / OR row picks the Rules value; the AND rows under it share it.
-                        const isHead = i === 0 || c.join === 'OR';
-                        const ruleCell = isHead
-                            ? '<select class="form-select form-select-sm pz-rule" title="What happens when this group matches">'
-                                + Object.keys(PAUSE_ACTIONS).map(function(k) { return '<option value="' + k + '"' + (c.rule === k ? ' selected' : '') + '>' + PAUSE_ACTIONS[k] + '</option>'; }).join('')
-                                + '</select>'
-                            : '<span class="text-muted small">same as above</span>';
+                        // Every row has its own Rules dropdown.
+                        const ruleCell = '<select class="form-select form-select-sm pz-rule" title="What happens when this row (and the rows above it in its AND group) match">'
+                            + Object.keys(PAUSE_ACTIONS).map(function(k) { return '<option value="' + k + '"' + (c.rule === k ? ' selected' : '') + '>' + PAUSE_ACTIONS[k] + '</option>'; }).join('')
+                            + '</select>';
                         return '<tr data-i="' + i + '"><td class="text-muted">' + (i + 1) + '</td><td>' + joinCell + '</td>'
                             + '<td><select class="form-select form-select-sm pz-col">' + pauseColOptions(c.column) + '</select></td>'
                             + '<td><select class="form-select form-select-sm pz-op">' + ops + '</select></td>'
@@ -618,10 +626,7 @@
                         const $r = $(this);
                         const mode = $r.find('.pz-mode').val() || 'number';
                         const join = i === 0 ? 'AND' : ($r.find('.pz-join').val() || 'AND');
-                        // IF / OR rows read their Rules dropdown; AND rows share the Rules value of the row above.
-                        const rule = (i === 0 || join === 'OR')
-                            ? ($r.find('.pz-rule').val() || 'pause')
-                            : (conds[i - 1].rule || 'pause');
+                        const rule = $r.find('.pz-rule').val() || 'pause';
                         conds.push({
                             join: join,
                             rule: rule,
@@ -1179,9 +1184,7 @@
                 // Any edit: re-read, repaint the rule counts live (nothing is saved until Save and Apply).
                 $('#arp-pause-rows').on('input change', 'select, input', function() {
                     readPauseRows();
-                    // A new IF / OR row needs its own Rules dropdown (and an AND row loses it): redraw.
-                    if ($(this).hasClass('pz-join') || $(this).hasClass('pz-rule')) renderPauseRows();
-                    else paintPauseCounts();
+                    paintPauseCounts();
                     paintPauseState();
                     renderRuleCounts();
                 });

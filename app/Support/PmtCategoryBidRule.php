@@ -215,8 +215,8 @@ final class PmtCategoryBidRule
     }
 
     /**
-     * The Rules value of the first condition group that matches: 'pause' | 'highest' | 'lowest', or null when none match.
-     * A group is an IF / OR row with the AND rows that follow it; it takes the Rules value of its first row.
+     * The Rules value that applies to a row: 'pause' | one of BID_PICKS, or null when no condition fires.
+     * A group is an IF / OR row with the AND rows that follow it; every row has its own Rules value.
      */
     public static function matchAction(?array $rule, float $inv, float $ovL30): ?string
     {
@@ -225,7 +225,6 @@ final class PmtCategoryBidRule
         }
         $vals = ['inv' => $inv, 'l30' => $ovL30, 'dil' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0];
         $groups = [];
-        $actions = [];
         $current = null;
         foreach ((array) ($rule['conditions'] ?? []) as $c) {
             $mode = $c['mode'] ?? 'number';
@@ -257,14 +256,31 @@ final class PmtCategoryBidRule
             if ($current === null || ($c['join'] ?? 'AND') === 'OR') {
                 $groups[] = [];
                 $current = array_key_last($groups);
-                $a = (string) ($c['rule'] ?? 'pause');
-                $actions[$current] = in_array($a, self::PAUSE_ACTIONS, true) ? $a : 'pause';
             }
-            $groups[$current][] = $hit;
+            $a = (string) ($c['rule'] ?? 'pause');
+            $groups[$current][] = ['hit' => $hit, 'rule' => in_array($a, self::PAUSE_ACTIONS, true) ? $a : 'pause'];
         }
-        foreach ($groups as $i => $g) {
-            if (! in_array(false, $g, true)) {
-                return $actions[$i] ?? 'pause';
+
+        // Every row has its own Rules value. In a group, the rows from the top down must hold one after the other:
+        //  - the whole group holds        -> the Rules value of its last row (Pause is allowed here, as before);
+        //  - only the top rows hold       -> the Rules value of the deepest of them that is not Pause
+        //    (a Pause row only fires when the whole IF / AND group matches).
+        // The first group that fires wins.
+        foreach ($groups as $g) {
+            $depth = 0;
+            while ($depth < count($g) && $g[$depth]['hit']) {
+                $depth++;
+            }
+            if ($depth === 0) {
+                continue;
+            }
+            if ($depth === count($g)) {
+                return $g[$depth - 1]['rule'];
+            }
+            for ($k = $depth - 1; $k >= 0; $k--) {
+                if ($g[$k]['rule'] !== 'pause') {
+                    return $g[$k]['rule'];
+                }
             }
         }
 
