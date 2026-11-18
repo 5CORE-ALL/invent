@@ -26,9 +26,31 @@ final class AmazonAdsBgtCapRule
 
     public const MAX_CAP = 9999;
 
+    /** Inv Dil% rule: campaigns whose Dil% is above this ... */
+    public const DEFAULT_DIL_ABOVE = 50;
+
+    /** ... are capped at this $ amount. */
+    public const DEFAULT_DIL_CAP = 1;
+
+    public const MAX_DIL_ABOVE = 100000;
+
+    /** Reviews rule 1: rating below this ... */
+    public const DEFAULT_REV_LOW_BELOW = 3;
+
+    /** ... is capped at this $ amount (0 pauses). */
+    public const DEFAULT_REV_LOW_CAP = 0;
+
+    /** Reviews rule 2: rating from / to (from inclusive, to exclusive) ... */
+    public const DEFAULT_REV_MID_FROM = 3;
+
+    public const DEFAULT_REV_MID_TO = 4;
+
+    /** ... is capped at this $ amount. */
+    public const DEFAULT_REV_MID_CAP = 1;
+
     private const TIER_CACHE_KEY = 'amazon_ads_bgt_cap_tiers_v2';
 
-    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v2';
+    private const COUNT_CACHE_KEY = 'amazon_ads_bgt_cap_counts_v4';
 
     /** missing-page ACOS tier => colour name used by this rule */
     private const COLOURS = ['mid' => 'yellow', 'high' => 'red'];
@@ -36,11 +58,11 @@ final class AmazonAdsBgtCapRule
     /** @var array<string, array{key: string, colour: string}>|null */
     private static ?array $tierMemo = null;
 
-    /** @var array{enabled: bool, caps: array<string, array<string, int>>}|null */
+    /** @var array{enabled: bool, caps: array<string, array<string, int>>, dil: array{above: float, cap: int}, rev_low: array{below: float, cap: int}, rev_mid: array{from: float, to: float, cap: int}}|null */
     private static ?array $ruleMemo = null;
 
     /**
-     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>}
+     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>, dil: array{above: float, cap: int}, rev_low: array{below: float, cap: int}, rev_mid: array{from: float, to: float, cap: int}}
      */
     public static function defaults(): array
     {
@@ -49,11 +71,21 @@ final class AmazonAdsBgtCapRule
             $caps[$key] = ['yellow' => self::DEFAULT_CAP, 'red' => self::DEFAULT_CAP];
         }
 
-        return ['enabled' => false, 'caps' => $caps];
+        return [
+            'enabled' => false,
+            'caps' => $caps,
+            'dil' => ['above' => (float) self::DEFAULT_DIL_ABOVE, 'cap' => self::DEFAULT_DIL_CAP],
+            'rev_low' => ['below' => (float) self::DEFAULT_REV_LOW_BELOW, 'cap' => self::DEFAULT_REV_LOW_CAP],
+            'rev_mid' => [
+                'from' => (float) self::DEFAULT_REV_MID_FROM,
+                'to' => (float) self::DEFAULT_REV_MID_TO,
+                'cap' => self::DEFAULT_REV_MID_CAP,
+            ],
+        ];
     }
 
     /**
-     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>}
+     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>, dil: array{above: float, cap: int}, rev_low: array{below: float, cap: int}, rev_mid: array{from: float, to: float, cap: int}}
      */
     public static function normalize(mixed $input): array
     {
@@ -80,11 +112,61 @@ final class AmazonAdsBgtCapRule
             }
         }
 
+        $dil = is_array($input['dil'] ?? null) ? $input['dil'] : [];
+        $base['dil'] = [
+            'above' => self::normalizeThreshold($dil['above'] ?? self::DEFAULT_DIL_ABOVE, 'Inv Dil%', self::MAX_DIL_ABOVE),
+            'cap' => self::normalizeDollarCap($dil['cap'] ?? self::DEFAULT_DIL_CAP, 'Inv Dil% cap'),
+        ];
+
+        $low = is_array($input['rev_low'] ?? null) ? $input['rev_low'] : [];
+        $base['rev_low'] = [
+            'below' => self::normalizeThreshold($low['below'] ?? self::DEFAULT_REV_LOW_BELOW, 'Reviews (low)', 5),
+            'cap' => self::normalizeDollarCap($low['cap'] ?? self::DEFAULT_REV_LOW_CAP, 'Reviews (low) cap'),
+        ];
+
+        $mid = is_array($input['rev_mid'] ?? null) ? $input['rev_mid'] : [];
+        $from = self::normalizeThreshold($mid['from'] ?? self::DEFAULT_REV_MID_FROM, 'Reviews (mid) from', 5);
+        $to = self::normalizeThreshold($mid['to'] ?? self::DEFAULT_REV_MID_TO, 'Reviews (mid) to', 5);
+        if ($from >= $to) {
+            throw new \InvalidArgumentException('Reviews (mid) From must be lower than To.');
+        }
+        $base['rev_mid'] = [
+            'from' => $from,
+            'to' => $to,
+            'cap' => self::normalizeDollarCap($mid['cap'] ?? self::DEFAULT_REV_MID_CAP, 'Reviews (mid) cap'),
+        ];
+
         return $base;
     }
 
+    private static function normalizeThreshold(mixed $raw, string $label, float $max): float
+    {
+        if (! is_numeric($raw) || ! is_finite((float) $raw)) {
+            throw new \InvalidArgumentException($label.' must be a number.');
+        }
+        $n = (float) $raw;
+        if ($n < 0 || $n > $max) {
+            throw new \InvalidArgumentException($label.' must be between 0 and '.rtrim(rtrim(number_format($max, 2, '.', ''), '0'), '.').'.');
+        }
+
+        return $n;
+    }
+
+    private static function normalizeDollarCap(mixed $raw, string $label): int
+    {
+        if (! is_numeric($raw) || ! is_finite((float) $raw)) {
+            throw new \InvalidArgumentException($label.' must be a number.');
+        }
+        $n = (int) floor((float) $raw);
+        if ($n < 0 || $n > self::MAX_CAP) {
+            throw new \InvalidArgumentException($label.' must be a whole dollar amount from 0 to '.self::MAX_CAP.'.');
+        }
+
+        return $n;
+    }
+
     /**
-     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>}
+     * @return array{enabled: bool, caps: array<string, array{yellow: int, red: int}>, dil: array{above: float, cap: int}, rev_low: array{below: float, cap: int}, rev_mid: array{from: float, to: float, cap: int}}
      */
     public static function resolvedRule(): array
     {
@@ -131,17 +213,78 @@ final class AmazonAdsBgtCapRule
     }
 
     /**
-     * Cap the SBGT of a campaign when the rule is ON and the campaign's ad type is yellow / red.
-     * Only lowers a positive budget.
+     * Cap the SBGT of a campaign when the rule is ON and one of these hit:
+     * - the campaign's ad type is yellow / red (KW / PT / HL slabs),
+     * - its Inv Dil% is above the Dil rule's threshold,
+     * - its review rating falls in a Reviews rule range.
+     * Where several apply the lowest cap wins. Only lowers a positive budget.
      */
-    public static function apply(?int $sbgt, ?string $campaignName): ?int
+    public static function apply(?int $sbgt, ?string $campaignName, ?float $dil = null, ?float $rating = null): ?int
     {
         if ($sbgt === null || $sbgt <= 0 || ! self::enabled()) {
             return $sbgt;
         }
-        $cap = self::capForCampaign($campaignName);
+        $cap = self::lowestCap([self::capForCampaign($campaignName), self::dilCap($dil), self::reviewsCap($rating)]);
 
         return ($cap !== null && $sbgt > $cap) ? $cap : $sbgt;
+    }
+
+    /**
+     * Cap from the Inv Dil% rule: set when the campaign's Dil% is above the threshold.
+     */
+    public static function dilCap(?float $dil): ?int
+    {
+        if ($dil === null || ! is_finite($dil)) {
+            return null;
+        }
+        $rule = self::resolvedRule()['dil'];
+
+        return $dil > $rule['above'] ? $rule['cap'] : null;
+    }
+
+    /**
+     * Cap from the two Reviews rules. Unknown ratings (none / 0) are never capped.
+     * Rule 1: rating below X. Rule 2: rating from Y (inclusive) up to Z (exclusive).
+     */
+    public static function reviewsCap(?float $rating): ?int
+    {
+        if ($rating === null || ! is_finite($rating) || $rating <= 0) {
+            return null;
+        }
+
+        return self::lowestCap([self::reviewsLowCap($rating), self::reviewsMidCap($rating)]);
+    }
+
+    /** Reviews rule 1: rating below the threshold. */
+    public static function reviewsLowCap(?float $rating): ?int
+    {
+        if ($rating === null || ! is_finite($rating) || $rating <= 0) {
+            return null;
+        }
+        $rule = self::resolvedRule()['rev_low'];
+
+        return $rating < $rule['below'] ? $rule['cap'] : null;
+    }
+
+    /** Reviews rule 2: rating from (inclusive) to (exclusive). */
+    public static function reviewsMidCap(?float $rating): ?int
+    {
+        if ($rating === null || ! is_finite($rating) || $rating <= 0) {
+            return null;
+        }
+        $rule = self::resolvedRule()['rev_mid'];
+
+        return ($rating >= $rule['from'] && $rating < $rule['to']) ? $rule['cap'] : null;
+    }
+
+    /**
+     * @param  list<int|null>  $caps
+     */
+    private static function lowestCap(array $caps): ?int
+    {
+        $caps = array_values(array_filter($caps, static fn ($c): bool => $c !== null));
+
+        return $caps === [] ? null : min($caps);
     }
 
     public static function capForCampaign(?string $campaignName): ?int
@@ -196,7 +339,7 @@ final class AmazonAdsBgtCapRule
     /**
      * How many campaigns each cap actually lowers (their uncapped SBGT is above the cap).
      *
-     * @return array{total: int, counts: array<string, array{yellow: int, red: int}>, matched: array<string, array{yellow: int, red: int}>}
+     * @return array{total: int, counts: array<string, array{yellow: int, red: int}>, matched: array<string, array{yellow: int, red: int}>, dil: array{capped: int, matched: int}, rev_low: array{capped: int, matched: int}, rev_mid: array{capped: int, matched: int}}
      */
     public static function counts(bool $fresh = false): array
     {
@@ -223,33 +366,62 @@ final class AmazonAdsBgtCapRule
         foreach (AmazonAdsAcosPauseRules::keys() as $key) {
             $zero[$key] = ['yellow' => 0, 'red' => 0];
         }
-        $out = ['total' => 0, 'counts' => $zero, 'matched' => $zero];
+        $out = ['total' => 0, 'counts' => $zero, 'matched' => $zero, 'dil' => ['capped' => 0, 'matched' => 0], 'rev_low' => ['capped' => 0, 'matched' => 0], 'rev_mid' => ['capped' => 0, 'matched' => 0]];
 
         try {
             $map = self::tierMap();
             foreach (['sp', 'sb'] as $channel) {
-                $campaigns = self::latestCampaignsByName($channel, $map);
-                if ($campaigns === []) {
-                    continue;
-                }
-                $uncapped = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns(
-                    array_map(static fn (array $c): array => [
-                        'campaign_id' => $c['campaign_id'],
-                        'campaignName' => $c['campaign_name'],
-                    ], $campaigns),
-                    $channel,
-                    null,
-                    null,
-                    false
-                );
-                foreach ($campaigns as $c) {
-                    $hit = $map[$c['norm']];
-                    $out['matched'][$hit['key']][$hit['colour']]++;
-                    $sbgt = $uncapped[$c['campaign_id']] ?? null;
-                    $cap = $rule['caps'][$hit['key']][$hit['colour']] ?? null;
-                    if ($sbgt !== null && $cap !== null && $sbgt > $cap) {
-                        $out['counts'][$hit['key']][$hit['colour']]++;
-                        $out['total']++;
+                // Every campaign: the Dil% rule is not limited to yellow / red ad types.
+                $campaigns = self::latestCampaignsByName($channel, null);
+                foreach (array_chunk($campaigns, 500) as $chunk) {
+                    $dilByCid = [];
+                    $ratingByCid = [];
+                    $uncapped = AmazonAdsDesiredSbgtResolver::sbgtForCampaigns(
+                        array_map(static fn (array $c): array => [
+                            'campaign_id' => $c['campaign_id'],
+                            'campaignName' => $c['campaign_name'],
+                        ], $chunk),
+                        $channel,
+                        null,
+                        null,
+                        false,
+                        $dilByCid,
+                        $ratingByCid
+                    );
+                    foreach ($chunk as $c) {
+                        $hit = $map[$c['norm']] ?? null;
+                        $sbgt = $uncapped[$c['campaign_id']] ?? null;
+                        $tierCap = null;
+                        if ($hit !== null) {
+                            $out['matched'][$hit['key']][$hit['colour']]++;
+                            $tierCap = $rule['caps'][$hit['key']][$hit['colour']] ?? null;
+                            if ($sbgt !== null && $tierCap !== null && $sbgt > $tierCap) {
+                                $out['counts'][$hit['key']][$hit['colour']]++;
+                            }
+                        }
+                        $dilCap = self::dilCap($dilByCid[$c['campaign_id']] ?? null);
+                        if ($dilCap !== null) {
+                            $out['dil']['matched']++;
+                            if ($sbgt !== null && $sbgt > $dilCap) {
+                                $out['dil']['capped']++;
+                            }
+                        }
+                        $rating = $ratingByCid[$c['campaign_id']] ?? null;
+                        $revCaps = [];
+                        foreach (['rev_low' => self::reviewsLowCap($rating), 'rev_mid' => self::reviewsMidCap($rating)] as $revKey => $revCap) {
+                            if ($revCap === null) {
+                                continue;
+                            }
+                            $revCaps[] = $revCap;
+                            $out[$revKey]['matched']++;
+                            if ($sbgt !== null && $sbgt > $revCap) {
+                                $out[$revKey]['capped']++;
+                            }
+                        }
+                        $cap = self::lowestCap(array_merge([$tierCap, $dilCap], $revCaps));
+                        if ($sbgt !== null && $cap !== null && $sbgt > $cap) {
+                            $out['total']++;
+                        }
                     }
                 }
             }
@@ -265,10 +437,10 @@ final class AmazonAdsBgtCapRule
      * Latest report row per tiered campaign (not archived) in one channel.
      *
      * @param  'sp'|'sb'  $channel
-     * @param  array<string, array{key: string, colour: string}>  $map
+     * @param  array<string, array{key: string, colour: string}>|null  $map  null = every campaign (no tier filter)
      * @return list<array{campaign_id: string, campaign_name: string, norm: string}>
      */
-    private static function latestCampaignsByName(string $channel, array $map): array
+    private static function latestCampaignsByName(string $channel, ?array $map): array
     {
         $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
         if ($map === [] || ! Schema::hasTable($table)
@@ -295,9 +467,14 @@ final class AmazonAdsBgtCapRule
             }
             foreach (DB::table($table)->whereIn('id', $chunk)->get($cols) as $r) {
                 $norm = AmazonAdsMissingLinks::normalizeCampaignName((string) $r->campaignName);
-                $hit = $map[$norm] ?? null;
-                if ($hit === null || ($hit['key'] === 'hl') !== $wantHl || isset($seen[$norm])) {
+                if ($norm === '' || isset($seen[$norm])) {
                     continue;
+                }
+                if ($map !== null) {
+                    $hit = $map[$norm] ?? null;
+                    if ($hit === null || ($hit['key'] === 'hl') !== $wantHl) {
+                        continue;
+                    }
                 }
                 if ($hasStatus && strtoupper(trim((string) $r->campaignStatus)) === 'ARCHIVED') {
                     continue;

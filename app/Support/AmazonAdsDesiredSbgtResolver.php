@@ -20,9 +20,11 @@ final class AmazonAdsDesiredSbgtResolver
      * @param  'sp'|'sb'|null  $channel  when set, BGT ACOS comes from lifetime daily rows in that channel's report table
      * @param  array<string, float|null>|null  $lifetimeAcosByCid  test/override map; null loads from the report table
      * @param  array<string, float|array{rating?: mixed}>|null  $reviewRatingByCid  test/override map; null loads the campaign SKU rating used by the SBGT column
+     * @param  array<string, float|null>|null  $dilOut  filled with each campaign's Inv Dil% (campaign id => Dil%)
+     * @param  array<string, float|null>|null  $ratingOut  filled with each campaign's review rating (campaign id => rating)
      * @return array<string, int|null>
      */
-    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null, bool $applyCap = true): array
+    public static function sbgtForCampaigns(iterable $campaigns, ?string $channel = null, ?array $lifetimeAcosByCid = null, ?array $reviewRatingByCid = null, bool $applyCap = true, ?array &$dilOut = null, ?array &$ratingOut = null): array
     {
         $rows = [];
         $names = [];
@@ -150,9 +152,15 @@ final class AmazonAdsDesiredSbgtResolver
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
             }
-            // BGT CAP rules: yellow / red ad types are capped at their $ amount.
+            if (is_array($dilOut)) {
+                $dilOut[$cid] = $dilVal;
+            }
+            if (is_array($ratingOut)) {
+                $ratingOut[$cid] = $rating;
+            }
+            // BGT CAP rules: yellow / red ad types and high Inv Dil% campaigns are capped at their $ amount.
             if ($applyCap) {
-                $sum = AmazonAdsBgtCapRule::apply($sum, $name);
+                $sum = AmazonAdsBgtCapRule::apply($sum, $name, $dilVal, $rating);
             }
             $out[$cid] = $sum;
         }

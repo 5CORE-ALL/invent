@@ -2197,6 +2197,53 @@
                             @endforeach
                         </tbody>
                     </table>
+                    <div class="border rounded p-2 mb-2 bg-light" id="amazonAdsBgtCapDilCard">
+                        <div class="d-flex align-items-center flex-wrap gap-2 small">
+                            <span class="fw-semibold">Inv Dil%</span>
+                            <span>above</span>
+                            <div class="input-group input-group-sm" style="max-width: 110px;">
+                                <input type="number" min="0" max="100000" step="any" value="50" class="form-control" id="amazonAdsBgtCapDilAbove" aria-label="Inv Dil% threshold">
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <span>&rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="1" class="form-control" id="amazonAdsBgtCapDilCap" aria-label="Inv Dil% cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapDilCount">0 of 0</strong></span>
+                        </div>
+                        <div class="small text-muted mt-1">If a campaign's Inv Dil% is above the threshold, its SBGT is capped at the amount (all ad types, any ACOS color). Where a color cap also applies, the lower one wins.</div>
+                    </div>
+                    <div class="border rounded p-2 mb-2 bg-light" id="amazonAdsBgtCapRevLowCard">
+                        <div class="d-flex align-items-center flex-wrap gap-2 small">
+                            <span class="fw-semibold">Reviews</span>
+                            <span>below</span>
+                            <input type="number" min="0" max="5" step="any" value="3" class="form-control form-control-sm" style="max-width: 80px;" id="amazonAdsBgtCapRevLowBelow" aria-label="Reviews threshold">
+                            <span>&rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="0" class="form-control" id="amazonAdsBgtCapRevLowCap" aria-label="Reviews low cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapRevLowCount">0 of 0</strong></span>
+                        </div>
+                        <div class="small text-muted mt-1">If a campaign's review rating is below the threshold, its SBGT is capped at the amount ($0 pauses). Campaigns with no rating are skipped.</div>
+                    </div>
+                    <div class="border rounded p-2 mb-2 bg-light" id="amazonAdsBgtCapRevMidCard">
+                        <div class="d-flex align-items-center flex-wrap gap-2 small">
+                            <span class="fw-semibold">Reviews</span>
+                            <span>between</span>
+                            <input type="number" min="0" max="5" step="any" value="3" class="form-control form-control-sm" style="max-width: 80px;" id="amazonAdsBgtCapRevMidFrom" aria-label="Reviews range from">
+                            <span>and</span>
+                            <input type="number" min="0" max="5" step="any" value="4" class="form-control form-control-sm" style="max-width: 80px;" id="amazonAdsBgtCapRevMidTo" aria-label="Reviews range to">
+                            <span>&rarr; cap ads BGT at</span>
+                            <div class="input-group input-group-sm" style="max-width: 100px;">
+                                <span class="input-group-text">$</span>
+                                <input type="number" min="0" max="9999" step="1" value="1" class="form-control" id="amazonAdsBgtCapRevMidCap" aria-label="Reviews mid cap">
+                            </div>
+                            <span class="text-muted ms-auto"><strong id="amazonAdsBgtCapRevMidCount">0 of 0</strong></span>
+                        </div>
+                        <div class="small text-muted mt-1">If a campaign's review rating is from the first value up to (not including) the second, its SBGT is capped at the amount. Where several caps apply, the lowest one wins.</div>
+                    </div>
                     <div class="small text-muted mb-1">Count = budgets lowered by the cap of all campaigns in that color.</div>
                     <div class="small">Total capped BGTs: <strong id="amazonAdsBgtCapTotal">0</strong> <span class="text-muted" id="amazonAdsBgtCapNote"></span></div>
                     <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCapError" role="alert"></p>
@@ -10661,6 +10708,27 @@
                         if (cnt) cnt.textContent = (Number(n) || 0) + ' of ' + (Number(matched) || 0);
                     });
                 });
+                var dil = rule.dil || {};
+                var dilAbove = amzCapEl('amazonAdsBgtCapDilAbove'), dilCap = amzCapEl('amazonAdsBgtCapDilCap');
+                if (dilAbove) dilAbove.value = String(dil.above != null ? dil.above : 50);
+                if (dilCap) dilCap.value = String(dil.cap != null ? dil.cap : 1);
+                var dilCnt = amzCapEl('amazonAdsBgtCapDilCount');
+                if (dilCnt) {
+                    var dc = counts && counts.dil ? counts.dil : {};
+                    dilCnt.textContent = (Number(dc.capped) || 0) + ' of ' + (Number(dc.matched) || 0);
+                }
+                var rl = rule.rev_low || {}, rm = rule.rev_mid || {};
+                var setVal = function (id, v, d) { var el = amzCapEl(id); if (el) el.value = String(v != null ? v : d); };
+                setVal('amazonAdsBgtCapRevLowBelow', rl.below, 3);
+                setVal('amazonAdsBgtCapRevLowCap', rl.cap, 0);
+                setVal('amazonAdsBgtCapRevMidFrom', rm.from, 3);
+                setVal('amazonAdsBgtCapRevMidTo', rm.to, 4);
+                setVal('amazonAdsBgtCapRevMidCap', rm.cap, 1);
+                [['amazonAdsBgtCapRevLowCount', 'rev_low'], ['amazonAdsBgtCapRevMidCount', 'rev_mid']].forEach(function (pair) {
+                    var el = amzCapEl(pair[0]);
+                    var rc = counts && counts[pair[1]] ? counts[pair[1]] : {};
+                    if (el) el.textContent = (Number(rc.capped) || 0) + ' of ' + (Number(rc.matched) || 0);
+                });
                 var tot = amzCapEl('amazonAdsBgtCapTotal');
                 if (tot) tot.textContent = String(counts && counts.total ? counts.total : 0);
                 amzCapSyncLabel();
@@ -10692,6 +10760,30 @@
                         caps[k][c] = n;
                     }
                 }
+                var dilAboveEl = amzCapEl('amazonAdsBgtCapDilAbove'), dilCapEl = amzCapEl('amazonAdsBgtCapDilCap');
+                var dilAbove = dilAboveEl ? parseFloat(String(dilAboveEl.value).trim()) : NaN;
+                var dilCap = dilCapEl ? parseFloat(String(dilCapEl.value).trim()) : NaN;
+                if (!isFinite(dilAbove) || dilAbove < 0) {
+                    if (err) { err.textContent = 'Inv Dil% must be 0 or more.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                if (!isFinite(dilCap) || dilCap < 0) {
+                    if (err) { err.textContent = 'Inv Dil% cap must be $0 or more.'; err.classList.remove('d-none'); }
+                    return;
+                }
+                var numOf = function (id) { var el = amzCapEl(id); return el ? parseFloat(String(el.value).trim()) : NaN; };
+                var revLowBelow = numOf('amazonAdsBgtCapRevLowBelow'), revLowCap = numOf('amazonAdsBgtCapRevLowCap');
+                var revMidFrom = numOf('amazonAdsBgtCapRevMidFrom'), revMidTo = numOf('amazonAdsBgtCapRevMidTo'), revMidCap = numOf('amazonAdsBgtCapRevMidCap');
+                var revMsg = '';
+                if (!isFinite(revLowBelow) || revLowBelow < 0 || revLowBelow > 5) revMsg = 'Reviews threshold must be between 0 and 5.';
+                else if (!isFinite(revLowCap) || revLowCap < 0) revMsg = 'Reviews cap must be $0 or more.';
+                else if (!isFinite(revMidFrom) || !isFinite(revMidTo) || revMidFrom < 0 || revMidTo > 5) revMsg = 'Reviews range must be between 0 and 5.';
+                else if (revMidFrom >= revMidTo) revMsg = 'Reviews range: the first value must be lower than the second.';
+                else if (!isFinite(revMidCap) || revMidCap < 0) revMsg = 'Reviews range cap must be $0 or more.';
+                if (revMsg) {
+                    if (err) { err.textContent = revMsg; err.classList.remove('d-none'); }
+                    return;
+                }
                 var en = amzCapEl('amazonAdsBgtCapEnabled');
                 var btn = amzCapEl('amazonAdsBgtCapSaveBtn');
                 if (btn) btn.disabled = true;
@@ -10699,7 +10791,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
-                    body: JSON.stringify({ enabled: !!(en && en.checked), caps: caps })
+                    body: JSON.stringify({ enabled: !!(en && en.checked), caps: caps, dil: { above: dilAbove, cap: dilCap }, rev_low: { below: revLowBelow, cap: revLowCap }, rev_mid: { from: revMidFrom, to: revMidTo, cap: revMidCap } })
                 })
                     .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
                     .then(function (out) {

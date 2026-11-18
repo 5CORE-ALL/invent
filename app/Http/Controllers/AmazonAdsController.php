@@ -6630,6 +6630,9 @@ class AmazonAdsController extends Controller
             AmazonAdsBgtCapRule::persist([
                 'enabled' => $request->boolean('enabled'),
                 'caps' => (array) $request->input('caps', []),
+                'dil' => (array) $request->input('dil', []),
+                'rev_low' => (array) $request->input('rev_low', []),
+                'rev_mid' => (array) $request->input('rev_mid', []),
             ]);
             self::forgetRawDataCache();
         } catch (\InvalidArgumentException $e) {
@@ -8145,8 +8148,13 @@ class AmazonAdsController extends Controller
                     $arr['bgtGpft'] ?? null,
                     $arr['bgtFlag'] ?? null
                 );
-                // BGT CAP rules: yellow / red ad types are capped at their $ amount.
-                $arr['sbgt'] = AmazonAdsBgtCapRule::apply($arr['sbgt'], (string) ($rowArr['campaignName'] ?? ''));
+                // BGT CAP rules: yellow / red ad types and high Inv Dil% campaigns are capped at their $ amount.
+                $arr['sbgt'] = AmazonAdsBgtCapRule::apply(
+                    $arr['sbgt'],
+                    (string) ($rowArr['campaignName'] ?? ''),
+                    isset($arr['bgt_dil_value']) && is_numeric($arr['bgt_dil_value']) ? (float) $arr['bgt_dil_value'] : null,
+                    isset($arr['bgt_reviews_rating']) && is_numeric($arr['bgt_reviews_rating']) ? (float) $arr['bgt_reviews_rating'] : null
+                );
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
                     $cidSbgt = trim((string) ($rowArr['campaign_id'] ?? ''));
@@ -9068,7 +9076,7 @@ class AmazonAdsController extends Controller
                     AmazonAdsBgtDilRule::apply($dil)['bgt'],
                     AmazonAdsBgtGpftRule::apply(isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null)['bgt'],
                     AmazonAdsBgtFlagRule::apply(self::flagGapForSortRow($r, $dbColumns, $l30FlagMap, $lk, isset($m['gpft']) && is_numeric($m['gpft']) ? (float) $m['gpft'] : null))['bgt']
-                ), $cn);
+                ), $cn, is_numeric($dil) ? (float) $dil : null, $rating);
             } elseif ($column === 'ruleStatus') {
                 $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
                 $decision = AmazonAdsPauseRule::decide($pauseRule, [
