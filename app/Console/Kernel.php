@@ -432,7 +432,9 @@ class Kernel extends ConsoleKernel
                     ->dailyAt($slot)
                     ->timezone('Asia/Kolkata')
                     ->name($baseName . '-' . sprintf('%02d%02d', $hour, $m))
-                    ->withoutOverlapping()
+                    // 3h lock expiry: the default is 24h, so one killed run (deploy, OOM) used to block every
+                    // retry slot until the next day and the report rows silently stopped refreshing.
+                    ->withoutOverlapping(180)
                     ->runInBackground()
                     ->appendOutputTo($log);
             }
