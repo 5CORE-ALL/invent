@@ -1973,7 +1973,7 @@
                                             <th>#</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th>Bgt</th>
+                                            <th>Cap BGT</th>
                                             <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
