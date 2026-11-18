@@ -13,6 +13,7 @@
     'dropdownOptionsStoreUrl' => route('customer.care.dispatch.issues.dropdown.options.store'),
     'dropdownOptionsDeleteUrl' => route('customer.care.dispatch.issues.dropdown.options.delete'),
     'importUrl' => route('customer.care.dispatch.issues.import'),
+    'hideImportCsv' => true,
     'claimsStatsUrl' => route('customer.care.dispatch.issues.claims.stats', ['department' => 'Carrier Issue']),
     'marketplaces' => $marketplaces ?? collect(),
     'showDispatchExtras' => true,

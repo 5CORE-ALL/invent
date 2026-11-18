@@ -13,6 +13,7 @@
     'dropdownOptionsStoreUrl' => route('customer.care.other.issues.dropdown.options.store'),
     'dropdownOptionsDeleteUrl' => route('customer.care.other.issues.dropdown.options.delete'),
     'importUrl' => route('customer.care.other.issues.import'),
+    'hideImportCsv' => true,
     'marketplaces' => $marketplaces ?? collect(),
     'showOrderIdField' => true,
     'orderIdFieldLabel' => 'Order ID',

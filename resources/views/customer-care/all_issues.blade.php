@@ -2927,6 +2927,17 @@
             function buildColumnsMenu() {
                 const menu = document.getElementById('ai-columns-menu');
                 if (!menu) return;
+                // The toolbar scrolls horizontally (overflow-x:auto), which also clips an
+                // absolutely positioned dropdown to a thin strip. Fixed positioning lets the
+                // Columns menu open over the page instead of inside the toolbar.
+                const colBtn = document.getElementById('ai-columns-btn');
+                if (colBtn && window.bootstrap && bootstrap.Dropdown) {
+                    bootstrap.Dropdown.getOrCreateInstance(colBtn, {
+                        popperConfig: function(defaultConfig) {
+                            return Object.assign({}, defaultConfig, { strategy: 'fixed' });
+                        }
+                    });
+                }
                 const labels = {
                     image_url: 'Image',
                     _ctn: 'Instr Pkg',
