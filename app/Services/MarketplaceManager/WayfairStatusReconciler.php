@@ -25,11 +25,15 @@ class WayfairStatusReconciler
 
     public const STATUS_CLOSED = 'closed';
 
+    /** Tracking saved on the PO row: pushed tracking first, then the Wayfair label number found by fillMissingLabelTracking. */
+    protected const TRACKING_SQL = "COALESCE(NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '\$.tracking_number')), 'null'), ''), NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '\$.label_tracking_number')), 'null'), ''))";
+
     /**
      * @param  list<string>|null  $listedPoNumbers  every PO Wayfair listed as open / accepted in a COMPLETE fetch; null = skip the "no longer listed" rule
      * @param  Carbon|null  $windowStart  first PO date the complete fetch covered (rows before it are not judged by the fetch)
      * @param  Carbon|null  $fetchStartedAt  rows saved after this moment are left for the next run
      * @param  int  $closeOlderThanDays  0 = off; otherwise old open / accepted POs with no carrier answer become closed
+     * @param  string|null  $sinceDate  only look at POs dated on or after this Y-m-d (null = all)
      * @return array{checked: int, delivered: int, shipped: int, closed: int, samples: array<string, list<string>>}
      */
     public function reconcile(
@@ -38,6 +42,7 @@ class WayfairStatusReconciler
         ?Carbon $fetchStartedAt = null,
         int $closeOlderThanDays = 0,
         bool $dryRun = false,
+        ?string $sinceDate = null,
     ): array {
         $stats = ['checked' => 0, 'delivered' => 0, 'shipped' => 0, 'closed' => 0, 'samples' => []];
         if (! Schema::hasTable('wayfair_daily_data')) {
@@ -63,8 +68,9 @@ class WayfairStatusReconciler
 
         DB::table('wayfair_daily_data')
             ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'accepted')")
+            ->when($sinceDate !== null, fn ($q) => $q->where('po_date', '>=', $sinceDate))
             ->select(['id', 'po_number', 'po_date', 'updated_at'])
-            ->selectRaw("NULLIF(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.tracking_number')), 'null') AS payload_tracking")
+            ->selectRaw(self::TRACKING_SQL.' AS payload_tracking')
             ->orderBy('id')
             ->chunkById(500, function ($rows) use (&$stats, $listed, $judgeFrom, $fetchStartedAt, $oldBefore, $hasFulfillment, $hasCarrier, $dryRun) {
                 $tracking = $this->trackingByPo($rows, $hasFulfillment);
@@ -111,6 +117,82 @@ class WayfairStatusReconciler
             });
 
         return $stats;
+    }
+
+    /**
+     * Read-only breakdown of the open / accepted rows: why each one cannot be moved on.
+     * Optional $pos lists per-PO detail (stored tracking, ASN fields, fulfillment page tracking, carrier status).
+     *
+     * @param  list<string>  $pos
+     * @return array{rows: int, pos: int, with_tracking: int, no_tracking: int, no_carrier_status: int, by_carrier_status: array<string, int>, oldest: ?string, newest: ?string, detail: list<array<string, mixed>>}
+     */
+    public function report(array $pos = []): array
+    {
+        $out = [
+            'rows' => 0, 'pos' => 0, 'with_tracking' => 0, 'no_tracking' => 0, 'no_carrier_status' => 0,
+            'by_carrier_status' => [], 'oldest' => null, 'newest' => null, 'detail' => [],
+        ];
+        if (! Schema::hasTable('wayfair_daily_data')) {
+            return $out;
+        }
+        $hasFulfillment = Schema::hasTable('order_fulfillment_trackings');
+        $hasCarrier = Schema::hasTable('carrier_tracking_statuses');
+        $seenPo = [];
+        $want = [];
+        foreach ($pos as $po) {
+            $want[strtoupper(trim($po))] = true;
+        }
+
+        DB::table('wayfair_daily_data')
+            ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'accepted')")
+            ->select(['id', 'po_number', 'po_date', 'status', 'updated_at'])
+            ->selectRaw(self::TRACKING_SQL.' AS payload_tracking')
+            ->selectRaw("NULLIF(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.asn_sent_at')), 'null') AS asn_sent_at")
+            ->selectRaw("NULLIF(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.asn_error')), 'null') AS asn_error")
+            ->orderBy('id')
+            ->chunkById(500, function ($rows) use (&$out, &$seenPo, $want, $hasFulfillment, $hasCarrier) {
+                $tracking = $this->trackingByPo($rows, $hasFulfillment);
+                $carrier = $hasCarrier ? $this->carrierStatusByTracking(array_values($tracking)) : [];
+                foreach ($rows as $row) {
+                    $out['rows']++;
+                    $po = strtoupper(trim((string) $row->po_number));
+                    $date = (string) $row->po_date;
+                    if ($date !== '') {
+                        $out['oldest'] = $out['oldest'] === null || $date < $out['oldest'] ? $date : $out['oldest'];
+                        $out['newest'] = $out['newest'] === null || $date > $out['newest'] ? $date : $out['newest'];
+                    }
+                    $tn = $tracking[$po] ?? '';
+                    $status = $tn !== '' ? ($carrier[$tn] ?? '') : '';
+                    if (! isset($seenPo[$po])) {
+                        $seenPo[$po] = true;
+                        $out['pos']++;
+                    }
+                    if ($tn === '') {
+                        $out['no_tracking']++;
+                    } else {
+                        $out['with_tracking']++;
+                        if ($status === '') {
+                            $out['no_carrier_status']++;
+                        } else {
+                            $out['by_carrier_status'][$status] = ($out['by_carrier_status'][$status] ?? 0) + 1;
+                        }
+                    }
+                    if (isset($want[$po])) {
+                        $out['detail'][] = [
+                            'po' => (string) $row->po_number,
+                            'status' => (string) $row->status,
+                            'po_date' => $date,
+                            'payload_tracking' => (string) ($row->payload_tracking ?? ''),
+                            'tracking_used' => $tn,
+                            'carrier_status' => $status,
+                            'asn_sent_at' => (string) ($row->asn_sent_at ?? ''),
+                            'asn_error' => (string) ($row->asn_error ?? ''),
+                        ];
+                    }
+                }
+            });
+
+        return $out;
     }
 
     /**

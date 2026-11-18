@@ -164,6 +164,9 @@ class FetchWayfairDailyData extends Command
                 $listed,
                 $complete ? $cutoffDate : null,
                 $fetchStartedAt,
+                0,
+                false,
+                now()->subDays(120)->toDateString(),
             );
             $this->info(sprintf(
                 'Wayfair status: checked %d open/accepted rows, delivered %d, shipped %d, closed %d%s.',
@@ -314,7 +317,7 @@ class FetchWayfairDailyData extends Command
             $payload = [];
         }
         $kept = false;
-        foreach (['tracking_number', 'tracking_company', 'asn_sent_at', 'asn_handle', 'asn_status', 'asn_tracking', 'asn_error', 'asn_error_at'] as $key) {
+        foreach (['tracking_number', 'tracking_company', 'label_tracking_number', 'label_tracking_company', 'asn_sent_at', 'asn_handle', 'asn_status', 'asn_tracking', 'asn_error', 'asn_error_at'] as $key) {
             $old = trim((string) ($existingPayload[$key] ?? ''));
             if ($old !== '' && trim((string) ($payload[$key] ?? '')) === '') {
                 $payload[$key] = $existingPayload[$key];

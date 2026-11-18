@@ -8,6 +8,7 @@ use App\Models\WayfairDailyData;
 use App\Services\WayfairApiService;
 use App\Services\WayfairDailyOrderFetchService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -105,6 +106,99 @@ class WayfairTrackingSyncService
             'skipped' => $skipped,
             'message' => "Wayfair SOF tracking: checked {$checked} POs, saved tracking on {$filled} rows, still missing {$skipped}. Shopify fulfillments written: {$shopify}.",
         ];
+    }
+
+    /**
+     * Find Wayfair label tracking for open / accepted POs that have none stored, so their status can follow the carrier.
+     * The number is kept under label_tracking_number only: it does not feed the ASN push or Shopify. It is also queued
+     * in carrier_tracking_statuses so tracking:sync-status fetches its delivery status.
+     * POs checked without a hit are not asked again for an hour.
+     *
+     * @return array{checked: int, found: int, missing: int}
+     */
+    public function fillMissingLabelTracking(int $limit = 60, int $days = 75, ?float $deadline = null): array
+    {
+        $out = ['checked' => 0, 'found' => 0, 'missing' => 0];
+        if (! Schema::hasTable('wayfair_daily_data')) {
+            return $out;
+        }
+
+        $limit = max(1, min(100, $limit));
+        $rows = DB::table('wayfair_daily_data')
+            ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN ('open', 'accepted')")
+            ->where('po_date', '>=', now()->subDays(max(1, $days))->toDateString())
+            ->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.tracking_number')), '') IN ('', 'null')")
+            ->whereRaw("IFNULL(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.label_tracking_number')), '') IN ('', 'null')")
+            ->orderByDesc('po_date')
+            ->orderByDesc('id')
+            ->limit($limit * 8)
+            ->get(['po_number']);
+
+        $want = [];
+        foreach ($rows as $row) {
+            $po = strtoupper(trim((string) $row->po_number));
+            if ($po === '' || preg_match('/^[A-Z]{2}[A-Z0-9-]{6,}$/', $po) !== 1 || isset($want[$po])) {
+                continue;
+            }
+            if (Cache::has('wayfair.label-scan.'.$po)) {
+                continue;
+            }
+            $want[$po] = true;
+            if (count($want) >= $limit) {
+                break;
+            }
+        }
+
+        foreach (array_chunk(array_keys($want), 25) as $chunk) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $found = [];
+            foreach ($this->labelTrackingByPo($chunk, $deadline) as $po => $hit) {
+                $found[strtoupper(trim((string) $po))] = $hit;
+            }
+            foreach ($chunk as $po) {
+                $out['checked']++;
+                $tn = strtoupper(preg_replace('/\s+/', '', (string) ($found[$po]['tracking'] ?? '')) ?? '');
+                if (strlen($tn) < 8) {
+                    $out['missing']++;
+                    Cache::put('wayfair.label-scan.'.$po, 1, now()->addHour());
+
+                    continue;
+                }
+                $out['found']++;
+                $this->saveLabelTrackingForPo($po, $tn, trim((string) ($found[$po]['carrier'] ?? '')));
+            }
+        }
+
+        return $out;
+    }
+
+    protected function saveLabelTrackingForPo(string $poNumber, string $tracking, string $carrier): void
+    {
+        foreach (WayfairDailyData::query()->where('po_number', $poNumber)->get() as $row) {
+            $payload = $this->payloadOf($row);
+            $payload['label_tracking_number'] = $tracking;
+            if ($carrier !== '') {
+                $payload['label_tracking_company'] = $carrier;
+            }
+            $row->raw_payload = $payload;
+            $row->save();
+        }
+
+        if (Schema::hasTable('carrier_tracking_statuses')) {
+            try {
+                $label = \App\Support\TrackingCarrierGuesser::labelFromNumber($tracking) ?? $carrier;
+                DB::table('carrier_tracking_statuses')->insertOrIgnore([
+                    'tracking_number' => $tracking,
+                    'carrier' => $label !== '' ? mb_substr($label, 0, 128) : null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::info('WayfairTrackingSyncService: could not queue tracking status', ['po' => $poNumber, 'error' => $e->getMessage()]);
+            }
+        }
     }
 
     /**
