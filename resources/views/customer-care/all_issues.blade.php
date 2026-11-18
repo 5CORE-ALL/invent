@@ -478,6 +478,25 @@
             cursor: pointer;
         }
 
+        /* Column dropdown filters (Marketplace / Created By / Issue / Action / Carrier). */
+        #all-issues-filters .ai-col-filter {
+            font-size: 12px;
+            padding: 2px 24px 2px 8px;
+            height: 31px;
+            width: 170px;
+            min-width: 140px;
+            max-width: 220px;
+            border-radius: 0.375rem;
+            border: 1px solid #dee2e6;
+            cursor: pointer;
+        }
+
+        #all-issues-filters .ai-col-filter.ai-col-filter-active {
+            border-color: #0d6efd;
+            background-color: #eef4ff;
+            font-weight: 600;
+        }
+
         /* Remove black backdrop completely (matches existing All Issues UX) */
         .modal-backdrop,
         .modal-backdrop.show {
@@ -626,11 +645,6 @@
                         <i class="fa-solid fa-circle-exclamation"></i> <span id="l30-issues-badge-label">L30</span> Issues:
                         <span id="l30-issues-badge-total">…</span>
                     </div>
-                    @unless($hideDepartmentColumnAndFilter)
-                    <select id="dept-filter-select" class="form-select form-select-sm">
-                        <option value="">All Departments</option>
-                    </select>
-                    @endunless
                     <div class="dropdown">
                         <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="ai-columns-btn"
                             data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -654,6 +668,41 @@
                     </label>
                     <span id="hold_issue_total_count_wrap" class="badge bg-light text-dark align-self-center"
                         title="Total active error groups">Total: <span id="hold_issue_total_count">0</span></span>
+                </div>
+                <div id="all-issues-filters" class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                    <select id="ai-f-marketplace_1" class="form-select form-select-sm ai-col-filter"
+                        data-filter-field="marketplace_1" data-all-label="All Marketplaces"
+                        aria-label="Filter by marketplace">
+                        <option value="">All Marketplaces</option>
+                    </select>
+                    <select id="ai-f-created_by" class="form-select form-select-sm ai-col-filter"
+                        data-filter-field="created_by" data-all-label="All Created By"
+                        aria-label="Filter by created by">
+                        <option value="">All Created By</option>
+                    </select>
+                    <select id="ai-f-what_happened" class="form-select form-select-sm ai-col-filter"
+                        data-filter-field="what_happened" data-all-label="All Issues"
+                        aria-label="Filter by issue">
+                        <option value="">All Issues</option>
+                    </select>
+                    <select id="ai-f-action_1" class="form-select form-select-sm ai-col-filter"
+                        data-filter-field="action_1" data-all-label="All Actions"
+                        aria-label="Filter by action">
+                        <option value="">All Actions</option>
+                    </select>
+                    <select id="ai-f-issue_carrier" class="form-select form-select-sm ai-col-filter"
+                        data-filter-field="issue_carrier" data-all-label="All Carriers"
+                        aria-label="Filter by carrier">
+                        <option value="">All Carriers</option>
+                    </select>
+                    @unless($hideDepartmentColumnAndFilter)
+                    <select id="dept-filter-select" class="form-select form-select-sm">
+                        <option value="">All Departments</option>
+                    </select>
+                    @endunless
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="ai-clear-col-filters">
+                        <i class="fa-solid fa-xmark"></i> Clear filters
+                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -3222,9 +3271,90 @@
                 return first || {};
             }
 
+            // ── Column dropdown filters (Marketplace / Created By / Issue / Action / Carrier) ──
+            const COLUMN_FILTER_FIELDS = ['marketplace_1', 'created_by', 'what_happened', 'action_1', 'issue_carrier'];
+            const COLUMN_FILTER_BLANK = '__blank__';
+            const activeColumnFilters = {};
+
+            function columnFilterKey(v) {
+                return String(v ?? '').trim().toLowerCase();
+            }
+
+            function rowMatchesColumnFilters(r) {
+                for (const field in activeColumnFilters) {
+                    const want = activeColumnFilters[field];
+                    const val = columnFilterKey(r[field]);
+                    if (want === COLUMN_FILTER_BLANK) {
+                        if (val !== '') return false;
+                    } else if (val !== want) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            function syncColumnFilterUi() {
+                const any = Object.keys(activeColumnFilters).length > 0;
+                document.getElementById('ai-clear-col-filters')?.classList.toggle('d-none', !any);
+                COLUMN_FILTER_FIELDS.forEach(function(field) {
+                    const sel = document.getElementById('ai-f-' + field);
+                    if (sel) sel.classList.toggle('ai-col-filter-active', sel.value !== '');
+                });
+            }
+
+            // Options come from the loaded rows, so a new marketplace / user / carrier
+            // shows up without any code change. The current choice is kept on reload.
+            function buildColumnFilterOptions() {
+                COLUMN_FILTER_FIELDS.forEach(function(field) {
+                    const sel = document.getElementById('ai-f-' + field);
+                    if (!sel) return;
+                    const labels = new Map();
+                    let hasBlank = false;
+                    holdIssueRows.forEach(function(r) {
+                        const raw = String(r[field] ?? '').trim();
+                        if (raw === '') {
+                            hasBlank = true;
+                            return;
+                        }
+                        const key = raw.toLowerCase();
+                        if (!labels.has(key)) labels.set(key, raw);
+                    });
+                    const keys = Array.from(labels.keys()).sort(function(a, b) {
+                        return labels.get(a).localeCompare(labels.get(b), undefined, { sensitivity: 'base', numeric: true });
+                    });
+                    const prev = activeColumnFilters[field] || '';
+                    sel.innerHTML = '';
+                    const all = document.createElement('option');
+                    all.value = '';
+                    all.textContent = sel.getAttribute('data-all-label') || 'All';
+                    sel.appendChild(all);
+                    keys.forEach(function(key) {
+                        const opt = document.createElement('option');
+                        opt.value = key;
+                        opt.textContent = labels.get(key);
+                        sel.appendChild(opt);
+                    });
+                    if (hasBlank) {
+                        const opt = document.createElement('option');
+                        opt.value = COLUMN_FILTER_BLANK;
+                        opt.textContent = '— Blank —';
+                        sel.appendChild(opt);
+                    }
+                    const stillThere = prev !== '' && (prev === COLUMN_FILTER_BLANK ? hasBlank : labels.has(prev));
+                    if (stillThere) {
+                        sel.value = prev;
+                    } else {
+                        sel.value = '';
+                        delete activeColumnFilters[field];
+                    }
+                });
+                syncColumnFilterUi();
+            }
+
             function getFilteredRows() {
-                if (!activeDeptFilter) return holdIssueRows;
-                return holdIssueRows.filter(rowMatchesActiveDeptFilter);
+                return holdIssueRows.filter(function(r) {
+                    return rowMatchesActiveDeptFilter(r) && rowMatchesColumnFilters(r);
+                });
             }
 
             function applyFilters() {
@@ -3237,8 +3367,9 @@
                     if (activeDeptFilter) {
                         const needle = activeDeptFilter.toLowerCase();
                         if (!rowDepartments(row).some(d => String(d).trim().toLowerCase() === needle))
-                        return false;
+                            return false;
                     }
+                    if (!rowMatchesColumnFilters(row)) return false;
                     if (term) {
                         return Object.values(row).some(v => v !== null && v !== undefined && String(v)
                             .toLowerCase().includes(term));
@@ -3387,6 +3518,7 @@
                     holdIssueRows = [];
                 }
                 buildDeptFilters();
+                buildColumnFilterOptions();
                 if (table) {
                     table.replaceData(buildDisplayRows(holdIssueRows));
                     applyFilters();
@@ -5708,6 +5840,26 @@
                     loadL30Issues();
                 });
                 document.getElementById('ai-search')?.addEventListener('input', applyFilters);
+                COLUMN_FILTER_FIELDS.forEach(function(field) {
+                    document.getElementById('ai-f-' + field)?.addEventListener('change', function(e) {
+                        if (e.target.value) {
+                            activeColumnFilters[field] = e.target.value;
+                        } else {
+                            delete activeColumnFilters[field];
+                        }
+                        syncColumnFilterUi();
+                        applyFilters();
+                    });
+                });
+                document.getElementById('ai-clear-col-filters')?.addEventListener('click', function() {
+                    COLUMN_FILTER_FIELDS.forEach(function(field) {
+                        delete activeColumnFilters[field];
+                        const sel = document.getElementById('ai-f-' + field);
+                        if (sel) sel.value = '';
+                    });
+                    syncColumnFilterUi();
+                    applyFilters();
+                });
                 const mergeToggle = document.getElementById('ai-merge-skus');
                 if (mergeToggle) {
                     mergeToggle.checked = mergeSkus;
