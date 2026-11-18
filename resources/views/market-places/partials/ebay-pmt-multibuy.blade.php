@@ -183,7 +183,6 @@
                                     <th style="width: 110px;">Join</th>
                                     <th>Column</th>
                                     <th>Condition</th>
-                                    <th style="width: 130px;">Compare with</th>
                                     <th>Value</th>
                                     <th class="text-center" style="width: 80px;" title="How many {{ strtolower($pmtUnit) }}s match this condition on its own (empty values show a dash).">Count</th>
                                     <th style="width: 140px;" title="Every row has its own Rules value. When this row and the rows above it in its AND group match, its Rules value applies: bid from the category Highest / Lowest in the table below (Avg, Highest+1, Lowest-1). Pause only fires when the whole IF / AND group matches. The deepest matching row wins; the first matching group wins.">Rules</th>
@@ -514,7 +513,11 @@
                 let pauseRule = { enabled: false, conditions: defaultPauseConditions() };
                 function setPauseRule(p) {
                     const conds = (p && Array.isArray(p.conditions)) ? p.conditions.filter(function(c) { return c && PAUSE_COLS[c.column]; }) : [];
-                    conds.forEach(function(c) { if (!PAUSE_ACTIONS[c.rule]) c.rule = 'pause'; });
+                    conds.forEach(function(c) {
+                        if (!PAUSE_ACTIONS[c.rule]) c.rule = 'pause';
+                        // "Compare with" is gone: every value is a number. An old Column comparison becomes an empty number.
+                        if (c.mode === 'column') { c.mode = 'number'; c.value = ''; }
+                    });
                     pauseRule = { enabled: !!(p && p.enabled), conditions: conds.length ? conds : defaultPauseConditions() };
                 }
                 function pauseCondActive(c) {
@@ -579,9 +582,7 @@
                             ? '<span class="badge" style="background:#ede9fe;color:#6d28d9;">IF</span>'
                             : '<select class="form-select form-select-sm pz-join">' + ['AND', 'OR'].map(function(j) { return '<option' + (c.join === j ? ' selected' : '') + '>' + j + '</option>'; }).join('') + '</select>';
                         const ops = Object.keys(PAUSE_OPS).map(function(k) { return '<option value="' + k + '"' + (c.op === k ? ' selected' : '') + '>' + arpEsc(PAUSE_OPS[k]) + '</option>'; }).join('');
-                        const valueCell = c.mode === 'column'
-                            ? '<select class="form-select form-select-sm pz-valcol">' + pauseColOptions(c.value) + '</select>'
-                            : '<input type="number" step="any" class="form-control form-control-sm pz-valnum" placeholder="e.g. 5" value="' + arpEsc(c.value) + '">';
+                        const valueCell = '<input type="number" step="any" class="form-control form-control-sm pz-valnum" placeholder="e.g. 5" value="' + arpEsc(c.value) + '">';
                         // Every row has its own Rules dropdown.
                         const ruleCell = '<select class="form-select form-select-sm pz-rule" title="What happens when this row (and the rows above it in its AND group) match">'
                             + Object.keys(PAUSE_ACTIONS).map(function(k) { return '<option value="' + k + '"' + (c.rule === k ? ' selected' : '') + '>' + PAUSE_ACTIONS[k] + '</option>'; }).join('')
@@ -589,7 +590,6 @@
                         return '<tr data-i="' + i + '"><td class="text-muted">' + (i + 1) + '</td><td>' + joinCell + '</td>'
                             + '<td><select class="form-select form-select-sm pz-col">' + pauseColOptions(c.column) + '</select></td>'
                             + '<td><select class="form-select form-select-sm pz-op">' + ops + '</select></td>'
-                            + '<td><select class="form-select form-select-sm pz-mode"><option value="number"' + (c.mode !== 'column' ? ' selected' : '') + '>Number</option><option value="column"' + (c.mode === 'column' ? ' selected' : '') + '>Column</option></select></td>'
                             + '<td>' + valueCell + '</td>'
                             + '<td class="text-center fw-semibold pz-count">&mdash;</td>'
                             + '<td>' + ruleCell + '</td>'
@@ -624,7 +624,6 @@
                     const conds = [];
                     $('#arp-pause-rows tr').each(function(i) {
                         const $r = $(this);
-                        const mode = $r.find('.pz-mode').val() || 'number';
                         const join = i === 0 ? 'AND' : ($r.find('.pz-join').val() || 'AND');
                         const rule = $r.find('.pz-rule').val() || 'pause';
                         conds.push({
@@ -632,8 +631,8 @@
                             rule: rule,
                             column: $r.find('.pz-col').val(),
                             op: $r.find('.pz-op').val(),
-                            mode: mode,
-                            value: mode === 'column' ? $r.find('.pz-valcol').val() : $r.find('.pz-valnum').val()
+                            mode: 'number',
+                            value: $r.find('.pz-valnum').val()
                         });
                     });
                     if (conds.length) pauseRule.conditions = conds;
@@ -1189,12 +1188,6 @@
                     renderRuleCounts();
                 });
                 $('#arp-pause-enabled').on('change', function() { readPauseRows(); paintPauseState(); renderRuleCounts(); });
-                $('#arp-pause-rows').on('change', '.pz-mode', function() {
-                    const c = pauseRule.conditions[$(this).closest('tr').data('i')];
-                    c.value = c.mode === 'column' ? 'inv' : '';
-                    renderPauseRows();
-                    renderRuleCounts();
-                });
                 $('#arp-pause-rows').on('click', '.pz-del', function() {
                     readPauseRows();
                     if (pauseRule.conditions.length > 1) pauseRule.conditions.splice($(this).closest('tr').data('i'), 1);
