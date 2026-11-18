@@ -687,6 +687,24 @@ $(document).ready(function () {
                 }
             },
             {
+                title: 'LT O CVR', field: 'lt_o_cvr', width: 80, hozAlign: 'center',
+                headerTooltip: 'Overall CVR over the last 60 days: (eBay L30 + L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views come from the daily snapshot saved 30 days ago. Blank when that snapshot is missing.',
+                sorter: function(a, b) {
+                    const x = (a === null || a === undefined || a === '') ? NaN : parseFloat(a);
+                    const y = (b === null || b === undefined || b === '') ? NaN : parseFloat(b);
+                    return (isFinite(x) ? x : -1) - (isFinite(y) ? y : -1);
+                },
+                formatter: function(cell) {
+                    const row = cell.getRow().getData();
+                    const v = row.lt_o_cvr;
+                    const lto = (v === null || v === undefined || v === '') ? NaN : parseFloat(v);
+                    if (!isFinite(lto)) return '<span class="text-muted">—</span>';
+                    const units = (parseFloat(row.ebay_l30) || 0) + (parseFloat(row.ebay_l60) || 0);
+                    const views = (parseFloat(row.views) || 0) + (parseFloat(row.views_prior) || 0);
+                    return '<span title="' + units + ' orders ÷ ' + views + ' views (L30 + prior 30 days)">' + lto.toFixed(1) + '%</span>';
+                }
+            },
+            {
                 title: 'Promote', field: 'promote_with_ad', width: 140, hozAlign: 'center',
                 headerTooltip: 'eBay Recommendation API promoteWithAd. Eligible on Seller Hub = RECOMMENDED. Unknown = last sync was UNDETERMINED (often stale until the next sync).',
                 formatter: function(cell) {

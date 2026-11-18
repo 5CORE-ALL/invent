@@ -11,6 +11,7 @@ use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
 use App\Support\EbayListingReportHistory;
 use App\Support\EbayGpftLookup;
+use App\Support\EbayLtoCvr;
 use App\Support\EbayStdNpftLookup;
 use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
@@ -884,6 +885,28 @@ class EbayCampaignAdsController extends Controller
         }
     }
 
+    /**
+     * LT O CVR (same as the eBay tabulator and Amazon): (L30 + L31-60 units) ÷ (L30 views + prior-30-day views) × 100.
+     * Prior views are the rolling-30-day views saved in the daily snapshot of 30 days ago.
+     *
+     * @param  iterable<object>  $data
+     */
+    private function attachLtoCvr($data): void
+    {
+        $prior = EbayLtoCvr::priorViewsBySku();
+        foreach ($data as $row) {
+            $key = \App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) ($row->resolved_sku ?? ''));
+            $row->views_prior = $prior[$key] ?? null;
+            // No ebay_metrics row (ended / unmatched listing): no live views, so no LT O CVR.
+            $row->lt_o_cvr = $row->views === null ? null : EbayLtoCvr::compute(
+                (float) ($row->ebay_l30 ?? 0),
+                (float) ($row->ebay_l60 ?? 0),
+                (float) ($row->views ?? 0),
+                $row->views_prior
+            );
+        }
+    }
+
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay_campaign_ads');
@@ -989,6 +1012,7 @@ class EbayCampaignAdsController extends Controller
         EbayListingReportHistory::attachToRows($data);
         $this->attachStdNpft($data);
         $this->attachGpft($data);
+        $this->attachLtoCvr($data);
         \App\Support\EbayPmtRowInputs::attach($data, 'ebay1');
         return response()->json([
             'status_counts' => $statusCounts,

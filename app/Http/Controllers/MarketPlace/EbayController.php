@@ -22,6 +22,7 @@ use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
 use App\Support\EbayListingReportHistory;
+use App\Support\EbayLtoCvr;
 use App\Support\EbayYesterdaySpend;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;
@@ -804,6 +805,9 @@ class EbayController extends Controller
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
             });
 
+        // LT O CVR: rolling-30-day views saved 30 days ago (the prior 30-day window), per SKU.
+        $ltoPriorViewsBySku = EbayLtoCvr::priorViewsBySku();
+
         $orderL30Maps = $this->fetchEbayL30OrderQtyMaps();
         $orderL30BySku = $orderL30Maps['sku'];
         $orderL30ByItem = $orderL30Maps['item'];
@@ -1545,6 +1549,9 @@ class EbayController extends Controller
             $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
             $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
             $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
+            // LT O CVR: (L30 + L31-60 units) ÷ (L30 + prior-30-day views) × 100, same idea as Amazon's LT O CVR.
+            $row['views_prior'] = $ltoPriorViewsBySku[$pmNorm] ?? null;
+            $row['LT_O_CVR'] = EbayLtoCvr::compute($ebayL30, $ebayL60, $views, $row['views_prior']);
             $cvr = $row['SCVR']; // Use SCVR for SPRICE calculation
 
             // NR & Hide (load from database, but not SPRICE/SPFT/SROI/SGROI/SGPFT)
@@ -1795,6 +1802,19 @@ class EbayController extends Controller
             $parentRow->CVR_60 = $childCount > 0
                 ? round(array_sum(array_map(function ($c) { return (float) ($c->CVR_60 ?? 0); }, $children)) / $childCount, 2)
                 : 0;
+            // LT O CVR of the family: only SKUs with a known prior-period view count (units and views stay matched).
+            $ltoUnits = 0.0;
+            $ltoViews = 0.0;
+            $ltoKnown = false;
+            foreach ($children as $c) {
+                if (isset($c->views_prior) && is_numeric($c->views_prior)) {
+                    $ltoKnown = true;
+                    $ltoUnits += (float) ($c->{'eBay L30'} ?? 0) + (float) ($c->{'eBay L60'} ?? 0);
+                    $ltoViews += (float) ($c->views ?? 0) + (float) $c->views_prior;
+                }
+            }
+            $parentRow->views_prior = null;
+            $parentRow->LT_O_CVR = ($ltoKnown && $ltoViews > 0) ? round(($ltoUnits / $ltoViews) * 100, 2) : null;
             $parentRow->NR = '';
             $parentRow->NRL = 'REQ';
             $parentRow->Listed = null;

@@ -4965,6 +4965,31 @@
                         },
                     },
                     {
+                        title: "LT O CVR",
+                        field: "LT_O_CVR",
+                        hozAlign: "center",
+                        minWidth: 72,
+                        headerTooltip: "Overall CVR over the last 60 days: (eBay L30 + eBay L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views come from the daily snapshot saved 30 days ago. Blank when that snapshot is missing.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
+                            if (!isFinite(lto)) return '<span class="text-muted">—</span>';
+                            const isParent = row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT');
+                            let tip = 'LT O CVR (last 60 days, ads + organic)';
+                            if (!isParent) {
+                                const units = (parseFloat(row['eBay L30']) || 0) + (parseFloat(row['eBay L60']) || 0);
+                                const views = (parseFloat(row.views) || 0) + (parseFloat(row.views_prior) || 0);
+                                tip = units + ' orders ÷ ' + views + ' views (L30 + prior 30 days)';
+                            }
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '">' + lto.toFixed(1) + '%</span>';
+                        },
+                        sorter: function(a, b) {
+                            const x = (a === null || a === undefined || a === '') ? NaN : parseFloat(a);
+                            const y = (b === null || b === undefined || b === '') ? NaN : parseFloat(b);
+                            return (isFinite(x) ? x : -1) - (isFinite(y) ? y : -1);
+                        },
+                    },
+                    {
                         title: "NRL",
                         field: "NRL",
                         hozAlign: "center",
@@ -7229,6 +7254,7 @@
                 'Listed': 'Listed',
                 'Live': 'Live',
                 'SCVR': 'CVR 30',
+                'LT_O_CVR': 'LT O CVR',
                 'CVR_45': 'CVR 45',
                 'CVR_60': 'CVR 60',
                 'cvr_up_dn': 'CVR Up/Dn',
