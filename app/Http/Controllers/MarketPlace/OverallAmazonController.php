@@ -3328,7 +3328,10 @@ class OverallAmazonController extends Controller
      * plus a Lower cap: when it is on, a price cut never takes GPFT% below Min GPFT% or GROI% below Min GROI%
      * (whichever is hit first holds the price). A blank or non-numeric value is stored as null.
      *
-     * @return array{down: float|null, same: float|null, up: float|null, lower_cap: bool, min_gpft: float|null, min_groi: float|null}
+     * down_band / up_band are the CVR targets: CVR is "down" when it is more than down_band % below LT O CVR and "up" when it
+     * is more than up_band % above it (both default to 20).
+     *
+     * @return array{down: float|null, same: float|null, up: float|null, lower_cap: bool, min_gpft: float|null, min_groi: float|null, down_band: float, up_band: float}
      */
     private static function amazonNormalizeCvrPriceRule(mixed $raw): array
     {
@@ -3344,6 +3347,8 @@ class OverallAmazonController extends Controller
             'lower_cap' => filter_var($raw['lower_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'min_gpft' => $num($raw['min_gpft'] ?? null, -100.0, 79.0),
             'min_groi' => $num($raw['min_groi'] ?? null, -100.0, 1000.0),
+            'down_band' => $num($raw['down_band'] ?? null, 0.0, 99.0) ?? 20.0,
+            'up_band' => $num($raw['up_band'] ?? null, 0.0, 1000.0) ?? 20.0,
         ];
     }
 
@@ -3366,11 +3371,11 @@ class OverallAmazonController extends Controller
 
     public function amazonCvrPriceRuleSave(Request $request)
     {
-        $payload = self::amazonNormalizeCvrPriceRule($request->only(['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi']));
+        $payload = self::amazonNormalizeCvrPriceRule($request->only(['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi', 'down_band', 'up_band']));
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_cvr_price_rule'],
-            ['visibility' => $payload, 'column_order' => ['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi']]
+            ['visibility' => $payload, 'column_order' => ['down', 'same', 'up', 'lower_cap', 'min_gpft', 'min_groi', 'down_band', 'up_band']]
         );
 
         return response()->json(['success' => true] + $payload);

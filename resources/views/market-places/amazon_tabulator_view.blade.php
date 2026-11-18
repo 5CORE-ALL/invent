@@ -878,9 +878,9 @@
                         style="width: auto; display: inline-block;"
                         title="CVR L30 vs LT O CVR (±20%)">
                         <option value="all">CVR Δ</option>
-                        <option value="up">&#8593; Up (&gt; +20%)</option>
-                        <option value="same">-- Within ±20%</option>
-                        <option value="down">&#8595; Down (&lt; -20%)</option>
+                        <option value="up">&#8593; Up</option>
+                        <option value="same">-- Within target</option>
+                        <option value="down">&#8595; Down</option>
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -4523,14 +4523,9 @@
                 return isFinite(n) ? n : null;
             }
 
-            /** CVR vs LT O CVR: 1 = more than 20% above, -1 = more than 20% below, 0 = within ±20%, null = no LT O CVR. */
+            /** CVR vs LT O CVR: 1 = above the Up target, -1 = below the Down target (CVR Price Rule modal, default 20% each), 0 = within, null = no LT O CVR. */
             function amazonCvrVsLtoTrend(rd) {
-                const lto = amazonRowLtoCvr(rd);
-                if (lto === null) return null;
-                const cvr = amazonRowCvrL30(rd);
-                if (cvr > lto * 1.2) return 1;
-                if (cvr < lto * 0.8) return -1;
-                return 0;
+                return amzCvrRuleTrendValue(rd, null);
             }
 
             function amazonCvrSlab(cvr, low, mid, high) {
@@ -5124,7 +5119,7 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        headerTooltip: "CVR L30 vs LT O CVR: within ±20% shows --, more than 20% above shows the up arrow, more than 20% below shows the down arrow.",
+                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = amazonCvrVsLtoTrend(row);
@@ -5132,12 +5127,12 @@
                             const lto = amazonRowLtoCvr(row);
                             const tip = 'CVR ' + amazonRowCvrL30(row).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
                             if (t > 0) {
-                                return '<span title="' + escAttr(tip + ' · more than 20% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                                return '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().up + '% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
                             }
                             if (t < 0) {
-                                return '<span title="' + escAttr(tip + ' · more than 20% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                                return '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().down + '% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
                             }
-                            return '<span title="' + escAttr(tip + ' · within ±20%') + '">--</span>';
+                            return '<span title="' + escAttr(tip + ' · within the CVR targets') + '">--</span>';
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const x = amazonCvrVsLtoTrend(aRow.getData());
