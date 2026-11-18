@@ -10,10 +10,10 @@ use Illuminate\Support\Facades\DB;
  * Rules, first match wins:
  *   1. INV = 0 (or the pause conditions match) -> bid 0 and the ad is paused
  *   2. eBay L30 sold = 0 (permanent rule)   -> the ES Bid of the listing
- *   3. the category has the value its Rules dropdown picks (Highest or Lowest) -> that value
+ *   3. the category Highest or Lowest       -> the Rules column of the first matching condition group picks which
+ *                                              (Highest when no group matches)
  *   4. no match                             -> the old Dil vs SBid S Bid of the listing (when enabled)
  * The old Promoted ad rate Manual is gone (the column is now the read-only live CBID): a stored value is ignored.
- * Each category stores `use` = 'highest' (default) or 'lowest': the Rules column of the Ads Rule PMT window.
  *
  * The same logic runs in the browser (ebay_tabulator_view) for the PMT BID column.
  */
@@ -53,7 +53,7 @@ final class PmtCategoryBidRule
     }
 
     /**
-     * @return array<string, array{highest:?float,lowest:?float,manual:?float,use:string}>
+     * @return array<string, array{highest:?float,lowest:?float,manual:?float}>
      */
     public static function bids(string $account = 'ebay1'): array
     {
@@ -66,18 +66,15 @@ final class PmtCategoryBidRule
                 $hi = $value['highest'] ?? null;
                 $lo = $value['lowest'] ?? null;
                 $man = $value['manual'] ?? null;
-                $use = ($value['use'] ?? 'highest') === 'lowest' ? 'lowest' : 'highest';
             } else { // older data: a plain number = highest
                 $hi = $value;
                 $lo = null;
                 $man = null;
-                $use = 'highest';
             }
             $out[(string) $category] = [
                 'highest' => is_numeric($hi) ? (float) $hi : null,
                 'lowest' => is_numeric($lo) ? (float) $lo : null,
                 'manual' => null, // retired: stored values are ignored
-                'use' => $use,
             ];
         }
 
@@ -130,6 +127,9 @@ final class PmtCategoryBidRule
 
     public const PAUSE_OPERATORS = ['<', '<=', '=', '!=', '>=', '>'];
 
+    /** The Rules column of a condition group: pause the ad, or bid the category Highest / Lowest. */
+    public const PAUSE_ACTIONS = ['pause', 'highest', 'lowest'];
+
     public static function keyPause(string $account = 'ebay1'): string
     {
         return $account.'_pmt_pause_rule';
@@ -171,6 +171,7 @@ final class PmtCategoryBidRule
             // An empty number is kept (the row stays in the editor) but never counts when the rule runs.
             $conditions[] = [
                 'join' => ($c['join'] ?? 'AND') === 'OR' ? 'OR' : 'AND',
+                'rule' => in_array((string) ($c['rule'] ?? 'pause'), self::PAUSE_ACTIONS, true) ? (string) $c['rule'] : 'pause',
                 'column' => $column,
                 'op' => $op,
                 'mode' => $mode,
@@ -210,11 +211,21 @@ final class PmtCategoryBidRule
      */
     public static function pauseMatches(?array $rule, float $inv, float $ovL30): bool
     {
+        return self::matchAction($rule, $inv, $ovL30) === 'pause';
+    }
+
+    /**
+     * The Rules value of the first condition group that matches: 'pause' | 'highest' | 'lowest', or null when none match.
+     * A group is an IF / OR row with the AND rows that follow it; it takes the Rules value of its first row.
+     */
+    public static function matchAction(?array $rule, float $inv, float $ovL30): ?string
+    {
         if (! $rule || empty($rule['enabled'])) {
-            return false;
+            return null;
         }
         $vals = ['inv' => $inv, 'l30' => $ovL30, 'dil' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0];
         $groups = [];
+        $actions = [];
         $current = null;
         foreach ((array) ($rule['conditions'] ?? []) as $c) {
             $mode = $c['mode'] ?? 'number';
@@ -246,16 +257,18 @@ final class PmtCategoryBidRule
             if ($current === null || ($c['join'] ?? 'AND') === 'OR') {
                 $groups[] = [];
                 $current = array_key_last($groups);
+                $a = (string) ($c['rule'] ?? 'pause');
+                $actions[$current] = in_array($a, self::PAUSE_ACTIONS, true) ? $a : 'pause';
             }
             $groups[$current][] = $hit;
         }
-        foreach ($groups as $g) {
+        foreach ($groups as $i => $g) {
             if (! in_array(false, $g, true)) {
-                return true;
+                return $actions[$i] ?? 'pause';
             }
         }
 
-        return false;
+        return null;
     }
 
     /**

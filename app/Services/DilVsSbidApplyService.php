@@ -530,14 +530,16 @@ class DilVsSbidApplyService
         $dil = $inv > 0 ? ($ovL30 / $inv) * 100 : 0.0;
 
         $category = (string) ($in['category'] ?? '');
-        $range = $bids[$category] ?? ['highest' => null, 'lowest' => null, 'manual' => null, 'use' => 'highest'];
+        $range = $bids[$category] ?? ['highest' => null, 'lowest' => null, 'manual' => null];
+        // Rules column of the first matching condition group: pause the ad, or use the category Highest / Lowest.
+        $action = PmtCategoryBidRule::matchAction($pauseRule, $inv, $ovL30);
         $d = PmtCategoryBidRule::decide(
             $inv,
             $range['highest'],
             $range['manual'] ?? null,
-            PmtCategoryBidRule::pauseMatches($pauseRule, $inv, $ovL30),
+            $action === 'pause',
             $range['lowest'] ?? null,
-            $range['use'] ?? 'highest',
+            $action === 'lowest' ? 'lowest' : 'highest',
             $sold,
             $esBid
         );

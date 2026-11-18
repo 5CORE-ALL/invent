@@ -166,10 +166,10 @@
                     <div class="arp-pause-head" id="arp-pause-head" title="Click to show / hide the pause conditions">
                         <span class="arp-pause-icon"><i class="fas fa-pause"></i></span>
                         <div class="me-auto">
-                            <div class="fw-bold">Pause ads when <span class="arp-muted" id="arp-pause-state"></span></div>
-                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. INV = 0 always pauses. Empty values are ignored. AND is checked before OR.</div>
+                            <div class="fw-bold">Conditions <span class="arp-muted" id="arp-pause-state"></span></div>
+                            <div class="arp-muted" style="font-size: 12px;">DIL, L30 and INV conditions. Rules: pause the ad, or use the category Highest / Lowest. INV = 0 always pauses. Empty values are ignored. AND is checked before OR; the first matching group wins.</div>
                         </div>
-                        <div class="form-check form-switch mb-0" title="On: a {{ $pmtUnit }} that matches the conditions below is paused. Off: only INV = 0 pauses.">
+                        <div class="form-check form-switch mb-0" title="On: a {{ $pmtUnit }} that matches a group below gets that group's Rules value (pause, Highest or Lowest). Off: only INV = 0 pauses and the category Highest is used.">
                             <input class="form-check-input" type="checkbox" role="switch" id="arp-pause-enabled">
                             <label class="form-check-label small fw-semibold text-nowrap" for="arp-pause-enabled">Conditions On</label>
                         </div>
@@ -185,6 +185,7 @@
                                     <th>Condition</th>
                                     <th style="width: 130px;">Compare with</th>
                                     <th>Value</th>
+                                    <th style="width: 140px;" title="What happens when this IF / OR group matches: pause the ad, or bid the category Highest / Lowest (the table below). The AND rows under it share the same Rules value.">Rules</th>
                                     <th style="width: 40px;"></th>
                                 </tr>
                             </thead>
@@ -234,7 +235,6 @@
                                         <th class="text-center arp-sortable" data-sort="cbid" style="width: 110px;" title="Click to sort. Live C BID of the category: the median current eBay bid of its listings (hover a value for the range). Read only.">CBID<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="high" style="width: 140px;" title="Click to sort">Highest (%)<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="low" style="width: 140px;" title="Click to sort">Lowest (%)<span class="arp-sort-ind"></span></th>
-                                        <th class="arp-sortable" data-sort="use" style="width: 130px;" title="Click to sort. Which value the category bid uses: its Highest or its Lowest. A {{ strtolower($pmtUnit) }} with eBay L30 sold = 0 always gets its ES Bid instead (permanent rule).">Rules<span class="arp-sort-ind"></span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="ads-rule-pmt-body"></tbody>
@@ -470,9 +470,9 @@
                     const v = parseFloat(row.ca_suggested_bid != null && row.ca_suggested_bid !== '' ? row.ca_suggested_bid : row.suggested_bid);
                     return isFinite(v) && v > 0 ? v : null;
                 }
-                /** The value the Rules dropdown of a saved category picks: { use: 'highest'|'lowest', value: number|null }. */
-                function pickedBid(saved) {
-                    const use = (saved && saved.use === 'lowest') ? 'lowest' : 'highest';
+                /** The category value the matching condition group's Rules picks: { use: 'highest'|'lowest', value: number|null }. */
+                function pickedBid(saved, row) {
+                    const use = pauseAction(row) === 'lowest' ? 'lowest' : 'highest';
                     return { use: use, value: num(saved ? saved[use] : null) };
                 }
 
@@ -492,16 +492,18 @@
                 // ---- Pause conditions (dynamic): IF / AND / OR on DIL, L30, INV. A match = rule 1 (ad paused). ----
                 const PAUSE_COLS = { dil: 'DIL %', l30: 'L30', inv: 'INV' };
                 const PAUSE_OPS = { '<': '< less than', '<=': '<= less or equal', '=': '= equal to', '!=': '!= not equal to', '>=': '>= greater or equal', '>': '> greater than' };
+                const PAUSE_ACTIONS = { pause: 'Pause', highest: 'Highest', lowest: 'Lowest' };
                 function defaultPauseConditions() {
                     return [
-                        { join: 'AND', column: 'dil', op: '<', mode: 'number', value: '' },
-                        { join: 'AND', column: 'l30', op: '<', mode: 'number', value: '' },
-                        { join: 'AND', column: 'inv', op: '>', mode: 'number', value: '' }
+                        { join: 'AND', rule: 'pause', column: 'dil', op: '<', mode: 'number', value: '' },
+                        { join: 'AND', rule: 'pause', column: 'l30', op: '<', mode: 'number', value: '' },
+                        { join: 'AND', rule: 'pause', column: 'inv', op: '>', mode: 'number', value: '' }
                     ];
                 }
                 let pauseRule = { enabled: false, conditions: defaultPauseConditions() };
                 function setPauseRule(p) {
                     const conds = (p && Array.isArray(p.conditions)) ? p.conditions.filter(function(c) { return c && PAUSE_COLS[c.column]; }) : [];
+                    conds.forEach(function(c) { if (!PAUSE_ACTIONS[c.rule]) c.rule = 'pause'; });
                     pauseRule = { enabled: !!(p && p.enabled), conditions: conds.length ? conds : defaultPauseConditions() };
                 }
                 function pauseCondActive(c) {
@@ -523,9 +525,12 @@
                     return false;
                 }
                 function pauseHasConditions() { return pauseRule.conditions.some(pauseCondActive); }
-                /** Does the pause rule fire for this row? (AND binds tighter than OR; same logic as the push.) */
-                function pauseMatchRow(row) {
-                    if (!pauseRule.enabled) return false;
+                /**
+                 * The Rules value ('pause' | 'highest' | 'lowest') of the first condition group that matches this row, or null.
+                 * (AND binds tighter than OR; same logic as the push.)
+                 */
+                function pauseAction(row) {
+                    if (!pauseRule.enabled) return null;
                     const v = pauseVals(row);
                     const groups = [];
                     let cur = null;
@@ -533,11 +538,16 @@
                         if (!pauseCondActive(c)) return;
                         const right = c.mode === 'column' ? v[c.value] : parseFloat(c.value);
                         const hit = pauseCmp(v[c.column], c.op, right);
-                        if (cur === null || c.join === 'OR') { cur = []; groups.push(cur); }
-                        cur.push(hit);
+                        if (cur === null || c.join === 'OR') { cur = { act: PAUSE_ACTIONS[c.rule] ? c.rule : 'pause', hits: [] }; groups.push(cur); }
+                        cur.hits.push(hit);
                     });
-                    return groups.some(function(g) { return g.every(Boolean); });
+                    for (let i = 0; i < groups.length; i++) {
+                        if (groups[i].hits.every(Boolean)) return groups[i].act;
+                    }
+                    return null;
                 }
+                /** Does a condition group with Rules = Pause match this row? */
+                function pauseMatchRow(row) { return pauseAction(row) === 'pause'; }
                 function pauseColOptions(sel) {
                     return Object.keys(PAUSE_COLS).map(function(k) { return '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + PAUSE_COLS[k] + '</option>'; }).join('');
                 }
@@ -550,11 +560,19 @@
                         const valueCell = c.mode === 'column'
                             ? '<select class="form-select form-select-sm pz-valcol">' + pauseColOptions(c.value) + '</select>'
                             : '<input type="number" step="any" class="form-control form-control-sm pz-valnum" placeholder="e.g. 5" value="' + arpEsc(c.value) + '">';
+                        // Only an IF / OR row picks the Rules value; the AND rows under it share it.
+                        const isHead = i === 0 || c.join === 'OR';
+                        const ruleCell = isHead
+                            ? '<select class="form-select form-select-sm pz-rule" title="What happens when this group matches">'
+                                + Object.keys(PAUSE_ACTIONS).map(function(k) { return '<option value="' + k + '"' + (c.rule === k ? ' selected' : '') + '>' + PAUSE_ACTIONS[k] + '</option>'; }).join('')
+                                + '</select>'
+                            : '<span class="text-muted small">same as above</span>';
                         return '<tr data-i="' + i + '"><td class="text-muted">' + (i + 1) + '</td><td>' + joinCell + '</td>'
                             + '<td><select class="form-select form-select-sm pz-col">' + pauseColOptions(c.column) + '</select></td>'
                             + '<td><select class="form-select form-select-sm pz-op">' + ops + '</select></td>'
                             + '<td><select class="form-select form-select-sm pz-mode"><option value="number"' + (c.mode !== 'column' ? ' selected' : '') + '>Number</option><option value="column"' + (c.mode === 'column' ? ' selected' : '') + '>Column</option></select></td>'
                             + '<td>' + valueCell + '</td>'
+                            + '<td>' + ruleCell + '</td>'
                             + '<td><button type="button" class="btn btn-sm btn-outline-danger pz-del" title="Remove"' + (pauseRule.conditions.length <= 1 ? ' disabled' : '') + '><i class="fas fa-trash"></i></button></td></tr>';
                     }).join('');
                     $('#arp-pause-rows').html(html);
@@ -570,8 +588,14 @@
                     $('#arp-pause-rows tr').each(function(i) {
                         const $r = $(this);
                         const mode = $r.find('.pz-mode').val() || 'number';
+                        const join = i === 0 ? 'AND' : ($r.find('.pz-join').val() || 'AND');
+                        // IF / OR rows read their Rules dropdown; AND rows share the Rules value of the row above.
+                        const rule = (i === 0 || join === 'OR')
+                            ? ($r.find('.pz-rule').val() || 'pause')
+                            : (conds[i - 1].rule || 'pause');
                         conds.push({
-                            join: i === 0 ? 'AND' : ($r.find('.pz-join').val() || 'AND'),
+                            join: join,
+                            rule: rule,
                             column: $r.find('.pz-col').val(),
                             op: $r.find('.pz-op').val(),
                             mode: mode,
@@ -587,7 +611,7 @@
                     if (pauseMatchRow(row)) return '1';
                     if (rowSold(row) <= 0 && rowEsBid(row) !== null) return '2'; // permanent: no eBay L30 sale -> ES Bid
                     const saved = savedBids[String(row.excel_category || '').trim()] || {};
-                    if (pickedBid(saved).value !== null) return '3';
+                    if (pickedBid(saved, row).value !== null) return '3';
                     return '4';
                 }
                 /** The grid's S BID (old Dil vs SBid rule) of a row, or null when it has none. */
@@ -613,9 +637,9 @@
                     const fmt = function(v) { return v === null || v === undefined ? 'not set' : v + '%'; };
                     out.data.push('Category: ' + (cat || 'none (no Category Masters category)'));
                     out.data.push((PMT_BY_PARENT ? 'Family INV: ' : 'INV: ') + rowInv(row));
-                    const pick = pickedBid(saved);
+                    const pick = pickedBid(saved, row);
                     const pickName = pick.use === 'lowest' ? 'Lowest' : 'Highest';
-                    out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)) + ' (Rules: ' + pickName + ')');
+                    out.data.push('Saved for the category: Highest ' + fmt(num(saved.highest)) + ', Lowest ' + fmt(num(saved.lowest)) + ' (conditions pick: ' + pickName + ')');
                     out.data.push('eBay L30 sold: ' + rowSold(row) + ', ES Bid: ' + (rowEsBid(row) !== null ? rowEsBid(row) + '%' : 'none'));
                     out.steps.push('Is INV above 0?  ' + (rowInv(row) > 0 ? 'Yes (INV ' + rowInv(row) + ')' : 'No -> bid 0, the ad is left as it is (eBay cannot pause a cost-per-sale ad)'));
                     const pausedByConds = rowInv(row) > 0 && pauseMatchRow(row);
@@ -983,7 +1007,6 @@
                     if (key === 'cbid') return numOf(cells.eq(3).text());
                     if (key === 'high') return numOf(cells.eq(4).find('input').val());
                     if (key === 'low') return numOf(cells.eq(5).find('input').val());
-                    if (key === 'use') return String(cells.eq(6).find('select').val() || '');
                     return null;
                 }
                 function applyArpSort() {
@@ -1042,16 +1065,11 @@
                         $tr.append($('<td>').append(
                             $('<input type="number" class="form-control form-control-sm ads-rule-pmt-input ads-rule-pmt-low" min="0" max="100" step="0.01" placeholder="e.g. 2">').val(lo)
                         ));
-                        $tr.append($('<td>').append(
-                            $('<select class="form-select form-select-sm ads-rule-pmt-use" title="Which value this category bid uses">'
-                                + '<option value="highest">Highest</option><option value="lowest">Lowest</option></select>')
-                                .val(saved.use === 'lowest' ? 'lowest' : 'highest')
-                        ));
                         paintYoursCell($tr, null, sbids); // S BID until the benchmarks load
                         $body.append($tr);
                     });
                     if (!rows.length) {
-                        $body.append('<tr><td colspan="7" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
+                        $body.append('<tr><td colspan="6" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
                     applyArpSort();
                     updateSummary();
@@ -1093,9 +1111,7 @@
                     const q = String($('#ads-rule-pmt-search').val() || '').toLowerCase();
                     const f = $('#ads-rule-pmt-filter').val() || '';
                     $('#ads-rule-pmt-body tr[data-category]').each(function() {
-                        // "has" = the value its Rules dropdown picks (Highest or Lowest) is filled
-                        const picked = $(this).find('.ads-rule-pmt-use').val() === 'lowest' ? '.ads-rule-pmt-low' : '.ads-rule-pmt-high';
-                        const hasHigh = $(this).find(picked).val() !== '';
+                        const hasHigh = $(this).find('.ads-rule-pmt-high').val() !== '';
                         const ok = String($(this).attr('data-category')).toLowerCase().indexOf(q) !== -1
                             && (f === '' || (f === 'has' ? hasHigh : !hasHigh));
                         $(this).toggle(ok);
@@ -1107,7 +1123,7 @@
                 $('#ads-rule-pmt-search').on('input', applyArpFilter);
                 // Not on every keystroke in Highest: a row would vanish while it is being typed. Re-checked on change (leaving the field).
                 $('#ads-rule-pmt-filter').on('change', applyArpFilter);
-                $('#ads-rule-pmt-body').on('change', '.ads-rule-pmt-high, .ads-rule-pmt-low, .ads-rule-pmt-use', applyArpFilter);
+                $('#ads-rule-pmt-body').on('change', '.ads-rule-pmt-high', applyArpFilter);
                 // Click rule 3 / 4 on the left to filter the categories (click again to clear)
                 $('#ads-rule-pmt-rules-body').on('click', '.arp-rule.is-click', function() {
                     const want = $(this).hasClass('is-3') ? 'has' : 'nomatch';
@@ -1132,7 +1148,13 @@
                     $('#arp-pause-chevron').toggleClass('fa-chevron-up fa-chevron-down');
                 });
                 // Any edit: re-read, repaint the rule counts live (nothing is saved until Save and Apply).
-                $('#arp-pause-rows').on('input change', 'select, input', function() { readPauseRows(); paintPauseState(); renderRuleCounts(); });
+                $('#arp-pause-rows').on('input change', 'select, input', function() {
+                    readPauseRows();
+                    // A new IF / OR row needs its own Rules dropdown (and an AND row loses it): redraw.
+                    if ($(this).hasClass('pz-join') || $(this).hasClass('pz-rule')) renderPauseRows();
+                    paintPauseState();
+                    renderRuleCounts();
+                });
                 $('#arp-pause-enabled').on('change', function() { readPauseRows(); paintPauseState(); renderRuleCounts(); });
                 $('#arp-pause-rows').on('change', '.pz-mode', function() {
                     const c = pauseRule.conditions[$(this).closest('tr').data('i')];
@@ -1148,7 +1170,7 @@
                 });
                 $('#arp-pause-add').on('click', function() {
                     readPauseRows();
-                    pauseRule.conditions.push({ join: 'AND', column: 'dil', op: '<', mode: 'number', value: '' });
+                    pauseRule.conditions.push({ join: 'AND', rule: 'pause', column: 'dil', op: '<', mode: 'number', value: '' });
                     renderPauseRows();
                 });
 
@@ -1189,7 +1211,6 @@
                         bids[$(this).attr('data-category')] = {
                             highest: $(this).find('.ads-rule-pmt-high').val(),
                             lowest: $(this).find('.ads-rule-pmt-low').val(),
-                            use: $(this).find('.ads-rule-pmt-use').val() === 'lowest' ? 'lowest' : 'highest',
                             manual: '' // the Manual rate is gone: the old value is cleared on save
                         };
                     });
