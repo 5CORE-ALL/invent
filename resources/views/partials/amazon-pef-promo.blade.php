@@ -1053,6 +1053,7 @@
                         <i class="fas fa-sliders-h me-1"></i> Dil vs Target NROI — Sprc Dil
                         <a href="{{ route('master.dil.rules') }}" class="btn btn-sm btn-outline-secondary ms-2" target="_blank" rel="noopener">Master</a>
                     </h5>
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'dil_switch', 'spriceRuleChannel' => 'amazon'])
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">

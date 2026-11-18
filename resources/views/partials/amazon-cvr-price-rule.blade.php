@@ -88,11 +88,6 @@
                         </div>
                     </div>
                     <div class="text-muted" style="font-size:12px;" id="amz-cvr-rule-note"></div>
-                    <div class="border-top pt-2 mt-2" id="amz-cvr-rule-switches">
-                        <div class="fw-semibold mb-1" style="font-size:13px;">S PRC rule ON / OFF</div>
-                        <div class="text-muted mb-1" style="font-size:12px;">Only the rule that is ON fills S PRC. Turning one ON turns the other OFF. The Sprc Dil and Std prc vs dil buttons stay in the toolbar.</div>
-                        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => 'amazon'])
-                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Cancel</button>

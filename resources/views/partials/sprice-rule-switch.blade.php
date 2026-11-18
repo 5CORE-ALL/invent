@@ -1,4 +1,4 @@
-{{-- ON/OFF for Sprc Dil vs Std prc vs dil. One rule fills S PRC. Parts: buttons, script. --}}
+{{-- ON/OFF for Sprc Dil vs Std prc vs dil. One rule fills S PRC. Parts: buttons (both switches together), dil_switch / std_switch (one switch each, to put inside that rule's own modal), script. --}}
 @php
     $spriceRuleSwitchPart = $spriceRuleSwitchPart ?? 'all';
     $spriceRuleChannel = $spriceRuleChannel ?? 'ebay1';
@@ -14,6 +14,22 @@
                             <input class="form-check-input" type="checkbox" id="sprice-rule-std-sw" checked>
                             <label class="form-check-label small" for="sprice-rule-std-sw">Std prc vs dil</label>
                         </div>
+                    </div>
+@endif
+
+@if($spriceRuleSwitchPart === 'dil_switch')
+                    {{-- Marker the page scripts look for (the switches sit in separate modals, there is no single wrapper). --}}
+                    <span id="sprice-rule-switch" data-channel="{{ $spriceRuleChannel }}" hidden></span>
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Sprc Dil rule ON / OFF. Only one rule fills S PRC, so turning this ON turns Std prc vs dil OFF, and turning it OFF turns Std prc vs dil ON. Cron uses the same choice.">
+                        <input class="form-check-input" type="checkbox" id="sprice-rule-dil-sw">
+                        <label class="form-check-label small fw-semibold" for="sprice-rule-dil-sw">Rule ON / OFF</label>
+                    </div>
+@endif
+
+@if($spriceRuleSwitchPart === 'std_switch')
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Std prc vs dil rule ON / OFF. Only one rule fills S PRC, so turning this ON turns Sprc Dil OFF, and turning it OFF turns Sprc Dil ON. Cron uses the same choice.">
+                        <input class="form-check-input" type="checkbox" id="sprice-rule-std-sw" checked>
+                        <label class="form-check-label small fw-semibold" for="sprice-rule-std-sw">Rule ON / OFF</label>
                     </div>
 @endif
 
@@ -161,7 +177,8 @@
             function spriceBindRuleSwitch() {
                 spricePaintRuleSwitch();
                 spriceSettleRule(spriceActiveRule());
-                $('#sprice-rule-switch').off('change.spricerule').on('change.spricerule', 'input', function() {
+                // Delegated on the document: the two switches may sit in different modals (Amazon) or in one wrapper (eBay etc.).
+                $(document).off('change.spricerule').on('change.spricerule', '#sprice-rule-dil-sw, #sprice-rule-std-sw', function() {
                     const picked = this.id === 'sprice-rule-dil-sw' ? 'dil' : 'std';
                     if (!this.checked) {
                         spriceSetActiveRule(picked === 'dil' ? 'std' : 'dil');
