@@ -9295,10 +9295,73 @@
                 counts._partial = !!rows._partial;
                 return counts;
             }
+            // Per slab: how many of its campaigns get a different daily budget once this draft is applied
+            // (new SBGT total, all rule parts included, vs the campaign's current BGT). Unlike the slab member count,
+            // this moves as soon as the slab amount is typed.
+            function amzBgtReviewsChangeCounts(bands) {
+                var rows = amzBgtCountRows();
+                if (!rows) return null;
+                var out = (bands || []).map(function () { return 0; });
+                rows.forEach(function (row) {
+                    var idx = amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
+                    if (idx < 0) return;
+                    var parts;
+                    try { parts = amzBgtDraftParts(row); } catch (e) { return; }
+                    var total = amzBgtFloorSum(Object.keys(parts).map(function (k) { return parts[k]; }));
+                    if (total === null) total = 0;
+                    var bgt = parseFloat(row.bgt);
+                    var changes = total <= 0 ? true : (!isFinite(bgt) || Math.round(bgt) !== total);
+                    if (changes) out[idx]++;
+                });
+                out._partial = !!rows._partial;
+                return out;
+            }
+            function amzBgtWriteChangeCounts(tbodyId, changes) {
+                var tbody = document.getElementById(tbodyId);
+                if (!tbody || !changes) return;
+                var partialNote = changes._partial ? ' (this page only, full count updating…)' : '';
+                var fmt = function (n) { return Number(n).toLocaleString('en-US'); };
+                // Writes "<rows that update>" as the cell number and "of <rows in the slab>" under it.
+                var paint = function (td, n, inSlab, what) {
+                    td.textContent = fmt(n);
+                    var sub = document.createElement('div');
+                    sub.className = 'amz-bgt-apply fw-normal';
+                    sub.style.cssText = 'font-size:11px;line-height:1.1;color:#64748b;';
+                    sub.textContent = 'of ' + fmt(inSlab);
+                    td.appendChild(sub);
+                    td.title = fmt(n) + ' of ' + fmt(inSlab) + ' campaign(s) ' + what + ' get a different daily budget with these values' + partialNote;
+                };
+                var trs = tbody.querySelectorAll('tr');
+                var sumChange = 0;
+                var sumSlab = 0;
+                for (var i = 0; i < trs.length; i++) {
+                    var td = trs[i].querySelector('td.amz-bgt-cnt');
+                    if (!td) continue;
+                    // The slab size is what amzBgtWriteBandCounts just wrote (first text node, before any sub-line).
+                    var first = td.firstChild;
+                    var inSlab = parseInt(String(first && first.nodeType === 3 ? first.textContent : td.textContent).replace(/[^0-9]/g, ''), 10);
+                    if (!isFinite(inSlab)) inSlab = 0;
+                    var n = changes[i] != null ? changes[i] : 0;
+                    sumChange += n;
+                    sumSlab += inSlab;
+                    paint(td, n, inSlab, 'in this slab');
+                    td.style.color = n > 0 ? '#b45309' : '';
+                }
+                var table = tbody.closest('table');
+                var sumTd = table ? table.querySelector('tfoot.amz-bgt-cnt-foot td.amz-bgt-cnt-sum') : null;
+                if (sumTd) paint(sumTd, sumChange, sumSlab, 'in these slabs');
+                var panel = tbody.closest('.amz-bgt-col');
+                var badge = panel ? panel.querySelector('.amz-bgt-count-badge:not(.is-nomatch)') : null;
+                if (badge) {
+                    badge.textContent = fmt(sumChange);
+                    badge.title = fmt(sumChange) + ' of ' + fmt(sumSlab) + ' campaign(s) get a different daily budget with these values' + partialNote;
+                }
+            }
             function amzBgtReviewsRefreshCounts() {
                 var counts = amzBgtReviewsCounts(amzBgtReviewsBands);
                 amzBgtRefreshCountCells('amazonAdsBgtReviewsRuleBandsBody', counts);
                 amzBgtPaintColumn('reviews', amzBgtReviewsBands, counts);
+                amzBgtWriteChangeCounts('amazonAdsBgtReviewsRuleBandsBody', amzBgtReviewsChangeCounts(amzBgtReviewsBands));
             }
             function amzBgtReviewsNewBand() {
                 var next = amzBgtNextAddedSlab(amzBgtReviewsBands, 'rev_from', 'rev_to', 'bgt');
