@@ -738,7 +738,7 @@ class AmazonFbmTargetingController extends Controller
      */
     public function campaignsGroupedByParent(): array
     {
-        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v8', now()->addMinutes(5), function () {
+        return Cache::remember('amz_kw_targeting_campaigns_by_parent_v9', now()->addMinutes(5), function () {
             // Base = the Ads All report rows (summary rows L1 / L7 / L15 / L30; L30 status first).
             $status = $this->summaryStatusMap();
             // Live Amazon states (refreshed in the background) fix statuses the reports have gone stale on and add
@@ -815,6 +815,8 @@ class AmazonFbmTargetingController extends Controller
                 ];
             }
 
+            $list = $this->onlyActiveCpMaster($list);
+
             usort($list, static function (array $a, array $b) {
                 if (($a['parent'] === '') !== ($b['parent'] === '')) {
                     return $a['parent'] === '' ? 1 : -1;
@@ -826,6 +828,33 @@ class AmazonFbmTargetingController extends Controller
 
             return $list;
         });
+    }
+
+    /**
+     * Parents and SKUs on this page come only from CP master (product_master) rows that are active (not archived and
+     * Values.status = active). A campaign whose SKU / parent family is not an active CP master row is left out.
+     * If the CP master lookup fails or finds no active rows at all, the list is returned unchanged rather than blanked.
+     *
+     * @param  list<array<string, mixed>>  $campaigns
+     * @return list<array<string, mixed>>
+     */
+    protected function onlyActiveCpMaster(array $campaigns): array
+    {
+        try {
+            $index = Cache::remember('amz_kw_targeting_active_cp_index_v1', now()->addMinutes(5), static fn () => AmazonAdsCampaignSkuMetrics::activeCpMasterIndex());
+        } catch (\Throwable $e) {
+            Log::warning('AmazonFbmTargetingController: active CP master lookup failed', ['error' => $e->getMessage()]);
+
+            return $campaigns;
+        }
+        if (($index['skuSpace'] ?? []) === [] && ($index['families'] ?? []) === []) {
+            return $campaigns;
+        }
+
+        return array_values(array_filter(
+            $campaigns,
+            static fn (array $c) => AmazonAdsCampaignSkuMetrics::campaignInActiveCpMaster((string) ($c['campaign_name'] ?? ''), $index)
+        ));
     }
 
     /**
@@ -932,6 +961,9 @@ class AmazonFbmTargetingController extends Controller
                 $merged[] = $c;
             }
         }
+
+        // Parents / SKUs come only from active CP master rows (SB, PT and renamed campaigns too).
+        $merged = $this->onlyActiveCpMaster($merged);
 
         // Same order as campaignsGroupedByParent(): parents A-Z (unknown parent last), then campaign name.
         usort($merged, static function (array $a, array $b) {
@@ -1323,7 +1355,7 @@ class AmazonFbmTargetingController extends Controller
                 }
             }
             Cache::put(self::LIVE_CAMPAIGNS, $live, now()->addHours(12));
-            Cache::forget('amz_kw_targeting_campaigns_by_parent_v8');
+            Cache::forget('amz_kw_targeting_campaigns_by_parent_v9');
         } catch (\Throwable $e) {
             Log::warning('AmazonFbmTargetingController: could not patch live campaign states', ['error' => $e->getMessage()]);
         }
@@ -1390,7 +1422,7 @@ class AmazonFbmTargetingController extends Controller
         Cache::put(self::LIVE_CAMPAIGNS, [
             'at' => time(), 'byName' => $byName, 'byId' => $byId, 'sbById' => $sbById, 'sbByName' => $sbByName,
         ], now()->addHours(12));
-        Cache::forget('amz_kw_targeting_campaigns_by_parent_v8');
+        Cache::forget('amz_kw_targeting_campaigns_by_parent_v9');
         $this->forgetBadges();
 
         return count($campaigns);

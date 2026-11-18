@@ -1123,6 +1123,93 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * Lookup sets of the ACTIVE CP master (product_master) rows: not archived and Values.status = active (the same
+     * status query CP master / Channel Master use). Keys are sets (key => true).
+     *
+     * @return array{skuSpace: array<string, true>, skuCompact: array<string, true>, families: array<string, true>}
+     */
+    public static function activeCpMasterIndex(): array
+    {
+        $empty = ['skuSpace' => [], 'skuCompact' => [], 'families' => []];
+        if (! SchemaMemo::hasTable('product_master')) {
+            return $empty;
+        }
+
+        $skuSpace = [];
+        $skuCompact = [];
+        $families = [];
+        ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(`Values`, "$.status"))) = ?', ['active'])
+            ->select(['id', 'sku', 'parent'])
+            ->chunkById(2000, function ($rows) use (&$skuSpace, &$skuCompact, &$families) {
+                foreach ($rows as $pm) {
+                    $sku = trim((string) ($pm->sku ?? ''));
+                    if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+                        continue; // PARENT rows are not SKUs; a parent counts as active through its active child SKUs
+                    }
+                    $space = AmazonDatasheet::normalizeSkuSpaces($sku);
+                    $compact = AmazonDatasheet::normalizeSkuForLookup($sku);
+                    if ($space !== '') {
+                        $skuSpace[$space] = true;
+                    }
+                    if ($compact !== '') {
+                        $skuCompact[$compact] = true;
+                    }
+
+                    $parent = trim((string) ($pm->parent ?? ''));
+                    if ($parent === '') {
+                        continue;
+                    }
+                    $token = self::compactFamilyToken($parent);
+                    if ($token === '') {
+                        continue;
+                    }
+                    $families[$token] = true;
+                    // Campaign names carry a type suffix ("PARENT SS HD 2 PK HEAD" -> family "SS HD 2 PK").
+                    foreach (self::COMPACT_SUFFIXES as $suf) {
+                        if (str_ends_with($token, $suf) && strlen($token) > strlen($suf)) {
+                            $families[substr($token, 0, -strlen($suf))] = true;
+                        }
+                    }
+                }
+            });
+
+        return ['skuSpace' => $skuSpace, 'skuCompact' => $skuCompact, 'families' => $families];
+    }
+
+    /**
+     * True when the campaign's SKU (single-SKU campaign) or parent family (PARENT … campaign) is an active CP master row.
+     *
+     * @param  array{skuSpace: array<string, true>, skuCompact: array<string, true>, families: array<string, true>}  $index
+     */
+    public static function campaignInActiveCpMaster(?string $campaignName, array $index): bool
+    {
+        $key = self::skuKeyFromCampaignName($campaignName);
+        if ($key === '') {
+            return false;
+        }
+        if (self::campaignKeyIsParent($key)) {
+            $token = self::compactFamilyToken(self::familyRestFromParentKey($key));
+            if ($token === '') {
+                return false;
+            }
+            if (isset($index['families'][$token])) {
+                return true;
+            }
+            // Name kept whole (suffix part of the family name): "PARENT SS HD 2 PK HEAD".
+            $whole = self::parentCampaignKey((string) $campaignName);
+
+            return $whole !== '' && isset($index['families'][self::compactFamilyToken(self::familyRestFromParentKey($whole))]);
+        }
+
+        return isset($index['skuSpace'][AmazonDatasheet::normalizeSkuSpaces($key)])
+            || isset($index['skuCompact'][AmazonDatasheet::normalizeSkuForLookup($key)]);
+    }
+
+    /**
      * Aggregated Dil% for each PARENT family, from PARENT … campaign metrics.
      *
      * @param  array<string, array<string, mixed>>  $metricsByName
