@@ -3335,7 +3335,7 @@ class OverallAmazonController extends Controller
      *
      * @return array{enabled: bool, down: float|null, same: float|null, up: float|null, lower_cap: bool, min_npft: float|null, min_nroi: float|null, down_band: float, up_band: float}
      */
-    private static function amazonNormalizeCvrPriceRule(mixed $raw): array
+    public static function amazonNormalizeCvrPriceRule(mixed $raw): array
     {
         $raw = is_array($raw) ? $raw : [];
         $num = static function ($v, float $lo, float $hi): ?float {

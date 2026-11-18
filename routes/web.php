@@ -5441,6 +5441,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
+    Route::get('/ebay-cvr-price-rule', [EbayController::class, 'ebayCvrPriceRuleGet'])->name('ebay.cvr-price-rule');
+    Route::post('/ebay-cvr-price-rule', [EbayController::class, 'ebayCvrPriceRuleSave'])->name('ebay.cvr-price-rule.save');
     Route::get('/ebay-campaign-data-by-sku', [EbayController::class, 'getCampaignDataBySku'])->name('ebay.campaign.data.by.sku');
     Route::get('/ebay2-campaign-data-by-sku', [EbayTwoController::class, 'getCampaignDataBySku'])->name('ebay2.campaign.data.by.sku');
     Route::get('/ebay3-campaign-data-by-sku', [EbayThreeController::class, 'getCampaignDataBySku'])->name('ebay3.campaign.data.by.sku');

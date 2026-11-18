@@ -785,6 +785,7 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil / Prmt% (markdown sale) — CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay1'])
+                    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'buttons'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay1'])
 @include('market-places.partials.ebay-pmt-multibuy', ['pmtPart' => 'buttons', 'pmtAccount' => 'ebay1'])
 
@@ -1340,6 +1341,7 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay1'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay1'])
+    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'modals'])
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
     @include('partials.price-lt80-lmp-badge-script')
@@ -1419,6 +1421,7 @@
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay1'])
+        @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'script'])
         /**
          * Net ROI — same shape as Amazon NROI / SNROI badge:
          *   (gross profit $ − ad spend $) / COGS × 100
@@ -5001,6 +5004,29 @@
                         },
                     },
                     {
+                        title: "CVR Δ",
+                        field: "CVR_VS_LTO",
+                        hozAlign: "center",
+                        width: 60,
+                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const t = (typeof ebayCvrRuleTrendValue === 'function') ? ebayCvrRuleTrendValue(row, null) : null;
+                            if (t === null) return '<span class="text-muted">—</span>';
+                            const lto = parseFloat(row.LT_O_CVR);
+                            const tip = 'CVR ' + (parseFloat(row.SCVR) || 0).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
+                            const pcts = ebayCvrRuleBandPcts(null);
+                            if (t > 0) return '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            if (t < 0) return '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                            return '<span title="' + tip + ' · within the CVR targets">--</span>';
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const x = ebayCvrRuleTrendValue(aRow.getData(), null);
+                            const y = ebayCvrRuleTrendValue(bRow.getData(), null);
+                            return (x === null ? -2 : x) - (y === null ? -2 : y);
+                        },
+                    },
+                    {
                         title: "NRL",
                         field: "NRL",
                         hozAlign: "center",
@@ -5775,8 +5801,11 @@
                                 : '';
                             const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
 
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
-                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
+                            // CVR Price Rule (ON): the suggested new price beside S PRC. Display only, never saved or pushed.
+                            let cvrSuggest = '';
+                            try { cvrSuggest = (typeof ebayCvrRuleSuggestHtml === 'function') ? ebayCvrRuleSuggestHtml(rowData) : ''; } catch (e) { cvrSuggest = ''; }
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap;">'
+                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + cvrSuggest + '</span>';
                         },
                         width: 118
                     },
@@ -7266,6 +7295,7 @@
                 'Live': 'Live',
                 'SCVR': 'CVR 30',
                 'LT_O_CVR': 'LT O CVR',
+                'CVR_VS_LTO': 'CVR Δ',
                 'CVR_45': 'CVR 45',
                 'CVR_60': 'CVR 60',
                 'cvr_up_dn': 'CVR Up/Dn',

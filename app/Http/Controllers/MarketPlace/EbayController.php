@@ -524,6 +524,39 @@ class EbayController extends Controller
         return view("market-places.ebay_pricing_data");
     }
 
+    /**
+     * eBay 1 CVR Price Rule (same rule as Amazon): a price change % for SKUs whose CVR 30 is down, within target of, or
+     * up vs LT O CVR, plus a Lower cap. When enabled the S PRC column shows the suggested price next to its own value
+     * (display only: nothing is saved or pushed from it).
+     */
+    public static function ebayCvrPriceRuleConfig(): array
+    {
+        try {
+            $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', 'ebay1_cvr_price_rule')->first();
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+
+        return OverallAmazonController::amazonNormalizeCvrPriceRule($row?->visibility);
+    }
+
+    public function ebayCvrPriceRuleGet()
+    {
+        return response()->json(['success' => true] + self::ebayCvrPriceRuleConfig());
+    }
+
+    public function ebayCvrPriceRuleSave(Request $request)
+    {
+        $keys = ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band'];
+        $payload = OverallAmazonController::amazonNormalizeCvrPriceRule($request->only($keys));
+        \App\Models\ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'ebay1_cvr_price_rule'],
+            ['visibility' => $payload, 'column_order' => $keys]
+        );
+
+        return response()->json(['success' => true] + $payload);
+    }
+
     public function ebayDataJson(Request $request)
     {
         // Read-only pages (Volume Pricing) pass ?cache=1 and accept data up to 2 minutes old,
