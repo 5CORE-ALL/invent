@@ -484,7 +484,10 @@
                         title="{{ $ebaySprcDilBtnTitle }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => in_array($ebaySprcDilChannel, ['ebay1'], true)])
+                    {{-- eBay 1: each rule has its own ON / OFF switch inside its modal (no switches in the toolbar). --}}
+                    @unless(in_array($ebaySprcDilChannel, ['ebay1'], true))
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => false])
+                    @endunless
 @endif
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
@@ -500,6 +503,9 @@
                             onclick="document.getElementById('ebayDilGroiModal').classList.toggle('ebay-dg-hide-rules')"><i class="fas fa-list-ul me-1"></i> Rules</button>
                         @endif
                     </h5>
+                    @if(in_array($ebaySprcDilChannel, ['ebay1'], true))
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'dil_switch', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => true])
+                    @endif
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body py-2">
