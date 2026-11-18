@@ -127,7 +127,7 @@ class PricingMasterExtraChannels
             'wayfair_sprice' => self::jsonSpriceMap(WayfairDataView::class, 'wayfair_data_view', 'SPRICE'),
             'temu3' => self::temu3BySku(),
             'temu_margin' => TemuShopifySalesService::temuMarginDecimal(),
-            'alibaba_margin' => MarketplacePercentage::takeHomeDecimal('Alibaba'),
+            'alibaba_margin' => MarketplacePercentage::takeHomeDecimalOrDefault(0.95, 'Alibaba'),
             'alibaba_price' => self::alibabaPrices(),
             'alibaba_l30' => self::alibabaL30(),
             'mercari_w_margin' => self::percentFactor('MercariWShip'),

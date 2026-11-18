@@ -17701,10 +17701,14 @@ class ChannelMasterController extends Controller
         
         $channel->save();
 
-        MarketplacePercentage::updateOrCreate(
-            ['marketplace' => $updatedChannel],
-            ['percentage' => number_format((float)$channelPercentage, 2, '.', '')]
-        );
+        // A blank / 0 Channel % must not overwrite the marketplace take-home %: it would zero the
+        // margin on pages like /alibaba-analytics (profit = price x 0 - LP) every time a channel is saved.
+        if (is_numeric($channelPercentage) && (float) $channelPercentage > 0) {
+            MarketplacePercentage::updateOrCreate(
+                ['marketplace' => $updatedChannel],
+                ['percentage' => number_format((float)$channelPercentage, 2, '.', '')]
+            );
+        }
 
         // The page renders out of channel_master_calculated_data (see
         // getViewChannelDataFast). That table is only rebuilt by the hourly

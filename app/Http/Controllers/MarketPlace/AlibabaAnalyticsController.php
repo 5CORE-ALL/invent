@@ -27,7 +27,7 @@ class AlibabaAnalyticsController extends Controller
 
     public function index(): View
     {
-        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+        $margin = MarketplacePercentage::takeHomeDecimalOrDefault(0.95, 'Alibaba');
 
         return view('market-places.alibaba_analytics', [
             'marginPercent' => round($margin * 100, 2),
@@ -105,7 +105,7 @@ class AlibabaAnalyticsController extends Controller
         }
         $lookupSkus = array_values(array_unique(array_merge($skus, $pmSkus, $allPmSkus)));
         $shopifyData = $lookupSkus === [] ? collect() : ShopifySku::mapByProductSkus($lookupSkus);
-        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+        $margin = MarketplacePercentage::takeHomeDecimalOrDefault(0.95, 'Alibaba');
         $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
         $spriceBySku = $this->spriceBySku();
         $pushMetaBySku = $this->pushMetaBySku();

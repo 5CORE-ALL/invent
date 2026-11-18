@@ -40,6 +40,30 @@ class MarketplacePercentage extends Model
     }
 
     /**
+     * Like takeHomeDecimal(), but a missing row or a 0 / blank percentage falls back to $default (0-1).
+     * A 0 take-home is never valid: it makes every profit (price x 0) - LP = -LP.
+     */
+    public static function takeHomeDecimalOrDefault(float $default, string ...$marketplaces): float
+    {
+        foreach ($marketplaces as $name) {
+            $name = trim($name);
+            if ($name === '') {
+                continue;
+            }
+            $row = static::query()->where('marketplace', $name)->first();
+            if ($row === null) {
+                continue;
+            }
+            $pct = (float) $row->percentage;
+            if ($pct > 0) {
+                return $pct > 1 ? $pct / 100 : $pct;
+            }
+        }
+
+        return $default;
+    }
+
+    /**
      * marketplace_percentages.marketplace names for a channel-pef-promo key.
      *
      * @return list<string>

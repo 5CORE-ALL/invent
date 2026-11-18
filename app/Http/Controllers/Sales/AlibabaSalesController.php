@@ -127,7 +127,7 @@ class AlibabaSalesController extends Controller
             return $this->catalogSku($row, $metricSkus, $sheetSkus);
         })->filter()->unique()->values()->all();
         $productMasters = ProductMaster::whereIn('sku', $resolvedSkus)->get()->keyBy('sku');
-        $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+        $margin = MarketplacePercentage::takeHomeDecimalOrDefault(0.95, 'Alibaba');
         [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $orderTotals = [];
