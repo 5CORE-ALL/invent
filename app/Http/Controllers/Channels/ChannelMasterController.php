@@ -5119,6 +5119,7 @@ class ChannelMasterController extends Controller
         // Google Shopping spend over order totals, so it must not drive the net figures.
         $rolledSpend = 0.0;
         $rolledTcos = 0.0;
+        $rollup = null;
         try {
             $rollup = app(ShopifyAdsMasterController::class)->getRolledUpSpend();
             $rolledSpend = (float) ($rollup['total_spend'] ?? 0);
@@ -5164,6 +5165,18 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = round($adsPct, 1).'%';
             $row['N PFT'] = round($gpftExact - $adsPct, 1).'%';
             $row['N ROI'] = $cogs > 0 ? round((($pft - $adSpend) / $cogs) * 100, 1) : 0.0;
+
+            // Ad badges (Clicks / Sold / Ads Sales / CVR / ACOS / Active) = the same rolled-up
+            // totals the /shopify-ads-master badges show (Google + YouTube + TikTok + Meta).
+            if ($rollup !== null) {
+                $row['clicks'] = (int) ($rollup['clicks'] ?? 0);
+                $row['Clicks'] = $row['clicks'];
+                $row['ad_sold'] = (int) ($rollup['sold'] ?? 0);
+                $row['Ad Sold'] = $row['ad_sold'];
+                $row['Ad Sales'] = (float) ($rollup['ad_sales'] ?? 0);
+                $row['Ads CVR'] = (float) ($rollup['cvr_pct'] ?? 0);
+                $row['ACOS'] = (float) ($rollup['acos_pct'] ?? 0);
+            }
         }
         unset($row);
 

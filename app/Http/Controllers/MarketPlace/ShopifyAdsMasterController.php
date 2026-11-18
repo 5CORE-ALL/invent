@@ -111,12 +111,20 @@ class ShopifyAdsMasterController extends Controller
         }
 
         $totalSpend = 0.0;
+        $totalClicks = 0.0;
+        $totalSold = 0.0;
+        $totalAdSales = 0.0;
+        $totalActive = 0;
         $breakdown  = [];
         foreach ($rows as $r) {
             // metricRow() keys the channel name as 'channel' — not 'label'.
             $label = (string) ($r['channel'] ?? 'unknown');
             $spend = (float)  ($r['spend']   ?? 0);
             $totalSpend += $spend;
+            $totalClicks += (float) ($r['clicks'] ?? 0);
+            $totalSold += (float) ($r['sold'] ?? 0);
+            $totalAdSales += (float) ($r['sales'] ?? 0);
+            $totalActive += (int) ($r['active'] ?? 0);
             $breakdown[$label] = round($spend, 2);
         }
 
@@ -131,10 +139,22 @@ class ShopifyAdsMasterController extends Controller
             ? round(($totalSpend / $netSales) * 100, 2)
             : ($totalSpend > 0 ? 100.0 : 0.0);
 
+        // Same formulas as updateBadges() in the blade.
+        $cvr  = $totalClicks > 0 ? ($totalSold / $totalClicks) * 100 : 0.0;
+        $acos = $totalAdSales > 0
+            ? ($totalSpend / $totalAdSales) * 100
+            : ($totalSpend > 0 ? 100.0 : 0.0);
+
         return [
             'total_spend' => round($totalSpend, 2),
             'net_sales'   => round($netSales, 2),
             'tcos_pct'    => $tcos,
+            'clicks'      => (int) round($totalClicks),
+            'sold'        => (int) round($totalSold),
+            'ad_sales'    => round($totalAdSales, 2),
+            'active'      => $totalActive,
+            'cvr_pct'     => round($cvr, 2),
+            'acos_pct'    => round($acos, 2),
             'breakdown'   => $breakdown,
         ];
     }
@@ -547,12 +567,31 @@ class ShopifyAdsMasterController extends Controller
      * mirroring the /shopify page's Net Sales card: shopify_raw_orders with
      * the marketplace exclusions and the "XYZ" SKU filter applied.
      */
+    private ?float $cachedShopifyNetSales = null;
+
     private function shopifyNetSales(): float
     {
+        if ($this->cachedShopifyNetSales !== null) {
+            return $this->cachedShopifyNetSales;
+        }
+
+        // Primary source = the Shopify B2C row's L30 Sales on the Active Channel page
+        // (/all-marketplace-master), so TCOS here and Ads% there use the same sales and
+        // always agree.
+        try {
+            $live = \App\Http\Controllers\Sales\ShopifyB2CSalesController::dailySalesBadgeTotals('l30', false);
+            $sales = (float) ($live['l30'] ?? 0);
+            if ($sales > 0) {
+                return $this->cachedShopifyNetSales = round($sales, 2);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Shopify B2C L30 sales lookup failed, falling back to /shopify net sales: ' . $e->getMessage());
+        }
+
         try {
             [$dateFrom, $dateTo] = \App\Http\Controllers\ShopifyRawDataController::shopifyDirectL30Range();
 
-            return app(\App\Http\Controllers\ShopifyRawDataController::class)
+            return $this->cachedShopifyNetSales = app(\App\Http\Controllers\ShopifyRawDataController::class)
                 ->sumDirectNetSales($dateFrom, $dateTo);
         } catch (\Throwable $e) {
             \Log::warning('Shopify net sales lookup failed: ' . $e->getMessage());
