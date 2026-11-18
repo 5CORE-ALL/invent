@@ -36,8 +36,11 @@
         /* Today / Yesterday / L30 / Projected panels — same look as /all-marketplace-master. */
         #sam-panels {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            /* L30 has 4 badges per row, so it gets a wider column than the other panels. */
+            grid-template-columns: 1fr 1fr 1.7fr 1fr;
             gap: 0.5rem;
+            /* Panels shown at 0.7x size (badges + text); layout still spans the full width. */
+            zoom: 0.7;
         }
         @media (max-width: 1200px) { #sam-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         @media (max-width: 640px)  { #sam-panels { grid-template-columns: minmax(0, 1fr); } }
