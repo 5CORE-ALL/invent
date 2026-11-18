@@ -2348,7 +2348,7 @@
             // Server-owned channels (AliExpress): a cron saves + pushes S PRC. The page never writes it on open.
             if (window.CH_STD_SERVER_OWNED === true) return false;
             if (document.getElementById('sprice-rule-switch')) {
-                return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil';
+                return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'std';
             }
             return true;
         }

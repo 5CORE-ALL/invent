@@ -41,6 +41,11 @@ class EbayRuleSpriceCommand extends Command
         $skipped = 0;
         $pageAds = EbayRuleSprice::pageAdsPercent($channel);
         $ruleContext = EbayRuleSprice::context($channel);
+        if ($ruleContext['rule'] === 'none') {
+            $this->info($channel.': both S PRC rules are OFF — nothing to do.');
+
+            return self::SUCCESS;
+        }
         foreach ($this->tabulatorRows($channel) as $row) {
             $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
             if ($input === null) {

@@ -6,7 +6,7 @@
 @endphp
 
 @if($spriceRuleSwitchPart === 'buttons' || $spriceRuleSwitchPart === 'all')
-                    <div class="d-inline-flex align-items-center gap-3 ms-1" id="sprice-rule-switch" data-channel="{{ $spriceRuleChannel }}" title="Only the ON rule fills S PRC. Turning one ON turns the other OFF. Cron uses the same choice.">
+                    <div class="d-inline-flex align-items-center gap-3 ms-1" id="sprice-rule-switch" data-channel="{{ $spriceRuleChannel }}" title="{{ $spriceRuleIndependent ? 'Each rule is ON / OFF on its own. Sprc Dil ON fills S PRC from Sprc Dil, else Std prc vs dil ON fills it from Std prc vs dil. Both OFF: S PRC is not changed. Cron uses the same choice.' : 'Only the ON rule fills S PRC. Turning one ON turns the other OFF. Cron uses the same choice.' }}">
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" id="sprice-rule-dil-sw">
                             <label class="form-check-label small" for="sprice-rule-dil-sw">Sprc Dil</label>

@@ -287,8 +287,8 @@ class ChannelPromoPricingController extends Controller
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
-        if ($channel === 'amazon' && $request->has('dil') && $request->has('std')) {
-            // Amazon: Sprc Dil and Std prc vs dil are ON / OFF on their own (both may be OFF).
+        if (in_array($channel, ['amazon', 'ebay1'], true) && $request->has('dil') && $request->has('std')) {
+            // Amazon / eBay 1: Sprc Dil and Std prc vs dil are ON / OFF on their own (both may be OFF).
             $rule = \App\Support\SpriceActiveRule::saveState(
                 $channel,
                 $request->boolean('dil'),

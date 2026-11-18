@@ -200,7 +200,12 @@ class EbayRuleSprice
         $clearanceNroi = is_numeric($unpacked['clearance_nroi'] ?? null) ? max(0.0, (float) $unpacked['clearance_nroi']) : 0.0;
         // CVR up / down discount rule (Sprc Dil modal). Applies in both modes, after the LMP cap and the Std Prc maximum.
         $lmpCvr = in_array($channel, self::CHANNELS, true) ? AmazonLmpCvrDiscRule::config($channel) : null;
-        if (SpriceActiveRule::forChannel($channel) !== 'dil') {
+        $activeRule = SpriceActiveRule::forChannel($channel);
+        if ($activeRule === 'none') {
+            // Both switches OFF (eBay 1): nothing prices S PRC. Callers leave the saved S PRC alone.
+            return ['rule' => 'none', 'dil' => null, 'clearance_nroi' => $clearanceNroi, 'lmp_cvr' => $lmpCvr];
+        }
+        if ($activeRule !== 'dil') {
             return ['rule' => 'std', 'dil' => null, 'clearance_nroi' => $clearanceNroi, 'lmp_cvr' => $lmpCvr];
         }
         $rules = $unpacked['rules'] === []

@@ -484,7 +484,7 @@
                         title="{{ $ebaySprcDilBtnTitle }}">
                         <i class="fas fa-sliders-h"></i> Sprc Dil
                     </button>
-                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel])
+                    @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'buttons', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => in_array($ebaySprcDilChannel, ['ebay1'], true)])
 @endif
 
 @if($ebaySprcDilPart === 'modals' || $ebaySprcDilPart === 'all')
@@ -989,7 +989,7 @@
 @endif
 
 @if($ebaySprcDilPart === 'script' || $ebaySprcDilPart === 'all')
-        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel])
+        @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'script', 'spriceRuleChannel' => $ebaySprcDilChannel, 'spriceRuleIndependent' => in_array($ebaySprcDilChannel, ['ebay1'], true)])
         const EBAY_DIL_GROI_CHANNEL = @json($ebaySprcDilChannel);
         const EBAY_DIL_MODEL = @json($ebaySprcDilModel);
         const EBAY_DIL_GROI_ZERO_SOLD_MIN = @json($ebaySprcDilZeroSoldUsesMinGroi);

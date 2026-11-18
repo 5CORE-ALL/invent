@@ -1576,6 +1576,8 @@
         function ebay1LiveRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
             try {
+                // Both Sprc Dil and Std prc vs dil switched OFF: no rule price, the saved S PRC stays as it is.
+                if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
                     return (typeof window.ebayClearancePriceForRow === 'function') ? (Number(window.ebayClearancePriceForRow(rowData)) || 0) : 0;
@@ -2870,6 +2872,15 @@
                         'This SKU is on the Inv days clearance list (YES). Only the Clearance Target NROI% (last row of the Sprc Dil modal) applies'
                         + (nroi != null ? ' = <b>' + nroi + '%</b>' : '') + ': (LP ' + ebayRuleMoney(lp) + ' × (1 + NROI) + Ship ' + ebayRuleMoney(ship)
                         + ') ÷ (take-home ' + (margin * 100).toFixed(0) + '% − Ads ' + ads.toFixed(1) + '%) = <b>' + ebayRuleMoney(cp) + '</b>. No slab, Diff, LMP or Std Prc rule is applied.')],
+                    notes: [], finalNote: ''
+                };
+            }
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                const savedNone = (typeof ebayDisplayedSprice === 'function') ? ebayDisplayedSprice(d) : (parseFloat(d.SPRICE) || 0);
+                return {
+                    title: 'S PRC ' + ebayRuleMoney(savedNone),
+                    sub: (d['(Child) sku'] || '') + ' · both rules OFF',
+                    steps: [ebayRuleStep('skip', 'Rules OFF', 'Sprc Dil and Std prc vs dil are both OFF. S PRC is not changed: the saved value stays.')],
                     notes: [], finalNote: ''
                 };
             }
