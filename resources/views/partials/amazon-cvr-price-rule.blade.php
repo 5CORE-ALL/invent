@@ -16,7 +16,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amzCvrRuleModalLabel"><i class="fas fa-chart-line me-1"></i> CVR Price Rule</h5>
-                        <div class="text-muted" style="font-size:12px;">CVR L30 is compared with LT O CVR (the CVR Δ column). Set the targets, then the price change % for each case: a positive % raises the price, a negative % lowers it.</div>
+                        <div class="text-muted" style="font-size:12px;">CVR L30 is compared with LT O CVR (the CVR Δ column). Set the targets, then the price change % for each case: CVR Down always lowers the price and CVR Up always raises it, whatever sign you type (type 5 or -5, the price still goes down for CVR Down). For CVR within target a positive % raises the price and a negative % lowers it.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -193,12 +193,20 @@
          * a SKU already under the cap price is left where it is (the cap never raises a price).
          * Returns { price, capped } or null when the row has no price or no LT O CVR.
          */
+        /** The % with its direction fixed by the case: Down always cuts, Up always raises, within target keeps the typed sign. */
+        function amzCvrRuleSignedPct(c, raw) {
+            const p = parseFloat(raw);
+            if (!isFinite(p)) return NaN;
+            if (c === 'down') return -Math.abs(p);
+            if (c === 'up') return Math.abs(p);
+            return p;
+        }
         function amzCvrRulePriceFor(row, cfg) {
             cfg = cfg || amzCvrRule || {};
             const c = amzCvrRuleCaseFor(row, cfg);
             const price = parseFloat(row && row.price);
             if (!c || !(price > 0)) return null;
-            const pct = parseFloat(cfg[c]);
+            const pct = amzCvrRuleSignedPct(c, cfg[c]);
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
             let next = price * (1 + pct / 100);
             let capped = false;
@@ -229,7 +237,7 @@
             if (!amzCvrRule || !amzCvrRule.enabled || !row || row.is_parent_summary) return 0;
             const c = amzCvrRuleCaseFor(row, amzCvrRule);
             if (!c) return 0;
-            const pct = parseFloat(amzCvrRule[c]);
+            const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
             if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return 0;
             const res = amzCvrRulePriceFor(row, amzCvrRule);
             const price = parseFloat(row.price);
@@ -240,7 +248,7 @@
         function amzCvrRuleSuggestHtml(row) {
             if (!amzCvrRuleSuggestedPrice(row)) return '';
             const c = amzCvrRuleCaseFor(row, amzCvrRule);
-            const pct = parseFloat(amzCvrRule[c]);
+            const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
             const res = amzCvrRulePriceFor(row, amzCvrRule);
             const price = parseFloat(row.price);
             const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
