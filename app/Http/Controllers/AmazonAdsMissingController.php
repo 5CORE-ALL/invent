@@ -187,17 +187,23 @@ class AmazonAdsMissingController extends Controller
      * Only fills gaps (a parent that already has a link of that type is left alone) and back-fills a missing campaign_id
      * on links that only have a name. Never throws: a failure just leaves the cells as they were.
      *
+     * The report table only holds campaigns that had activity, so the scheduled sync also passes the live Amazon
+     * campaign list ($live) — a brand-new campaign is linked before it ever has a report row.
+     *
      * @param  array<string, string>  $parents  UPPER(parent) => parent
+     * @param  list<array{name: string, id: ?string}>  $live  ENABLED / PAUSED campaigns from the Amazon Ads API
+     * @return int number of links created
      */
-    private function autoLinkExistingCampaigns(array $parents): void
+    private function autoLinkExistingCampaigns(array $parents, array $live = []): int
     {
+        $created = 0;
         try {
             if ($parents === []
                 || ! Schema::hasTable('amazon_ads_missing_links')
                 || ! Schema::hasTable(self::SP_TABLE)
                 || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')
                 || ! Schema::hasColumn(self::SP_TABLE, 'campaign_id')) {
-                return;
+                return 0;
             }
 
             // Normalized campaign name => [name, id] for names shaped like "PARENT … KW" / "PARENT … PT".
@@ -221,8 +227,17 @@ class AmazonAdsMissingController extends Controller
                 }
                 $campaigns[$key] = [$name, preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null];
             }
+            foreach ($live as $lc) {
+                $name = trim((string) ($lc['name'] ?? ''));
+                $key = $this->normalizeCampaignName($name);
+                if ($key === '' || ! str_starts_with($key, 'PARENT ')
+                    || ! (str_ends_with($key, ' KW') || str_ends_with($key, ' PT'))) {
+                    continue;
+                }
+                $campaigns[$key] = [$name, $lc['id'] ?? ($campaigns[$key][1] ?? null)];
+            }
             if ($campaigns === []) {
-                return;
+                return 0;
             }
 
             $existing = AmazonAdsMissingLink::query()->get(['id', 'sku', 'type', 'campaign_id', 'campaign_name']);
@@ -241,7 +256,6 @@ class AmazonAdsMissingController extends Controller
             // Archived campaigns (e.g. removed with the trash icon) must not come back.
             $statusMap = $this->campaignStatusMap();
 
-            $created = 0;
             foreach ($parents as $parent) {
                 $sku = 'PARENT '.$parent;
                 foreach (self::TYPES as $type) {
@@ -267,6 +281,8 @@ class AmazonAdsMissingController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Amazon ads missing: auto-link failed', ['error' => $e->getMessage()]);
         }
+
+        return $created;
     }
 
     /**
@@ -364,15 +380,86 @@ class AmazonAdsMissingController extends Controller
      */
     public function hlImport(): JsonResponse
     {
-        if (! Schema::hasTable('amazon_ads_missing_links')
-            || ! Schema::hasTable(self::SB_TABLE)
-            || ! Schema::hasColumn(self::SB_TABLE, 'campaignName')
-            || ! Schema::hasColumn(self::SB_TABLE, 'campaign_id')
-            || ! Schema::hasColumn(self::SB_TABLE, 'campaignStatus')) {
+        if (! $this->hlImportAvailable()) {
             return response()->json(['ok' => false, 'message' => 'Sponsored Brands campaign reports are not available.'], 503);
         }
 
         try {
+            return response()->json(['ok' => true] + $this->importHlCampaigns(true));
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: HL import failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'HL import failed: '.$e->getMessage()], 500);
+        }
+    }
+
+    private function hlImportAvailable(): bool
+    {
+        return Schema::hasTable('amazon_ads_missing_links')
+            && Schema::hasTable(self::SB_TABLE)
+            && Schema::hasColumn(self::SB_TABLE, 'campaignName')
+            && Schema::hasColumn(self::SB_TABLE, 'campaign_id')
+            && Schema::hasColumn(self::SB_TABLE, 'campaignStatus');
+    }
+
+    /**
+     * Scheduled entry point (amazon:ads-sync-missing-links). Links every campaign that exists on Amazon
+     * (live SP + SB lists, not only campaigns that already have report rows) to its parent, so a newly
+     * created campaign stops showing "Missing" without anyone opening the page or pressing Import HL.
+     *
+     * @return array{ok: bool, kw_pt_created: int, hl_imported: int, message: string}
+     */
+    public function syncLinksFromLiveCampaigns(): array
+    {
+        $result = ['ok' => true, 'kw_pt_created' => 0, 'hl_imported' => 0, 'message' => ''];
+        $notes = [];
+
+        try {
+            $parents = $this->distinctParentsForImport();
+
+            $live = [];
+            try {
+                foreach (app(AmazonAdsService::class)->listAllSpCampaigns(['ENABLED', 'PAUSED']) as $c) {
+                    $live[] = [
+                        'name' => trim((string) ($c['name'] ?? $c['campaignName'] ?? '')),
+                        'id' => preg_replace('/\D+/', '', (string) ($c['campaignId'] ?? '')) ?: null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Amazon ads missing: live SP campaign list failed', ['error' => $e->getMessage()]);
+                $notes[] = 'live SP list unavailable ('.$e->getMessage().')';
+                $result['ok'] = false;
+            }
+            $result['kw_pt_created'] = $this->autoLinkExistingCampaigns($parents, $live);
+
+            if ($this->hlImportAvailable()) {
+                // prune=false: an unattended job links campaigns but never deletes existing links.
+                $hl = $this->importHlCampaigns(false);
+                $result['hl_imported'] = (int) ($hl['imported'] ?? 0);
+                if (str_contains((string) ($hl['message'] ?? ''), 'Live Amazon list unavailable')) {
+                    $notes[] = 'live SB list unavailable';
+                    $result['ok'] = false;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('Amazon ads missing: scheduled link sync failed', ['error' => $e->getMessage()]);
+            $result['ok'] = false;
+            $notes[] = $e->getMessage();
+        }
+
+        self::forgetMissingTotalCache();
+        $result['message'] = "Linked {$result['kw_pt_created']} KW/PT and {$result['hl_imported']} HL campaign(s)."
+            .($notes === [] ? '' : ' '.implode('; ', $notes));
+
+        return $result;
+    }
+
+    /**
+     * @return array{imported: int, removed: int, unmatched: int, unmatched_campaigns: list<string>, unmatched_inactive: int, skipped_not_hl: int, message: string}
+     */
+    private function importHlCampaigns(bool $prune): array
+    {
+        {
             $parents = $this->distinctParentsForImport();
 
             $liveNote = '';
@@ -429,29 +516,30 @@ class AmazonAdsMissingController extends Controller
                 $imported++;
             }
 
-            // Remove HL links whose campaign has been ARCHIVED for more than 30 days.
+            // Remove HL links whose campaign has been ARCHIVED for more than 30 days (button only).
             $removed = 0;
-            $archivedSince = $this->archivedSinceByCampaign();
-            $cutoff = Carbon::now()->subDays(self::HL_ARCHIVED_KEEP_DAYS)->startOfDay();
-            $removeIds = [];
-            foreach (AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'campaign_name']) as $l) {
-                $key = $this->normalizeCampaignName((string) $l->campaign_name);
-                if (($campaigns[$key]['status'] ?? '') !== 'ARCHIVED') {
-                    continue;
+            if ($prune) {
+                $archivedSince = $this->archivedSinceByCampaign();
+                $cutoff = Carbon::now()->subDays(self::HL_ARCHIVED_KEEP_DAYS)->startOfDay();
+                $removeIds = [];
+                foreach (AmazonAdsMissingLink::query()->where('type', 'HL')->get(['id', 'campaign_name']) as $l) {
+                    $key = $this->normalizeCampaignName((string) $l->campaign_name);
+                    if (($campaigns[$key]['status'] ?? '') !== 'ARCHIVED') {
+                        continue;
+                    }
+                    $since = $archivedSince[$key] ?? null;
+                    if ($since !== null && $since->lt($cutoff)) {
+                        $removeIds[] = (int) $l->id;
+                    }
                 }
-                $since = $archivedSince[$key] ?? null;
-                if ($since !== null && $since->lt($cutoff)) {
-                    $removeIds[] = (int) $l->id;
+                foreach (array_chunk($removeIds, 500) as $chunk) {
+                    $removed += AmazonAdsMissingLink::query()->whereIn('id', $chunk)->delete();
                 }
-            }
-            foreach (array_chunk($removeIds, 500) as $chunk) {
-                $removed += AmazonAdsMissingLink::query()->whereIn('id', $chunk)->delete();
             }
 
             self::forgetMissingTotalCache();
 
-            return response()->json([
-                'ok' => true,
+            return [
                 'imported' => $imported,
                 'removed' => $removed,
                 'unmatched' => count($orphans),
@@ -459,11 +547,7 @@ class AmazonAdsMissingController extends Controller
                 'unmatched_inactive' => $orphanInactive,
                 'skipped_not_hl' => $notHl,
                 'message' => $this->hlImportMessage($imported, $removed, $orphans, $orphanInactive, $notHl).$liveNote,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Amazon ads missing: HL import failed', ['error' => $e->getMessage()]);
-
-            return response()->json(['ok' => false, 'message' => 'HL import failed: '.$e->getMessage()], 500);
+            ];
         }
     }
 

@@ -112,6 +112,20 @@
         .arp-mode-note { font-size: 11.5px; line-height: 1.35; border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; }
         .arp-mode-note.is-off { background: #f1f5f9; color: #64748b; }
         .arp-mode-note.is-on { background: #ecfdf5; color: #047857; }
+        /* Progress bar at the top of the page while bids / discounts are being sent to eBay */
+        #ebay-update-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 2100; display: none; color: #fff;
+            background: #1e3a8a; box-shadow: 0 4px 14px rgba(15, 23, 42, .35); font-size: 14px; }
+        #ebay-update-banner.is-done { background: #15803d; }
+        #ebay-update-banner.is-warn { background: #b45309; }
+        #ebay-update-banner.is-failed { background: #b91c1c; }
+        #ebay-update-banner .eub-row { display: flex; align-items: center; gap: 10px; padding: 8px 18px; }
+        #ebay-update-banner .eub-title { font-weight: 700; white-space: nowrap; }
+        #ebay-update-banner .eub-detail { opacity: .9; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #ebay-update-banner .eub-pct { font-weight: 700; min-width: 42px; text-align: right; }
+        #ebay-update-banner .eub-track { height: 5px; background: rgba(255, 255, 255, .25); }
+        #ebay-update-banner .eub-bar { height: 100%; width: 0; background: #fff; transition: width .5s ease; }
+        #ebay-update-banner.is-indeterminate .eub-bar { width: 40% !important; animation: eub-slide 1.2s ease-in-out infinite; }
+        @keyframes eub-slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
         .arp-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 22px; background: #fff; border-top: 1px solid #e6e8f0; }
         @media (max-width: 900px) {
             .arp-body { grid-template-columns: 1fr; overflow-y: auto; }
@@ -428,6 +442,121 @@
                 if (window.ebayPmtIsParent(d)) return true;
                 return String(d.Parent || '').trim() === '';
             };
+
+            // ===== Progress bar at the top of the page while eBay is being updated =====
+            // Shown while the Ads Rule PMT push or the Multi Buy apply runs, turns into a green "Success" when it is
+            // done and hides itself a few seconds later. window.ebayUpdateWatch('pmt' | 'multi') starts watching.
+            (function() {
+                const STATUS_URL = @json($pmtBase.'/campaign-ads/ebay-update-status');
+                const POLL_MS = 1500;
+                const SUCCESS_MS = 4000;
+                let banner = null;
+                let timer = null;
+                let hideTimer = null;
+                let watching = false;
+                let sawRunning = false;
+                let startedAt = 0;
+                let kind = 'pmt';
+
+                function ensure() {
+                    if (banner) return banner;
+                    banner = document.createElement('div');
+                    banner.id = 'ebay-update-banner';
+                    banner.setAttribute('role', 'status');
+                    banner.innerHTML = '<div class="eub-row"><i class="fas eub-icon"></i><span class="eub-title"></span><span class="eub-detail"></span><span class="eub-pct"></span></div>'
+                        + '<div class="eub-track"><div class="eub-bar"></div></div>';
+                    document.body.appendChild(banner);
+                    return banner;
+                }
+                function paint(cls, icon, title, detail, pct) {
+                    const b = ensure();
+                    clearTimeout(hideTimer);
+                    b.className = cls || '';
+                    b.style.display = 'block';
+                    b.querySelector('.eub-icon').className = 'fas eub-icon ' + icon;
+                    b.querySelector('.eub-title').textContent = title;
+                    b.querySelector('.eub-detail').textContent = detail || '';
+                    b.querySelector('.eub-pct').textContent = pct === null ? '' : pct + '%';
+                    b.querySelector('.eub-bar').style.width = (pct === null ? 40 : pct) + '%';
+                }
+                function hide() {
+                    if (banner) banner.style.display = 'none';
+                    watching = false;
+                }
+                function summaryText(s) {
+                    if (!s) return '';
+                    const parts = [];
+                    if (s.success) parts.push(Number(s.success).toLocaleString() + ' bids updated');
+                    if (s.unchanged) parts.push(Number(s.unchanged).toLocaleString() + ' already correct');
+                    if (s.skipped) parts.push(Number(s.skipped).toLocaleString() + ' skipped');
+                    if (s.failed) parts.push(Number(s.failed).toLocaleString() + ' failed');
+                    return parts.join(' · ');
+                }
+                function finishBanner(cls, icon, title, detail) {
+                    paint(cls, icon, title, detail, 100);
+                    clearTimeout(timer);
+                    hideTimer = setTimeout(hide, cls === 'is-done' ? SUCCESS_MS : SUCCESS_MS * 2);
+                }
+                function showRunning(pmt, multi) {
+                    if (pmt && pmt.status === 'running') {
+                        const pct = Math.max(0, Math.min(99, parseInt(pmt.percent, 10) || 0));
+                        paint('', 'fa-sync fa-spin', 'Updating eBay: ' + (pmt.phase || 'working'), pmt.detail || 'Ads Rule PMT bids', pct);
+                    } else {
+                        paint('is-indeterminate', 'fa-sync fa-spin', 'Updating eBay', (multi && multi.message) || 'Applying Multi Buy discounts...', null);
+                    }
+                }
+                /** One status check. Returns true while something is still running. */
+                function check() {
+                    return fetch(STATUS_URL, { headers: { 'Accept': 'application/json' } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            const pmt = d && d.pmt;
+                            const multi = d && d.multi_buy;
+                            const pmtRun = !!(pmt && pmt.status === 'running');
+                            const multiRun = !!(multi && multi.status === 'running');
+                            if (pmtRun || multiRun) {
+                                sawRunning = true;
+                                watching = true;
+                                kind = pmtRun ? 'pmt' : 'multi';
+                                showRunning(pmtRun ? pmt : null, multiRun ? multi : null);
+                                return true;
+                            }
+                            if (!watching) return false; // nothing was being watched: stay hidden
+                            // Not running any more. Only report a run we saw (or the one we just started).
+                            const rec = kind === 'multi' ? multi : pmt;
+                            if (!sawRunning && kind === 'multi' && Date.now() - startedAt < 15000) return true; // the command has not started yet
+                            if (!sawRunning && kind === 'pmt' && (!rec || rec.status === 'running')) return false;
+                            if (!rec) { hide(); return false; }
+                            if (rec.status === 'failed') {
+                                finishBanner('is-failed', 'fa-times-circle', 'eBay update failed', rec.message || 'See the log for details');
+                            } else if (kind === 'pmt' && rec.summary && Number(rec.summary.failed) > 0) {
+                                finishBanner('is-warn', 'fa-exclamation-triangle', 'eBay updated, with errors', summaryText(rec.summary));
+                            } else {
+                                finishBanner('is-done', 'fa-check-circle', 'Success: eBay updated', kind === 'pmt' ? (summaryText(rec.summary) || rec.message || '') : (rec.message || ''));
+                            }
+                            return false;
+                        })
+                        .catch(function() { return watching; });
+                }
+                function loop() {
+                    clearTimeout(timer);
+                    check().then(function(again) {
+                        if (again) timer = setTimeout(loop, POLL_MS);
+                        else if (!banner || banner.style.display === 'none') watching = false;
+                    });
+                }
+                /** Start watching a push the user just started: the bar shows at once and follows it to the end. */
+                window.ebayUpdateWatch = function(what) {
+                    kind = what === 'multi' ? 'multi' : 'pmt';
+                    watching = true;
+                    sawRunning = false;
+                    startedAt = Date.now();
+                    paint(kind === 'multi' ? 'is-indeterminate' : '', 'fa-sync fa-spin', 'Updating eBay', kind === 'multi' ? 'Applying Multi Buy discounts...' : 'Starting...', kind === 'multi' ? null : 0);
+                    loop();
+                };
+                // A push already running when the page opens (scheduled run, or started in another tab).
+                $(function() { setTimeout(function() { check().then(function(running) { if (running) loop(); }); }, 800); });
+            })();
 
             // ===== Ads Rule PMT: suggested bid (%) per category =====
             (function() {
@@ -1218,6 +1347,7 @@
                             if (!res.ok) throw new Error((res.d && (res.d.error || res.d.message)) || 'Could not change the switch.');
                             ruleOn = !!res.d.enabled;
                             if (typeof showToast === 'function') showToast('success', ruleOn ? 'Ads Rule PMT is On' : 'Ads Rule PMT is Off');
+                            if (ruleOn && typeof window.ebayUpdateWatch === 'function') window.ebayUpdateWatch('pmt'); // turning it on starts a push
                         })
                         .catch(function(e) { $err.removeClass('d-none').text(e.message || 'Could not change the switch.'); })
                         .finally(function() { $box.prop('disabled', false); paintMode(); refreshPmtColumn(); });
@@ -1261,6 +1391,7 @@
                             if (res.d.pause_rule) setPauseRule(res.d.pause_rule);
                             if (typeof res.d.enabled === 'boolean') { ruleOn = res.d.enabled; paintMode(); }
                             if (ruleOn && typeof showToast === 'function') showToast('success', 'Saved. Pushing the new bids to eBay in the background.');
+                            if (ruleOn && typeof window.ebayUpdateWatch === 'function') window.ebayUpdateWatch('pmt');
                             refreshPmtColumn();
                             bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                         })
@@ -1352,6 +1483,7 @@
                                 $('#multi-buy-status').removeClass('d-none text-success text-danger').addClass('text-primary')
                                     .text('Applying to eBay in the background. Reopen this window in a few minutes to see the result.');
                                 if (typeof showToast === 'function') showToast('success', 'Saved. Applying Multi Buy to eBay in the background.');
+                                if (typeof window.ebayUpdateWatch === 'function') window.ebayUpdateWatch('multi');
                                 return;
                             }
                             bootstrap.Modal.getOrCreateInstance(modalEl).hide();

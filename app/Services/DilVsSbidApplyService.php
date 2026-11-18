@@ -44,6 +44,26 @@ class DilVsSbidApplyService
     /** @var callable(int): void|null */
     public $sleeper = null;
 
+    /** @var (callable(string, int, string): void)|null Progress hook: (phase, percent 0-99, detail). Set by the background push. */
+    private $progress = null;
+
+    /** @param  (callable(string, int, string): void)|null  $progress */
+    public function setProgress(?callable $progress): void
+    {
+        $this->progress = $progress;
+    }
+
+    private function tick(string $phase, int $percent, string $detail = ''): void
+    {
+        if ($this->progress !== null) {
+            try {
+                ($this->progress)($phase, $percent, $detail);
+            } catch (\Throwable $e) {
+                // progress is only a display: never let it stop the push
+            }
+        }
+    }
+
     /** @var class-string|null Metrics model of the account being pushed (for relist lookups). */
     private ?string $metricClass = null;
 
@@ -134,7 +154,14 @@ class DilVsSbidApplyService
         $unchanged = 0;
         $bidsByCampaign = [];
 
+        $totalListings = count($listingIds);
+        $doneListings = 0;
+        $this->tick('Calculating bids', 0, '0 of '.number_format($totalListings).' listings');
         foreach ($listingIds as $lid) {
+            if ($this->progress !== null && $doneListings % 25 === 0) {
+                $this->tick('Calculating bids', (int) floor(30 * $doneListings / max(1, $totalListings)), number_format($doneListings).' of '.number_format($totalListings).' listings');
+            }
+            $doneListings++;
             $campaignAds = $ads->get($lid);
             if ($campaignAds === null || $campaignAds->isEmpty()) {
                 $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Not in a COST_PER_SALE campaign'];
@@ -188,6 +215,7 @@ class DilVsSbidApplyService
             }
         }
 
+        $this->tick('Pushing to eBay', 30, number_format(count($bidsByCampaign)).' campaign(s)');
         $this->pushUntilMatched(
             $http,
             $adsTable,
@@ -1078,8 +1106,19 @@ class DilVsSbidApplyService
                 $this->pauseVerify($round - 1);
             }
             $next = [];
+            // Round 1 fills 30-70 %, each verify round fills half of what is left up to 99 %.
+            $lo = $round === 1 ? 30 : 70 + 29 * (1 - 0.5 ** ($round - 2));
+            $hi = $round === 1 ? 70 : 70 + 29 * (1 - 0.5 ** ($round - 1));
+            $roundTotal = max(1, count($pending));
+            $roundDone = 0;
             foreach ($pending as $campaignId => $requests) {
                 $campaignId = (string) $campaignId;
+                $this->tick(
+                    $round === 1 ? 'Pushing to eBay' : 'Verifying on eBay',
+                    (int) floor($lo + ($hi - $lo) * $roundDone / $roundTotal),
+                    ($round === 1 ? 'Campaign ' : 'Round '.$round.', campaign ').($roundDone + 1).' of '.$roundTotal
+                );
+                $roundDone++;
                 if ($this->switchIsOff()) {
                     // Switch turned Off while this run was going: stop pushing.
                     foreach ($requests as $r) {

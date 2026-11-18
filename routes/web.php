@@ -7437,6 +7437,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get($ebayRulesBase.'/campaign-ads/pmt-category-bids', [$ebayRulesCtl, 'getPmtCategoryBids'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.category.bids');
         Route::post($ebayRulesBase.'/campaign-ads/pmt-category-bids', [$ebayRulesCtl, 'savePmtCategoryBids'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.category.bids.save');
         Route::post($ebayRulesBase.'/campaign-ads/pmt-rule-switch', [$ebayRulesCtl, 'savePmtRuleSwitch'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.pmt.rule.switch');
+        Route::get($ebayRulesBase.'/campaign-ads/ebay-update-status', [$ebayRulesCtl, 'getEbayUpdateStatus'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.ebay.update.status');
         Route::get($ebayRulesBase.'/campaign-ads/category-options', [$ebayRulesCtl, 'getCategoryOptions'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.category.options');
         Route::post($ebayRulesBase.'/campaign-ads/category-override', [$ebayRulesCtl, 'saveCategoryOverride'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.category.override');
         Route::get($ebayRulesBase.'/campaign-ads/multi-buy-rule', [$ebayRulesCtl, 'getMultiBuyRule'])->defaults('account', $ebayRulesAccount)->name($ebayRulesName.'.campaign.ads.multi.buy');

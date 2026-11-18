@@ -25,6 +25,11 @@ final class PmtRuleAutoPush
             return;
         }
 
+        // A push the user just asked for: show it on the page right away (the command takes a moment to start).
+        if ($force && $account !== 'all' && (PmtPushProgress::get($account)['status'] ?? '') !== 'running') {
+            PmtPushProgress::start($account, 'Queued');
+        }
+
         $php = escapeshellarg(PHP_BINARY);
         $artisan = escapeshellarg(base_path('artisan'));
         $cmd = "{$php} {$artisan} ebay:pmt-rule-auto-push ".escapeshellarg($account).' --mismatch';

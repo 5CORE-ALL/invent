@@ -822,23 +822,86 @@ class AdvertisementMasterController extends Controller
         }
     }
 
-    /** Cache key + TTL for the assembled grid payload (data()). */
+    /** Row key + table for the pre-built grid payload (data()). */
     private const DATA_CACHE_KEY = 'advertisement_master:data:v1';
-    private const DATA_CACHE_TTL = 120;
+    private const DATA_CACHE_TABLE = 'advertisement_master_data_cache';
 
+    /**
+     * A stored payload older than this is ignored (the scheduled 8 AM Pacific
+     * build must have failed), so the page rebuilds instead of showing stale data.
+     */
+    private const DATA_CACHE_MAX_AGE_HOURS = 36;
+
+    /** Drop the stored payload (after an edit) so the next load rebuilds it. */
     public static function forgetDataCache(): void
     {
         try {
-            Cache::forget(self::DATA_CACHE_KEY);
+            if (Schema::hasTable(self::DATA_CACHE_TABLE)) {
+                DB::table(self::DATA_CACHE_TABLE)->where('cache_key', self::DATA_CACHE_KEY)->delete();
+            }
         } catch (\Throwable $e) {
             \Log::warning('Advertisement Master cache flush failed: '.$e->getMessage());
         }
     }
 
+    /** @return array<string, mixed>|null */
+    private function readStoredData(): ?array
+    {
+        try {
+            if (! Schema::hasTable(self::DATA_CACHE_TABLE)) {
+                return null;
+            }
+            $row = DB::table(self::DATA_CACHE_TABLE)->where('cache_key', self::DATA_CACHE_KEY)->first();
+            if (! $row || ! $row->generated_at) {
+                return null;
+            }
+            $generatedAt = Carbon::parse($row->generated_at, 'UTC');
+            if ($generatedAt->lt(Carbon::now('UTC')->subHours(self::DATA_CACHE_MAX_AGE_HOURS))) {
+                return null;
+            }
+            $payload = json_decode((string) $row->payload, true);
+            if (! is_array($payload)) {
+                return null;
+            }
+            $payload['generated_at'] = $generatedAt->toIso8601String();
+            $payload['served_from_store'] = true;
+
+            return $payload;
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master stored data read failed: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function writeStoredData(array $payload): void
+    {
+        try {
+            if (! Schema::hasTable(self::DATA_CACHE_TABLE)) {
+                return;
+            }
+            $json = json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+            if ($json === false) {
+                return;
+            }
+            $now = Carbon::now('UTC');
+            DB::table(self::DATA_CACHE_TABLE)->updateOrInsert(
+                ['cache_key' => self::DATA_CACHE_KEY],
+                ['payload' => $json, 'generated_at' => $now, 'updated_at' => $now, 'created_at' => $now]
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master stored data write failed: '.$e->getMessage());
+        }
+    }
+
     /**
-     * Building the grid runs ~800 queries and writes daily snapshots, so serve
-     * a short-lived cached payload. "Refresh" (?refresh=1) and any edit
-     * (label / NR-REQ / delete / data-alert) bypass or flush it.
+     * Building the grid runs ~800 queries and writes daily snapshots, so the
+     * page serves the payload the 8:00 AM Pacific job stored in
+     * advertisement_master_data_cache. "Refresh" (?refresh=1) rebuilds live and
+     * re-stores it; any edit (label / NR-REQ / delete / data-alert) drops it so
+     * the next load rebuilds. ?no_store=1 rebuilds without touching the store
+     * (used by the hourly history snapshot).
      */
     public function data(
         Request $request,
@@ -854,13 +917,9 @@ class AdvertisementMasterController extends Controller
         $forceFresh = $request->boolean('refresh');
 
         if (! $forceFresh) {
-            try {
-                $cached = Cache::get(self::DATA_CACHE_KEY);
-                if (is_array($cached)) {
-                    return response()->json($cached);
-                }
-            } catch (\Throwable $e) {
-                // fall through and rebuild
+            $stored = $this->readStoredData();
+            if ($stored !== null) {
+                return response()->json($stored);
             }
         }
 
@@ -869,12 +928,11 @@ class AdvertisementMasterController extends Controller
             $shopifyAdsMaster, $tiktok1Ads, $temuAds, $temu2Ads
         );
 
-        if ($response->getStatusCode() === 200) {
-            try {
-                Cache::put(self::DATA_CACHE_KEY, $response->getData(true), self::DATA_CACHE_TTL);
-            } catch (\Throwable $e) {
-                \Log::warning('Advertisement Master cache write failed: '.$e->getMessage());
-            }
+        if ($response->getStatusCode() === 200 && ! $request->boolean('no_store')) {
+            $payload = $response->getData(true);
+            $this->writeStoredData($payload);
+            $payload['generated_at'] = Carbon::now('UTC')->toIso8601String();
+            $response->setData($payload);
         }
 
         return $response;
@@ -2769,7 +2827,7 @@ class AdvertisementMasterController extends Controller
      *
      * @return array{ok: bool, message: string}
      */
-    public function runScheduledSnapshot(int $backfillDays = 40): array
+    public function runScheduledSnapshot(int $backfillDays = 40, bool $storePayload = false): array
     {
         $backfillDays = max(1, min(400, $backfillDays));
         $today = Carbon::now(self::SNAPSHOT_TIMEZONE)->startOfDay();
@@ -2779,9 +2837,14 @@ class AdvertisementMasterController extends Controller
                 $today->copy()->subDays($backfillDays)->toDateString(),
                 $today->toDateString()
             );
-            // Snapshot job must rebuild (and write snapshots), never serve the cache.
+            // Snapshot job must rebuild (and write snapshots), never serve the stored
+            // payload. Only the 8 AM Pacific build job ($storePayload) saves the grid.
+            $query = ['refresh' => 1];
+            if (! $storePayload) {
+                $query['no_store'] = 1;
+            }
             $response = app()->call([$this, 'data'], [
-                'request' => Request::create('/', 'GET', ['refresh' => 1]),
+                'request' => Request::create('/', 'GET', $query),
             ]);
         } catch (\Throwable $e) {
             \Log::error('Advertisement Master scheduled snapshot failed: '.$e->getMessage());

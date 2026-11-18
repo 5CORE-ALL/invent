@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\DilVsSbidApplyService;
 use App\Support\PmtCategoryBidRule;
+use App\Support\PmtPushProgress;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -46,29 +47,45 @@ class EbayPmtRuleAutoPushCommand extends Command
             return true;
         }
 
+        // The page shows this as a progress bar at the top (GET .../campaign-ads/ebay-update-status).
+        PmtPushProgress::start($account, 'Starting');
+        $apply->setProgress(function (string $phase, int $percent, string $detail) use ($account): void {
+            PmtPushProgress::update($account, $phase, $percent, $detail);
+        });
+
         try {
             $result = $apply->applyPmtChanged($account, (bool) $this->option('mismatch'));
         } catch (Throwable $e) {
             $this->error($account.': '.$e->getMessage());
+            PmtPushProgress::finish($account, [], $e->getMessage(), false);
 
             return false;
         } finally {
+            $apply->setProgress(null);
             $lock->release();
         }
 
         if (($result['error'] ?? '') === 'Ads Rule PMT is off') {
             $this->line($account.': PMT switch is off, nothing pushed');
+            PmtPushProgress::finish($account, [], 'Ads Rule PMT is off, nothing pushed');
 
             return true;
         }
         if (! empty($result['error'])) {
             $this->error($account.': '.$result['error']);
+            PmtPushProgress::finish($account, [], (string) $result['error'], false);
 
             return false;
         }
         if (! empty($result['stopped'])) {
             $this->warn($account.': PMT switch was turned off during the run, remaining pushes stopped');
         }
+        PmtPushProgress::finish($account, [
+            'success' => (int) ($result['success'] ?? 0),
+            'unchanged' => (int) ($result['unchanged'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+        ], ! empty($result['stopped']) ? 'The PMT switch was turned off during the run, remaining pushes stopped' : '');
 
         $this->info(sprintf(
             '%s PMT: pushed %d, unchanged %d, failed %d, skipped %d',

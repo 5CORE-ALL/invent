@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Ebay1VolumePricingService;
 use App\Services\ExcelCategoryLookupService;
 use App\Support\PmtCategoryBidRule;
+use App\Support\PmtPushProgress;
 use App\Support\PmtRuleAutoPush;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -42,6 +43,27 @@ class EbayAccountRulesController extends Controller
             'bids' => (object) $bids,
             'enabled' => PmtCategoryBidRule::isOn($account),
             'pause_rule' => PmtCategoryBidRule::pauseRule($account),
+        ]);
+    }
+
+    /**
+     * What is being sent to eBay right now for this account: the Ads Rule PMT push (with a percent) and the
+     * Multi Buy apply. The page polls this to show a progress bar at the top.
+     */
+    public function getEbayUpdateStatus(Request $request)
+    {
+        $account = $this->account($request);
+
+        $multi = Cache::get(EbayMultiBuyApplyCommand::resultKey($account));
+        // A "running" record older than the command's lock (3 h) belongs to a process that died: not running.
+        if (is_array($multi) && ($multi['status'] ?? '') === 'running'
+            && now()->diffInSeconds(\Illuminate\Support\Carbon::parse((string) ($multi['at'] ?? 'now')), true) > 3 * 3600) {
+            $multi = null;
+        }
+
+        return response()->json([
+            'pmt' => PmtPushProgress::get($account),
+            'multi_buy' => $multi,
         ]);
     }
 

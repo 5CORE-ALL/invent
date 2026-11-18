@@ -1308,6 +1308,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // /advertisement-master takes a long time to build, so pre-build the grid once a day
+        // at 8:00 AM Pacific (PST/PDT) and store it in advertisement_master_data_cache;
+        // the page then loads that stored copy instead of rebuilding on every visit.
+        $schedule->command('advertisement-master:build-data')
+            ->dailyAt('08:00')
+            ->timezone('America/Los_Angeles')
+            ->name('advertisement-master-build-data')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Today block on /all-marketplace-master — every 15 min, 9 AM–8:45 PM Pacific (PST/PDT).
         // Runs at :00/:15/:30/:45 from 9:00 through 20:45 inclusive (the :59 pads the seconds
         // the scheduler tick lands on, so the 8:45 PM run is not skipped).
@@ -2364,11 +2375,15 @@ class Kernel extends ConsoleKernel
         // ENABLED campaigns with no impressions are missing from Amazon's reports. Pull them from the
         // campaign list on its own schedule so a failed report run (or a campaign enabled mid-day)
         // never leaves /amazon-ads/all short of the Amazon console.
-        $schedule->command('amazon:ads-sync-enabled-campaigns')
-            ->hourlyAt(20)
+        // Every 15 minutes: same enabled-campaign pull (amazon:ads-sync-enabled-campaigns) PLUS linking every live
+        // KW / PT / HL campaign to its parent, so a campaign created on Amazon leaves /amazon-ads/missing within
+        // ~15 min with nobody opening the page. (It used to be hourly with a default 24h overlap lock, which
+        // blocks every later run for a day if one run is killed.)
+        $schedule->command('amazon:ads-sync-missing-links')
+            ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-sync-enabled-campaigns')
-            ->withoutOverlapping()
+            ->withoutOverlapping(14)
             ->runInBackground()
             ->appendOutputTo($log);
 

@@ -574,6 +574,7 @@
                         <button type="button" id="adm-refresh" class="btn btn-sm btn-outline-primary">
                             <i class="fa fa-refresh"></i> Refresh
                         </button>
+                        <span id="adm-generated-at" class="text-muted small" style="white-space:nowrap;"></span>
                         <button type="button" id="adm-add-row" class="btn btn-sm btn-primary fw-bold" title="Add Channel and Type" style="min-width:32px;">+</button>
                     </div>
 
@@ -1399,6 +1400,13 @@
                     if (!response || Number(response.status) === 500) {
                         showAdmError((response && response.message) || 'Failed to load Advertisement Master data.');
                         return [];
+                    }
+                    const generatedEl = document.getElementById('adm-generated-at');
+                    if (generatedEl) {
+                        const gen = response.generated_at ? new Date(response.generated_at) : null;
+                        generatedEl.textContent = (gen && !isNaN(gen.getTime()))
+                            ? 'Data as of ' + gen.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' PT'
+                            : '';
                     }
                     const rows = sortAdmRows(flattenAdmRows(response.data || []));
                     admAllRows = rows;
