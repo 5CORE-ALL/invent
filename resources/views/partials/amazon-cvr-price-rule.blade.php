@@ -224,15 +224,25 @@
          * The suggested new price for the S PRC cell, or '' when the rule is OFF, the SKU has no case / % / price, or the
          * suggestion equals the current price. Display only: nothing is saved or pushed from it.
          */
-        function amzCvrRuleSuggestHtml(row) {
-            if (!amzCvrRule || !amzCvrRule.enabled || !row || row.is_parent_summary) return '';
+        /** The suggested new price as a number (0 = none). Same conditions as the suggestion shown in the S PRC cell. */
+        function amzCvrRuleSuggestedPrice(row) {
+            if (!amzCvrRule || !amzCvrRule.enabled || !row || row.is_parent_summary) return 0;
             const c = amzCvrRuleCaseFor(row, amzCvrRule);
-            if (!c) return '';
+            if (!c) return 0;
             const pct = parseFloat(amzCvrRule[c]);
-            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return '';
+            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return 0;
             const res = amzCvrRulePriceFor(row, amzCvrRule);
             const price = parseFloat(row.price);
-            if (!res || !(res.price > 0) || Math.abs(res.price - price) < 0.005) return '';
+            if (!res || !(res.price > 0) || Math.abs(res.price - price) < 0.005) return 0;
+            return res.price;
+        }
+        window.amzCvrRuleSuggestedPrice = amzCvrRuleSuggestedPrice;
+        function amzCvrRuleSuggestHtml(row) {
+            if (!amzCvrRuleSuggestedPrice(row)) return '';
+            const c = amzCvrRuleCaseFor(row, amzCvrRule);
+            const pct = parseFloat(amzCvrRule[c]);
+            const res = amzCvrRulePriceFor(row, amzCvrRule);
+            const price = parseFloat(row.price);
             const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
             const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
                 + (res.capped ? ' — the cut is held by the Lower cap' : '') + '. Suggestion only, not saved or pushed.';

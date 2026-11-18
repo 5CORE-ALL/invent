@@ -2069,10 +2069,18 @@
             return +Number(sprice * 1.10).toFixed(2);
         }
 
+        /**
+         * The new S price the profit columns (S GPFT / SNROI / SNPFT / SGROI) are worked out from: the CVR Price Rule's suggested
+         * price when that rule is ON and suggests one, otherwise the S PRC the cell shows.
+         */
+        function amazonProfitSprice(rowData) {
+            const sug = (typeof window.amzCvrRuleSuggestedPrice === 'function') ? Number(window.amzCvrRuleSuggestedPrice(rowData)) : 0;
+            return sug > 0 ? sug : amazonDisplaySprice(rowData);
+        }
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
             // Displayed price, so clearance rows ("C $x") get their margins too.
-            const sprice = amazonDisplaySprice(rowData);
+            const sprice = amazonProfitSprice(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -2091,7 +2099,7 @@
          * Returns null when SPRICE/LP are missing.
          */
         function amazonComputeSroi(rowData) {
-            return amazonComputeGroiAt(amazonDisplaySprice(rowData), rowData);
+            return amazonComputeGroiAt(amazonProfitSprice(rowData), rowData);
         }
 
         /**
@@ -2099,14 +2107,14 @@
          *   ((SPRICE × 0.80 − ship − lp) / SPRICE) × 100
          */
         function amazonComputeSgpft(rowData) {
-            return amazonComputeGpftAt(amazonDisplaySprice(rowData), rowData);
+            return amazonComputeGpftAt(amazonProfitSprice(rowData), rowData);
         }
 
         /** SNPFT = live S GPFT − Ads% (the Dynamic Rule slab for the S PRC when it is on, else the channel Ads%) */
         function amazonComputeSpft(rowData) {
             const sgpft = amazonComputeSgpft(rowData);
             if (sgpft == null || !isFinite(sgpft)) return null;
-            return sgpft - amazonAdsPctAtPrice(amazonDisplaySprice(rowData));
+            return sgpft - amazonAdsPctAtPrice(amazonProfitSprice(rowData));
         }
 
         /**
@@ -6193,7 +6201,7 @@
                         title: "S GPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
-                        headerTooltip: "Live from S PRC: ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",
+                        headerTooltip: "Live from the new S price (the CVR Price Rule suggestion when it shows one, else S PRC): ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",
                         sorter: amazonMetricSorter(amazonComputeSgpft),
                         formatter: function(cell) {
                             const percent = amazonComputeSgpft(cell.getRow().getData());
