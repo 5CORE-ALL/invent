@@ -72,7 +72,9 @@ class AmazonAdsFreshness extends Command
                     $problems++;
                 }
             } else {
-                $this->warn('  warm-grid has never recorded a rebuild on this cache.');
+                // Normal for ~10 min after `php artisan optimize:clear` (it empties the cache, including this stamp).
+                $this->warn('  warm-grid has not recorded a rebuild on this cache. Expected right after optimize:clear; '
+                    .'re-run in ~10 min. If it is still empty then, the scheduler is not running amazon-ads:warm-grid.');
                 $problems++;
             }
             $hot = Cache::get('amz_ads_hot_views', []);
