@@ -1,18 +1,6 @@
 @extends('layouts.vertical', ['title' => 'Issues QC / Packaging', 'sidenav' => 'condensed'])
 {{-- QC and Packaging department rows only. Same grid as the QC PKG Tabulator. --}}
 
-@php
-    $importCsvHeaders = [
-        'sku', 'qty', 'order_qty', 'parent', 'marketplace_1', 'what_happened', 'action_1',
-        'action_1_remark', 'replacement_tracking', 'issue', 'issue_remark', 'c_action_1',
-        'c_action_1_remark', 'department',
-    ];
-    $importCsvSampleRow = [
-        'SAMPLE-SKU-001', '5', '2', 'PARENT-001', 'Amz', 'Damaged', 'Cancelled',
-        '', 'TRK123', 'Quality Issue', '', 'Fixed', '', 'QC',
-    ];
-@endphp
-
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -393,9 +381,6 @@
                         <button type="button" class="btn btn-success btn-sm" id="qc-export">
                             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
                         </button>
-                        <button type="button" class="btn btn-outline-info btn-sm" id="qc-import">
-                            <i class="bi bi-upload me-1"></i> Import CSV
-                        </button>
                         <div class="dropdown">
                             <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside">
                                 <i class="fa-solid fa-table-columns"></i> Columns
@@ -481,45 +466,6 @@
                 <div class="modal-footer py-2">
                     <span class="me-auto small text-muted">Last 12 months of QC / Packaging records. Sold = OV (overall Shopify) units for the same months. Click a row to expand.</span>
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="importCsvModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import CSV</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="importCsvAlert" class="d-none mb-3"></div>
-                    <p class="text-muted small mb-2">
-                        Upload a CSV file with the following columns (header row required):<br>
-                        <code>sku, qty, order_qty, parent, marketplace_1, what_happened, action_1, action_1_remark, replacement_tracking, issue, issue_remark, c_action_1, c_action_1_remark, department</code>
-                    </p>
-                    <p class="text-muted small mb-3">
-                        Required: <strong>sku</strong>, <strong>qty</strong>, <strong>issue</strong> (Root Cause Found).
-                        Department must be <strong>QC</strong> or <strong>Packaging</strong>. Use <strong>|</strong> or <strong>,</strong> for both. Other columns are optional.
-                    </p>
-                    <div class="mb-3">
-                        <label for="importCsvFile" class="form-label">CSV File</label>
-                        <input type="file" class="form-control" id="importCsvFile" accept=".csv,.txt">
-                    </div>
-                    <div id="importCsvProgress" class="d-none">
-                        <div class="progress mb-2"><div class="progress-bar progress-bar-striped progress-bar-animated bg-info" style="width:100%"></div></div>
-                        <p class="text-muted small text-center">Uploading…</p>
-                    </div>
-                    <div id="importCsvErrors" class="d-none">
-                        <p class="fw-semibold small mb-1 text-warning">Skipped rows:</p>
-                        <ul id="importCsvErrorList" class="small text-warning mb-0" style="max-height:160px;overflow-y:auto;"></ul>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <a href="#" id="importCsvSampleLink" class="btn btn-sm btn-outline-secondary me-auto"><i class="bi bi-download me-1"></i> Download Sample</a>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-info" id="importCsvSubmitBtn"><i class="bi bi-upload me-1"></i> Import</button>
                 </div>
             </div>
         </div>
@@ -667,13 +613,10 @@
                 history: @json(route('customer.care.qc.and.packing.history.index')),
                 sales12: @json(route('customer.care.qc.and.packing.sales.12m')),
                 dropdownList: @json(route('customer.care.qc.and.packing.dropdown.options.index')),
-                import: @json(route('customer.care.qc.and.packing.issues.import')),
                 colVisGet: @json(route('tabulator.column.visibility.user.get')),
                 colVisSet: @json(route('tabulator.column.visibility.user.set')),
             };
             const COLVIS_CHANNEL = 'qc_packing_only';
-            const IMPORT_HEADERS = @json($importCsvHeaders);
-            const IMPORT_SAMPLE = @json($importCsvSampleRow);
             const DEPARTMENTS = ['QC', 'Packaging'];
             const DEPT_LABELS = { 'Carrier': 'Carrier Claims', 'Carrier Issue': 'Carrier Scan Issue' };
             const jsonHeaders = { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': CSRF };
@@ -1629,44 +1572,6 @@
                         return [r.id, r.parent || '', r.sku, r.supplier || '', r.total_loss ?? '', r.order_qty, r.marketplace_1, r.what_happened, r.action_1, r.action_1_remark, r.replacement_tracking, r.issue, r.issue_remark, r.c_action_1, r.c_action_1_remark, deptLabel(r), r.created_by, r.created_at];
                     });
                     downloadCsv([headers.map(csvEscape).join(',')].concat(rows.map(function (r) { return r.map(csvEscape).join(','); })).join('\r\n'), 'qc_pkg_issues_active_' + new Date().toISOString().slice(0, 10) + '.csv');
-                });
-                document.getElementById('qc-import').addEventListener('click', function () {
-                    document.getElementById('importCsvFile').value = '';
-                    document.getElementById('importCsvAlert').className = 'd-none mb-3';
-                    document.getElementById('importCsvProgress').classList.add('d-none');
-                    document.getElementById('importCsvErrors').classList.add('d-none');
-                    bootstrap.Modal.getOrCreateInstance(document.getElementById('importCsvModal')).show();
-                });
-                document.getElementById('importCsvSampleLink').addEventListener('click', function (e) {
-                    e.preventDefault();
-                    downloadCsv([IMPORT_HEADERS.join(','), IMPORT_SAMPLE.join(',')].join('\r\n'), 'import_sample.csv');
-                });
-                document.getElementById('importCsvSubmitBtn').addEventListener('click', async function () {
-                    const fileInput = document.getElementById('importCsvFile');
-                    const alertEl = document.getElementById('importCsvAlert');
-                    if (!fileInput.files.length) { alertEl.className = 'alert alert-warning mb-3'; alertEl.textContent = 'Please select a CSV file.'; return; }
-                    const formData = new FormData();
-                    formData.append('file', fileInput.files[0]);
-                    formData.append('_token', CSRF);
-                    alertEl.className = 'd-none mb-3';
-                    document.getElementById('importCsvProgress').classList.remove('d-none');
-                    this.disabled = true;
-                    try {
-                        const res = await fetch(URLS.import, { method: 'POST', body: formData });
-                        const data = await res.json();
-                        document.getElementById('importCsvProgress').classList.add('d-none');
-                        alertEl.className = 'alert mb-3 alert-' + (res.ok ? 'success' : 'danger');
-                        alertEl.textContent = data.message || (res.ok ? 'Import complete.' : 'Import failed.');
-                        if (data.errors && data.errors.length) {
-                            document.getElementById('importCsvErrorList').innerHTML = data.errors.map(function (err) { return '<li>' + escapeHtml(err) + '</li>'; }).join('');
-                            document.getElementById('importCsvErrors').classList.remove('d-none');
-                        }
-                        if (res.ok) await loadRows();
-                    } catch (err) {
-                        document.getElementById('importCsvProgress').classList.add('d-none');
-                        alertEl.className = 'alert alert-danger mb-3';
-                        alertEl.textContent = 'Network error. Please try again.';
-                    } finally { document.getElementById('importCsvSubmitBtn').disabled = false; }
                 });
             });
         })();
