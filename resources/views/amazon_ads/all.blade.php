@@ -8173,6 +8173,8 @@
                     ? counts.campaigns
                     : rows.reduce(function (s, r) { return s + r.n; }, 0);
                 amzBgtWriteBandCounts(key, rows, total, counts._partial ? 'This page only. Full count updating…' : '');
+                // Count column = campaigns whose daily budget changes with the values typed in the slabs.
+                try { amzBgtWriteChangeCounts(AMZ_BGT_BAND_TBODY[key] || '', amzBgtChangeCounts(key, bands)); } catch (eChg) {}
                 if (!counts._partial && !amzBgtDraftEdited && rows.length) {
                     var histMap = {};
                     rows.forEach(function (r) { histMap[amzHistSlug(r.label)] = r.n; });
@@ -9298,12 +9300,26 @@
             // Per slab: how many of its campaigns get a different daily budget once this draft is applied
             // (new SBGT total, all rule parts included, vs the campaign's current BGT). Unlike the slab member count,
             // this moves as soon as the slab amount is typed.
-            function amzBgtReviewsChangeCounts(bands) {
+            // Slab index of a campaign row for each rule panel (same lookups amzBgtDraftParts uses).
+            function amzBgtSlabIndexFor(key, row, bands) {
+                switch (key) {
+                    case 'acos': return amzBgtFirstBandIndex(amzAcosValueOfRow(row), bands, 'acos_from', 'acos_to');
+                    case 'views': return amzBgtFirstBandIndex(amzBgtViewsValueOfRow(row), bands, 'views_from', 'views_to');
+                    case 'cvr': return amzBgtFirstBandIndex(amzBgtCvrValueOfRow(row), bands, 'cvr_from', 'cvr_to');
+                    case 'prc': return amzBgtFirstBandIndex(amzBgtPrcValueOfRow(row), bands, 'prc_from', 'prc_to');
+                    case 'reviews': return amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
+                    case 'dil': return amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), bands, 'dil_from', 'dil_to');
+                    case 'gpft': return amzBgtFirstBandIndex(amzBgtGpftValueOfRow(row), bands, 'gpft_from', 'gpft_to');
+                    case 'flag': return amzBgtFirstBandIndex(amzBgtFlagValueOfRow(row), bands, 'flag_from', 'flag_to');
+                }
+                return -1;
+            }
+            function amzBgtChangeCounts(key, bands) {
                 var rows = amzBgtCountRows();
                 if (!rows) return null;
                 var out = (bands || []).map(function () { return 0; });
                 rows.forEach(function (row) {
-                    var idx = amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
+                    var idx = amzBgtSlabIndexFor(key, row, bands);
                     if (idx < 0) return;
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
@@ -9361,7 +9377,6 @@
                 var counts = amzBgtReviewsCounts(amzBgtReviewsBands);
                 amzBgtRefreshCountCells('amazonAdsBgtReviewsRuleBandsBody', counts);
                 amzBgtPaintColumn('reviews', amzBgtReviewsBands, counts);
-                amzBgtWriteChangeCounts('amazonAdsBgtReviewsRuleBandsBody', amzBgtReviewsChangeCounts(amzBgtReviewsBands));
             }
             function amzBgtReviewsNewBand() {
                 var next = amzBgtNextAddedSlab(amzBgtReviewsBands, 'rev_from', 'rev_to', 'bgt');
@@ -10127,8 +10142,16 @@
                 // Editing a rule needs every campaign (not just this page) to recalc the counts and the DAILY BGT badge.
                 // The full set is fetched once, on the first edit, then every further edit recalcs instantly.
                 var universeTimer = null;
+                // Every panel's Count column depends on all the other panels' amounts (they add up to each campaign's
+                // new budget), so one edit recounts them all once typing pauses.
+                var recountTimer = null;
+                function recountAllSoon() {
+                    if (recountTimer) clearTimeout(recountTimer);
+                    recountTimer = setTimeout(function () { recountTimer = null; amzBgtRefreshAllRuleCounts(); }, 250);
+                }
                 function draftTouched() {
                     amzBgtDraftEdited = true;
+                    recountAllSoon();
                     if (universeTimer) clearTimeout(universeTimer);
                     universeTimer = setTimeout(function () { universeTimer = null; amzBgtEnsureUniverse(); }, 400);
                 }
