@@ -1074,11 +1074,9 @@ class LqsMasterController extends Controller
     }
 
     /**
-     * CVR history for the CVR badge chart (total_l30 / total_sessions × 100 per day).
-     */
-    /**
      * Phone view of the Amazon buyer page. The site asks Amazon as an iPhone and shows that page,
      * so every signed-in user gets the mobile layout without installing anything.
+     * Amazon fills the photo and the product details with its own scripts, so those stay in the page.
      */
     public function lqsAmzMobileView(string $asin)
     {
@@ -1116,11 +1114,53 @@ class LqsMasterController extends Controller
             return response($this->lqsAmzMobileNotice('Amazon did not return the phone page. Use the desktop icon.'), 200);
         }
 
-        $html = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $html) ?? $html;
-        $inject = '<base href="https://www.amazon.com/"><meta name="viewport" content="width=device-width, initial-scale=1">';
-        $html = preg_replace('#<head[^>]*>#i', '$0'.$inject, $html, 1) ?? ($inject.$html);
+        $html = $this->lqsAmzPrepareMobileHtml($html, $ua);
 
         return response($html, 200)->header('Content-Type', 'text/html; charset=UTF-8');
+    }
+
+    /**
+     * Point pictures at their real Amazon file, keep Amazon's scripts, and tell those scripts this is a phone.
+     */
+    private function lqsAmzPrepareMobileHtml(string $html, string $ua): string
+    {
+        $html = preg_replace('#<meta[^>]+http-equiv=["\'](?:Content-Security-Policy|refresh)["\'][^>]*>#i', '', $html) ?? $html;
+        $html = str_ireplace(['>Loading images...<', '>Loading images…<'], '><', $html);
+        $html = preg_replace('#\b(href|src|action)=([\'"])/(?!/)#i', '$1=$2https://www.amazon.com/', $html) ?? $html;
+        $html = preg_replace('#\b(href|src|action)=([\'"])//#i', '$1=$2https://', $html) ?? $html;
+        $html = preg_replace_callback('#<img\b[^>]*>#i', function (array $match): string {
+            $tag = $match[0];
+            $url = '';
+            if (preg_match('#\bdata-old-hires=(["\'])(https:[^"\']+)\1#i', $tag, $hires)) {
+                $url = html_entity_decode($hires[2], ENT_QUOTES);
+            } elseif (preg_match('#\bdata-a-dynamic-image=(["\'])([^"\']+)\1#i', $tag, $dynamic)) {
+                $map = json_decode(html_entity_decode($dynamic[2], ENT_QUOTES), true);
+                if (is_array($map) && $map !== []) {
+                    $url = (string) array_key_first($map);
+                }
+            } elseif (preg_match('#\bdata-src=(["\'])(https:[^"\']+)\1#i', $tag, $dataSrc)) {
+                $url = html_entity_decode($dataSrc[2], ENT_QUOTES);
+            }
+            if ($url === '' || ! str_starts_with($url, 'https://')) {
+                return $tag;
+            }
+            $safe = htmlspecialchars($url, ENT_QUOTES);
+            if (preg_match('#\bsrc=#i', $tag)) {
+                return preg_replace('#\bsrc=(["\']).*?\1#i', 'src="'.$safe.'"', $tag, 1) ?? $tag;
+            }
+
+            return preg_replace('#<img\b#i', '<img src="'.$safe.'"', $tag, 1) ?? $tag;
+        }, $html) ?? $html;
+
+        $uaJs = json_encode($ua, JSON_UNESCAPED_SLASHES);
+        $inject = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            .'<script>(function(){var ua='.$uaJs.';var def=function(o,k,v){try{Object.defineProperty(o,k,{get:function(){return v;},configurable:true});}catch(e){}};'
+            .'def(Navigator.prototype,"userAgent",ua);def(Navigator.prototype,"appVersion",ua);def(Navigator.prototype,"platform","iPhone");def(Navigator.prototype,"maxTouchPoints",5);'
+            .'def(navigator,"userAgent",ua);def(navigator,"platform","iPhone");def(navigator,"maxTouchPoints",5);})();</script>'
+            .'<style>img.a-dynamic-image,#landingImage,#main-image{display:block!important;visibility:visible!important;opacity:1!important;max-width:100%!important;height:auto!important;}</style>';
+        $html = preg_replace('#<head[^>]*>#i', '$0'.$inject, $html, 1) ?? ($inject.$html);
+
+        return $html;
     }
 
     private function lqsAmzMobileNotice(string $message): string
