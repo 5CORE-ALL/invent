@@ -68,15 +68,14 @@
                 </table>
 
                 <label class="form-label fw-semibold" for="mcs-add-search">Add a supplier (from the supplier list)</label>
-                <input type="text" id="mcs-add-search" class="form-control mb-2" autocomplete="off"
-                    placeholder="Quick search a supplier...">
-                <div class="input-group">
-                    <select id="mcs-add-select" class="form-select">
-                        <option value="">Select supplier...</option>
-                    </select>
+                <div class="input-group position-relative">
+                    <input type="text" id="mcs-add-search" class="form-control" autocomplete="off"
+                        placeholder="Search and select a supplier...">
                     <button type="button" class="btn btn-primary" id="mcs-add-btn" disabled>
                         <i class="mdi mdi-plus me-1"></i> Add
                     </button>
+                    <div id="mcs-add-list" class="list-group position-absolute w-100 shadow"
+                        style="top:100%;left:0;z-index:1060;max-height:220px;overflow-y:auto;display:none;"></div>
                 </div>
                 <div class="form-text">Only suppliers that are not already in this category are listed.</div>
                 <div class="text-danger small mt-2" id="mcs-modal-error" style="display:none;"></div>
@@ -196,19 +195,21 @@
         el.style.display = message ? '' : 'none';
     }
 
-    function renderAvailable() {
-        const q = document.getElementById('mcs-add-search').value.trim().toLowerCase();
-        const select = document.getElementById('mcs-add-select');
-        const keep = select.value;
-        select.innerHTML = '<option value="">Select supplier...</option>';
-        available.filter(function(s) { return !q || s.name.toLowerCase().indexOf(q) !== -1; }).forEach(function(s) {
-            const option = document.createElement('option');
-            option.value = s.id;
-            option.textContent = s.name;
-            select.appendChild(option);
-        });
-        select.value = keep;
-        document.getElementById('mcs-add-btn').disabled = !select.value;
+    // One box: type to filter the suppliers that are not in this category yet, click one to pick it.
+    let chosenSupplier = null;
+
+    function renderAvailable(openList) {
+        const input = document.getElementById('mcs-add-search');
+        const list = document.getElementById('mcs-add-list');
+        const q = input.value.trim().toLowerCase();
+        if (chosenSupplier && input.value !== chosenSupplier.name) chosenSupplier = null;
+        document.getElementById('mcs-add-btn').disabled = !chosenSupplier;
+        if (openList === false) { list.style.display = 'none'; return; }
+        const hits = available.filter(function(s) { return !q || s.name.toLowerCase().indexOf(q) !== -1; });
+        list.innerHTML = hits.length ? hits.map(function(s) {
+            return '<button type="button" class="list-group-item list-group-item-action py-2 mcs-add-item" data-id="' + s.id + '">' + esc(s.name) + '</button>';
+        }).join('') : '<div class="list-group-item text-muted small">No suppliers found</div>';
+        list.style.display = '';
     }
 
     function renderModal(payload) {
@@ -224,7 +225,7 @@
             }).join('');
         }
         available = payload.available || [];
-        renderAvailable();
+        renderAvailable(false);
 
         // keep the table row in step with the modal
         if (currentRow) {
@@ -247,7 +248,9 @@
     function openModal(row) {
         currentRow = row;
         showError('');
+        chosenSupplier = null;
         document.getElementById('mcs-add-search').value = '';
+        document.getElementById('mcs-add-list').style.display = 'none';
         document.getElementById('mcs-modal-category').textContent = row.getData().mfr_category;
         document.getElementById('mcs-modal-count').textContent = row.getData().count;
         document.getElementById('mcs-modal-body').innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading...</td></tr>';
@@ -255,19 +258,40 @@
         load();
     }
 
-    document.getElementById('mcs-add-search').addEventListener('input', renderAvailable);
-    document.getElementById('mcs-add-select').addEventListener('change', function() {
-        document.getElementById('mcs-add-btn').disabled = !this.value;
+    const addSearch = document.getElementById('mcs-add-search');
+    addSearch.addEventListener('input', function() { renderAvailable(true); });
+    addSearch.addEventListener('focus', function() { renderAvailable(true); });
+    addSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') renderAvailable(false);
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const first = document.querySelector('#mcs-add-list .mcs-add-item');
+            if (!chosenSupplier && first) first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            else if (chosenSupplier) document.getElementById('mcs-add-btn').click();
+        }
+    });
+    document.getElementById('mcs-add-list').addEventListener('mousedown', function(e) {
+        const item = e.target.closest('.mcs-add-item');
+        if (!item) return;
+        e.preventDefault();
+        const picked = available.find(function(s) { return String(s.id) === item.dataset.id; });
+        if (!picked) return;
+        chosenSupplier = picked;
+        addSearch.value = picked.name;
+        renderAvailable(false);
+    });
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#mcs-add-search') && !e.target.closest('#mcs-add-list')) renderAvailable(false);
     });
 
     document.getElementById('mcs-add-btn').addEventListener('click', function() {
-        const supplierId = document.getElementById('mcs-add-select').value;
-        if (!supplierId || !currentRow) return;
+        if (!chosenSupplier || !currentRow) return;
+        const supplierId = chosenSupplier.id;
         const btn = this;
         btn.disabled = true;
         showError('');
         api('POST', categoryBase + '/' + currentRow.getData().id + '/suppliers', { supplier_id: parseInt(supplierId, 10) })
-            .then(function() { document.getElementById('mcs-add-search').value = ''; return load(); })
+            .then(function() { chosenSupplier = null; addSearch.value = ''; return load(); })
             .catch(function(e) { showError(e.message); btn.disabled = false; });
     });
 
