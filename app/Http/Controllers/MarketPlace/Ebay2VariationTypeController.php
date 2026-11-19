@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * eBay 2 Variation Type: import the variation aspect each main (parent) listing varies by (Color, Size, ...)
- * with the Trading API GetItem call, edit it, and push the new name back with ReviseFixedPriceItem.
+ * with the Trading API GetItem call, and add a new variation type to a parent with ReviseFixedPriceItem (the value
+ * of each SKU comes from Variation Master's Variation Name).
  */
 class Ebay2VariationTypeController extends Controller
 {
@@ -47,21 +48,12 @@ class Ebay2VariationTypeController extends Controller
         foreach ($listings as $itemId => $listing) {
             $rec = $saved->get($itemId);
             $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
-            [$childSkus, $notOnEbay] = $this->childSkuLists($listing['skus'], $master[$parentNorm]['skus'] ?? []);
             $rows[] = [
                 'item_id' => (string) $itemId,
                 'main_listing' => $listing['main_listing'],
                 'children' => $listing['children'],
                 'master_type' => $master[$parentNorm]['type'] ?? '',
-                // Variation Master "Variation Name" of each SKU in 'skus', same order ('' when it has none).
-                'sku_names' => array_map(fn (string $s) => $master[$parentNorm]['names'][$this->skuKey($s)] ?? '', $childSkus),
-                // Every child SKU of this parent: on the eBay listing plus the Variation Master children.
-                'skus' => $childSkus,
-                // The Variation Master children that are not on the eBay listing.
-                'skus_not_on_ebay' => $notOnEbay,
-                // Lower-case SKUs for the SKU search box.
-                'sku_search' => mb_strtolower(implode(' ', $childSkus)),
-            ] + ($rec ? $this->rowPayload($rec) : $this->emptyPayload());
+            ] + $this->skuColumns($listing, $rec, $master) + ($rec ? $this->rowPayload($rec) : $this->emptyPayload());
         }
 
         usort($rows, static fn (array $a, array $b) => strnatcasecmp($a['main_listing'], $b['main_listing']));
@@ -96,6 +88,7 @@ class Ebay2VariationTypeController extends Controller
 
         set_time_limit(300);
         $listings = $this->mainListings();
+        $master = $this->variationMasterInfo();
         $service = app(Ebay2ApiService::class);
         $results = [];
 
@@ -107,22 +100,26 @@ class Ebay2VariationTypeController extends Controller
                 $item = $service->getItem($itemId);
                 if (! is_array($item)) {
                     $why = trim((string) ($service->lastGetItemError ?? ''));
-                    $results[] = $this->saveImport($itemId, $listing, null, $why !== '' ? $why : 'eBay did not return this listing.');
+                    $results[] = $this->saveImport($itemId, $listing, null, $why !== '' ? $why : 'eBay did not return this listing.', null, null, $master);
 
                     continue;
                 }
 
                 $aspects = EbayTradingReviseItem::variationAspects($item);
                 if ($aspects === []) {
-                    $results[] = $this->saveImport($itemId, $listing, '', 'This eBay listing has no variations (no variation type to import).', []);
+                    $results[] = $this->saveImport($itemId, $listing, '', 'This eBay listing has no variations (no variation type to import).', [], [], $master);
 
                     continue;
                 }
 
-                $results[] = $this->saveImport($itemId, $listing, implode(' / ', array_keys($aspects)), null, $aspects);
+                // Type and values of the listing, plus the child SKUs that exist on it and the value each one has.
+                $results[] = $this->saveImport(
+                    $itemId, $listing, implode(' / ', array_keys($aspects)), null, $aspects,
+                    EbayTradingReviseItem::variationSpecificsList($item), $master,
+                );
             } catch (\Throwable $e) {
                 Log::warning('eBay2 variation type import failed', ['item_id' => $itemId, 'error' => $e->getMessage()]);
-                $results[] = $this->saveImport($itemId, $listing, null, $e->getMessage());
+                $results[] = $this->saveImport($itemId, $listing, null, $e->getMessage(), null, null, $master);
             }
         }
 
@@ -154,13 +151,15 @@ class Ebay2VariationTypeController extends Controller
     }
 
     /**
-     * Rename the variation type of one eBay 2 listing (Trading API ReviseFixedPriceItem) and record the result.
+     * Add a new variation type to one eBay 2 listing (Trading API ReviseFixedPriceItem) and record the result. The
+     * existing variation types stay; each variation gets the Variation Master "Variation Name" of its SKU as the
+     * value of the new type. Without a typed New Type the parent's Variation Master type is added.
      */
     public function push(Request $request): JsonResponse
     {
         $data = $request->validate([
             'item_id' => 'required|string|max:40',
-            'new_type' => 'required|string|max:'.self::MAX_TYPE_LENGTH,
+            'new_type' => 'nullable|string|max:'.self::MAX_TYPE_LENGTH,
         ]);
 
         if (! $this->tableReady()) {
@@ -169,20 +168,24 @@ class Ebay2VariationTypeController extends Controller
 
         set_time_limit(300);
         $itemId = trim($data['item_id']);
-        $newType = trim($data['new_type']);
         $listing = $this->mainListings()[$itemId] ?? null;
+        $masterInfo = $listing ? ($this->variationMasterInfo()[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])] ?? null) : null;
+        $newType = trim((string) ($data['new_type'] ?? ''));
+        if ($newType === '') {
+            $newType = trim((string) ($masterInfo['type'] ?? ''));
+        }
 
         $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
             $rec->parent_sku = $listing['main_listing'] ?? $rec->parent_sku;
         }
-        $rec->new_type = $newType;
+        $rec->new_type = $newType === '' ? null : $newType;
 
         try {
             if ($newType === '') {
-                $result = ['success' => false, 'message' => 'Enter the new variation type first.'];
+                $result = ['success' => false, 'message' => 'Enter the new variation type first (this parent has no Variation Master type to use).'];
             } else {
-                $result = $this->pushToEbay($itemId, $newType);
+                $result = $this->addToEbay($itemId, $newType, $masterInfo['names'] ?? []);
             }
         } catch (\Throwable $e) {
             Log::warning('eBay2 variation type push failed', ['item_id' => $itemId, 'error' => $e->getMessage()]);
@@ -193,31 +196,36 @@ class Ebay2VariationTypeController extends Controller
         $rec->push_message = mb_substr(trim((string) $result['message']), 0, 2000);
         $rec->pushed_at = now();
         $rec->pushed_by = (string) ($request->user()->name ?? 'unknown');
-        if ($result['success']) {
-            $rec->current_type = $newType;
+        if ($result['success'] && is_array($result['aspects'] ?? null)) {
+            // The listing now varies by its old types plus the new one.
+            $rec->current_values = $result['aspects'];
+            $rec->current_type = implode(' / ', array_keys($result['aspects']));
             $rec->imported_at = now();
             $rec->import_error = null;
-            // A single-aspect listing now carries the new aspect name, so move its values and pending edits over.
-            $values = is_array($rec->current_values) ? $rec->current_values : [];
-            if (count($values) === 1) {
-                $rec->current_values = [$newType => reset($values)];
-                $rec->value_edits = collect((array) ($rec->value_edits ?? []))
-                    ->map(static fn ($e) => ['aspect' => $newType] + (array) $e)
-                    ->values()->all() ?: null;
+            // Keep the pulled child variations in step: every SKU now has a value for the new type too.
+            if (is_array($rec->live_variations) && $rec->live_variations !== []) {
+                $rec->live_variations = array_map(function ($v) use ($result, $newType) {
+                    $sku = trim((string) ($v['sku'] ?? ''));
+                    $v['specifics'] = (array) ($v['specifics'] ?? []);
+                    $v['specifics'][$newType] = (string) ($result['values_by_sku'][$sku] ?? '');
+
+                    return $v;
+                }, $rec->live_variations);
             }
         }
         $rec->save();
 
         return response()->json([
             'success' => $result['success'],
-            'row' => $this->rowPayload($rec),
+            'row' => $this->rowWithSkus($rec),
         ]);
     }
 
     /**
-     * @return array{success: bool, message: string}
+     * @param  array<string, string>  $masterNames  normalized SKU => Variation Master Variation Name
+     * @return array{success: bool, message: string, aspects?: array<string, list<string>>, values_by_sku?: array<string, string>}
      */
-    private function pushToEbay(string $itemId, string $newType): array
+    private function addToEbay(string $itemId, string $newType, array $masterNames): array
     {
         $service = app(Ebay2ApiService::class);
         $item = $service->getItem($itemId);
@@ -227,17 +235,75 @@ class Ebay2VariationTypeController extends Controller
             return ['success' => false, 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
         }
 
+        // Value of the new type for each variation on eBay: the Variation Name of that SKU in Variation Master.
+        $vars = EbayTradingReviseItem::itemFromGetItem($item)['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        $valuesBySku = [];
+        foreach ((array) $vars as $variation) {
+            $vSku = is_array($variation) ? trim((string) ($variation['SKU'] ?? '')) : '';
+            if ($vSku !== '' && ($masterNames[$this->skuKey($vSku)] ?? '') !== '') {
+                $valuesBySku[$vSku] = $masterNames[$this->skuKey($vSku)];
+            }
+        }
+
         $ctx = $service->tradingReviseContext();
         $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
 
-        return EbayTradingReviseItem::renameVariationAspect(...$creds, getItemResponse: $item, newName: $newType);
+        $result = EbayTradingReviseItem::addVariationAspect(...$creds, getItemResponse: $item, newName: $newType, valuesBySku: $valuesBySku);
+        $result['values_by_sku'] = $valuesBySku;
+
+        return $result;
+    }
+
+    /**
+     * The SKU-related columns of a row.
+     *  - skus: every child SKU of the parent. After a Pull these are the SKUs that really exist on the live eBay 2
+     *    listing (GetItem); before one, the SKUs eBay 2 inventory reports. Variation Master children that are not
+     *    on eBay are added too.
+     *  - skus_not_on_ebay: the Variation Master children that are not on the eBay 2 listing.
+     *  - sku_names: Variation Master "Variation Name" of each SKU in skus, same order ('' when none).
+     *  - ebay_names: the variation value each SKU has on the live listing, same order ('' when not pulled / not live).
+     *
+     * @param  array<string, mixed>|null  $listing
+     * @param  array<string, array{type: string, skus: list<string>, names: array<string, string>}>  $master
+     * @return array<string, mixed>
+     */
+    private function skuColumns(?array $listing, ?Ebay2VariationTypePush $rec, array $master): array
+    {
+        if ($listing === null) {
+            return [];
+        }
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
+        $live = is_array($rec?->live_variations) ? $rec->live_variations : [];
+        $liveSkus = array_values(array_filter(array_map(static fn ($v) => trim((string) ($v['sku'] ?? '')), $live)));
+        $liveBySku = [];
+        foreach ($live as $v) {
+            $sku = trim((string) ($v['sku'] ?? ''));
+            if ($sku !== '') {
+                $liveBySku[$this->skuKey($sku)] = array_values(array_filter(array_map('strval', (array) ($v['specifics'] ?? []))));
+            }
+        }
+
+        [$childSkus, $notOnEbay] = $this->childSkuLists($live !== [] ? $liveSkus : $listing['skus'], $master[$parentNorm]['skus'] ?? []);
+
+        return [
+            'skus' => $childSkus,
+            'skus_not_on_ebay' => $notOnEbay,
+            'sku_names' => array_map(fn (string $s) => $master[$parentNorm]['names'][$this->skuKey($s)] ?? '', $childSkus),
+            'ebay_names' => array_map(fn (string $s) => implode(' / ', $liveBySku[$this->skuKey($s)] ?? []), $childSkus),
+            // Lower-case SKUs for the SKU search box.
+            'sku_search' => mb_strtolower(implode(' ', $childSkus)),
+        ];
     }
 
     /**
      * @param  array<string, mixed>|null  $listing
+     * @param  array<string, array{type: string, skus: list<string>, names: array<string, string>}>|null  $master
      * @return array<string, mixed>
      */
-    private function saveImport(string $itemId, ?array $listing, ?string $currentType, ?string $error, ?array $values = null): array
+    private function saveImport(string $itemId, ?array $listing, ?string $currentType, ?string $error, ?array $values = null, ?array $variations = null, ?array $master = null): array
     {
         $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
@@ -251,11 +317,22 @@ class Ebay2VariationTypeController extends Controller
             // Edits typed against values that are no longer on the listing are dropped.
             $rec->value_edits = $this->pruneEdits((array) ($rec->value_edits ?? []), $values) ?: null;
         }
+        if ($variations !== null) {
+            $rec->live_variations = $variations;
+        }
         $rec->import_error = $error;
         $rec->imported_at = now();
         $rec->save();
 
-        return $this->rowPayload($rec);
+        return $this->rowPayload($rec) + ($master !== null ? $this->skuColumns($listing, $rec, $master) : []);
+    }
+
+    /** The row as the page shows it, including the SKU columns (they depend on the pulled live variations). */
+    private function rowWithSkus(Ebay2VariationTypePush $rec): array
+    {
+        $listing = $this->mainListings()[(string) $rec->item_id] ?? null;
+
+        return $this->rowPayload($rec) + $this->skuColumns($listing, $rec, $listing ? $this->variationMasterInfo() : []);
     }
 
     /**
@@ -278,6 +355,8 @@ class Ebay2VariationTypeController extends Controller
             'values_status' => (string) ($rec->values_status ?? ''),
             'values_message' => (string) ($rec->values_message ?? ''),
             'values_pushed_at' => $rec->values_pushed_at?->format('d M Y H:i'),
+            // True once the child SKUs and their variation values were pulled from the live listing.
+            'live_pulled' => is_array($rec->live_variations) && $rec->live_variations !== [],
         ];
     }
 
@@ -291,6 +370,7 @@ class Ebay2VariationTypeController extends Controller
             'push_status' => '', 'push_message' => '', 'pushed_at' => null,
             'current_values' => (object) [], 'value_edits' => [],
             'values_status' => '', 'values_message' => '', 'values_pushed_at' => null,
+            'live_pulled' => false,
         ];
     }
 
@@ -405,6 +485,20 @@ class Ebay2VariationTypeController extends Controller
                 }
             }
             $rec->current_values = $values;
+            // The pulled child variations carry the renamed values too.
+            if (is_array($rec->live_variations) && $rec->live_variations !== []) {
+                $rec->live_variations = array_map(static function ($v) use ($applied) {
+                    foreach ((array) ($v['specifics'] ?? []) as $aspect => $value) {
+                        foreach ($applied as $e) {
+                            if (mb_strtolower((string) $aspect) === mb_strtolower((string) $e['aspect']) && (string) $value === $e['old']) {
+                                $v['specifics'][$aspect] = $e['new'];
+                            }
+                        }
+                    }
+
+                    return $v;
+                }, $rec->live_variations);
+            }
             $isApplied = static function (array $edit) use ($applied): bool {
                 foreach ($applied as $a) {
                     if ($a['aspect'] === $edit['aspect'] && $a['old'] === $edit['old']) {
@@ -422,7 +516,7 @@ class Ebay2VariationTypeController extends Controller
 
         return response()->json([
             'success' => $result['success'],
-            'row' => $this->rowPayload($rec),
+            'row' => $this->rowWithSkus($rec),
         ]);
     }
 
@@ -449,7 +543,8 @@ class Ebay2VariationTypeController extends Controller
     private function tableReady(): bool
     {
         return Schema::hasTable('ebay2_variation_type_pushes')
-            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values');
+            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values')
+            && Schema::hasColumn('ebay2_variation_type_pushes', 'live_variations');
     }
 
     private function missingTable(): JsonResponse

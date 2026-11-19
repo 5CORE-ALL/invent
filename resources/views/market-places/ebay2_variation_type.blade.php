@@ -44,6 +44,7 @@
         .e2vt-chip--more { background: transparent; border-style: dashed; color: #64748b; }
         .e2vt-chip--name { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; font-weight: 600; }
         .e2vt-chip--none { background: transparent; color: #94a3b8; }
+        .e2vt-chip--differs { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
         .e2vt-chip--missing { background: #fef2f2; border-style: dashed; border-color: #f87171; color: #b91c1c; }
         .e2vt-aspect-label { font-size: 11px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: .02em; margin-right: 4px; }
         .e2vt-aspect-block + .e2vt-aspect-block { margin-top: 4px; }
@@ -78,21 +79,21 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span class="e2vt-stat e2vt-stat--total" title="Live eBay 2 parents (main listings with variations). While a search or filter is on it reads shown / total.">PARENTS:<span id="e2vt-b-total">0</span></span>
                         <span class="e2vt-stat e2vt-stat--imported" title="Listings whose variation type and values were imported from eBay">IMPORTED:<span id="e2vt-b-imported">0</span></span>
-                        <span class="e2vt-stat e2vt-stat--success" title="Type pushes that succeeded">TYPE OK:<span id="e2vt-b-success">0</span></span>
-                        <span class="e2vt-stat e2vt-stat--failed" title="Type pushes that failed">TYPE FAILED:<span id="e2vt-b-failed">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--success" title="Variation types added successfully">TYPE OK:<span id="e2vt-b-success">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--failed" title="Variation type adds that failed">TYPE FAILED:<span id="e2vt-b-failed">0</span></span>
                         <span class="e2vt-stat e2vt-stat--success" title="Value pushes that succeeded">VALUES OK:<span id="e2vt-b-vsuccess">0</span></span>
                         <span class="e2vt-stat e2vt-stat--failed" title="Value pushes that failed">VALUES FAILED:<span id="e2vt-b-vfailed">0</span></span>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" id="e2vt-refresh" class="btn btn-sm btn-outline-primary" title="Reload the table"><i class="ri-refresh-line"></i></button>
-                        <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="Pull the current variation type and values from eBay 2 for the rows ticked in the Selection Box column (Trading API GetItem). Nothing is changed on eBay.">
+                        <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="For the parents ticked in the Selection Box column, pull from eBay 2 (Trading API GetItem): the child SKUs that exist on the listing, the variation type, and each SKU's variation name. Nothing is changed on eBay.">
                             <i class="ri-download-2-line me-1"></i> Pull <span id="e2vt-pull-count">(0)</span>
                         </button>
                         <button type="button" id="e2vt-import-all" class="btn btn-sm btn-warning text-dark" title="Read the current variation type and values of every listing in the filtered view from eBay 2 (Trading API GetItem)">
                             <i class="ri-download-cloud-2-line me-1"></i> Import Current Types
                         </button>
-                        <button type="button" id="e2vt-push-changed" class="btn btn-sm btn-success" title="Push every listing whose New Type differs from the current type">
-                            <i class="ri-upload-cloud-2-line me-1"></i> Push All Changed Types
+                        <button type="button" id="e2vt-push-changed" class="btn btn-sm btn-success" title="Add the typed New Type to every listing in the view that does not have it yet (each SKU gets its Variation Master Variation Name as the value)">
+                            <i class="ri-add-circle-line me-1"></i> Add All New Types
                         </button>
                         <button type="button" id="e2vt-push-values-all" class="btn btn-sm btn-success" title="Push every listing that has value edits waiting">
                             <i class="ri-upload-cloud-2-line me-1"></i> Push All Value Edits
@@ -122,7 +123,7 @@
                             <select id="e2vt-filter" class="form-select form-select-sm" style="min-width:200px">
                                 <option value="all">All</option>
                                 <option value="not_imported">Not imported yet</option>
-                                <option value="changed">Type changed (New Type differs)</option>
+                                <option value="changed">New Type waiting to be added</option>
                                 <option value="values_changed">Value edits waiting</option>
                                 <option value="differs_master">Differs from Variation Master</option>
                                 <option value="failed">Any push failed</option>
@@ -130,7 +131,7 @@
                             </select>
                         </div>
                         <div class="ms-auto small text-muted">
-                            Edit <b>New Type</b> in its cell. Use <b>Edit</b> in the values column to rename individual values (for example a colour). Then press <b>Push</b>.
+                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. Use <b>Edit</b> in the values column to rename individual values (for example a colour), then <b>Push</b>.
                             A <span class="e2vt-dot e2vt-dot--success" style="width:10px;height:10px"></span> green dot is success, a
                             <span class="e2vt-dot e2vt-dot--failed" style="width:10px;height:10px"></span> red dot is a failure: hover it for the reason.
                         </div>
@@ -211,7 +212,13 @@
                 return json;
             }
 
-            const isChanged = (d) => norm(d.new_type) !== '' && norm(d.new_type) !== norm(d.current_type);
+            // The variation types eBay has now ("Color / Size"), and whether one of them is called `t`.
+            const hasAspect = (d, t) => String(d.current_type || '').split('/').map(norm).includes(norm(t));
+            // A typed New Type that the listing does not have yet: Add will put it on every variation.
+            const isChanged = (d) => norm(d.new_type) !== '' && !hasAspect(d, d.new_type);
+            // What the Add button would add: the typed New Type, or the parent's Variation Master type when none is typed.
+            const typeToAdd = (d) => String(d.new_type || '').trim() || String(d.master_type || '').trim();
+            const canAdd = (d) => typeToAdd(d) !== '' && !hasAspect(d, typeToAdd(d));
 
             // The red Current Type pill: eBay's type differs from the Variation Master type (both known).
             const isTypeMismatch = (d) => norm(d.current_type) !== '' && norm(d.master_type) !== '' && norm(d.master_type) !== norm(d.current_type);
@@ -311,7 +318,7 @@
             }
 
             async function pushType(d) {
-                const newType = String(d.new_type || '').trim();
+                const newType = typeToAdd(d);
                 if (!newType) {
                     await applyRowUpdates([{ item_id: d.item_id, push_status: 'failed', push_message: 'Enter the new variation type first.' }]);
                     return;
@@ -582,22 +589,28 @@
                                     },
                                 },
                                 {
-                                    title: 'Push', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                                    title: 'Add', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
-                                        const canPush = isChanged(c.getData());
-                                        return '<button type="button" class="btn btn-sm ' + (canPush ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-type" title="' + (canPush ? 'Push the new type to eBay 2' : 'New Type is empty or equals the current type') + '"><i class="ri-upload-2-line me-1"></i>Push</button>';
+                                        const d = c.getData();
+                                        const ok = canAdd(d);
+                                        const tip = ok
+                                            ? 'Add the variation type "' + typeToAdd(d) + '" to this parent on eBay 2. Each SKU gets its Variation Master Variation Name as the value.'
+                                            : (typeToAdd(d) === '' ? 'Type a New Type first (this parent has no Variation Master type).' : 'The listing already has the variation type "' + typeToAdd(d) + '".');
+                                        return '<button type="button" class="btn btn-sm ' + (ok ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-type" title="' + esc(tip) + '"><i class="ri-add-line me-1"></i>Add</button>';
                                     },
                                     cellClick: async function (e, cell) {
                                         if (busy || !e.target.closest('.e2vt-push-type')) return;
                                         const d = cell.getData();
-                                        if (!isChanged(d) && !confirm('New Type is empty or already equals the current type. Push anyway?')) return;
-                                        setBusy(true, 'Pushing type for ' + d.main_listing + '...');
+                                        if (typeToAdd(d) === '') { alert('Type a New Type first. This parent has no Variation Master type to use.'); return; }
+                                        if (hasAspect(d, typeToAdd(d)) && !confirm('The listing already has the variation type "' + typeToAdd(d) + '". Try to add it anyway?')) return;
+                                        if (!confirm('Add the variation type "' + typeToAdd(d) + '" to ' + d.main_listing + ' on eBay 2? Every SKU gets its Variation Master Variation Name as the value. This changes the live listing.')) return;
+                                        setBusy(true, 'Adding type to ' + d.main_listing + '...');
                                         try { await pushType(d); } finally { setBusy(false, ''); cell.getRow().reformat(); }
                                     },
                                 },
                                 {
                                     title: 'Reason', field: 'push_status', width: 70, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
-                                    formatter: (c) => { const d = c.getData(); return dot(d.push_status, d.push_message, d.pushed_at, 'Type not pushed yet'); },
+                                    formatter: (c) => { const d = c.getData(); return dot(d.push_status, d.push_message, d.pushed_at, 'Type not added yet'); },
                                 },
                             ],
                         },
@@ -656,6 +669,32 @@
                                     },
                                 },
                                 {
+                                    // The variation value each child SKU has on the live eBay 2 listing, pulled with Pull / Import.
+                                    // One entry per SKU of the SKU column, same order. A dashed dash means that SKU is not on the listing.
+                                    title: 'Variation Name (eBay, SKU wise)', field: 'ebay_names', width: 260, headerHozAlign: 'center', headerSort: false,
+                                    formatter: function (c) {
+                                        const d = c.getData();
+                                        const skus = Array.isArray(d.skus) ? d.skus : [];
+                                        const names = Array.isArray(d.ebay_names) ? d.ebay_names : [];
+                                        if (!d.live_pulled) return '<span class="e2vt-muted">Pull to see</span>';
+                                        if (!skus.length) return '<span class="e2vt-muted">—</span>';
+                                        const live = names.filter((n) => n).length;
+                                        const master = Array.isArray(d.sku_names) ? d.sku_names : [];
+                                        const chip = (i) => {
+                                            if (!names[i]) return '<span class="e2vt-chip e2vt-chip--none" title="' + esc(skus[i]) + ': not on the live eBay 2 listing">—</span>';
+                                            const differs = master[i] && norm(master[i]) !== norm(names[i]);
+                                            return '<span class="e2vt-chip e2vt-chip--name' + (differs ? ' e2vt-chip--differs' : '') + '" title="' + esc(skus[i] + (differs ? ': Variation Master has "' + master[i] + '"' : '')) + '">' + esc(names[i]) + '</span>';
+                                        };
+                                        const shown = skus.slice(0, SKUS_SHOWN).map((s, i) => chip(i));
+                                        if (skus.length > SKUS_SHOWN) {
+                                            const rest = skus.slice(SKUS_SHOWN).map((s, i) => s + ': ' + (names[SKUS_SHOWN + i] || '—')).join('\n');
+                                            shown.push('<span class="e2vt-chip e2vt-chip--more" title="' + esc(rest).replace(/\n/g, '&#10;') + '">+' + (skus.length - SKUS_SHOWN) + ' more</span>');
+                                        }
+                                        return '<div><span class="e2vt-aspect-label">' + live + ' / ' + skus.length + ' on eBay</span>'
+                                            + '<span class="e2vt-chips" style="display:flex;margin-top:2px">' + shown.join('') + '</span></div>';
+                                    },
+                                },
+                                {
                                     title: 'Edit', width: 74, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
                                         const d = c.getData();
@@ -704,11 +743,11 @@
                     if (busy) return;
                     const rows = table.getSelectedRows().map((r) => r.getData());
                     if (!rows.length) { alert('Tick at least one row in the Selection Box column first.'); return; }
-                    if (!confirm('Pull the current variation type and values of ' + rows.length + ' selected listing(s) from eBay 2? This calls GetItem once per listing and does not change eBay.')) return;
+                    if (!confirm('Pull the child SKUs, variation type and variation names of ' + rows.length + ' selected parent(s) from eBay 2? This calls GetItem once per listing and does not change eBay.')) return;
                     stopRequested = false;
                     setBusy(true, 'Pulling...');
                     const done = await importRows(rows);
-                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Pulled ') + done + ' selected listing(s).');
+                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Pulled ') + done + ' selected parent(s): child SKUs, variation type and variation names.');
                     table.redraw(true);
                     syncSelection();
                 });
@@ -751,8 +790,8 @@
                 document.getElementById('e2vt-push-changed').addEventListener('click', async function () {
                     if (busy) return;
                     const rows = visibleRows().filter(isChanged);
-                    if (!rows.length) { alert('Nothing to push: no listing in this view has a New Type that differs from its current type.'); return; }
-                    if (!confirm('Push the new variation type to eBay 2 for ' + rows.length + ' listing(s)? This changes live listings.')) return;
+                    if (!rows.length) { alert('Nothing to add: no listing in this view has a typed New Type that the listing does not have yet.'); return; }
+                    if (!confirm('Add the typed New Type to ' + rows.length + ' listing(s) on eBay 2? Every SKU gets its Variation Master Variation Name as the value. This changes live listings.')) return;
                     await pushMany(rows, pushType, 'type');
                 });
 

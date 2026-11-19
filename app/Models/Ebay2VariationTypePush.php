@@ -16,6 +16,7 @@ class Ebay2VariationTypePush extends Model
         'import_error',
         'current_values',
         'value_edits',
+        'live_variations',
         'new_type',
         'push_status',
         'push_message',
@@ -33,5 +34,6 @@ class Ebay2VariationTypePush extends Model
         'values_pushed_at' => 'datetime',
         'current_values' => 'array',
         'value_edits' => 'array',
+        'live_variations' => 'array',
     ];
 }
