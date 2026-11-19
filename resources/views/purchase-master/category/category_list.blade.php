@@ -620,13 +620,13 @@
                                 </div>
                                 <div class="modal-body">
                                     <div class="mb-3">SKU: <span class="fw-semibold" id="acm-sku"></span></div>
-                                    <label class="form-label fw-semibold" for="acm-category">Category</label>
-                                    <select id="acm-category" class="form-select">
-                                        <option value="">Select a category...</option>
-                                        @foreach (($allCategories ?? []) as $optCategory)
-                                            <option value="{{ $optCategory->id }}">{{ $optCategory->name }}</option>
-                                        @endforeach
-                                    </select>
+                                    <label class="form-label fw-semibold" for="acm-search">Category</label>
+                                    <input type="text" id="acm-search" class="form-control" autocomplete="off"
+                                        placeholder="Quick search a category...">
+                                    <div id="acm-list" class="list-group mt-2" style="max-height:260px; overflow-y:auto;"></div>
+                                    <div class="small mt-2" id="acm-chosen" style="display:none;">
+                                        Selected: <span class="fw-semibold text-primary" id="acm-chosen-name"></span>
+                                    </div>
                                     <div class="text-danger small mt-2" id="acm-error" style="display:none;"></div>
                                 </div>
                                 <div class="modal-footer">
@@ -1230,31 +1230,63 @@
             $('#badge-skus').text(Object.keys(skus).length);
         });
 
-        // Uncategorised rows (Parent / SKU search): add the SKU to a category picked from the list.
+        // Uncategorised rows (Parent / SKU search): add the SKU to a category found with the quick search.
         (function() {
             const modalEl = document.getElementById('assignCategoryModal');
             if (!modalEl) return;
+            const categories = @json(collect($allCategories ?? [])->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name])->values());
             let sku = '';
+            let chosen = null;
+
+            function render() {
+                const q = $.trim($('#acm-search').val()).toLowerCase();
+                const $list = $('#acm-list').empty();
+                const hits = categories.filter(function(c) { return !q || c.name.toLowerCase().indexOf(q) !== -1; });
+                hits.forEach(function(c) {
+                    const $item = $('<button type="button" class="list-group-item list-group-item-action py-2 acm-item"></button>')
+                        .text(c.name).attr('data-id', c.id);
+                    if (chosen && chosen.id === c.id) $item.addClass('active');
+                    $list.append($item);
+                });
+                if (!hits.length) $list.append('<div class="list-group-item text-muted small">No category matches.</div>');
+            }
+
+            function choose(c) {
+                chosen = c;
+                $('#acm-chosen-name').text(c ? c.name : '');
+                $('#acm-chosen').toggle(!!c);
+                $('#acm-submit').prop('disabled', !c);
+                render();
+            }
+
             $(document).on('click', '.assign-category-btn', function() {
                 sku = String($(this).data('sku'));
                 $('#acm-sku').text(sku);
-                $('#acm-category').val('');
+                $('#acm-search').val('');
                 $('#acm-error').hide();
-                $('#acm-submit').prop('disabled', true);
+                choose(null);
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                setTimeout(function() { $('#acm-search').trigger('focus'); }, 300);
             });
-            $('#acm-category').on('change', function() {
-                $('#acm-submit').prop('disabled', !$(this).val());
+            $('#acm-search').on('input', render);
+            $('#acm-search').on('keydown', function(e) {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const first = $('#acm-list .acm-item').first();
+                if (first.length) choose(categories.find(function(c) { return c.id === parseInt(first.attr('data-id'), 10); }));
+            });
+            $(document).on('click', '.acm-item', function() {
+                const id = parseInt($(this).attr('data-id'), 10);
+                choose(categories.find(function(c) { return c.id === id; }));
             });
             $('#acm-submit').on('click', function() {
-                const categoryId = $('#acm-category').val();
-                if (!categoryId || !sku) return;
+                if (!chosen || !sku) return;
                 const $btn = $(this).prop('disabled', true);
                 $.ajax({
                     url: '{{ url('/category/rows/add') }}',
                     method: 'POST',
                     dataType: 'json',
-                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: [sku] }
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [chosen.id], skus: [sku] }
                 }).done(function() {
                     location.reload();
                 }).fail(function(xhr) {
@@ -1262,28 +1294,6 @@
                     $btn.prop('disabled', false);
                 });
             });
-        })();
-    </script>
-    <script>
-        // Header checkbox: selects / clears every row that is listed (the page already shows only the rows
-        // that match the Parent / SKU / MFR filters). It also reflects partial selection.
-        (function() {
-            const $all = $('#select-all-rows');
-            if (!$all.length) return;
-            function sync() {
-                const total = $('#category-table-body .row-checkbox').length;
-                const checked = $('#category-table-body .row-checkbox:checked').length;
-                $all.prop('checked', total > 0 && checked === total);
-                $all.prop('indeterminate', checked > 0 && checked < total);
-                $all.attr('title', checked ? checked + ' of ' + total + ' rows selected' : 'Select all listed rows (follows the filters)');
-            }
-            $all.on('change', function() {
-                $('#category-table-body .row-checkbox').prop('checked', this.checked);
-                sync();
-            });
-            $(document).on('change', '.row-checkbox', sync);
-            $(document).on('click', '.hide-uncategorized-row-btn', function() { setTimeout(sync, 0); });
-            sync();
         })();
     </script>
 @endsection
