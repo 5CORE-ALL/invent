@@ -125,7 +125,7 @@
         #category-table-body td.sticky-col.bg-warning-subtle { background-color: var(--bs-warning-bg-subtle, #fff3cd) !important; }
     </style>
                     <div class="table-responsive">
-                        <table class="table table-centered table-hover mb-0 border" id="category-table-body" style="min-width: 1500px;">
+                        <table class="table table-centered table-hover mb-0 border" id="category-table-body" style="min-width: 1300px;">
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
@@ -134,8 +134,6 @@
                                     <th class="text-center align-middle" style="width: 6%">Image</th>
                                     <th class="text-center align-middle sortable-th sticky-col sticky-left" style="width: 14%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="sku" data-sort-type="text" title="Click to sort">SKU <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 20%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="link" data-sort-type="num" title="Click to sort">Link Sku Purchase <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle sortable-th" style="width: 18%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="mfr" data-sort-type="text" title="Click to sort">MFR category <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle sortable-th" style="width: 15%; cursor: pointer; user-select: none; white-space: nowrap;"
@@ -149,7 +147,7 @@
                                 {{-- Search results (Parent / SKU search) that are not in any category --}}
                                 <tbody class="uncategorized-group">
                                     <tr>
-                                        <td colspan="9" class="bg-light text-muted small fw-semibold py-1">
+                                        <td colspan="8" class="bg-light text-muted small fw-semibold py-1">
                                             {{ count($uncategorizedSkus) }} {{ \Illuminate\Support\Str::plural('SKU', count($uncategorizedSkus)) }} not in any category
                                         </td>
                                     </tr>
@@ -177,7 +175,6 @@
                                             <td class="text-center sku-cell sticky-col sticky-left {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                                 {{ $uSku['sku'] }}
                                             </td>
-                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">No category</td>
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
@@ -209,7 +206,6 @@
                                     $sortValues = [
                                         'parent' => $firstSku['parent'] ?? '',
                                         'sku' => $firstSku['sku'] ?? '',
-                                        'link' => count($category->linked_skus_list ?? []),
                                         'mfr' => $category->name,
                                         'suppliers' => (int) ($category->supplier_count ?? 0),
                                         'product' => count($category->parents_list ?? []),
@@ -261,25 +257,6 @@
                                                 {{ $firstSku['sku'] }}
                                             @else
                                                 <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
-                                            @php $linkedSkus = $category->linked_skus_list ?? []; @endphp
-                                            @if (count($linkedSkus) > 0)
-                                                <div class="d-flex flex-wrap align-items-start justify-content-center py-1"
-                                                    style="line-height:1.6;">
-                                                    @foreach ($linkedSkus as $linkedSku)
-                                                        <span
-                                                            class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1">
-                                                            <a href="{{ route('supplier.list', ['category' => $category->name, 'search' => $linkedSku]) }}"
-                                                                target="_blank" rel="noopener noreferrer"
-                                                                class="text-decoration-none text-dark linked-sku-badge"
-                                                                title="Open {{ $category->name }} for {{ $linkedSku }}">{{ $linkedSku }}</a>
-                                                        </span>
-                                                    @endforeach
-                                                </div>
-                                            @else
-                                                <span class="text-muted fst-italic">No SKUs</span>
                                             @endif
                                         </td>
                                         <td class="text-center align-middle mfr-category-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
@@ -427,7 +404,7 @@
                                 @if (empty($uncategorizedSkus))
                                     <tbody>
                                         <tr>
-                                            <td colspan="9" class="text-center">
+                                            <td colspan="8" class="text-center">
                                                 @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '')
                                                     No SKUs found
                                                 @else
