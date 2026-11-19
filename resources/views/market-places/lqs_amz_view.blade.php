@@ -66,6 +66,18 @@
             padding-right: 0 !important;
         }
 
+        .amz-asin-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.1; }
+        .amz-asin-code { color: #ff9900; font-weight: 700; font-size: 11px; }
+        .amz-asin-views { display: flex; gap: 3px; }
+        .amz-asin-btn {
+            border: 1px solid #ff9900; background: #fff; color: #b36b00;
+            font-size: 9px; font-weight: 700; line-height: 1; padding: 2px 5px;
+            border-radius: 3px; cursor: pointer;
+        }
+        .amz-asin-btn:hover { background: #ff9900; color: #fff; }
+        .amz-asin-btn-m { border-color: #0d6efd; color: #0d6efd; }
+        .amz-asin-btn-m:hover { background: #0d6efd; color: #fff; }
+
         /* ── DIL dropdown ── */
         .amz-lqs-dropdown { position: relative; display: inline-block; }
         .amz-lqs-dropdown .dropdown-menu {
@@ -135,8 +147,12 @@
             margin-bottom: 8px; background: #fffdf8; border-radius: 0 4px 4px 0;
         }
         .amz-hist-entry:last-child { margin-bottom: 0; }
-        .amz-hist-entry .amz-he-meta { font-size: 10px; color: #6c757d; margin-bottom: 2px; }
+        .amz-hist-entry .amz-he-meta { font-size: 11px; color: #6c757d; margin-bottom: 2px; line-height: 1.45; }
         .amz-hist-entry .amz-he-text { font-size: 12px; color: #212529; font-weight: 500; }
+        .amz-he-latest {
+            display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 8px;
+            background: #ff9900; color: #fff; font-size: 9px; font-weight: 700; vertical-align: 1px;
+        }
 
         /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
         #amzCvrChartModal.modal,
@@ -706,13 +722,21 @@
                     {
                         title: 'ASIN',
                         field: 'asin',
-                        width: 110,
+                        width: 148,
                         formatter: function(cell) {
                             const d    = cell.getRow().getData();
-                            const asin = cell.getValue() || '';
+                            const asin = String(cell.getValue() || '').replace(/[^A-Za-z0-9]/g, '');
                             if (d.is_parent || !asin) return '<span style="color:#adb5bd;">–</span>';
-                            return `<a href="https://www.amazon.com/dp/${asin}" target="_blank"
-                                style="color:#ff9900;font-weight:600;font-size:11px;">${asin}</a>`;
+                            const desk = 'https://www.amazon.com/dp/' + asin;
+                            const mob  = 'https://www.amazon.com/gp/aw/d/' + asin;
+                            return '<div class="amz-asin-cell">'
+                                + '<span class="amz-asin-code">' + asin + '</span>'
+                                + '<span class="amz-asin-views">'
+                                + '<button type="button" class="amz-asin-btn" title="Open the buyer page in a desktop window"'
+                                + ' onclick="event.stopPropagation();window.open(\'' + desk + '\',\'_blank\',\'noopener\')">Desktop</button>'
+                                + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Open the buyer page in a phone-sized window"'
+                                + ' onclick="event.stopPropagation();window.open(\'' + mob + '\',\'amzMobile\',\'width=390,height=844,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes\')">Mobile</button>'
+                                + '</span></div>';
                         }
                     },
                     {
@@ -1244,19 +1268,27 @@
                     method: 'GET',
                     success: function(res) {
                         $('#amzHistoryLoading').hide();
-                        if (!res.success || !res.data || !res.data.length) {
+                        const rows = (res.data || []).slice().sort(function(a, b) {
+                            return (Number(b.created_ts) || 0) - (Number(a.created_ts) || 0);
+                        });
+                        if (!res.success || !rows.length) {
                             $('#amzHistoryEmpty').show();
                             return;
                         }
-                        const html = res.data.map(e => `
-                            <div class="amz-hist-entry">
-                                <div class="amz-he-meta">
-                                    <i class="fas fa-user-circle me-1"></i>${e.user_name}
-                                    &nbsp;·&nbsp;
-                                    <i class="fas fa-clock me-1"></i>${e.created_at}
-                                </div>
-                                <div class="amz-he-text">${e.action}</div>
-                            </div>`).join('');
+                        const esc = function(v) {
+                            return String(v == null ? '' : v)
+                                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        };
+                        const html = rows.map(function(e, i) {
+                            return '<div class="amz-hist-entry">'
+                                + '<div class="amz-he-meta">'
+                                + '<i class="fas fa-clock me-1"></i>' + esc(e.created_at)
+                                + (i === 0 ? ' <span class="amz-he-latest">Latest</span>' : '')
+                                + '<br><i class="fas fa-user-circle me-1"></i>' + esc(e.user_name)
+                                + '</div>'
+                                + '<div class="amz-he-text">' + esc(e.action) + '</div>'
+                                + '</div>';
+                        }).join('');
                         $('#amzHistoryList').html(html).show();
                     },
                     error: function() {

@@ -877,7 +877,7 @@ class LqsMasterController extends Controller
                     'has_action'         => $hasAction,
                     'latest_action_text' => $hasAction ? $latestAction->action : null,
                     'latest_action_user' => $hasAction ? ($latestAction->user->name ?? 'Unknown') : null,
-                    'latest_action_date' => $hasAction ? $latestAction->created_at->format('d M, h:i A') : null,
+                    'latest_action_date' => $hasAction ? $latestAction->created_at->format('j M Y, h:i A') : null,
                 ];
             }
 
@@ -1037,7 +1037,7 @@ class LqsMasterController extends Controller
                 'id'          => $entry->id,
                 'action'      => $entry->action,
                 'user_name'   => $entry->user->name ?? 'Unknown',
-                    'created_at'  => $entry->created_at->format('d M, h:i A'),
+                    'created_at'  => $entry->created_at->format('j M Y, h:i A'),
             ]);
         } catch (\Exception $e) {
             \Log::error('LQS Amz action save error: ' . $e->getMessage());
@@ -1051,16 +1051,20 @@ class LqsMasterController extends Controller
     public function getLqsAmzActionHistory(string $sku)
     {
         try {
-            $entries = LqsAmzAction::where('sku', trim($sku))
-                ->with('user')
-                ->orderBy('created_at', 'desc')
+            $sku = strtoupper(str_replace("\u{00a0}", ' ', trim(urldecode($sku))));
+            $entries = LqsAmzAction::with('user')
+                ->whereRaw('UPPER(TRIM(REPLACE(sku, ?, ?))) = ?', ["\u{00a0}", ' ', $sku])
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->get()
                 ->map(fn ($e) => [
                     'id'         => $e->id,
                     'action'     => $e->action,
                     'user_name'  => $e->user->name ?? 'Unknown',
-                    'created_at' => $e->created_at->format('d M, h:i A'),
-                ]);
+                    'created_at' => $e->created_at->format('j M Y, h:i A'),
+                    'created_ts' => $e->created_at->getTimestamp(),
+                ])
+                ->values();
 
             return response()->json(['success' => true, 'data' => $entries]);
         } catch (\Exception $e) {
