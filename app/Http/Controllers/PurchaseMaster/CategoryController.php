@@ -209,7 +209,10 @@ class CategoryController extends Controller
      */
     private function attachCpMasterSkus($categories, string $parentFilter = '', string $skuFilter = ''): void
     {
-        $categoryList = collect($categories);
+        // collect($paginator) would expand to the paginator's array form, so use its items.
+        $categoryList = $categories instanceof \Illuminate\Pagination\AbstractPaginator
+            ? $categories->getCollection()
+            : collect($categories);
         $nameKeyByCategoryId = [];
         foreach ($categoryList as $category) {
             $key = mb_strtolower(trim((string) $category->name));
