@@ -619,7 +619,7 @@
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
                                 <div class="modal-body">
-                                    <div class="mb-3">SKU: <span class="fw-semibold" id="acm-sku"></span></div>
+                                    <div class="mb-3"><span id="acm-sku-label">SKU</span>: <span class="fw-semibold" id="acm-sku"></span></div>
                                     <label class="form-label fw-semibold" for="acm-search">Category</label>
                                     <input type="text" id="acm-search" class="form-control" autocomplete="off"
                                         placeholder="Quick search a category...">
@@ -1234,7 +1234,7 @@
             const modalEl = document.getElementById('assignCategoryModal');
             if (!modalEl) return;
             const categories = @json(collect($allCategories ?? [])->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name])->values());
-            let sku = '';
+            let skus = [];
             let chosen = null; // {id, name} or {id: null, name, isNew: true}
 
             const typed = function() { return $.trim($('#acm-search').val()); };
@@ -1270,12 +1270,24 @@
                 $('#acm-chosen-name').text(t ? t.name + (t.isNew ? ' (new category)' : '') : '');
                 $('#acm-chosen').toggle(!!t);
                 $('#acm-submit').prop('disabled', !t)
-                    .html('<i class="mdi mdi-plus me-1"></i> ' + (t && t.isNew ? 'Create category and add SKU' : 'Add to category'));
+                    .html('<i class="mdi mdi-plus me-1"></i> ' + (t && t.isNew ? 'Create category and add ' : 'Add to category: ') + (skus.length > 1 ? skus.length + ' SKUs' : 'SKU'));
             }
 
             $(document).on('click', '.assign-category-btn', function() {
-                sku = String($(this).data('sku'));
-                $('#acm-sku').text(sku);
+                // Ticked rows (rows with no category) are added together when the clicked row is one of
+                // them; otherwise just the clicked row's SKU.
+                const clicked = String($(this).data('sku'));
+                const $own = $(this).closest('tr').find('.row-checkbox');
+                skus = [clicked];
+                if ($own.length && $own.is(':checked')) {
+                    const ticked = [];
+                    $('#category-table-body .row-checkbox:checked').each(function() {
+                        if (String($(this).data('category-id')) === '0') ticked.push(String($(this).data('sku')));
+                    });
+                    if (ticked.length) skus = ticked.filter(function(s, i) { return ticked.indexOf(s) === i; });
+                }
+                $('#acm-sku-label').text(skus.length > 1 ? skus.length + ' SKUs' : 'SKU');
+                $('#acm-sku').text(skus.length > 1 ? skus.slice(0, 8).join(', ') + (skus.length > 8 ? ', ...' : '') : skus[0]);
                 $('#acm-search').val('');
                 $('#acm-error').hide();
                 chosen = null;
@@ -1319,7 +1331,7 @@
                     url: '{{ url('/category/rows/add') }}',
                     method: 'POST',
                     dataType: 'json',
-                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: [sku] }
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: skus }
                 }).done(function() {
                     location.reload();
                 }).fail(showError);
@@ -1327,7 +1339,7 @@
 
             $('#acm-submit').on('click', function() {
                 const t = target();
-                if (!t || !sku) return;
+                if (!t || !skus.length) return;
                 $(this).prop('disabled', true);
                 $('#acm-error').hide();
                 if (t.id) {
