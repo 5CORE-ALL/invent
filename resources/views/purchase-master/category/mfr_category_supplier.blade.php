@@ -185,7 +185,8 @@
 
     // ---- modal ----
     const modalEl = document.getElementById('mcsModal');
-    const modal = new bootstrap.Modal(modalEl);
+    // Bootstrap is loaded after this script (footer), so the modal is created when first needed.
+    const modal = { show: function() { bootstrap.Modal.getOrCreateInstance(modalEl).show(); } };
     let currentRow = null;
     let available = [];
 
