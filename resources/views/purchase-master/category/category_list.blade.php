@@ -164,7 +164,12 @@
                         <table class="table table-centered table-hover mb-0 border" id="category-table-body" style="min-width: 1300px;">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="text-center align-middle" style="width: 5%">#</th>
+                                    <th class="text-center align-middle" style="width: 5%">
+                                        <div class="form-check d-flex justify-content-center align-items-center mb-0" title="Select all listed rows (follows the filters)">
+                                            <input type="checkbox" class="form-check-input" id="select-all-rows"
+                                                style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
+                                        </div>
+                                    </th>
                                     <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="parent" data-sort-type="text" title="Click to sort">Parent <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle" style="width: 6%">Image</th>
@@ -1257,6 +1262,28 @@
                     $btn.prop('disabled', false);
                 });
             });
+        })();
+    </script>
+    <script>
+        // Header checkbox: selects / clears every row that is listed (the page already shows only the rows
+        // that match the Parent / SKU / MFR filters). It also reflects partial selection.
+        (function() {
+            const $all = $('#select-all-rows');
+            if (!$all.length) return;
+            function sync() {
+                const total = $('#category-table-body .row-checkbox').length;
+                const checked = $('#category-table-body .row-checkbox:checked').length;
+                $all.prop('checked', total > 0 && checked === total);
+                $all.prop('indeterminate', checked > 0 && checked < total);
+                $all.attr('title', checked ? checked + ' of ' + total + ' rows selected' : 'Select all listed rows (follows the filters)');
+            }
+            $all.on('change', function() {
+                $('#category-table-body .row-checkbox').prop('checked', this.checked);
+                sync();
+            });
+            $(document).on('change', '.row-checkbox', sync);
+            $(document).on('click', '.hide-uncategorized-row-btn', function() { setTimeout(sync, 0); });
+            sync();
         })();
     </script>
 @endsection
