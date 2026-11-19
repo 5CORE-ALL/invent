@@ -2403,6 +2403,12 @@
                     </div>
                 </div>
 
+                {{-- Read-only: links already submitted on the task (L1, L2, Training, Video, etc.) --}}
+                <div id="done-submitted-links-wrap" class="mb-3 d-none">
+                    <div class="fw-semibold mb-1"><i class="mdi mdi-link-variant me-1"></i>Submitted links</div>
+                    <div id="done-submitted-links" class="border rounded p-2 small" style="background:#f8f9fa;"></div>
+                </div>
+
                 <div class="mb-3">
                     <label for="task-done-reference-link" class="form-label">Reference link <span class="text-muted fw-normal">(optional)</span></label>
                     <input type="text" class="form-control" id="task-done-reference-link" placeholder="https://…" autocomplete="off">
@@ -2513,6 +2519,10 @@
                 <div id="done-note-ref-wrap" class="mt-3" style="display: none;">
                     <h6 class="text-primary mb-2"><i class="mdi mdi-link-variant me-1"></i>Reference link</h6>
                     <div><a id="done-note-ref-link" href="#" target="_blank" rel="noopener" style="word-break: break-all;"></a></div>
+                </div>
+                <div id="done-note-links-wrap" class="mt-3" style="display: none;">
+                    <h6 class="text-primary mb-2"><i class="mdi mdi-link-variant me-1"></i>Submitted links</h6>
+                    <div id="done-note-links" class="border rounded p-2 small" style="background:#f8f9fa;"></div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -7322,6 +7332,15 @@
                     $('#done-note-ref-wrap').hide();
                 }
 
+                var noteLinksHtml = submittedLinksRowsHtml(d);
+                if (noteLinksHtml) {
+                    $('#done-note-links').html(noteLinksHtml);
+                    $('#done-note-links-wrap').show();
+                } else {
+                    $('#done-note-links').empty();
+                    $('#done-note-links-wrap').hide();
+                }
+
                 $('#done-note-checklist').empty();
                 $('#done-note-checklist-wrap').hide();
                 var noteTaskId = d && d.id ? d.id : '';
@@ -7988,7 +8007,61 @@
                     .replace(/'/g, '&#039;');
             }
 
+            // Labelled list of the links already stored on a task (L1, L2, Training, ...).
+            // Returns HTML rows (escaped); empty string when the task has no links.
+            function submittedLinksRowsHtml(d) {
+                if (!d) return '';
+                var slots = [
+                    ['L1', d.link1 || d.l1],
+                    ['L2', d.link2 || d.l2],
+                    ['Training', d.link3 || d.training_link],
+                    ['Video', d.link4 || d.video_link],
+                    ['Form', d.link5 || d.form_link],
+                    ['Report', d.link6 || d.form_report_link],
+                    ['Checklist', d.link7 || d.checklist_link],
+                    ['PL', d.link8 || d.pl],
+                    ['Process', d.link9 || d.process]
+                ];
+                var html = '';
+                slots.forEach(function(s) {
+                    var v = s[1] == null ? '' : String(s[1]).trim();
+                    if (!v) return;
+                    var safe = doneEsc(v);
+                    var shown = /^https?:\/\//i.test(v)
+                        ? '<a href="' + safe + '" target="_blank" rel="noopener" style="word-break:break-all;">' + safe + '</a>'
+                        : '<span style="word-break:break-all;">' + safe + '</span>';
+                    html += '<div class="d-flex gap-2 mb-1"><span class="text-muted fw-semibold" style="min-width:70px;">' + doneEsc(s[0]) + ':</span><span>' + shown + '</span></div>';
+                });
+                return html;
+            }
+
+            function renderDoneSubmittedLinks(ids) {
+                var $wrap = $('#done-submitted-links-wrap');
+                var $box = $('#done-submitted-links').empty();
+                var multi = (ids || []).length > 1;
+                var out = '';
+                (ids || []).forEach(function(id) {
+                    var d = taskRowDataById(id);
+                    var rows = submittedLinksRowsHtml(d);
+                    if (multi) {
+                        var t = String((d && d.title) || ('Task #' + id)).replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '');
+                        out += '<div class="mb-2"><div class="fw-semibold">' + doneEsc(t) + '</div>' +
+                            (rows || '<div class="text-muted fst-italic">No links submitted.</div>') + '</div>';
+                    } else {
+                        out += rows || '<div class="text-muted fst-italic">No links submitted on this task.</div>';
+                    }
+                });
+                if (out) {
+                    $box.html(out);
+                    $wrap.removeClass('d-none');
+                } else {
+                    $wrap.addClass('d-none');
+                }
+            }
+
             function resetDoneModalUi() {
+                $('#done-submitted-links-wrap').addClass('d-none');
+                $('#done-submitted-links').empty();
                 doneChecklistMode = false;
                 doneChecklistQuestions = [];
                 doneTargetTaskIds = [];
@@ -8191,6 +8264,7 @@
                 $('#task-done-atc').removeClass('is-invalid');
                 $('#task-done-atc-feedback').addClass('d-none');
                 applyDoneModalChrome(ids);
+                renderDoneSubmittedLinks(ids);
                 $('#done-modal-loading').removeClass('d-none');
                 $('#doneModal').modal('show');
                 try {
