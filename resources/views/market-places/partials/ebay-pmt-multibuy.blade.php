@@ -1253,10 +1253,9 @@
                     };
                     if (key === 'category') return String($tr.attr('data-category') || '').toLowerCase();
                     if (key === 'count') return numOf(cells.eq(1).text());
-                    if (key === 'yours') return numOf(cells.eq(2).text());
-                    if (key === 'cbid') return numOf(cells.eq(3).text());
-                    if (key === 'high') return numOf(cells.eq(4).find('input').val());
-                    if (key === 'low') return numOf(cells.eq(5).find('input').val());
+                    if (key === 'cbid') return numOf(cells.eq(2).text());
+                    if (key === 'high') return numOf(cells.eq(3).find('input').val());
+                    if (key === 'low') return numOf(cells.eq(4).find('input').val());
                     return null;
                 }
                 function applyArpSort() {
