@@ -171,14 +171,31 @@
                         </div>
                     </div>
 
+    <style>
+        /* Frozen columns: SKU sticks to the left edge, Action to the right edge, while the rest scrolls. */
+        #category-table-body th.sticky-col,
+        #category-table-body td.sticky-col {
+            position: sticky;
+            background-color: var(--bs-body-bg, #fff);
+            z-index: 2;
+        }
+        #category-table-body th.sticky-col {
+            background-color: #dfe9f8;
+            z-index: 3;
+        }
+        #category-table-body .sticky-left { left: 0; box-shadow: 2px 0 4px -2px rgba(0, 0, 0, .25); }
+        #category-table-body .sticky-right { right: 0; box-shadow: -2px 0 4px -2px rgba(0, 0, 0, .25); }
+        #category-table-body td.sticky-col.bg-warning-subtle { background-color: var(--bs-warning-bg-subtle, #fff3cd) !important; }
+    </style>
                     <div class="table-responsive">
-                        <table class="table table-centered table-hover mb-0 border" id="category-table-body">
+                        <table class="table table-centered table-hover mb-0 border" id="category-table-body" style="min-width: 1500px;">
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
                                     <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="parent" data-sort-type="text" title="Click to sort">Parent <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 14%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                    <th class="text-center align-middle" style="width: 6%">Image</th>
+                                    <th class="text-center align-middle sortable-th sticky-col sticky-left" style="width: 14%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="sku" data-sort-type="text" title="Click to sort">SKU <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle sortable-th" style="width: 20%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="link" data-sort-type="num" title="Click to sort">Link Sku Purchase <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
@@ -188,7 +205,7 @@
                                         data-sort-key="suppliers" data-sort-type="num" title="Click to sort">Suppliers <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="product" data-sort-type="num" title="Click to sort">Product <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle" style="width: 18%">Action</th>
+                                    <th class="text-center align-middle sticky-col sticky-right" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
                             @forelse($categories as $key => $category)
@@ -235,7 +252,18 @@
                                                 <span class="text-muted">-</span>
                                             @endif
                                         </td>
-                                        <td class="text-center sku-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                        <td class="text-center align-middle image-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                            @if (!empty($firstSku['image']))
+                                                <a href="{{ $firstSku['image'] }}" target="_blank" rel="noopener noreferrer">
+                                                    <img src="{{ $firstSku['image'] }}" alt="" loading="lazy"
+                                                        style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
+                                                        onerror="this.replaceWith(document.createTextNode('-'))">
+                                                </a>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center sku-cell sticky-col sticky-left {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                             @if ($firstSku)
                                                 {{ $firstSku['sku'] }}
                                             @else
@@ -300,7 +328,7 @@
                                             @endif
                                         </td>
                                         @if ($firstSku)
-                                        <td class="text-center align-middle {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                        <td class="text-center align-middle sticky-col sticky-right {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                             <div class="d-flex justify-content-center align-items-center gap-1">
                                                 <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
                                                     data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
@@ -319,7 +347,7 @@
                                             </div>
                                         </td>
                                         @else
-                                        <td class="text-center align-middle ">
+                                        <td class="text-center align-middle sticky-col sticky-right ">
                                             <div class="d-flex justify-content-center align-items-center gap-1">
                                                 <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
                                                     data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
@@ -350,7 +378,18 @@
                                                     <span class="text-muted">-</span>
                                                 @endif
                                             </td>
-                                            <td class="text-center sku-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                            <td class="text-center align-middle image-cell {{ $cpSku && $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                @if (!empty($cpSku['image']))
+                                                    <a href="{{ $cpSku['image'] }}" target="_blank" rel="noopener noreferrer">
+                                                        <img src="{{ $cpSku['image'] }}" alt="" loading="lazy"
+                                                            style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
+                                                            onerror="this.replaceWith(document.createTextNode('-'))">
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-center sku-cell sticky-col sticky-left {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                                 {{ $cpSku['sku'] }}
                                             </td>
                                             <td class="text-center align-middle mfr-category-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
@@ -365,7 +404,7 @@
                                                     <span class="ms-1 text-muted fw-bold">Suppliers</span>
                                                 </button>
                                             </td>
-                                            <td class="text-center align-middle {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                            <td class="text-center align-middle sticky-col sticky-right {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                                 <div class="d-flex justify-content-center align-items-center gap-1">
                                                     <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
                                                         data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
@@ -389,7 +428,7 @@
                             @empty
                                 <tbody>
                                     <tr>
-                                        <td colspan="8" class="text-center">No categories found</td>
+                                        <td colspan="9" class="text-center">No categories found</td>
                                     </tr>
                                 </tbody>
                             @endforelse
@@ -397,7 +436,7 @@
                     </div>
                     {{-- Suppliers modal (opened from the Suppliers count on any SKU / parent row) --}}
                     <div class="modal fade" id="categorySuppliersModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-                        <div class="modal-dialog modal-dialog-centered modal-xl shadow-none">
+                        <div class="modal-dialog modal-dialog-centered shadow-none" style="max-width: 98vw; width: 98vw;">
                             <div class="modal-content border-0">
                                 <div class="modal-header bg-primary text-white">
                                     <h5 class="modal-title">

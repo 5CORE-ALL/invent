@@ -397,6 +397,53 @@ class CategoryController extends Controller
 
             $category->cp_master_skus = $items;
         }
+
+        $this->attachSkuImages($categoryList);
+    }
+
+    /**
+     * Fill the 'image' key of every listed SKU row: Shopify image first, else the CP Master
+     * Values.image_path (same order as the CP Master page), else null.
+     */
+    private function attachSkuImages($categoryList): void
+    {
+        $allSkus = [];
+        foreach ($categoryList as $category) {
+            foreach ($category->cp_master_skus ?? [] as $item) {
+                $allSkus[$item['sku']] = true;
+            }
+        }
+        if ($allSkus === []) {
+            return;
+        }
+
+        $normalize = fn ($sku) => trim(str_replace("\u{00a0}", ' ', (string) $sku));
+        $images = [];
+        foreach (array_chunk(array_keys($allSkus), 500) as $chunk) {
+            foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'Values']) as $product) {
+                $values = $product->Values;
+                if (is_string($values)) {
+                    $values = json_decode($values, true);
+                }
+                $local = is_array($values) ? trim((string) ($values['image_path'] ?? '')) : '';
+                if ($local !== '') {
+                    $images[$normalize($product->sku)] = preg_match('#^https?://#i', $local) ? $local : '/'.ltrim($local, '/');
+                }
+            }
+            foreach (ShopifySku::query()->whereIn('sku', $chunk)->whereNotNull('image_src')->get(['sku', 'image_src']) as $shopify) {
+                if (trim((string) $shopify->image_src) !== '') {
+                    $images[$normalize($shopify->sku)] = trim((string) $shopify->image_src); // Shopify wins
+                }
+            }
+        }
+
+        foreach ($categoryList as $category) {
+            $items = $category->cp_master_skus ?? [];
+            foreach ($items as $i => $item) {
+                $items[$i]['image'] = $images[$normalize($item['sku'])] ?? null;
+            }
+            $category->cp_master_skus = $items;
+        }
     }
 
     /**
