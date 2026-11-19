@@ -3194,6 +3194,10 @@
                 <label for="tf_title" class="form-label fw-bold" style="font-size: 12px;">Task <span class="text-danger">*</span></label>
                 <input type="text" class="form-control form-control-sm tf-lockable" id="tf_title" name="title" placeholder="Enter Task">
             </div>
+            <div class="mb-2">
+                <label for="tf_description" class="form-label fw-bold" style="font-size: 12px;">Description</label>
+                <textarea class="form-control form-control-sm tf-lockable" id="tf_description" name="description" rows="3" placeholder="Add details, steps or context for this task (optional)" style="resize: vertical;"></textarea>
+            </div>
 
             <div class="mb-2 tf-image-wrap">
                 <label class="form-label fw-bold mb-1" style="font-size: 12px;">
@@ -7148,8 +7152,13 @@
                     if (completionRef) {
                         completionRefRow = '<tr><th width="200" style="color: #6c757d; font-weight: 600;">Reference link:</th><td>' + linkCell(completionRef, completionRef) + '</td></tr>';
                     }
+                    var descText = data.description != null ? String(data.description).trim() : '';
+                    var descRow = descText
+                        ? '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Description:</th><td style="white-space: pre-wrap;">' + escapeHtml(descText) + '</td></tr>'
+                        : '';
                     var html = '<div style="padding: 10px;">' +
                         '<table class="table table-borderless">' +
+                        descRow +
                         reasonRow +
                         completionReportRow +
                         completionRefRow +
@@ -7196,8 +7205,13 @@
                             if (completionRefAjax) {
                                 completionRefRowAjax = '<tr><th width="200" style="color: #6c757d; font-weight: 600;">Reference link:</th><td>' + linkCell(completionRefAjax) + '</td></tr>';
                             }
+                            var descTextAjax = response.description != null ? String(response.description).trim() : '';
+                            var descRowAjax = descTextAjax
+                                ? '<tr><th width="200" style="color: #6c757d; font-weight: 600; vertical-align: top;">Description:</th><td style="white-space: pre-wrap;">' + escapeHtml(descTextAjax) + '</td></tr>'
+                                : '';
                             var html = '<div style="padding: 10px;">' +
                                 '<table class="table table-borderless">' +
+                                descRowAjax +
                                 reasonRowAjax +
                                 completionReportRowAjax +
                                 completionRefRowAjax +
@@ -7550,6 +7564,7 @@
 
                     tfSetVal('tf_group', '');
                     tfSetVal('tf_title', '');
+                    tfSetVal('tf_description', '');
                     $('#tf_assignee_id').val(null).trigger('change');
                     $('#tf_split_tasks').prop('checked', false);
                     tfSetVal('tf_etc_minutes', 10);
@@ -7573,6 +7588,15 @@
 
                     tfSetVal('tf_group', rowData.group);
                     tfSetVal('tf_title', rowData.title);
+                    tfSetVal('tf_description', rowData.description);
+                    if (rowData.description === undefined && id) {
+                        // Grid row did not carry the description — load it from the task.
+                        $.get('/tasks/' + id).done(function(resp) {
+                            if (String($('#tf_task_id').val()) === String(id) && resp) {
+                                tfSetVal('tf_description', resp.description);
+                            }
+                        });
+                    }
                     var assigneeIds = [];
                     if (rowData.assignee_ids && rowData.assignee_ids.length) {
                         assigneeIds = rowData.assignee_ids.map(function(id) { return String(id); });
