@@ -4757,9 +4757,27 @@
                 && capped + 0.0001 <= stdNow + 0.0001;
             return plan;
         }
+        /**
+         * CVR Price Rule (ON, and it hits this SKU): the plan that is queued, pushed and saved carries the rule's price, the
+         * same number the S PRC cell shows. Without this the push compared the plain rule price with the live Price, saw them
+         * equal, and skipped the SKU, so the blue triangle never cleared.
+         */
+        function amzCvrAdjustPlan(d, plan) {
+            if (!plan || !(plan.effective > 0)) return plan;
+            try {
+                const info = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (info && info.price > 0) {
+                    const adj = Object.assign({}, plan, { effective: info.price, sale: info.price });
+                    // A CVR Up price can be above the stack's Max: lift Max so the listing's range holds the new price.
+                    if (Number(adj.max) > 0 && adj.max < info.price) adj.max = info.price;
+                    return adj;
+                }
+            } catch (e) { /* no CVR Price Rule */ }
+            return plan;
+        }
         function amzPushPrcPlanForQueue(d) {
             const plan = computeAmzPushPrcPlan(d);
-            return amzLmpAlignPushPrcPlan(plan, d);
+            return amzCvrAdjustPlan(d, amzLmpAlignPushPrcPlan(plan, d));
         }
         /**
          * Plan for the manual Push Prc click (single + bulk).
@@ -4780,7 +4798,7 @@
                 sale: live,
                 effective: live,
             });
-            return amzLmpAlignPushPrcPlan(plan, d);
+            return amzCvrAdjustPlan(d, amzLmpAlignPushPrcPlan(plan, d));
         }
         function amzListingAlreadyAtPushTarget(d, plan) {
             const target = (plan && plan.effective > 0)
@@ -5131,7 +5149,7 @@
                 const live = amzLiveRuleSprice(d);
                 if (!(live > 0)) return null;
                 const std = Number(d && d.STANDARD_PRICE) || 0;
-                return { effective: live, sale: live, std: std > 0 ? std : live };
+                return amzCvrAdjustPlan(d, { effective: live, sale: live, std: std > 0 ? std : live });
             }
             const plan = amzPushPrcPlanForQueue(d);
             if (!plan || !(plan.effective > 0)) return null;
