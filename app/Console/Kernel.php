@@ -4279,6 +4279,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        $schedule->command('cc:pull-pending-returns')
+            ->everyFifteenMinutes()
+            ->timezone('America/Los_Angeles')
+            ->name('cc-pull-pending-returns')
+            ->withoutOverlapping(14)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('attendance:analyze')
             ->dailyAt('23:30')
             ->timezone('Asia/Kolkata')

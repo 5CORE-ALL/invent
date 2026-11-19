@@ -424,6 +424,17 @@
                         <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
                     </span>
                 </div>
+                <div class="ccmr-tat-badge ccmr-tat-badge--returns" id="ccmrReturnsPendingTotal"
+                    title="Total pending returns across channels with a returns API.">
+                    <span class="ccmr-tat-badge__icon">
+                        <i class="fa-solid fa-box-open"></i>
+                    </span>
+                    <span class="ccmr-tat-badge__body">
+                        <span class="ccmr-tat-badge__label">Returns Pending</span>
+                        <span class="ccmr-tat-badge__value" data-role="value">—</span>
+                        <span class="ccmr-tat-badge__meta" data-role="meta">no data</span>
+                    </span>
+                </div>
             </div>
         </div>
     </div>
@@ -1380,13 +1391,13 @@
                         vertAlign: 'middle',
                         headerSort: true,
                         sorter: 'number',
-                        headerTooltip: 'Unread / unanswered messages from the marketplace API (same as the Messages Pending column on CC Message)',
+                        headerTooltip: 'Pending returns from each marketplace returns API — open returns still awaiting seller action, in transit, or awaiting refund',
                         formatter: function (cell) {
                             const d = cell.getRow().getData() || {};
                             const status = d.pending_status || '';
                             const note = String(d.pending_note || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
                             if (status === 'unsupported') {
-                                return '<span class="text-muted" title="' + (note || 'No possible API') + '">—</span>';
+                                return '<span class="text-muted" title="' + (note || 'No returns API wired') + '">—</span>';
                             }
                             if (status === 'error') {
                                 return '<span class="text-warning" title="' + (note || 'Pull failed') + '"><i class="fas fa-triangle-exclamation"></i></span>';
@@ -1483,8 +1494,27 @@
                     : ('across ' + count + ' channel' + (count === 1 ? '' : 's'));
             }
 
+            // Total of the Pending column (only channels whose last pull succeeded).
+            function refreshPendingTotalBadge() {
+                const el = document.getElementById('ccmrReturnsPendingTotal');
+                if (!el || !window.__ccmrTable) return;
+                let total = 0, n = 0;
+                window.__ccmrTable.getRows().forEach(r => {
+                    const d = r.getData() || {};
+                    if (d.pending_status === 'ok') {
+                        total += Number(d.pending_count || 0);
+                        n++;
+                    }
+                });
+                const valueEl = el.querySelector('[data-role="value"]');
+                const metaEl  = el.querySelector('[data-role="meta"]');
+                if (valueEl) valueEl.textContent = n ? total.toLocaleString('en-US') : '—';
+                if (metaEl)  metaEl.textContent  = n ? ('across ' + n + ' channel' + (n === 1 ? '' : 's')) : 'no data';
+            }
+
             function refreshAvgTatBadges() {
                 setBadge('ccmrAvgTatReturns', 'tat_returns_minutes');
+                refreshPendingTotalBadge();
             }
 
             // Tabulator v6 builds the table asynchronously after the
@@ -1505,7 +1535,7 @@
             // or are older than 15 minutes (same endpoint + logic as the
             // Messages Pending column on CC Message) and update cells in place.
             (function autoRefreshPending() {
-                const urlPendingPull = @json(route('customer.care.cc.messages.returns.pending.pull'));
+                const urlPendingPull = @json(route('customer.care.report.pending.returns.pull'));
                 const STALE_MS = 15 * 60 * 1000;
 
                 function needsPull(d) {
@@ -1527,6 +1557,7 @@
                             pending_fetched_at: row.last_fetched_at || null,
                         });
                     });
+                    refreshPendingTotalBadge();
                 }
 
                 function run() {
