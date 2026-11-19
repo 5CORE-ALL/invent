@@ -542,6 +542,69 @@ class WayfairTrackingSyncService
     }
 
     /**
+     * Probe the label events query with plain and deliberately wrong requests. Introspection is blocked, but error
+     * messages and answers show which arguments / filter fields exist and what an unfiltered call returns.
+     *
+     * @return list<string>
+     */
+    public function debugLabelEventsProbe(string $poNumber): array
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['token failed: '.$e->getMessage()];
+        }
+        $post = function (string $query, array $vars = []) use ($token): array {
+            $response = Http::withoutVerifying()->connectTimeout(8)->timeout(30)->withToken($token)
+                ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query] + ($vars !== [] ? ['variables' => $vars] : []));
+            $json = $response->json();
+
+            return is_array($json) ? $json : ['errors' => [['message' => 'HTTP '.$response->status().' non-JSON']]];
+        };
+        $firstError = function (array $json): string {
+            $msg = (string) ($json['errors'][0]['message'] ?? '');
+
+            return $msg !== '' ? mb_strimwidth($msg, 0, 260, '…') : 'accepted';
+        };
+
+        $want = $this->poFilterValue($poNumber);
+        $lines = [];
+
+        $json = $post('query($limit: Int) { labelGenerationEvents(limit: $limit) { poNumber } }', ['limit' => 200]);
+        if (! empty($json['errors'])) {
+            $lines[] = 'no filter, limit 200: '.$firstError($json);
+        } else {
+            $events = is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : [];
+            $pos = array_map(fn ($e) => (string) ($e['poNumber'] ?? ''), $events);
+            $lines[] = sprintf(
+                'no filter, limit 200: %d event(s); lowest PO %s, highest PO %s, first 8: [%s]; contains %s: %s',
+                count($pos),
+                $pos === [] ? '-' : min($pos),
+                $pos === [] ? '-' : max($pos),
+                implode(', ', array_slice($pos, 0, 8)),
+                $want,
+                in_array($want, $pos, true) ? 'YES' : 'no'
+            );
+        }
+
+        foreach (['offset', 'page', 'cursor', 'after', 'fromDate', 'toDate', 'startDate', 'endDate', 'sortOrder', 'orderBy', 'poNumber', 'poNumbers'] as $arg) {
+            $lines[] = "argument {$arg}: ".$firstError($post("{ labelGenerationEvents(limit: 1, {$arg}: 1) { poNumber } }"));
+        }
+
+        $filterQuery = 'query($f: [LabelGenerationEventFilterInput]) { labelGenerationEvents(limit: 1, filters: $f) { poNumber } }';
+        $lines[] = 'filter field "zzz": '.$firstError($post($filterQuery, ['f' => [['field' => 'zzz', 'equals' => '1']]]));
+        $lines[] = 'filter key "zzz": '.$firstError($post($filterQuery, ['f' => [['field' => 'poNumber', 'zzz' => '1']]]));
+        foreach (['equals', 'in', 'greaterThan', 'lessThan', 'contains', 'startsWith'] as $op) {
+            $value = $op === 'in' ? [$want] : $want;
+            $answer = $post($filterQuery, ['f' => [['field' => 'poNumber', $op => $value]]]);
+            $got = array_map(fn ($e) => (string) ($e['poNumber'] ?? ''), (array) ($answer['data']['labelGenerationEvents'] ?? []));
+            $lines[] = "filter poNumber {$op} {$want}: ".(! empty($answer['errors']) ? $firstError($answer) : 'PO(s) returned: ['.implode(', ', $got).']');
+        }
+
+        return $lines;
+    }
+
+    /**
      * Wayfair's own description of the label events query (arguments and filter fields). For diagnostics only.
      */
     public function debugLabelEventsSchema(): string
