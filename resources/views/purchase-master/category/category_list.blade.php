@@ -72,57 +72,11 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    {{-- ✅ Add Category Button --}}
+                    {{-- Page header --}}
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h4 class="card-title mb-0">Categories</h4>
                         <div class="d-flex gap-2 align-items-center">
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'categories'])
-                            <div class="form-check mb-0">
-                                <input class="form-check-input" type="checkbox" id="select-all">
-                                <label class="form-check-label" for="select-all">Select All</label>
-                            </div>
-                            <button id="bulkAddBtn" class="btn btn-success btn-sm" disabled
-                                title="Add CP Master SKUs to the categories of the selected rows">
-                                <i class="mdi mdi-plus-box-multiple-outline"></i> Add Products
-                            </button>
-                            <button type="button" class="btn btn-primary" data-bs-toggle="modal"
-                                data-bs-target="#addCategoryModal">
-                                <i class="mdi mdi-plus me-1"></i> Add Category
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Add Category Modal -->
-                    <div class="modal fade" id="addCategoryModal" tabindex="-1" aria-labelledby="addCategoryModalLabel"
-                        aria-hidden="true" data-bs-backdrop="static">
-                        <div class="modal-dialog modal-dialog-centered shadow-none modal-lg">
-                            <div class="modal-content border-0 rounded-3">
-                                <div class="modal-header bg-primary text-white rounded-top">
-                                    <h5 class="modal-title" id="addCategoryModalLabel">
-                                        <i class="mdi mdi-plus-circle me-1"></i> <span id="modalTitle">Add New
-                                            Category</span>
-                                    </h5>
-                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                                        aria-label="Close"></button>
-                                </div>
-
-                                <div class="modal-body p-4">
-                                    {{-- Category Name: search the list and pick, or add a new one --}}
-                                    <div class="row g-3">
-                                        <div class="col-12">
-                                            <label for="category_name" class="form-label fw-semibold">Category Name
-                                                <span class="text-danger">*</span></label>
-                                            @include('purchase-master.category.partials.category-name-combobox', ['inputId' => 'category_name', 'value' => '', 'currentId' => 0])
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-primary px-4" id="submit-add">
-                                        <i class="mdi mdi-content-save me-1"></i> Save Category
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
@@ -628,61 +582,6 @@
 
     <script>
         $(document).ready(function() {
-            $('#submit-add').on('click', function(e) {
-                e.preventDefault();
-                
-                // Validation
-                const categoryName = $('#category_name').val().trim();
-                if (!categoryName) {
-                    alert('Please enter a category name.');
-                    $('#category_name').focus();
-                    return;
-                }
-
-                const data = {
-                    _token: $('meta[name="csrf-token"]').attr('content'),
-                    category_name: categoryName
-                };
-
-                // Disable button to prevent double submission
-                const submitBtn = $('#submit-add');
-                submitBtn.prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i> Saving...');
-
-                $.ajax({
-                    url: '{{ route('category.create') }}',
-                    method: 'POST',
-                    data: data,
-                    dataType: 'json',
-                    success: function(response) {
-                        if (response.success) {
-                            $('#addCategoryModal').modal('hide');
-                            // Reset form
-                            $('#category_name').val('');
-                            location.reload();
-                        } else {
-                            alert(response.message || 'Failed to save category.');
-                            submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save Category');
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error:', error);
-                        let errorMessage = 'An error occurred while saving the category.';
-                        
-                        if (xhr.responseJSON) {
-                            if (xhr.responseJSON.errors) {
-                                const errors = Object.values(xhr.responseJSON.errors).flat();
-                                errorMessage = errors.join('\n');
-                            } else if (xhr.responseJSON.message) {
-                                errorMessage = xhr.responseJSON.message;
-                            }
-                        }
-                        
-                        alert(errorMessage);
-                        submitBtn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save Category');
-                    }
-                });
-            });
-
             // Handle edit submission
             $('body').on('click', '[id^="submit-edit-"]', function(e) {
                 e.preventDefault();
@@ -773,17 +672,6 @@
                 });
             }
 
-            // Toggle All (rows)
-            $('#select-all').on('change', function() {
-                $('.row-checkbox').prop('checked', $(this).is(':checked')).trigger('change');
-            });
-
-            // Enable/disable the bulk Add Products button
-            $(document).on('change', '.row-checkbox', function() {
-                const anyChecked = $('.row-checkbox:checked').length > 0;
-                $('#bulkAddBtn').prop('disabled', !anyChecked);
-            });
-
             // Delete a row that has no SKU: the row is just the (empty) category, so this deletes the category.
             $(document).on('click', '.delete-category-btn', function() {
                 const id = $(this).data('category-id');
@@ -808,11 +696,6 @@
             });
         });
 
-        document.addEventListener('DOMContentLoaded', function() {
-            // Reset form when modal is closed
-            $('#addCategoryModal').on('hidden.bs.modal', function() {
-                $('#category_name').val('');
-            });
         });
     </script>
     <script>
@@ -1167,20 +1050,6 @@
             // Per-row button
             $(document).on('click', '.add-products-btn', function() {
                 openModal([{ id: $(this).data('category-id'), name: String($(this).data('category-name')) }]);
-            });
-
-            // Bulk: categories of the selected rows
-            $('#bulkAddBtn').on('click', function() {
-                const seen = new Map();
-                $('.row-checkbox:checked').each(function() {
-                    const id = $(this).data('category-id');
-                    if (!seen.has(id)) {
-                        const name = $(this).closest('tbody').find('.add-products-btn').first().data('category-name');
-                        seen.set(id, { id: id, name: String(name || ('#' + id)) });
-                    }
-                });
-                if (!seen.size) return;
-                openModal(Array.from(seen.values()));
             });
 
             $('#apm-search').on('input', function() {
