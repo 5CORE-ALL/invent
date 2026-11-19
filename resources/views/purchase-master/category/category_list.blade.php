@@ -74,7 +74,43 @@
                 <div class="card-body">
                     {{-- Page header --}}
                     <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h4 class="card-title mb-0">Categories</h4>
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <h4 class="card-title mb-0 me-2">Categories</h4>
+                            @php
+                                // Counts for what is listed right now (they follow the Parent / SKU / MFR filters).
+                                $badgeParents = [];
+                                $badgeSkus = [];
+                                $badgeRows = [];
+                                foreach ($categories as $badgeCategory) {
+                                    foreach ($badgeCategory->cp_master_skus ?? [] as $badgeItem) {
+                                        $badgeRows[] = $badgeItem;
+                                    }
+                                }
+                                foreach (($uncategorizedSkus ?? []) as $badgeItem) {
+                                    $badgeRows[] = $badgeItem;
+                                }
+                                foreach ($badgeRows as $badgeItem) {
+                                    if (($badgeItem['parent'] ?? '') !== '') {
+                                        $badgeParents[mb_strtolower($badgeItem['parent'])] = true;
+                                    }
+                                    if (empty($badgeItem['is_parent'])) {
+                                        $badgeSkus[mb_strtolower($badgeItem['sku'])] = true;
+                                    }
+                                }
+                            @endphp
+                            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 fs-6"
+                                title="Parents listed on this page">
+                                <i class="mdi mdi-sitemap-outline me-1"></i> Parents: <span id="badge-parents">{{ count($badgeParents) }}</span>
+                            </span>
+                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-2 fs-6"
+                                title="SKUs listed on this page (PARENT rows not counted)">
+                                <i class="mdi mdi-barcode me-1"></i> SKUs: <span id="badge-skus">{{ count($badgeSkus) }}</span>
+                            </span>
+                            <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle px-3 py-2 fs-6"
+                                title="Categories listed on this page">
+                                <i class="mdi mdi-shape-outline me-1"></i> Categories: <span id="badge-categories">{{ count($categories) }}</span>
+                            </span>
+                        </div>
                         <div class="d-flex gap-2 align-items-center">
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'categories'])
                         </div>
