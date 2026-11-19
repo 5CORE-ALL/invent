@@ -1086,10 +1086,11 @@
 
             // Header boxes only collect the text; the server does the filtering (see dataFiltering below).
             const serverFilter = function() { return true; };
-            const filterCol = { headerFilter: 'input', headerFilterFunc: serverFilter, headerFilterPlaceholder: 'Filter...' };
+            const filterCol = { hozAlign: 'center', headerHozAlign: 'center', headerFilter: 'input', headerFilterFunc: serverFilter, headerFilterPlaceholder: 'Filter...' };
 
             table = new Tabulator('#category-tabulator', {
                 index: 'key',
+                columnDefaults: { hozAlign: 'center', headerHozAlign: 'center', vertAlign: 'middle' },
                 layout: 'fitColumns',
                 height: '72vh',
                 selectableRows: 'highlight',
