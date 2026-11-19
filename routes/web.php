@@ -5325,6 +5325,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::post('/ebay3/save-links', [EbayThreeController::class, 'saveLinks'])->name('ebay3.save.links');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
+    Route::get('/ebay3-cvr-price-rule', [EbayThreeController::class, 'ebay3CvrPriceRuleGet'])->name('ebay3.cvr-price-rule');
+    Route::post('/ebay3-cvr-price-rule', [EbayThreeController::class, 'ebay3CvrPriceRuleSave'])->name('ebay3.cvr-price-rule.save');
     Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
     Route::get('/ebay3-metrics-history', [EbayThreeController::class, 'getEbay3MetricsHistory'])->name('ebay3.metrics.history');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
@@ -5518,6 +5520,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay2op-tabulator-view', [EbayTwoController::class, 'ebay2opTabulatorView'])->name('ebay2op.tabulator.view');
     Route::get('/ebay2-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2.data');
     Route::get('/ebay2-data-json', [EbayTwoController::class, 'ebay2DataJson'])->name('ebay2.data.json');
+    Route::get('/ebay2-cvr-price-rule', [EbayTwoController::class, 'ebay2CvrPriceRuleGet'])->name('ebay2.cvr-price-rule');
+    Route::post('/ebay2-cvr-price-rule', [EbayTwoController::class, 'ebay2CvrPriceRuleSave'])->name('ebay2.cvr-price-rule.save');
     Route::get('/ebay2op-data', [EbayTwoController::class, 'getViewEbayData'])->name('ebay2op.data');
     Route::get('/get-ebay2op-column-visibility', [EbayTwoController::class, 'getEbay2opColumnVisibility'])->name('ebay2op.column.visibility.get');
     Route::post('/set-ebay2op-column-visibility', [EbayTwoController::class, 'setEbay2opColumnVisibility'])->name('ebay2op.column.visibility.set');

@@ -531,13 +531,7 @@ class EbayController extends Controller
      */
     public static function ebayCvrPriceRuleConfig(): array
     {
-        try {
-            $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', 'ebay1_cvr_price_rule')->first();
-        } catch (\Throwable $e) {
-            $row = null;
-        }
-
-        return OverallAmazonController::amazonNormalizeCvrPriceRule($row?->visibility);
+        return \App\Support\EbayCvrPriceRule::config('ebay1');
     }
 
     public function ebayCvrPriceRuleGet()
@@ -547,13 +541,7 @@ class EbayController extends Controller
 
     public function ebayCvrPriceRuleSave(Request $request)
     {
-        $keys = ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band'];
-        $payload = OverallAmazonController::amazonNormalizeCvrPriceRule($request->only($keys));
-        \App\Models\ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'ebay1_cvr_price_rule'],
-            ['visibility' => $payload, 'column_order' => $keys]
-        );
-
+        $payload = \App\Support\EbayCvrPriceRule::save('ebay1', $request->all());
         // The rule changes S PRC itself: re-save S PRC for every SKU right away (the Sprc Dil modal does the same).
         \App\Support\EbayRuleSpriceApply::dispatch('ebay1');
 

@@ -9780,10 +9780,10 @@
         /** The S PRC rule price itself (the ON S PRC rule), before any channel-specific deduction. */
         function chPromoRuleSpriceAmount(d) {
             if (!d) return 0;
-            // eBay 1 CVR Price Rule ON: Push Prc sends the very S PRC the cell shows (the rule's % is already in it).
-            if (CHANNEL_PROMO_CHANNEL === 'ebay1' && typeof window.ebayCvrRuleIsOn === 'function' && window.ebayCvrRuleIsOn()
-                && typeof window.ebayDisplayedSprice === 'function') {
-                const cvrShown = Number(window.ebayDisplayedSprice(d)) || 0;
+            // eBay 1 / 2 / 3 CVR Price Rule ON: Push Prc sends the very S PRC the cell shows (the rule's % is already in it).
+            const cvrShownFn = CHANNEL_PROMO_CHANNEL === 'ebay1' ? window.ebayDisplayedSprice : (CHANNEL_PROMO_CHANNEL === 'ebay2' ? window.ebay2DisplayedSprice : (CHANNEL_PROMO_CHANNEL === 'ebay3' ? window.ebay3DisplayedSprice : null));
+            if (typeof cvrShownFn === 'function' && typeof window.ebayCvrRuleIsOn === 'function' && window.ebayCvrRuleIsOn()) {
+                const cvrShown = Number(cvrShownFn(d)) || 0;
                 if (cvrShown > 0) return chPromoRound2(cvrShown);
             }
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {

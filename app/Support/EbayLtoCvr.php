@@ -24,15 +24,16 @@ final class EbayLtoCvr
      * Rolling-30-day views as saved ~30 days ago, keyed by normalized SKU.
      * One query for all SKUs: only 4 daily snapshots are read.
      *
+     * @param  class-string  $model  the channel's daily snapshot model (EbaySkuDailyData, Ebay2SkuDailyData)
      * @return array<string, float>
      */
-    public static function priorViewsBySku(): array
+    public static function priorViewsBySku(string $model = EbaySkuDailyData::class): array
     {
         $target = Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
         $out = [];
         $day = [];
         try {
-            EbaySkuDailyData::query()
+            $model::query()
                 ->whereBetween('record_date', [
                     $target->copy()->subDays(self::SNAPSHOT_TOLERANCE_DAYS)->toDateString(),
                     $target->toDateString(),

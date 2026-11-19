@@ -113,6 +113,21 @@ class EbayThreeController extends Controller
         }
     }
 
+    /** eBay 3 CVR Price Rule (same rule as eBay 1 / 2). Saved under ebay3_cvr_price_rule. */
+    public function ebay3CvrPriceRuleGet()
+    {
+        return response()->json(['success' => true] + \App\Support\EbayCvrPriceRule::config('ebay3'));
+    }
+
+    public function ebay3CvrPriceRuleSave(Request $request)
+    {
+        $payload = \App\Support\EbayCvrPriceRule::save('ebay3', $request->all());
+        // The rule changes S PRC itself: re-save S PRC for every SKU right away (nothing is pushed here).
+        \App\Support\EbayRuleSpriceApply::dispatch('ebay3');
+
+        return response()->json(['success' => true] + $payload);
+    }
+
     public function ebay3DataJson(Request $request)
     {
         try {
@@ -387,6 +402,8 @@ class EbayThreeController extends Controller
             ->whereIn('sku', $allSkus)
             ->get();
         $ebayMetrics = $ebayMetricsAll->keyBy('sku');
+        // LT O CVR (same as eBay 1): views of the prior 30 days come from the daily snapshot saved 30 days ago.
+        $ltoPriorViewsBySku = \App\Support\EbayLtoCvr::priorViewsBySku(\App\Models\Ebay3SkuDailyData::class);
         $ebayMetricsByNormalizedSku = [];
         foreach ($ebayMetricsAll as $metric) {
             $nk = self::normalizeEbay3SkuForMatch($metric->sku ?? '');
@@ -1104,6 +1121,8 @@ class EbayThreeController extends Controller
                 $row['SCVR'] = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
                 $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
                 $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
+                $row['views_prior'] = $ltoPriorViewsBySku[\App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) $sku)] ?? null;
+                $row['LT_O_CVR'] = \App\Support\EbayLtoCvr::compute($ebayL30, (float) ($row['eBay L60'] ?? 0), $views, $row['views_prior']);
 
                 // Calculate E Dil% = (L30 / INV) if INV > 0
                 $inv = floatval($row['INV'] ?? 0);
@@ -1350,6 +1369,26 @@ class EbayThreeController extends Controller
         foreach ($orphanRows as $orphan) {
             $treeData[] = $orphan;
         }
+
+        // LT O CVR of each PARENT row: only the SKUs with a prior-30-day views snapshot count (same as eBay 1 / 2 parents).
+        foreach ($treeData as &$ltoParent) {
+            if (! is_array($ltoParent) || ! isset($ltoParent['_children'])) {
+                continue;
+            }
+            $ltoUnits = 0.0;
+            $ltoViews = 0.0;
+            $ltoKnown = false;
+            foreach ($ltoParent['_children'] as $ltoChild) {
+                if (isset($ltoChild['views_prior']) && is_numeric($ltoChild['views_prior'])) {
+                    $ltoKnown = true;
+                    $ltoUnits += (float) ($ltoChild['eBay L30'] ?? 0) + (float) ($ltoChild['eBay L60'] ?? 0);
+                    $ltoViews += (float) ($ltoChild['views'] ?? 0) + (float) $ltoChild['views_prior'];
+                }
+            }
+            $ltoParent['views_prior'] = null;
+            $ltoParent['LT_O_CVR'] = ($ltoKnown && $ltoViews > 0) ? round(($ltoUnits / $ltoViews) * 100, 2) : null;
+        }
+        unset($ltoParent);
 
         return response()->json([
             'message' => 'eBay3 Data Fetched Successfully',

@@ -152,7 +152,7 @@ class EbayRuleSprice
             'margin' => (float) ($row['percentage'] ?? 0),
             'ads' => $ads > 0 ? $ads / 100 : 0.0,
             'lmp' => self::effectiveLmp($row),
-            // CVR Price Rule (eBay 1): LT O CVR of the SKU, null when it has no sessions.
+            // CVR Price Rule (eBay 1 / 2 / 3): LT O CVR of the SKU, null when it has no sessions.
             'lto_cvr' => (isset($row['LT_O_CVR']) && is_numeric($row['LT_O_CVR'])) ? (float) $row['LT_O_CVR'] : null,
         ];
         foreach (['age_days', 'clearance', 'review_count'] as $key) {
@@ -202,10 +202,10 @@ class EbayRuleSprice
         $clearanceNroi = is_numeric($unpacked['clearance_nroi'] ?? null) ? max(0.0, (float) $unpacked['clearance_nroi']) : 0.0;
         // CVR up / down discount rule (Sprc Dil modal). Applies in both modes, after the LMP cap and the Std Prc maximum.
         $lmpCvr = in_array($channel, self::CHANNELS, true) ? AmazonLmpCvrDiscRule::config($channel) : null;
-        // CVR Price Rule (eBay 1 CVR Price Rule modal): a % off the rule price by CVR vs LT O CVR. Null when OFF / other channels.
+        // CVR Price Rule (eBay 1 / 2 / 3 CVR Price Rule modal): a % off the rule price by CVR vs LT O CVR. Null when OFF / other channels.
         $cvrPrice = null;
-        if ($channel === 'ebay1') {
-            $cfg = \App\Http\Controllers\MarketPlace\EbayController::ebayCvrPriceRuleConfig();
+        if (in_array($channel, self::CHANNELS, true)) {
+            $cfg = EbayCvrPriceRule::config($channel);
             $cvrPrice = ! empty($cfg['enabled']) ? $cfg : null;
         }
         $activeRule = SpriceActiveRule::forChannel($channel);
@@ -379,7 +379,7 @@ class EbayRuleSprice
             }
         }
 
-        // CVR Price Rule (eBay 1): % off the price above (not off the live Price, so a push never compounds it).
+        // CVR Price Rule (eBay 1 / 2 / 3): % off the price above (not off the live Price, so a push never compounds it).
         $cvrPriceRule = EbayCvrPriceRule::apply(round($final, 2), $input, is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null);
         if ($cvrPriceRule !== null) {
             $final = $cvrPriceRule['price'];

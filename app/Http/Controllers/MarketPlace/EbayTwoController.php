@@ -666,6 +666,21 @@ class EbayTwoController extends Controller
      * Tabulator feed — same wrapper as /ebay-data-json, eBay 2 rows only.
      * Returns the row array and saves the daily snapshot after the response.
      */
+    /** eBay 2 CVR Price Rule (same rule as eBay 1 / Amazon). Saved under ebay2_cvr_price_rule. */
+    public function ebay2CvrPriceRuleGet()
+    {
+        return response()->json(['success' => true] + \App\Support\EbayCvrPriceRule::config('ebay2'));
+    }
+
+    public function ebay2CvrPriceRuleSave(Request $request)
+    {
+        $payload = \App\Support\EbayCvrPriceRule::save('ebay2', $request->all());
+        // The rule changes S PRC itself: re-save S PRC for every SKU right away (nothing is pushed here).
+        \App\Support\EbayRuleSpriceApply::dispatch('ebay2');
+
+        return response()->json(['success' => true] + $payload);
+    }
+
     public function ebay2DataJson(Request $request)
     {
         try {
@@ -798,6 +813,8 @@ class EbayTwoController extends Controller
 
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
+        // LT O CVR (same as eBay 1): views of the prior 30 days come from the daily snapshot saved 30 days ago.
+        $ltoPriorViewsBySku = \App\Support\EbayLtoCvr::priorViewsBySku(\App\Models\Ebay2SkuDailyData::class);
         
         // Add OPEN BOX and USED items from ebay2_metrics to processing list.
         // Always keep ebay2_metrics.sku casing (original listing SKU); never the uppercase keyBy key.
@@ -1474,6 +1491,8 @@ class EbayTwoController extends Controller
             $ebayL45 = $row["eBay L45"];
             $row['CVR_45'] = $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0;
             $row['CVR_60'] = $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0;
+            $row['views_prior'] = $ltoPriorViewsBySku[$pmNorm] ?? null;
+            $row['LT_O_CVR'] = \App\Support\EbayLtoCvr::compute($ebayL30, $ebayL60, $views, $row['views_prior']);
             
             $row["percentage"] = $percentage;
             $row["pmt_ads"] = $pmtAds;
@@ -1912,8 +1931,17 @@ class EbayTwoController extends Controller
             $totalShip = 0.0;
             $lpCount = 0;
             $imagePath = null;
+            // LT O CVR of the family: only children with a prior-30-day views snapshot count (same as eBay 1 parents).
+            $ltoUnits = 0.0;
+            $ltoViews = 0.0;
+            $ltoKnown = false;
 
             foreach ($children as $child) {
+                if (isset($child['views_prior']) && is_numeric($child['views_prior'])) {
+                    $ltoKnown = true;
+                    $ltoUnits += (float) ($child['eBay L30'] ?? 0) + (float) ($child['eBay L60'] ?? 0);
+                    $ltoViews += (float) ($child['views'] ?? 0) + (float) $child['views_prior'];
+                }
                 $inv += (float) ($child['INV'] ?? 0);
                 $l30 += (float) ($child['L30'] ?? 0);
                 $ebayL30 += (float) ($child['eBay L30'] ?? 0);
@@ -1970,6 +1998,8 @@ class EbayTwoController extends Controller
                 'SCVR' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
                 'CVR_45' => $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0,
                 'CVR_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0,
+                'views_prior' => null,
+                'LT_O_CVR' => ($ltoKnown && $ltoViews > 0) ? round(($ltoUnits / $ltoViews) * 100, 2) : null,
                 'metric_ebay_l30' => $ebayL30,
                 'metric_ebay_l60' => $ebayL60,
                 'E Dil%' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,

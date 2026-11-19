@@ -12,6 +12,31 @@ namespace App\Support;
  */
 class EbayCvrPriceRule
 {
+    public const KEYS = ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band'];
+
+    /** Saved rule for a channel (ebay1 / ebay2), normalized. Stored under `{channel}_cvr_price_rule`. */
+    public static function config(string $channel): array
+    {
+        try {
+            $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_cvr_price_rule')->first();
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+
+        return \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonNormalizeCvrPriceRule($row?->visibility);
+    }
+
+    public static function save(string $channel, array $input): array
+    {
+        $payload = \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonNormalizeCvrPriceRule(array_intersect_key($input, array_flip(self::KEYS)));
+        \App\Models\ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_cvr_price_rule'],
+            ['visibility' => $payload, 'column_order' => self::KEYS]
+        );
+
+        return $payload;
+    }
+
     /**
      * @param  array<string, mixed>  $input  EbayRuleSprice::inputFromTabulatorRow() (needs cvr, lto_cvr, lp, ship, percentage, ads)
      * @param  array<string, mixed>|null  $cfg  EbayController::ebayCvrPriceRuleConfig()

@@ -143,7 +143,7 @@
         #shopify-ads-master-wrap .tabulator .tabulator-row {
             min-height: 32px;
         }
-
+12
         #shopify-ads-master-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 3px 4px !important;
             text-align: center;
@@ -166,8 +166,7 @@
             background: #e0f7fa;
         }
 
-        /* Data-tree expand/collapse control (+ / −) for parent channels, same
-           look as /advertisement-master. */
+       
         #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control {
             display: inline-flex;
             align-items: center;

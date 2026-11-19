@@ -1,5 +1,5 @@
-{{-- eBay 1 CVR Price Rule: a saved price change % for SKUs whose CVR 30 is down, within target of, or up vs LT O CVR. Same rule as Amazon. Parts: buttons, modals, script. --}}
-@php $ebayCvrRulePart = $ebayCvrRulePart ?? 'all'; @endphp
+{{-- eBay 1 / 2 / 3 CVR Price Rule (pass ebayCvrRuleChannel): a saved price change % for SKUs whose CVR 30 is down, within target of, or up vs LT O CVR. Same rule as Amazon. Parts: buttons, modals, script. --}}
+@php $ebayCvrRulePart = $ebayCvrRulePart ?? 'all'; $ebayCvrRuleChannel = $ebayCvrRuleChannel ?? 'ebay1'; @endphp
 
 @if($ebayCvrRulePart === 'buttons' || $ebayCvrRulePart === 'all')
                     <button type="button" class="btn btn-sm btn-info" id="ebay-cvr-rule-btn" style="font-weight:600;color:#000;"
@@ -100,7 +100,7 @@
 
 @if($ebayCvrRulePart === 'script' || $ebayCvrRulePart === 'all')
         // ---- CVR Price Rule: price change % by CVR vs LT O CVR ----
-        let ebayCvrRule = @json(\App\Http\Controllers\MarketPlace\EbayController::ebayCvrPriceRuleConfig());
+        let ebayCvrRule = @json(\App\Support\EbayCvrPriceRule::config($ebayCvrRuleChannel));
 
         /** CVR targets: how far below / above LT O CVR counts as down / up, as fractions (default 20% each). */
         function ebayCvrRuleBands(cfg) {
@@ -142,7 +142,7 @@
         }
         /** Ads % used for the cap maths: the eBay channel Ads%. */
         function ebayCvrRuleChannelAds() {
-            try { return parseFloat(EBAY_CHANNEL_ADS_PCT) || 0; } catch (e) { return 0; }
+            try { return parseFloat(typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined' ? EBAY3_CHANNEL_ADS_PCT : (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined' ? EBAY2_CHANNEL_ADS_PCT : EBAY_CHANNEL_ADS_PCT)) || 0; } catch (e) { return 0; }
         }
         /**
          * Lowest price the Lower cap allows: the higher of the price where NPFT% = Min NPFT% and the price where NROI% = Min NROI%.
@@ -158,7 +158,7 @@
             const cost = (isFinite(lp) && lp > 0) ? lp : 0;
             const marginRaw = parseFloat(row && row.percentage);
             let takeHome = 0.8;
-            try { takeHome = parseFloat(EBAY_TAKEHOME) || 0.8; } catch (e) { takeHome = 0.8; }
+            try { takeHome = parseFloat(typeof EBAY3_TAKEHOME !== 'undefined' ? EBAY3_TAKEHOME : (typeof EBAY2_TAKEHOME !== 'undefined' ? EBAY2_TAKEHOME : EBAY_TAKEHOME)) || 0.8; } catch (e) { takeHome = 0.8; }
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : takeHome;
             const ads = ebayCvrRuleChannelAds();
             let floor = null;
@@ -225,7 +225,8 @@
          * Server twin: EbayCvrPriceRule::apply(). Both read the same base, so a push never compounds the %.
          */
         function ebayCvrRuleApply(row, base) {
-            if (!ebayCvrRule || !ebayCvrRule.enabled || !row || row.is_parent_summary) return null;
+            // A PARENT row never gets the % itself: its S PRC is the average of its SKUs, which already carry it.
+            if (!ebayCvrRule || !ebayCvrRule.enabled || !row || row.is_parent_summary || row.is_parent_row || String(row['(Child) sku'] || '').toUpperCase().indexOf('PARENT') !== -1) return null;
             base = Math.round((Number(base) || 0) * 100) / 100;
             if (!(base > 0)) return null;
             const c = ebayCvrRuleCaseFor(row, ebayCvrRule);
@@ -272,11 +273,20 @@
         function ebayCvrRulePaintCounts() {
             const cfg = ebayCvrRuleReadDraft();
             ebayCvrRuleRefreshLabelsModalOnly(cfg);
-            const rows = (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
+            const top = (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
+            // eBay 3 is a tree (PARENT rows hold their SKUs in _children): walk it so the child SKUs are counted.
+            const rows = [];
+            (function walk(list) {
+                (list || []).forEach(function(r) {
+                    if (!r) return;
+                    rows.push(r);
+                    if (Array.isArray(r._children)) walk(r._children);
+                });
+            })(top);
             const counts = { down: 0, same: 0, up: 0 };
             const capped = { down: 0, same: 0, up: 0 };
             rows.forEach(function(r) {
-                if (!r || r.is_parent_summary) return;
+                if (!r || r.is_parent_summary || r.is_parent_row) return;
                 const sku = String(r['(Child) sku'] || '').trim().toUpperCase();
                 if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return;
                 const c = ebayCvrRuleCaseFor(r, cfg);
@@ -326,7 +336,7 @@
                 const $btn = $(this).prop('disabled', true);
                 const payload = ebayCvrRuleReadDraft();
                 $.ajax({
-                    url: @json(route('ebay.cvr-price-rule.save')),
+                    url: @json($ebayCvrRuleChannel === 'ebay3' ? route('ebay3.cvr-price-rule.save') : ($ebayCvrRuleChannel === 'ebay2' ? route('ebay2.cvr-price-rule.save') : route('ebay.cvr-price-rule.save'))),
                     method: 'POST',
                     data: JSON.stringify(payload),
                     contentType: 'application/json',

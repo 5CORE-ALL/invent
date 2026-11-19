@@ -462,6 +462,7 @@
                     {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
+                    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'buttons', 'ebayCvrRuleChannel' => 'ebay2'])
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
                         title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
                         Dil vs SBid
@@ -834,6 +835,7 @@
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
+    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'modals', 'ebayCvrRuleChannel' => 'ebay2'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 2',
@@ -865,6 +867,7 @@
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
+        @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'script', 'ebayCvrRuleChannel' => 'ebay2'])
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 2',
@@ -982,6 +985,22 @@
          * after (EbayRuleSpriceApply). Falls back to the saved S PRC while the rules are not loaded or the row has no rule price.
          */
         function ebay2DisplayedSprice(rowData) {
+            const base = ebay2DisplayedSpriceBase(rowData);
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return base;
+            // CVR Price Rule (CVR Price Rule modal): its % comes off the S PRC the other rules made. S PRC, SGROI / SNROI, Push Prc
+            // and the saved price all read this one number; a PARENT row averages its SKUs, so it follows. Server twin: EbayRuleSprice::price() -> EbayCvrPriceRule.
+            try {
+                const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
+                // Only on top of a live rule price (the saved S PRC is left alone while the rules are not loaded).
+                if (!isClr && base > 0 && ebay2LiveRuleSprice(rowData) > 0 && typeof window.ebayCvrRuleApplyToPrice === 'function') {
+                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, base));
+                    if (isFinite(out) && out > 0) return Math.round(out * 100) / 100;
+                }
+            } catch (e) { /* no CVR Price Rule */ }
+            return base;
+        }
+        /** S PRC before the CVR Price Rule (the rule's base). */
+        function ebay2DisplayedSpriceBase(rowData) {
             const saved = ebay2RawRuleSprice(rowData);
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return saved;
             try {
@@ -1833,6 +1852,7 @@
         }
         window.ebay2HasBlueTriangle = ebay2HasBlueTriangle;
         window.ebay2DisplayedSprice = ebay2DisplayedSprice;
+        window.ebayDisplayedSpriceBase = ebay2DisplayedSpriceBase;
         function ebay2IsEndedListing(data) {
             if (!data) return false;
             const sku = String(data['(Child) sku'] || data.sku || '').trim();
@@ -3527,6 +3547,53 @@
                         },
                         width: 65
                     },
+                    {
+                        title: "LT O CVR",
+                        field: "LT_O_CVR",
+                        hozAlign: "center",
+                        minWidth: 72,
+                        headerTooltip: "Overall CVR over the last 60 days: (eBay L30 + eBay L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views come from the daily snapshot saved 30 days ago. Blank when that snapshot is missing. A PARENT row adds up the SKUs that have a snapshot.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
+                            if (!isFinite(lto)) return '<span class="text-muted">—</span>';
+                            let tip = 'LT O CVR (last 60 days, ads + organic)';
+                            if (!isEbay2TabulatorParentRow(row)) {
+                                const units = (parseFloat(row['eBay L30']) || 0) + (parseFloat(row['eBay L60']) || 0);
+                                const views = (parseFloat(row.views) || 0) + (parseFloat(row.views_prior) || 0);
+                                tip = units + ' orders ÷ ' + views + ' views (L30 + prior 30 days)';
+                            }
+                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '">' + lto.toFixed(1) + '%</span>';
+                        },
+                        sorter: function(a, b) {
+                            const x = (a === null || a === undefined || a === '') ? NaN : parseFloat(a);
+                            const y = (b === null || b === undefined || b === '') ? NaN : parseFloat(b);
+                            return (isFinite(x) ? x : -1) - (isFinite(y) ? y : -1);
+                        },
+                    },
+                    {
+                        title: "CVR Δ",
+                        field: "CVR_VS_LTO",
+                        hozAlign: "center",
+                        width: 60,
+                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const t = (typeof ebayCvrRuleTrendValue === 'function') ? ebayCvrRuleTrendValue(row, null) : null;
+                            if (t === null) return '<span class="text-muted">—</span>';
+                            const lto = parseFloat(row.LT_O_CVR);
+                            const tip = 'CVR ' + (parseFloat(row.SCVR) || 0).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
+                            const pcts = ebayCvrRuleBandPcts(null);
+                            if (t > 0) return '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            if (t < 0) return '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                            return '<span title="' + tip + ' · within the CVR targets">--</span>';
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const x = ebayCvrRuleTrendValue(aRow.getData(), null);
+                            const y = ebayCvrRuleTrendValue(bRow.getData(), null);
+                            return (x === null ? -2 : x) - (y === null ? -2 : y);
+                        },
+                    },
 
                     {
                         title: "View",
@@ -3968,8 +4035,14 @@
                                     + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
                                 : '';
                             const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
+                            // CVR Price Rule: the number above already includes it; a small arrow shows it moved the price.
+                            let cvrMark = '';
+                            try {
+                                cvrMark = (liveRaw > 0 && typeof window.ebayCvrRuleMarkHtml === 'function')
+                                    ? window.ebayCvrRuleMarkHtml(rowData, ebay2DisplayedSpriceBase(rowData)) : '';
+                            } catch (e) { cvrMark = ''; }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
-                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
+                                + dot + formattedValue + cvrMark + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
                         },
                         width: 118
                     },
@@ -5255,6 +5328,8 @@
                 'Listed': 'Listed',
                 'Live': 'Live',
                 'SCVR': 'SCVR',
+                'LT_O_CVR': 'LT O CVR',
+                'CVR_VS_LTO': 'CVR Δ',
                 'ebay2_ship': 'eBay2 Ship',
                 'LP_productmaster': 'LP',
                 'rpt_clicks': 'Clicks',
