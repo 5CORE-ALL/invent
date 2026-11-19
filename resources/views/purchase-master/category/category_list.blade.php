@@ -194,13 +194,20 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
-                                    <th class="text-center align-middle" style="width: 12%">Parent</th>
-                                    <th class="text-center align-middle" style="width: 14%">SKU</th>
-                                    <th class="text-center align-middle" style="width: 20%">Link Sku Purchase</th>
-                                    <th class="text-center align-middle" style="width: 18%">MFR category</th>
-                                    <th class="text-center align-middle" style="width: 15%">Suppliers</th>
-                                    <th class="text-center align-middle" style="width: 12%">Product</th>
-                                    <th class="text-center align-middle" style="width: 12%">Status</th>
+                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="parent" data-sort-type="text" title="Click to sort">Parent <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 14%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="sku" data-sort-type="text" title="Click to sort">SKU <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 20%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="link" data-sort-type="num" title="Click to sort">Link Sku Purchase <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 18%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="mfr" data-sort-type="text" title="Click to sort">MFR category <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 15%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="suppliers" data-sort-type="num" title="Click to sort">Suppliers <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="product" data-sort-type="num" title="Click to sort">Product <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
+                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
+                                        data-sort-key="status" data-sort-type="text" title="Click to sort">Status <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
@@ -209,10 +216,20 @@
                                     $cpSkus = $category->cp_master_skus ?? [];
                                     $rowspan = max(1, count($cpSkus));
                                     $firstSku = $cpSkus[0] ?? null;
+                                    $sortValues = [
+                                        'parent' => $firstSku['parent'] ?? '',
+                                        'sku' => $firstSku['sku'] ?? '',
+                                        'link' => count($category->linked_skus_list ?? []),
+                                        'mfr' => $category->name,
+                                        'suppliers' => (int) ($category->supplier_count ?? 0),
+                                        'product' => count($category->parents_list ?? []),
+                                        'status' => $category->status,
+                                    ];
                                 @endphp
                                 {{-- One <tbody> per category: one row per CP Master SKU (parent rows included);
                                      the category-level cells span all of its SKU rows. --}}
-                                <tbody class="category-group">
+                                <tbody class="category-group" data-orig-index="{{ $loop->index }}"
+                                    @foreach ($sortValues as $sortKey => $sortValue) data-sort-{{ $sortKey }}="{{ $sortValue }}" @endforeach>
                                     <tr>
                                         <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <div class="form-check d-flex justify-content-center align-items-center">
@@ -477,10 +494,8 @@
                                         </div>
                                     </div>
                     @endforeach
-                    <div class="d-flex justify-content-end mt-4">
-                        <div class="pagination-wrapper" id="pagination-wrapper">
-                            {{ $categories->onEachSide(1)->links('pagination::bootstrap-5') }}
-                        </div>
+                    <div class="d-flex justify-content-end mt-3 text-muted small">
+                        Showing all {{ count($categories) }} {{ \Illuminate\Support\Str::plural('category', count($categories)) }}
                     </div>
                 </div>
             </div>
@@ -784,6 +799,53 @@
                 api('POST', url(), { supplier_id: supplierId })
                     .done(function(res) { showMessage(res.message, true); load(); })
                     .fail(function(xhr) { showMessage(errText(xhr), false); });
+            });
+        })();
+    </script>
+    <script>
+        // Click a column header to sort the category groups by it: ascending, descending, then original order.
+        (function() {
+            const table = document.getElementById('category-table-body');
+            if (!table) return;
+            const headers = table.querySelectorAll('th.sortable-th');
+            const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+            let activeKey = null;
+            let direction = 0; // 1 asc, -1 desc, 0 original
+
+            function groups() { return Array.from(table.querySelectorAll('tbody.category-group')); }
+
+            function sortGroups(key, type, dir) {
+                const list = groups();
+                list.sort(function(a, b) {
+                    if (dir === 0) return (+a.dataset.origIndex) - (+b.dataset.origIndex);
+                    const av = a.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
+                    const bv = b.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
+                    // Empty values always go last, whichever direction is used.
+                    if (av === '' && bv !== '') return 1;
+                    if (bv === '' && av !== '') return -1;
+                    const cmp = type === 'num' ? (parseFloat(av) || 0) - (parseFloat(bv) || 0) : collator.compare(av, bv);
+                    return cmp !== 0 ? dir * cmp : (+a.dataset.origIndex) - (+b.dataset.origIndex);
+                });
+                list.forEach(function(g) { table.appendChild(g); });
+            }
+
+            function updateIcons() {
+                headers.forEach(function(h) {
+                    const icon = h.querySelector('.sort-icon');
+                    const on = h.dataset.sortKey === activeKey && direction !== 0;
+                    icon.className = 'mdi sort-icon ' + (!on ? 'mdi-unfold-more-horizontal text-muted'
+                        : (direction === 1 ? 'mdi-arrow-up text-primary' : 'mdi-arrow-down text-primary'));
+                });
+            }
+
+            headers.forEach(function(h) {
+                h.addEventListener('click', function() {
+                    const key = h.dataset.sortKey;
+                    direction = (activeKey === key) ? (direction === 1 ? -1 : (direction === -1 ? 0 : 1)) : 1;
+                    activeKey = direction === 0 ? null : key;
+                    sortGroups(key, h.dataset.sortType, direction);
+                    updateIcons();
+                });
             });
         })();
     </script>

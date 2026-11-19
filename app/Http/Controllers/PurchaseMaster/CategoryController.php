@@ -66,7 +66,8 @@ class CategoryController extends Controller
             $categoriesQuery->whereIn('id', $this->categoryIdsMatchingCpMasterFilters($parentFilter, $skuFilter));
         }
 
-        $categories = $categoriesQuery->paginate(20)->withQueryString();
+        // No paging: every matching category is shown on one page.
+        $categories = $categoriesQuery->orderBy('id')->get();
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
