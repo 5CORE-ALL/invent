@@ -70,6 +70,22 @@ class ChannelPushSpriceDailyEnqueue
                 'message' => 'Skipped — live S PRC push is disabled on local',
             ];
         }
+        // Channels whose two S PRC switches are independent (eBay 1, Shopify B2C): both OFF = no rule applies a price, so the
+        // automatic blue catch-up must not push an old saved S PRC.
+        // The CVR Price Rule can still run on its own then: only the SKUs it priced (last run) are pushed.
+        $cvrOnlySkus = null;
+        if (in_array($channel, ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c'], true) && \App\Support\SpriceActiveRule::forChannel($channel) === 'none') {
+            if (empty(\App\Support\EbayCvrPriceRule::config($channel)['enabled'])) {
+                return [
+                    'channel' => $channel,
+                    'queued' => 0,
+                    'total' => 0,
+                    'spawned' => false,
+                    'message' => 'Skipped — Sprc Dil, Std prc vs dil and CVR Price Rule are all OFF',
+                ];
+            }
+            $cvrOnlySkus = array_flip(\App\Support\EbayCvrPriceRule::onlySkus($channel));
+        }
         $allowed = array_merge(self::CHANNELS, DilRuleSpriceApplyService::PUSH_CHANNELS, self::EXTRA_PUSH_CHANNELS);
         if (! in_array($channel, $allowed, true)) {
             return [
@@ -82,6 +98,9 @@ class ChannelPushSpriceDailyEnqueue
         }
 
         $tasks = $this->collect($channel);
+        if ($cvrOnlySkus !== null) {
+            $tasks = array_values(array_filter($tasks, static fn (array $t): bool => isset($cvrOnlySkus[strtoupper(trim((string) ($t['sku'] ?? '')))])));
+        }
         if ($tasks === []) {
             return [
                 'channel' => $channel,

@@ -244,6 +244,30 @@
             try { info = ebayCvrRuleApply(row, base); } catch (e) { info = null; }
             return info ? info.price : base;
         };
+        /**
+         * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF): price = Std Prc (page's LMP cap, no discounts), then the rule's %.
+         * Returns the new price, or 0 when the mode is not on or the rule does not change this SKU (then nothing is applied or pushed).
+         * Server twin: EbayRuleSprice::price() with rule 'none'. capFn = the page's LMP cap (ebayCapSpriceToLmp / ebay2... / ebay3...).
+         */
+        window.ebayCvrOnlyMode = function() {
+            return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && window.ebayCvrRuleIsOn();
+        };
+        window.ebayCvrOnlyPrice = function(row, capFn) {
+            if (!window.ebayCvrOnlyMode()) return 0;
+            if (!row || row.is_parent_summary || row.is_parent_row || row.is_parent) return 0;
+            const sku = String(row['(Child) sku'] || row.sku || '').toUpperCase();
+            if (sku.indexOf('PARENT') !== -1) return 0;
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return 0;
+            let std = 0;
+            try { std = (window.SpriceLmpCap && typeof SpriceLmpCap.stdOf === 'function') ? Number(SpriceLmpCap.stdOf(row)) : (Number(row.STANDARD_PRICE) || 0); } catch (e) { std = 0; }
+            if (!(std > 0)) return 0;
+            let base = std;
+            try { if (typeof capFn === 'function') { const c = Number(capFn(row, std)); if (isFinite(c) && c > 0) base = c; } } catch (e) { base = std; }
+            base = Math.round(base * 100) / 100;
+            if (!(base > 0)) return 0;
+            const out = Number(window.ebayCvrRuleApplyToPrice(row, base));
+            return (isFinite(out) && out > 0 && Math.abs(out - base) >= 0.005) ? Math.round(out * 100) / 100 : 0;
+        };
         /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
         window.ebayCvrRuleMarkHtml = function(row, base) {
             let info = null;
@@ -349,6 +373,14 @@
                     if (typeof table !== 'undefined' && table) table.redraw(true);
                     // Server-owned S PRC (Shopify B2C): the page waits for the server's re-save, then reloads its rows.
                     if (typeof window.ebayCvrRuleOnSaved === 'function') window.ebayCvrRuleOnSaved();
+                    // eBay: the rule's own auto push starts at once (like the Sprc Dil switch): reset the blue-push passes and queue the blue SKUs.
+                    @if($ebayCvrRuleChannel !== 'shopify_b2c')
+                    try {
+                        window._chPushSpriceLeftoverPasses = 0;
+                        window._chPushSpriceLeftoverLastN = -1;
+                        if (typeof window.chPushSpriceScheduleLeftover === 'function') window.chPushSpriceScheduleLeftover(1500);
+                    } catch (e) { /* no push queue on this page */ }
+                    @endif
                     showToast('success', ebayCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC is being re-saved with the new prices.' : 'CVR Price Rule saved (OFF). S PRC is being re-saved without it.');
                     const el = document.getElementById('ebayCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();

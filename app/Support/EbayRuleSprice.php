@@ -357,6 +357,29 @@ class EbayRuleSprice
      */
     public static function price(StdPrcVsDilPricer $pricer, array $input, ?array $context = null): ?array
     {
+        // Sprc Dil and Std prc vs dil both OFF: only the CVR Price Rule prices, on its own, off Std Prc (LMP-capped, no discounts).
+        // Same number every run (the % never compounds). Null = the rule does not change this SKU, so nothing is saved or pushed.
+        if (($context['rule'] ?? '') === 'none') {
+            $cfg = is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null;
+            $std = (float) ($input['std'] ?? 0);
+            if ($cfg === null || ! ($std > 0) || ! ((float) ($input['inv'] ?? 0) > 0) || $pricer->isClearanceRow($input)) {
+                return null;
+            }
+            [$afterLmp, $final] = self::capChain($std, $input, $context, false);
+            $hit = EbayCvrPriceRule::apply(round($final, 2), $input, $cfg);
+            if ($hit === null) {
+                return null;
+            }
+
+            return [
+                'sprice' => round($hit['price'], 2),
+                'rule_price' => round($std, 2),
+                'lmp_capped' => abs($afterLmp - $std) > 0.009,
+                'std_capped' => false,
+                'lmp_cvr_disc' => 0.0,
+                'cvr_only' => true,
+            ];
+        }
         // Clearance SKUs (Inv days clearance = YES) are priced ONLY from the Clearance Target NROI% (Sprc Dil modal, last row):
         // (LP × (1 + NROI) + Ship) ÷ (take-home − Ads%), in either mode. No slab, Diff, CVR, LMP or Std Prc rule applies.
         if ($pricer->isClearanceRow($input)) {

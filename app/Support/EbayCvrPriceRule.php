@@ -38,6 +38,33 @@ class EbayCvrPriceRule
     }
 
     /**
+     * CVR Price Rule running on its own (Sprc Dil and Std prc vs dil both OFF): the SKUs the last run priced. The automatic
+     * blue push sends only these, never an old saved S PRC. Stored under `{channel}_cvr_only_skus`.
+     *
+     * @return list<string>
+     */
+    public static function onlySkus(string $channel): array
+    {
+        try {
+            $row = \App\Models\ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_cvr_only_skus')->first();
+            $v = is_array($row?->visibility) ? $row->visibility : [];
+
+            return array_values(array_unique(array_map(static fn ($s) => strtoupper(trim((string) $s)), (array) ($v['skus'] ?? []))));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /** @param  list<string>  $skus */
+    public static function saveOnlySkus(string $channel, array $skus): void
+    {
+        \App\Models\ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_cvr_only_skus'],
+            ['visibility' => ['skus' => array_values(array_unique(array_map(static fn ($s) => strtoupper(trim((string) $s)), $skus)))], 'column_order' => []]
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $input  EbayRuleSprice::inputFromTabulatorRow() (needs cvr, lto_cvr, lp, ship, percentage, ads)
      * @param  array<string, mixed>|null  $cfg  EbayController::ebayCvrPriceRuleConfig()
      * @return array{price: float, capped: bool}|null  null = the rule does not change this SKU

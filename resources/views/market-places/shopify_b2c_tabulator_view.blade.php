@@ -1353,12 +1353,20 @@
         if (!sku || sku.indexOf('PARENT') === 0) return false;
         // Same as Amazon / Push on reload: INV=0 is not a live listing price.
         if (!(parseFloat(data.INV) > 0)) return false;
+        // Both S PRC switches OFF: no rule applies a price, so an old saved S PRC is not a pending push.
+        // Only the SKUs the CVR Price Rule priced on its own (server run, CVR_ONLY) can be blue then.
+        if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && !data.CVR_ONLY) return false;
         if (typeof chPromoEbaySpriceSlabsReady === 'function' && !chPromoEbaySpriceSlabsReady()) return false;
         const sprice = shopifyB2cShownSprice(data);
         const price = parseFloat(data.Price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.shopifyB2cHasBlueTriangle = shopifyB2cHasBlueTriangle;
+    // Both S PRC switches OFF, CVR Price Rule ON: Push Prc sends the S PRC the server saved for the SKUs the rule priced (nothing else).
+    window.ebayCvrOnlyRowPrice = function(d) {
+        if (!d || !d.CVR_ONLY || typeof window.ebayCvrRuleIsOn !== 'function' || !window.ebayCvrRuleIsOn()) return 0;
+        return Number(shopifyB2cShownSprice(d)) || 0;
+    };
 
     /** The Diff rule setting saved in the Sprc Dil modal (default: above 20% adds +10). */
     function shopifyB2cDiffCfgNow() {

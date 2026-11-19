@@ -942,6 +942,8 @@
     /** The rule price before the LMP cap and the Std Prc maximum: Sprc Dil price (switch ON) or the Std prc vs dil price. 0 when none. */
         function ebay3LiveRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
+            // Sprc Dil and Std prc vs dil both switched OFF: no rule price, the saved S PRC stays as it is.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
             try {
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
@@ -969,6 +971,11 @@
         function ebay3DisplayedSprice(rowData) {
             const base = ebay3DisplayedSpriceBase(rowData);
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return base;
+            // Both S PRC switches OFF: only the CVR Price Rule prices (off Std Prc). Other SKUs keep their saved S PRC.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                const onlyP = (typeof window.ebayCvrOnlyPrice === 'function') ? window.ebayCvrOnlyPrice(rowData, ebay3CapSpriceToLmp) : 0;
+                return onlyP > 0 ? onlyP : base;
+            }
             // CVR Price Rule (CVR Price Rule modal): its % comes off the S PRC the other rules made. S PRC, SGROI / SNROI, Push Prc
             // and the saved price all read this one number; a PARENT row never gets the % itself (its SKUs do). Server twin: EbayRuleSprice::price() -> EbayCvrPriceRule.
             try {
@@ -2404,6 +2411,9 @@
             if (ebay3IsAlertParentRow(data)) return false;
             if (!(ebay3Qty(data && data.INV) > 0)) return false;
             if (ebay3IsEndedListing(data)) return false;
+            // Both S PRC switches OFF: no rule applies a price, so an old saved S PRC is not a pending push. Only the CVR Price Rule's own price can be blue.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none'
+                && !(typeof window.ebayCvrOnlyPrice === 'function' && window.ebayCvrOnlyPrice(data, ebay3CapSpriceToLmp) > 0)) return false;
             // Live rule price (same as the S PRC cell), so a rule change moves the badge at once like Amazon.
             // The server saves the same price right after the change, and the blue push sends the saved one.
             let sprice = Number(ebay3DisplayedSprice(data)) || 0;
@@ -2418,6 +2428,7 @@
         window.ebay3HasBlueTriangle = ebay3HasBlueTriangle;
         window.ebay3DisplayedSprice = ebay3DisplayedSprice;
         window.ebayDisplayedSpriceBase = ebay3DisplayedSpriceBase;
+        window.ebayCvrOnlyRowPrice = function(d) { return (typeof window.ebayCvrOnlyPrice === 'function') ? window.ebayCvrOnlyPrice(d, ebay3CapSpriceToLmp) : 0; };
         function syncEbay3TriangleBadgeState() {
             $('#ebay3-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

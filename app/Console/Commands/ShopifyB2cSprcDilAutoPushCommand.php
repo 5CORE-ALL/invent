@@ -72,7 +72,9 @@ class ShopifyB2cSprcDilAutoPushCommand extends Command
 
         $queued = 0;
         // Both rule switches OFF: nothing prices S PRC, so nothing is pushed either.
-        $bothOff = \App\Support\SpriceActiveRule::forChannel('shopify_b2c') === 'none';
+        // The enqueue itself only sends the CVR Price Rule's own SKUs when the two rules are OFF and that rule is ON.
+        $bothOff = \App\Support\SpriceActiveRule::forChannel('shopify_b2c') === 'none'
+            && empty(\App\Support\EbayCvrPriceRule::config('shopify_b2c')['enabled']);
         if (! $dryRun && ! $skipPush && ! $bothOff) {
             $res = $enqueue->enqueueChannel('shopify_b2c');
             $queued = (int) ($res['queued'] ?? 0);

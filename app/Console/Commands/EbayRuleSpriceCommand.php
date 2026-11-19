@@ -41,8 +41,8 @@ class EbayRuleSpriceCommand extends Command
         $skipped = 0;
         $pageAds = EbayRuleSprice::pageAdsPercent($channel);
         $ruleContext = EbayRuleSprice::context($channel);
-        if ($ruleContext['rule'] === 'none') {
-            $this->info($channel.': both S PRC rules are OFF — nothing to do.');
+        if ($ruleContext['rule'] === 'none' && ! is_array($ruleContext['cvr_price'] ?? null)) {
+            $this->info($channel.': both S PRC rules and the CVR Price Rule are OFF — nothing to do.');
 
             return self::SUCCESS;
         }

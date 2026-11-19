@@ -58,8 +58,9 @@ class ShopifyB2cSprcDilAutoPushService
         ?callable $logger = null
     ): array {
         // Sprc Dil and Std prc vs dil are ON / OFF on their own (modal switches). Both OFF: no rule prices anything, so nothing is saved.
-        if (SpriceActiveRule::forChannel('shopify_b2c') === 'none') {
-            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+        // The CVR Price Rule can still price on its own then (off Std Prc), see computeTarget().
+        if (SpriceActiveRule::forChannel('shopify_b2c') === 'none' && ! $this->cvrRuleOn()) {
+            $this->log($logger, 'Skipped: Sprc Dil, Std prc vs dil and CVR Price Rule are all OFF');
 
             return ['dry_run' => $dryRun, 'stats' => [
                 'candidates' => 0, 'applied' => 0, 'skipped_unchanged' => 0, 'skipped' => 0, 'neg_snroi' => 0, 'errors' => [],
@@ -105,6 +106,8 @@ class ShopifyB2cSprcDilAutoPushService
 
             $stats['candidates'] = count($rows);
             $this->log($logger, "Found {$stats['candidates']} candidate SKU(s) with INV > 0");
+            $cvrOnlyHits = [];
+            $cvrOnlyRun = SpriceActiveRule::forChannel('shopify_b2c') === 'none';
 
             $total = count($rows);
             foreach ($rows as $i => $row) {
@@ -113,6 +116,9 @@ class ShopifyB2cSprcDilAutoPushService
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
+                    }
+                    if ($cvrOnlyRun) {
+                        $cvrOnlyHits[] = (string) $row['sku'];
                     }
                     // Only SKUs whose live Price differs from S PRC matter: those stay blue because the push skips them.
                     if (($computed['snroi'] ?? 0) < 0 && ! PushedListingPrice::same($row['price'] ?? 0, $computed['sprice'])) {
@@ -145,6 +151,10 @@ class ShopifyB2cSprcDilAutoPushService
                 }
             }
 
+            if ($cvrOnlyRun && ! $dryRun) {
+                // The automatic blue push sends only these SKUs while the CVR Price Rule runs on its own.
+                \App\Support\EbayCvrPriceRule::saveOnlySkus('shopify_b2c', $cvrOnlyHits);
+            }
             $this->log($logger, sprintf(
                 'Done: candidates=%d applied=%d unchanged=%d skipped=%d neg_snroi(not pushed)=%d errors=%d%s',
                 $stats['candidates'],
@@ -180,11 +190,30 @@ class ShopifyB2cSprcDilAutoPushService
      * @param  array{rules:array,cvr_adj:array,lmp_cap:array,diff_adj:array}|null  $dilContext
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
      */
+    protected function cvrRuleOn(): bool
+    {
+        $cfg = $this->cvrPriceRuleCfg ??= \App\Support\EbayCvrPriceRule::config('shopify_b2c');
+
+        return ! empty($cfg['enabled']);
+    }
+
     public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, float $adsPct = 0.0, ?array $dilContext = null): ?array
     {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
             return null;
+        }
+        // Sprc Dil and Std prc vs dil both OFF: only the CVR Price Rule prices, off Std Prc (LMP-capped, no discounts), and only
+        // the SKUs it changes. Clearance SKUs are left alone. Same number every run, so the % never compounds.
+        if (SpriceActiveRule::forChannel('shopify_b2c') === 'none') {
+            $std0 = (float) ($row['standard_price'] ?? 0);
+            if (! $this->cvrRuleOn() || ! ($std0 > 0)
+                || ($pricer ?? new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
+                return null;
+            }
+            $r = $this->finish($row, $std0, $std0, 0.0, $adsPct);
+
+            return ($r !== null && ! empty($r['cvr_hit'])) ? $r : null;
         }
         // Clearance: only the Clearance Target NROI% prices it, whichever rule is active. Needs LP, not Std Prc.
         if (($pricer ?? new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
@@ -412,6 +441,7 @@ class ShopifyB2cSprcDilAutoPushService
         // CVR Price Rule (CVR Price Rule modal): its % comes off the price the other rules made (LMP cap and Std Prc maximum
         // done), before the Amz cap, so it never undercuts A Price. The % is taken off this stable price, not the live Price,
         // so a push never compounds it. Page: the saved S PRC already carries it.
+        $cvrHit = false;
         $cvrCfg = $this->cvrPriceRuleCfg ??= \App\Support\EbayCvrPriceRule::config('shopify_b2c');
         if (! empty($cvrCfg['enabled'])) {
             $cvrPrice = \App\Support\EbayCvrPriceRule::apply($capped, [
@@ -425,6 +455,7 @@ class ShopifyB2cSprcDilAutoPushService
             if ($cvrPrice !== null) {
                 $capped = $cvrPrice['price'];
                 $lmpCapped = false;
+                $cvrHit = true;
             }
         }
         $amzCapped = false;
@@ -455,6 +486,7 @@ class ShopifyB2cSprcDilAutoPushService
             'sprice' => $sprice,
             // The rule price before any cap. The page uses it to show the LMP / Std Prc cap triangles and the hover card.
             'rule_price' => $effective,
+            'cvr_hit' => $cvrHit,
             'uncapped' => round($uncapped, 2),
             'amz_capped' => $amzCapped,
             'lmp_capped' => $lmpCapped,

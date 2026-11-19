@@ -1641,6 +1641,11 @@
         function ebayDisplayedSprice(rowData) {
             const base = ebayDisplayedSpriceBase(rowData);
             if (!rowData || rowData.is_parent_summary) return base;
+            // Both S PRC switches OFF: only the CVR Price Rule prices (off Std Prc). Other SKUs keep their saved S PRC.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                const onlyP = (typeof window.ebayCvrOnlyPrice === 'function') ? window.ebayCvrOnlyPrice(rowData, ebayCapSpriceToLmp) : 0;
+                return onlyP > 0 ? onlyP : base;
+            }
             // CVR Price Rule (eBay 1 CVR Price Rule modal): its % comes off the S PRC the other rules made. S PRC, S GROI / SNROI,
             // Push Prc and the saved price all read this one number. Server twin: EbayRuleSprice::price() -> EbayCvrPriceRule.
             try {
@@ -1675,6 +1680,7 @@
         window.ebayCapSpriceToLmp = ebayCapSpriceToLmp;
         window.ebayDisplayedSprice = ebayDisplayedSprice;
         window.ebayDisplayedSpriceBase = ebayDisplayedSpriceBase;
+        window.ebayCvrOnlyRowPrice = function(d) { return (typeof window.ebayCvrOnlyPrice === 'function') ? window.ebayCvrOnlyPrice(d, ebayCapSpriceToLmp) : 0; };
         function ebayApplyL1FromEntries(row) {
             if (!row || row.is_parent_summary) return row;
             const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
@@ -3939,6 +3945,9 @@
                 if (!data || ebay1IsAlertParentRow(data)) return false;
                 if (!(Number(String(data.INV == null ? '' : data.INV).replace(/[,\s\u00A0]/g, '')) > 0)) return false;
                 if (ebay1IsEndedListing(data)) return false;
+                // Both S PRC switches OFF: no rule applies a price, so an old saved S PRC is not a pending push. Only the CVR Price Rule's own price can be blue.
+                if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none'
+                    && !(typeof window.ebayCvrOnlyPrice === 'function' && window.ebayCvrOnlyPrice(data, ebayCapSpriceToLmp) > 0)) return false;
                 // Live rule price (same as the S PRC cell), so a rule change moves the badge at once like Amazon.
                 // The server saves the same price right after the change, and the blue push sends the saved one.
                 let sprice = Number(ebayDisplayedSprice(data)) || 0;

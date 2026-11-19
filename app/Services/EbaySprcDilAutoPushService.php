@@ -61,13 +61,15 @@ class EbaySprcDilAutoPushService
             $pageAds = EbayRuleSprice::pageAdsPercent($channel);
             // The page switch decides the rule: Std prc vs dil, or Sprc Dil (Target NROI by Dil, LMP × 0.98).
             $ruleContext = EbayRuleSprice::context($channel);
-            if ($ruleContext['rule'] === 'none') {
-                // Sprc Dil and Std prc vs dil are both OFF: S PRC is not changed.
-                $log($channel.': both S PRC rules are OFF — nothing to save.');
+            $cvrOnly = $ruleContext['rule'] === 'none' && is_array($ruleContext['cvr_price'] ?? null);
+            $cvrHitSkus = [];
+            if ($ruleContext['rule'] === 'none' && ! $cvrOnly) {
+                // Sprc Dil, Std prc vs dil and the CVR Price Rule are all OFF: S PRC is not changed.
+                $log($channel.': both S PRC rules and the CVR Price Rule are OFF — nothing to save.');
 
                 return ['stats' => $stats, 'changes' => []];
             }
-            $log($channel.': S PRC rule = '.($ruleContext['rule'] === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'));
+            $log($channel.': S PRC rule = '.($cvrOnly ? 'CVR Price Rule only (off Std Prc)' : ($ruleContext['rule'] === 'dil' ? 'Sprc Dil' : 'Std prc vs dil')));
             foreach ($this->tabulatorRows($channel) as $row) {
                 $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
                 if ($input === null) {
@@ -84,6 +86,9 @@ class EbaySprcDilAutoPushService
                     continue;
                 }
                 $sprice = (float) $priced['sprice'];
+                if ($cvrOnly) {
+                    $cvrHitSkus[] = $input['sku'];
+                }
                 // A negative-SNROI price is still saved, but the runner never pushes it: it stays blue.
                 $live = (float) ($row['eBay Price'] ?? 0);
                 if ($input['inv'] > 0 && ! PushedListingPrice::same($live, $sprice)
@@ -109,6 +114,10 @@ class EbaySprcDilAutoPushService
                         Log::warning('eBay S PRC auto save failed', ['channel' => $channel, 'error' => $e->getMessage()]);
                     }
                 }
+            }
+            if ($cvrOnly && ! $dryRun) {
+                // The automatic blue push sends only these SKUs while the CVR Price Rule runs on its own.
+                \App\Support\EbayCvrPriceRule::saveOnlySkus($channel, $cvrHitSkus);
             }
             $log(sprintf('%s: %d rows, %d changed, %d unchanged, %d skipped.',
                 $channel, $stats['candidates'], count($changes), $stats['skipped_unchanged'], $stats['skipped']));

@@ -885,6 +885,16 @@ class Shopifyb2cController extends Controller
         $shopifyData = $this->shopifyB2cSlimSkuMap($skus);
         $shopifyB2COrders = $this->shopifyB2cL30QtyBySku();
         $shopifyB2COrdersL60 = $this->shopifyB2cL60QtyBySku();
+        // CVR Price Rule on its own (both S PRC switches OFF): the SKUs it priced last run. Only those can show a blue triangle / be pushed.
+        $cvrOnlySkus = [];
+        try {
+            if (\App\Support\SpriceActiveRule::forChannel('shopify_b2c') === 'none'
+                && ! empty(\App\Support\EbayCvrPriceRule::config('shopify_b2c')['enabled'])) {
+                $cvrOnlySkus = array_flip(\App\Support\EbayCvrPriceRule::onlySkus('shopify_b2c'));
+            }
+        } catch (\Throwable $e) {
+            $cvrOnlySkus = [];
+        }
         $amazonBySku = $this->shopifyB2cAmazonPriceBySku();
         $amazonStandardPrices = $this->shopifyB2cAmazonStandardPrices();
 
@@ -1133,6 +1143,7 @@ class Shopifyb2cController extends Controller
                 }
             }
             $processedItem['STANDARD_PRICE'] = $stdPrc;
+            $processedItem['CVR_ONLY'] = $cvrOnlySkus !== [] && isset($cvrOnlySkus[strtoupper(trim((string) $sku))]);
             $processedItem = $promoService->applyToRow($processedItem, $promoMap, (string) $sku);
 
             $lmpOffers = [];
