@@ -2218,6 +2218,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay2.variation.type') }}">Ebay 2 Variation Type</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay2.campaign.ads') }}">eBay 2 Campaign Ads (Raw)</a>
                                     </li>
                                     <li>
