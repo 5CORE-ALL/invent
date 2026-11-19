@@ -2088,56 +2088,65 @@ class ForecastAnalysisController extends Controller
             }
 
             $skuUpper = strtoupper(trim($sku));
-            $parentNorm = strtoupper(trim($parent));
 
-            $oldR2s = null;
-            // Only touch rows that are still on Ready to Ship (transit_inv_status = 0).
-            // Rows already moved to transit keep transit_inv_status = 1 (qty 0); writing the
-            // qty onto those made the R2S qty/stage vanish on refresh, because the grid only
-            // reads transit_inv_status = 0 rows and no new open row was inserted.
-            $r2sQuery = DB::table('ready_to_ship')
+            // Only touch rows still on Ready to Ship (transit_inv_status = 0). Rows already moved to
+            // transit keep transit_inv_status = 1 and are ignored by the grid.
+            //
+            // The grid shows ONE R2S number per SKU = the SUM of all its open rows, so the value typed
+            // here is the SKU's TOTAL. Writing it onto every open row multiplied it (2 rows x 50 = 100
+            // shown), so edits never matched what was typed. Instead adjust the rows by the difference.
+            $openRows = DB::table('ready_to_ship')
                 ->whereNull('deleted_at')
                 ->where('transit_inv_status', 0)
-                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
-            if ($parentNorm !== '') {
-                $r2sQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
-            }
-            $r2sRow = $r2sQuery->orderByDesc('updated_at')->first();
-            if ($r2sRow) {
-                $oldR2s = $r2sRow->qty;
-            }
-
-            $updated = (int) DB::table('ready_to_ship')
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
-                ->whereNull('deleted_at')
-                ->where('transit_inv_status', 0)
-                ->update([
-                    'qty'        => $valueNum,
-                    'updated_at' => now(),
-                ]);
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get();
 
-            if ($updated === 0) {
-                $updated = (int) DB::table('ready_to_ship')
-                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->whereNull('deleted_at')
-                    ->where('transit_inv_status', 0)
-                    ->update([
-                        'qty'        => $valueNum,
+            $oldR2s = $openRows->isNotEmpty()
+                ? (float) $openRows->sum(fn ($r) => (float) ($r->qty ?? 0))
+                : null;
+
+            if ($openRows->isEmpty()) {
+                if ($sku !== '') {
+                    DB::table('ready_to_ship')->insert([
+                        'sku'                => $sku,
+                        'parent'             => $parent !== '' ? $parent : null,
+                        'qty'                => $valueNum,
+                        'transit_inv_status' => 0,
+                        'auth_user'          => optional(Auth::user())->name,
+                        'created_at'         => now(),
+                        'updated_at'         => now(),
+                    ]);
+                }
+            } else {
+                $delta = $valueNum - (float) $oldR2s;
+                if ($delta > 0) {
+                    // Raise the newest row.
+                    $newest = $openRows->first();
+                    DB::table('ready_to_ship')->where('id', $newest->id)->update([
+                        'qty'        => (float) ($newest->qty ?? 0) + $delta,
                         'updated_at' => now(),
                     ]);
-            }
-
-            if ($updated === 0 && $sku !== '') {
-                DB::table('ready_to_ship')->insert([
-                    'sku'                => $sku,
-                    'parent'             => $parent !== '' ? $parent : null,
-                    'qty'                => $valueNum,
-                    'transit_inv_status' => 0,
-                    'auth_user'          => optional(Auth::user())->name,
-                    'created_at'         => now(),
-                    'updated_at'         => now(),
-                ]);
+                } elseif ($delta < 0) {
+                    // Lower rows newest-first until the total equals the typed value.
+                    $toRemove = -$delta;
+                    foreach ($openRows as $r) {
+                        if ($toRemove <= 0) {
+                            break;
+                        }
+                        $rowQty = (float) ($r->qty ?? 0);
+                        if ($rowQty <= 0) {
+                            continue;
+                        }
+                        $take = min($rowQty, $toRemove);
+                        DB::table('ready_to_ship')->where('id', $r->id)->update([
+                            'qty'        => $rowQty - $take,
+                            'updated_at' => now(),
+                        ]);
+                        $toRemove -= $take;
+                    }
+                }
             }
 
             $this->logForecastAnalysisChange($sku, $parent, 'r2s', $oldR2s, $valueNum);

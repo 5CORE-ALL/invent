@@ -349,6 +349,10 @@
         .tabulator-cell.forecast-edit-actions-cell {
             padding-left: 2px !important;
             padding-right: 2px !important;
+            border-left: 2px solid #cbd5e1;
+        }
+        .tabulator-col.forecast-edit-actions-cell {
+            border-left: 2px solid #cbd5e1;
         }
         .tabulator-cell.forecast-current-supplier-cell .forecast-supplier-name {
             display: -webkit-box;
@@ -4976,46 +4980,6 @@
                 },
                 ...(window.FcPq ? window.FcPq.columns() : []),
                 {
-                    title: "Edit",
-                    field: "_edit_row",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 52,
-                    minWidth: 44,
-                    maxWidth: 58,
-                    widthGrow: 0,
-                    widthShrink: 1,
-                    cssClass: "forecast-edit-actions-cell",
-                    download: false,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) {
-                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        }
-                        return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
-                            <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
-                            <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
-                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
-                            </button>
-                        </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return;
-                        if (e.target.closest('.forecast-edit-row-btn')) {
-                            e.stopPropagation();
-                            openForecastEditModal(cell.getRow());
-                            return;
-                        }
-                        if (e.target.closest('.forecast-history-row-btn')) {
-                            e.stopPropagation();
-                            const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
-                            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
-                            openForecastHistoryModal(sku, parent);
-                        }
-                    }
-                },
-                {
                     // Exec — reads/writes the same to_order_analysis.exec column used by
                     // the MFRG In Progress page and the /update-link "Exec" save path,
                     // so an exec change here is visible everywhere immediately.
@@ -5104,6 +5068,50 @@
                         const firstName = value.split(/\s+/)[0] || value;
                         const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
                         return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="${esc(value)}">${esc(firstName)}</span>`;
+                    }
+                },
+                {
+                    title: "Edit",
+                    field: "_edit_row",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 52,
+                    minWidth: 44,
+                    maxWidth: 58,
+                    widthGrow: 0,
+                    widthShrink: 1,
+                    // Frozen to the right edge so the Edit / History buttons stay visible while
+                    // scrolling horizontally. Must be the LAST column for Tabulator to pin it right.
+                    frozen: true,
+                    movable: false,
+                    cssClass: "forecast-edit-actions-cell",
+                    download: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                            <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
+                            <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
+                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
+                            </button>
+                        </div>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return;
+                        if (e.target.closest('.forecast-edit-row-btn')) {
+                            e.stopPropagation();
+                            openForecastEditModal(cell.getRow());
+                            return;
+                        }
+                        if (e.target.closest('.forecast-history-row-btn')) {
+                            e.stopPropagation();
+                            const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
+                            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
+                            openForecastHistoryModal(sku, parent);
+                        }
                     }
                 },
             ],
