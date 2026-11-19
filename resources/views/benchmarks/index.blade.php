@@ -179,8 +179,24 @@
                 if (table) table.setGroupBy($group.checked ? 'category' : false);
             });
 
-            fetch(DATA_URL, { headers: { 'Accept': 'application/json' } })
+            /** When these benchmarks differ from the last ones seen, tell the open eBay tabulator views to re-sync. */
+            function announceChange(payload) {
+                try {
+                    const s = JSON.stringify([payload.source || null, payload.rows || []]);
+                    let h = 5381;
+                    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+                    const sig = s.length + ':' + h;
+                    const key = 'ebay_benchmarks_sig:' + DATA_URL;
+                    if (localStorage.getItem(key) !== sig) {
+                        localStorage.setItem(key, sig);
+                        localStorage.setItem('ebay_benchmarks_updated', String(Date.now()));
+                    }
+                } catch (e) { /* storage blocked */ }
+            }
+
+            fetch(DATA_URL, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
                 .then(function(r) { return r.json(); })
+                .then(function(payload) { announceChange(payload); return payload; })
                 .then(build)
                 .catch(function() {
                     $source.textContent = 'Could not load benchmarks';
