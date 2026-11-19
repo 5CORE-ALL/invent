@@ -53,7 +53,8 @@
         #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
 
         /* ACOS cell backgrounds — 0–10 magenta, 10–20 green, 20–30 light blue,
-           30–40 yellow, 40–50 orange, >50 red */
+           30–40 yellow, 40–50 orange, 50–60 red, 60–70 purple, 70–80 indigo,
+           80–90 teal, 90–100 brown, >100 near-black */
         #facebook-all-ads-table .tabulator-cell.acos-bg-0-10 {
             background: #ec4899 !important;
             color: #000 !important;
@@ -79,8 +80,33 @@
             color: #000 !important;
             font-weight: 700;
         }
-        #facebook-all-ads-table .tabulator-cell.acos-bg-over-40 {
+        #facebook-all-ads-table .tabulator-cell.acos-bg-50-60 {
             background: #dc2626 !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-60-70 {
+            background: #9333ea !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-70-80 {
+            background: #4338ca !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-80-90 {
+            background: #0f766e !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-90-100 {
+            background: #78350f !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-over-100 {
+            background: #111827 !important;
             color: #fff !important;
             font-weight: 700;
         }
@@ -1470,10 +1496,12 @@
 
         // ACOS column — fixed background bands (independent of Sbgt rule colours):
         // 0–10 magenta, 10–20 green, 20–30 light blue, 30–40 yellow,
-        // 40–50 orange, >50 red.
+        // 40–50 orange, 50–60 red, 60–70 purple, 70–80 indigo, 80–90 teal,
+        // 90–100 brown, >100 near-black.
         const ACOS_BG_CLASSES = [
             'acos-bg-0-10', 'acos-bg-10-20', 'acos-bg-20-30',
-            'acos-bg-30-40', 'acos-bg-40-50', 'acos-bg-over-40',
+            'acos-bg-30-40', 'acos-bg-40-50', 'acos-bg-50-60', 'acos-bg-60-70',
+            'acos-bg-70-80', 'acos-bg-80-90', 'acos-bg-90-100', 'acos-bg-over-100',
         ];
         /** Same palette as the Acos column — used by rule ACOS% labels + filter dots. */
         function acosSchemaStyle(pct) {
@@ -1505,7 +1533,12 @@
                 else if (pct <= 30) el.classList.add('acos-bg-20-30');
                 else if (pct <= 40) el.classList.add('acos-bg-30-40');
                 else if (pct <= 50) el.classList.add('acos-bg-40-50');
-                else                el.classList.add('acos-bg-over-40');
+                else if (pct <= 60) el.classList.add('acos-bg-50-60');
+                else if (pct <= 70) el.classList.add('acos-bg-60-70');
+                else if (pct <= 80) el.classList.add('acos-bg-70-80');
+                else if (pct <= 90) el.classList.add('acos-bg-80-90');
+                else if (pct <= 100) el.classList.add('acos-bg-90-100');
+                else                el.classList.add('acos-bg-over-100');
             }
 
             return (value === null || value === undefined || value === '') ? '' : String(value);
@@ -1900,9 +1933,9 @@
                         'Sessions',
                         'Lifetime Acos', 'Lifetime CTR', 'Lifetime Sales', 'Lifetime Spend',
                         'LT Sold', 'LT CVR', 'LT CPS',
-                        'GPFT$', 'GPFT%', 'LMP',
+                        'Price', 'GPFT$', 'GPFT%', 'LMP',
                     ]);
-                    // GPFT$ / GPFT% / LMP come from the Shopify B2C analytics page for the
+                    // Price / GPFT$ / GPFT% / LMP come from the Shopify B2C analytics page for the
                     // Shopify parent the campaign name starts with (hover shows which one).
                     // Grey "—" when no parent matches.
                     function formatShopifyParentCell(cell) {
@@ -2147,7 +2180,7 @@
                         if (c.field === 'Acos' || c.field === 'Lifetime Acos') formatter = formatAcosCell;
                         else if (c.field === 'Lifetime CTR')   formatter = formatLifetimeCtrCell;
                         else if (c.field === 'LT Sold' || c.field === 'LT CPS') formatter = formatLtSoldCell;
-                        else if (c.field === 'GPFT$' || c.field === 'GPFT%' || c.field === 'LMP') formatter = formatShopifyParentCell;
+                        else if (c.field === 'Price' || c.field === 'GPFT$' || c.field === 'GPFT%' || c.field === 'LMP') formatter = formatShopifyParentCell;
                         else if (c.field === 'LT CVR')         formatter = formatLtCvrCell;
                         else if (c.field === 'Lifetime Sales') formatter = formatLifetimeSalesCell;
                         else if (c.field === 'Lifetime Spend') formatter = formatLifetimeSpendCell;
@@ -2182,15 +2215,19 @@
                             'Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                             'LT Sold','LT CVR','LT CPS',
-                            'GPFT$','GPFT%','LMP',
+                            'Price','GPFT$','GPFT%','LMP',
                         ]);
                         const sorter = NUMERIC.has(c.field)
-                            ? function (a, b) {
+                            ? function (a, b, aRow, bRow, column, dir) {
                                 const na = parseFloat(String(a ?? '').replace(/[^\d.\-]/g, ''));
                                 const nb = parseFloat(String(b ?? '').replace(/[^\d.\-]/g, ''));
-                                const va = isFinite(na) ? na : -Infinity;
-                                const vb = isFinite(nb) ? nb : -Infinity;
-                                return va - vb;
+                                const aOk = isFinite(na), bOk = isFinite(nb);
+                                if (aOk && bOk) return na - nb;
+                                if (!aOk && !bOk) return 0;
+                                // Blank / "—" cells always sink to the bottom, low→high or
+                                // high→low (Tabulator swaps the arguments when sorting desc).
+                                const r = aOk ? -1 : 1;
+                                return dir === 'desc' ? -r : r;
                             }
                             // Default Tabulator string sort for text
                             // columns is fine.
@@ -2206,7 +2243,7 @@
                             'Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                             'LT Sold','LT CVR','LT CPS',
-                            'GPFT$','GPFT%','LMP',
+                            'Price','GPFT$','GPFT%','LMP',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
                                        : (c.field === 'Campaign name' ? 220
@@ -2223,7 +2260,9 @@
                         // Link header — show just the icon, no word.
                         const title = c.field === 'Link'
                             ? '<i class="fas fa-link" title="Link"></i>'
-                            : c.title;
+                            // "Lifetime Acos" → "LT Acos" etc. Header text only — the field
+                            // names stay the same so saved column choices keep working.
+                            : String(c.title ?? '').replace(/^Lifetime /, 'LT ');
                         // Action columns aren't sortable — sorting them
                         // is meaningless (Audit is a button, History is
                         // a person+date string, Link is an icon).
@@ -2360,6 +2399,9 @@
                         // to squeeze every column onto one screen, which clipped
                         // Sbgt / Audit Req / History once Sessions was added.
                         layout:                 'fitDataFill',
+                        // Default order: LT Acos low → high (blank rows last). Clicking
+                        // any header still re-sorts.
+                        initialSort:            [{ column: 'Lifetime Acos', dir: 'asc' }],
                         // Let the table fill #faas-table-wrapper which itself
                         // is sized to the viewport. Same pattern as
                         // /topdawg/sales-dashboard.
@@ -2914,7 +2956,7 @@
                             '_action', 'Audit Req', 'History']),
             advertisement: new Set(['Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR', 'SPEND', 'SALES', 'SOLD', 'CVR',
                                     'CPS', 'Sessions']),
-            pricing: new Set(['GPFT$', 'GPFT%', 'LMP']),
+            pricing: new Set(['Price', 'GPFT$', 'GPFT%', 'LMP']),
         };
         function faasColVisClassify(field) {
             if (FAAS_COLVIS_GROUPS.basic.has(field)) return 'basic';

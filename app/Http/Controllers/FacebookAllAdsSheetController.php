@@ -947,6 +947,7 @@ class FacebookAllAdsSheetController extends Controller
             $m = $shopifyParents === [] ? null
                 : $this->matchShopifyParent((string) ($row['Campaign name'] ?? ''), $shopifyParents);
             $row['_shopify_parent'] = $m['parent'] ?? null;
+            $row['Price'] = $m && $m['price'] !== null ? '$' . number_format($m['price'], 2) : null;
             $row['GPFT$'] = $m && $m['gpft_usd'] !== null ? '$' . number_format($m['gpft_usd'], 2) : null;
             $row['GPFT%'] = $m && $m['gpft_pct'] !== null ? number_format($m['gpft_pct'], 1) . '%' : null;
             $row['LMP']   = $m && $m['lmp'] !== null ? '$' . number_format($m['lmp'], 2) : null;
@@ -1369,18 +1370,19 @@ class FacebookAllAdsSheetController extends Controller
     /**
      * Per Shopify parent (product_master.parent), the figures the Shopify B2C
      * analytics page shows, keyed by normalised parent name:
+     *   price    — the page's PARENT row Price (average of the children's Shopify prices)
      *   gpft_pct — the page's PARENT row GPFT% (average of the children)
      *   gpft_usd — gross profit per unit in $ ((price × 0.95 − LP − ship), averaged
      *              over the same children as GPFT%; price 0 counts as $0)
      *   lmp      — average of the children's Google lowest market price (> 0 only)
      * Cached 5 minutes; empty when the analytics build fails.
      *
-     * @return array<string, array{parent:string, gpft_pct:?float, gpft_usd:?float, lmp:?float}>
+     * @return array<string, array{parent:string, price:?float, gpft_pct:?float, gpft_usd:?float, lmp:?float}>
      */
     private function shopifyParentMetrics(): array
     {
         try {
-            return Cache::remember('faas_shopify_parent_metrics_v1', 300, function () {
+            return Cache::remember('faas_shopify_parent_metrics_v2', 300, function () {
                 $rows = app(\App\Http\Controllers\MarketPlace\Shopifyb2cController::class)
                     ->getViewShopifyB2cTabularData();
                 $acc = [];
@@ -1390,9 +1392,10 @@ class FacebookAllAdsSheetController extends Controller
                         continue;
                     }
                     $a = &$acc[$parent];
-                    $a ??= ['pct' => null, 'usd' => [], 'lmp' => []];
+                    $a ??= ['pct' => null, 'price' => null, 'usd' => [], 'lmp' => []];
                     if (! empty($r['is_parent_summary'])) {
-                        $a['pct'] = is_numeric($r['GPFT%'] ?? null) ? (float) $r['GPFT%'] : null;
+                        $a['pct']   = is_numeric($r['GPFT%'] ?? null) ? (float) $r['GPFT%'] : null;
+                        $a['price'] = is_numeric($r['Price'] ?? null) && (float) $r['Price'] > 0 ? (float) $r['Price'] : null;
                     } else {
                         $price = (float) ($r['Price'] ?? 0);
                         $pct   = (float) ($r['percentage'] ?? 0.95);
@@ -1417,6 +1420,7 @@ class FacebookAllAdsSheetController extends Controller
                     }
                     $out[$key] = [
                         'parent'   => (string) $parent,
+                        'price'    => $a['price'],
                         'gpft_pct' => $a['pct'],
                         'gpft_usd' => $a['usd'] ? array_sum($a['usd']) / count($a['usd']) : null,
                         'lmp'      => $a['lmp'] ? array_sum($a['lmp']) / count($a['lmp']) : null,
@@ -1955,7 +1959,22 @@ class FacebookAllAdsSheetController extends Controller
             ['rule' => json_encode(['bands' => $clean]), 'updated_at' => now(), 'created_at' => now()]
         );
 
-        return response()->json(['success' => true, 'rule' => ['bands' => $clean]]);
+        // Apply the new rule to Meta right away (queued so the save returns at once):
+        // campaigns that now hit a pause band are paused, and campaigns this sheet
+        // paused earlier that now get a budget are turned back on.
+        $applyQueued = false;
+        try {
+            \App\Jobs\ApplyFacebookSbgtRuleJob::dispatch(optional($request->user())->id);
+            $applyQueued = true;
+        } catch (\Throwable $e) {
+            Log::warning('FAAS apply-rule dispatch failed: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'success'       => true,
+            'rule'          => ['bands' => $clean],
+            'apply_queued'  => $applyQueued,
+        ]);
     }
 
     /**
@@ -3279,6 +3298,7 @@ class FacebookAllAdsSheetController extends Controller
         ['title' => 'LT CVR',         'sources' => []],
         ['title' => 'LT CPS',         'sources' => []],
         // From the Shopify B2C analytics page, matched by parent name — see "Pass 4c".
+        ['title' => 'Price',          'sources' => []],
         ['title' => 'GPFT$',          'sources' => []],
         ['title' => 'GPFT%',          'sources' => []],
         ['title' => 'LMP',            'sources' => []],
