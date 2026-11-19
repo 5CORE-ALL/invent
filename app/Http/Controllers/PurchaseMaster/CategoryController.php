@@ -50,8 +50,15 @@ class CategoryController extends Controller
         $parentFilter = trim((string) $request->query('parent', ''));
         $skuFilter = trim((string) $request->query('sku', ''));
         $mfrFilter = trim((string) $request->query('mfr', ''));
+        $showAll = $request->boolean('all');
+
+        $linkedSkuContext = $this->buildCategoryLinkedSkuContext();
 
         $categoriesQuery = Category::query();
+        if (! $showAll) {
+            // Categories whose "Link Sku Purchase" would be empty ("No SKUs") are hidden unless ?all=1.
+            $categoriesQuery->whereIn('id', $this->categoryIdsWithLinkedSkus($linkedSkuContext));
+        }
         if ($mfrFilter !== '') {
             $categoriesQuery->where('name', 'like', $this->likeContains($mfrFilter));
         }
@@ -63,7 +70,7 @@ class CategoryController extends Controller
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'showAll'));
         }
 
         $suppliers = Supplier::query()
@@ -84,7 +91,6 @@ class CategoryController extends Controller
             }
         }
 
-        $linkedSkuContext = $this->buildCategoryLinkedSkuContext();
         $linkedSkuGroupService = app(LinkedSkuGroupService::class);
         $seedSkusByCategoryId = [];
         $allSeedSkus = [];
@@ -146,7 +152,43 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'showAll'));
+    }
+
+    /**
+     * Ids of categories that have at least one linked SKU (the "Link Sku Purchase" column is not
+     * "No SKUs"): a supplier of the category has a SKU, or an RFQ links SKUs to one of its SKUs/parents.
+     * A linked group always contains its seed SKU, so "has a seed" is the same as "has linked SKUs".
+     *
+     * @param  array{rfq_by_norm: array<string, array<string, true>>, parent_by_sku_norm: array<string, string>}  $context
+     * @return list<int>
+     */
+    private function categoryIdsWithLinkedSkus(array $context): array
+    {
+        $ids = [];
+        $suppliers = Supplier::query()
+            ->whereNotNull('category_id')
+            ->where('category_id', '!=', '')
+            ->get(['id', 'category_id', 'sku', 'parent']);
+
+        foreach ($suppliers as $supplier) {
+            $hasSku = false;
+            foreach (preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $token) {
+                if (trim($token) !== '') {
+                    $hasSku = true;
+                    break;
+                }
+            }
+            if (! $hasSku && $this->rfqLinkedSkusForCategorySupplier($supplier, $context) === []) {
+                continue;
+            }
+
+            foreach ($this->supplierCategoryIds($supplier) as $categoryId) {
+                $ids[$categoryId] = $categoryId;
+            }
+        }
+
+        return array_values($ids);
     }
 
     private function likeContains(string $value): string
@@ -340,6 +382,16 @@ class CategoryController extends Controller
             }
 
             uksort($groups, fn ($a, $b) => strnatcasecmp((string) $a, (string) $b));
+
+            // Auto-fill the Product (parents) column from CP Master when the category's suppliers
+            // have no parents: use the parents of the products in the same Mfr category.
+            if (($category->parents_list ?? []) === []) {
+                $cpParents = array_values(array_filter(array_map('strval', array_keys($groups)), fn ($parent) => $parent !== ''));
+                if ($cpParents !== []) {
+                    $category->parents_list = $cpParents;
+                    $category->parents_autofilled = true;
+                }
+            }
 
             $items = [];
             foreach ($groups as $groupKey => $group) {

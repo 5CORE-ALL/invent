@@ -152,10 +152,24 @@
                             <input type="text" id="filter-mfr" name="mfr" class="form-control"
                                 value="{{ $mfrFilter ?? '' }}" placeholder="Filter by MFR category..." autocomplete="off">
                         </div>
+                        @if ($showAll ?? false)
+                            <input type="hidden" name="all" value="1">
+                        @endif
                         <div class="col-md-auto d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-filter-outline me-1"></i> Filter
                             </button>
+                            @if ($showAll ?? false)
+                                <a href="{{ route('category.list', request()->except(['all', 'page'])) }}"
+                                    class="btn btn-outline-secondary" title="Hide categories whose Link Sku Purchase is 'No SKUs'">
+                                    <i class="mdi mdi-eye-off-outline me-1"></i> Hide categories without linked SKUs
+                                </a>
+                            @else
+                                <a href="{{ route('category.list', array_merge(request()->except('page'), ['all' => 1])) }}"
+                                    class="btn btn-outline-secondary" title="Also show categories whose Link Sku Purchase is 'No SKUs'">
+                                    <i class="mdi mdi-eye-outline me-1"></i> Show all categories
+                                </a>
+                            @endif
                             @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '' || ($mfrFilter ?? '') !== '')
                                 <a href="{{ route('category.list') }}" class="btn btn-light border">
                                     <i class="mdi mdi-close me-1"></i> Clear
@@ -260,10 +274,15 @@
                                             @php $parents = $category->parents_list ?? []; @endphp
                                             @if(count($parents) > 0)
                                                 <div class="dropdown d-inline-block">
-                                                    <button class="btn btn-sm btn-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                                        P ({{ count($parents) }})
+                                                    @php $parentsAuto = (bool) ($category->parents_autofilled ?? false); @endphp
+                                                    <button class="btn btn-sm {{ $parentsAuto ? 'btn-outline-secondary' : 'btn-light' }} dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                                        @if ($parentsAuto) title="Auto-filled from CP Master (same MFR category)" @endif>
+                                                        P ({{ count($parents) }})@if ($parentsAuto) <i class="mdi mdi-auto-fix"></i>@endif
                                                     </button>
                                                     <ul class="dropdown-menu" style="max-height: 240px; overflow-y: auto;">
+                                                        @if ($parentsAuto)
+                                                            <li><h6 class="dropdown-header">Auto-filled from CP Master (same MFR category)</h6></li>
+                                                        @endif
                                                         @foreach ($parents as $parent)
                                                             <li><span class="dropdown-item">{{ $parent }}</span></li>
                                                         @endforeach
