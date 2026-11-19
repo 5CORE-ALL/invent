@@ -1,7 +1,8 @@
 name: Deploy to production
 
 # Every push to main: SSH into the server, git pull, then run deploy.sh
-# (maintenance mode, cache rebuild, migrations, queue restart).
+# (cache rebuild, migrations, queue restart). Maintenance mode is NOT used
+# (DEPLOY_SKIP_MAINTENANCE=1), so the site stays up during deploys.
 on:
   push:
     branches: [main]
@@ -42,4 +43,4 @@ jobs:
               -o BatchMode=yes \
               -o ServerAliveInterval=30 \
               "$DEPLOY_USER@$DEPLOY_HOST" \
-              "set -e; cd '$DEPLOY_PATH' && git pull --ff-only origin main && bash deploy.sh"
+              "set -e; cd '$DEPLOY_PATH' && git pull --ff-only origin main && DEPLOY_SKIP_MAINTENANCE=1 bash deploy.sh"
