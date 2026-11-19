@@ -59,4 +59,25 @@ class MfrCategorySupplierController extends Controller
 
         return response()->json($rows);
     }
+
+    /** Every detail of one supplier, for the modal opened by clicking a supplier badge. */
+    public function supplierDetails($id)
+    {
+        $supplier = Supplier::query()->with('latestRemark')->findOrFail((int) $id);
+
+        $categoryIds = array_values(array_filter(array_map('intval', preg_split('/\s*,\s*/', (string) $supplier->category_id, -1, PREG_SPLIT_NO_EMPTY) ?: [])));
+        $categories = $categoryIds
+            ? Category::query()->whereIn('id', $categoryIds)->orderBy('name')->pluck('name')->values()->all()
+            : [];
+
+        $details = $supplier->attributesToArray();
+        unset($details['category_id']);
+
+        return response()->json([
+            'success' => true,
+            'supplier' => $details,
+            'categories' => $categories,
+            'latest_remark' => $supplier->latestRemark ? (string) $supplier->latestRemark->body : null,
+        ]);
+    }
 }
