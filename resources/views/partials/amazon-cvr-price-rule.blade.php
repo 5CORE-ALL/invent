@@ -218,6 +218,13 @@
                 next = isFinite(floor) ? floor : price;
                 capped = true;
             }
+            // CVR Down must never RAISE the price: not above where it started (the Lower cap lifted a low price up to its floor),
+            // and not above the live price. Server twin does the same.
+            if (pct < 0) {
+                next = Math.min(next, price);
+                const live = (parseFloat(row && row.price) || 0);
+                if (live > 0) next = Math.min(next, live);
+            }
             return { price: Math.round(next * 100) / 100, capped: capped };
         }
         /** Rule ON/OFF paint: the switch label in the modal and the badge on the toolbar button. */

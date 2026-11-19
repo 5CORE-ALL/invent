@@ -447,6 +447,7 @@ class ShopifyB2cSprcDilAutoPushService
             $cvrPrice = \App\Support\EbayCvrPriceRule::apply($capped, [
                 'cvr' => (float) ($row['cvr'] ?? 0),
                 'lto_cvr' => $row['lto_cvr'] ?? null,
+                'price' => (float) ($row['price'] ?? 0),
                 'lp' => $lp,
                 'ship' => $ship,
                 'percentage' => $margin,

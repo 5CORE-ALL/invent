@@ -105,6 +105,15 @@ class EbayCvrPriceRule
             $next = is_finite($floor) ? $floor : $base;
             $capped = true;
         }
+        // CVR Down must never RAISE the price: not above the price it started from (the Lower cap can lift a low price
+        // up to its floor, which made a Down SKU go up), and not above the live price either.
+        if ($pct < 0) {
+            $next = min($next, $base);
+            $live = (float) ($input['price'] ?? 0);
+            if ($live > 0) {
+                $next = min($next, $live);
+            }
+        }
         $next = round($next, 2);
         if (! ($next >= 0.01) || abs($next - $base) < 0.005) {
             return null;
