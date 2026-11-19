@@ -53,7 +53,7 @@
         #facebook-all-ads-table .tabulator-col-content { padding-right: 8px; }
 
         /* ACOS cell backgrounds — 0–10 magenta, 10–20 green, 20–30 light blue,
-           30–40 yellow, >40 red */
+           30–40 yellow, 40–50 orange, >50 red */
         #facebook-all-ads-table .tabulator-cell.acos-bg-0-10 {
             background: #ec4899 !important;
             color: #000 !important;
@@ -71,6 +71,11 @@
         }
         #facebook-all-ads-table .tabulator-cell.acos-bg-30-40 {
             background: #facc15 !important;
+            color: #000 !important;
+            font-weight: 700;
+        }
+        #facebook-all-ads-table .tabulator-cell.acos-bg-40-50 {
+            background: #f97316 !important;
             color: #000 !important;
             font-weight: 700;
         }
@@ -475,6 +480,12 @@
                                       title="Lifetime Acos = lifetime spend ÷ lifetime sales of the visible campaigns">LT Acos%:<span class="faas-kpi-val" id="faasLtAcosValue">0%</span></span>
                                 <span id="faasLtCtrBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
                                       title="Lifetime CTR = lifetime clicks ÷ lifetime impressions of the visible campaigns">LT CTR:<span class="faas-kpi-val" id="faasLtCtrValue">0%</span></span>
+                                <span id="faasLtSoldBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="LT Sold = all-time Meta purchases (orders from the ads) of the visible campaigns">LT Sold:<span class="faas-kpi-val" id="faasLtSoldValue">0</span></span>
+                                <span id="faasLtCvrBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="LT CVR = lifetime purchases ÷ lifetime clicks of the visible campaigns">LT CVR:<span class="faas-kpi-val" id="faasLtCvrValue">0%</span></span>
+                                <span id="faasLtCpsBadge" class="faas-kpi-tile faas-kpi-tile--lifetime"
+                                      title="LT CPS = lifetime spend ÷ lifetime purchases of the visible campaigns">LT CPS:<span class="faas-kpi-val" id="faasLtCpsValue">—</span></span>
                             </div>
                         </div>
 
@@ -1294,19 +1305,22 @@
         let faasAvgCtr = 0;
         let faasAvgCvr = 0;
         let faasAvgLtCtr = 0;   // weighted LIFETIME CTR (Σ lifetime clicks ÷ Σ lifetime impressions)
+        let faasAvgLtCvr = 0;   // weighted LIFETIME CVR (Σ lifetime purchases ÷ Σ lifetime clicks)
 
         // Recompute the weighted averages from a raw row set (CTR = ΣCLK/ΣIMPR,
         // CVR = ΣSOLD/ΣCLK) — matches the toolbar CTR/CVR badge formulas.
         function faasComputeAverages(rows) {
-            let impr = 0, clk = 0, sold = 0, ltImpr = 0, ltClk = 0;
+            let impr = 0, clk = 0, sold = 0, ltImpr = 0, ltClk = 0, ltSold = 0;
             (rows || []).forEach(function (r) {
                 impr += toNumber(r.IMPR);
                 clk  += toNumber(r.CLK);
                 sold += toNumber(r.SOLD);
                 ltImpr += Number(r._lt_impr) || 0;
                 ltClk  += Number(r._lt_clk)  || 0;
+                ltSold += Number(r._lt_sold) || 0;
             });
             faasAvgLtCtr = ltImpr > 0 ? (ltClk / ltImpr) * 100 : 0;
+            faasAvgLtCvr = ltClk  > 0 ? (ltSold / ltClk) * 100 : 0;
             faasAvgCtr = impr > 0 ? (clk / impr) * 100 : 0;
             faasAvgCvr = clk  > 0 ? (sold / clk) * 100 : 0;
         }
@@ -1453,10 +1467,11 @@
         }
 
         // ACOS column — fixed background bands (independent of Sbgt rule colours):
-        // 0–10 magenta, 10–20 green, 20–30 light blue, 30–40 yellow, >40 red.
+        // 0–10 magenta, 10–20 green, 20–30 light blue, 30–40 yellow,
+        // 40–50 orange, >50 red.
         const ACOS_BG_CLASSES = [
             'acos-bg-0-10', 'acos-bg-10-20', 'acos-bg-20-30',
-            'acos-bg-30-40', 'acos-bg-over-40',
+            'acos-bg-30-40', 'acos-bg-40-50', 'acos-bg-over-40',
         ];
         /** Same palette as the Acos column — used by rule ACOS% labels + filter dots. */
         function acosSchemaStyle(pct) {
@@ -1487,6 +1502,7 @@
                 else if (pct <= 20) el.classList.add('acos-bg-10-20');
                 else if (pct <= 30) el.classList.add('acos-bg-20-30');
                 else if (pct <= 40) el.classList.add('acos-bg-30-40');
+                else if (pct <= 50) el.classList.add('acos-bg-40-50');
                 else                el.classList.add('acos-bg-over-40');
             }
 
@@ -1881,7 +1897,22 @@
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
                         'Sessions',
                         'Lifetime Acos', 'Lifetime CTR', 'Lifetime Sales', 'Lifetime Spend',
+                        'LT Sold', 'LT CVR', 'LT CPS',
+                        'GPFT$', 'GPFT%', 'LMP',
                     ]);
+                    // GPFT$ / GPFT% / LMP come from the Shopify B2C analytics page for the
+                    // Shopify parent the campaign name starts with (hover shows which one).
+                    // Grey "—" when no parent matches.
+                    function formatShopifyParentCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        const parent = String((cell.getRow().getData() || {})._shopify_parent || '')
+                            .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                        return '<span title="Shopify B2C analytics — parent: ' + parent + '">'
+                             + String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span>';
+                    }
                     // Sessions (live Shopify): grey "—" when unavailable, otherwise the plain value.
                     function formatLiveShopifyCell(cell) {
                         const v = cell.getValue();
@@ -1956,6 +1987,23 @@
                             return '<span style="color:#9ca3af;">—</span>';
                         }
                         return faasFlagRatioHtml(v, faasAvgLtCtr);
+                    }
+                    // LT Sold: all-time Meta purchases; grey "—" when Meta has no lifetime row.
+                    function formatLtSoldCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    }
+                    // LT CVR: same flag colours as CVR, judged against the weighted LIFETIME
+                    // average; grey "—" when Meta has no lifetime row.
+                    function formatLtCvrCell(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || String(v).trim() === '') {
+                            return '<span style="color:#9ca3af;">—</span>';
+                        }
+                        return faasFlagRatioHtml(v, faasAvgLtCvr);
                     }
                     // Campaign name can be very long — truncate to 70
                     // chars in the cell but expose the full text on
@@ -2096,6 +2144,9 @@
                         let formatter = 'plaintext';
                         if (c.field === 'Acos' || c.field === 'Lifetime Acos') formatter = formatAcosCell;
                         else if (c.field === 'Lifetime CTR')   formatter = formatLifetimeCtrCell;
+                        else if (c.field === 'LT Sold' || c.field === 'LT CPS') formatter = formatLtSoldCell;
+                        else if (c.field === 'GPFT$' || c.field === 'GPFT%' || c.field === 'LMP') formatter = formatShopifyParentCell;
+                        else if (c.field === 'LT CVR')         formatter = formatLtCvrCell;
                         else if (c.field === 'Lifetime Sales') formatter = formatLifetimeSalesCell;
                         else if (c.field === 'Lifetime Spend') formatter = formatLifetimeSpendCell;
                         else if (COLOR_BY_BAND.has(c.field))   formatter = formatBandColoredCell;
@@ -2128,6 +2179,8 @@
                             'SPEND','SALES','SOLD','CVR','CPS',
                             'Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
+                            'LT Sold','LT CVR','LT CPS',
+                            'GPFT$','GPFT%','LMP',
                         ]);
                         const sorter = NUMERIC.has(c.field)
                             ? function (a, b) {
@@ -2150,6 +2203,8 @@
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
                             'Sessions',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
+                            'LT Sold','LT CVR','LT CPS',
+                            'GPFT$','GPFT%','LMP',
                         ]);
                         const minWidth = NARROW.has(c.field) ? 48
                                        : (c.field === 'Campaign name' ? 220
@@ -2705,7 +2760,7 @@
 
             let imprSum = 0, clkSum = 0, spendSum = 0, salesSum = 0, soldSum = 0, bgtSum = 0;
             let ltSpendSum = 0, ltSalesSum = 0;   // lifetime totals of the visible rows
-            let ltImprSum = 0, ltClkSum = 0;
+            let ltImprSum = 0, ltClkSum = 0, ltSoldSum = 0;
             let visibleCount = 0;
             let activeCount = 0;
             if (tabulator) {
@@ -2718,6 +2773,7 @@
                     ltSalesSum += Number(r._lt_sales) || 0;
                     ltImprSum  += Number(r._lt_impr)  || 0;
                     ltClkSum   += Number(r._lt_clk)   || 0;
+                    ltSoldSum  += Number(r._lt_sold)  || 0;
                     imprSum  += toNumber(r.IMPR);
                     clkSum   += toNumber(r.CLK);
                     spendSum += toNumber(r.SPEND);
@@ -2773,6 +2829,16 @@
             }
             const ltCtrEl = document.getElementById('faasLtCtrValue');
             if (ltCtrEl) ltCtrEl.textContent = divPct(ltClkSum, ltImprSum, 1);
+            const ltSoldEl = document.getElementById('faasLtSoldValue');
+            if (ltSoldEl) ltSoldEl.textContent = ltSoldSum.toLocaleString();
+            const ltCvrEl = document.getElementById('faasLtCvrValue');
+            if (ltCvrEl) ltCvrEl.textContent = divPct(ltSoldSum, ltClkSum, 1);
+            // LT CPS = Σ lifetime spend ÷ Σ lifetime purchases ("—" when no purchases).
+            const ltCpsEl = document.getElementById('faasLtCpsValue');
+            if (ltCpsEl) {
+                ltCpsEl.textContent = ltSpendSum <= 0 ? '$0'
+                    : (ltSoldSum > 0 ? '$' + Math.round(ltSpendSum / ltSoldSum).toLocaleString() : '—');
+            }
 
             // Totals the Yesterday / Projected cards compare themselves against.
             faasL30Totals = { impr: imprSum, clicks: clkSum, spend: spendSum, sales: salesSum,

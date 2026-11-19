@@ -808,7 +808,7 @@ class FacebookAllAdsSheetController extends Controller
             foreach (array_chunk(array_values(array_unique($ltCids)), 1000) as $chunk) {
                 foreach (DB::table('facebook_campaign_lifetime_stats')
                     ->whereIn('campaign_id', $chunk)
-                    ->get(['campaign_id', 'spend', 'sales', 'impr', 'clk']) as $lt) {
+                    ->get(['campaign_id', 'spend', 'sales', 'sold', 'impr', 'clk']) as $lt) {
                     $lifetime[(string) $lt->campaign_id] = $lt;
                 }
             }
@@ -928,6 +928,28 @@ class FacebookAllAdsSheetController extends Controller
             $row['_lt_impr']        = $lt ? (int) $lt->impr : null;
             $row['_lt_clk']         = $lt ? (int) $lt->clk : null;
             $row['Lifetime CTR']    = $lt ? ($this->divPct($lt->clk, $lt->impr, 1) ?? '0.0%') : null;
+            // LT Sold = lifetime Meta purchases (orders attributed to the ads);
+            // LT CVR = lifetime purchases ÷ lifetime clicks (1 dp, same as the CVR column).
+            $row['_lt_sold']        = $lt ? (int) $lt->sold : null;
+            $row['LT Sold']         = $lt ? number_format((int) $lt->sold) : null;
+            $row['LT CVR']          = $lt ? ($this->divPct($lt->sold, $lt->clk, 1) ?? '0.0%') : null;
+            // LT CPS = lifetime spend ÷ lifetime purchases (whole dollars, like the CPS column);
+            // blank when there are no lifetime purchases to divide by.
+            $row['LT CPS']          = $lt ? $this->cpsValue($lt->spend, $lt->sold, 0) : null;
+        }
+        unset($row);
+
+        // Pass 4c — GPFT$ / GPFT% / LMP from the Shopify B2C analytics page
+        // (/shopify-b2c-pricing), matched by the Shopify parent the campaign name
+        // starts with. Campaigns whose name doesn't start with a parent stay blank.
+        $shopifyParents = $this->shopifyParentMetrics();
+        foreach ($projected as &$row) {
+            $m = $shopifyParents === [] ? null
+                : $this->matchShopifyParent((string) ($row['Campaign name'] ?? ''), $shopifyParents);
+            $row['_shopify_parent'] = $m['parent'] ?? null;
+            $row['GPFT$'] = $m && $m['gpft_usd'] !== null ? '$' . number_format($m['gpft_usd'], 2) : null;
+            $row['GPFT%'] = $m && $m['gpft_pct'] !== null ? number_format($m['gpft_pct'], 1) . '%' : null;
+            $row['LMP']   = $m && $m['lmp'] !== null ? '$' . number_format($m['lmp'], 2) : null;
         }
         unset($row);
 
@@ -1331,6 +1353,109 @@ class FacebookAllAdsSheetController extends Controller
     private function acosBudgetRule($spend, $sales): ?int
     {
         return $this->acosBudgetMatch($spend, $sales)['sbgt'];
+    }
+
+    /** Lower-case alphanumeric tokens, with a trailing "s" dropped ("MICS" ≈ "Mic"). */
+    private function shopifyParentTokens(string $s): array
+    {
+        $out = [];
+        foreach (preg_split('/[^a-z0-9]+/', strtolower($s), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $t) {
+            $out[] = (strlen($t) > 3 && str_ends_with($t, 's')) ? substr($t, 0, -1) : $t;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Per Shopify parent (product_master.parent), the figures the Shopify B2C
+     * analytics page shows, keyed by normalised parent name:
+     *   gpft_pct — the page's PARENT row GPFT% (average of the children)
+     *   gpft_usd — gross profit per unit in $ ((price × 0.95 − LP − ship), averaged
+     *              over the same children as GPFT%; price 0 counts as $0)
+     *   lmp      — average of the children's Google lowest market price (> 0 only)
+     * Cached 5 minutes; empty when the analytics build fails.
+     *
+     * @return array<string, array{parent:string, gpft_pct:?float, gpft_usd:?float, lmp:?float}>
+     */
+    private function shopifyParentMetrics(): array
+    {
+        try {
+            return Cache::remember('faas_shopify_parent_metrics_v1', 300, function () {
+                $rows = app(\App\Http\Controllers\MarketPlace\Shopifyb2cController::class)
+                    ->getViewShopifyB2cTabularData();
+                $acc = [];
+                foreach ($rows as $r) {
+                    $parent = trim((string) ($r['Parent'] ?? ''));
+                    if ($parent === '') {
+                        continue;
+                    }
+                    $a = &$acc[$parent];
+                    $a ??= ['pct' => null, 'usd' => [], 'lmp' => []];
+                    if (! empty($r['is_parent_summary'])) {
+                        $a['pct'] = is_numeric($r['GPFT%'] ?? null) ? (float) $r['GPFT%'] : null;
+                    } else {
+                        $price = (float) ($r['Price'] ?? 0);
+                        $pct   = (float) ($r['percentage'] ?? 0.95);
+                        $a['usd'][] = $price > 0
+                            ? ($price * $pct) - (float) ($r['LP_productmaster'] ?? 0) - (float) ($r['Ship_productmaster'] ?? 0)
+                            : 0.0;
+                        if (is_numeric($r['lmp_price'] ?? null) && (float) $r['lmp_price'] > 0) {
+                            $a['lmp'][] = (float) $r['lmp_price'];
+                        }
+                    }
+                    unset($a);
+                }
+                $out = [];
+                foreach ($acc as $parent => $a) {
+                    $tokens = $this->shopifyParentTokens((string) $parent);
+                    if (! $tokens || (count($tokens) === 1 && strlen($tokens[0]) < 3)) {
+                        continue;
+                    }
+                    $key = implode(' ', $tokens);
+                    if (isset($out[$key])) {
+                        continue;
+                    }
+                    $out[$key] = [
+                        'parent'   => (string) $parent,
+                        'gpft_pct' => $a['pct'],
+                        'gpft_usd' => $a['usd'] ? array_sum($a['usd']) / count($a['usd']) : null,
+                        'lmp'      => $a['lmp'] ? array_sum($a['lmp']) / count($a['lmp']) : null,
+                    ];
+                }
+
+                return $out;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('FAAS Shopify parent metrics failed: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * Longest run of leading words in the campaign name that equals a Shopify
+     * parent name (a leading "PARENT" word is ignored on a second try).
+     */
+    private function matchShopifyParent(string $campaignName, array $parents): ?array
+    {
+        $tokens = $this->shopifyParentTokens($campaignName);
+        if (! $tokens) {
+            return null;
+        }
+        $starts = [$tokens];
+        if ($tokens[0] === 'parent' && count($tokens) > 1) {
+            $starts[] = array_slice($tokens, 1);
+        }
+        foreach ($starts as $t) {
+            for ($n = min(count($t), 8); $n >= 1; $n--) {
+                $key = implode(' ', array_slice($t, 0, $n));
+                if (isset($parents[$key])) {
+                    return $parents[$key];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -3150,6 +3275,13 @@ class FacebookAllAdsSheetController extends Controller
         ['title' => 'Lifetime Sales', 'sources' => []],
         ['title' => 'Lifetime Acos',  'sources' => []],
         ['title' => 'Lifetime CTR',   'sources' => []],
+        ['title' => 'LT Sold',        'sources' => []],
+        ['title' => 'LT CVR',         'sources' => []],
+        ['title' => 'LT CPS',         'sources' => []],
+        // From the Shopify B2C analytics page, matched by parent name — see "Pass 4c".
+        ['title' => 'GPFT$',          'sources' => []],
+        ['title' => 'GPFT%',          'sources' => []],
+        ['title' => 'LMP',            'sources' => []],
         // Sbgt = suggested budget driven by the ACOS bracket — see
         // acosBudgetRule(). Placed at the end so the row reads as
         // "metrics → recommendation".
