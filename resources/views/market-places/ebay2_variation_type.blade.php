@@ -85,6 +85,9 @@
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" id="e2vt-refresh" class="btn btn-sm btn-outline-primary" title="Reload the table"><i class="ri-refresh-line"></i></button>
+                        <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="Pull the current variation type and values from eBay 2 for the rows ticked in the Selection Box column (Trading API GetItem). Nothing is changed on eBay.">
+                            <i class="ri-download-2-line me-1"></i> Pull <span id="e2vt-pull-count">(0)</span>
+                        </button>
                         <button type="button" id="e2vt-import-all" class="btn btn-sm btn-warning text-dark" title="Read the current variation type and values of every listing in the filtered view from eBay 2 (Trading API GetItem)">
                             <i class="ri-download-cloud-2-line me-1"></i> Import Current Types
                         </button>
@@ -225,7 +228,7 @@
 
             function setBusy(state, message) {
                 busy = state;
-                document.querySelectorAll('#e2vt-import-all, #e2vt-push-changed, #e2vt-push-values-all, #e2vt-refresh').forEach((b) => { b.disabled = state; });
+                document.querySelectorAll('#e2vt-pull, #e2vt-import-all, #e2vt-push-changed, #e2vt-push-values-all, #e2vt-refresh').forEach((b) => { b.disabled = state; });
                 document.getElementById('e2vt-stop').classList.toggle('d-none', !state);
                 document.getElementById('e2vt-progress').textContent = message || '';
             }
@@ -334,6 +337,19 @@
 
             function visibleRows() {
                 return table.getRows('active').map((r) => r.getData());
+            }
+
+            // Selection Box column: keep the header tick box (select all in the current view) and the Pull count in step.
+            function syncSelection() {
+                if (!table) return;
+                const selected = table.getSelectedRows();
+                document.getElementById('e2vt-pull-count').textContent = '(' + selected.length + ')';
+                const box = document.querySelector('.e2vt-sel-all');
+                if (!box) return;
+                const active = table.getRows('active');
+                const picked = active.filter((r) => r.isSelected()).length;
+                box.checked = active.length > 0 && picked === active.length;
+                box.indeterminate = picked > 0 && picked < active.length;
             }
 
             function fitHeight() {
@@ -459,6 +475,29 @@
                     paginationCounter: 'rows',
                     placeholder: 'No live eBay 2 listings with variations found. Pull listings on the Variation Verify page first.',
                     columns: [
+                        {
+                            // Selection Box: tick a row, or tick the header box to select every row in the current view.
+                            title: 'Selection Box', width: 92, frozen: true, hozAlign: 'center', headerHozAlign: 'center', headerSort: false, resizable: false,
+                            formatter: 'rowSelection',
+                            titleFormatter: function () {
+                                const wrapEl = document.createElement('div');
+                                wrapEl.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1;white-space:normal';
+                                const box = document.createElement('input');
+                                box.type = 'checkbox';
+                                box.className = 'e2vt-sel-all';
+                                box.title = 'Select / clear every row in the current view';
+                                box.addEventListener('click', (e) => e.stopPropagation());
+                                box.addEventListener('change', function () {
+                                    const rows = table.getRows('active');
+                                    if (box.checked) table.selectRow(rows); else table.deselectRow(rows);
+                                });
+                                const label = document.createElement('span');
+                                label.textContent = 'Selection Box';
+                                wrapEl.appendChild(box);
+                                wrapEl.appendChild(label);
+                                return wrapEl;
+                            },
+                        },
                         {
                             title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
                             formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
@@ -656,6 +695,22 @@
                 table.on('dataFiltered', function (filters, rows) {
                     parentShown = rows.length;
                     showParentCount();
+                    syncSelection();
+                });
+                table.on('rowSelectionChanged', syncSelection);
+                table.on('dataLoaded', syncSelection);
+
+                document.getElementById('e2vt-pull').addEventListener('click', async function () {
+                    if (busy) return;
+                    const rows = table.getSelectedRows().map((r) => r.getData());
+                    if (!rows.length) { alert('Tick at least one row in the Selection Box column first.'); return; }
+                    if (!confirm('Pull the current variation type and values of ' + rows.length + ' selected listing(s) from eBay 2? This calls GetItem once per listing and does not change eBay.')) return;
+                    stopRequested = false;
+                    setBusy(true, 'Pulling...');
+                    const done = await importRows(rows);
+                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Pulled ') + done + ' selected listing(s).');
+                    table.redraw(true);
+                    syncSelection();
                 });
 
                 document.getElementById('e2vt-refresh').addEventListener('click', () => table.setData(URLS.data));
