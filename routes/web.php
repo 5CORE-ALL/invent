@@ -5939,6 +5939,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/category.list/data', [CategoryController::class, 'categoryListData'])->name('category.list.data');
     Route::get('/mfr-category-supplier', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'index'])->name('mfr.category.supplier');
     Route::get('/mfr-category-supplier/data', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'data'])->name('mfr.category.supplier.data');
+    Route::get('/mfr-category-supplier/low-count', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'lowCount'])->name('mfr.category.supplier.low-count');
     Route::get('/mfr-category-supplier/supplier/{id}', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'supplierDetails'])->whereNumber('id')->name('mfr.category.supplier.details');
     Route::get('/id-master', [CategoryController::class, 'idMaster'])->name('id.master');
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');

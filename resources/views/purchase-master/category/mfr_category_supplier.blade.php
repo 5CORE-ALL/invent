@@ -33,7 +33,7 @@
                         <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle fs-6 px-3 py-2">
                             Categories: <strong id="mcs-badge-categories">0</strong>
                         </span>
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle fs-6 px-3 py-2">
+                        <span class="badge border fs-6 px-3 py-2" id="mcs-low-wrap">
                             Under 13 suppliers: <strong id="mcs-badge-low">0</strong>
                         </span>
                     </div>
@@ -141,7 +141,16 @@
         if (!table) return;
         const rows = table.getData();
         document.getElementById('mcs-badge-categories').textContent = rows.length;
-        document.getElementById('mcs-badge-low').textContent = rows.filter(function(r) { return r.count < LOW_SUPPLIER_COUNT; }).length;
+        const low = rows.filter(function(r) { return r.count < LOW_SUPPLIER_COUNT; }).length;
+        document.getElementById('mcs-badge-low').textContent = low;
+        // red background while there is any category under the limit, quiet otherwise
+        const wrap = document.getElementById('mcs-low-wrap');
+        wrap.classList.toggle('bg-danger', low > 0);
+        wrap.classList.toggle('text-white', low > 0);
+        wrap.classList.toggle('border-danger', low > 0);
+        wrap.classList.toggle('bg-light', low === 0);
+        wrap.classList.toggle('text-dark', low === 0);
+        if (typeof window.setMfrLowBadge === 'function') window.setMfrLowBadge(low);
     }
 
     table = new Tabulator('#mcs-table', {

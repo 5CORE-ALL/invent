@@ -60,6 +60,29 @@ class MfrCategorySupplierController extends Controller
         return response()->json($rows);
     }
 
+    /** Number of categories with fewer than 13 suppliers: the red badge on the page and in the sidebar. */
+    public function lowCount()
+    {
+        $perCategory = [];
+        foreach (Supplier::query()->whereNotNull('category_id')->where('category_id', '!=', '')->get(['id', 'category_id']) as $supplier) {
+            foreach (preg_split('/\s*,\s*/', (string) $supplier->category_id, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $rawId) {
+                $categoryId = (int) trim($rawId);
+                if ($categoryId > 0) {
+                    $perCategory[$categoryId][$supplier->id] = true;
+                }
+            }
+        }
+
+        $low = 0;
+        foreach (Category::query()->pluck('id') as $categoryId) {
+            if (count($perCategory[(int) $categoryId] ?? []) < 13) {
+                $low++;
+            }
+        }
+
+        return response()->json(['count' => $low]);
+    }
+
     /** Every detail of one supplier, for the modal opened by clicking a supplier badge. */
     public function supplierDetails($id)
     {

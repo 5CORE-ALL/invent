@@ -3166,7 +3166,7 @@
                             <a href="{{ route('category.list') }}">Purchase Categories</a>
                         </li>
                         <li>
-                            <a href="{{ route('mfr.category.supplier') }}">MFR Category - Supplier</a>
+                            <a href="{{ route('mfr.category.supplier') }}">MFR Category - Supplier <span class="badge bg-danger rounded-pill ms-1" data-mfr-low-badge style="display:none">0</span></a>
                         </li>
                         <li>
                             <a href="{{ route('supplier.list') }}">Purchase Suppliers</a>
@@ -4177,4 +4177,21 @@
             }
         });
     });
+</script>
+
+<script>
+    // Red count in the sidebar: categories with fewer than 13 suppliers (MFR Category - Supplier page).
+    (function() {
+        window.setMfrLowBadge = function(count) {
+            document.querySelectorAll('[data-mfr-low-badge]').forEach(function(el) {
+                el.textContent = count;
+                el.style.display = count > 0 ? '' : 'none';
+            });
+        };
+        if (!document.querySelector('[data-mfr-low-badge]')) return;
+        fetch(@json(route('mfr.category.supplier.low-count')), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .then(function(json) { if (json && typeof json.count === 'number') window.setMfrLowBadge(json.count); })
+            .catch(function() {});
+    })();
 </script>
