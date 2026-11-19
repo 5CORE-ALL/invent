@@ -53,8 +53,8 @@ class Ebay2VariationTypeController extends Controller
                 'main_listing' => $listing['main_listing'],
                 'children' => $listing['children'],
                 'master_type' => $master[$parentNorm]['type'] ?? '',
-                'master_name' => $master[$parentNorm]['name'] ?? '',
-                'master_child_names' => $master[$parentNorm]['children'] ?? '',
+                // Variation Master "Variation Name" of each SKU in 'skus', same order ('' when it has none).
+                'sku_names' => array_map(fn (string $s) => $master[$parentNorm]['names'][$this->skuKey($s)] ?? '', $childSkus),
                 // Every child SKU of this parent: on the eBay listing plus the Variation Master children.
                 'skus' => $childSkus,
                 // The Variation Master children that are not on the eBay listing.
@@ -585,16 +585,15 @@ class Ebay2VariationTypeController extends Controller
     /**
      * What Variation Master (product_master.Values) holds per parent, shown next to what eBay has:
      *  - type: the most common Variation Type among the children,
-     *  - name: the parent row's own Variation Name (the "Variation Name" column of /variation-master),
-     *  - children: "SKU: Variation Name" lines of the child rows, for the hover.
+     *  - skus: the child SKUs,
+     *  - names: normalized child SKU => its Variation Name (the SKU-wise "Variation Name" column of /variation-master).
      *
-     * @return array<string, array{type: string, name: string, children: string, skus: list<string>}> normalized parent => info
+     * @return array<string, array{type: string, skus: list<string>, names: array<string, string>}> normalized parent => info
      */
     private function variationMasterInfo(): array
     {
         $typeCounts = [];
-        $names = [];
-        $childNames = [];
+        $skuNames = [];
         $childSkus = [];
 
         $rows = DB::table('product_master')
@@ -616,14 +615,8 @@ class Ebay2VariationTypeController extends Controller
             $values = is_array($values) ? $values : [];
             $name = $clean($values['variation_name'] ?? null);
 
+            // The PARENT row has no per-SKU name of its own to show.
             if (preg_match('/^PARENT/i', $sku)) {
-                // Same key rule as Variation Master: the parent column, else the SKU without "PARENT".
-                $key = ListingManagerFamily::normalizeParentKey($clean($pm->parent) !== '' ? $clean($pm->parent) : $sku);
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($key);
-                if ($norm !== '' && $name !== '' && ! isset($names[$norm])) {
-                    $names[$norm] = $name;
-                }
-
                 continue;
             }
 
@@ -641,27 +634,29 @@ class Ebay2VariationTypeController extends Controller
             }
             $childSkus[$norm][] = $sku;
             if ($name !== '') {
-                $childNames[$norm][] = $sku.': '.$name;
+                $skuNames[$norm][$this->skuKey($sku)] = $name;
             }
         }
 
         $out = [];
-        foreach (array_unique(array_merge(array_keys($typeCounts), array_keys($names), array_keys($childNames))) as $norm) {
+        foreach (array_unique(array_merge(array_keys($typeCounts), array_keys($childSkus))) as $norm) {
             $types = $typeCounts[$norm] ?? [];
             arsort($types);
-            $lines = array_slice($childNames[$norm] ?? [], 0, 40);
-            $more = count($childNames[$norm] ?? []) - count($lines);
-            if ($more > 0) {
-                $lines[] = '+'.$more.' more';
-            }
             $out[(string) $norm] = [
                 'type' => $types === [] ? '' : (string) array_key_first($types),
-                'name' => $names[$norm] ?? '',
-                'children' => implode("\n", $lines),
                 'skus' => $childSkus[$norm] ?? [],
+                'names' => $skuNames[$norm] ?? [],
             ];
         }
 
         return $out;
+    }
+
+    /** Key that matches the same SKU across eBay and product_master (case, spacing and Shopify-style variants). */
+    private function skuKey(string $sku): string
+    {
+        $sku = trim($sku);
+
+        return ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
     }
 }

@@ -27,6 +27,7 @@
         .e2vt-stat--failed { background: #dc2626; }
 
         .e2vt-type-pill { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #e0e7ff; color: #3730a3; font-weight: 600; }
+        .e2vt-type-pill--mismatch { background: #fee2e2; color: #b91c1c; box-shadow: inset 0 0 0 1px #f87171; }
         .e2vt-muted { color: #94a3b8; }
         .e2vt-edit-cell { cursor: text; display: flex; align-items: center; gap: 6px; min-height: 22px; }
         .e2vt-edit-cell i { color: #94a3b8; font-size: 13px; }
@@ -41,6 +42,8 @@
         .e2vt-chip { display: inline-block; padding: 0 7px; border-radius: 9px; background: #f1f5f9; color: #334155; font-size: 12px; border: 1px solid #e2e8f0; }
         .e2vt-chip--edit { background: #fef9c3; border-color: #facc15; color: #713f12; font-weight: 600; }
         .e2vt-chip--more { background: transparent; border-style: dashed; color: #64748b; }
+        .e2vt-chip--name { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; font-weight: 600; }
+        .e2vt-chip--none { background: transparent; color: #94a3b8; }
         .e2vt-chip--missing { background: #fef2f2; border-style: dashed; border-color: #f87171; color: #b91c1c; }
         .e2vt-aspect-label { font-size: 11px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: .02em; margin-right: 4px; }
         .e2vt-aspect-block + .e2vt-aspect-block { margin-top: 4px; }
@@ -103,6 +106,13 @@
                         <div style="min-width:220px">
                             <label class="form-label small fw-semibold mb-1" for="e2vt-search-sku">Search SKU</label>
                             <input type="search" id="e2vt-search-sku" class="form-control form-control-sm" placeholder="Child SKU..." autocomplete="off" maxlength="100">
+                        </div>
+                        <div>
+                            <label class="form-label small fw-semibold mb-1" for="e2vt-type-filter">Current Type</label>
+                            <select id="e2vt-type-filter" class="form-select form-select-sm" style="min-width:190px" title="Red = the type on eBay differs from the Variation Master type">
+                                <option value="all">All</option>
+                                <option value="red">Red only (not matching master)</option>
+                            </select>
                         </div>
                         <div>
                             <label class="form-label small fw-semibold mb-1" for="e2vt-filter">Show</label>
@@ -171,6 +181,7 @@
             let busy = false;
             let stopRequested = false;
             let filterMode = 'all';
+            let typeFilter = 'all';
             let parentSearch = '';
             let skuSearch = '';
             let modalItemId = null;
@@ -198,6 +209,9 @@
             }
 
             const isChanged = (d) => norm(d.new_type) !== '' && norm(d.new_type) !== norm(d.current_type);
+
+            // The red Current Type pill: eBay's type differs from the Variation Master type (both known).
+            const isTypeMismatch = (d) => norm(d.current_type) !== '' && norm(d.master_type) !== '' && norm(d.master_type) !== norm(d.current_type);
 
             // Green / red dot, the reason (or confirmation) shows on hover.
             function dot(status, message, when, fallbackNone) {
@@ -267,7 +281,7 @@
                 if (filterMode === 'not_imported') filters.push((d) => !d.current_type && !hasValues(d));
                 if (filterMode === 'changed') filters.push((d) => isChanged(d));
                 if (filterMode === 'values_changed') filters.push((d) => editsOf(d).length > 0);
-                if (filterMode === 'differs_master') filters.push((d) => d.master_type && d.current_type && norm(d.master_type) !== norm(d.current_type));
+                if (filterMode === 'differs_master' || typeFilter === 'red') filters.push(isTypeMismatch);
                 if (filterMode === 'failed') filters.push((d) => d.push_status === 'failed' || d.values_status === 'failed');
                 if (filterMode === 'success') filters.push((d) => d.push_status === 'success' || d.values_status === 'success');
                 table.clearFilter();
@@ -498,7 +512,11 @@
                                     formatter: function (c) {
                                         const d = c.getData();
                                         if (d.current_type) {
-                                            return '<span class="e2vt-type-pill" title="Imported ' + esc(d.imported_at || '') + '">' + esc(d.current_type) + '</span>';
+                                            // Red when Variation Master has a type for this parent and eBay's differs from it.
+                                            const mismatch = isTypeMismatch(d);
+                                            const tip = 'Imported ' + (d.imported_at || '')
+                                                + (mismatch ? '\nDoes not match Variation Master: ' + d.master_type : '');
+                                            return '<span class="e2vt-type-pill' + (mismatch ? ' e2vt-type-pill--mismatch' : '') + '" title="' + esc(tip).replace(/\n/g, '&#10;') + '">' + esc(d.current_type) + '</span>';
                                         }
                                         if (d.import_error) {
                                             return '<span class="text-danger small" title="' + esc(d.import_error) + '">Import failed</span>';
@@ -577,15 +595,25 @@
                                     },
                                 },
                                 {
-                                    // Variation Master "Variation Name" of the parent row (same product_master data);
-                                    // hover lists the child SKUs with their own Variation Name.
-                                    title: 'Variation Name', field: 'master_name', width: 200, hozAlign: 'center', headerHozAlign: 'center',
+                                    // Variation Master "Variation Name" per SKU (/variation-master). One entry per SKU of the
+                                    // SKU column, same order; hover an entry for its SKU. A dash means no name saved for it.
+                                    title: 'Variation Name (SKU wise)', field: 'sku_names', width: 260, headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
                                         const d = c.getData();
-                                        const tip = d.master_child_names ? ' title="' + esc(d.master_child_names).replace(/\n/g, '&#10;') + '"' : '';
-                                        return c.getValue()
-                                            ? '<span' + tip + '>' + esc(c.getValue()) + '</span>'
-                                            : '<span class="e2vt-muted"' + tip + '>—</span>';
+                                        const skus = Array.isArray(d.skus) ? d.skus : [];
+                                        const names = Array.isArray(d.sku_names) ? d.sku_names : [];
+                                        if (!skus.length) return '<span class="e2vt-muted">—</span>';
+                                        const filled = names.filter((n) => n).length;
+                                        const chip = (i) => names[i]
+                                            ? '<span class="e2vt-chip e2vt-chip--name" title="' + esc(skus[i]) + '">' + esc(names[i]) + '</span>'
+                                            : '<span class="e2vt-chip e2vt-chip--none" title="' + esc(skus[i]) + ': no Variation Name in Variation Master">—</span>';
+                                        const shown = skus.slice(0, SKUS_SHOWN).map((s, i) => chip(i));
+                                        if (skus.length > SKUS_SHOWN) {
+                                            const rest = skus.slice(SKUS_SHOWN).map((s, i) => s + ': ' + (names[SKUS_SHOWN + i] || '—')).join('\n');
+                                            shown.push('<span class="e2vt-chip e2vt-chip--more" title="' + esc(rest).replace(/\n/g, '&#10;') + '">+' + (skus.length - SKUS_SHOWN) + ' more</span>');
+                                        }
+                                        return '<div><span class="e2vt-aspect-label">' + filled + ' / ' + skus.length + ' named</span>'
+                                            + '<span class="e2vt-chips" style="display:flex;margin-top:2px">' + shown.join('') + '</span></div>';
                                     },
                                 },
                                 {
@@ -633,6 +661,7 @@
                 document.getElementById('e2vt-refresh').addEventListener('click', () => table.setData(URLS.data));
                 document.getElementById('e2vt-stop').addEventListener('click', () => { stopRequested = true; });
                 document.getElementById('e2vt-filter').addEventListener('change', (e) => { filterMode = e.target.value; applyFilters(); });
+                document.getElementById('e2vt-type-filter').addEventListener('change', (e) => { typeFilter = e.target.value; applyFilters(); });
                 let searchTimer = null;
                 const debounceFilter = () => { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilters, 200); };
                 document.getElementById('e2vt-search-parent').addEventListener('input', (e) => { parentSearch = norm(e.target.value); debounceFilter(); });
