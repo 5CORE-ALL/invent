@@ -383,9 +383,11 @@ class Ebay2VariationTypeController extends Controller
         $rec->values_message = mb_substr(trim((string) $result['message']), 0, 2000);
         $rec->values_pushed_at = now();
         $rec->values_pushed_by = (string) ($request->user()->name ?? 'unknown');
-        if ($result['success'] && $edits !== []) {
+        // Only the renames eBay really applied move into the current values; a failed one stays as a waiting edit.
+        $applied = (array) ($result['applied'] ?? []);
+        if ($applied !== []) {
             $values = is_array($rec->current_values) ? $rec->current_values : [];
-            foreach ($edits as $e) {
+            foreach ($applied as $e) {
                 foreach (($values[$e['aspect']] ?? []) as $i => $v) {
                     if ((string) $v === $e['old']) {
                         $values[$e['aspect']][$i] = $e['new'];
@@ -393,7 +395,17 @@ class Ebay2VariationTypeController extends Controller
                 }
             }
             $rec->current_values = $values;
-            $rec->value_edits = null;
+            $isApplied = static function (array $edit) use ($applied): bool {
+                foreach ($applied as $a) {
+                    if ($a['aspect'] === $edit['aspect'] && $a['old'] === $edit['old']) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+            $left = array_values(array_filter($edits, static fn ($e) => ! $isApplied($e)));
+            $rec->value_edits = $left === [] ? null : $left;
             $rec->imported_at = now();
         }
         $rec->save();
@@ -406,7 +418,7 @@ class Ebay2VariationTypeController extends Controller
 
     /**
      * @param  list<array{aspect: string, old: string, new: string}>  $edits
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message: string, applied?: list<array{aspect: string, old: string, new: string}>}
      */
     private function pushValuesToEbay(string $itemId, array $edits): array
     {
