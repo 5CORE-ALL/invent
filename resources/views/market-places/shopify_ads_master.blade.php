@@ -228,18 +228,12 @@
             margin: 0.5rem 0 0 0 !important;
         }
         #samTrendsModal .modal-content {
-f            border-radius: 0;
-            width: 100%;
-            max-width: 100%;
+          border-radius: 0;
+          width: 100%;
+          max-width: 100%;
         }
     </style>
-@endsection
 
-@section('content')
-    @include('layouts.shared.page-title', [
-        'page_title' => $pageTitle,
-        'sub_title' => $pageSubtitle,
-    ])
 
     <div class="row">
         <div class="col-12">

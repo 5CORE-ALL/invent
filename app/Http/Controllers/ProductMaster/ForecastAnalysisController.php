@@ -2015,9 +2015,16 @@ class ForecastAnalysisController extends Controller
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
 
+            // Only touch MIP rows still in progress. Rows already marked ready_to_ship = 'Yes' have moved
+            // to R2S; updating them here flipped them back to 'No' and duplicated/lost the R2S qty.
+            $openMfrg = function ($q) {
+                $q->whereNull('ready_to_ship')->orWhere('ready_to_ship', '')->orWhere('ready_to_ship', 'No');
+            };
+
             $oldMip = null;
             $mipQuery = DB::table('mfrg_progress')
                 ->whereNull('deleted_at')
+                ->where($openMfrg)
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
             if ($parentNorm !== '') {
                 $mipQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
@@ -2031,6 +2038,7 @@ class ForecastAnalysisController extends Controller
             if ($parentNorm !== '') {
                 $updated = (int) DB::table('mfrg_progress')
                     ->whereNull('deleted_at')
+                    ->where($openMfrg)
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
                     ->update([
@@ -2043,6 +2051,7 @@ class ForecastAnalysisController extends Controller
             if ($updated === 0) {
                 $updated = (int) DB::table('mfrg_progress')
                     ->whereNull('deleted_at')
+                    ->where($openMfrg)
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->update([
                         'qty' => $valueNum,
@@ -2082,8 +2091,13 @@ class ForecastAnalysisController extends Controller
             $parentNorm = strtoupper(trim($parent));
 
             $oldR2s = null;
+            // Only touch rows that are still on Ready to Ship (transit_inv_status = 0).
+            // Rows already moved to transit keep transit_inv_status = 1 (qty 0); writing the
+            // qty onto those made the R2S qty/stage vanish on refresh, because the grid only
+            // reads transit_inv_status = 0 rows and no new open row was inserted.
             $r2sQuery = DB::table('ready_to_ship')
                 ->whereNull('deleted_at')
+                ->where('transit_inv_status', 0)
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
             if ($parentNorm !== '') {
                 $r2sQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
@@ -2097,6 +2111,7 @@ class ForecastAnalysisController extends Controller
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                 ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
                 ->whereNull('deleted_at')
+                ->where('transit_inv_status', 0)
                 ->update([
                     'qty'        => $valueNum,
                     'updated_at' => now(),
@@ -2106,6 +2121,7 @@ class ForecastAnalysisController extends Controller
                 $updated = (int) DB::table('ready_to_ship')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->whereNull('deleted_at')
+                    ->where('transit_inv_status', 0)
                     ->update([
                         'qty'        => $valueNum,
                         'updated_at' => now(),
@@ -2338,6 +2354,9 @@ class ForecastAnalysisController extends Controller
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
                         ->whereNull('deleted_at')
+                        ->where(function ($q) {
+                            $q->whereNull('ready_to_ship')->orWhere('ready_to_ship', '')->orWhere('ready_to_ship', 'No');
+                        })
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();
@@ -2425,6 +2444,9 @@ class ForecastAnalysisController extends Controller
                     // Check if record exists - match by SKU only
                     $existingMfrg = DB::table('mfrg_progress')
                         ->whereNull('deleted_at')
+                        ->where(function ($q) {
+                            $q->whereNull('ready_to_ship')->orWhere('ready_to_ship', '')->orWhere('ready_to_ship', 'No');
+                        })
                         ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                         ->orderByRaw("CASE WHEN ready_to_ship = 'No' THEN 0 ELSE 1 END")
                         ->first();
@@ -2487,18 +2509,29 @@ class ForecastAnalysisController extends Controller
 
             switch ($table) {
                 case 'mfrg-progress':
-                    $mfrg = MfrgProgress::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first();
-                    if ($mfrg) {
+                    // Same rows the grid counts as MIP: still in progress (not yet Ready to Ship).
+                    $mfrgRows = MfrgProgress::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+                        ->where(function ($q) {
+                            $q->whereNull('ready_to_ship')
+                                ->orWhere('ready_to_ship', '')
+                                ->orWhere('ready_to_ship', 'No');
+                        })
+                        ->get();
+                    if ($mfrgRows->isNotEmpty()) {
                         $exists = true;
-                        $quantity = floatval($mfrg->qty) ?: 0;
+                        $quantity = (float) $mfrgRows->sum(fn ($r) => (float) ($r->qty ?? 0));
                     }
                     break;
 
                 case 'ready-to-ship':
-                    $r2s = ReadyToShip::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first();
-                    if ($r2s) {
+                    // Same rows/qty the grid counts as R2S: open rows only (transit_inv_status = 0),
+                    // summed `qty`. Rows already moved to transit must not be read as R2S.
+                    $r2sRows = ReadyToShip::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+                        ->where('transit_inv_status', 0)
+                        ->get();
+                    if ($r2sRows->isNotEmpty()) {
                         $exists = true;
-                        $quantity = floatval($r2s->rec_qty) ?: 0;
+                        $quantity = (float) $r2sRows->sum(fn ($r) => (float) ($r->qty ?? 0));
                     }
                     break;
 

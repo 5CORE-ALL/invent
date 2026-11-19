@@ -928,8 +928,11 @@ class MFRGInProgressController extends Controller
             $rts = ReadyToShip::query()->find((int) $mipIdRaw);
         }
         if (! $rts && $skuKey !== null && $skuKey !== '') {
+            // Open R2S rows only — a row already moved to transit (transit_inv_status = 1) is not on this page.
             $rts = ReadyToShip::query()
+                ->where('transit_inv_status', 0)
                 ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($skuKey))])
+                ->orderByDesc('id')
                 ->first();
         }
         if (! $rts) {
@@ -994,8 +997,12 @@ class MFRGInProgressController extends Controller
                 'transit_inv_status' => 0,
             ];
 
+            // Only reuse an open R2S row; a row already moved to transit must not be re-opened here
+            // (that would double count the qty against the transit container).
             $readyToShip = ReadyToShip::where('parent', $request->parent)
                 ->where('sku', $request->sku)
+                ->where('transit_inv_status', 0)
+                ->orderByDesc('id')
                 ->first();
 
             if ($readyToShip) {

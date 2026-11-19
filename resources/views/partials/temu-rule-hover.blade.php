@@ -432,10 +432,30 @@
             } else {
                 base = Number(amzDisplayedSprice(d)) || 0;
                 const disc = (typeof computeAmzSumDiscountPct === 'function') ? Number(computeAmzSumDiscountPct(d)) : NaN;
+                // The number in this step is the real arithmetic (Std × (1 − Sum disc)). It used to print the displayed / saved S PRC
+                // here, which does not match the formula next to it. Later steps (SNROI Cap, saved price) are shown on their own.
+                const afterDisc = (std > 0 && isFinite(disc)) ? Math.round(std * (1 - disc / 100) * 100) / 100 : 0;
                 steps.push(temuRuleStep('info', '1 · Std prc vs dil (switch ON)',
-                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review discounts)) = <b>' + temuRuleMoney(base) + '</b>'));
-                if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
+                    'S PRC = Std Prc ' + temuRuleMoney(std) + ' × (1 − Sum disc ' + (isFinite(disc) ? disc.toFixed(1) : '0') + '% (Age + Dil + B Disc + 0 Sold + CVR + Review discounts)) = <b>' + temuRuleMoney(afterDisc) + '</b>'));
                 n = 2;
+                const planNow = (typeof computeAmzPushPrcPlan === 'function') ? computeAmzPushPrcPlan(d) : null;
+                const ruleEff = planNow && planNow.effective > 0 ? Number(planNow.effective) : 0;
+                const liveRule = (typeof amzLiveRuleSprice === 'function') ? (Number(amzLiveRuleSprice(d)) || 0) : 0;
+                if (ruleEff > 0 && afterDisc > 0 && Math.abs(ruleEff - afterDisc) > 0.009) {
+                    steps.push(temuRuleStep('ok', n + ' · SNROI Cap',
+                        'The Dil slab has a Target SNROI → the price that lands on it, <b>' + temuRuleMoney(ruleEff) + '</b>, replaces the discount price ' + temuRuleMoney(afterDisc) + '.'));
+                    n++;
+                }
+                if (!(liveRule > 0) && base > 0) {
+                    steps.push(temuRuleStep('warn', n + ' · Saved S PRC',
+                        'The rule gives no live price for this SKU right now, so the <b>saved S PRC ' + temuRuleMoney(base) + '</b> is used for the steps below.'));
+                    n++;
+                } else if (liveRule > 0 && Math.abs(liveRule - (ruleEff || afterDisc)) > 0.009) {
+                    steps.push(temuRuleStep('ok', n + ' · Cap rule',
+                        'The price after the caps above is <b>' + temuRuleMoney(liveRule) + '</b>.'));
+                    n++;
+                }
+                if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
                 const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
                 const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
                 const pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
@@ -445,6 +465,14 @@
                     after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
                 });
                 const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
+                // CVR Price Rule (its own modal): % off the price above. Shown only when it changed this SKU.
+                const cvrInfo = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (cvrInfo) {
+                    steps.push(temuRuleStep('ok', (n + 1) + ' · CVR Price Rule',
+                        'CVR ' + (cvrInfo.c === 'down' ? 'Down' : (cvrInfo.c === 'up' ? 'Up' : 'within target')) + ': ' + temuRuleMoney(cvrInfo.base) + ' '
+                        + (cvrInfo.pct > 0 ? '+' : '') + cvrInfo.pct + '% = <b>' + temuRuleMoney(cvrInfo.price) + '</b>' + (cvrInfo.capped ? ' (set to the Lower cap price)' : '') + '.'));
+                    n++;
+                }
                 const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;
                 if (!(std > 0)) {
                     steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
