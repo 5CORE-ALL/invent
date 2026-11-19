@@ -50,13 +50,13 @@ class CategoryController extends Controller
         $parentFilter = trim((string) $request->query('parent', ''));
         $skuFilter = trim((string) $request->query('sku', ''));
         $mfrFilter = trim((string) $request->query('mfr', ''));
-        $showAll = $request->boolean('all');
+        $hideEmpty = $request->boolean('hide_empty');
 
         $linkedSkuContext = $this->buildCategoryLinkedSkuContext();
 
         $categoriesQuery = Category::query();
-        if (! $showAll) {
-            // Categories whose "Link Sku Purchase" would be empty ("No SKUs") are hidden unless ?all=1.
+        if ($hideEmpty) {
+            // Opt-in (?hide_empty=1): hide categories whose "Link Sku Purchase" would be empty ("No SKUs").
             $categoriesQuery->whereIn('id', $this->categoryIdsWithLinkedSkus($linkedSkuContext));
         }
         if ($mfrFilter !== '') {
@@ -70,7 +70,7 @@ class CategoryController extends Controller
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'showAll'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'hideEmpty'));
         }
 
         $suppliers = Supplier::query()
@@ -152,7 +152,7 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'showAll'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'hideEmpty'));
     }
 
     /**

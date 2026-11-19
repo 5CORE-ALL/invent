@@ -152,22 +152,22 @@
                             <input type="text" id="filter-mfr" name="mfr" class="form-control"
                                 value="{{ $mfrFilter ?? '' }}" placeholder="Filter by MFR category..." autocomplete="off">
                         </div>
-                        @if ($showAll ?? false)
-                            <input type="hidden" name="all" value="1">
+                        @if ($hideEmpty ?? false)
+                            <input type="hidden" name="hide_empty" value="1">
                         @endif
                         <div class="col-md-auto d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-filter-outline me-1"></i> Filter
                             </button>
-                            @if ($showAll ?? false)
-                                <a href="{{ route('category.list', request()->except(['all', 'page'])) }}"
-                                    class="btn btn-outline-secondary" title="Hide categories whose Link Sku Purchase is 'No SKUs'">
-                                    <i class="mdi mdi-eye-off-outline me-1"></i> Hide categories without linked SKUs
+                            @if ($hideEmpty ?? false)
+                                <a href="{{ route('category.list', request()->except(['hide_empty', 'page'])) }}"
+                                    class="btn btn-outline-secondary" title="Show every category again">
+                                    <i class="mdi mdi-eye-outline me-1"></i> Show all categories
                                 </a>
                             @else
-                                <a href="{{ route('category.list', array_merge(request()->except('page'), ['all' => 1])) }}"
-                                    class="btn btn-outline-secondary" title="Also show categories whose Link Sku Purchase is 'No SKUs'">
-                                    <i class="mdi mdi-eye-outline me-1"></i> Show all categories
+                                <a href="{{ route('category.list', array_merge(request()->except('page'), ['hide_empty' => 1])) }}"
+                                    class="btn btn-outline-secondary" title="Hide categories whose Link Sku Purchase is 'No SKUs'">
+                                    <i class="mdi mdi-eye-off-outline me-1"></i> Hide categories without linked SKUs
                                 </a>
                             @endif
                             @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '' || ($mfrFilter ?? '') !== '')
