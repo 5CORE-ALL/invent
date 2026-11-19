@@ -189,7 +189,13 @@
                                     </tr>
                                     @foreach ($uncategorizedSkus as $uSku)
                                         <tr>
-                                            <td class="text-center align-middle {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}"></td>
+                                            <td class="text-center align-middle {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                <div class="form-check d-flex justify-content-center align-items-center">
+                                                    <input type="checkbox" class="form-check-input row-checkbox"
+                                                        data-category-id="0" data-sku="{{ $uSku['sku'] }}"
+                                                        style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
+                                                </div>
+                                            </td>
                                             <td class="text-center parent-cell {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                                 @if ($uSku['parent'] !== '')
                                                     {{ $uSku['parent'] }}
@@ -216,16 +222,16 @@
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
                                             <td class="text-center align-middle sticky-col sticky-right {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                                 <div class="d-flex justify-content-center align-items-center gap-1">
-                                                    <button type="button" class="btn btn-soft-primary btn-sm" disabled style="opacity:.45"
-                                                        title="Not in a category yet - add it to one first">
+                                                    <button type="button" class="btn btn-soft-primary btn-sm assign-category-btn"
+                                                        data-sku="{{ $uSku['sku'] }}" title="Edit: pick a category for this SKU">
                                                         <i class="mdi mdi-square-edit-outline"></i>
                                                     </button>
                                                     <button type="button" class="btn btn-soft-success btn-sm assign-category-btn"
                                                         data-sku="{{ $uSku['sku'] }}" title="Add this SKU to a category">
                                                         <i class="mdi mdi-plus-box-outline"></i>
                                                     </button>
-                                                    <button type="button" class="btn btn-soft-danger btn-sm" disabled style="opacity:.45"
-                                                        title="Not in a category yet - nothing to remove">
+                                                    <button type="button" class="btn btn-soft-danger btn-sm hide-uncategorized-row-btn"
+                                                        title="Remove this row from the list (nothing is deleted; it returns on the next search)">
                                                         <i class="mdi mdi-delete"></i>
                                                     </button>
                                                 </div>
@@ -1195,6 +1201,30 @@
         })();
     </script>
     <script>
+        // Uncategorised rows: the trash button only removes the row from this list (no data is deleted).
+        $(document).on('click', '.hide-uncategorized-row-btn', function() {
+            const $tbody = $(this).closest('tbody');
+            $(this).closest('tr').remove();
+            const left = $tbody.find('tr').length - 1; // minus the header row
+            if (left <= 0) {
+                $tbody.remove();
+            } else {
+                $tbody.find('tr:first td').text(left + (left === 1 ? ' SKU' : ' SKUs') + ' not in any category');
+            }
+            // keep the Parents / SKUs badges in step with what is still listed
+            const parents = {}, skus = {};
+            $('#category-table-body .parent-cell').each(function() {
+                const t = $.trim($(this).text()).toLowerCase();
+                if (t && t !== '-') parents[t] = true;
+            });
+            $('#category-table-body .sku-cell').each(function() {
+                const t = $.trim($(this).text()).toLowerCase();
+                if (t && t !== '-' && !$(this).hasClass('fw-bold')) skus[t] = true;
+            });
+            $('#badge-parents').text(Object.keys(parents).length);
+            $('#badge-skus').text(Object.keys(skus).length);
+        });
+
         // Uncategorised rows (Parent / SKU search): add the SKU to a category picked from the list.
         (function() {
             const modalEl = document.getElementById('assignCategoryModal');
