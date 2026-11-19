@@ -45,7 +45,83 @@ use SimpleXMLElement;
 
 class CategoryController extends Controller
 {
+    /**
+     * The /category.list page is a Tabulator: this renders the shell plus the data the modals need. The rows
+     * themselves come from categoryListData().
+     */
     public function categoryList(Request $request)
+    {
+        $allCategories = Category::query()->orderBy('name')->get(['id', 'name']);
+        $mfrCategoryNames = ProductCategory::query()
+            ->pluck('category_name')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+        $usedCategoryNames = $allCategories
+            ->mapWithKeys(fn ($c) => [mb_strtolower(trim((string) $c->name)) => (int) $c->id])
+            ->all();
+
+        return view('purchase-master.category.category_list', compact('allCategories', 'mfrCategoryNames', 'usedCategoryNames'));
+    }
+
+    /**
+     * JSON rows for the Tabulator: one row per CP Master SKU / PARENT row of each category (the category
+     * columns are repeated on every row), one row for a category with no SKUs, and - while the Parent /
+     * SKU filters are used - the matching rows that are in no category. Filters: ?parent= ?sku= ?mfr=
+     */
+    public function categoryListData(Request $request)
+    {
+        $data = $this->buildCategoryList($request);
+        $rows = [];
+
+        foreach ($data['categories'] as $category) {
+            $base = [
+                'category_id' => (int) $category->id,
+                'category_name' => (string) $category->name,
+                'supplier_count' => (int) ($category->supplier_count ?? 0),
+                'parents' => array_values($category->parents_list ?? []),
+                'parents_autofilled' => (bool) ($category->parents_autofilled ?? false),
+            ];
+            $skus = $category->cp_master_skus ?? [];
+            if ($skus === []) {
+                $rows[] = $base + ['kind' => 'empty', 'key' => 'c'.$category->id, 'parent' => '', 'sku' => '', 'is_parent' => false, 'image' => null];
+                continue;
+            }
+            foreach ($skus as $item) {
+                $rows[] = $base + [
+                    'kind' => 'sku',
+                    'key' => 'c'.$category->id.'|'.$item['sku'],
+                    'parent' => (string) $item['parent'],
+                    'sku' => (string) $item['sku'],
+                    'is_parent' => (bool) $item['is_parent'],
+                    'image' => $item['image'] ?? null,
+                ];
+            }
+        }
+
+        foreach ($data['uncategorizedSkus'] as $item) {
+            $rows[] = [
+                'kind' => 'uncat',
+                'key' => 'u|'.$item['sku'],
+                'category_id' => 0,
+                'category_name' => '',
+                'supplier_count' => 0,
+                'parents' => [],
+                'parents_autofilled' => false,
+                'parent' => (string) $item['parent'],
+                'sku' => (string) $item['sku'],
+                'is_parent' => (bool) $item['is_parent'],
+                'image' => $item['image'] ?? null,
+            ];
+        }
+
+        return response()->json($rows);
+    }
+
+    private function buildCategoryList(Request $request): array
     {
         $parentFilter = trim((string) $request->query('parent', ''));
         $skuFilter = trim((string) $request->query('sku', ''));
@@ -87,7 +163,7 @@ class CategoryController extends Controller
         }
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus', 'allCategories'));
+            return compact('categories', 'uncategorizedSkus');
         }
 
         $suppliers = Supplier::query()
@@ -170,7 +246,7 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus', 'allCategories'));
+        return compact('categories', 'uncategorizedSkus');
     }
 
     /**

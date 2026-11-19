@@ -1,5 +1,18 @@
 @extends('layouts.vertical', ['title' => 'Categories', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
+@section('css')
+<link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+<style>
+    #category-tabulator { font-size: 13px; }
+    .tabulator .tabulator-header { background: linear-gradient(90deg, #e0e7ff 0%, #f4f7fa 100%); border-bottom: 2px solid #2563eb; font-weight: 600; }
+    .tabulator .tabulator-header .tabulator-col { border-right: 1px solid #e5e7eb; }
+    .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input { width: 100%; }
+    .tabulator-row:hover { background-color: #f8f9fa !important; }
+    .tabulator-row.cat-parent-row, .tabulator-row.cat-parent-row .tabulator-cell { background-color: #fff3cd !important; }
+    .tabulator-cell { padding: 6px 8px !important; }
+</style>
+@endsection
+
 @section('content')
     @include('layouts.shared.page-title', ['page_title' => 'Categories', 'sub_title' => 'Categories'])
 
@@ -76,39 +89,17 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div class="d-flex align-items-center flex-wrap gap-2">
                             <h4 class="card-title mb-0 me-2">Categories</h4>
-                            @php
-                                // Counts for what is listed right now (they follow the Parent / SKU / MFR filters).
-                                $badgeParents = [];
-                                $badgeSkus = [];
-                                $badgeRows = [];
-                                foreach ($categories as $badgeCategory) {
-                                    foreach ($badgeCategory->cp_master_skus ?? [] as $badgeItem) {
-                                        $badgeRows[] = $badgeItem;
-                                    }
-                                }
-                                foreach (($uncategorizedSkus ?? []) as $badgeItem) {
-                                    $badgeRows[] = $badgeItem;
-                                }
-                                foreach ($badgeRows as $badgeItem) {
-                                    if (($badgeItem['parent'] ?? '') !== '') {
-                                        $badgeParents[mb_strtolower($badgeItem['parent'])] = true;
-                                    }
-                                    if (empty($badgeItem['is_parent'])) {
-                                        $badgeSkus[mb_strtolower($badgeItem['sku'])] = true;
-                                    }
-                                }
-                            @endphp
                             <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 fs-6"
                                 title="Parents listed on this page">
-                                <i class="mdi mdi-sitemap-outline me-1"></i> Parents: <span id="badge-parents">{{ count($badgeParents) }}</span>
+                                <i class="mdi mdi-sitemap-outline me-1"></i> Parents: <span id="badge-parents">0</span>
                             </span>
                             <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-2 fs-6"
                                 title="SKUs listed on this page (PARENT rows not counted)">
-                                <i class="mdi mdi-barcode me-1"></i> SKUs: <span id="badge-skus">{{ count($badgeSkus) }}</span>
+                                <i class="mdi mdi-barcode me-1"></i> SKUs: <span id="badge-skus">0</span>
                             </span>
                             <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle px-3 py-2 fs-6"
                                 title="Categories listed on this page">
-                                <i class="mdi mdi-shape-outline me-1"></i> Categories: <span id="badge-categories">{{ count($categories) }}</span>
+                                <i class="mdi mdi-shape-outline me-1"></i> Categories: <span id="badge-categories">0</span>
                             </span>
                         </div>
                         <div class="d-flex gap-2 align-items-center">
@@ -116,354 +107,16 @@
                         </div>
                     </div>
 
-                    {{-- 🔍 Search Bar --}}
-                    {{-- Parent / SKU / MFR category filter (searches CP Master across all categories, not just this page) --}}
-                    <form method="GET" action="{{ route('category.list') }}" class="row g-2 align-items-end mb-3"
-                        id="cp-filter-form">
-                        <div class="col-md-3">
-                            <label for="filter-parent" class="form-label fw-semibold">Parent</label>
-                            <input type="text" id="filter-parent" name="parent" class="form-control"
-                                value="{{ $parentFilter ?? '' }}" placeholder="Filter by parent..." autocomplete="off">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small">
+                            Type in the <strong>Parent</strong>, <strong>SKU</strong> or <strong>MFR category</strong> header boxes to filter.
+                            While searching a Parent / SKU, rows that are in no category are listed too.
                         </div>
-                        <div class="col-md-3">
-                            <label for="filter-sku" class="form-label fw-semibold">SKU</label>
-                            <input type="text" id="filter-sku" name="sku" class="form-control"
-                                value="{{ $skuFilter ?? '' }}" placeholder="Filter by SKU..." autocomplete="off">
-                        </div>
-                        <div class="col-md-3">
-                            <label for="filter-mfr" class="form-label fw-semibold">MFR category</label>
-                            <input type="text" id="filter-mfr" name="mfr" class="form-control"
-                                value="{{ $mfrFilter ?? '' }}" placeholder="Filter by MFR category..." autocomplete="off">
-                        </div>
-                        <div class="col-md-auto d-flex gap-2">
-                            @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '' || ($mfrFilter ?? '') !== '')
-                                <a href="{{ route('category.list') }}" class="btn btn-light border">
-                                    <i class="mdi mdi-close me-1"></i> Clear
-                                </a>
-                            @endif
-                        </div>
-                    </form>
-
-    <style>
-        /* Frozen columns: SKU sticks to the left edge, Action to the right edge, while the rest scrolls. */
-        #category-table-body th.sticky-col,
-        #category-table-body td.sticky-col {
-            position: sticky;
-            background-color: var(--bs-body-bg, #fff);
-            z-index: 2;
-        }
-        #category-table-body th.sticky-col {
-            background-color: #dfe9f8;
-            z-index: 3;
-        }
-        #category-table-body .sticky-left { left: 0; box-shadow: 2px 0 4px -2px rgba(0, 0, 0, .25); }
-        #category-table-body .sticky-right { right: 0; box-shadow: -2px 0 4px -2px rgba(0, 0, 0, .25); }
-        #category-table-body td.sticky-col.bg-warning-subtle { background-color: var(--bs-warning-bg-subtle, #fff3cd) !important; }
-    </style>
-                    <div class="table-responsive">
-                        <table class="table table-centered table-hover mb-0 border" id="category-table-body" style="min-width: 1300px;">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="text-center align-middle" style="width: 5%">
-                                        <div class="form-check d-flex justify-content-center align-items-center mb-0" title="Select all listed rows (follows the filters)">
-                                            <input type="checkbox" class="form-check-input" id="select-all-rows"
-                                                style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
-                                        </div>
-                                    </th>
-                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="parent" data-sort-type="text" title="Click to sort">Parent <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle" style="width: 6%">Image</th>
-                                    <th class="text-center align-middle sortable-th sticky-col sticky-left" style="width: 14%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="sku" data-sort-type="text" title="Click to sort">SKU <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 18%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="mfr" data-sort-type="text" title="Click to sort">MFR category <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 15%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="suppliers" data-sort-type="num" title="Click to sort">Suppliers <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="product" data-sort-type="num" title="Click to sort">Product <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sticky-col sticky-right" style="width: 18%">Action</th>
-                                </tr>
-                            </thead>
-                            @if (!empty($uncategorizedSkus))
-                                {{-- Search results (Parent / SKU search) that are not in any category --}}
-                                <tbody class="uncategorized-group">
-                                    <tr>
-                                        <td colspan="8" class="bg-light text-muted small fw-semibold py-1">
-                                            {{ count($uncategorizedSkus) }} {{ \Illuminate\Support\Str::plural('SKU', count($uncategorizedSkus)) }} not in any category
-                                        </td>
-                                    </tr>
-                                    @foreach ($uncategorizedSkus as $uSku)
-                                        <tr>
-                                            <td class="text-center align-middle {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <div class="form-check d-flex justify-content-center align-items-center">
-                                                    <input type="checkbox" class="form-check-input row-checkbox"
-                                                        data-category-id="0" data-sku="{{ $uSku['sku'] }}"
-                                                        style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
-                                                </div>
-                                            </td>
-                                            <td class="text-center parent-cell {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                                @if ($uSku['parent'] !== '')
-                                                    {{ $uSku['parent'] }}
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-center align-middle image-cell {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                @if (!empty($uSku['image']))
-                                                    <a href="{{ $uSku['image'] }}" target="_blank" rel="noopener noreferrer">
-                                                        <img src="{{ $uSku['image'] }}" alt="" loading="lazy"
-                                                            style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
-                                                            onerror="this.replaceWith(document.createTextNode('-'))">
-                                                    </a>
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-center sku-cell sticky-col sticky-left {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                                {{ $uSku['sku'] }}
-                                            </td>
-                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">No category</td>
-                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
-                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
-                                            <td class="text-center align-middle sticky-col sticky-right {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <div class="d-flex justify-content-center align-items-center gap-1">
-                                                    <button type="button" class="btn btn-soft-primary btn-sm assign-category-btn"
-                                                        data-sku="{{ $uSku['sku'] }}" title="Edit: pick a category for this SKU">
-                                                        <i class="mdi mdi-square-edit-outline"></i>
-                                                    </button>
-                                                    <button type="button" class="btn btn-soft-success btn-sm assign-category-btn"
-                                                        data-sku="{{ $uSku['sku'] }}" title="Add this SKU to a category">
-                                                        <i class="mdi mdi-plus-box-outline"></i>
-                                                    </button>
-                                                    <button type="button" class="btn btn-soft-danger btn-sm hide-uncategorized-row-btn"
-                                                        title="Remove this row from the list (nothing is deleted; it returns on the next search)">
-                                                        <i class="mdi mdi-delete"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            @endif
-                            @forelse($categories as $key => $category)
-                                @php
-                                    $cpSkus = $category->cp_master_skus ?? [];
-                                    $rowspan = max(1, count($cpSkus));
-                                    $firstSku = $cpSkus[0] ?? null;
-                                    $sortValues = [
-                                        'parent' => $firstSku['parent'] ?? '',
-                                        'sku' => $firstSku['sku'] ?? '',
-                                        'mfr' => $category->name,
-                                        'suppliers' => (int) ($category->supplier_count ?? 0),
-                                        'product' => count($category->parents_list ?? []),
-                                        'status' => $category->status,
-                                    ];
-                                @endphp
-                                {{-- One <tbody> per category: one row per CP Master SKU (parent rows included);
-                                     the category-level cells span all of its SKU rows. --}}
-                                <tbody class="category-group" data-orig-index="{{ $loop->index }}"
-                                    @foreach ($sortValues as $sortKey => $sortValue) data-sort-{{ $sortKey }}="{{ $sortValue }}" @endforeach>
-                                    <tr>
-                                        @if ($firstSku)
-                                        <td class="text-center align-middle {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            <div class="form-check d-flex justify-content-center align-items-center">
-                                                <input type="checkbox" class="form-check-input row-checkbox"
-                                                    data-category-id="{{ $category->id }}" data-sku="{{ $firstSku['sku'] }}"
-                                                    style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
-                                            </div>
-                                        </td>
-                                        @else
-                                        <td class="text-center align-middle">
-                                            <div class="form-check d-flex justify-content-center align-items-center">
-                                                <input type="checkbox" class="form-check-input row-checkbox"
-                                                    data-category-id="{{ $category->id }}" data-sku=""
-                                                    style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
-                                            </div>
-                                        </td>
-                                        @endif
-                                        <td class="text-center parent-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                            @if ($firstSku && $firstSku['parent'] !== '')
-                                                {{ $firstSku['parent'] }}
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center align-middle image-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            @if (!empty($firstSku['image']))
-                                                <a href="{{ $firstSku['image'] }}" target="_blank" rel="noopener noreferrer">
-                                                    <img src="{{ $firstSku['image'] }}" alt="" loading="lazy"
-                                                        style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
-                                                        onerror="this.replaceWith(document.createTextNode('-'))">
-                                                </a>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center sku-cell sticky-col sticky-left {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                            @if ($firstSku)
-                                                {{ $firstSku['sku'] }}
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
-                                        <td class="text-center align-middle mfr-category-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            <div class="d-flex justify-content-center align-items-center">
-                                                <div>
-                                                    <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td class="text-center align-middle supplier-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            <button type="button" class="btn btn-sm supplier-count-btn d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm border-0"
-                                                data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                title="View / add / edit suppliers">
-                                                <i class="mdi mdi-account-group text-info me-2"></i>
-                                                <span class="fw-semibold text-info supplier-count" data-category-id="{{ $category->id }}">{{ $category->supplier_count }}</span>
-                                                <span class="ms-1 text-muted fw-bold">Suppliers</span>
-                                            </button>
-                                        </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
-                                            @php $parents = $category->parents_list ?? []; @endphp
-                                            @if(count($parents) > 0)
-                                                <div class="dropdown d-inline-block">
-                                                    @php $parentsAuto = (bool) ($category->parents_autofilled ?? false); @endphp
-                                                    <button class="btn btn-sm {{ $parentsAuto ? 'btn-outline-secondary' : 'btn-light' }} dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                                                        @if ($parentsAuto) title="Auto-filled from CP Master (same MFR category)" @endif>
-                                                        P ({{ count($parents) }})@if ($parentsAuto) <i class="mdi mdi-auto-fix"></i>@endif
-                                                    </button>
-                                                    <ul class="dropdown-menu" style="max-height: 240px; overflow-y: auto;">
-                                                        @if ($parentsAuto)
-                                                            <li><h6 class="dropdown-header">Auto-filled from CP Master (same MFR category)</h6></li>
-                                                        @endif
-                                                        @foreach ($parents as $parent)
-                                                            <li><span class="dropdown-item">{{ $parent }}</span></li>
-                                                        @endforeach
-                                                    </ul>
-                                                </div>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
-                                        </td>
-                                        @if ($firstSku)
-                                        <td class="text-center align-middle sticky-col sticky-right {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            <div class="d-flex justify-content-center align-items-center gap-1">
-                                                <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
-                                                    data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
-                                                    <i class="mdi mdi-square-edit-outline"></i>
-                                                </a>
-                                                <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
-                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                    title="Add products (SKUs) to this category">
-                                                    <i class="mdi mdi-plus-box-outline"></i>
-                                                </button>
-                                            <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
-                                                data-category-id="{{ $category->id }}" data-sku="{{ $firstSku['sku'] }}"
-                                                title="Delete this row (removes the SKU from this MFR category)">
-                                                <i class="mdi mdi-delete"></i>
-                                            </button>
-                                            </div>
-                                        </td>
-                                        @else
-                                        <td class="text-center align-middle sticky-col sticky-right ">
-                                            <div class="d-flex justify-content-center align-items-center gap-1">
-                                                <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
-                                                    data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
-                                                    <i class="mdi mdi-square-edit-outline"></i>
-                                                </a>
-                                                <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
-                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                    title="Add products (SKUs) to this category">
-                                                    <i class="mdi mdi-plus-box-outline"></i>
-                                                </button>
-                                                <button type="button" class="btn btn-soft-danger btn-sm delete-category-btn"
-                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                    title="Delete this row (it has no SKUs, so this deletes the category)">
-                                                    <i class="mdi mdi-delete"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                        @endif
-                                    </tr>
-                                    @foreach (array_slice($cpSkus, 1) as $cpSku)
-                                        <tr>
-                                            <td class="text-center align-middle {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <div class="form-check d-flex justify-content-center align-items-center">
-                                                    <input type="checkbox" class="form-check-input row-checkbox"
-                                                        data-category-id="{{ $category->id }}" data-sku="{{ $cpSku['sku'] }}"
-                                                        style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
-                                                </div>
-                                            </td>
-                                            <td class="text-center parent-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                                @if ($cpSku['parent'] !== '')
-                                                    {{ $cpSku['parent'] }}
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-center align-middle image-cell {{ $cpSku && $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                @if (!empty($cpSku['image']))
-                                                    <a href="{{ $cpSku['image'] }}" target="_blank" rel="noopener noreferrer">
-                                                        <img src="{{ $cpSku['image'] }}" alt="" loading="lazy"
-                                                            style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
-                                                            onerror="this.replaceWith(document.createTextNode('-'))">
-                                                    </a>
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-center sku-cell sticky-col sticky-left {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
-                                                {{ $cpSku['sku'] }}
-                                            </td>
-                                            <td class="text-center align-middle mfr-category-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
-                                            </td>
-                                            <td class="text-center align-middle supplier-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <button type="button" class="btn btn-sm supplier-count-btn d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm border-0"
-                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                    title="View / add / edit suppliers">
-                                                    <i class="mdi mdi-account-group text-info me-2"></i>
-                                                    <span class="fw-semibold text-info supplier-count" data-category-id="{{ $category->id }}">{{ $category->supplier_count }}</span>
-                                                    <span class="ms-1 text-muted fw-bold">Suppliers</span>
-                                                </button>
-                                            </td>
-                                            <td class="text-center align-middle sticky-col sticky-right {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                <div class="d-flex justify-content-center align-items-center gap-1">
-                                                    <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
-                                                        data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
-                                                        <i class="mdi mdi-square-edit-outline"></i>
-                                                    </a>
-                                                    <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
-                                                        data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
-                                                        title="Add products (SKUs) to this category">
-                                                        <i class="mdi mdi-plus-box-outline"></i>
-                                                    </button>
-                                                <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
-                                                    data-category-id="{{ $category->id }}" data-sku="{{ $cpSku['sku'] }}"
-                                                    title="Delete this row (removes the SKU from this MFR category)">
-                                                    <i class="mdi mdi-delete"></i>
-                                                </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            @empty
-                                @if (empty($uncategorizedSkus))
-                                    <tbody>
-                                        <tr>
-                                            <td colspan="8" class="text-center">
-                                                @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '')
-                                                    No SKUs found
-                                                @else
-                                                    No categories found
-                                                @endif
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                @endif
-                            @endforelse
-                        </table>
+                        <button type="button" class="btn btn-light border btn-sm" id="category-clear-filters">
+                            <i class="mdi mdi-close me-1"></i> Clear filters
+                        </button>
                     </div>
+                    <div id="category-tabulator"></div>
                     {{-- Suppliers modal (opened from the Suppliers count on any SKU / parent row) --}}
                     <div class="modal fade" id="categorySuppliersModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
                         <div class="modal-dialog modal-dialog-centered shadow-none" style="max-width: 98vw; width: 98vw;">
@@ -528,7 +181,7 @@
                             </div>
                         </div>
                     </div>
-                    @foreach ($categories as $category)
+                    @foreach ($allCategories as $category)
                                     <!-- Edit Category Modal -->
                                     <div id="editCategoryModal{{ $category->id }}" class="modal fade" tabindex="-1"
                                         aria-labelledby="editCategoryModal" aria-hidden="true">
@@ -638,9 +291,22 @@
                             </div>
                         </div>
                     </div>
-                    <div class="d-flex justify-content-end mt-3 text-muted small">
-                        Showing all {{ count($categories) }} {{ \Illuminate\Support\Str::plural('category', count($categories)) }}@if (!empty($uncategorizedSkus)) and {{ count($uncategorizedSkus) }} {{ \Illuminate\Support\Str::plural('SKU', count($uncategorizedSkus)) }} not in any category @endif
+                    {{-- Parents (Product column) of a category --}}
+                    <div class="modal fade" id="productsModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-sm shadow-none">
+                            <div class="modal-content border-0">
+                                <div class="modal-header bg-primary text-white">
+                                    <h5 class="modal-title">Products - <span id="pm-category"></span></h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="small text-muted mb-2" id="pm-note"></div>
+                                    <ul class="list-group list-group-flush" id="pm-list" style="max-height:320px; overflow-y:auto;"></ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    <div class="d-flex justify-content-end mt-3 text-muted small" id="category-footer"></div>
                 </div>
             </div>
         </div>
@@ -731,11 +397,11 @@
                 });
 
                 $.when.apply($, requests).done(function() {
-                    location.reload();
+                    window.reloadCategoryTable();
                 }).fail(function(xhr) {
                     const msg = xhr && xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.';
                     alert('Error: ' + msg);
-                    location.reload();
+                    window.reloadCategoryTable();
                 });
             }
 
@@ -794,7 +460,7 @@
 
             function setCount(n) {
                 $('#csm-count').text(n);
-                $('.supplier-count[data-category-id="' + currentCategoryId + '"]').text(n);
+                if (window.setCategorySupplierCount) window.setCategorySupplierCount(currentCategoryId, n);
             }
 
             function rowHtml(s) {
@@ -878,53 +544,6 @@
                 api('POST', url(), { supplier_id: supplierId })
                     .done(function(res) { showMessage(res.message, true); load(); })
                     .fail(function(xhr) { showMessage(errText(xhr), false); });
-            });
-        })();
-    </script>
-    <script>
-        // Click a column header to sort the category groups by it: ascending, descending, then original order.
-        (function() {
-            const table = document.getElementById('category-table-body');
-            if (!table) return;
-            const headers = table.querySelectorAll('th.sortable-th');
-            const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-            let activeKey = null;
-            let direction = 0; // 1 asc, -1 desc, 0 original
-
-            function groups() { return Array.from(table.querySelectorAll('tbody.category-group')); }
-
-            function sortGroups(key, type, dir) {
-                const list = groups();
-                list.sort(function(a, b) {
-                    if (dir === 0) return (+a.dataset.origIndex) - (+b.dataset.origIndex);
-                    const av = a.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
-                    const bv = b.dataset['sort' + key.charAt(0).toUpperCase() + key.slice(1)] || '';
-                    // Empty values always go last, whichever direction is used.
-                    if (av === '' && bv !== '') return 1;
-                    if (bv === '' && av !== '') return -1;
-                    const cmp = type === 'num' ? (parseFloat(av) || 0) - (parseFloat(bv) || 0) : collator.compare(av, bv);
-                    return cmp !== 0 ? dir * cmp : (+a.dataset.origIndex) - (+b.dataset.origIndex);
-                });
-                list.forEach(function(g) { table.appendChild(g); });
-            }
-
-            function updateIcons() {
-                headers.forEach(function(h) {
-                    const icon = h.querySelector('.sort-icon');
-                    const on = h.dataset.sortKey === activeKey && direction !== 0;
-                    icon.className = 'mdi sort-icon ' + (!on ? 'mdi-unfold-more-horizontal text-muted'
-                        : (direction === 1 ? 'mdi-arrow-up text-primary' : 'mdi-arrow-down text-primary'));
-                });
-            }
-
-            headers.forEach(function(h) {
-                h.addEventListener('click', function() {
-                    const key = h.dataset.sortKey;
-                    direction = (activeKey === key) ? (direction === 1 ? -1 : (direction === -1 ? 0 : 1)) : 1;
-                    activeKey = direction === 0 ? null : key;
-                    sortGroups(key, h.dataset.sortType, direction);
-                    updateIcons();
-                });
             });
         })();
     </script>
@@ -1156,7 +775,8 @@
                         skus: Array.from(selected.keys())
                     }
                 }).done(function() {
-                    location.reload();
+                    $('#addProductsModal').modal('hide');
+                    window.reloadCategoryTable();
                 }).fail(function(xhr) {
                     const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.';
                     $('#apm-error').text(msg).show();
@@ -1166,66 +786,9 @@
         })();
     </script>
     <script>
-        // Parent / SKU / MFR category filters apply by themselves: after you stop typing (or press Enter)
-        // the page reloads with the filter, and the cursor goes back to the field you were typing in.
-        (function() {
-            const form = document.getElementById('cp-filter-form');
-            if (!form) return;
-            const inputs = form.querySelectorAll('input[type="text"]');
-            let timer = null;
-            const submit = function() { clearTimeout(timer); form.submit(); };
-
-            inputs.forEach(function(input) {
-                let last = input.value;
-                input.addEventListener('input', function() {
-                    if (input.value === last) return;
-                    last = input.value;
-                    try { sessionStorage.setItem('categoryFilterFocus', input.id); } catch (e) {}
-                    clearTimeout(timer);
-                    timer = setTimeout(submit, 600);
-                });
-                input.addEventListener('keydown', function(e) {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    try { sessionStorage.setItem('categoryFilterFocus', input.id); } catch (err) {}
-                    submit();
-                });
-            });
-
-            try {
-                const id = sessionStorage.getItem('categoryFilterFocus');
-                sessionStorage.removeItem('categoryFilterFocus');
-                const el = id ? document.getElementById(id) : null;
-                if (el) {
-                    el.focus();
-                    el.setSelectionRange(el.value.length, el.value.length);
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script>
         // Uncategorised rows: the trash button only removes the row from this list (no data is deleted).
         $(document).on('click', '.hide-uncategorized-row-btn', function() {
-            const $tbody = $(this).closest('tbody');
-            $(this).closest('tr').remove();
-            const left = $tbody.find('tr').length - 1; // minus the header row
-            if (left <= 0) {
-                $tbody.remove();
-            } else {
-                $tbody.find('tr:first td').text(left + (left === 1 ? ' SKU' : ' SKUs') + ' not in any category');
-            }
-            // keep the Parents / SKUs badges in step with what is still listed
-            const parents = {}, skus = {};
-            $('#category-table-body .parent-cell').each(function() {
-                const t = $.trim($(this).text()).toLowerCase();
-                if (t && t !== '-') parents[t] = true;
-            });
-            $('#category-table-body .sku-cell').each(function() {
-                const t = $.trim($(this).text()).toLowerCase();
-                if (t && t !== '-' && !$(this).hasClass('fw-bold')) skus[t] = true;
-            });
-            $('#badge-parents').text(Object.keys(parents).length);
-            $('#badge-skus').text(Object.keys(skus).length);
+            window.categoryTable.deleteRow(String($(this).data('key')));
         });
 
         // Uncategorised rows (Parent / SKU search): add the SKU to a category found with the quick search.
@@ -1277,14 +840,12 @@
                 // Ticked rows (rows with no category) are added together when the clicked row is one of
                 // them; otherwise just the clicked row's SKU.
                 const clicked = String($(this).data('sku'));
-                const $own = $(this).closest('tr').find('.row-checkbox');
+                const key = String($(this).data('key'));
                 skus = [clicked];
-                if ($own.length && $own.is(':checked')) {
-                    const ticked = [];
-                    $('#category-table-body .row-checkbox:checked').each(function() {
-                        if (String($(this).data('category-id')) === '0') ticked.push(String($(this).data('sku')));
-                    });
-                    if (ticked.length) skus = ticked.filter(function(s, i) { return ticked.indexOf(s) === i; });
+                const selected = window.categoryTable.getSelectedData().filter(function(r) { return r.kind === 'uncat'; });
+                if (selected.some(function(r) { return r.key === key; })) {
+                    const ticked = selected.map(function(r) { return r.sku; });
+                    skus = ticked.filter(function(s, i) { return ticked.indexOf(s) === i; });
                 }
                 $('#acm-sku-label').text(skus.length > 1 ? skus.length + ' SKUs' : 'SKU');
                 $('#acm-sku').text(skus.length > 1 ? skus.slice(0, 8).join(', ') + (skus.length > 8 ? ', ...' : '') : skus[0]);
@@ -1333,7 +894,8 @@
                     dataType: 'json',
                     data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: skus }
                 }).done(function() {
-                    location.reload();
+                    $('#assignCategoryModal').modal('hide');
+                    window.reloadCategoryTable();
                 }).fail(showError);
             }
 
@@ -1359,26 +921,242 @@
             });
         })();
     </script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        // Header checkbox: selects / clears every row that is listed (the page already shows only the rows
-        // that match the Parent / SKU / MFR filters). It also reflects partial selection.
+        // ---- /category.list as a Tabulator -------------------------------------------------------------
+        // One row per CP Master SKU / PARENT row (category columns repeated), one row for a category with no
+        // SKUs, and - while the Parent / SKU filters are used - the matching rows that are in no category.
+        // Filtering is done by the server (the header boxes below); sorting and selection are in the browser.
         (function() {
-            const $all = $('#select-all-rows');
-            if (!$all.length) return;
-            function sync() {
-                const total = $('#category-table-body .row-checkbox').length;
-                const checked = $('#category-table-body .row-checkbox:checked').length;
-                $all.prop('checked', total > 0 && checked === total);
-                $all.prop('indeterminate', checked > 0 && checked < total);
-                $all.attr('title', checked ? checked + ' of ' + total + ' rows selected' : 'Select all listed rows (follows the filters)');
-            }
-            $all.on('change', function() {
-                $('#category-table-body .row-checkbox').prop('checked', this.checked);
-                sync();
+            const dataUrl = '{{ route('category.list.data') }}';
+            const esc = function(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            };
+            const dash = '<span class="text-muted">-</span>';
+
+            let filters = { parent: '', sku: '', mfr: '' };
+            let filterTimer = null;
+            let loadSeq = 0;
+            let table = null;
+
+            // ---- columns ----
+            const checkboxFormatter = function(cell) {
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'form-check-input';
+                input.style.cssText = 'cursor:pointer;width:1.1rem;height:1.1rem;margin:0;';
+                input.checked = cell.getRow().isSelected();
+                input.addEventListener('click', function(e) { e.stopPropagation(); });
+                input.addEventListener('change', function() {
+                    if (input.checked) cell.getRow().select(); else cell.getRow().deselect();
+                });
+                return input;
+            };
+
+            const imageFormatter = function(cell) {
+                const url = cell.getValue();
+                if (!url) return dash;
+                return '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+                    '<img src="' + esc(url) + '" alt="" loading="lazy" ' +
+                    'style="height:36px;width:36px;object-fit:cover;border-radius:4px;border:1px solid #ccc;" ' +
+                    'onerror="this.replaceWith(document.createTextNode(\'-\'))"></a>';
+            };
+
+            const skuFormatter = function(cell) {
+                const d = cell.getRow().getData();
+                if (d.kind === 'empty') return dash;
+                return d.is_parent ? '<strong>' + esc(d.sku) + '</strong>' : esc(d.sku);
+            };
+
+            const categoryFormatter = function(cell) {
+                const d = cell.getRow().getData();
+                if (d.kind === 'uncat') return '<span class="text-muted">No category</span>';
+                return '<span class="fw-semibold">' + esc(d.category_name) + '</span>';
+            };
+
+            const supplierFormatter = function(cell) {
+                const d = cell.getRow().getData();
+                if (d.kind === 'uncat') return dash;
+                return '<button type="button" class="btn btn-sm supplier-count-btn d-inline-flex align-items-center px-3 py-1 rounded-pill bg-info-subtle shadow-sm border-0" ' +
+                    'data-category-id="' + d.category_id + '" data-category-name="' + esc(d.category_name) + '" title="View / add / edit suppliers">' +
+                    '<i class="mdi mdi-account-group text-info me-2"></i>' +
+                    '<span class="fw-semibold text-info supplier-count" data-category-id="' + d.category_id + '">' + d.supplier_count + '</span>' +
+                    '<span class="ms-1 text-muted fw-bold">Suppliers</span></button>';
+            };
+
+            const productFormatter = function(cell) {
+                const d = cell.getRow().getData();
+                if (!d.parents || !d.parents.length) return dash;
+                return '<button type="button" class="btn btn-sm ' + (d.parents_autofilled ? 'btn-outline-secondary' : 'btn-light') + ' products-btn" ' +
+                    'data-key="' + esc(d.key) + '"' + (d.parents_autofilled ? ' title="Auto-filled from CP Master (same MFR category)"' : '') + '>' +
+                    'P (' + d.parents.length + ')' + (d.parents_autofilled ? ' <i class="mdi mdi-auto-fix"></i>' : '') + '</button>';
+            };
+
+            const actionFormatter = function(cell) {
+                const d = cell.getRow().getData();
+                const key = esc(d.key);
+                const sku = esc(d.sku);
+                const cid = d.category_id;
+                const cname = esc(d.category_name);
+                const btn = function(cls, title, icon, attrs) {
+                    return '<button type="button" class="btn btn-sm ' + cls + '" title="' + title + '" ' + (attrs || '') + '><i class="mdi ' + icon + '"></i></button>';
+                };
+                let html = '<div class="d-flex justify-content-center align-items-center gap-1">';
+                if (d.kind === 'uncat') {
+                    html += btn('btn-soft-primary assign-category-btn', 'Edit: pick a category for this SKU', 'mdi-square-edit-outline', 'data-sku="' + sku + '" data-key="' + key + '"');
+                    html += btn('btn-soft-success assign-category-btn', 'Add this SKU to a category', 'mdi-plus-box-outline', 'data-sku="' + sku + '" data-key="' + key + '"');
+                    html += btn('btn-soft-danger hide-uncategorized-row-btn', 'Remove this row from the list (nothing is deleted; it returns on the next search)', 'mdi-delete', 'data-key="' + key + '"');
+                } else {
+                    html += btn('btn-soft-primary', 'Edit category', 'mdi-square-edit-outline', 'data-bs-toggle="modal" data-bs-target="#editCategoryModal' + cid + '"');
+                    html += btn('btn-soft-success add-products-btn', 'Add products (SKUs) to this category', 'mdi-plus-box-outline', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
+                    if (d.kind === 'sku') {
+                        html += btn('btn-soft-danger delete-row-btn', 'Delete this row (removes the SKU from this MFR category)', 'mdi-delete', 'data-category-id="' + cid + '" data-sku="' + sku + '"');
+                    } else {
+                        html += btn('btn-soft-danger delete-category-btn', 'Delete this row (it has no SKUs, so this deletes the category)', 'mdi-delete', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
+                    }
+                }
+                return html + '</div>';
+            };
+
+            // Header boxes only collect the text; the server does the filtering (see dataFiltering below).
+            const serverFilter = function() { return true; };
+            const filterCol = { headerFilter: 'input', headerFilterFunc: serverFilter, headerFilterPlaceholder: 'Filter...' };
+
+            table = new Tabulator('#category-tabulator', {
+                index: 'key',
+                layout: 'fitColumns',
+                height: '72vh',
+                selectableRows: 'highlight',
+                placeholder: function() {
+                    return (filters.parent || filters.sku) ? 'No SKUs found' : 'No categories found';
+                },
+                rowFormatter: function(row) {
+                    row.getElement().classList.toggle('cat-parent-row', !!row.getData().is_parent);
+                },
+                columns: [
+                    { title: '', field: 'sel', width: 46, hozAlign: 'center', headerSort: false, frozen: true,
+                      titleFormatter: function() { return '<input type="checkbox" class="form-check-input" id="category-select-all" title="Select all listed rows" style="cursor:pointer;width:1.1rem;height:1.1rem;margin:0;">'; },
+                      formatter: checkboxFormatter },
+                    Object.assign({ title: 'Parent', field: 'parent', width: 150, frozen: true, formatter: function(c) { return c.getValue() ? esc(c.getValue()) : dash; } }, filterCol),
+                    { title: 'Image', field: 'image', width: 76, hozAlign: 'center', headerSort: false, frozen: true, formatter: imageFormatter },
+                    Object.assign({ title: 'SKU', field: 'sku', width: 190, frozen: true, formatter: skuFormatter }, filterCol),
+                    Object.assign({ title: 'MFR category', field: 'category_name', minWidth: 180, formatter: categoryFormatter }, filterCol),
+                    { title: 'Suppliers', field: 'supplier_count', width: 150, hozAlign: 'center', sorter: 'number', formatter: supplierFormatter },
+                    { title: 'Product', field: 'parents', width: 100, hozAlign: 'center', headerSort: false, formatter: productFormatter },
+                    { title: 'Action', field: 'key', width: 150, hozAlign: 'center', headerSort: false, frozen: true, formatter: actionFormatter },
+                ],
             });
-            $(document).on('change', '.row-checkbox', sync);
-            $(document).on('click', '.hide-uncategorized-row-btn', function() { setTimeout(sync, 0); });
-            sync();
+            window.categoryTable = table;
+
+            // ---- data ----
+            function load() {
+                const seq = ++loadSeq;
+                const qs = new URLSearchParams();
+                if (filters.parent) qs.set('parent', filters.parent);
+                if (filters.sku) qs.set('sku', filters.sku);
+                if (filters.mfr) qs.set('mfr', filters.mfr);
+                const url = dataUrl + (qs.toString() ? '?' + qs.toString() : '');
+                return fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function(res) {
+                        if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+                        return res.json();
+                    })
+                    .then(function(rows) {
+                        if (seq !== loadSeq) return;
+                        return table.setData(rows);
+                    })
+                    .catch(function(e) { alert('Could not load the categories: ' + e.message); });
+            }
+            window.reloadCategoryTable = load;
+
+            table.on('tableBuilt', load);
+
+            // typing in a header box: wait a moment, then ask the server for the matching rows
+            table.on('dataFiltering', function(list) {
+                const next = { parent: '', sku: '', mfr: '' };
+                (list || []).forEach(function(f) {
+                    const value = String(f.value == null ? '' : f.value).trim();
+                    if (f.field === 'parent') next.parent = value;
+                    else if (f.field === 'sku') next.sku = value;
+                    else if (f.field === 'category_name') next.mfr = value;
+                });
+                if (next.parent === filters.parent && next.sku === filters.sku && next.mfr === filters.mfr) return;
+                filters = next;
+                clearTimeout(filterTimer);
+                filterTimer = setTimeout(load, 500);
+            });
+
+            document.getElementById('category-clear-filters').addEventListener('click', function() {
+                table.clearHeaderFilter();
+            });
+
+            // ---- badges + footer ----
+            function updateBadges() {
+                const rows = table.getData();
+                const parents = {}, skus = {}, categories = {};
+                let uncategorized = 0;
+                rows.forEach(function(r) {
+                    if (r.parent) parents[r.parent.toLowerCase()] = true;
+                    if (r.sku && !r.is_parent) skus[r.sku.toLowerCase()] = true;
+                    if (r.category_id > 0) categories[r.category_id] = true;
+                    if (r.kind === 'uncat') uncategorized++;
+                });
+                const nCategories = Object.keys(categories).length;
+                document.getElementById('badge-parents').textContent = Object.keys(parents).length;
+                document.getElementById('badge-skus').textContent = Object.keys(skus).length;
+                document.getElementById('badge-categories').textContent = nCategories;
+                document.getElementById('category-footer').textContent =
+                    'Showing ' + nCategories + (nCategories === 1 ? ' category' : ' categories') +
+                    (uncategorized ? ' and ' + uncategorized + (uncategorized === 1 ? ' SKU' : ' SKUs') + ' not in any category' : '');
+            }
+            ['dataLoaded', 'rowDeleted', 'rowUpdated'].forEach(function(name) {
+                table.on(name, function() { setTimeout(updateBadges, 0); });
+            });
+
+            // ---- selection (header checkbox selects every listed row) ----
+            function syncChecks() {
+                table.getRows().forEach(function(row) {
+                    const cell = row.getCell('sel');
+                    const input = cell && cell.getElement().querySelector('input');
+                    if (input) input.checked = row.isSelected();
+                });
+                const all = document.getElementById('category-select-all');
+                if (!all) return;
+                const total = table.getRows('active').length;
+                const picked = table.getSelectedRows().length;
+                all.checked = total > 0 && picked === total;
+                all.indeterminate = picked > 0 && picked < total;
+                all.title = picked ? picked + ' of ' + total + ' rows selected' : 'Select all listed rows';
+            }
+            table.on('rowSelectionChanged', syncChecks);
+            document.addEventListener('change', function(e) {
+                if (!e.target || e.target.id !== 'category-select-all') return;
+                if (e.target.checked) table.selectRow('active'); else table.deselectRow();
+            });
+
+            // ---- the suppliers modal keeps the Suppliers pills in step ----
+            window.setCategorySupplierCount = function(categoryId, count) {
+                table.getRows().forEach(function(row) {
+                    if (row.getData().category_id === Number(categoryId)) row.update({ supplier_count: count });
+                });
+            };
+
+            // ---- Product (parents) list ----
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest ? e.target.closest('.products-btn') : null;
+                if (!btn) return;
+                const row = table.getRow(btn.getAttribute('data-key'));
+                if (!row) return;
+                const d = row.getData();
+                document.getElementById('pm-category').textContent = d.category_name;
+                document.getElementById('pm-note').textContent = d.parents_autofilled ? 'Auto-filled from CP Master (same MFR category).' : '';
+                document.getElementById('pm-list').innerHTML = d.parents.map(function(p) {
+                    return '<li class="list-group-item py-1">' + esc(p) + '</li>';
+                }).join('');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('productsModal')).show();
+            });
         })();
     </script>
 @endsection
