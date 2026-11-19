@@ -355,6 +355,11 @@
                                                     title="Add products (SKUs) to this category">
                                                     <i class="mdi mdi-plus-box-outline"></i>
                                                 </button>
+                                                <button type="button" class="btn btn-soft-danger btn-sm delete-category-btn"
+                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                    title="Delete this row (it has no SKUs, so this deletes the category)">
+                                                    <i class="mdi mdi-delete"></i>
+                                                </button>
                                             </div>
                                         </td>
                                         @endif
@@ -752,6 +757,20 @@
             $(document).on('change', '.row-checkbox', function() {
                 const anyChecked = $('.row-checkbox:checked').length > 0;
                 $('#bulkAddBtn').prop('disabled', !anyChecked);
+            });
+
+            // Delete a row that has no SKU: the row is just the (empty) category, so this deletes the category.
+            $(document).on('click', '.delete-category-btn', function() {
+                const id = $(this).data('category-id');
+                const name = String($(this).data('category-name'));
+                if (!confirm('This row has no SKUs, so deleting it deletes the category "' + name + '". Continue?')) return;
+                $.ajax({
+                    url: '{{ url('/category/delete') }}/' + id,
+                    method: 'POST',
+                    data: { _method: 'DELETE', _token: $('meta[name="csrf-token"]').attr('content') }
+                }).always(function() {
+                    location.reload();
+                });
             });
 
             // Delete a single row
