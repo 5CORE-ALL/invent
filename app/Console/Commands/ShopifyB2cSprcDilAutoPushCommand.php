@@ -71,7 +71,9 @@ class ShopifyB2cSprcDilAutoPushCommand extends Command
         }
 
         $queued = 0;
-        if (! $dryRun && ! $skipPush) {
+        // Both rule switches OFF: nothing prices S PRC, so nothing is pushed either.
+        $bothOff = \App\Support\SpriceActiveRule::forChannel('shopify_b2c') === 'none';
+        if (! $dryRun && ! $skipPush && ! $bothOff) {
             $res = $enqueue->enqueueChannel('shopify_b2c');
             $queued = (int) ($res['queued'] ?? 0);
             $this->info('Shopify B2C push: '.$res['message'].(($res['spawned'] ?? false) ? ' — worker started' : ''));

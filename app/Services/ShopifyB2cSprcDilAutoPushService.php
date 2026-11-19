@@ -57,6 +57,15 @@ class ShopifyB2cSprcDilAutoPushService
         ?array $onlySkus = null,
         ?callable $logger = null
     ): array {
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own (modal switches). Both OFF: no rule prices anything, so nothing is saved.
+        if (SpriceActiveRule::forChannel('shopify_b2c') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return ['dry_run' => $dryRun, 'stats' => [
+                'candidates' => 0, 'applied' => 0, 'skipped_unchanged' => 0, 'skipped' => 0, 'neg_snroi' => 0, 'errors' => [],
+            ]];
+        }
+
         $pricer = StdPrcVsDilPricer::forChannel('shopify_b2c');
         $adsPct = $this->channelAdsPercent();
         // The page switch (same as Amazon): Std prc vs dil <-> Sprc Dil. Only the ON rule fills S PRC.

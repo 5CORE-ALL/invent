@@ -1428,7 +1428,7 @@
                     if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
                         try { table.setData(); } catch (e) { /* ignore */ }
                     }
-                    if (typeof showToast === 'function') showToast('S PRC refreshed from the ' + ((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') ? 'Sprc Dil' : 'Std prc vs dil') + ' rule', 'success');
+                    if (typeof showToast === 'function') showToast((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') ? 'Both rules are OFF: S PRC was not changed' : 'S PRC refreshed from the ' + ((typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') ? 'Sprc Dil' : 'Std prc vs dil') + ' rule', 'success');
                 })
                 .fail(function() { shopifyB2cRuleReloadTimer = null; });
         };
@@ -2697,7 +2697,9 @@
                 items.forEach(function(item) {
                     const d = item.row.getData() || {};
                     let price = 0;
-                    if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil' && typeof ebaySprcDilForRow === 'function') {
+                    if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                        price = 0; // both rules OFF: nothing prices the SKU
+                    } else if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil' && typeof ebaySprcDilForRow === 'function') {
                         price = Number(ebaySprcDilForRow(d)) || 0;
                     } else if (typeof window.chStdPriceForRow === 'function') {
                         price = Number(window.chStdPriceForRow(d)) || 0;
