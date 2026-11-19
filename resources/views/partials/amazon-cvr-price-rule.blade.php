@@ -244,14 +244,16 @@
             if (!d || d.is_parent_summary) return 0;
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return 0;
             if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) return 0;
-            // Sprc Dil and Std prc vs dil both OFF: the CVR Price Rule prices on its own, off Std Prc (LMP-capped, no discounts).
+            // Sprc Dil and Std prc vs dil both OFF: the CVR Price Rule prices on its own and compares with the live Price: the % comes
+            // off it. It acts once per price: when the saved S PRC already equals the live Price the rule holds (no compounding).
             // Server twin: AmazonSprcDilAutoPushService::computeCvrOnlyTarget().
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
                 if (!amzCvrRule || !amzCvrRule.enabled) return 0;
-                const std = Number(d.STANDARD_PRICE) || 0;
-                if (!(std > 0)) return 0;
-                const stdCapped = (typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, std)) : std;
-                return stdCapped > 0 ? Math.round(stdCapped * 100) / 100 : 0;
+                const live = Math.round((parseFloat(d.price) || 0) * 100) / 100;
+                if (!(live > 0)) return 0;
+                const saved = parseFloat(d.SPRICE) || 0;
+                if (saved > 0 && Math.abs(saved - live) < 0.005) return 0;
+                return live;
             }
             if (typeof amzLiveRuleSprice !== 'function') return 0;
             const live = Number(amzLiveRuleSprice(d)) || 0;
@@ -273,8 +275,17 @@
             const base = amzCvrRuleBaseFor(d);
             if (!(base > 0)) return null;
             const res = amzCvrRulePriceFor(d, amzCvrRule, base);
-            if (!res || !(res.price >= 0.01) || Math.abs(res.price - base) < 0.005) return null;
-            return { price: res.price, capped: res.capped, base: base, c: c, pct: pct };
+            if (!res || !(res.price >= 0.01)) return null;
+            let outPrice = res.price;
+            // Both S PRC rules OFF (base = live Price): Up stops at Std Prc (LMP-capped). Down never goes above live (amzCvrRulePriceFor).
+            if (outPrice > base && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                const std = Number(d.STANDARD_PRICE) || 0;
+                const stdCapped = std > 0 ? ((typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, std)) : std) : 0;
+                if (!(stdCapped > 0)) return null;
+                outPrice = Math.round(Math.max(base, Math.min(outPrice, stdCapped)) * 100) / 100;
+            }
+            if (Math.abs(outPrice - base) < 0.005) return null;
+            return { price: outPrice, capped: res.capped, base: base, c: c, pct: pct };
         }
         window.amzCvrRuleInfo = amzCvrRuleInfo;
         window.amzCvrRuleIsOn = function() { return !!(amzCvrRule && amzCvrRule.enabled); };

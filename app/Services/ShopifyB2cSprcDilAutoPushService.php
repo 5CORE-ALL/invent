@@ -207,11 +207,16 @@ class ShopifyB2cSprcDilAutoPushService
         // the SKUs it changes. Clearance SKUs are left alone. Same number every run, so the % never compounds.
         if (SpriceActiveRule::forChannel('shopify_b2c') === 'none') {
             $std0 = (float) ($row['standard_price'] ?? 0);
-            if (! $this->cvrRuleOn() || ! ($std0 > 0)
+            $live = round((float) ($row['price'] ?? 0), 2);
+            // Compares with the live Price: the rule's % comes off it. It acts once per price (holds when the saved S PRC
+            // already equals live), Up stops at Std Prc, Down never goes above live.
+            if (! $this->cvrRuleOn() || ! ($live > 0)
+                || \App\Support\EbayCvrPriceRule::holdsLive($live, (float) ($row['sprice'] ?? 0))
                 || ($pricer ?? new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
                 return null;
             }
-            $r = $this->finish($row, $std0, $std0, 0.0, $adsPct);
+            $row['__cvr_live'] = true;
+            $r = $this->finish($row, $live, $std0 > 0 ? $std0 : 0.0, 0.0, $adsPct);
 
             return ($r !== null && ! empty($r['cvr_hit'])) ? $r : null;
         }
@@ -454,9 +459,16 @@ class ShopifyB2cSprcDilAutoPushService
                 'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
             ], $cvrCfg);
             if ($cvrPrice !== null) {
-                $capped = $cvrPrice['price'];
-                $lmpCapped = false;
-                $cvrHit = true;
+                $newCvr = (float) $cvrPrice['price'];
+                if (! empty($row['__cvr_live']) && $newCvr > $capped) {
+                    // CVR Price Rule on its own (compares with live): Up stops at the Std Prc.
+                    $newCvr = $stdCeiling > 0 ? max($capped, min($newCvr, $stdCeiling)) : $capped;
+                }
+                if (abs($newCvr - $capped) >= 0.005) {
+                    $capped = round($newCvr, 2);
+                    $lmpCapped = false;
+                    $cvrHit = true;
+                }
             }
         }
         $amzCapped = false;

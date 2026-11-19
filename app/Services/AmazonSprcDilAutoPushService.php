@@ -328,8 +328,11 @@ class AmazonSprcDilAutoPushService
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
-        $base = round(AmazonDilGroiRule::capSpriceToLmp($std, $lmp, $lp, $ship, AmazonDilGroiRule::TAKE_HOME, $std, 0.0), 2);
-        if (! ($base >= 0.01)) {
+        $stdCapped = round(AmazonDilGroiRule::capSpriceToLmp($std, $lmp, $lp, $ship, AmazonDilGroiRule::TAKE_HOME, $std, 0.0), 2);
+        // Compares with the live Price: the rule's % comes off it. It acts once per price (holds when the saved S PRC already
+        // equals live), Up stops at Std Prc (LMP-capped), Down never goes above live.
+        $base = round((float) ($row['price'] ?? 0), 2);
+        if (! ($base >= 0.01) || \App\Support\EbayCvrPriceRule::holdsLive($base, (float) ($row['sprice'] ?? 0))) {
             return null;
         }
         $cvrPrice = \App\Support\AmazonCvrPriceRule::apply(
@@ -339,9 +342,11 @@ class AmazonSprcDilAutoPushService
             (float) ($adsPct ?? $this->amazonAdsPercent()),
             $this->dynamicAdsRule()
         );
-        if ($cvrPrice === null) {
+        $newPrice = $cvrPrice === null ? null : \App\Support\EbayCvrPriceRule::clampUp((float) $cvrPrice['price'], $base, $stdCapped);
+        if ($newPrice === null) {
             return null;
         }
+        $cvrPrice['price'] = $newPrice;
 
         return [
             'sprice' => round((float) $cvrPrice['price'], 2),
@@ -360,7 +365,7 @@ class AmazonSprcDilAutoPushService
             'age_disc' => 0.0,
             'sum_disc' => 0.0,
             'dil_groi' => false,
-            'lmp_capped' => $lmp > 0 && ($std - $base) > 0.009,
+            'lmp_capped' => $lmp > 0 && ($std - $stdCapped) > 0.009,
             'snroi_capped' => false,
             'base' => round($std, 2),
         ];

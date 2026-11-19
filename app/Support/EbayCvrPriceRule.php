@@ -38,6 +38,33 @@ class EbayCvrPriceRule
     }
 
     /**
+     * CVR Price Rule running on its own (both S PRC rules OFF) compares with the live Price: S PRC = live Price + the rule's %.
+     * It acts once per price: when the saved S PRC already equals the live Price (the rule's price was pushed), the rule holds
+     * until the price changes, so the % never compounds on every run.
+     */
+    public static function holdsLive(float $live, float $saved): bool
+    {
+        return $saved > 0 && abs($saved - $live) < 0.005;
+    }
+
+    /**
+     * Up from the live Price never goes past the Std Prc (LMP-capped) price; Down never goes above live (see apply()).
+     * Null = no change from the live Price.
+     */
+    public static function clampUp(float $price, float $live, float $stdCapped): ?float
+    {
+        if ($price > $live) {
+            if (! ($stdCapped > 0)) {
+                return null;
+            }
+            $price = max($live, min($price, $stdCapped));
+        }
+        $price = round($price, 2);
+
+        return abs($price - $live) < 0.005 ? null : $price;
+    }
+
+    /**
      * CVR Price Rule running on its own (Sprc Dil and Std prc vs dil both OFF): the SKUs the last run priced. The automatic
      * blue push sends only these, never an old saved S PRC. Stored under `{channel}_cvr_only_skus`.
      *

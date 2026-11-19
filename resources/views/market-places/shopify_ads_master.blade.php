@@ -184,7 +184,7 @@
         }
 
 
-        
+
         #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control:hover {
             background: #f1f5f9;
             border-color: #94a3b8;
@@ -228,7 +228,7 @@
             margin: 0.5rem 0 0 0 !important;
         }
         #samTrendsModal .modal-content {
-            border-radius: 0;
+f            border-radius: 0;
             width: 100%;
             max-width: 100%;
         }

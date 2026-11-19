@@ -135,6 +135,8 @@ class EbayRuleSprice
             'inv' => $inv,
             'std' => round((float) ($row['STANDARD_PRICE'] ?? 0), 2),
             'price' => (float) ($row['eBay Price'] ?? 0),
+            // The S PRC saved on the row: the CVR Price Rule (running on its own) holds once it equals the live Price.
+            'saved_sprice' => (isset($row['SPRICE']) && is_numeric($row['SPRICE'])) ? (float) $row['SPRICE'] : 0.0,
             'dil' => $inv > 0 ? ($ov / $inv) * 100 : 0.0,
             'cvr' => $cvr30,
             'cvr_60' => $cvr45,
@@ -362,19 +364,27 @@ class EbayRuleSprice
         if (($context['rule'] ?? '') === 'none') {
             $cfg = is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null;
             $std = (float) ($input['std'] ?? 0);
-            if ($cfg === null || ! ($std > 0) || ! ((float) ($input['inv'] ?? 0) > 0) || $pricer->isClearanceRow($input)) {
+            $live = round((float) ($input['price'] ?? 0), 2);
+            if ($cfg === null || ! ($live > 0) || ! ((float) ($input['inv'] ?? 0) > 0) || $pricer->isClearanceRow($input)
+                || EbayCvrPriceRule::holdsLive($live, (float) ($input['saved_sprice'] ?? 0))) {
                 return null;
             }
-            [$afterLmp, $final] = self::capChain($std, $input, $context, false);
-            $hit = EbayCvrPriceRule::apply(round($final, 2), $input, $cfg);
-            if ($hit === null) {
+            // Compares with the live Price: the rule's % comes off it. Up stops at Std Prc (LMP-capped), Down never goes above live.
+            $stdCapped = 0.0;
+            $afterLmp = $std;
+            if ($std > 0) {
+                [$afterLmp, $stdCapped] = self::capChain($std, $input, $context, false);
+            }
+            $hit = EbayCvrPriceRule::apply($live, $input, $cfg);
+            $newPrice = $hit === null ? null : EbayCvrPriceRule::clampUp((float) $hit['price'], $live, $stdCapped);
+            if ($newPrice === null) {
                 return null;
             }
 
             return [
-                'sprice' => round($hit['price'], 2),
-                'rule_price' => round($std, 2),
-                'lmp_capped' => abs($afterLmp - $std) > 0.009,
+                'sprice' => $newPrice,
+                'rule_price' => $live,
+                'lmp_capped' => $std > 0 && abs($afterLmp - $std) > 0.009,
                 'std_capped' => false,
                 'lmp_cvr_disc' => 0.0,
                 'cvr_only' => true,

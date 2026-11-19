@@ -252,7 +252,7 @@
             return info ? info.price : base;
         };
         /**
-         * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF): price = Std Prc (page's LMP cap, no discounts), then the rule's %.
+         * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF): price = live Price + the rule's % (Up stops at the Std Prc).
          * Returns the new price, or 0 when the mode is not on or the rule does not change this SKU (then nothing is applied or pushed).
          * Server twin: EbayRuleSprice::price() with rule 'none'. capFn = the page's LMP cap (ebayCapSpriceToLmp / ebay2... / ebay3...).
          */
@@ -265,15 +265,28 @@
             const sku = String(row['(Child) sku'] || row.sku || '').toUpperCase();
             if (sku.indexOf('PARENT') !== -1) return 0;
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return 0;
+            // Compares with the live Price: the % comes off it. The rule acts once per price: when the saved S PRC already equals the
+            // live Price it holds (no compounding). Up stops at Std Prc (page's LMP cap), Down never goes above live.
+            const live = Math.round((parseFloat(row['eBay Price']) || parseFloat(row.Price) || 0) * 100) / 100;
+            if (!(live > 0)) return 0;
+            const savedRaw = row.SPRICE_SERVER !== undefined ? row.SPRICE_SERVER : row.SPRICE;
+            const saved = Number(savedRaw) || 0;
+            if (saved > 0 && Math.abs(saved - live) < 0.005) return 0;
             let std = 0;
             try { std = (window.SpriceLmpCap && typeof SpriceLmpCap.stdOf === 'function') ? Number(SpriceLmpCap.stdOf(row)) : (Number(row.STANDARD_PRICE) || 0); } catch (e) { std = 0; }
-            if (!(std > 0)) return 0;
-            let base = std;
-            try { if (typeof capFn === 'function') { const c = Number(capFn(row, std)); if (isFinite(c) && c > 0) base = c; } } catch (e) { base = std; }
-            base = Math.round(base * 100) / 100;
-            if (!(base > 0)) return 0;
-            const out = Number(window.ebayCvrRuleApplyToPrice(row, base));
-            return (isFinite(out) && out > 0 && Math.abs(out - base) >= 0.005) ? Math.round(out * 100) / 100 : 0;
+            let stdCapped = 0;
+            if (std > 0) {
+                stdCapped = std;
+                try { if (typeof capFn === 'function') { const c = Number(capFn(row, std)); if (isFinite(c) && c > 0) stdCapped = c; } } catch (e) { stdCapped = std; }
+            }
+            let out = Number(window.ebayCvrRuleApplyToPrice(row, live));
+            if (!isFinite(out) || !(out > 0)) return 0;
+            if (out > live) {
+                if (!(stdCapped > 0)) return 0;
+                out = Math.max(live, Math.min(out, stdCapped));
+            }
+            out = Math.round(out * 100) / 100;
+            return Math.abs(out - live) >= 0.005 ? out : 0;
         };
         /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
         window.ebayCvrRuleMarkHtml = function(row, base) {
