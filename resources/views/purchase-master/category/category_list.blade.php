@@ -235,7 +235,7 @@
                                                 <span class="text-muted fst-italic">No SKUs</span>
                                             @endif
                                         </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
+                                        <td class="text-center align-middle mfr-category-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                             <div class="d-flex justify-content-center align-items-center">
                                                 <div>
                                                     <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
@@ -309,6 +309,9 @@
                                             </td>
                                             <td class="text-center sku-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                                 {{ $cpSku['sku'] }}
+                                            </td>
+                                            <td class="text-center align-middle mfr-category-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
                                             </td>
                                         </tr>
                                     @endforeach
