@@ -605,6 +605,52 @@ class WayfairTrackingSyncService
     }
 
     /**
+     * Which extra fields does a Wayfair purchase order expose (tracking, shipped status)? Each guess is sent on its own
+     * and Wayfair either answers with a value, says the field needs a sub-selection (it exists), or says it does not exist.
+     *
+     * @return list<string>
+     */
+    public function debugPurchaseOrderFieldsProbe(string $poNumber): array
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['token failed: '.$e->getMessage()];
+        }
+        $run = function (string $selection) use ($token, $poNumber): string {
+            $query = 'query($po: [String]) { getDropshipPurchaseOrders(limit: 1, poNumbers: $po) { poNumber '.$selection.' } }';
+            $response = Http::withoutVerifying()->connectTimeout(8)->timeout(20)->withToken($token)
+                ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query, 'variables' => ['po' => [$poNumber]]]);
+            $json = $response->json();
+            if (! empty($json['errors'])) {
+                return mb_strimwidth((string) ($json['errors'][0]['message'] ?? 'error'), 0, 220, '…');
+            }
+            $rows = $json['data']['getDropshipPurchaseOrders'] ?? null;
+            if (! is_array($rows) || $rows === []) {
+                return 'accepted, but Wayfair returned no PO for this request';
+            }
+
+            return 'EXISTS, value: '.mb_strimwidth((string) json_encode($rows[0]), 0, 300, '…');
+        };
+
+        $lines = ['plain request (poNumber only): '.$run('')];
+        $scalars = ['trackingNumber', 'trackingNumbers', 'status', 'orderStatus', 'poStatus', 'purchaseOrderStatus', 'shipmentStatus',
+            'shipStatus', 'shippedDate', 'shipDate', 'shippedAt', 'deliveryDate', 'carrier', 'carrierName', 'carrierCode', 'hasShipped',
+            'isShipped', 'shipNoticeStatus', 'asnStatus', 'hasResponse', 'responseStatus', 'acceptanceStatus', 'state', 'labelStatus'];
+        foreach ($scalars as $field) {
+            $lines[] = "field {$field}: ".$run($field);
+        }
+        foreach (['shipments', 'shipment', 'shippingLabels', 'labels', 'shipNotice', 'asn', 'shipmentInfo', 'trackingInfo', 'response', 'acknowledgement', 'shippingInfo'] as $field) {
+            $lines[] = "object {$field}: ".$run($field);
+        }
+        foreach (['trackingNumber', 'shipDate', 'carrier', 'status', 'shippedAt', 'deliveryDate', 'labelGenerated', 'trackingNumbers', 'shipmentStatus'] as $field) {
+            $lines[] = "shippingInfo.{$field}: ".$run("shippingInfo { {$field} }");
+        }
+
+        return $lines;
+    }
+
+    /**
      * Wayfair's own description of the label events query (arguments and filter fields). For diagnostics only.
      */
     public function debugLabelEventsSchema(): string
