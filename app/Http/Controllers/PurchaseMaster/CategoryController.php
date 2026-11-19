@@ -738,6 +738,127 @@ class CategoryController extends Controller
     }
 
     /**
+     * Quick search over CP Master SKUs for the "Add products" modal. Matches SKU or parent (partial,
+     * case-insensitive). When category_id is given, each hit says whether it is already in that category.
+     */
+    public function categorySkuSearch(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        $category = $request->query('category_id') ? Category::find($request->query('category_id')) : null;
+        $mfrIds = $category ? $this->mfrCategoryIdsForName($category->name) : [];
+
+        $query = ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '');
+        if ($q !== '') {
+            $like = $this->likeContains($q);
+            $query->where(function ($w) use ($like) {
+                $w->where('sku', 'like', $like)->orWhere('parent', 'like', $like);
+            });
+        }
+
+        $items = $query->orderBy('sku')->limit(100)->get(['sku', 'parent', 'category_id', 'mfr_category_ids'])
+            ->map(function ($p) use ($mfrIds) {
+                $ids = $this->normalizeProductCategoryIds($p->mfr_category_ids, $p->category_id);
+
+                return [
+                    'sku' => (string) $p->sku,
+                    'parent' => (string) ($p->parent ?? ''),
+                    'already' => $mfrIds !== [] && count(array_intersect($ids, $mfrIds)) > 0,
+                ];
+            })->values();
+
+        return response()->json(['success' => true, 'items' => $items]);
+    }
+
+    /**
+     * Add CP Master SKUs to one or more categories (the category of the clicked row, or the categories of
+     * all selected rows). A category that has no matching CP Master MFR category yet gets one created,
+     * because that is what links SKUs to a category.
+     */
+    public function categoryRowsAdd(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'category_ids' => 'required|array|min:1|max:200',
+            'category_ids.*' => 'required|integer',
+            'skus' => 'required|array|min:1|max:500',
+            'skus.*' => 'required|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $categories = Category::query()->whereIn('id', $request->input('category_ids'))->get();
+        if ($categories->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'Category not found.'], 404);
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map('trim', $request->input('skus')), fn ($s) => $s !== '')));
+        $products = ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'category_id', 'mfr_category_ids']);
+        if ($products->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'None of those SKUs exist in CP Master.'], 422);
+        }
+
+        $added = 0;
+        foreach ($categories as $category) {
+            $mfrIds = $this->mfrCategoryIdsForName($category->name);
+            if ($mfrIds === []) {
+                try {
+                    $created = ProductCategory::create([
+                        'category_name' => trim((string) $category->name),
+                        'status' => 'active',
+                    ]);
+                } catch (\Throwable $e) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not create the MFR category "'.$category->name.'" in CP Master: '.$e->getMessage(),
+                    ], 500);
+                }
+                $mfrIds = [(int) $created->id];
+            }
+            $target = $mfrIds[0];
+
+            foreach ($products as $product) {
+                $current = $products->firstWhere('id', $product->id);
+                $ids = $this->normalizeProductCategoryIds($current->mfr_category_ids, $current->category_id);
+                if (count(array_intersect($ids, $mfrIds)) > 0) {
+                    continue;
+                }
+                $ids[] = $target;
+                // Query-builder update: avoids the model's saving hooks; JSON is encoded by hand.
+                ProductMaster::query()->whereKey($product->id)->update([
+                    'mfr_category_ids' => json_encode(array_values($ids)),
+                    'category_id' => $ids[0],
+                ]);
+                // Keep the in-memory copy current so adding to several categories accumulates.
+                $current->mfr_category_ids = array_values($ids);
+                $current->category_id = $ids[0];
+                $added++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $added === 1 ? '1 SKU added.' : $added.' SKU links added.',
+            'added' => $added,
+        ]);
+    }
+
+    /**
+     * @return list<int> ids of CP Master MFR categories whose name matches the category name
+     */
+    private function mfrCategoryIdsForName($name): array
+    {
+        $nameKey = mb_strtolower(trim((string) $name));
+        $ids = [];
+        foreach (ProductCategory::query()->get(['id', 'category_name']) as $mfrCategory) {
+            if (mb_strtolower(trim((string) $mfrCategory->category_name)) === $nameKey) {
+                $ids[] = (int) $mfrCategory->id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * @param  mixed  $mfrCategoryIds
      * @return list<int>
      */

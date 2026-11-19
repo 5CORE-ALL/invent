@@ -81,6 +81,10 @@
                                 <input class="form-check-input" type="checkbox" id="select-all">
                                 <label class="form-check-label" for="select-all">Select All</label>
                             </div>
+                            <button id="bulkAddBtn" class="btn btn-success btn-sm" disabled
+                                title="Add CP Master SKUs to the categories of the selected rows">
+                                <i class="mdi mdi-plus-box-multiple-outline"></i> Add Products
+                            </button>
                             <button id="bulkDeleteBtn" class="btn btn-danger btn-sm" disabled>
                                 <i class="mdi mdi-delete"></i> Delete Selected
                             </button>
@@ -184,8 +188,6 @@
                                         data-sort-key="suppliers" data-sort-type="num" title="Click to sort">Suppliers <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
                                         data-sort-key="product" data-sort-type="num" title="Click to sort">Product <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
-                                    <th class="text-center align-middle sortable-th" style="width: 12%; cursor: pointer; user-select: none; white-space: nowrap;"
-                                        data-sort-key="status" data-sort-type="text" title="Click to sort">Status <i class="mdi mdi-unfold-more-horizontal text-muted sort-icon"></i></th>
                                     <th class="text-center align-middle" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
@@ -218,7 +220,13 @@
                                             </div>
                                         </td>
                                         @else
-                                        <td class="text-center align-middle"></td>
+                                        <td class="text-center align-middle">
+                                            <div class="form-check d-flex justify-content-center align-items-center">
+                                                <input type="checkbox" class="form-check-input row-checkbox"
+                                                    data-category-id="{{ $category->id }}" data-sku=""
+                                                    style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
+                                            </div>
+                                        </td>
                                         @endif
                                         <td class="text-center parent-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                             @if ($firstSku && $firstSku['parent'] !== '')
@@ -291,12 +299,6 @@
                                                 <span class="text-muted">-</span>
                                             @endif
                                         </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
-                                            <span
-                                                class="badge {{ $category->status === 'active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }} px-3 py-2 rounded-pill">
-                                                {{ ucfirst($category->status) }}
-                                            </span>
-                                        </td>
                                         @if ($firstSku)
                                         <td class="text-center align-middle {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                             <div class="d-flex justify-content-center align-items-center gap-1">
@@ -304,6 +306,11 @@
                                                     data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
                                                     <i class="mdi mdi-square-edit-outline"></i>
                                                 </a>
+                                                <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
+                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                    title="Add products (SKUs) to this category">
+                                                    <i class="mdi mdi-plus-box-outline"></i>
+                                                </button>
                                             <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
                                                 data-category-id="{{ $category->id }}" data-sku="{{ $firstSku['sku'] }}"
                                                 title="Delete this row (removes the SKU from this MFR category)">
@@ -318,6 +325,11 @@
                                                     data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
                                                     <i class="mdi mdi-square-edit-outline"></i>
                                                 </a>
+                                                <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
+                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                    title="Add products (SKUs) to this category">
+                                                    <i class="mdi mdi-plus-box-outline"></i>
+                                                </button>
                                             </div>
                                         </td>
                                         @endif
@@ -359,6 +371,11 @@
                                                         data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
                                                         <i class="mdi mdi-square-edit-outline"></i>
                                                     </a>
+                                                    <button type="button" class="btn btn-soft-success btn-sm add-products-btn"
+                                                        data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                        title="Add products (SKUs) to this category">
+                                                        <i class="mdi mdi-plus-box-outline"></i>
+                                                    </button>
                                                 <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
                                                     data-category-id="{{ $category->id }}" data-sku="{{ $cpSku['sku'] }}"
                                                     title="Delete this row (removes the SKU from this MFR category)">
@@ -372,7 +389,7 @@
                             @empty
                                 <tbody>
                                     <tr>
-                                        <td colspan="9" class="text-center">No categories found</td>
+                                        <td colspan="8" class="text-center">No categories found</td>
                                     </tr>
                                 </tbody>
                             @endforelse
@@ -482,6 +499,48 @@
                                         </div>
                                     </div>
                     @endforeach
+                    {{-- Add products (SKUs) to a category: opened from a row, or in bulk for the selected rows --}}
+                    <div class="modal fade" id="addProductsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered modal-lg shadow-none">
+                            <div class="modal-content border-0 rounded-3">
+                                <div class="modal-header bg-primary text-white rounded-top">
+                                    <h5 class="modal-title">
+                                        <i class="mdi mdi-plus-box-outline me-1"></i>
+                                        Add products to <span id="apm-target"></span>
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="small text-muted mb-2" id="apm-note"></div>
+                                    <label class="form-label fw-semibold" for="apm-search">SKU (from CP Master)</label>
+                                    <input type="text" class="form-control" id="apm-search" autocomplete="off"
+                                        placeholder="Quick search by SKU or parent...">
+
+                                    <div class="d-flex justify-content-between align-items-center border rounded-top bg-light px-3 py-2 mt-2">
+                                        <div class="form-check mb-0">
+                                            <input class="form-check-input" type="checkbox" id="apm-select-all">
+                                            <label class="form-check-label fw-semibold" for="apm-select-all">Select all</label>
+                                        </div>
+                                        <div class="small text-muted">
+                                            <span id="apm-shown">0</span> shown &middot;
+                                            <span class="fw-semibold text-primary"><span id="apm-selected">0</span> selected</span>
+                                            <a href="#" id="apm-clear" class="ms-2">Clear</a>
+                                        </div>
+                                    </div>
+                                    <div id="apm-list" class="list-group list-group-flush border border-top-0 rounded-bottom"
+                                        style="max-height:320px; overflow-y:auto;"></div>
+                                    <div class="form-text">Selections are kept while you search. SKUs already in the category are greyed out.</div>
+                                    <div class="text-danger small mt-2" id="apm-error" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="apm-submit" disabled>
+                                        <i class="mdi mdi-plus me-1"></i> Add <span id="apm-submit-count">0</span> SKUs
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="d-flex justify-content-end mt-3 text-muted small">
                         Showing all {{ count($categories) }} {{ \Illuminate\Support\Str::plural('category', count($categories)) }}
                     </div>
@@ -655,7 +714,8 @@
 
             // Enable/disable the bulk delete button
             $(document).on('change', '.row-checkbox', function() {
-                $('#bulkDeleteBtn').prop('disabled', $('.row-checkbox:checked').length === 0);
+                const anyChecked = $('.row-checkbox:checked').length > 0;
+                $('#bulkDeleteBtn, #bulkAddBtn').prop('disabled', !anyChecked);
             });
 
             // Delete selected rows in bulk
@@ -664,9 +724,15 @@
                 let count = 0;
                 $('.row-checkbox:checked').each(function() {
                     const categoryId = $(this).data('category-id');
-                    (selection[categoryId] = selection[categoryId] || []).push(String($(this).data('sku')));
+                    const sku = String($(this).data('sku') || '');
+                    if (!sku) return; // a category with no SKU rows has nothing to delete
+                    (selection[categoryId] = selection[categoryId] || []).push(sku);
                     count++;
                 });
+                if (!count) {
+                    alert('The selected rows have no SKUs to delete.');
+                    return;
+                }
                 deleteRows(selection, 'Delete ' + count + ' selected row' + (count === 1 ? '' : 's') +
                     '? Each SKU will be removed from this MFR category (it stays in CP Master).');
             });
@@ -928,6 +994,162 @@
             });
             $(document).on('keydown', '.cat-combo-input', function(e) {
                 if (e.key === 'Escape') close($(this).closest('.cat-combo'));
+            });
+        })();
+    </script>
+    <script>
+        (function() {
+            const searchUrl = '{{ url('/category/sku-search') }}';
+            const addUrl = '{{ url('/category/rows/add') }}';
+            const csrf = $('meta[name="csrf-token"]').attr('content');
+            const $modal = $('#addProductsModal');
+            let targets = [];           // [{id, name}]
+            let selected = new Map();   // sku -> true (kept across searches)
+            let shown = [];             // items currently listed
+            let timer = null;
+            let reqSeq = 0;
+
+            function esc(v) { return $('<div>').text(v == null ? '' : v).html(); }
+
+            function selectableShown() { return shown.filter(function(i) { return !i.already; }); }
+
+            function refreshCounts() {
+                const n = selected.size;
+                const sel = selectableShown();
+                const selShown = sel.filter(function(i) { return selected.has(i.sku); }).length;
+                $('#apm-shown').text(shown.length);
+                $('#apm-selected').text(n);
+                $('#apm-submit-count').text(n);
+                $('#apm-submit').prop('disabled', n === 0);
+                const all = $('#apm-select-all');
+                all.prop('disabled', sel.length === 0);
+                all.prop('checked', sel.length > 0 && selShown === sel.length);
+                all.prop('indeterminate', selShown > 0 && selShown < sel.length);
+            }
+
+            function render() {
+                const $list = $('#apm-list').empty();
+                if (!shown.length) {
+                    $list.append('<div class="list-group-item text-muted small">No SKUs found.</div>');
+                }
+                shown.forEach(function(item, idx) {
+                    const id = 'apm-item-' + idx;
+                    const $row = $('<label class="list-group-item d-flex align-items-center gap-2 mb-0"></label>')
+                        .attr('for', id).css('cursor', item.already ? 'not-allowed' : 'pointer');
+                    const $cb = $('<input type="checkbox" class="form-check-input apm-item mt-0">')
+                        .attr('id', id).attr('data-sku', item.sku)
+                        .prop('checked', selected.has(item.sku) || false).prop('disabled', !!item.already);
+                    const $txt = $('<span class="flex-grow-1"></span>').html(
+                        '<span class="fw-semibold">' + esc(item.sku) + '</span>' +
+                        (item.parent ? ' <span class="text-muted small">&middot; ' + esc(item.parent) + '</span>' : '') +
+                        (item.already ? ' <span class="badge bg-secondary-subtle text-secondary ms-1">already in category</span>' : ''));
+                    if (item.already) $row.addClass('text-muted bg-light');
+                    $row.append($cb, $txt);
+                    $list.append($row);
+                });
+                refreshCounts();
+            }
+
+            function search() {
+                const seq = ++reqSeq;
+                const params = { q: $('#apm-search').val() };
+                if (targets.length === 1) params.category_id = targets[0].id;
+                $('#apm-list').html('<div class="list-group-item text-muted small">Searching...</div>');
+                $.getJSON(searchUrl, params).done(function(res) {
+                    if (seq !== reqSeq) return;
+                    shown = res.items || [];
+                    render();
+                }).fail(function() {
+                    if (seq !== reqSeq) return;
+                    shown = [];
+                    $('#apm-list').html('<div class="list-group-item text-danger small">Could not load SKUs.</div>');
+                    refreshCounts();
+                });
+            }
+
+            function openModal(list) {
+                targets = list;
+                selected = new Map();
+                shown = [];
+                $('#apm-search').val('');
+                $('#apm-error').hide();
+                if (list.length === 1) {
+                    $('#apm-target').text(list[0].name);
+                    $('#apm-note').text('The selected SKUs will be linked to this category.');
+                } else {
+                    $('#apm-target').text(list.length + ' categories');
+                    $('#apm-note').text('The selected SKUs will be added to: ' + list.map(function(c) { return c.name; }).join(', '));
+                }
+                refreshCounts();
+                bootstrap.Modal.getOrCreateInstance($modal[0]).show();
+                search();
+                setTimeout(function() { $('#apm-search').trigger('focus'); }, 300);
+            }
+
+            // Per-row button
+            $(document).on('click', '.add-products-btn', function() {
+                openModal([{ id: $(this).data('category-id'), name: String($(this).data('category-name')) }]);
+            });
+
+            // Bulk: categories of the selected rows
+            $('#bulkAddBtn').on('click', function() {
+                const seen = new Map();
+                $('.row-checkbox:checked').each(function() {
+                    const id = $(this).data('category-id');
+                    if (!seen.has(id)) {
+                        const name = $(this).closest('tbody').find('.add-products-btn').first().data('category-name');
+                        seen.set(id, { id: id, name: String(name || ('#' + id)) });
+                    }
+                });
+                if (!seen.size) return;
+                openModal(Array.from(seen.values()));
+            });
+
+            $('#apm-search').on('input', function() {
+                clearTimeout(timer);
+                timer = setTimeout(search, 250);
+            });
+
+            $(document).on('change', '.apm-item', function() {
+                const sku = String($(this).data('sku'));
+                if (this.checked) selected.set(sku, true); else selected.delete(sku);
+                refreshCounts();
+            });
+
+            $('#apm-select-all').on('change', function() {
+                const on = this.checked;
+                selectableShown().forEach(function(i) { if (on) selected.set(i.sku, true); else selected.delete(i.sku); });
+                $('.apm-item:not(:disabled)').prop('checked', on);
+                refreshCounts();
+            });
+
+            $('#apm-clear').on('click', function(e) {
+                e.preventDefault();
+                selected.clear();
+                $('.apm-item').prop('checked', false);
+                refreshCounts();
+            });
+
+            $('#apm-submit').on('click', function() {
+                if (!selected.size) return;
+                const $btn = $(this).prop('disabled', true);
+                $('#apm-error').hide();
+                $.ajax({
+                    url: addUrl,
+                    method: 'POST',
+                    dataType: 'json',
+                    data: {
+                        _token: csrf,
+                        category_ids: targets.map(function(c) { return c.id; }),
+                        skus: Array.from(selected.keys())
+                    }
+                }).done(function() {
+                    location.reload();
+                }).fail(function(xhr) {
+                    const msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.';
+                    $('#apm-error').text(msg).show();
+                    $btn.prop('disabled', false);
+                });
             });
         })();
     </script>

@@ -288,6 +288,7 @@
                         <i class="fa fa-chart-line me-1"></i>
                         <span id="sam-trend-title">Trend</span>
                     </h6>
+                    
                     <div class="ms-auto d-flex align-items-center gap-2">
                         <select id="sam-trend-channel" class="form-select form-select-sm" style="width:auto;">
                             <option value="__total__">All channels</option>
