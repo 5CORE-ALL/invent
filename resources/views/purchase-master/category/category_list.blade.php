@@ -167,12 +167,12 @@
                                                 </tr>
                                             </tfoot>
                                         </table>
-                                    </div>
+                                        </div>
                                     <div class="d-flex gap-2 align-items-center mt-3">
                                         <label for="csm-existing" class="form-label fw-semibold mb-0">Or link an existing supplier:</label>
                                         <select id="csm-existing" class="form-select form-select-sm" style="max-width:320px">
                                             <option value="">Select supplier...</option>
-                                        </select>
+                                            </select>
                                         <button type="button" class="btn btn-outline-primary btn-sm" id="csm-link-existing">
                                             <i class="mdi mdi-link-variant"></i> Link
                                         </button>
