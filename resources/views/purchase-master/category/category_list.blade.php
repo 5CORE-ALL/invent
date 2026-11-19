@@ -1229,32 +1229,48 @@
         });
 
         // Uncategorised rows (Parent / SKU search): add the SKU to a category found with the quick search.
+        // If the typed name is not an existing category, the same button creates it and adds the SKU.
         (function() {
             const modalEl = document.getElementById('assignCategoryModal');
             if (!modalEl) return;
             const categories = @json(collect($allCategories ?? [])->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name])->values());
             let sku = '';
-            let chosen = null;
+            let chosen = null; // {id, name} or {id: null, name, isNew: true}
 
-            function render() {
-                const q = $.trim($('#acm-search').val()).toLowerCase();
+            const typed = function() { return $.trim($('#acm-search').val()); };
+            const exactMatch = function(name) {
+                const n = name.toLowerCase();
+                return categories.find(function(c) { return c.name.toLowerCase() === n; }) || null;
+            };
+            // What the button will use: the picked item, else what is typed (existing name, or a new one)
+            const target = function() {
+                if (chosen) return chosen;
+                const t = typed();
+                if (!t) return null;
+                return exactMatch(t) || { id: null, name: t, isNew: true };
+            };
+
+            function refresh() {
+                const q = typed().toLowerCase();
                 const $list = $('#acm-list').empty();
                 const hits = categories.filter(function(c) { return !q || c.name.toLowerCase().indexOf(q) !== -1; });
+                if (q && !exactMatch(typed())) {
+                    $list.append($('<button type="button" class="list-group-item list-group-item-action py-2 text-primary fw-semibold acm-new"></button>')
+                        .text('+ Create new category "' + typed() + '"'));
+                }
                 hits.forEach(function(c) {
                     const $item = $('<button type="button" class="list-group-item list-group-item-action py-2 acm-item"></button>')
                         .text(c.name).attr('data-id', c.id);
                     if (chosen && chosen.id === c.id) $item.addClass('active');
                     $list.append($item);
                 });
-                if (!hits.length) $list.append('<div class="list-group-item text-muted small">No category matches.</div>');
-            }
+                if (!hits.length && !q) $list.append('<div class="list-group-item text-muted small">No categories yet - type a name to create one.</div>');
 
-            function choose(c) {
-                chosen = c;
-                $('#acm-chosen-name').text(c ? c.name : '');
-                $('#acm-chosen').toggle(!!c);
-                $('#acm-submit').prop('disabled', !c);
-                render();
+                const t = target();
+                $('#acm-chosen-name').text(t ? t.name + (t.isNew ? ' (new category)' : '') : '');
+                $('#acm-chosen').toggle(!!t);
+                $('#acm-submit').prop('disabled', !t)
+                    .html('<i class="mdi mdi-plus me-1"></i> ' + (t && t.isNew ? 'Create category and add SKU' : 'Add to category'));
             }
 
             $(document).on('click', '.assign-category-btn', function() {
@@ -1262,35 +1278,72 @@
                 $('#acm-sku').text(sku);
                 $('#acm-search').val('');
                 $('#acm-error').hide();
-                choose(null);
+                chosen = null;
+                refresh();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 setTimeout(function() { $('#acm-search').trigger('focus'); }, 300);
             });
-            $('#acm-search').on('input', render);
+            $('#acm-search').on('input', function() { chosen = null; refresh(); });
             $('#acm-search').on('keydown', function(e) {
                 if (e.key !== 'Enter') return;
                 e.preventDefault();
+                const exact = exactMatch(typed());
                 const first = $('#acm-list .acm-item').first();
-                if (first.length) choose(categories.find(function(c) { return c.id === parseInt(first.attr('data-id'), 10); }));
+                if (exact) chosen = exact;
+                else if (first.length) chosen = categories.find(function(c) { return c.id === parseInt(first.attr('data-id'), 10); });
+                else if (typed()) chosen = { id: null, name: typed(), isNew: true };
+                refresh();
             });
             $(document).on('click', '.acm-item', function() {
                 const id = parseInt($(this).attr('data-id'), 10);
-                choose(categories.find(function(c) { return c.id === id; }));
+                chosen = categories.find(function(c) { return c.id === id; });
+                refresh();
             });
-            $('#acm-submit').on('click', function() {
-                if (!chosen || !sku) return;
-                const $btn = $(this).prop('disabled', true);
+            $(document).on('click', '.acm-new', function() {
+                chosen = { id: null, name: typed(), isNew: true };
+                refresh();
+            });
+
+            function showError(xhr) {
+                let msg = 'Server error occurred.';
+                if (xhr && xhr.responseJSON) {
+                    if (xhr.responseJSON.errors) msg = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                    else if (xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                }
+                $('#acm-error').text(msg).show();
+                $('#acm-submit').prop('disabled', false);
+            }
+
+            function addSku(categoryId) {
                 $.ajax({
                     url: '{{ url('/category/rows/add') }}',
                     method: 'POST',
                     dataType: 'json',
-                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [chosen.id], skus: [sku] }
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: [sku] }
                 }).done(function() {
                     location.reload();
-                }).fail(function(xhr) {
-                    $('#acm-error').text(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.').show();
-                    $btn.prop('disabled', false);
-                });
+                }).fail(showError);
+            }
+
+            $('#acm-submit').on('click', function() {
+                const t = target();
+                if (!t || !sku) return;
+                $(this).prop('disabled', true);
+                $('#acm-error').hide();
+                if (t.id) {
+                    addSku(t.id);
+                    return;
+                }
+                // New category: create it first, then add the SKU to it
+                $.ajax({
+                    url: '{{ route('category.create') }}',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_name: t.name }
+                }).done(function(res) {
+                    if (res && res.success && res.category && res.category.id) addSku(res.category.id);
+                    else showError({ responseJSON: { message: (res && res.message) || 'Could not create the category.' } });
+                }).fail(showError);
             });
         })();
     </script>
