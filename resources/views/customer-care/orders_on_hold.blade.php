@@ -214,11 +214,35 @@
         }
 
         .orders-hold-channel-filter {
-            min-width: 110px;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
             font-size: 11px;
-            padding-top: 2px;
-            padding-bottom: 2px;
+            padding: 1px 16px 1px 2px;
             font-weight: normal;
+        }
+
+        .orders-hold-table thead th.hold-sort {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .orders-hold-table thead th.hold-sort .hold-sort-label::after {
+            content: '↕';
+            margin-left: 4px;
+            font-size: 10px;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+
+        .orders-hold-table thead th.hold-sort.is-asc .hold-sort-label::after {
+            content: '↑';
+            color: #2563eb;
+        }
+
+        .orders-hold-table thead th.hold-sort.is-desc .hold-sort-label::after {
+            content: '↓';
+            color: #2563eb;
         }
 
         .orders-hold-toolbar > * {
@@ -228,6 +252,13 @@
 
         .orders-hold-toolbar .badge {
             height: 31px;
+            min-width: 118px;
+            padding: 0 16px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
         }
 
         .l30-badge {
@@ -239,6 +270,17 @@
 
         .l30-badge.is-on {
             box-shadow: 0 0 0 2px #fff, 0 0 0 4px #db2777;
+        }
+
+        .rc-pending-badge {
+            background: #d97706 !important;
+            color: #fff !important;
+            cursor: pointer;
+            border: 0;
+        }
+
+        .rc-pending-badge.is-on {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #d97706;
         }
 
         .l30-hist-dot {
@@ -730,7 +772,7 @@
                         <select id="orders-hold-date-range" class="form-select form-select-sm" style="width: 150px;"
                             title="Filter by Order Date (Created date when the order date is unknown)">
                             <option value="">All dates</option>
-                            <option value="l30">L30</option>
+                            <option value="l30" selected>L30</option>
                             <option value="custom">Custom range</option>
                         </select>
                         <div id="orders-hold-date-custom" class="d-none align-items-center gap-1">
@@ -750,49 +792,51 @@
                             <button type="button" class="l30-hist-dot" id="l30HistDot"
                                 title="L30 graph and history" aria-label="Show L30 graph and history"></button>
                         </span>
+                        <span class="badge rc-pending-badge fs-6 text-nowrap" id="rcPendingBadge"
+                            role="button" tabindex="0" title="Cases with no Root Cause Fixed. Click to show only those rows.">
+                            RC Pending: <span id="rc_pending_count">0</span>
+                        </span>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table" id="ordersHoldTable">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="orders-hold-col-idx">#</th>
-                                    <th class="orders-hold-col-qty">Image</th>
-                                    <th class="orders-hold-col-sku">SKU</th>
-                                    <th class="orders-hold-col-qty">Shopify</th>
-                                    <th class="orders-hold-col-action">Ord</th>
-                                    <th class="orders-hold-col-created-at" title="Date the order was placed on the marketplace">Order Date</th>
-                                    <th class="orders-hold-col-qty">Qty Avl</th>
-                                    <th class="orders-hold-col-qty">Order Qty</th>
-                                    <th class="orders-hold-col-parent parent-col">Parent</th>
-                                    <th class="orders-hold-col-mp">
-                                        <div>MKT1</div>
+                                    <th class="orders-hold-col-idx hold-sort" data-sort="id" data-type="num" title="Click to sort"><span class="hold-sort-label">#</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="image" data-type="text" title="Click to sort"><span class="hold-sort-label">Image</span></th>
+                                    <th class="orders-hold-col-sku hold-sort" data-sort="sku" data-type="text" title="Click to sort"><span class="hold-sort-label">SKU</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="shopify" data-type="text" title="Click to sort"><span class="hold-sort-label">Shopify</span></th>
+                                    <th class="orders-hold-col-action hold-sort" data-sort="ord" data-type="text" title="Click to sort"><span class="hold-sort-label">Ord</span></th>
+                                    <th class="orders-hold-col-created-at hold-sort" data-sort="date" data-type="text" title="Click to sort by order date"><span class="hold-sort-label">Order Date</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="qty" data-type="num" title="Click to sort"><span class="hold-sort-label">Qty Avl</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="oqty" data-type="num" title="Click to sort"><span class="hold-sort-label">Order Qty</span></th>
+                                    <th class="orders-hold-col-parent parent-col hold-sort" data-sort="parent" data-type="text" title="Click to sort"><span class="hold-sort-label">Parent</span></th>
+                                    <th class="orders-hold-col-mp hold-sort" data-sort="mkt1" data-type="text" title="Click the name to sort">
+                                        <div class="hold-sort-label">MKT1</div>
                                         <select id="channel-filter-select" class="form-select form-select-sm mt-1 orders-hold-channel-filter"
                                             title="Filter by channel (MKT1)" aria-label="Filter by channel">
                                             <option value="">All</option>
                                         </select>
                                     </th>
-                                    <th class="orders-hold-col-mp">MKT2</th>
-                                    <th class="orders-hold-col-qty">M link</th>
-                                    <th class="orders-hold-col-what">Issue?</th>
-                                    <th class="orders-hold-col-qty">Options</th>
-                                    <th class="orders-hold-col-action cc-action-col" title="Customer Care Action">CC
-                                        action</th>
-                                    <th class="orders-hold-col-qty" title="Customer Care Action">CC Action</th>
-                                    <th class="orders-hold-col-created-at" title="Customer Care Action change history">
-                                        CC History</th>
-                                    <th class="orders-hold-col-issue">
-                                        <div>Root Cause</div>
+                                    <th class="orders-hold-col-mp hold-sort" data-sort="mkt2" data-type="text" title="Click to sort"><span class="hold-sort-label">MKT2</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="mlink" data-type="text" title="Click to sort"><span class="hold-sort-label">M link</span></th>
+                                    <th class="orders-hold-col-what hold-sort" data-sort="issue" data-type="text" title="Click to sort"><span class="hold-sort-label">Issue?</span></th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="options" data-type="text" title="Click to sort"><span class="hold-sort-label">Options</span></th>
+                                    <th class="orders-hold-col-action cc-action-col" title="Customer Care Action">CC action</th>
+                                    <th class="orders-hold-col-qty hold-sort" data-sort="label" data-type="text" title="Click to sort"><span class="hold-sort-label">CC Action</span></th>
+                                    <th class="orders-hold-col-created-at hold-sort" data-sort="history" data-type="num" title="Click to sort"><span class="hold-sort-label">CC History</span></th>
+                                    <th class="orders-hold-col-issue hold-sort" data-sort="root" data-type="text" title="Click the name to sort">
+                                        <div class="hold-sort-label">Root Cause</div>
                                         <select id="root-cause-filter-select" class="form-select form-select-sm mt-1 orders-hold-channel-filter"
                                             title="Filter by root cause" aria-label="Filter by root cause">
                                             <option value="">All</option>
                                         </select>
                                     </th>
-                                    <th class="orders-hold-col-action">Root Cause Fixed</th>
+                                    <th class="orders-hold-col-action hold-sort" data-sort="fixed" data-type="text" title="Click to sort"><span class="hold-sort-label">Root Cause Fixed</span></th>
                                     <th class="orders-hold-col-close">Close</th>
-                                    <th class="orders-hold-col-mp">Dept</th>
-                                    <th class="orders-hold-col-created-at">Created</th>
+                                    <th class="orders-hold-col-mp hold-sort" data-sort="dept" data-type="text" title="Click to sort"><span class="hold-sort-label">Dept</span></th>
+                                    <th class="orders-hold-col-created-at hold-sort" data-sort="created" data-type="text" title="Click to sort"><span class="hold-sort-label">Created</span></th>
                                 </tr>
                             </thead>
                             <tbody id="hold_issue_table_body">
@@ -1672,6 +1716,11 @@
             }
 
             let activeRootCauseFilter = '';
+            let activeRootCausePending = false;
+
+            function rowRootCausePending(r) {
+                return String(r?.c_action_1 || '').trim() === '';
+            }
 
             function rowRootCause(r) {
                 return String(r?.issue || '').trim();
@@ -1716,7 +1765,7 @@
                 return { from: localYmd(start), to: localYmd(today) };
             }
 
-            function rowsMatchingFilters(includeDate) {
+            function rowsMatchingFilters(includeDate, includePending) {
                 let rows = holdIssueRows;
                 if (activeChannelFilter) rows = rows.filter(rowMatchesChannelFilter);
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
@@ -1724,12 +1773,60 @@
                 if (activeParentQuery) rows = rows.filter(rowMatchesParentQuery);
                 if (activeRootCauseFilter) rows = rows.filter(rowMatchesRootCauseFilter);
                 if (includeDate && (activeDateRange.from || activeDateRange.to)) rows = rows.filter(rowMatchesDateRange);
+                if (includePending !== false && activeRootCausePending) rows = rows.filter(rowRootCausePending);
                 return rows;
+            }
+
+            let holdSort = { key: '', dir: 'asc', type: 'text' };
+
+            function holdSortValue(row, key) {
+                switch (key) {
+                    case 'id': return Number(row?.id) || 0;
+                    case 'image': return String(row?.image_url || '').trim() ? '1' : '0';
+                    case 'sku': return String(row?.sku || '');
+                    case 'shopify': return String(row?.sku || '');
+                    case 'ord': return String(row?.order_number || '');
+                    case 'date': return rowDateKey(row);
+                    case 'qty': return Number(row?.qty) || 0;
+                    case 'oqty': return Number(row?.order_qty) || 0;
+                    case 'parent': return String(row?.parent || '');
+                    case 'mkt1': return String(row?.marketplace_1 || '');
+                    case 'mkt2': return String(row?.marketplace_2 || '');
+                    case 'mlink': return String(row?.m_link || '').trim() ? '1' : '0';
+                    case 'issue': return String(row?.what_happened || '');
+                    case 'options': {
+                        const o = rowOptions(row);
+                        if (o.no_options) return '0';
+                        return (o.variant_skus.length || o.upgrade_skus.length) ? '2' : '1';
+                    }
+                    case 'label': {
+                        const state = labelDotState(row);
+                        return state === 'green' ? '2' : (state === 'blue' ? '1' : '0');
+                    }
+                    case 'history': return Array.isArray(row?.cc_action_history) ? row.cc_action_history.length : 0;
+                    case 'root': return String(row?.issue || '');
+                    case 'fixed': return String(row?.c_action_1 || '');
+                    case 'dept': return rowDepartments(row).join(', ');
+                    case 'created': return String(row?.created_at_raw || '');
+                    default: return '';
+                }
+            }
+
+            function applyHoldSort(rows) {
+                if (!holdSort.key) return rows;
+                const dir = holdSort.dir === 'desc' ? -1 : 1;
+                const numeric = holdSort.type === 'num';
+                return rows.slice().sort((a, b) => {
+                    const av = holdSortValue(a, holdSort.key);
+                    const bv = holdSortValue(b, holdSort.key);
+                    if (numeric) return (av - bv) * dir;
+                    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+                });
             }
 
             function l30Rows() {
                 const bounds = l30Bounds();
-                return rowsMatchingFilters(false).filter(r => {
+                return rowsMatchingFilters(false, false).filter(r => {
                     const key = rowDateKey(r);
                     return key && key >= bounds.from && key <= bounds.to;
                 });
@@ -1743,8 +1840,16 @@
                 if (badge) badge.classList.toggle('is-on', rangeSelect && rangeSelect.value === 'l30');
             }
 
+            function updateRcPendingBadge() {
+                const countEl = document.getElementById('rc_pending_count');
+                const badge = document.getElementById('rcPendingBadge');
+                const count = rowsMatchingFilters(true, false).filter(rowRootCausePending).length;
+                if (countEl) countEl.textContent = String(count);
+                if (badge) badge.classList.toggle('is-on', activeRootCausePending);
+            }
+
             function getFilteredRows() {
-                return rowsMatchingFilters(true);
+                return applyHoldSort(rowsMatchingFilters(true));
             }
 
             function buildDeptFilters() {
@@ -1912,6 +2017,7 @@
                 buildChannelFilter();
                 buildRootCauseFilter();
                 updateL30Badge();
+                updateRcPendingBadge();
                 const rows = getFilteredRows();
 
                 if (!rows.length) {
@@ -2996,6 +3102,30 @@
                 });
             })();
 
+            (function initHoldSort() {
+                const headers = document.querySelectorAll('#ordersHoldTable thead th.hold-sort');
+                headers.forEach(th => {
+                    th.addEventListener('click', (e) => {
+                        if (e.target.closest('select, option, button, input, a')) return;
+                        const key = th.getAttribute('data-sort') || '';
+                        if (!key) return;
+                        if (holdSort.key === key) holdSort.dir = holdSort.dir === 'asc' ? 'desc' : 'asc';
+                        else {
+                            holdSort.key = key;
+                            holdSort.dir = 'asc';
+                            holdSort.type = th.getAttribute('data-type') || 'text';
+                        }
+                        headers.forEach(el => {
+                            el.classList.remove('is-asc', 'is-desc');
+                            el.removeAttribute('aria-sort');
+                        });
+                        th.classList.add(holdSort.dir === 'asc' ? 'is-asc' : 'is-desc');
+                        th.setAttribute('aria-sort', holdSort.dir === 'asc' ? 'ascending' : 'descending');
+                        renderRows();
+                    });
+                });
+            })();
+
             (function initRootCauseFilter() {
                 const select = document.getElementById('root-cause-filter-select');
                 if (!select) return;
@@ -3045,6 +3175,23 @@
                 });
                 fromInput.addEventListener('change', apply);
                 toInput.addEventListener('change', apply);
+                rangeSelect.value = 'l30';
+                apply();
+            })();
+
+            (function initRcPendingBadge() {
+                const badge = document.getElementById('rcPendingBadge');
+                if (!badge) return;
+                const toggle = () => {
+                    activeRootCausePending = !activeRootCausePending;
+                    renderRows();
+                };
+                badge.addEventListener('click', toggle);
+                badge.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    toggle();
+                });
             })();
 
             (function initL30History() {

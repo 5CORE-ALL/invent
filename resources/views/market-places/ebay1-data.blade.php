@@ -726,8 +726,37 @@
                 keys.forEach(function (key) { addTab(key, catLabel(key), key, counts.get(key)); });
             }
 
+            // A specific named SKU is not a column (the SKU column is already on the left), so it is not a missing spec.
+            const SPEC_NOT_A_COLUMN = new Set(['sku']);
+
+            function displayedSpecGroups(tabRows) {
+                const counts = new Map();
+                tabRows.forEach(function (row) {
+                    if (!row.specifics || Array.isArray(row.specifics)) return;
+                    Object.keys(row.specifics).forEach(function (name) {
+                        counts.set(name, (counts.get(name) || 0) + 1);
+                    });
+                });
+                const groups = new Map();
+                counts.forEach(function (n, name) {
+                    const canon = gKey(String(name).replace(/\([^)]*\)/g, '')) || gKey(name);
+                    if (SPEC_NOT_A_COLUMN.has(canon)) return;
+                    if (!groups.has(canon)) groups.set(canon, []);
+                    groups.get(canon).push(name);
+                });
+                const out = [];
+                groups.forEach(function (names) {
+                    names.sort(function (a, b) {
+                        return (counts.get(b) - counts.get(a)) || (a.length - b.length) || a.localeCompare(b);
+                    });
+                    out.push(names);
+                });
+                return out;
+            }
+
             // Missing values of every column of each tab added up (the same rule as the red number on a column header:
             // every row of the tab counts, columns hidden with Hide Columns do not). The All tab has the page columns only.
+            // "Missing specifics" counts only the item-specific columns that category tab shows.
             function tabMissingTotals() {
                 const baseFields = [];
                 baseColumns().forEach(function (c) {
@@ -742,12 +771,14 @@
                     tab.rows.push(row);
                     if (row.specifics && !Array.isArray(row.specifics)) {
                         Object.keys(row.specifics).forEach(function (name) {
+                            const canon = gKey(String(name).replace(/\([^)]*\)/g, '')) || gKey(name);
+                            if (SPEC_NOT_A_COLUMN.has(canon)) return;
                             const field = specKey(name);
                             if (!hiddenFields.has(field)) {
                                 tab.fields.add(field);
                                 // "Color" and "Color (Main)" are one column on screen, so they count once.
                                 tab.canon = tab.canon || new Map();
-                                tab.canon.set(field, gKey(String(name).replace(/\([^)]*\)/g, '')) || gKey(name));
+                                tab.canon.set(field, canon);
                             }
                         });
                     }
@@ -756,7 +787,7 @@
                 const specBase = new Set(baseFields);
                 const spec = { missing: 0, cells: 0, categories: [] };
                 byTab.forEach(function (tab, key) {
-                    let sum = 0, specSum = 0, specCells = 0;
+                    let sum = 0;
                     const groups = new Map();
                     tab.fields.forEach(function (field) {
                         const canon = specBase.has(field) || !tab.canon ? field : 'c:' + (tab.canon.get(field) || field);
@@ -764,22 +795,36 @@
                         groups.get(canon).push(field);
                     });
                     groups.forEach(function (group) {
-                        const isSpec = !specBase.has(group[0]);
                         for (let i = 0; i < tab.rows.length; i++) {
-                            const miss = group.every(function (field) { return isMissingValue(tab.rows[i][field]); });
-                            if (miss) sum++;
-                            if (isSpec) {
-                                specCells++;
-                                if (miss) specSum++;
-                            }
+                            if (group.every(function (field) { return isMissingValue(tab.rows[i][field]); })) sum++;
                         }
                     });
                     totals.set(key, sum);
-                    if (key !== ALL) {
-                        spec.missing += specSum;
-                        spec.cells += specCells;
-                        spec.categories.push({ name: key, missing: specSum, cells: specCells });
-                    }
+                    if (key === ALL) return;
+                    let specSum = 0, specCells = 0;
+                    const columns = [];
+                    displayedSpecGroups(tab.rows).forEach(function (names) {
+                        let colMiss = 0;
+                        for (let i = 0; i < tab.rows.length; i++) {
+                            specCells++;
+                            const row = tab.rows[i];
+                            // A cell is missing only when every spelling of that column is empty, which is what the
+                            // table shows after "Color" and "Color (Main)" are merged into one column.
+                            const miss = names.every(function (name) {
+                                const raw = row.specifics && !Array.isArray(row.specifics) ? row.specifics[name] : undefined;
+                                return isMissingValue(raw) && isMissingValue(row[specKey(name)]);
+                            });
+                            if (miss) {
+                                specSum++;
+                                colMiss++;
+                            }
+                        }
+                        if (colMiss) columns.push({ name: names[0], missing: colMiss });
+                    });
+                    columns.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
+                    spec.missing += specSum;
+                    spec.cells += specCells;
+                    spec.categories.push({ name: key, missing: specSum, cells: specCells, columns: columns });
                 });
                 spec.categories.sort(function (a, b) { return b.missing - a.missing || a.name.localeCompare(b.name); });
                 specMissing = spec;
@@ -1001,8 +1046,15 @@
                     body.innerHTML = '<div class="alert alert-danger small">Could not load the history.</div>';
                     return;
                 }
+                const liveCols = specMissing.categories.filter(function (c) { return c.missing > 0; }).slice(0, 12).map(function (c) {
+                    const cols = (c.columns || []).slice(0, 8).map(function (col) {
+                        return esc(col.name) + ' ' + Number(col.missing).toLocaleString();
+                    }).join(', ');
+                    return '<div class="e1d-misscat"><span>' + esc(catLabel(c.name)) + (cols ? ' (' + cols + ')' : '') + '</span><b>' + Number(c.missing).toLocaleString() + '</b></div>';
+                }).join('');
                 const live = '<div class="e1d-misslive"><b>Now:</b> ' + specMissing.missing.toLocaleString() + ' of ' + specMissing.cells.toLocaleString()
-                    + ' item specific cells have no data, over ' + specMissing.categories.length + ' categories.</div>';
+                    + ' item specific cells have no data, over ' + specMissing.categories.length + ' categories.</div>'
+                    + (liveCols ? '<div class="e1d-misslive">' + liveCols + '</div>' : '');
                 if (!days.length) {
                     body.innerHTML = live + '<div class="small text-muted p-2">' + esc(note || 'No history yet. Today\u2019s figure is saved a few seconds after the page loads, and a new row is added every day the page is opened.') + '</div>';
                     return;
@@ -1100,7 +1152,8 @@
             }
 
             // Red count on every header: how many rows of the open tab have no data in that column, missing listings included.
-            const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed']);
+            // Views, click and reason columns are traffic data, not missing item specifics, so they stay out of the count.
+            const E1_NO_MISS = new Set(['_edit', '_copy', 'nr_req', 'listed', 'views', 'l7_views', 'l1_views', 'organic_clicks', 'inactive_reason']);
 
             function isMissingValue(value) {
                 if (value === null || value === undefined) return true;
