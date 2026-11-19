@@ -146,20 +146,45 @@ final class PmtBenchmarkSync
         return $best;
     }
 
-    /** Exact match, else the 31-char sheet-name prefix match the browser also accepts. */
+    /**
+     * Same rules as the browser: exact name; else a sheet whose name eBay cut short (25+ chars) that is the start of the
+     * category (longest wins); else the same words in another order. A shorter sheet name never matches a longer category.
+     */
     private function benchFor(array $bench, string $category): ?array
     {
         $c = $this->norm($category);
         if (isset($bench[$c])) {
             return $bench[$c];
         }
+        $best = null;
+        $bestLen = 0;
         foreach ($bench as $k => $v) {
-            if (min(strlen((string) $k), strlen($c)) >= 10 && (str_starts_with($c, (string) $k) || str_starts_with((string) $k, $c))) {
+            $k = (string) $k;
+            if (strlen($k) >= 25 && strlen($c) > strlen($k) && str_starts_with($c, $k) && strlen($k) > $bestLen) {
+                $best = $v;
+                $bestLen = strlen($k);
+            }
+        }
+        if ($best !== null) {
+            return $best;
+        }
+        $t = $this->tokKey($c);
+        foreach ($bench as $k => $v) {
+            if ($this->tokKey((string) $k) === $t) {
                 return $v;
             }
         }
 
         return null;
+    }
+
+    private function tokKey(string $v): string
+    {
+        $w = preg_split('/[^a-z0-9]+/', strtolower($v), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $w = array_map(static fn ($x) => rtrim($x, 's'), $w);
+        sort($w);
+
+        return implode(' ', $w);
     }
 
     private function norm(string $v): string

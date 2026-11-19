@@ -966,14 +966,29 @@
                         });
                     return benchPromise;
                 }
+                /** "Mounts, Stands & Holders" and "Stands, Mounts & Holders": same words, any order, plural or not. */
+                function benchTokKey(v) {
+                    return String(v || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+                        .map(function(w) { return w.replace(/s$/, ''); }).sort().join(' ');
+                }
+                /**
+                 * Sheet of a category: exact name; else a sheet whose name eBay cut short (25+ chars, e.g. "Microphones & Wireless Syste")
+                 * is the start of the category (the longest such sheet wins); else the same words in another order.
+                 * A shorter sheet name is never a match for a longer category ("Microphones" is not "Microphones & Wireless Systems").
+                 */
                 function benchFor(map, category) {
                     const c = normCat(category);
                     if (map[c]) return map[c];
-                    // Sheet names are cut at 31 chars, so also accept a prefix match.
                     const keys = Object.keys(map);
+                    let best = null;
+                    let bestLen = 0;
+                    keys.forEach(function(k) {
+                        if (k.length >= 25 && c.length > k.length && c.indexOf(k) === 0 && k.length > bestLen) { best = map[k]; bestLen = k.length; }
+                    });
+                    if (best) return best;
+                    const t = benchTokKey(c);
                     for (let i = 0; i < keys.length; i++) {
-                        const k = keys[i];
-                        if (Math.min(k.length, c.length) >= 10 && (c.indexOf(k) === 0 || k.indexOf(c) === 0)) return map[k];
+                        if (benchTokKey(keys[i]) === t) return map[keys[i]];
                     }
                     return null;
                 }
