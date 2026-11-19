@@ -407,7 +407,7 @@ class WayfairTrackingSyncService
         }
 
         $query = <<<'GRAPHQL'
-        query LabelEvents($limit: Int32, $filters: [LabelGenerationEventFilterInput]) {
+        query LabelEvents($limit: Int, $filters: [LabelGenerationEventFilterInput]) {
             labelGenerationEvents(limit: $limit, filters: $filters) {
                 poNumber
                 shippingLabelInfo {
@@ -456,6 +456,40 @@ class WayfairTrackingSyncService
     }
 
     /**
+     * What Wayfair itself answers for one PO's label events: errors, or the raw events. For diagnostics only.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public function debugLabelEvents(string $poNumber): array
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => 'token failed: '.$e->getMessage()];
+        }
+        $query = <<<'GRAPHQL'
+        query LabelEvent($limit: Int, $filters: [LabelGenerationEventFilterInput]) {
+            labelGenerationEvents(limit: $limit, filters: $filters) {
+                poNumber
+                shippingLabelInfo { carrier carrierCode trackingNumber }
+                generatedShippingLabels { poNumber carrier carrierCode trackingNumber }
+            }
+        }
+        GRAPHQL;
+        $response = Http::withoutVerifying()->connectTimeout(8)->timeout(20)->withToken($token)
+            ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, [
+                'query' => $query,
+                'variables' => ['limit' => 5, 'filters' => [['field' => 'poNumber', 'equals' => trim($poNumber)]]],
+            ]);
+        $json = $response->json();
+        if (! empty($json['errors'])) {
+            return ['ok' => false, 'message' => 'HTTP '.$response->status().' errors: '.json_encode($json['errors'])];
+        }
+
+        return ['ok' => true, 'message' => 'HTTP '.$response->status().' data: '.mb_substr((string) json_encode($json['data'] ?? null), 0, 600)];
+    }
+
+    /**
      * @param  list<string>  $poNumbers
      * @return array<string, array{tracking: string, carrier: string}>
      */
@@ -463,7 +497,7 @@ class WayfairTrackingSyncService
     {
         $out = [];
         $query = <<<'GRAPHQL'
-        query LabelEvent($limit: Int32, $filters: [LabelGenerationEventFilterInput]) {
+        query LabelEvent($limit: Int, $filters: [LabelGenerationEventFilterInput]) {
             labelGenerationEvents(limit: $limit, filters: $filters) {
                 poNumber
                 shippingLabelInfo { carrier carrierCode trackingNumber }
