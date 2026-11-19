@@ -146,6 +146,14 @@
                 formatter: function(cell) { return '<strong>' + esc(cell.getValue()) + '</strong>'; },
             },
             {
+                title: 'Count',
+                field: 'count',
+                width: 90,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+            },
+            {
                 title: 'Supplier',
                 field: 'suppliers_text',
                 hozAlign: 'center',
@@ -160,14 +168,6 @@
                         return '<span class="badge bg-info-subtle text-dark border mcs-supplier-badge">' + esc(s.name) + '</span>';
                     }).join('');
                 },
-            },
-            {
-                title: 'Count',
-                field: 'count',
-                width: 90,
-                hozAlign: 'center',
-                headerHozAlign: 'center',
-                sorter: 'number',
             },
             {
                 title: 'Edit',
