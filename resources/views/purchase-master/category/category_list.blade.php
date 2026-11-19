@@ -181,7 +181,22 @@
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">No category</td>
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
                                             <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
-                                            <td class="text-center align-middle text-muted sticky-col sticky-right {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
+                                            <td class="text-center align-middle sticky-col sticky-right {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                <div class="d-flex justify-content-center align-items-center gap-1">
+                                                    <button type="button" class="btn btn-soft-primary btn-sm" disabled style="opacity:.45"
+                                                        title="Not in a category yet - add it to one first">
+                                                        <i class="mdi mdi-square-edit-outline"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-soft-success btn-sm assign-category-btn"
+                                                        data-sku="{{ $uSku['sku'] }}" title="Add this SKU to a category">
+                                                        <i class="mdi mdi-plus-box-outline"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-soft-danger btn-sm" disabled style="opacity:.45"
+                                                        title="Not in a category yet - nothing to remove">
+                                                        <i class="mdi mdi-delete"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -566,6 +581,34 @@
                                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="apm-submit" disabled>
                                         <i class="mdi mdi-plus me-1"></i> Add <span id="apm-submit-count">0</span> SKUs
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- Add a SKU that is in no category to one (opened from the Action column of uncategorised rows) --}}
+                    <div class="modal fade" id="assignCategoryModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered shadow-none">
+                            <div class="modal-content border-0 rounded-3">
+                                <div class="modal-header bg-primary text-white rounded-top">
+                                    <h5 class="modal-title"><i class="mdi mdi-plus-box-outline me-1"></i> Add SKU to a category</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">SKU: <span class="fw-semibold" id="acm-sku"></span></div>
+                                    <label class="form-label fw-semibold" for="acm-category">Category</label>
+                                    <select id="acm-category" class="form-select">
+                                        <option value="">Select a category...</option>
+                                        @foreach (($allCategories ?? []) as $optCategory)
+                                            <option value="{{ $optCategory->id }}">{{ $optCategory->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="text-danger small mt-2" id="acm-error" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="acm-submit" disabled>
+                                        <i class="mdi mdi-plus me-1"></i> Add to category
                                     </button>
                                 </div>
                             </div>
@@ -1136,6 +1179,41 @@
                     el.setSelectionRange(el.value.length, el.value.length);
                 }
             } catch (e) {}
+        })();
+    </script>
+    <script>
+        // Uncategorised rows (Parent / SKU search): add the SKU to a category picked from the list.
+        (function() {
+            const modalEl = document.getElementById('assignCategoryModal');
+            if (!modalEl) return;
+            let sku = '';
+            $(document).on('click', '.assign-category-btn', function() {
+                sku = String($(this).data('sku'));
+                $('#acm-sku').text(sku);
+                $('#acm-category').val('');
+                $('#acm-error').hide();
+                $('#acm-submit').prop('disabled', true);
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+            $('#acm-category').on('change', function() {
+                $('#acm-submit').prop('disabled', !$(this).val());
+            });
+            $('#acm-submit').on('click', function() {
+                const categoryId = $('#acm-category').val();
+                if (!categoryId || !sku) return;
+                const $btn = $(this).prop('disabled', true);
+                $.ajax({
+                    url: '{{ url('/category/rows/add') }}',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [categoryId], skus: [sku] }
+                }).done(function() {
+                    location.reload();
+                }).fail(function(xhr) {
+                    $('#acm-error').text(xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.').show();
+                    $btn.prop('disabled', false);
+                });
+            });
         })();
     </script>
 @endsection

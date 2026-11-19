@@ -75,6 +75,8 @@ class CategoryController extends Controller
         $usedCategoryNames = Category::query()->get(['id', 'name'])
             ->mapWithKeys(fn ($c) => [mb_strtolower(trim((string) $c->name)) => (int) $c->id])
             ->all();
+        // Every category (id + name), for the "add this SKU to a category" picker on uncategorised rows.
+        $allCategories = Category::query()->orderBy('name')->get(['id', 'name']);
         $categoryIds = $categories->pluck('id')->all();
 
         // While searching by Parent / SKU, also list the matching CP Master rows that are not in any
@@ -85,7 +87,7 @@ class CategoryController extends Controller
         }
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus', 'allCategories'));
         }
 
         $suppliers = Supplier::query()
@@ -168,7 +170,7 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus', 'allCategories'));
     }
 
     /**
