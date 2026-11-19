@@ -547,7 +547,7 @@
                                 <div class="modal-header bg-primary text-white rounded-top">
                                     <h5 class="modal-title">
                                         <i class="mdi mdi-plus-box-outline me-1"></i>
-                                        Add products to <span id="apm-target"></span>
+                                        Add products to <span id="apm-kind">category</span> <span id="apm-target"></span>
                                     </h5>
                                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
@@ -1110,9 +1110,11 @@
                 $('#apm-search').val('');
                 $('#apm-error').hide();
                 if (list.length === 1) {
+                    $('#apm-kind').text('category');
                     $('#apm-target').text(list[0].name);
                     $('#apm-note').text('The selected SKUs will be linked to this category.');
                 } else {
+                    $('#apm-kind').text('');
                     $('#apm-target').text(list.length + ' categories');
                     $('#apm-note').text('The selected SKUs will be added to: ' + list.map(function(c) { return c.name; }).join(', '));
                 }
