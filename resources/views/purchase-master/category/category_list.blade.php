@@ -315,12 +315,14 @@
 
     <script>
         // Edit modal opened from a SKU row: remember the SKU (picking another existing category moves it there).
-        $(document).on('show.bs.modal', '[id^="editCategoryModal"]', function(e) {
-            const trigger = e.relatedTarget;
-            $(this).attr('data-move-sku', (trigger && trigger.getAttribute('data-sku')) || '');
-            const $input = $(this).find('.cat-combo-input');
+        // Done on the button click itself, so it does not depend on Bootstrap's modal events reaching jQuery.
+        $(document).on('click', '[data-bs-target^="#editCategoryModal"]', function() {
+            const $modal = $($(this).attr('data-bs-target'));
+            $modal.attr('data-move-sku', $(this).attr('data-sku') || '');
+            const $input = $modal.find('.cat-combo-input');
             $input.val($input.prop('defaultValue'));
-            $(this).find('.cat-combo-hint').text('');
+            $modal.find('.cat-combo-hint').text('');
+            $modal.find('.cat-combo-menu').hide();
         });
 
         $(document).ready(function() {
