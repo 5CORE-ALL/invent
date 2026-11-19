@@ -67,13 +67,15 @@
         }
 
         .amz-asin-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.1; }
-        .amz-asin-code { color: #ff9900; font-weight: 700; font-size: 11px; }
-        .amz-asin-views { display: flex; gap: 3px; }
+        .amz-asin-code { color: #212529; font-weight: 700; font-size: 11px; cursor: default; pointer-events: none; text-decoration: none; }
+        .amz-asin-views { display: flex; gap: 4px; }
         .amz-asin-btn {
             border: 1px solid #ff9900; background: #fff; color: #b36b00;
-            font-size: 9px; font-weight: 700; line-height: 1; padding: 2px 5px;
+            width: 22px; height: 18px; padding: 0; line-height: 1;
             border-radius: 3px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
         }
+        .amz-asin-btn i { font-size: 11px; pointer-events: none; }
         .amz-asin-btn:hover { background: #ff9900; color: #fff; }
         .amz-asin-btn-m { border-color: #0d6efd; color: #0d6efd; }
         .amz-asin-btn-m:hover { background: #0d6efd; color: #fff; }
@@ -645,6 +647,25 @@
             $('#amz-lqs-below9-badge').text('< 9: ' + lqsBelow9Count);
         }
 
+        // Amazon serves the desktop page to this browser even in a narrow window.
+        // The phone add-on (browser-extension/lqs-amz-mobile) sends that one window as an iPhone.
+        window.amzOpenMobile = function (url) {
+            const missing = function () {
+                window.alert('Amazon is still sending the desktop page. Install the phone add-on once: Chrome \u2192 Extensions \u2192 Developer mode \u2192 Load unpacked \u2192 folder browser-extension\\lqs-amz-mobile in this project. Then click Mobile again.');
+            };
+            try {
+                if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+                    missing();
+                    return;
+                }
+                chrome.runtime.sendMessage('kjdjgekgokefnkafkmikgafmineikjgd', { type: 'open-mobile', url: url }, function (res) {
+                    if (!res || !res.ok || (chrome.runtime && chrome.runtime.lastError)) missing();
+                });
+            } catch (e) {
+                missing();
+            }
+        };
+
         $(document).ready(function() {
             amzTable = new Tabulator('#amz-lqs-table', {
                 ajaxURL: '{{ route("lqs.amz.data") }}',
@@ -722,20 +743,19 @@
                     {
                         title: 'ASIN',
                         field: 'asin',
-                        width: 148,
+                        width: 118,
                         formatter: function(cell) {
                             const d    = cell.getRow().getData();
                             const asin = String(cell.getValue() || '').replace(/[^A-Za-z0-9]/g, '');
                             if (d.is_parent || !asin) return '<span style="color:#adb5bd;">–</span>';
                             const desk = 'https://www.amazon.com/dp/' + asin;
-                            const mob  = 'https://www.amazon.com/gp/aw/d/' + asin;
                             return '<div class="amz-asin-cell">'
                                 + '<span class="amz-asin-code">' + asin + '</span>'
                                 + '<span class="amz-asin-views">'
-                                + '<button type="button" class="amz-asin-btn" title="Open the buyer page in a desktop window"'
-                                + ' onclick="event.stopPropagation();window.open(\'' + desk + '\',\'_blank\',\'noopener\')">Desktop</button>'
-                                + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Open the buyer page in a phone-sized window"'
-                                + ' onclick="event.stopPropagation();window.open(\'' + mob + '\',\'amzMobile\',\'width=390,height=844,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes\')">Mobile</button>'
+                                + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view"'
+                                + ' onclick="event.stopPropagation();window.open(\'' + desk + '\',\'_blank\',\'noopener\')"><i class="fas fa-desktop"></i></button>'
+                                + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view"'
+                                + ' onclick="event.stopPropagation();amzOpenMobile(\'' + desk + '\')"><i class="fas fa-mobile-screen-button"></i></button>'
                                 + '</span></div>';
                         }
                     },
