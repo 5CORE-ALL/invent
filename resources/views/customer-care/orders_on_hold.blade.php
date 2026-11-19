@@ -230,24 +230,6 @@
             height: 31px;
         }
 
-        .rows-graph-dot {
-            width: 12px;
-            height: 12px;
-            padding: 0;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            background: #ffc107;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-
-        .rows-graph-dot:hover,
-        .rows-graph-dot:focus-visible {
-            transform: scale(1.25);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(255, 255, 255, .45);
-        }
-
         .l30-badge {
             background: linear-gradient(100deg, #7c3aed, #db2777) !important;
             color: #fff !important;
@@ -298,6 +280,85 @@
 
         #l30HistModal .btn-close {
             filter: invert(1);
+        }
+
+        #l30HistSubtitle {
+            color: #d4d4d8;
+        }
+
+        .l30-theme {
+            display: inline-flex;
+            padding: 2px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid rgba(255, 255, 255, .14);
+        }
+
+        .l30-theme-btn {
+            border: 0;
+            background: transparent;
+            color: #d4d4d8;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 3px 10px;
+            line-height: 1.4;
+        }
+
+        .l30-theme-btn.is-on {
+            background: #fff;
+            color: #18181b;
+        }
+
+        #l30HistModal.l30-light .modal-content {
+            background: #fff;
+            color: #18181b;
+            border-color: #e4e4e7;
+        }
+
+        #l30HistModal.l30-light .modal-header,
+        #l30HistModal.l30-light .modal-footer {
+            border-color: #e4e4e7;
+        }
+
+        #l30HistModal.l30-light .btn-close {
+            filter: none;
+        }
+
+        #l30HistModal.l30-light .l30-kicker {
+            color: #7c3aed;
+        }
+
+        #l30HistModal.l30-light #l30HistSubtitle {
+            color: #52525b;
+        }
+
+        #l30HistModal.l30-light .l30-chart-wrap,
+        #l30HistModal.l30-light .l30-day {
+            background: #fafafa;
+            border-color: #e4e4e7;
+        }
+
+        #l30HistModal.l30-light .l30-case {
+            color: #3f3f46;
+        }
+
+        #l30HistModal.l30-light .l30-empty {
+            color: #71717a;
+        }
+
+        #l30HistModal.l30-light .l30-theme {
+            background: #f4f4f5;
+            border-color: #e4e4e7;
+        }
+
+        #l30HistModal.l30-light .l30-theme-btn {
+            color: #52525b;
+        }
+
+        #l30HistModal.l30-light .l30-theme-btn.is-on {
+            background: #18181b;
+            color: #fff;
         }
 
         #l30HistModal .l30-kicker {
@@ -680,10 +741,8 @@
                         <select id="dept-filter-select" class="form-select form-select-sm" style="width: 200px;">
                             <option value="">All Departments</option>
                         </select>
-                        <span class="badge bg-primary fs-6 text-nowrap d-inline-flex align-items-center gap-2" title="Rows shown in the table">
-                            <span>Rows: <span id="hold_issue_total_count">0</span></span>
-                            <button type="button" class="rows-graph-dot" id="rowsGraphDot"
-                                title="Show rows per day graph" aria-label="Show rows per day graph"></button>
+                        <span class="badge bg-primary fs-6 text-nowrap" title="Rows shown in the table">
+                            Rows: <span id="hold_issue_total_count">0</span>
                         </span>
                         <span class="badge l30-badge fs-6 text-nowrap d-inline-flex align-items-center gap-2" id="l30Badge"
                             role="button" tabindex="0" title="Cases in the last 30 days. Click to show only those rows.">
@@ -1215,10 +1274,16 @@
                         <div class="l30-kicker">Last 30 days</div>
                         <h5 class="modal-title" id="l30HistModalLabel">L30 cases</h5>
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="l30-theme" role="group" aria-label="Chart appearance">
+                            <button type="button" class="l30-theme-btn is-on" data-theme="dark" aria-pressed="true">Dark</button>
+                            <button type="button" class="l30-theme-btn" data-theme="light" aria-pressed="false">White</button>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
-                    <p class="small mb-2" id="l30HistSubtitle" style="color:#d4d4d8;"></p>
+                    <p class="small mb-2" id="l30HistSubtitle"></p>
                     <div class="l30-chart-wrap">
                         <canvas id="l30HistCanvas"></canvas>
                     </div>
@@ -1228,26 +1293,9 @@
         </div>
     </div>
 
-    <div class="modal fade" id="rowsGraphModal" tabindex="-1" aria-labelledby="rowsGraphModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="rowsGraphModalLabel">Rows per day</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-2" id="rowsGraphSubtitle"></p>
-                    <div style="position: relative; height: 360px;">
-                        <canvas id="rowsGraphCanvas"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
-    @include('partials.lazy-chart-js')
     @php($holdBoardQuery = ! empty($holdBoard) ? ['board' => $holdBoard] : [])
     <script>
         (function() {
@@ -2999,102 +3047,6 @@
                 toInput.addEventListener('change', apply);
             })();
 
-            (function initRowsGraph() {
-                const dot = document.getElementById('rowsGraphDot');
-                const graphModalEl = document.getElementById('rowsGraphModal');
-                const canvas = document.getElementById('rowsGraphCanvas');
-                const subtitle = document.getElementById('rowsGraphSubtitle');
-                if (!dot || !graphModalEl || !canvas) return;
-
-                let chart = null;
-
-                function ymdToDate(ymd) {
-                    const [y, m, d] = ymd.split('-').map(Number);
-                    return new Date(y, m - 1, d);
-                }
-
-                function buildSeries() {
-                    const rows = getFilteredRows();
-                    const counts = {};
-                    rows.forEach(r => {
-                        const key = rowDateKey(r);
-                        if (key) counts[key] = (counts[key] || 0) + 1;
-                    });
-
-                    // Range: active date filter, else last 30 days ending today.
-                    const today = localYmd(new Date());
-                    let from = activeDateRange.from;
-                    let to = activeDateRange.to || today;
-                    if (!from) {
-                        const start = ymdToDate(to);
-                        start.setDate(start.getDate() - 29);
-                        from = localYmd(start);
-                    }
-
-                    const labels = [];
-                    const values = [];
-                    for (let d = ymdToDate(from), end = ymdToDate(to); d <= end; d.setDate(d.getDate() + 1)) {
-                        const key = localYmd(d);
-                        labels.push(key.slice(8, 10) + '-' + key.slice(5, 7));
-                        values.push(counts[key] || 0);
-                    }
-
-                    return {
-                        labels,
-                        values,
-                        from,
-                        to,
-                        total: values.reduce((a, b) => a + b, 0),
-                    };
-                }
-
-                function render() {
-                    const s = buildSeries();
-                    const fmt = ymd => ymd.slice(8, 10) + '-' + ymd.slice(5, 7) + '-' + ymd.slice(0, 4);
-                    subtitle.textContent = s.total + ' row(s) from ' + fmt(s.from) + ' to ' + fmt(s.to) +
-                        ' by Order Date (Created date when the order date is unknown). SKU, parent, channel, department and root cause filters apply.';
-
-                    window.loadChartJs().then(Chart => {
-                        if (chart) chart.destroy();
-                        chart = new Chart(canvas.getContext('2d'), {
-                            type: 'bar',
-                            data: {
-                                labels: s.labels,
-                                datasets: [{
-                                    label: 'Rows',
-                                    data: s.values,
-                                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
-                                    borderColor: 'rgba(13, 110, 253, 1)',
-                                    borderWidth: 1,
-                                }],
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: { legend: { display: false } },
-                                scales: {
-                                    y: { beginAtZero: true, ticks: { precision: 0 } },
-                                },
-                            },
-                        });
-                    }).catch(() => {
-                        subtitle.textContent = 'Could not load the chart library. Check your connection and try again.';
-                    });
-                }
-
-                dot.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const graphModal = window.bootstrap?.Modal?.getOrCreateInstance(graphModalEl);
-                    if (graphModal) {
-                        graphModal.show();
-                    } else {
-                        showAlert('Could not open the graph. Please reload the page.');
-                    }
-                });
-                graphModalEl.addEventListener('shown.bs.modal', render);
-            })();
-
             (function initL30History() {
                 const dot = document.getElementById('l30HistDot');
                 const modalEl = document.getElementById('l30HistModal');
@@ -3108,6 +3060,27 @@
                 let frame = 0;
                 let running = false;
                 let snapshot = null;
+                let light = false;
+                try { light = localStorage.getItem('ordersHoldL30Theme') === 'light'; } catch (e) {}
+                const themeBtns = modalEl.querySelectorAll('.l30-theme-btn');
+
+                function applyTheme() {
+                    modalEl.classList.toggle('l30-light', light);
+                    themeBtns.forEach(btn => {
+                        const on = (btn.getAttribute('data-theme') === 'light') === light;
+                        btn.classList.toggle('is-on', on);
+                        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                    });
+                }
+
+                applyTheme();
+                themeBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        light = btn.getAttribute('data-theme') === 'light';
+                        try { localStorage.setItem('ordersHoldL30Theme', light ? 'light' : 'dark'); } catch (e) {}
+                        applyTheme();
+                    });
+                });
 
                 function prettyDay(ymd) {
                     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -3210,10 +3183,10 @@
                     const curve = smooth(pts);
                     const floor = pad.t + plotH;
 
-                    ctx.strokeStyle = 'rgba(255,255,255,.08)';
+                    ctx.strokeStyle = light ? 'rgba(24, 24, 27, .1)' : 'rgba(255,255,255,.08)';
                     ctx.lineWidth = 1;
                     ctx.font = '11px system-ui, sans-serif';
-                    ctx.fillStyle = '#a1a1aa';
+                    ctx.fillStyle = light ? '#64748b' : '#a1a1aa';
                     ctx.textAlign = 'right';
                     ctx.textBaseline = 'middle';
                     for (let g = 0; g <= 3; g++) {
@@ -3236,8 +3209,8 @@
                     ctx.lineTo(pts[0].x, floor);
                     ctx.closePath();
                     const fill = ctx.createLinearGradient(0, pad.t, 0, floor);
-                    fill.addColorStop(0, 'rgba(232, 121, 249, .5)');
-                    fill.addColorStop(0.55, 'rgba(34, 211, 238, .18)');
+                    fill.addColorStop(0, light ? 'rgba(219, 39, 119, .28)' : 'rgba(232, 121, 249, .5)');
+                    fill.addColorStop(0.55, light ? 'rgba(8, 145, 178, .12)' : 'rgba(34, 211, 238, .18)');
                     fill.addColorStop(1, 'rgba(34, 211, 238, 0)');
                     ctx.fillStyle = fill;
                     ctx.fill();
@@ -3249,13 +3222,13 @@
                         else ctx.moveTo(p.x, y);
                     });
                     const stroke = ctx.createLinearGradient(pad.l, 0, w - pad.r, 0);
-                    stroke.addColorStop(0, '#22d3ee');
-                    stroke.addColorStop(1, '#e879f9');
+                    stroke.addColorStop(0, light ? '#0891b2' : '#22d3ee');
+                    stroke.addColorStop(1, light ? '#db2777' : '#e879f9');
                     ctx.strokeStyle = stroke;
                     ctx.lineWidth = 3;
                     ctx.lineJoin = 'round';
                     ctx.lineCap = 'round';
-                    ctx.shadowColor = 'rgba(232, 121, 249, .85)';
+                    ctx.shadowColor = light ? 'rgba(219, 39, 119, .35)' : 'rgba(232, 121, 249, .85)';
                     ctx.shadowBlur = 14;
                     ctx.stroke();
                     ctx.shadowBlur = 0;
@@ -3271,7 +3244,7 @@
                     ctx.arc(orb.x, orb.y, 18, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.fillStyle = '#d4d4d8';
+                    ctx.fillStyle = light ? '#475569' : '#d4d4d8';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'alphabetic';
                     s.days.forEach((day, i) => {

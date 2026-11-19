@@ -1623,7 +1623,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 'order_number' => $row->order_number,
                 'order_date' => $orderDates[ltrim(trim((string) $row->order_number), '#')] ?? null,
                 'order_date_display' => ($od = $orderDates[ltrim(trim((string) $row->order_number), '#')] ?? null)
-                    ? rescue(fn () => \Carbon\Carbon::parse($od)->format('d-m-Y'), '', false)
+                    ? rescue(fn () => \Carbon\Carbon::parse($od)->format('j M Y'), '', false)
                     : '',
                 'department' => \App\Support\CustomerCareDepartments::label($row->department ?? null),
                 'departments' => \App\Support\CustomerCareDepartments::decode($row->department ?? null),
