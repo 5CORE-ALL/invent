@@ -245,7 +245,6 @@
                                     <tr>
                                         <th class="arp-sortable" data-sort="category" title="Click to sort">Category<span class="arp-sort-ind"></span></th>
                                         <th class="text-center arp-sortable" data-sort="count" style="width: 80px;" title="Click to sort">{{ $pmtUnit }}s<span class="arp-sort-ind"></span></th>
-                                        <th class="text-center arp-sortable" data-sort="yours" style="width: 110px;" title="Click to sort. Your own Promoted listings ad rate (Yours row, Impressions in eBay search) from the benchmarks. When there is none, the category S BID is shown in grey italics. Read only.">Promoted listings ad rate<span class="arp-sort-ind"></span></th>
                                         <th class="text-center arp-sortable" data-sort="cbid" style="width: 110px;" title="Click to sort. Live C BID of the category: the median current eBay bid of its listings (hover a value for the range). Read only.">CBID<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="high" style="width: 140px;" title="Click to sort">Highest (%)<span class="arp-sort-ind"></span></th>
                                         <th class="arp-sortable" data-sort="low" style="width: 140px;" title="Click to sort">Lowest (%)<span class="arp-sort-ind"></span></th>
@@ -1300,7 +1299,6 @@
                         const $tr = $('<tr>').attr('data-category', r.category);
                         $tr.append($('<td>').text(r.category));
                         $tr.append($('<td class="text-center">').text(r.count.toLocaleString()));
-                        $tr.append($('<td class="text-center fw-semibold arp-yours">').text('')); // read only; Yours from the benchmarks, else S BID
                         const saved = savedBids[r.category] || {};
                         const hi = saved.highest != null ? saved.highest : '';
                         const lo = saved.lowest != null ? saved.lowest : '';
@@ -1320,7 +1318,7 @@
                         $body.append($tr);
                     });
                     if (!rows.length) {
-                        $body.append('<tr><td colspan="6" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
+                        $body.append('<tr><td colspan="5" class="text-center text-muted">No categories found. Category comes from the {{ $pmtExcelPath }} upload (matched by Item ID).</td></tr>');
                     }
                     applyArpSort();
                     updateSummary();
