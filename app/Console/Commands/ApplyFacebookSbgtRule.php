@@ -16,11 +16,11 @@ use Illuminate\Support\Facades\Schema;
  * saved (ApplyFacebookSbgtRuleJob) and can be run by hand.
  *
  *   • Rule says pause (Sbgt 0)      → campaign is paused on Meta if it isn't already.
- *   • Rule gives a budget (Sbgt > 0) → a campaign that THIS SHEET paused earlier (its last
- *     logged status change is a successful pause_campaign) and that is still PAUSED is
- *     turned back ON. Campaigns paused by hand in Ads Manager are left alone.
+ *   • Rule gives a budget (Sbgt > 0) → a campaign that is PAUSED on Meta is turned ON
+ *     (whoever paused it). Archived / deleted campaigns are skipped.
  *
- * Every change is written to meta_action_logs. Budgets are not touched here (use Push Sbgt).
+ * Every change is written to meta_action_logs. Budgets are not touched here (use Push Sbgt,
+ * which also turns the campaign on).
  */
 class ApplyFacebookSbgtRule extends Command
 {
@@ -83,20 +83,6 @@ class ApplyFacebookSbgtRule extends Command
             }
         }
 
-        // Last status change this sheet made to each campaign.
-        $lastAction = [];
-        foreach (array_chunk($cids, 1000) as $chunk) {
-            foreach (DB::table('meta_action_logs')
-                ->where('entity_type', 'campaign')
-                ->where('status', 'success')
-                ->whereIn('action_type', ['pause_campaign', 'activate_campaign'])
-                ->whereIn('entity_meta_id', $chunk)
-                ->orderBy('id')
-                ->get(['entity_meta_id', 'action_type']) as $l) {
-                $lastAction[(string) $l->entity_meta_id] = $l->action_type;
-            }
-        }
-
         $stats = ['paused' => 0, 'activated' => 0, 'failed' => 0, 'unchanged' => 0];
         foreach ($want as $cid => $decision) {
             $st = $status[$cid] ?? '';
@@ -112,8 +98,7 @@ class ApplyFacebookSbgtRule extends Command
                 $action = 'pause_campaign';
                 $target = 'PAUSED';
             } else {
-                // Only bring back campaigns this sheet paused itself.
-                if ($st !== 'PAUSED' || ($lastAction[$cid] ?? null) !== 'pause_campaign') {
+                if ($st !== 'PAUSED') {
                     $stats['unchanged']++;
                     continue;
                 }

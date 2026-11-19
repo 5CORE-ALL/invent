@@ -2027,6 +2027,7 @@ class FacebookAllAdsSheetController extends Controller
         $base    = "https://graph.facebook.com/{$apiVersion}";
         $pushed  = 0;
         $paused  = 0;
+        $activated = 0;
         $failed  = 0;
         $skipped = 0;
         $results = [];
@@ -2101,13 +2102,22 @@ class FacebookAllAdsSheetController extends Controller
             // Meta expects minor-unit integers (cents for USD).
             $minorUnits = (int) round($sbgtNum * 100);
 
+            // A campaign that gets a budget from the rule should also be RUNNING: turn it
+            // on in the same call (a no-op when it is already active). Archived / deleted
+            // campaigns can't be switched on, so leave their status alone.
+            $localStatus = strtoupper((string) DB::table('meta_campaigns')
+                ->where('meta_id', $cid)->orderByDesc('synced_at')->value('status'));
+            $turnOn      = ! in_array($localStatus, ['ARCHIVED', 'DELETED'], true);
+            $wasPaused   = $localStatus === 'PAUSED';
+            $payload     = ['access_token' => $accessToken, 'daily_budget' => $minorUnits];
+            if ($turnOn) {
+                $payload['status'] = 'ACTIVE';
+            }
+
             try {
                 $resp = \Illuminate\Support\Facades\Http::asForm()
                     ->timeout(20)
-                    ->post("{$base}/{$cid}", [
-                        'access_token' => $accessToken,
-                        'daily_budget' => $minorUnits,
-                    ]);
+                    ->post("{$base}/{$cid}", $payload);
 
                 $body = $resp->json() ?? [];
                 $ok   = $resp->successful() && (($body['success'] ?? false) === true || isset($body['id']));
@@ -2118,7 +2128,8 @@ class FacebookAllAdsSheetController extends Controller
                     'entity_type'        => 'campaign',
                     'entity_meta_id'     => $cid,
                     'status'             => $ok ? 'success' : 'failed',
-                    'request_payload'    => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]),
+                    'request_payload'    => json_encode(['daily_budget' => $minorUnits, 'sbgt' => $sbgtNum]
+                        + ($turnOn ? ['status' => 'ACTIVE'] : [])),
                     'response_payload'   => json_encode($body),
                     'error_message'      => $ok ? null : ($body['error']['message'] ?? null),
                     'meta_error_code'    => $ok ? null : (string) ($body['error']['code'] ?? ''),
@@ -2133,12 +2144,20 @@ class FacebookAllAdsSheetController extends Controller
                         'campaign_id' => $cid,
                         'status'      => 'pushed',
                         'sbgt'        => $sbgtNum,
+                        'activated'   => $turnOn && $wasPaused,
                     ];
-                    // Mirror the new budget locally so subsequent reads
+                    if ($turnOn && $wasPaused) {
+                        $activated++;
+                    }
+                    if ($turnOn) {
+                        Cache::forget('faas_sbgt_paused:' . $cid);
+                    }
+                    // Mirror the new budget (and status) locally so subsequent reads
                     // of meta_campaigns reflect what we just wrote.
                     DB::table('meta_campaigns')
                         ->where('meta_id', $cid)
-                        ->update(['daily_budget' => $sbgtNum, 'updated_at' => now()]);
+                        ->update(['daily_budget' => $sbgtNum, 'updated_at' => now()]
+                            + ($turnOn ? ['status' => 'ACTIVE', 'effective_status' => 'ACTIVE'] : []));
                 } else {
                     $failed++;
                     $results[] = [
@@ -2176,6 +2195,7 @@ class FacebookAllAdsSheetController extends Controller
             'success' => true,
             'pushed'  => $pushed,
             'paused'  => $paused,
+            'activated' => $activated,
             'failed'  => $failed,
             'skipped' => $skipped,
             'results' => $results,

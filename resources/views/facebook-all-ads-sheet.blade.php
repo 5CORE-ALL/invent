@@ -2132,14 +2132,11 @@
                             .filter(v => v !== '')
                     )).sort();
 
-                    // First-load default: pre-select "active" so users
-                    // see only delivering campaigns until they widen
-                    // the filter themselves.
+                    // First-load default: ALL statuses ticked (active + inactive …), so every
+                    // campaign shows. Users can still untick a status to narrow the list.
                     if (!defaultStatusApplied) {
                         defaultStatusApplied = true;
-                        if (statusValues.some(v => statusKey(v) === 'active')) {
-                            statusFilterSelected.add('active');
-                        }
+                        statusValues.forEach(v => statusFilterSelected.add(statusKey(v)));
                     }
                     buildStatusFilter();
                     const cols = (resp.columns || []).map(c => {
@@ -3222,7 +3219,11 @@
             const sbgtSel   = sbgtFilterSelected;
             const typeSel   = typeFilterSelected;
             const b2bSel    = b2bFilterSelected;
-            const statusSel = statusFilterSelected;
+            // Every known status ticked = no Status filter (so rows with a blank
+            // Status still show under the default "all").
+            const statusAllTicked = statusFilterSelected.size > 0
+                && (statusValues || []).every(v => statusFilterSelected.has(statusKey(v)));
+            const statusSel = statusAllTicked ? new Set() : statusFilterSelected;
             const term = (document.getElementById('faas-search')?.value || '')
                 .toLowerCase().trim();
 
@@ -3533,7 +3534,8 @@
             const lbl = document.getElementById('faasStatusFilterLabel');
             if (!lbl) return;
             const n = statusFilterSelected.size;
-            if (n === 0)     lbl.textContent = 'Stat: all';
+            const allTicked = n > 0 && (statusValues || []).every(v => statusFilterSelected.has(statusKey(v)));
+            if (n === 0 || allTicked) lbl.textContent = 'Stat: all';
             else if (n <= 2) lbl.textContent = 'Stat: ' + [...statusFilterSelected].join(', ');
             else             lbl.textContent = `Stat: ${n} sel`;
         }
@@ -3862,7 +3864,7 @@
                 chunks.push(allRows.slice(i, i + SBGT_PUSH_CHUNK_SIZE));
             }
 
-            const aggregated = { pushed: 0, paused: 0, failed: 0, skipped: 0, results: [] };
+            const aggregated = { pushed: 0, paused: 0, activated: 0, failed: 0, skipped: 0, results: [] };
             let done = 0;
 
             for (const chunk of chunks) {
@@ -3897,6 +3899,7 @@
 
                 aggregated.pushed  += body.pushed  ?? 0;
                 aggregated.paused  += body.paused  ?? 0;
+                aggregated.activated += body.activated ?? 0;
                 aggregated.failed  += body.failed  ?? 0;
                 aggregated.skipped += body.skipped ?? 0;
                 aggregated.results.push(...(body.results || []));
@@ -3911,6 +3914,7 @@
             if (summary) {
                 summary.innerHTML =
                     `<span class="badge bg-success">Pushed: ${payload.pushed ?? 0}</span>` +
+                    `<span class="badge bg-primary">Turned on: ${payload.activated ?? 0}</span>` +
                     `<span class="badge bg-danger">Paused: ${payload.paused ?? 0}</span>` +
                     `<span class="badge bg-danger">Failed: ${payload.failed ?? 0}</span>` +
                     `<span class="badge bg-secondary">Skipped: ${payload.skipped ?? 0}</span>`;
@@ -3931,7 +3935,7 @@
                         <td class="text-muted small">${i + 1}</td>
                         <td><code>${r.campaign_id || ''}</code></td>
                         <td>${sbgtCell}</td>
-                        <td><span class="${cls}">${r.status}</span></td>
+                        <td><span class="${cls}">${r.status}</span>${r.activated ? ' <span class="badge bg-primary">turned on</span>' : ''}</td>
                         <td class="small">${(r.reason || '').toString().replace(/</g, '&lt;')}</td>`;
                     body.appendChild(tr);
                 });
