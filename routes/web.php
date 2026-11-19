@@ -5936,6 +5936,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Catategory routes
     Route::get('/category.list', [CategoryController::class, 'categoryList'])->name('category.list');
+    Route::get('/mfr-category-supplier', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'index'])->name('mfr.category.supplier');
+    Route::get('/mfr-category-supplier/data', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'data'])->name('mfr.category.supplier.data');
     Route::get('/id-master', [CategoryController::class, 'idMaster'])->name('id.master');
     Route::get('/id-master-data-view', [CategoryController::class, 'getIdMasterData'])->name('id.master.data');
     Route::get('/dim-wt-master', [CategoryController::class, 'dimWtMaster'])->name('dim.wt.master');

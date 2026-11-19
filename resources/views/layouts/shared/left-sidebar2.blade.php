@@ -89,6 +89,9 @@
                                 <a href="{{ route('category.list') }}">Purchase Categories</a>
                             </li>
                             <li>
+                                <a href="{{ route('mfr.category.supplier') }}">MFR Category - Supplier</a>
+                            </li>
+                            <li>
                                 <a href="{{ route('supplier.list') }}">Purchase Suppliers</a>
                             </li>
                             <li>
