@@ -5854,7 +5854,8 @@ class TikTokShopService
                 'app_key' => (string) $this->clientKey,
                 'timestamp' => (string) time(),
                 'shop_cipher' => $cipher,
-                'page_size' => '50',
+                // TikTok rejects page_size > 20 ("PageSize is invalid").
+                'page_size' => '20',
                 'locale' => 'en-US',
             ];
             if ($pageToken !== '') {
@@ -5893,7 +5894,7 @@ class TikTokShopService
                 $unread += max(0, (int) ($row['unread_count'] ?? $row['unreadCount'] ?? 0));
             }
             $pageToken = (string) ($data['next_page_token'] ?? '');
-        } while ($pageToken !== '' && $pages < 10);
+        } while ($pageToken !== '' && $pages < 50);
 
         return ['success' => true, 'count' => $unread];
     }

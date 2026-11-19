@@ -199,7 +199,7 @@ class MarketplacePendingMessagesService
     {
         $resp = app(AlibabaApiService::class)->getPendingMessageCount();
         if (empty($resp['success'])) {
-            return $this->impossible('alibaba');
+            return $this->impossible('alibaba', $resp['message'] ?? null);
         }
 
         return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, 'alibaba');
@@ -215,7 +215,7 @@ class MarketplacePendingMessagesService
             return $this->makeResult((int) ($resp['count'] ?? 0), self::STATUS_OK, null, 'shein');
         }
 
-        return $this->impossible('shein');
+        return $this->impossible('shein', $resp['message'] ?? null);
     }
 
     /**
@@ -602,7 +602,7 @@ class MarketplacePendingMessagesService
             return $this->makeResult($open['count'], self::STATUS_OK, null, $configKey.':shopify');
         }
 
-        return $this->impossible($configKey);
+        return $this->impossible($configKey, $gqlError);
     }
 
     /**
@@ -694,37 +694,51 @@ class MarketplacePendingMessagesService
             return $this->makeResult(0, self::STATUS_ERROR, 'Reverb credentials are missing.', 'reverb');
         }
 
-        try {
-            $response = Http::withoutVerifying()
-                ->withToken($token)
-                ->acceptJson()
-                ->timeout(12)
-                ->connectTimeout(6)
-                ->get('https://api.reverb.com/api/my/conversations', [
-                    'state' => 'awaiting_response',
-                ]);
-        } catch (Throwable $e) {
-            return $this->makeResult(0, self::STATUS_ERROR, $e->getMessage(), 'reverb');
+        // Documented filter: GET /api/my/conversations?unread_only=true with the
+        // HAL headers + Accept-Version 3.0 (an unknown "state" param returns 400).
+        $url = 'https://api.reverb.com/api/my/conversations?unread_only=true&per_page=50';
+        $count = 0;
+        $pages = 0;
+        while ($url !== null && $pages < 20) {
+            $pages++;
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => 'Bearer '.$token,
+                        'Accept' => 'application/hal+json',
+                        'Content-Type' => 'application/hal+json',
+                        'Accept-Version' => '3.0',
+                    ])
+                    ->timeout(12)
+                    ->connectTimeout(6)
+                    ->get($url);
+            } catch (Throwable $e) {
+                return $this->makeResult(0, self::STATUS_ERROR, $e->getMessage(), 'reverb');
+            }
+
+            if (! $response->successful()) {
+                $detail = trim((string) ($response->json('message') ?? ''));
+
+                return $this->makeResult(
+                    0,
+                    self::STATUS_ERROR,
+                    'Reverb conversations HTTP '.$response->status().($detail !== '' ? ': '.$detail : ''),
+                    'reverb'
+                );
+            }
+
+            $json = $response->json() ?? [];
+            $list = $json['conversations'] ?? null;
+            if (! is_array($list)) {
+                return $this->makeResult(0, self::STATUS_ERROR, 'Reverb returned an unrecognised conversations payload.', 'reverb');
+            }
+
+            $count += count($list);
+            $next = $json['_links']['next']['href'] ?? null;
+            $url = is_string($next) && trim($next) !== '' ? trim($next) : null;
         }
 
-        if ($response->status() === 404) {
-            return $this->impossible('reverb');
-        }
-        if (! $response->successful()) {
-            return $this->makeResult(0, self::STATUS_ERROR, 'Reverb conversations HTTP '.$response->status(), 'reverb');
-        }
-
-        $json = $response->json() ?? [];
-        $total = $json['total'] ?? $json['meta']['total'] ?? null;
-        if (is_numeric($total)) {
-            return $this->makeResult((int) $total, self::STATUS_OK, null, 'reverb');
-        }
-        $list = $json['conversations'] ?? $json['messages'] ?? null;
-        if (! is_array($list)) {
-            return $this->makeResult(0, self::STATUS_ERROR, 'Reverb returned an unrecognised conversations payload.', 'reverb');
-        }
-
-        return $this->makeResult(count($list), self::STATUS_OK, null, 'reverb');
+        return $this->makeResult($count, self::STATUS_OK, null, 'reverb:unread');
     }
 
     /**
@@ -761,9 +775,17 @@ class MarketplacePendingMessagesService
     /**
      * @return array{pending_count: int, fetch_status: string, fetch_note: ?string, source: ?string}
      */
-    protected function impossible(?string $source): array
+    protected function impossible(?string $source, ?string $detail = null): array
     {
-        return $this->makeResult(0, self::STATUS_UNSUPPORTED, self::NOTE_IMPOSSIBLE, $source);
+        $detail = $detail !== null ? trim($detail) : '';
+        $note = self::NOTE_IMPOSSIBLE;
+        // Keep the marketplace's real answer visible so a bad token / wrong
+        // endpoint is not silently hidden behind "No possible API".
+        if ($detail !== '' && strcasecmp($detail, self::NOTE_IMPOSSIBLE) !== 0) {
+            $note .= ' — last response: '.$detail;
+        }
+
+        return $this->makeResult(0, self::STATUS_UNSUPPORTED, $note, $source);
     }
 
     /**
