@@ -987,7 +987,7 @@
                  * uploads / opens new benchmarks. Every category that HAS a benchmark is set to it, saved values included
                  * (they go stale when a new LQS report arrives). Only an input typed by hand in this open window is left alone.
                  * Categories without a benchmark keep their value (blank ones get the default). When anything changed the
-                 * ranges are saved, and pushed to eBay when the switch is On.
+                 * ranges are NOT saved here (the server job does that).
                  */
                 function autoSyncBenchmarks(force) {
                     force = force === true;
@@ -1026,10 +1026,9 @@
                         updateSummary();
                         applyArpFilter();
                         if (!changed) return;
-                        $('#ads-rule-pmt-bench-status').text('Synced with benchmarks' + (b.file ? ' (' + b.file + ')' : '')
-                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' updated.');
-                        if (!$('#ads-rule-pmt-body .is-invalid').length) savePmtBids(true);
-                        else $('#ads-rule-pmt-bench-status').append(document.createTextNode(' Not saved: fix the red ranges, then press Save.'));
+                        // Display only: the server job (ebay:pmt-benchmark-sync, daily + after each /excel upload) does the saving and pushing.
+                        $('#ads-rule-pmt-bench-status').text('Showing the latest benchmarks' + (b.file ? ' (' + b.file + ')' : '')
+                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' differ from the saved ones. The server saves them automatically; Save and Apply stores them now.');
                     }).finally(function() { benchSyncBusy = false; });
                 }
                 setInterval(autoSyncBenchmarks, 30000);                 // while the modal stays open

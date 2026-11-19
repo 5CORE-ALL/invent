@@ -752,6 +752,17 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log));
         }
+        // Before the morning / evening push: bring every category's Highest / Lowest in line with the benchmarks
+        // (/benchmarks: Top / Bottom 10% promoted listings ad rate) so the push uses the current ranges.
+        foreach ([['09:30', 'ebay-pmt-benchmark-sync-morning'], ['19:30', 'ebay-pmt-benchmark-sync-evening']] as [$at, $name]) {
+            $ist($schedule->command('ebay:pmt-benchmark-sync all --no-push')
+                ->dailyAt($at)
+                ->timezone('Asia/Kolkata')
+                ->name($name)
+                ->withoutOverlapping(30)
+                ->runInBackground()
+                ->appendOutputTo($log));
+        }
         $ist($schedule->command('ebay:pmt-rule-auto-push --mismatch')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')
