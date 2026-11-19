@@ -931,9 +931,17 @@
                     });
                     return best;
                 }
-                function loadBenchmarks() {
-                    if (benchPromise) return benchPromise;
-                    benchPromise = fetch(BENCH_URL, { headers: { 'Accept': 'application/json' } })
+                /** Cheap fingerprint of a /benchmarks payload: changes whenever a new report or any value changes. */
+                function benchSignature(d) {
+                    const s = JSON.stringify([(d && d.source) || null, (d && d.rows) || []]);
+                    let h = 5381;
+                    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+                    return s.length + ':' + h;
+                }
+                /** force=true always re-reads /benchmarks (the data changes when a new LQS report is uploaded). */
+                function loadBenchmarks(force) {
+                    if (benchPromise && !force) return benchPromise;
+                    benchPromise = fetch(BENCH_URL, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
                         .then(function(r) { return r.json(); })
                         .then(function(d) {
                             const col = findRateField(d && d.columns);
@@ -950,7 +958,7 @@
                                     else if (row.benchmark === 'Yours') map[key].yours = String(row[col.field]).trim();
                                 });
                             }
-                            return { map: map, column: col ? col.title : '' };
+                            return { map: map, column: col ? col.title : '', sig: benchSignature(d), file: (d && d.source && d.source.filename) || '' };
                         })
                         .catch(function() {
                             benchPromise = null; // allow a retry next time
@@ -970,6 +978,66 @@
                     return null;
                 }
                 let benchMapLoaded = null;
+                let benchSigLoaded = null;
+                let benchSyncBusy = false;
+
+                /**
+                 * Auto-sync with /benchmarks while the Promoted Listings modal is open: when the benchmarks changed
+                 * (new LQS report uploaded), repaint "Promoted listings ad rate" (Yours) and move every Highest / Lowest
+                 * that was following the old benchmark (blank, default, or equal to the old Top / Bottom 10%) to the new one.
+                 * Values the user typed are never touched, and nothing is saved until Save.
+                 */
+                function autoSyncBenchmarks() {
+                    if (benchSyncBusy || benchSigLoaded === null || !benchMapLoaded) return;
+                    if (!$('#adsRulePmtModal').hasClass('show')) return;
+                    benchSyncBusy = true;
+                    loadBenchmarks(true).then(function(b) {
+                        if (b.failed || b.sig === benchSigLoaded) return;
+                        const prev = benchMapLoaded;
+                        let changed = 0;
+                        $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                            const cat = $(this).attr('data-category');
+                            const oldHit = benchFor(prev, cat);
+                            const newHit = benchFor(b.map, cat);
+                            [['.ads-rule-pmt-high', 'highest', ARP_DEFAULT_HIGH], ['.ads-rule-pmt-low', 'lowest', ARP_DEFAULT_LOW]].forEach(function(p) {
+                                const $in = $(this).find(p[0]);
+                                const v = $in.val();
+                                const oldV = oldHit ? oldHit[p[1]] : null;
+                                const newV = newHit ? newHit[p[1]] : null;
+                                const follows = v === '' || $in.hasClass('arp-default')
+                                    || (oldV != null && Math.abs(parseFloat(v) - oldV) < 0.005);
+                                if (!follows) return;
+                                if (newV != null) {
+                                    if (v === '' || Math.abs(parseFloat(v) - newV) >= 0.005) {
+                                        $in.val(newV).removeClass('arp-default').addClass('arp-bench');
+                                        changed++;
+                                    }
+                                } else if (oldV != null && b.column) {
+                                    $in.val(p[2]).removeClass('arp-bench').addClass('arp-default'); // benchmark gone: default
+                                    changed++;
+                                }
+                            }.bind(this));
+                        });
+                        benchMapLoaded = b.map;
+                        benchSigLoaded = b.sig;
+                        const sbidsNow = sbidByCategory();
+                        $('#ads-rule-pmt-body tr[data-category]').each(function() {
+                            paintYoursCell($(this), benchFor(b.map, $(this).attr('data-category')), sbidsNow);
+                        });
+                        markBenchMatches();
+                        if (arpSort.dir !== 0) applyArpSort();
+                        updateSummary();
+                        applyArpFilter();
+                        $('#ads-rule-pmt-bench-status').text('Benchmarks updated automatically' + (b.file ? ' (' + b.file + ')' : '')
+                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' refreshed. Press Save to keep them.');
+                    }).finally(function() { benchSyncBusy = false; });
+                }
+                setInterval(autoSyncBenchmarks, 30000);                 // while the modal stays open
+                window.addEventListener('focus', autoSyncBenchmarks);   // coming back from the /benchmarks or /excel tab
+                document.addEventListener('visibilitychange', function() { if (!document.hidden) autoSyncBenchmarks(); });
+                window.addEventListener('storage', function(e) {        // /excel upload or /benchmarks in another tab
+                    if (e.key === 'ebay_benchmarks_updated') autoSyncBenchmarks();
+                });
 
                 /**
                  * Green background on the Promoted listings ad rate cell when it agrees with the Highest (%) of its row:
@@ -1025,7 +1093,7 @@
                 /** Fill Highest / Lowest inputs from the benchmarks. overwrite=false only fills blank inputs. */
                 function fillFromBenchmarks(overwrite) {
                     const $status = $('#ads-rule-pmt-bench-status').text('Loading benchmarks...');
-                    return loadBenchmarks().then(function(b) {
+                    return loadBenchmarks(true).then(function(b) {
                         let cats = 0;
                         let missing = 0;
                         let defaulted = 0;
@@ -1053,6 +1121,7 @@
                             if (usedDefault) defaulted++;
                         });
                         benchMapLoaded = b.map;
+                        benchSigLoaded = b.sig;
                         const sbidsNow = sbidByCategory();
                         $('#ads-rule-pmt-body tr[data-category]').each(function() {
                             paintYoursCell($(this), benchFor(b.map, $(this).attr('data-category')), sbidsNow);

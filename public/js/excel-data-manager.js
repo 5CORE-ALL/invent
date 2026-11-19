@@ -333,6 +333,8 @@
                 return;
             }
             applyImport(payload.import);
+            // Tell other open tabs (/benchmarks, the eBay tabulator views) that the benchmarks changed.
+            try { localStorage.setItem('ebay_benchmarks_updated', String(Date.now())); } catch (error) { /* storage blocked */ }
         };
         request.onerror = function () {
             progressWrap.hidden = true;

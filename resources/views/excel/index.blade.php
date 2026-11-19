@@ -236,5 +236,5 @@
 @endsection
 
 @section('script')
-<script src="{{ asset('js/excel-data-manager.js') }}?v=20261105"></script>
+<script src="{{ asset('js/excel-data-manager.js') }}?v=20261120"></script>
 @endsection
