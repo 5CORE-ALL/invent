@@ -39,6 +39,9 @@
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fs-6 px-3 py-2">
                             Without suppliers: <strong id="mcs-badge-without">0</strong>
                         </span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle fs-6 px-3 py-2">
+                            Under 13 suppliers: <strong id="mcs-badge-low">0</strong>
+                        </span>
                     </div>
                     <div id="mcs-table"></div>
                 </div>
@@ -136,6 +139,8 @@
         });
     }
 
+    // A category with fewer suppliers than this is shown in red.
+    const LOW_SUPPLIER_COUNT = 13;
     let table = null;
 
     function updateBadges() {
@@ -145,6 +150,7 @@
         document.getElementById('mcs-badge-categories').textContent = rows.length;
         document.getElementById('mcs-badge-with').textContent = withSuppliers;
         document.getElementById('mcs-badge-without').textContent = rows.length - withSuppliers;
+        document.getElementById('mcs-badge-low').textContent = rows.filter(function(r) { return r.count < LOW_SUPPLIER_COUNT; }).length;
     }
 
     table = new Tabulator('#mcs-table', {
@@ -172,6 +178,10 @@
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
+                formatter: function(cell) {
+                    const n = Number(cell.getValue()) || 0;
+                    return n < LOW_SUPPLIER_COUNT ? '<span class="text-danger fw-bold">' + n + '</span>' : String(n);
+                },
             },
             {
                 title: 'Supplier',
