@@ -77,8 +77,15 @@ class CategoryController extends Controller
             ->all();
         $categoryIds = $categories->pluck('id')->all();
 
+        // While searching by Parent / SKU, also list the matching CP Master rows that are not in any
+        // category, so a search never says "not found" for a SKU that exists.
+        $uncategorizedSkus = [];
+        if (($parentFilter !== '' || $skuFilter !== '') && $mfrFilter === '') {
+            $uncategorizedSkus = $this->uncategorizedSkus($parentFilter, $skuFilter);
+        }
+
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus'));
         }
 
         $suppliers = Supplier::query()
@@ -161,7 +168,86 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames', 'uncategorizedSkus'));
+    }
+
+    /**
+     * CP Master rows matching the Parent / SKU search that belong to no category on this page (no MFR
+     * category, or an MFR category that has no matching category). A PARENT row whose child SKUs are in a
+     * category is not repeated here, because it is already listed under that category.
+     *
+     * @return list<array{parent: string, sku: string, is_parent: bool, image: ?string}>
+     */
+    private function uncategorizedSkus(string $parentFilter, string $skuFilter): array
+    {
+        $products = ProductMaster::query()
+            ->whereNotNull('sku')->where('sku', '!=', '')
+            ->when($parentFilter !== '', fn ($q) => $q->where('parent', 'like', $this->likeContains($parentFilter)))
+            ->when($skuFilter !== '', fn ($q) => $q->where('sku', 'like', $this->likeContains($skuFilter)))
+            ->orderBy('sku')
+            ->limit(1000)
+            ->get(['sku', 'parent', 'category_id', 'mfr_category_ids']);
+        if ($products->isEmpty()) {
+            return [];
+        }
+
+        $categoryNameKeys = [];
+        foreach (Category::query()->pluck('name') as $name) {
+            $categoryNameKeys[mb_strtolower(trim((string) $name))] = true;
+        }
+        $mfrNameKeyById = [];
+        foreach (ProductCategory::query()->get(['id', 'category_name']) as $mfrCategory) {
+            $mfrNameKeyById[(int) $mfrCategory->id] = mb_strtolower(trim((string) $mfrCategory->category_name));
+        }
+        $inCategory = function ($product) use ($categoryNameKeys, $mfrNameKeyById): bool {
+            foreach ($this->normalizeProductCategoryIds($product->mfr_category_ids, $product->category_id) as $mfrId) {
+                if (isset($mfrNameKeyById[$mfrId], $categoryNameKeys[$mfrNameKeyById[$mfrId]])) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        $rows = [];
+        $parentRowParents = [];
+        foreach ($products as $product) {
+            if ($inCategory($product)) {
+                continue;
+            }
+            $sku = trim((string) $product->sku);
+            $isParent = stripos($sku, 'PARENT') === 0;
+            $parent = trim((string) ($product->parent ?? ''));
+            if ($parent === '' && $isParent) {
+                $parent = trim(substr($sku, 6));
+            }
+            if ($isParent && $parent !== '') {
+                $parentRowParents[$parent] = true;
+            }
+            $rows[] = ['parent' => $parent, 'sku' => $sku, 'is_parent' => $isParent];
+        }
+
+        // Drop PARENT rows that are already shown under a category through their children.
+        $coveredParents = [];
+        foreach (array_chunk(array_keys($parentRowParents), 500) as $chunk) {
+            foreach (ProductMaster::query()->whereIn('parent', $chunk)->get(['sku', 'parent', 'category_id', 'mfr_category_ids']) as $sibling) {
+                if (stripos((string) $sibling->sku, 'PARENT') !== 0 && $inCategory($sibling)) {
+                    $coveredParents[trim((string) $sibling->parent)] = true;
+                }
+            }
+        }
+        $rows = array_values(array_filter($rows, fn ($row) => ! ($row['is_parent'] && isset($coveredParents[$row['parent']]))));
+
+        usort($rows, function ($a, $b) {
+            return strnatcasecmp($a['parent'], $b['parent'])
+                ?: ((int) $b['is_parent'] <=> (int) $a['is_parent'])
+                ?: strnatcasecmp($a['sku'], $b['sku']);
+        });
+
+        $holder = (object) ['cp_master_skus' => $rows];
+        $this->attachSkuImages([$holder]);
+
+        return $holder->cp_master_skus;
     }
 
     private function likeContains(string $value): string

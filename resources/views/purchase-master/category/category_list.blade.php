@@ -205,6 +205,47 @@
                                     <th class="text-center align-middle sticky-col sticky-right" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
+                            @if (!empty($uncategorizedSkus))
+                                {{-- Search results (Parent / SKU search) that are not in any category --}}
+                                <tbody class="uncategorized-group">
+                                    <tr>
+                                        <td colspan="9" class="bg-light text-muted small fw-semibold py-1">
+                                            {{ count($uncategorizedSkus) }} {{ \Illuminate\Support\Str::plural('SKU', count($uncategorizedSkus)) }} not in any category
+                                        </td>
+                                    </tr>
+                                    @foreach ($uncategorizedSkus as $uSku)
+                                        <tr>
+                                            <td class="text-center align-middle {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}"></td>
+                                            <td class="text-center parent-cell {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                                @if ($uSku['parent'] !== '')
+                                                    {{ $uSku['parent'] }}
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-center align-middle image-cell {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                @if (!empty($uSku['image']))
+                                                    <a href="{{ $uSku['image'] }}" target="_blank" rel="noopener noreferrer">
+                                                        <img src="{{ $uSku['image'] }}" alt="" loading="lazy"
+                                                            style="height:40px;width:40px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"
+                                                            onerror="this.replaceWith(document.createTextNode('-'))">
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-center sku-cell sticky-col sticky-left {{ $uSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                                {{ $uSku['sku'] }}
+                                            </td>
+                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
+                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">No category</td>
+                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
+                                            <td class="text-center text-muted {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
+                                            <td class="text-center align-middle text-muted sticky-col sticky-right {{ $uSku['is_parent'] ? 'bg-warning-subtle' : '' }}">-</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            @endif
                             @forelse($categories as $key => $category)
                                 @php
                                     $cpSkus = $category->cp_master_skus ?? [];
@@ -428,11 +469,19 @@
                                     @endforeach
                                 </tbody>
                             @empty
-                                <tbody>
-                                    <tr>
-                                        <td colspan="9" class="text-center">No categories found</td>
-                                    </tr>
-                                </tbody>
+                                @if (empty($uncategorizedSkus))
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="9" class="text-center">
+                                                @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '')
+                                                    No SKUs found
+                                                @else
+                                                    No categories found
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                @endif
                             @endforelse
                         </table>
                     </div>
@@ -583,7 +632,7 @@
                         </div>
                     </div>
                     <div class="d-flex justify-content-end mt-3 text-muted small">
-                        Showing all {{ count($categories) }} {{ \Illuminate\Support\Str::plural('category', count($categories)) }}
+                        Showing all {{ count($categories) }} {{ \Illuminate\Support\Str::plural('category', count($categories)) }}@if (!empty($uncategorizedSkus)) and {{ count($uncategorizedSkus) }} {{ \Illuminate\Support\Str::plural('SKU', count($uncategorizedSkus)) }} not in any category @endif
                     </div>
                 </div>
             </div>
