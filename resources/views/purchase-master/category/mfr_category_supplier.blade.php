@@ -8,6 +8,8 @@
     .tabulator .tabulator-header .tabulator-col { border-right: 1px solid #e5e7eb; }
     .tabulator-row:hover { background-color: #f8f9fa !important; }
     .tabulator-cell { padding: 8px !important; }
+    .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title { text-align: center; }
+    .tabulator .tabulator-cell { text-align: center; }
     .mcs-supplier-badge { display: inline-block; margin: 2px 4px 2px 0; }
 </style>
 @endsection
@@ -136,6 +138,8 @@
                 title: 'MFR Category',
                 field: 'mfr_category',
                 width: 260,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
                 headerFilter: 'input',
                 headerFilterPlaceholder: 'Search category...',
                 sorter: 'string',
@@ -144,6 +148,8 @@
             {
                 title: 'Supplier',
                 field: 'suppliers_text',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
                 headerFilter: 'input',
                 headerFilterPlaceholder: 'Search supplier...',
                 sorter: 'string',
@@ -160,6 +166,7 @@
                 field: 'count',
                 width: 90,
                 hozAlign: 'center',
+                headerHozAlign: 'center',
                 sorter: 'number',
             },
             {
@@ -167,6 +174,7 @@
                 field: 'id',
                 width: 90,
                 hozAlign: 'center',
+                headerHozAlign: 'center',
                 headerSort: false,
                 frozen: true,
                 formatter: function() {
