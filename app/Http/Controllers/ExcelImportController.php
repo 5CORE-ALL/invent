@@ -55,6 +55,15 @@ class ExcelImportController extends Controller
             ], 500);
         }
 
+        // New Listing Quality report = new benchmarks: bring the Ads Rule PMT ranges in line once the response is sent.
+        dispatch(static function () use ($account) {
+            try {
+                app(\App\Services\PmtBenchmarkSync::class)->run($account, true);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
+
         return response()->json([
             'message' => 'Workbook imported.',
             'import' => $this->importPayload($import),
