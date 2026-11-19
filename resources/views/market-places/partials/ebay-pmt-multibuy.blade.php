@@ -982,38 +982,35 @@
                 let benchSyncBusy = false;
 
                 /**
-                 * Auto-sync with /benchmarks while the Promoted Listings modal is open: when the benchmarks changed
-                 * (new LQS report uploaded), repaint "Promoted listings ad rate" (Yours) and move every Highest / Lowest
-                 * that was following the old benchmark (blank, default, or equal to the old Top / Bottom 10%) to the new one.
-                 * Values the user typed are never touched, and nothing is saved until Save.
+                 * Keep Highest / Lowest in step with /benchmarks (Highest = Top 10%, Lowest = Bottom 10%).
+                 * Runs when the modal opens (force = true), every 30 s while it is open, on tab focus and when another tab
+                 * uploads / opens new benchmarks. Every category that HAS a benchmark is set to it, saved values included
+                 * (they go stale when a new LQS report arrives). Only an input typed by hand in this open window is left alone.
+                 * Categories without a benchmark keep their value (blank ones get the default). When anything changed the
+                 * ranges are saved, and pushed to eBay when the switch is On.
                  */
-                function autoSyncBenchmarks() {
+                function autoSyncBenchmarks(force) {
+                    force = force === true;
                     if (benchSyncBusy || benchSigLoaded === null || !benchMapLoaded) return;
                     if (!$('#adsRulePmtModal').hasClass('show')) return;
                     benchSyncBusy = true;
                     loadBenchmarks(true).then(function(b) {
-                        if (b.failed || b.sig === benchSigLoaded) return;
-                        const prev = benchMapLoaded;
+                        if (b.failed || (!force && b.sig === benchSigLoaded)) return;
                         let changed = 0;
                         $('#ads-rule-pmt-body tr[data-category]').each(function() {
-                            const cat = $(this).attr('data-category');
-                            const oldHit = benchFor(prev, cat);
-                            const newHit = benchFor(b.map, cat);
+                            const newHit = benchFor(b.map, $(this).attr('data-category'));
                             [['.ads-rule-pmt-high', 'highest', ARP_DEFAULT_HIGH], ['.ads-rule-pmt-low', 'lowest', ARP_DEFAULT_LOW]].forEach(function(p) {
                                 const $in = $(this).find(p[0]);
+                                if ($in.data('userEdited')) return; // typed by hand in this window
                                 const v = $in.val();
-                                const oldV = oldHit ? oldHit[p[1]] : null;
                                 const newV = newHit ? newHit[p[1]] : null;
-                                const follows = v === '' || $in.hasClass('arp-default')
-                                    || (oldV != null && Math.abs(parseFloat(v) - oldV) < 0.005);
-                                if (!follows) return;
                                 if (newV != null) {
                                     if (v === '' || Math.abs(parseFloat(v) - newV) >= 0.005) {
                                         $in.val(newV).removeClass('arp-default').addClass('arp-bench');
                                         changed++;
                                     }
-                                } else if (oldV != null && b.column) {
-                                    $in.val(p[2]).removeClass('arp-bench').addClass('arp-default'); // benchmark gone: default
+                                } else if (v === '' && b.column) {
+                                    $in.val(p[2]).addClass('arp-default');
                                     changed++;
                                 }
                             }.bind(this));
@@ -1028,11 +1025,11 @@
                         if (arpSort.dir !== 0) applyArpSort();
                         updateSummary();
                         applyArpFilter();
-                        $('#ads-rule-pmt-bench-status').text('Benchmarks updated automatically' + (b.file ? ' (' + b.file + ')' : '')
-                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' refreshed.');
-                        // Auto-save (and push to eBay when the switch is On) only if something changed and no range is invalid.
-                        if (changed > 0 && !$('#ads-rule-pmt-body .is-invalid').length) savePmtBids(true);
-                        else if (changed > 0) $('#ads-rule-pmt-bench-status').append(document.createTextNode(' Not saved: fix the red ranges, then press Save.'));
+                        if (!changed) return;
+                        $('#ads-rule-pmt-bench-status').text('Synced with benchmarks' + (b.file ? ' (' + b.file + ')' : '')
+                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' updated.');
+                        if (!$('#ads-rule-pmt-body .is-invalid').length) savePmtBids(true);
+                        else $('#ads-rule-pmt-bench-status').append(document.createTextNode(' Not saved: fix the red ranges, then press Save.'));
                     }).finally(function() { benchSyncBusy = false; });
                 }
                 setInterval(autoSyncBenchmarks, 30000);                 // while the modal stays open
@@ -1342,7 +1339,8 @@
                     loadSavedBids().finally(function() {
                         renderPauseRows();
                         renderRows();
-                        fillFromBenchmarks(false); // blank inputs only; saved values are kept
+                        // blank inputs first, then bring every category that has a benchmark in line with it (and save)
+                        fillFromBenchmarks(false).then(function() { autoSyncBenchmarks(true); });
                     });
                 });
 
@@ -1375,7 +1373,7 @@
                     markYoursOk($(this).closest('tr'));
                 });
                 $('#ads-rule-pmt-body').on('input', '.ads-rule-pmt-input', function() {
-                    $(this).removeClass('arp-bench arp-default');
+                    $(this).removeClass('arp-bench arp-default').data('userEdited', true); // typed by hand: auto-sync leaves it alone
                     markBenchMatches($(this).closest('tr')); // green again if the typed value equals the benchmark
                     updateSummary();
                 });
@@ -1434,8 +1432,8 @@
                 $('#ads-rule-pmt-apply-all').on('click', function() {
                     const hi = $('#ads-rule-pmt-all-high').val();
                     const lo = $('#ads-rule-pmt-all-low').val();
-                    if (hi !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-high').val(hi);
-                    if (lo !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-low').val(lo);
+                    if (hi !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-high').val(hi).data('userEdited', true);
+                    if (lo !== '') $('#ads-rule-pmt-body tr[data-category]:visible .ads-rule-pmt-low').val(lo).data('userEdited', true);
                     updateSummary();
                 });
 
