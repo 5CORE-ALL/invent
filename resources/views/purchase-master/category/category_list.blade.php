@@ -134,6 +134,31 @@
                     </div>
 
                     {{-- 🔍 Search Bar --}}
+                    {{-- Parent / SKU filter (searches CP Master across all categories, not just this page) --}}
+                    <form method="GET" action="{{ route('category.list') }}" class="row g-2 align-items-end mb-3"
+                        id="cp-filter-form">
+                        <div class="col-md-3">
+                            <label for="filter-parent" class="form-label fw-semibold">Parent</label>
+                            <input type="text" id="filter-parent" name="parent" class="form-control"
+                                value="{{ $parentFilter ?? '' }}" placeholder="Filter by parent..." autocomplete="off">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="filter-sku" class="form-label fw-semibold">SKU</label>
+                            <input type="text" id="filter-sku" name="sku" class="form-control"
+                                value="{{ $skuFilter ?? '' }}" placeholder="Filter by SKU..." autocomplete="off">
+                        </div>
+                        <div class="col-md-auto d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="mdi mdi-filter-outline me-1"></i> Filter
+                            </button>
+                            @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '')
+                                <a href="{{ route('category.list') }}" class="btn btn-light border">
+                                    <i class="mdi mdi-close me-1"></i> Clear
+                                </a>
+                            @endif
+                        </div>
+                    </form>
+
                     <div class="row d-flex justify-content-end align-items-center mb-3">
                         <div class="col-md-4">
                             <label for="search-input" class="form-label fw-semibold">Search</label>
@@ -150,6 +175,8 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center align-middle" style="width: 5%">#</th>
+                                    <th class="text-center align-middle" style="width: 12%">Parent</th>
+                                    <th class="text-center align-middle" style="width: 14%">SKU</th>
                                     <th class="text-center align-middle" style="width: 20%">Link Sku Purchase</th>
                                     <th class="text-center align-middle" style="width: 18%">MFR category</th>
                                     <th class="text-center align-middle" style="width: 15%">Suppliers</th>
@@ -158,17 +185,38 @@
                                     <th class="text-center align-middle" style="width: 18%">Action</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                @forelse($categories as $key => $category)
+                            @forelse($categories as $key => $category)
+                                @php
+                                    $cpSkus = $category->cp_master_skus ?? [];
+                                    $rowspan = max(1, count($cpSkus));
+                                    $firstSku = $cpSkus[0] ?? null;
+                                @endphp
+                                {{-- One <tbody> per category: one row per CP Master SKU (parent rows included);
+                                     the category-level cells span all of its SKU rows. --}}
+                                <tbody class="category-group">
                                     <tr>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <div class="form-check d-flex justify-content-center align-items-center">
                                                 <input type="checkbox" class="form-check-input category-checkbox"
                                                     id="category-{{ $category->id }}" value="{{ $category->id }}"
                                                     style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
                                             </div>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center parent-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                            @if ($firstSku && $firstSku['parent'] !== '')
+                                                {{ $firstSku['parent'] }}
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center sku-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                            @if ($firstSku)
+                                                {{ $firstSku['sku'] }}
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             @php $linkedSkus = $category->linked_skus_list ?? []; @endphp
                                             @if (count($linkedSkus) > 0)
                                                 <div class="d-flex flex-wrap align-items-start justify-content-center py-1"
@@ -187,14 +235,14 @@
                                                 <span class="text-muted fst-italic">No SKUs</span>
                                             @endif
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <div class="d-flex justify-content-center align-items-center">
                                                 <div>
                                                     <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <div class="d-flex justify-content-center align-items-center">
                                                 <div
                                                     class="d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm">
@@ -205,7 +253,7 @@
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             @php $parents = $category->parents_list ?? []; @endphp
                                             @if(count($parents) > 0)
                                                 <div class="dropdown d-inline-block">
@@ -222,13 +270,13 @@
                                                 <span class="text-muted">-</span>
                                             @endif
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <span
                                                 class="badge {{ $category->status === 'active' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }} px-3 py-2 rounded-pill">
                                                 {{ ucfirst($category->status) }}
                                             </span>
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             <div class="d-flex justify-content-center align-items-center gap-1">
                                                 <a href="#" class="btn btn-soft-primary btn-sm"
                                                     data-bs-toggle="modal"
@@ -250,7 +298,31 @@
                                             </div>
                                         </td>
                                     </tr>
-
+                                    @foreach (array_slice($cpSkus, 1) as $cpSku)
+                                        <tr>
+                                            <td class="text-center parent-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                                @if ($cpSku['parent'] !== '')
+                                                    {{ $cpSku['parent'] }}
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-center sku-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
+                                                {{ $cpSku['sku'] }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            @empty
+                                <tbody>
+                                    <tr>
+                                        <td colspan="9" class="text-center">No categories found</td>
+                                    </tr>
+                                </tbody>
+                            @endforelse
+                        </table>
+                    </div>
+                    @foreach ($categories as $category)
                                     <!-- Edit Category Modal -->
                                     <div id="editCategoryModal{{ $category->id }}" class="modal fade" tabindex="-1"
                                         aria-labelledby="editCategoryModal" aria-hidden="true">
@@ -306,14 +378,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                @empty
-                                    <tr>
-                                        <td colspan="7" class="text-center">No categories found</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
+                    @endforeach
                     <div class="d-flex justify-content-end mt-4">
                         <div class="pagination-wrapper" id="pagination-wrapper">
                             {{ $categories->onEachSide(1)->links('pagination::bootstrap-5') }}
@@ -332,7 +397,7 @@
                 clearTimeout(searchTimer);
                 searchTimer = setTimeout(() => {
                     const value = $(this).val().toLowerCase();
-                    $("#category-table-body tbody tr").each(function() {
+                    $("#category-table-body tbody.category-group").each(function() {
                         $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
                     });
                 }, 300);

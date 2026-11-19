@@ -45,13 +45,21 @@ use SimpleXMLElement;
 
 class CategoryController extends Controller
 {
-    public function categoryList()
+    public function categoryList(Request $request)
     {
-        $categories = Category::paginate(20);
+        $parentFilter = trim((string) $request->query('parent', ''));
+        $skuFilter = trim((string) $request->query('sku', ''));
+
+        $categoriesQuery = Category::query();
+        if ($parentFilter !== '' || $skuFilter !== '') {
+            $categoriesQuery->whereIn('id', $this->categoryIdsMatchingCpMasterFilters($parentFilter, $skuFilter));
+        }
+
+        $categories = $categoriesQuery->paginate(20)->withQueryString();
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter'));
         }
 
         $suppliers = Supplier::query()
@@ -133,7 +141,197 @@ class CategoryController extends Controller
             $category->linked_skus_list = $linkedList;
         }
 
-        return view('purchase-master.category.category_list', compact('categories'));
+        $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
+
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter'));
+    }
+
+    private function likeContains(string $value): string
+    {
+        return '%'.addcslashes($value, '\\%_').'%';
+    }
+
+    /**
+     * Ids of categories that have at least one CP Master row matching the Parent / SKU filters
+     * (partial, case-insensitive). Categories are matched to CP Master by Mfr category name.
+     *
+     * @return list<int>
+     */
+    private function categoryIdsMatchingCpMasterFilters(string $parentFilter, string $skuFilter): array
+    {
+        $products = ProductMaster::query()
+            ->when($parentFilter !== '', fn ($q) => $q->where('parent', 'like', $this->likeContains($parentFilter)))
+            ->when($skuFilter !== '', fn ($q) => $q->where('sku', 'like', $this->likeContains($skuFilter)))
+            ->get(['category_id', 'mfr_category_ids']);
+
+        $mfrIds = [];
+        foreach ($products as $product) {
+            foreach (is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [] as $id) {
+                $mfrIds[(int) $id] = true;
+            }
+            if ($product->category_id) {
+                $mfrIds[(int) $product->category_id] = true;
+            }
+        }
+        unset($mfrIds[0]);
+        if ($mfrIds === []) {
+            return [];
+        }
+
+        $names = ProductCategory::query()
+            ->whereIn('id', array_keys($mfrIds))
+            ->pluck('category_name')
+            ->map(fn ($name) => mb_strtolower(trim((string) $name)))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        if ($names === []) {
+            return [];
+        }
+
+        return Category::query()
+            ->get(['id', 'name'])
+            ->filter(fn ($category) => in_array(mb_strtolower(trim((string) $category->name)), $names, true))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * Fills `cp_master_skus` on each category: SKUs from CP Master (product_master) whose Mfr
+     * category matches the category name, together with the PARENT row(s) of those SKUs.
+     * Each item is ['parent' => string, 'sku' => string, 'is_parent' => bool], ordered parent group
+     * by parent group (PARENT row first, then its children). When Parent / SKU filters are given,
+     * only matching rows are kept (partial, case-insensitive).
+     *
+     * @param  iterable<Category>  $categories
+     */
+    private function attachCpMasterSkus($categories, string $parentFilter = '', string $skuFilter = ''): void
+    {
+        $categoryList = collect($categories);
+        $nameKeyByCategoryId = [];
+        foreach ($categoryList as $category) {
+            $key = mb_strtolower(trim((string) $category->name));
+            $nameKeyByCategoryId[$category->id] = $key;
+            $category->cp_master_skus = [];
+        }
+
+        $nameKeys = array_values(array_unique(array_filter($nameKeyByCategoryId)));
+        if ($nameKeys === []) {
+            return;
+        }
+
+        // Mfr category id (product_categories) => name key, for categories on this page only.
+        $mfrNameKeyById = [];
+        foreach (ProductCategory::query()->get(['id', 'category_name']) as $mfrCategory) {
+            $key = mb_strtolower(trim((string) $mfrCategory->category_name));
+            if (in_array($key, $nameKeys, true)) {
+                $mfrNameKeyById[(int) $mfrCategory->id] = $key;
+            }
+        }
+        if ($mfrNameKeyById === []) {
+            return;
+        }
+
+        $mfrIds = array_keys($mfrNameKeyById);
+        $products = ProductMaster::query()
+            ->where(function ($query) use ($mfrIds) {
+                $query->whereIn('category_id', $mfrIds);
+                foreach ($mfrIds as $mfrId) {
+                    $query->orWhereJsonContains('mfr_category_ids', $mfrId)
+                        ->orWhereJsonContains('mfr_category_ids', (string) $mfrId);
+                }
+            })
+            ->get(['id', 'sku', 'parent', 'category_id', 'mfr_category_ids']);
+
+        // name key => [sku => parent]
+        $skusByNameKey = [];
+        foreach ($products as $product) {
+            $sku = trim((string) ($product->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $ids = is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [];
+            $ids = array_map('intval', $ids);
+            if ($product->category_id) {
+                $ids[] = (int) $product->category_id;
+            }
+
+            foreach (array_unique($ids) as $mfrId) {
+                if (isset($mfrNameKeyById[$mfrId])) {
+                    $skusByNameKey[$mfrNameKeyById[$mfrId]][$sku] = trim((string) ($product->parent ?? ''));
+                }
+            }
+        }
+
+        // Make sure the PARENT row of every listed SKU is present, even if it has no category itself.
+        $parentSkuNames = [];
+        foreach ($skusByNameKey as $skuMap) {
+            foreach ($skuMap as $parent) {
+                if ($parent !== '') {
+                    $parentSkuNames['PARENT '.$parent] = true;
+                }
+            }
+        }
+        $existingParentSkus = [];
+        if ($parentSkuNames !== []) {
+            foreach (array_chunk(array_keys($parentSkuNames), 500) as $chunk) {
+                foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'parent']) as $parentRow) {
+                    $existingParentSkus[mb_strtoupper(trim((string) $parentRow->sku))] = trim((string) $parentRow->sku);
+                }
+            }
+        }
+
+        foreach ($categoryList as $category) {
+            $skuMap = $skusByNameKey[$nameKeyByCategoryId[$category->id]] ?? [];
+            if ($skuMap === []) {
+                continue;
+            }
+
+            // parent => ['parent_sku' => ?string, 'children' => list<string>]
+            $groups = [];
+            foreach ($skuMap as $sku => $parent) {
+                $isParentRow = stripos($sku, 'PARENT') === 0;
+                $groupKey = $parent !== '' ? $parent : ($isParentRow ? trim(substr($sku, 6)) : '');
+                $groups[$groupKey] ??= ['parent_sku' => null, 'children' => []];
+
+                if ($isParentRow) {
+                    $groups[$groupKey]['parent_sku'] = $sku;
+                } else {
+                    $groups[$groupKey]['children'][] = $sku;
+                }
+            }
+
+            uksort($groups, fn ($a, $b) => strnatcasecmp((string) $a, (string) $b));
+
+            $items = [];
+            foreach ($groups as $groupKey => $group) {
+                $parentSku = $group['parent_sku'];
+                if ($parentSku === null && $groupKey !== '') {
+                    $parentSku = $existingParentSkus[mb_strtoupper('PARENT '.$groupKey)] ?? null;
+                }
+                if ($parentSku !== null) {
+                    $items[] = ['parent' => (string) $groupKey, 'sku' => $parentSku, 'is_parent' => true];
+                }
+
+                $children = $group['children'];
+                sort($children, SORT_NATURAL | SORT_FLAG_CASE);
+                foreach ($children as $child) {
+                    $items[] = ['parent' => (string) $groupKey, 'sku' => $child, 'is_parent' => false];
+                }
+            }
+
+            if ($parentFilter !== '' || $skuFilter !== '') {
+                $items = array_values(array_filter($items, function ($item) use ($parentFilter, $skuFilter) {
+                    return ($parentFilter === '' || mb_stripos($item['parent'], $parentFilter) !== false)
+                        && ($skuFilter === '' || mb_stripos($item['sku'], $skuFilter) !== false);
+                }));
+            }
+
+            $category->cp_master_skus = $items;
+        }
     }
 
     /**
