@@ -4906,7 +4906,7 @@
         }
         window.amzCvrOnlyMode = amzCvrOnlyMode;
         function amzSpriceAutoFillOff(d) {
-            return (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && !amzCvrOnlyMode()) || amzSpriceIsCleared(d);
+            return (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') || amzSpriceIsCleared(d);
         }
         window.amzSpriceIsCleared = amzSpriceIsCleared;
         window.amzSpriceAutoFillOff = amzSpriceAutoFillOff;

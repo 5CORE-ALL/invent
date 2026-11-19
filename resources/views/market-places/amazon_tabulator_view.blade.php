@@ -2241,6 +2241,12 @@
             if (!(parseFloat(data.INV) > 0)) return false;
             // Dil / CVR / Rev slabs load after first paint — don't count stale stored SPRICE.
             if (typeof amzRuleSpriceSlabsReady !== 'undefined' && !amzRuleSpriceSlabsReady) return false;
+            // Both S PRC rules OFF: no rule applies a price, so an old saved S PRC is not a pending push. Only the CVR Price Rule's
+            // own price (when it is ON and hits this SKU) can be blue.
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                const cvrInfo = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(data) : null;
+                if (!cvrInfo) return false;
+            }
             const price = parseFloat(data.price) || 0;
             const sprice = amazonVisibleSprice(data);
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
