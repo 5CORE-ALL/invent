@@ -522,7 +522,160 @@ class WayfairTrackingSyncService
             return ['ok' => false, 'message' => 'HTTP '.$response->status().' errors: '.json_encode($json['errors'])];
         }
 
-        return ['ok' => true, 'message' => 'HTTP '.$response->status().' data: '.mb_substr((string) json_encode($json['data'] ?? null), 0, 600)];
+        $events = is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : [];
+        $want = $this->poFilterValue($poNumber);
+        $pos = [];
+        foreach ($events as $event) {
+            $pos[] = (string) ($event['poNumber'] ?? '?');
+        }
+        $matching = array_values(array_filter($events, fn ($e) => $this->poFilterValue((string) ($e['poNumber'] ?? '')) === $want));
+
+        return ['ok' => true, 'message' => sprintf(
+            'HTTP %d, asked for %s, got %d event(s) for PO [%s]; %d match the asked PO%s',
+            $response->status(),
+            $want,
+            count($events),
+            implode(', ', $pos),
+            count($matching),
+            $matching !== [] ? ' → '.mb_substr((string) json_encode($matching[0]['shippingLabelInfo'] ?? null), 0, 400) : ''
+        )];
+    }
+
+    /**
+     * Probe the label events query with plain and deliberately wrong requests. Introspection is blocked, but error
+     * messages and answers show which arguments / filter fields exist and what an unfiltered call returns.
+     *
+     * @return list<string>
+     */
+    public function debugLabelEventsProbe(string $poNumber): array
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['token failed: '.$e->getMessage()];
+        }
+        $post = function (string $query, array $vars = []) use ($token): array {
+            $response = Http::withoutVerifying()->connectTimeout(8)->timeout(30)->withToken($token)
+                ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query] + ($vars !== [] ? ['variables' => $vars] : []));
+            $json = $response->json();
+
+            return is_array($json) ? $json : ['errors' => [['message' => 'HTTP '.$response->status().' non-JSON']]];
+        };
+        $firstError = function (array $json): string {
+            $msg = (string) ($json['errors'][0]['message'] ?? '');
+
+            return $msg !== '' ? mb_strimwidth($msg, 0, 260, '…') : 'accepted';
+        };
+
+        $want = $this->poFilterValue($poNumber);
+        $lines = [];
+
+        $json = $post('query($limit: Int) { labelGenerationEvents(limit: $limit) { poNumber } }', ['limit' => 200]);
+        if (! empty($json['errors'])) {
+            $lines[] = 'no filter, limit 200: '.$firstError($json);
+        } else {
+            $events = is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : [];
+            $pos = array_map(fn ($e) => (string) ($e['poNumber'] ?? ''), $events);
+            $lines[] = sprintf(
+                'no filter, limit 200: %d event(s); lowest PO %s, highest PO %s, first 8: [%s]; contains %s: %s',
+                count($pos),
+                $pos === [] ? '-' : min($pos),
+                $pos === [] ? '-' : max($pos),
+                implode(', ', array_slice($pos, 0, 8)),
+                $want,
+                in_array($want, $pos, true) ? 'YES' : 'no'
+            );
+        }
+
+        foreach (['offset', 'page', 'cursor', 'after', 'fromDate', 'toDate', 'startDate', 'endDate', 'sortOrder', 'orderBy', 'poNumber', 'poNumbers'] as $arg) {
+            $lines[] = "argument {$arg}: ".$firstError($post("{ labelGenerationEvents(limit: 1, {$arg}: 1) { poNumber } }"));
+        }
+
+        $filterQuery = 'query($f: [LabelGenerationEventFilterInput]) { labelGenerationEvents(limit: 1, filters: $f) { poNumber } }';
+        $lines[] = 'filter field "zzz": '.$firstError($post($filterQuery, ['f' => [['field' => 'zzz', 'equals' => '1']]]));
+        $lines[] = 'filter key "zzz": '.$firstError($post($filterQuery, ['f' => [['field' => 'poNumber', 'zzz' => '1']]]));
+        foreach (['equals', 'in', 'greaterThan', 'lessThan', 'contains', 'startsWith'] as $op) {
+            $value = $op === 'in' ? [$want] : $want;
+            $answer = $post($filterQuery, ['f' => [['field' => 'poNumber', $op => $value]]]);
+            $got = array_map(fn ($e) => (string) ($e['poNumber'] ?? ''), (array) ($answer['data']['labelGenerationEvents'] ?? []));
+            $lines[] = "filter poNumber {$op} {$want}: ".(! empty($answer['errors']) ? $firstError($answer) : 'PO(s) returned: ['.implode(', ', $got).']');
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Which extra fields does a Wayfair purchase order expose (tracking, shipped status)? Each guess is sent on its own
+     * and Wayfair either answers with a value, says the field needs a sub-selection (it exists), or says it does not exist.
+     *
+     * @return list<string>
+     */
+    public function debugPurchaseOrderFieldsProbe(string $poNumber): array
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return ['token failed: '.$e->getMessage()];
+        }
+        $run = function (string $selection) use ($token, $poNumber): string {
+            $query = 'query($po: [String]) { getDropshipPurchaseOrders(limit: 1, poNumbers: $po) { poNumber '.$selection.' } }';
+            $response = Http::withoutVerifying()->connectTimeout(8)->timeout(20)->withToken($token)
+                ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query, 'variables' => ['po' => [$poNumber]]]);
+            $json = $response->json();
+            if (! empty($json['errors'])) {
+                return mb_strimwidth((string) ($json['errors'][0]['message'] ?? 'error'), 0, 220, '…');
+            }
+            $rows = $json['data']['getDropshipPurchaseOrders'] ?? null;
+            if (! is_array($rows) || $rows === []) {
+                return 'accepted, but Wayfair returned no PO for this request';
+            }
+
+            return 'EXISTS, value: '.mb_strimwidth((string) json_encode($rows[0]), 0, 300, '…');
+        };
+
+        $lines = ['plain request (poNumber only): '.$run('')];
+        $scalars = ['trackingNumber', 'trackingNumbers', 'status', 'orderStatus', 'poStatus', 'purchaseOrderStatus', 'shipmentStatus',
+            'shipStatus', 'shippedDate', 'shipDate', 'shippedAt', 'deliveryDate', 'carrier', 'carrierName', 'carrierCode', 'hasShipped',
+            'isShipped', 'shipNoticeStatus', 'asnStatus', 'hasResponse', 'responseStatus', 'acceptanceStatus', 'state', 'labelStatus'];
+        foreach ($scalars as $field) {
+            $lines[] = "field {$field}: ".$run($field);
+        }
+        foreach (['shipments', 'shipment', 'shippingLabels', 'labels', 'shipNotice', 'asn', 'shipmentInfo', 'trackingInfo', 'response', 'acknowledgement', 'shippingInfo'] as $field) {
+            $lines[] = "object {$field}: ".$run($field);
+        }
+        foreach (['trackingNumber', 'shipDate', 'carrier', 'status', 'shippedAt', 'deliveryDate', 'labelGenerated', 'trackingNumbers', 'shipmentStatus'] as $field) {
+            $lines[] = "shippingInfo.{$field}: ".$run("shippingInfo { {$field} }");
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Wayfair's own description of the label events query (arguments and filter fields). For diagnostics only.
+     */
+    public function debugLabelEventsSchema(): string
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return 'token failed: '.$e->getMessage();
+        }
+        $query = '{ filter: __type(name: "LabelGenerationEventFilterInput") { name inputFields { name description type { name kind ofType { name kind } } } } '
+            .'query: __type(name: "Query") { fields { name args { name description type { name kind ofType { name kind } } } } } }';
+        $response = Http::withoutVerifying()->connectTimeout(8)->timeout(30)->withToken($token)
+            ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query]);
+        $json = $response->json();
+        if (! empty($json['errors'])) {
+            return 'errors: '.json_encode($json['errors']);
+        }
+        $out = ['filter' => $json['data']['filter'] ?? null, 'labelGenerationEvents' => null];
+        foreach ($json['data']['query']['fields'] ?? [] as $field) {
+            if (($field['name'] ?? '') === 'labelGenerationEvents') {
+                $out['labelGenerationEvents'] = $field;
+            }
+        }
+
+        return (string) json_encode($out, JSON_PRETTY_PRINT);
     }
 
     /**
