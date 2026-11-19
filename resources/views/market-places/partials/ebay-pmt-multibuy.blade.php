@@ -1029,7 +1029,10 @@
                         updateSummary();
                         applyArpFilter();
                         $('#ads-rule-pmt-bench-status').text('Benchmarks updated automatically' + (b.file ? ' (' + b.file + ')' : '')
-                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' refreshed. Press Save to keep them.');
+                            + ': ' + changed + ' Highest / Lowest value' + (changed === 1 ? '' : 's') + ' refreshed.');
+                        // Auto-save (and push to eBay when the switch is On) only if something changed and no range is invalid.
+                        if (changed > 0 && !$('#ads-rule-pmt-body .is-invalid').length) savePmtBids(true);
+                        else if (changed > 0) $('#ads-rule-pmt-bench-status').append(document.createTextNode(' Not saved: fix the red ranges, then press Save.'));
                     }).finally(function() { benchSyncBusy = false; });
                 }
                 setInterval(autoSyncBenchmarks, 30000);                 // while the modal stays open
@@ -1436,7 +1439,10 @@
                     updateSummary();
                 });
 
-                $('#ads-rule-pmt-save').on('click', function() {
+                $('#ads-rule-pmt-save').on('click', function() { savePmtBids(false); });
+
+                /** Save (and, with the switch On, push to eBay). auto=true: triggered by a benchmarks change; the modal stays open. */
+                function savePmtBids(auto) {
                     const bids = {};
                     $('#ads-rule-pmt-body tr[data-category]').each(function() {
                         bids[$(this).attr('data-category')] = {
@@ -1445,9 +1451,9 @@
                             manual: '' // the Manual rate is gone: the old value is cleared on save
                         };
                     });
-                    const $btn = $(this).prop('disabled', true);
+                    const $btn = $('#ads-rule-pmt-save').prop('disabled', true);
                     const $err = $('#ads-rule-pmt-error').addClass('d-none').text('');
-                    fetch(PMT_BIDS_URL, {
+                    return fetch(PMT_BIDS_URL, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1465,14 +1471,15 @@
                             savedBids = res.d.bids || {};
                             if (res.d.pause_rule) setPauseRule(res.d.pause_rule);
                             if (typeof res.d.enabled === 'boolean') { ruleOn = res.d.enabled; paintMode(); }
-                            if (ruleOn && typeof showToast === 'function') showToast('success', 'Saved. Pushing the new bids to eBay in the background.');
+                            if (ruleOn && typeof showToast === 'function') showToast('success', (auto ? 'Benchmarks changed: ' : '') + 'Saved. Pushing the new bids to eBay in the background.');
                             if (ruleOn && typeof window.ebayUpdateWatch === 'function') window.ebayUpdateWatch('pmt');
                             refreshPmtColumn();
-                            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                            if (!auto) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                            else $('#ads-rule-pmt-bench-status').append(document.createTextNode(' Saved automatically' + (ruleOn ? ' and pushed to eBay.' : '.')));
                         })
                         .catch(function() { $err.removeClass('d-none').text('Could not save.'); })
                         .finally(function() { $btn.prop('disabled', false); });
-                });
+                }
             })();
 
             // ===== Multi Buy rule: discount % for Buy 2 / Buy 3 / Buy 4 =====
