@@ -318,7 +318,18 @@
         // Done on the button click itself, so it does not depend on Bootstrap's modal events reaching jQuery.
         $(document).on('click', '[data-bs-target^="#editCategoryModal"]', function() {
             const $modal = $($(this).attr('data-bs-target'));
-            $modal.attr('data-move-sku', $(this).attr('data-sku') || '');
+            // The clicked row's SKU - or every ticked row's SKU when the clicked row is one of the ticked rows.
+            const clicked = $(this).attr('data-sku') || '';
+            const key = String($(this).attr('data-key') || '');
+            let skus = clicked ? [clicked] : [];
+            if (clicked && window.categoryTable) {
+                const ticked = window.categoryTable.getSelectedData();
+                if (ticked.some(function(r) { return r.key === key; })) {
+                    const all = ticked.map(function(r) { return r.sku; }).filter(Boolean);
+                    skus = all.filter(function(v, i) { return all.indexOf(v) === i; });
+                }
+            }
+            $modal.attr('data-move-sku', clicked).attr('data-move-skus', JSON.stringify(skus));
             const $input = $modal.find('.cat-combo-input');
             $input.val($input.prop('defaultValue'));
             $modal.find('.cat-combo-hint').text('');
@@ -345,8 +356,9 @@
                 const owners = window.categoryNameOwners || {};
                 const owner = owners[categoryName.toLowerCase()];
                 if (owner !== undefined && Number(owner) !== Number(categoryId)) {
-                    const moveSku = $('#editCategoryModal' + categoryId).attr('data-move-sku');
-                    if (!moveSku) {
+                    let moveSkus = [];
+                    try { moveSkus = JSON.parse($('#editCategoryModal' + categoryId).attr('data-move-skus') || '[]'); } catch (err) { moveSkus = []; }
+                    if (!moveSkus.length) {
                         alert('A category with this name already exists. Use the Edit button on one of its SKU rows to move that SKU there.');
                         return;
                     }
@@ -356,7 +368,7 @@
                         url: '{{ url('/category/rows/add') }}',
                         method: 'POST',
                         dataType: 'json',
-                        data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [owner], skus: [moveSku] }
+                        data: { _token: $('meta[name="csrf-token"]').attr('content'), category_ids: [owner], skus: moveSkus }
                     }).done(function() {
                         $('#editCategoryModal' + categoryId).modal('hide');
                         window.reloadCategoryTable();
@@ -624,7 +636,7 @@
                         $item.addClass('disabled text-muted').attr('data-taken', '1')
                             .append($('<span class="badge bg-secondary-subtle text-dark ms-2"></span>').text('already added'));
                     } else if (existing) {
-                        $item.append($('<span class="badge bg-info-subtle text-dark ms-2"></span>').text('existing - moves this SKU here'));
+                        $item.append($('<span class="badge bg-info-subtle text-dark ms-2"></span>').text('existing - moves the SKU(s) here'));
                     }
                     $menu.append($item);
                     shown++;
@@ -648,7 +660,7 @@
                 const isOwn = ownerOfTyped !== null && ownerOfTyped === currentId;
                 if (typed === '') $hint.text('');
                 else if (typedTaken) $hint.addClass('text-danger').text('A category with this name already exists.');
-                else if (typedExisting) $hint.removeClass('text-danger').text('Existing category: Update moves this SKU into it.');
+                else if (typedExisting) $hint.removeClass('text-danger').text('Existing category: Update moves ' + (function() { try { const n = JSON.parse($combo.closest('.modal').attr('data-move-skus') || '[]').length; return n > 1 ? 'the ' + n + ' ticked SKUs' : 'this SKU'; } catch (e) { return 'this SKU'; } })() + ' into it.');
                 else if (isOwn || exactInList) $hint.removeClass('text-danger').text('');
                 else $hint.removeClass('text-danger').text('New category (not in the CP Master MFR category list).');
                 return $menu;
@@ -1056,7 +1068,7 @@
                     html += btn('btn-soft-success assign-category-btn', 'Add this SKU to a category', 'mdi-plus-box-outline', 'data-sku="' + sku + '" data-key="' + key + '"');
                     html += btn('btn-soft-danger hide-uncategorized-row-btn', 'Remove this row from the list (nothing is deleted; it returns on the next search)', 'mdi-delete', 'data-key="' + key + '"');
                 } else {
-                    html += btn('btn-soft-primary', 'Edit category', 'mdi-square-edit-outline', 'data-bs-toggle="modal" data-bs-target="#editCategoryModal' + cid + '" data-sku="' + (d.kind === 'sku' ? sku : '') + '"');
+                    html += btn('btn-soft-primary', 'Edit category', 'mdi-square-edit-outline', 'data-bs-toggle="modal" data-bs-target="#editCategoryModal' + cid + '" data-sku="' + (d.kind === 'sku' ? sku : '') + '" data-key="' + key + '"');
                     html += btn('btn-soft-success add-products-btn', 'Add products (SKUs) to this category', 'mdi-plus-box-outline', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
                     if (d.kind === 'sku') {
                         html += btn('btn-soft-danger delete-row-btn', 'Delete this row (removes the SKU from this MFR category)', 'mdi-delete', 'data-category-id="' + cid + '" data-sku="' + sku + '"');
