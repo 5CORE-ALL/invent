@@ -1110,6 +1110,178 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Rename values of the variation aspect(s) of a live multi-variation listing (for example Color: "Black" to
+     * "Jet Black"). Every variation is re-sent with its SKU, price and quantity exactly as eBay holds them, with the
+     * renamed value in its VariationSpecifics, in the VariationSpecificsSet and on the variation picture sets, so
+     * nothing else on the listing changes. The aspect names themselves are not touched.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @param  list<array{aspect: string, old: string, new: string}>  $renames
+     * @return array{success: bool, message: string}
+     */
+    public static function renameVariationValues(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        array $renames,
+    ): array {
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        $aspects = self::variationAspects($item);
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Missing eBay item.'];
+        }
+        if ($aspects === []) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations to rename values on.'];
+        }
+
+        // liveAspectName => [oldValue => newValue]
+        $plan = [];
+        foreach ($renames as $r) {
+            $aspectIn = trim((string) ($r['aspect'] ?? ''));
+            $old = trim((string) ($r['old'] ?? ''));
+            $new = trim((string) ($r['new'] ?? ''));
+            if ($old === '' || $old === $new) {
+                continue;
+            }
+            $live = null;
+            foreach (array_keys($aspects) as $name) {
+                if (self::aspectKey((string) $name) === self::aspectKey($aspectIn)) {
+                    $live = (string) $name;
+                    break;
+                }
+            }
+            if ($live === null) {
+                return ['success' => false, 'message' => 'This eBay listing no longer varies by "'.$aspectIn.'" (it now varies by '.implode(' and ', array_keys($aspects)).'). Import the listing again.'];
+            }
+            if ($new === '') {
+                return ['success' => false, 'message' => 'The new name for "'.$old.'" is empty.'];
+            }
+            if (! in_array($old, $aspects[$live], true)) {
+                return ['success' => false, 'message' => 'The value "'.$old.'" is no longer on the eBay listing under '.$live.'. Import the listing again.'];
+            }
+            $plan[$live][$old] = $new;
+        }
+        if ($plan === []) {
+            return ['success' => true, 'message' => 'No value changes to send.'];
+        }
+
+        // Two values must not end up with the same name: eBay would see duplicate variations.
+        foreach ($plan as $live => $map) {
+            $final = [];
+            foreach ($aspects[$live] as $value) {
+                $after = $map[$value] ?? $value;
+                $key = mb_strtolower($after);
+                if (isset($final[$key])) {
+                    return ['success' => false, 'message' => 'Two '.$live.' values would both be named "'.$after.'". Give each value its own name.'];
+                }
+                $final[$key] = true;
+            }
+        }
+        $mapValue = static function (string $aspectName, string $value) use ($plan): string {
+            foreach ($plan as $live => $map) {
+                if (self::aspectKey((string) $live) === self::aspectKey($aspectName)) {
+                    return $map[$value] ?? $value;
+                }
+            }
+
+            return $value;
+        };
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        $esc = static fn (string $v): string => self::escapeXmlElementText($v);
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', $esc($authToken));
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $esc($itemId));
+        $block = $itemNode->addChild('Variations');
+        $sent = 0;
+        foreach ((array) $vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim(self::xmlText($variation['SKU'] ?? ''));
+            $map = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            if ($vSku === '' || $map === []) {
+                return ['success' => false, 'message' => 'A variation on this eBay listing has no SKU or no variation values, so nothing was renamed.'];
+            }
+            $price = trim(self::xmlText($variation['StartPrice'] ?? ''));
+            $qty = trim(self::xmlText($variation['Quantity'] ?? ''));
+            if (! is_numeric($price) || (float) $price <= 0 || ! is_numeric($qty)) {
+                return ['success' => false, 'message' => 'Could not read the live price or quantity of variation '.$vSku.' from eBay, so nothing was renamed.'];
+            }
+            $node = $block->addChild('Variation');
+            $node->addChild('SKU', $esc($vSku));
+            $node->addChild('StartPrice', number_format((float) $price, 2, '.', ''));
+            $node->addChild('Quantity', (string) max(0, (int) $qty));
+            $specifics = $node->addChild('VariationSpecifics');
+            foreach ($map as $name => $value) {
+                $nvl = $specifics->addChild('NameValueList');
+                $nvl->addChild('Name', $esc((string) $name));
+                $nvl->addChild('Value', $esc($mapValue((string) $name, (string) $value)));
+            }
+            $sent++;
+        }
+        if ($sent === 0) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations to rename values on.'];
+        }
+
+        $pics = self::extractVariationPictureState($item);
+        if ($pics['sets'] !== []) {
+            $pictures = $block->addChild('Pictures');
+            $pictures->addChild('VariationSpecificName', $esc($pics['name']));
+            foreach ($pics['sets'] as $set) {
+                $setNode = $pictures->addChild('VariationSpecificPictureSet');
+                $setNode->addChild('VariationSpecificValue', $esc($mapValue((string) $pics['name'], (string) $set['value'])));
+                foreach (array_slice((array) $set['urls'], 0, 12) as $url) {
+                    $setNode->addChild('PictureURL', $esc((string) $url));
+                }
+            }
+        }
+
+        $setNode = $block->addChild('VariationSpecificsSet');
+        foreach ($aspects as $name => $values) {
+            $nvl = $setNode->addChild('NameValueList');
+            $nvl->addChild('Name', $esc((string) $name));
+            foreach ($values as $value) {
+                $nvl->addChild('Value', $esc($mapValue((string) $name, (string) $value)));
+            }
+        }
+
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build the variation value rename request.'];
+        }
+        $res = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'variation values', 'ReviseFixedPriceItem');
+        $count = array_sum(array_map('count', $plan));
+        if ($res['success']) {
+            $res['message'] = $count.' variation value(s) renamed across '.$sent.' variation(s). '.$res['message'];
+        } else {
+            Log::warning('eBay variation value rename refused', [
+                'itemId' => $itemId,
+                'plan' => $plan,
+                'error' => $res['message'],
+                'variationCount' => $sent,
+                'request' => preg_replace('#<eBayAuthToken>.*?</eBayAuthToken>#s', '<eBayAuthToken>x</eBayAuthToken>', $xmlBody),
+            ]);
+            $res['message'] = 'eBay would not rename the variation values: '.$res['message'];
+        }
+
+        return $res;
+    }
+
+    /**
      * @param  array<string, mixed>  $getItemResponse
      * @return array<string, mixed>
      */

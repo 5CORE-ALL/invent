@@ -5507,6 +5507,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2-variation-type/import', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'import'])->name('ebay2.variation.type.import');
     Route::post('/ebay2-variation-type/save', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'save'])->name('ebay2.variation.type.save');
     Route::post('/ebay2-variation-type/push', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'push'])->name('ebay2.variation.type.push');
+    Route::post('/ebay2-variation-type/save-values', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'saveValues'])->name('ebay2.variation.type.save.values');
+    Route::post('/ebay2-variation-type/push-values', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'pushValues'])->name('ebay2.variation.type.push.values');
 
     // Listing Audit ebay2
     Route::get('/analytics/dil-badge-chart-data', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'chart'])->name('analytics.dil.badge.chart');

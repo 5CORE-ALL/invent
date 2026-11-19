@@ -51,14 +51,7 @@ class Ebay2VariationTypeController extends Controller
                 'main_listing' => $listing['main_listing'],
                 'children' => $listing['children'],
                 'master_type' => $masterTypes[$parentNorm] ?? '',
-                'current_type' => (string) ($rec->current_type ?? ''),
-                'imported_at' => $rec?->imported_at?->format('d M Y H:i'),
-                'import_error' => (string) ($rec->import_error ?? ''),
-                'new_type' => (string) ($rec->new_type ?? ''),
-                'push_status' => (string) ($rec->push_status ?? ''),
-                'push_message' => (string) ($rec->push_message ?? ''),
-                'pushed_at' => $rec?->pushed_at?->format('d M Y H:i'),
-            ];
+            ] + ($rec ? $this->rowPayload($rec) : $this->emptyPayload());
         }
 
         usort($rows, static fn (array $a, array $b) => strnatcasecmp($a['main_listing'], $b['main_listing']));
@@ -70,6 +63,8 @@ class Ebay2VariationTypeController extends Controller
                 'imported' => count(array_filter($rows, static fn ($r) => $r['current_type'] !== '')),
                 'success' => count(array_filter($rows, static fn ($r) => $r['push_status'] === 'success')),
                 'failed' => count(array_filter($rows, static fn ($r) => $r['push_status'] === 'failed')),
+                'values_success' => count(array_filter($rows, static fn ($r) => $r['values_status'] === 'success')),
+                'values_failed' => count(array_filter($rows, static fn ($r) => $r['values_status'] === 'failed')),
             ],
         ]);
     }
@@ -109,12 +104,12 @@ class Ebay2VariationTypeController extends Controller
 
                 $aspects = EbayTradingReviseItem::variationAspects($item);
                 if ($aspects === []) {
-                    $results[] = $this->saveImport($itemId, $listing, '', 'This eBay listing has no variations (no variation type to import).');
+                    $results[] = $this->saveImport($itemId, $listing, '', 'This eBay listing has no variations (no variation type to import).', []);
 
                     continue;
                 }
 
-                $results[] = $this->saveImport($itemId, $listing, implode(' / ', array_keys($aspects)), null);
+                $results[] = $this->saveImport($itemId, $listing, implode(' / ', array_keys($aspects)), null, $aspects);
             } catch (\Throwable $e) {
                 Log::warning('eBay2 variation type import failed', ['item_id' => $itemId, 'error' => $e->getMessage()]);
                 $results[] = $this->saveImport($itemId, $listing, null, $e->getMessage());
@@ -192,6 +187,14 @@ class Ebay2VariationTypeController extends Controller
             $rec->current_type = $newType;
             $rec->imported_at = now();
             $rec->import_error = null;
+            // A single-aspect listing now carries the new aspect name, so move its values and pending edits over.
+            $values = is_array($rec->current_values) ? $rec->current_values : [];
+            if (count($values) === 1) {
+                $rec->current_values = [$newType => reset($values)];
+                $rec->value_edits = collect((array) ($rec->value_edits ?? []))
+                    ->map(static fn ($e) => ['aspect' => $newType] + (array) $e)
+                    ->values()->all() ?: null;
+            }
         }
         $rec->save();
 
@@ -224,7 +227,7 @@ class Ebay2VariationTypeController extends Controller
      * @param  array<string, mixed>|null  $listing
      * @return array<string, mixed>
      */
-    private function saveImport(string $itemId, ?array $listing, ?string $currentType, ?string $error): array
+    private function saveImport(string $itemId, ?array $listing, ?string $currentType, ?string $error, ?array $values = null): array
     {
         $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
@@ -232,6 +235,11 @@ class Ebay2VariationTypeController extends Controller
         }
         if ($currentType !== null) {
             $rec->current_type = $currentType;
+        }
+        if ($values !== null) {
+            $rec->current_values = $values;
+            // Edits typed against values that are no longer on the listing are dropped.
+            $rec->value_edits = $this->pruneEdits((array) ($rec->value_edits ?? []), $values) ?: null;
         }
         $rec->import_error = $error;
         $rec->imported_at = now();
@@ -254,12 +262,172 @@ class Ebay2VariationTypeController extends Controller
             'push_status' => (string) ($rec->push_status ?? ''),
             'push_message' => (string) ($rec->push_message ?? ''),
             'pushed_at' => $rec->pushed_at?->format('d M Y H:i'),
+            // aspect => [values], an empty object (not []) when nothing was imported so the page can tell.
+            'current_values' => (object) (is_array($rec->current_values) ? $rec->current_values : []),
+            'value_edits' => array_values(is_array($rec->value_edits) ? $rec->value_edits : []),
+            'values_status' => (string) ($rec->values_status ?? ''),
+            'values_message' => (string) ($rec->values_message ?? ''),
+            'values_pushed_at' => $rec->values_pushed_at?->format('d M Y H:i'),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyPayload(): array
+    {
+        return [
+            'current_type' => '', 'imported_at' => null, 'import_error' => '', 'new_type' => '',
+            'push_status' => '', 'push_message' => '', 'pushed_at' => null,
+            'current_values' => (object) [], 'value_edits' => [],
+            'values_status' => '', 'values_message' => '', 'values_pushed_at' => null,
+        ];
+    }
+
+    /**
+     * Keep only well-formed edits that point at a value still on the listing and actually change its name.
+     *
+     * @param  array<int|string, mixed>  $edits
+     * @param  array<string, list<string>>  $values
+     * @return list<array{aspect: string, old: string, new: string}>
+     */
+    private function pruneEdits(array $edits, array $values): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($edits as $e) {
+            if (! is_array($e)) {
+                continue;
+            }
+            $aspect = trim((string) ($e['aspect'] ?? ''));
+            $old = trim((string) ($e['old'] ?? ''));
+            $new = trim((string) ($e['new'] ?? ''));
+            if ($aspect === '' || $old === '' || $new === '' || $new === $old || mb_strlen($new) > self::MAX_TYPE_LENGTH) {
+                continue;
+            }
+            if (! isset($values[$aspect]) || ! in_array($old, array_map('strval', $values[$aspect]), true)) {
+                continue;
+            }
+            $key = $aspect."\0".$old;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = ['aspect' => $aspect, 'old' => $old, 'new' => $new];
+        }
+
+        return $out;
+    }
+
+    /** Remember the value renames typed in the values editor. */
+    public function saveValues(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'item_id' => 'required|string|max:40',
+            'edits' => 'nullable|array|max:500',
+            'edits.*.aspect' => 'required|string|max:191',
+            'edits.*.old' => 'required|string|max:191',
+            'edits.*.new' => 'nullable|string|max:'.self::MAX_TYPE_LENGTH,
+        ]);
+
+        if (! $this->tableReady()) {
+            return $this->missingTable();
+        }
+
+        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => trim($data['item_id'])]);
+        if (! $rec->exists) {
+            $rec->parent_sku = $this->mainListings()[$rec->item_id]['main_listing'] ?? null;
+        }
+        $known = is_array($rec->current_values) ? $rec->current_values : [];
+        $edits = $this->pruneEdits($data['edits'] ?? [], $known);
+        $rec->value_edits = $edits === [] ? null : $edits;
+        $rec->save();
+
+        return response()->json(['success' => true, 'value_edits' => $edits]);
+    }
+
+    /**
+     * Rename values of the variation type on eBay 2 (Trading API ReviseFixedPriceItem) and record the result.
+     */
+    public function pushValues(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'item_id' => 'required|string|max:40',
+        ]);
+
+        if (! $this->tableReady()) {
+            return $this->missingTable();
+        }
+
+        set_time_limit(300);
+        $itemId = trim($data['item_id']);
+        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
+        if (! $rec->exists || ! $rec->parent_sku) {
+            $rec->parent_sku = $this->mainListings()[$itemId]['main_listing'] ?? $rec->parent_sku;
+        }
+
+        $edits = is_array($rec->value_edits) ? array_values($rec->value_edits) : [];
+
+        try {
+            if ($edits === []) {
+                $result = ['success' => false, 'message' => 'No value edits to push. Use Edit to rename a value first.'];
+            } else {
+                $result = $this->pushValuesToEbay($itemId, $edits);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay2 variation values push failed', ['item_id' => $itemId, 'error' => $e->getMessage()]);
+            $result = ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $rec->values_status = $result['success'] ? 'success' : 'failed';
+        $rec->values_message = mb_substr(trim((string) $result['message']), 0, 2000);
+        $rec->values_pushed_at = now();
+        $rec->values_pushed_by = (string) ($request->user()->name ?? 'unknown');
+        if ($result['success'] && $edits !== []) {
+            $values = is_array($rec->current_values) ? $rec->current_values : [];
+            foreach ($edits as $e) {
+                foreach (($values[$e['aspect']] ?? []) as $i => $v) {
+                    if ((string) $v === $e['old']) {
+                        $values[$e['aspect']][$i] = $e['new'];
+                    }
+                }
+            }
+            $rec->current_values = $values;
+            $rec->value_edits = null;
+            $rec->imported_at = now();
+        }
+        $rec->save();
+
+        return response()->json([
+            'success' => $result['success'],
+            'row' => $this->rowPayload($rec),
+        ]);
+    }
+
+    /**
+     * @param  list<array{aspect: string, old: string, new: string}>  $edits
+     * @return array{success: bool, message: string}
+     */
+    private function pushValuesToEbay(string $itemId, array $edits): array
+    {
+        $service = app(Ebay2ApiService::class);
+        $item = $service->getItem($itemId);
+        if (! is_array($item)) {
+            $why = trim((string) ($service->lastGetItemError ?? ''));
+
+            return ['success' => false, 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+        }
+
+        $ctx = $service->tradingReviseContext();
+        $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
+
+        return EbayTradingReviseItem::renameVariationValues(...$creds, getItemResponse: $item, renames: $edits);
     }
 
     private function tableReady(): bool
     {
-        return Schema::hasTable('ebay2_variation_type_pushes');
+        return Schema::hasTable('ebay2_variation_type_pushes')
+            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values');
     }
 
     private function missingTable(): JsonResponse
