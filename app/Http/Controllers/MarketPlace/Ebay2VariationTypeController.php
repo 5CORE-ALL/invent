@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use App\Services\Ebay2ApiService;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Support\Marketplace\EbayListingEnded;
+use App\Support\Marketplace\ListingManagerFamily;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +40,7 @@ class Ebay2VariationTypeController extends Controller
         }
 
         $listings = $this->mainListings();
-        $masterTypes = $this->variationMasterTypes();
+        $master = $this->variationMasterInfo();
         $saved = Ebay2VariationTypePush::query()->get()->keyBy('item_id');
 
         $rows = [];
@@ -50,7 +51,11 @@ class Ebay2VariationTypeController extends Controller
                 'item_id' => (string) $itemId,
                 'main_listing' => $listing['main_listing'],
                 'children' => $listing['children'],
-                'master_type' => $masterTypes[$parentNorm] ?? '',
+                'master_type' => $master[$parentNorm]['type'] ?? '',
+                'master_name' => $master[$parentNorm]['name'] ?? '',
+                'master_child_names' => $master[$parentNorm]['children'] ?? '',
+                // Lower-case SKUs of the children on the eBay listing and in Variation Master, for the SKU search box.
+                'sku_search' => mb_strtolower(implode(' ', array_values(array_unique(array_merge($listing['skus'], $master[$parentNorm]['skus'] ?? []))))),
             ] + ($rec ? $this->rowPayload($rec) : $this->emptyPayload());
         }
 
@@ -455,7 +460,7 @@ class Ebay2VariationTypeController extends Controller
      * "PARENT xxx" SKU (or, failing that, an item shared by several SKUs). Ended listings are skipped, and only the
      * latest inventory pull counts as current.
      *
-     * @return array<string, array{main_listing: string, parent_key: string, children: int}>
+     * @return array<string, array{main_listing: string, parent_key: string, children: int, skus: list<string>}>
      */
     private function mainListings(): array
     {
@@ -521,6 +526,7 @@ class Ebay2VariationTypeController extends Controller
                 'main_listing' => $label,
                 'parent_key' => trim((string) preg_replace('/^PARENT\s+/i', '', $label)),
                 'children' => $childCount,
+                'skus' => array_values(array_map('strval', $skus)),
             ];
         }
 
@@ -528,43 +534,83 @@ class Ebay2VariationTypeController extends Controller
     }
 
     /**
-     * Variation Master "Variation Type" per CP Master parent (most common value among its children), shown as a
-     * reference next to what eBay currently has.
+     * What Variation Master (product_master.Values) holds per parent, shown next to what eBay has:
+     *  - type: the most common Variation Type among the children,
+     *  - name: the parent row's own Variation Name (the "Variation Name" column of /variation-master),
+     *  - children: "SKU: Variation Name" lines of the child rows, for the hover.
      *
-     * @return array<string, string> normalized parent => type
+     * @return array<string, array{type: string, name: string, children: string, skus: list<string>}> normalized parent => info
      */
-    private function variationMasterTypes(): array
+    private function variationMasterInfo(): array
     {
-        $counts = [];
+        $typeCounts = [];
+        $names = [];
+        $childNames = [];
+        $childSkus = [];
+
         $rows = DB::table('product_master')
             ->whereNull('deleted_at')
-            ->whereNotNull('parent')->where('parent', '!=', '')
+            ->whereNotNull('sku')->where('sku', '!=', '')
             ->get(['parent', 'sku', 'Values']);
 
+        $clean = static fn ($v): string => trim((string) preg_replace('/\s+/', ' ', trim((string) ($v ?? ''))));
+
         foreach ($rows as $pm) {
-            $sku = trim((string) ($pm->sku ?? ''));
-            if ($sku === '' || preg_match('/^PARENT/i', $sku)) {
+            $sku = $clean($pm->sku);
+            if ($sku === '') {
                 continue;
             }
             $values = $pm->Values ?? null;
             if (is_string($values)) {
                 $values = json_decode($values, true) ?: [];
             }
-            $type = is_array($values) ? trim((string) ($values['variation_type'] ?? '')) : '';
-            if ($type === '') {
+            $values = is_array($values) ? $values : [];
+            $name = $clean($values['variation_name'] ?? null);
+
+            if (preg_match('/^PARENT/i', $sku)) {
+                // Same key rule as Variation Master: the parent column, else the SKU without "PARENT".
+                $key = ListingManagerFamily::normalizeParentKey($clean($pm->parent) !== '' ? $clean($pm->parent) : $sku);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($key);
+                if ($norm !== '' && $name !== '' && ! isset($names[$norm])) {
+                    $names[$norm] = $name;
+                }
+
                 continue;
             }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup(trim((string) $pm->parent));
+
+            $parent = $clean($pm->parent);
+            if ($parent === '') {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup(ListingManagerFamily::normalizeParentKey($parent));
             if ($norm === '') {
                 continue;
             }
-            $counts[$norm][$type] = ($counts[$norm][$type] ?? 0) + 1;
+            $type = $clean($values['variation_type'] ?? null);
+            if ($type !== '') {
+                $typeCounts[$norm][$type] = ($typeCounts[$norm][$type] ?? 0) + 1;
+            }
+            $childSkus[$norm][] = $sku;
+            if ($name !== '') {
+                $childNames[$norm][] = $sku.': '.$name;
+            }
         }
 
         $out = [];
-        foreach ($counts as $norm => $types) {
+        foreach (array_unique(array_merge(array_keys($typeCounts), array_keys($names), array_keys($childNames))) as $norm) {
+            $types = $typeCounts[$norm] ?? [];
             arsort($types);
-            $out[$norm] = (string) array_key_first($types);
+            $lines = array_slice($childNames[$norm] ?? [], 0, 40);
+            $more = count($childNames[$norm] ?? []) - count($lines);
+            if ($more > 0) {
+                $lines[] = '+'.$more.' more';
+            }
+            $out[(string) $norm] = [
+                'type' => $types === [] ? '' : (string) array_key_first($types),
+                'name' => $names[$norm] ?? '',
+                'children' => implode("\n", $lines),
+                'skus' => $childSkus[$norm] ?? [],
+            ];
         }
 
         return $out;

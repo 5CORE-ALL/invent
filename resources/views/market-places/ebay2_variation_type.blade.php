@@ -72,7 +72,7 @@
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <span class="e2vt-stat e2vt-stat--total" title="Live eBay 2 main listings with variations">LISTINGS:<span id="e2vt-b-total">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--total" title="Live eBay 2 parents (main listings with variations). While a search or filter is on it reads shown / total.">PARENTS:<span id="e2vt-b-total">0</span></span>
                         <span class="e2vt-stat e2vt-stat--imported" title="Listings whose variation type and values were imported from eBay">IMPORTED:<span id="e2vt-b-imported">0</span></span>
                         <span class="e2vt-stat e2vt-stat--success" title="Type pushes that succeeded">TYPE OK:<span id="e2vt-b-success">0</span></span>
                         <span class="e2vt-stat e2vt-stat--failed" title="Type pushes that failed">TYPE FAILED:<span id="e2vt-b-failed">0</span></span>
@@ -95,6 +95,14 @@
                     </div>
 
                     <div class="d-flex flex-wrap align-items-end gap-3 mb-2 p-2 bg-light border rounded">
+                        <div style="min-width:220px">
+                            <label class="form-label small fw-semibold mb-1" for="e2vt-search-parent">Search Parent</label>
+                            <input type="search" id="e2vt-search-parent" class="form-control form-control-sm" placeholder="Parent or item ID..." autocomplete="off" maxlength="100">
+                        </div>
+                        <div style="min-width:220px">
+                            <label class="form-label small fw-semibold mb-1" for="e2vt-search-sku">Search SKU</label>
+                            <input type="search" id="e2vt-search-sku" class="form-control form-control-sm" placeholder="Child SKU..." autocomplete="off" maxlength="100">
+                        </div>
                         <div>
                             <label class="form-label small fw-semibold mb-1" for="e2vt-filter">Show</label>
                             <select id="e2vt-filter" class="form-select form-select-sm" style="min-width:200px">
@@ -106,10 +114,6 @@
                                 <option value="failed">Any push failed</option>
                                 <option value="success">Any push succeeded</option>
                             </select>
-                        </div>
-                        <div class="flex-grow-1" style="max-width:360px">
-                            <label class="form-label small fw-semibold mb-1" for="e2vt-search">Search</label>
-                            <input type="search" id="e2vt-search" class="form-control form-control-sm" placeholder="Main listing or item ID..." autocomplete="off" maxlength="100">
                         </div>
                         <div class="ms-auto small text-muted">
                             Edit <b>New Type</b> in its cell. Use <b>Edit</b> in the values column to rename individual values (for example a colour). Then press <b>Push</b>.
@@ -165,7 +169,8 @@
             let busy = false;
             let stopRequested = false;
             let filterMode = 'all';
-            let searchText = '';
+            let parentSearch = '';
+            let skuSearch = '';
             let modalItemId = null;
 
             const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -209,9 +214,18 @@
                 document.getElementById('e2vt-progress').textContent = message || '';
             }
 
+            let parentTotal = 0;
+            let parentShown = null; // rows passing the search / filters, set by the table's dataFiltered event
+            // PARENTS badge: the total, or "shown / total" while a search or filter hides some parents.
+            function showParentCount() {
+                const shown = parentShown === null ? parentTotal : parentShown;
+                document.getElementById('e2vt-b-total').textContent = shown === parentTotal ? parentTotal : shown + ' / ' + parentTotal;
+            }
+
             function updateBadges(meta) {
                 if (!meta) return;
-                document.getElementById('e2vt-b-total').textContent = meta.total ?? 0;
+                parentTotal = meta.total ?? 0;
+                showParentCount();
                 document.getElementById('e2vt-b-imported').textContent = meta.imported ?? 0;
                 document.getElementById('e2vt-b-success').textContent = meta.success ?? 0;
                 document.getElementById('e2vt-b-failed').textContent = meta.failed ?? 0;
@@ -241,8 +255,12 @@
 
             function applyFilters() {
                 const filters = [];
-                if (searchText) {
-                    filters.push((d) => norm(d.main_listing).includes(searchText) || norm(d.item_id).includes(searchText));
+                if (parentSearch) {
+                    filters.push((d) => norm(d.main_listing).includes(parentSearch) || norm(d.item_id).includes(parentSearch));
+                }
+                if (skuSearch) {
+                    // sku_search is the lower-cased child SKUs of the eBay listing and of Variation Master.
+                    filters.push((d) => String(d.sku_search || '').includes(skuSearch));
                 }
                 if (filterMode === 'not_imported') filters.push((d) => !d.current_type && !hasValues(d));
                 if (filterMode === 'changed') filters.push((d) => isChanged(d));
@@ -426,7 +444,7 @@
                     placeholder: 'No live eBay 2 listings with variations found. Pull listings on the Variation Verify page first.',
                     columns: [
                         {
-                            title: 'Main Listing', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
+                            title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
                             formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
                         },
                         {
@@ -536,6 +554,18 @@
                                     },
                                 },
                                 {
+                                    // Variation Master "Variation Name" of the parent row (same product_master data);
+                                    // hover lists the child SKUs with their own Variation Name.
+                                    title: 'Variation Name', field: 'master_name', width: 200, hozAlign: 'center', headerHozAlign: 'center',
+                                    formatter: function (c) {
+                                        const d = c.getData();
+                                        const tip = d.master_child_names ? ' title="' + esc(d.master_child_names).replace(/\n/g, '&#10;') + '"' : '';
+                                        return c.getValue()
+                                            ? '<span' + tip + '>' + esc(c.getValue()) + '</span>'
+                                            : '<span class="e2vt-muted"' + tip + '>—</span>';
+                                    },
+                                },
+                                {
                                     title: 'Edit', width: 74, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
                                         const d = c.getData();
@@ -572,10 +602,18 @@
                     ],
                 });
 
+                table.on('dataFiltered', function (filters, rows) {
+                    parentShown = rows.length;
+                    showParentCount();
+                });
+
                 document.getElementById('e2vt-refresh').addEventListener('click', () => table.setData(URLS.data));
                 document.getElementById('e2vt-stop').addEventListener('click', () => { stopRequested = true; });
                 document.getElementById('e2vt-filter').addEventListener('change', (e) => { filterMode = e.target.value; applyFilters(); });
-                document.getElementById('e2vt-search').addEventListener('input', (e) => { searchText = norm(e.target.value); applyFilters(); });
+                let searchTimer = null;
+                const debounceFilter = () => { clearTimeout(searchTimer); searchTimer = setTimeout(applyFilters, 200); };
+                document.getElementById('e2vt-search-parent').addEventListener('input', (e) => { parentSearch = norm(e.target.value); debounceFilter(); });
+                document.getElementById('e2vt-search-sku').addEventListener('input', (e) => { skuSearch = norm(e.target.value); debounceFilter(); });
 
                 document.getElementById('e2vt-import-all').addEventListener('click', async function () {
                     if (busy) return;
