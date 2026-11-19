@@ -281,6 +281,30 @@ class AuditMasterController extends Controller
     }
 
     /**
+     * Pull one channel's live pending-returns count from its marketplace
+     * returns API (used by the "Pending" column on /customer-care/report).
+     */
+    public function pullCcPendingReturns(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'channel_id' => 'required|integer|min:1',
+        ]);
+
+        $channel = ChannelMaster::query()->find((int) $validated['channel_id']);
+        if ($channel === null) {
+            return response()->json(['success' => false, 'message' => 'Channel not found.'], 422);
+        }
+
+        $row = app(\App\Services\CustomerCare\MarketplacePendingReturnsService::class)->fetchAndStore($channel);
+
+        return response()->json([
+            'success' => true,
+            'row' => $row,
+            'pending_total' => \App\Models\CcReturnsPending::pendingTotal(),
+        ]);
+    }
+
+    /**
      * Pull one channel's live pending-message count from its marketplace API
      * (used by the "Messages Pending" column on the CC Message page).
      */
@@ -623,11 +647,22 @@ class AuditMasterController extends Controller
         // CC Message page and the Returns report page.
         $pendingMap = [];
         $pendingService = null;
-        if (in_array($page, ['messages_returns', 'returns'], true)) {
+        if ($page === 'messages_returns') {
             $pendingService = app(\App\Services\CustomerCare\MarketplacePendingMessagesService::class);
             $pendingService->ensureSchema();
             if (Schema::hasTable('cc_messages_pending') && ! empty($channelIds)) {
                 $pendingMap = \App\Models\CcMessagesPending::query()
+                    ->whereIn('channel_id', $channelIds)
+                    ->get()
+                    ->keyBy('channel_id');
+            }
+        } elseif ($page === 'returns') {
+            // /customer-care/report: the "Pending" column is pending RETURNS
+            // (marketplace returns APIs), stored in cc_returns_pending.
+            $pendingService = app(\App\Services\CustomerCare\MarketplacePendingReturnsService::class);
+            $pendingService->ensureSchema();
+            if (Schema::hasTable('cc_returns_pending') && ! empty($channelIds)) {
+                $pendingMap = \App\Models\CcReturnsPending::query()
                     ->whereIn('channel_id', $channelIds)
                     ->get()
                     ->keyBy('channel_id');

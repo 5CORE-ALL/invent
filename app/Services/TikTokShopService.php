@@ -5854,7 +5854,8 @@ class TikTokShopService
                 'app_key' => (string) $this->clientKey,
                 'timestamp' => (string) time(),
                 'shop_cipher' => $cipher,
-                'page_size' => '50',
+                // TikTok rejects page_size > 20 ("PageSize is invalid").
+                'page_size' => '20',
                 'locale' => 'en-US',
             ];
             if ($pageToken !== '') {
@@ -5893,9 +5894,75 @@ class TikTokShopService
                 $unread += max(0, (int) ($row['unread_count'] ?? $row['unreadCount'] ?? 0));
             }
             $pageToken = (string) ($data['next_page_token'] ?? '');
-        } while ($pageToken !== '' && $pages < 10);
+        } while ($pageToken !== '' && $pages < 50);
 
         return ['success' => true, 'count' => $unread];
+    }
+
+    /**
+     * Open TikTok Shop returns/refunds that still need handling:
+     * request pending review, approved awaiting buyer shipment, or buyer-shipped.
+     *
+     * @return array{success: bool, count: int, message?: string}
+     */
+    public function getPendingReturnCount(): array
+    {
+        if (! $this->accessToken || ! $this->clientKey || ! $this->clientSecret) {
+            return ['success' => false, 'count' => 0, 'message' => 'TikTok credentials are missing.'];
+        }
+
+        $this->client->setAccessToken($this->accessToken);
+        $this->ensureShopCipher();
+        $cipher = is_string($this->shopCipher) ? trim($this->shopCipher) : '';
+        if ($cipher === '') {
+            return ['success' => false, 'count' => 0, 'message' => 'TikTok shop_cipher is missing.'];
+        }
+
+        $base = rtrim((string) (config('services.'.$this->configKey.'.api_base') ?: 'https://open-api.tiktokglobalshop.com'), '/');
+        $path = '/return_refund/202309/returns/search';
+        $body = json_encode([
+            'return_status' => [
+                'RETURN_OR_REFUND_REQUEST_PENDING',
+                'AWAITING_BUYER_SHIP',
+                'BUYER_SHIPPED_ITEM',
+            ],
+        ]);
+
+        $query = [
+            'app_key' => (string) $this->clientKey,
+            'timestamp' => (string) time(),
+            'shop_cipher' => $cipher,
+            'page_size' => '10',
+        ];
+        $query['sign'] = $this->signTikTokRequest($path, $query, (string) $body);
+
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders(['x-tts-access-token' => $this->accessToken])
+                ->timeout(12)
+                ->connectTimeout(6)
+                ->withBody((string) $body, 'application/json')
+                ->post($base.$path.'?'.http_build_query($query));
+        } catch (\Throwable $e) {
+            return ['success' => false, 'count' => 0, 'message' => $e->getMessage()];
+        }
+
+        $json = $response->json() ?? [];
+        $code = (int) ($json['code'] ?? $response->status());
+        if (! $response->successful() || ($code !== 0 && isset($json['code']))) {
+            return [
+                'success' => false,
+                'count' => 0,
+                'message' => (string) ($json['message'] ?? $json['msg'] ?? ('TikTok returns HTTP '.$response->status())),
+            ];
+        }
+
+        $data = is_array($json['data'] ?? null) ? $json['data'] : $json;
+        if (isset($data['total_count']) && is_numeric($data['total_count'])) {
+            return ['success' => true, 'count' => max(0, (int) $data['total_count'])];
+        }
+
+        return ['success' => false, 'count' => 0, 'message' => 'TikTok returns response had no total_count.'];
     }
 
     /**

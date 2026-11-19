@@ -1256,6 +1256,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // (reuses the same returns checklist / R Next / R link endpoints + tables).
     Route::get('/customer-care/report', [AuditMasterController::class, 'report'])
         ->name('customer.care.report');
+    // Live pending-returns pull for the "Pending" column on the Returns report.
+    Route::post('/customer-care/report/pending-returns/pull', [AuditMasterController::class, 'pullCcPendingReturns'])
+        ->name('customer.care.report.pending.returns.pull');
 
     // CC Shipping — duplicate of /customer-care/cc-messages-returns
     // backed by entirely separate cc_shipping_* tables.

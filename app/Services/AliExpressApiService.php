@@ -5146,6 +5146,18 @@ class AliExpressApiService
                         'filter' => 'dealStat',
                     ]);
                 }
+                // Legacy "api.*" message methods are served by the /sync gateway, not /rest.
+                if (empty($raw['success']) && empty($raw['network_error'])) {
+                    $sync = $this->callSync($method, [
+                        'currentPage' => 1,
+                        'pageSize' => 1,
+                        'msgSources' => $source,
+                        'filter' => 'dealStat',
+                    ]);
+                    if (! empty($sync['success'])) {
+                        $raw = $sync;
+                    }
+                }
                 if (empty($raw['success'])) {
                     $lastMessage = (string) ($raw['message'] ?? $lastMessage);
                     continue;
