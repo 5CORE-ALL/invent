@@ -248,6 +248,125 @@
             box-shadow: 0 0 0 3px rgba(255, 255, 255, .45);
         }
 
+        .l30-badge {
+            background: linear-gradient(100deg, #7c3aed, #db2777) !important;
+            color: #fff !important;
+            cursor: pointer;
+            border: 0;
+        }
+
+        .l30-badge.is-on {
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #db2777;
+        }
+
+        .l30-hist-dot {
+            width: 12px;
+            height: 12px;
+            padding: 0;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            background: #fde047;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .l30-hist-dot:hover,
+        .l30-hist-dot:focus-visible {
+            transform: scale(1.25);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, .45);
+        }
+
+        .orders-hold-col-issue .orders-hold-channel-filter {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        #l30HistModal .modal-content {
+            background: radial-gradient(120% 80% at 0% 0%, #312e81 0%, #0c0a12 42%, #09090b 100%);
+            color: #f4f4f5;
+            border: 1px solid rgba(255, 255, 255, .08);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        #l30HistModal .modal-header,
+        #l30HistModal .modal-footer {
+            border-color: rgba(255, 255, 255, .08);
+        }
+
+        #l30HistModal .btn-close {
+            filter: invert(1);
+        }
+
+        #l30HistModal .l30-kicker {
+            color: #c4b5fd;
+            font-size: 12px;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+
+        .l30-chart-wrap {
+            position: relative;
+            height: 240px;
+            border-radius: 16px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        .l30-chart-wrap canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .l30-hist-list {
+            max-height: 280px;
+            overflow: auto;
+            margin-top: 14px;
+            padding-right: 4px;
+        }
+
+        .l30-day {
+            border: 1px solid rgba(255, 255, 255, .08);
+            border-radius: 14px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, .04);
+        }
+
+        .l30-day-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .l30-count-pill {
+            background: linear-gradient(90deg, #22d3ee, #e879f9);
+            color: #0c0a12;
+            border-radius: 999px;
+            padding: 0 8px;
+            font-size: 12px;
+            line-height: 20px;
+        }
+
+        .l30-case {
+            font-size: 12px;
+            color: #d4d4d8;
+            padding: 2px 0;
+        }
+
+        .l30-empty {
+            color: #a1a1aa;
+            font-size: 13px;
+            padding: 8px 2px;
+        }
+
         .order-num-short {
             display: inline-block;
             max-width: 0;
@@ -330,10 +449,11 @@
 
         .hold-image-full {
             display: block;
-            width: 100%;
-            min-width: 56px;
+            width: 70%;
+            max-width: 70%;
             height: auto;
-            max-height: 80px;
+            max-height: 56px;
+            margin-inline: auto;
             object-fit: contain;
         }
 
@@ -528,16 +648,22 @@
                 <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
                     <h5 class="mb-0">{{ $recordsTitle ?? 'Orders On Hold (CC Action) Records' }}</h5>
                     <div class="d-flex align-items-center justify-content-end gap-2 ms-auto flex-wrap orders-hold-toolbar">
-                        {{-- Quick search: case-insensitive substring match across SKU, parent,
-                             order #, marketplaces, issue/action text, root-cause, dept and
-                             created-by. Runs client-side on holdIssueRows + the dept filter. --}}
-                        <div class="input-group input-group-sm" style="width: 240px;">
-                            <span class="input-group-text" id="orders-hold-search-icon">
+                        <div class="input-group input-group-sm" style="width: 160px;">
+                            <span class="input-group-text" id="orders-hold-sku-search-icon">
                                 <i class="bi bi-search"></i>
                             </span>
-                            <input type="search" id="orders-hold-search-input" class="form-control"
-                                placeholder="Search SKU, order, parent…"
-                                aria-label="Search records" aria-describedby="orders-hold-search-icon"
+                            <input type="search" id="orders-hold-sku-search" class="form-control"
+                                placeholder="SKU"
+                                aria-label="Search by SKU" aria-describedby="orders-hold-sku-search-icon"
+                                autocomplete="off">
+                        </div>
+                        <div class="input-group input-group-sm" style="width: 160px;">
+                            <span class="input-group-text" id="orders-hold-parent-search-icon">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input type="search" id="orders-hold-parent-search" class="form-control"
+                                placeholder="Parent"
+                                aria-label="Search by parent" aria-describedby="orders-hold-parent-search-icon"
                                 autocomplete="off">
                         </div>
                         <select id="orders-hold-date-range" class="form-select form-select-sm" style="width: 150px;"
@@ -558,6 +684,12 @@
                             <span>Rows: <span id="hold_issue_total_count">0</span></span>
                             <button type="button" class="rows-graph-dot" id="rowsGraphDot"
                                 title="Show rows per day graph" aria-label="Show rows per day graph"></button>
+                        </span>
+                        <span class="badge l30-badge fs-6 text-nowrap d-inline-flex align-items-center gap-2" id="l30Badge"
+                            role="button" tabindex="0" title="Cases in the last 30 days. Click to show only those rows.">
+                            <span>L30: <span id="l30_count">0</span></span>
+                            <button type="button" class="l30-hist-dot" id="l30HistDot"
+                                title="L30 graph and history" aria-label="Show L30 graph and history"></button>
                         </span>
                     </div>
                 </div>
@@ -590,7 +722,14 @@
                                         action</th>
                                     <th class="orders-hold-col-qty" title="Customer Care Action">CC Action</th>
                                     <th class="orders-hold-col-created-at" title="Customer Care Action change history">
-                                        CC History</th>                                    <th class="orders-hold-col-issue">Root Cause</th>
+                                        CC History</th>
+                                    <th class="orders-hold-col-issue">
+                                        <div>Root Cause</div>
+                                        <select id="root-cause-filter-select" class="form-select form-select-sm mt-1 orders-hold-channel-filter"
+                                            title="Filter by root cause" aria-label="Filter by root cause">
+                                            <option value="">All</option>
+                                        </select>
+                                    </th>
                                     <th class="orders-hold-col-action">Root Cause Fixed</th>
                                     <th class="orders-hold-col-close">Close</th>
                                     <th class="orders-hold-col-mp">Dept</th>
@@ -1068,6 +1207,27 @@
         </div>
     </div>
 
+    <div class="modal fade" id="l30HistModal" tabindex="-1" aria-labelledby="l30HistModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <div class="l30-kicker">Last 30 days</div>
+                        <h5 class="modal-title" id="l30HistModalLabel">L30 cases</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small mb-2" id="l30HistSubtitle" style="color:#d4d4d8;"></p>
+                    <div class="l30-chart-wrap">
+                        <canvas id="l30HistCanvas"></canvas>
+                    </div>
+                    <div class="l30-hist-list" id="l30HistList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="rowsGraphModal" tabindex="-1" aria-labelledby="rowsGraphModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
@@ -1390,35 +1550,19 @@
                 return rowDepartments(r).some(d => String(d).trim().toLowerCase() === needle);
             }
 
-            // ── Quick search state + haystack ─────────────────────────────────
-            // `activeSearchQuery` is kept lowercase + trimmed so the per-row
-            // match below is a single `.includes()`. The haystack joins every
-            // user-visible text field with newlines (a separator no field
-            // contains) so a query for one field can't accidentally match
-            // across two adjacent fields.
-            let activeSearchQuery = '';
+            // SKU and parent are searched on their own fields, so a parent query
+            // never matches a SKU that happens to contain the same text.
+            let activeSkuQuery = '';
+            let activeParentQuery = '';
 
-            function rowSearchHaystack(r) {
-                if (!r) return '';
-                const parts = [
-                    r.sku, r.parent, r.order_number, r.shopify_order_number, r.order_date_display,
-                    r.marketplace_1, r.marketplace_2,
-                    r.what_happened, r.issue, r.issue_remark,
-                    r.action_1, r.action_1_remark,
-                    r.c_action_1, r.c_action_1_remark,
-                    r.close_note,
-                    r.created_by,
-                    rowDepartments(r).join(' '),
-                ];
-                return parts
-                    .map(v => (v === null || v === undefined) ? '' : String(v))
-                    .join('\n')
-                    .toLowerCase();
+            function rowMatchesSkuQuery(r) {
+                if (!activeSkuQuery) return true;
+                return String(r?.sku || '').toLowerCase().includes(activeSkuQuery);
             }
 
-            function rowMatchesSearchQuery(r) {
-                if (!activeSearchQuery) return true;
-                return rowSearchHaystack(r).includes(activeSearchQuery);
+            function rowMatchesParentQuery(r) {
+                if (!activeParentQuery) return true;
+                return String(r?.parent || '').toLowerCase().includes(activeParentQuery);
             }
 
             // Date range filter on Order Date (falls back to Created date). Bounds are
@@ -1479,13 +1623,80 @@
                 return activeChannelFilter === '__blank__' ? key === '' : key === activeChannelFilter;
             }
 
-            function getFilteredRows() {
+            let activeRootCauseFilter = '';
+
+            function rowRootCause(r) {
+                return String(r?.issue || '').trim();
+            }
+
+            function buildRootCauseFilter() {
+                const select = document.getElementById('root-cause-filter-select');
+                if (!select) return;
+                const counts = {};
+                const labels = {};
+                holdIssueRows.forEach(r => {
+                    const cause = rowRootCause(r);
+                    const key = cause.toLowerCase();
+                    counts[key] = (counts[key] || 0) + 1;
+                    if (!labels[key]) labels[key] = cause || '(blank)';
+                });
+                const keys = Object.keys(counts).sort((a, b) => labels[a].localeCompare(labels[b]));
+                select.innerHTML = '<option value="">All (' + holdIssueRows.length + ')</option>';
+                keys.forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key === '' ? '__blank__' : key;
+                    opt.textContent = labels[key] + ' (' + counts[key] + ')';
+                    opt.title = labels[key] + ' (' + counts[key] + ')';
+                    select.appendChild(opt);
+                });
+                const stillThere = activeRootCauseFilter === '' ||
+                    Array.from(select.options).some(o => o.value === activeRootCauseFilter);
+                if (!stillThere) activeRootCauseFilter = '';
+                select.value = activeRootCauseFilter;
+            }
+
+            function rowMatchesRootCauseFilter(r) {
+                if (!activeRootCauseFilter) return true;
+                const key = rowRootCause(r).toLowerCase();
+                return activeRootCauseFilter === '__blank__' ? key === '' : key === activeRootCauseFilter;
+            }
+
+            function l30Bounds() {
+                const today = new Date();
+                const start = new Date(today);
+                start.setDate(today.getDate() - 29);
+                return { from: localYmd(start), to: localYmd(today) };
+            }
+
+            function rowsMatchingFilters(includeDate) {
                 let rows = holdIssueRows;
                 if (activeChannelFilter) rows = rows.filter(rowMatchesChannelFilter);
                 if (activeDeptFilter) rows = rows.filter(rowMatchesActiveDeptFilter);
-                if (activeSearchQuery) rows = rows.filter(rowMatchesSearchQuery);
-                if (activeDateRange.from || activeDateRange.to) rows = rows.filter(rowMatchesDateRange);
+                if (activeSkuQuery) rows = rows.filter(rowMatchesSkuQuery);
+                if (activeParentQuery) rows = rows.filter(rowMatchesParentQuery);
+                if (activeRootCauseFilter) rows = rows.filter(rowMatchesRootCauseFilter);
+                if (includeDate && (activeDateRange.from || activeDateRange.to)) rows = rows.filter(rowMatchesDateRange);
                 return rows;
+            }
+
+            function l30Rows() {
+                const bounds = l30Bounds();
+                return rowsMatchingFilters(false).filter(r => {
+                    const key = rowDateKey(r);
+                    return key && key >= bounds.from && key <= bounds.to;
+                });
+            }
+
+            function updateL30Badge() {
+                const countEl = document.getElementById('l30_count');
+                const badge = document.getElementById('l30Badge');
+                const rangeSelect = document.getElementById('orders-hold-date-range');
+                if (countEl) countEl.textContent = String(l30Rows().length);
+                if (badge) badge.classList.toggle('is-on', rangeSelect && rangeSelect.value === 'l30');
+            }
+
+            function getFilteredRows() {
+                return rowsMatchingFilters(true);
             }
 
             function buildDeptFilters() {
@@ -1651,6 +1862,8 @@
 
                 buildDeptFilters();
                 buildChannelFilter();
+                buildRootCauseFilter();
+                updateL30Badge();
                 const rows = getFilteredRows();
 
                 if (!rows.length) {
@@ -2703,25 +2916,26 @@
                 renderRows();
             });
 
-            // ── Quick-search wiring ───────────────────────────────────────────
-            // Debounce (~120 ms) so a fast typist doesn't trigger a re-render
-            // on every keystroke. The `search` event also fires when the user
-            // clears the input via the native ✕ button, so we handle both.
             (function setupOrdersHoldSearch() {
-                const searchInput = document.getElementById('orders-hold-search-input');
-                if (!searchInput) return;
+                const skuInput = document.getElementById('orders-hold-sku-search');
+                const parentInput = document.getElementById('orders-hold-parent-search');
                 let searchTimer = null;
                 const apply = () => {
-                    const next = String(searchInput.value || '').trim().toLowerCase();
-                    if (next === activeSearchQuery) return;
-                    activeSearchQuery = next;
+                    const sku = String(skuInput?.value || '').trim().toLowerCase();
+                    const parent = String(parentInput?.value || '').trim().toLowerCase();
+                    if (sku === activeSkuQuery && parent === activeParentQuery) return;
+                    activeSkuQuery = sku;
+                    activeParentQuery = parent;
                     renderRows();
                 };
-                searchInput.addEventListener('input', () => {
-                    if (searchTimer) clearTimeout(searchTimer);
-                    searchTimer = setTimeout(apply, 120);
+                [skuInput, parentInput].forEach(input => {
+                    if (!input) return;
+                    input.addEventListener('input', () => {
+                        if (searchTimer) clearTimeout(searchTimer);
+                        searchTimer = setTimeout(apply, 120);
+                    });
+                    input.addEventListener('search', apply);
                 });
-                searchInput.addEventListener('search', apply);
             })();
 
             (function initChannelFilter() {
@@ -2730,6 +2944,16 @@
                 select.addEventListener('click', e => e.stopPropagation());
                 select.addEventListener('change', () => {
                     activeChannelFilter = select.value;
+                    renderRows();
+                });
+            })();
+
+            (function initRootCauseFilter() {
+                const select = document.getElementById('root-cause-filter-select');
+                if (!select) return;
+                select.addEventListener('click', e => e.stopPropagation());
+                select.addEventListener('change', () => {
+                    activeRootCauseFilter = select.value;
                     renderRows();
                 });
             })();
@@ -2828,7 +3052,7 @@
                     const s = buildSeries();
                     const fmt = ymd => ymd.slice(8, 10) + '-' + ymd.slice(5, 7) + '-' + ymd.slice(0, 4);
                     subtitle.textContent = s.total + ' row(s) from ' + fmt(s.from) + ' to ' + fmt(s.to) +
-                        ' by Order Date (Created date when the order date is unknown). Search and department filters apply.';
+                        ' by Order Date (Created date when the order date is unknown). SKU, parent, channel, department and root cause filters apply.';
 
                     window.loadChartJs().then(Chart => {
                         if (chart) chart.destroy();
@@ -2869,6 +3093,259 @@
                     }
                 });
                 graphModalEl.addEventListener('shown.bs.modal', render);
+            })();
+
+            (function initL30History() {
+                const dot = document.getElementById('l30HistDot');
+                const modalEl = document.getElementById('l30HistModal');
+                const canvas = document.getElementById('l30HistCanvas');
+                const subtitle = document.getElementById('l30HistSubtitle');
+                const list = document.getElementById('l30HistList');
+                const badge = document.getElementById('l30Badge');
+                const rangeSelect = document.getElementById('orders-hold-date-range');
+                if (!dot || !modalEl || !canvas || !list) return;
+
+                let frame = 0;
+                let running = false;
+                let snapshot = null;
+
+                function prettyDay(ymd) {
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const parts = ymd.split('-');
+                    return Number(parts[2]) + ' ' + months[Number(parts[1]) - 1];
+                }
+
+                function ymdToDate(ymd) {
+                    const [y, m, d] = ymd.split('-').map(Number);
+                    return new Date(y, m - 1, d);
+                }
+
+                function buildSnapshot() {
+                    const bounds = l30Bounds();
+                    const rows = l30Rows();
+                    const byDay = {};
+                    rows.forEach(r => {
+                        const key = rowDateKey(r);
+                        if (!key) return;
+                        if (!byDay[key]) byDay[key] = [];
+                        byDay[key].push(r);
+                    });
+                    const days = [];
+                    for (let d = ymdToDate(bounds.from), end = ymdToDate(bounds.to); d <= end; d.setDate(d.getDate() + 1)) {
+                        const key = localYmd(d);
+                        days.push({ key: key, rows: byDay[key] || [] });
+                    }
+                    return { bounds: bounds, rows: rows, days: days };
+                }
+
+                function smooth(pts) {
+                    if (pts.length < 3) return pts.slice();
+                    const out = [];
+                    for (let i = 0; i < pts.length - 1; i++) {
+                        const p0 = pts[Math.max(0, i - 1)];
+                        const p1 = pts[i];
+                        const p2 = pts[i + 1];
+                        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+                        for (let s = 0; s < 8; s++) {
+                            const t = s / 8;
+                            const t2 = t * t;
+                            const t3 = t2 * t;
+                            out.push({
+                                x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+                                y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+                            });
+                        }
+                    }
+                    out.push(pts[pts.length - 1]);
+                    return out;
+                }
+
+                function pointAlong(pts, t) {
+                    let total = 0;
+                    const lens = [];
+                    for (let i = 1; i < pts.length; i++) {
+                        const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+                        lens.push(len);
+                        total += len;
+                    }
+                    if (!total) return pts[0];
+                    let dist = (t % 1) * total;
+                    for (let i = 1; i < pts.length; i++) {
+                        const len = lens[i - 1];
+                        if (dist <= len || i === pts.length - 1) {
+                            const p = len ? Math.min(1, dist / len) : 0;
+                            return {
+                                x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * p,
+                                y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * p,
+                            };
+                        }
+                        dist -= len;
+                    }
+                    return pts[pts.length - 1];
+                }
+
+                function draw(progress) {
+                    const s = snapshot;
+                    if (!s) return;
+                    const dpr = window.devicePixelRatio || 1;
+                    const wrap = canvas.parentElement;
+                    const w = wrap.clientWidth || 640;
+                    const h = wrap.clientHeight || 240;
+                    canvas.width = Math.max(1, Math.floor(w * dpr));
+                    canvas.height = Math.max(1, Math.floor(h * dpr));
+                    const ctx = canvas.getContext('2d');
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    ctx.clearRect(0, 0, w, h);
+
+                    const pad = { l: 34, r: 16, t: 16, b: 28 };
+                    const plotW = Math.max(1, w - pad.l - pad.r);
+                    const plotH = Math.max(1, h - pad.t - pad.b);
+                    const values = s.days.map(d => d.rows.length);
+                    const max = Math.max(1, ...values);
+                    const n = values.length || 1;
+                    const pts = values.map((v, i) => ({
+                        x: pad.l + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1)),
+                        y: pad.t + plotH - (v / max) * (plotH - 8) - 4,
+                    }));
+                    const curve = smooth(pts);
+                    const floor = pad.t + plotH;
+
+                    ctx.strokeStyle = 'rgba(255,255,255,.08)';
+                    ctx.lineWidth = 1;
+                    ctx.font = '11px system-ui, sans-serif';
+                    ctx.fillStyle = '#a1a1aa';
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'middle';
+                    for (let g = 0; g <= 3; g++) {
+                        const y = pad.t + (plotH * g) / 3;
+                        ctx.beginPath();
+                        ctx.moveTo(pad.l, y);
+                        ctx.lineTo(w - pad.r, y);
+                        ctx.stroke();
+                        ctx.fillText(String(Math.round(max * (1 - g / 3))), pad.l - 6, y);
+                    }
+
+                    const clampY = y => Math.min(floor, Math.max(pad.t, y));
+                    ctx.beginPath();
+                    curve.forEach((p, i) => {
+                        const y = clampY(p.y);
+                        if (i) ctx.lineTo(p.x, y);
+                        else ctx.moveTo(p.x, y);
+                    });
+                    ctx.lineTo(pts[pts.length - 1].x, floor);
+                    ctx.lineTo(pts[0].x, floor);
+                    ctx.closePath();
+                    const fill = ctx.createLinearGradient(0, pad.t, 0, floor);
+                    fill.addColorStop(0, 'rgba(232, 121, 249, .5)');
+                    fill.addColorStop(0.55, 'rgba(34, 211, 238, .18)');
+                    fill.addColorStop(1, 'rgba(34, 211, 238, 0)');
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    curve.forEach((p, i) => {
+                        const y = clampY(p.y);
+                        if (i) ctx.lineTo(p.x, y);
+                        else ctx.moveTo(p.x, y);
+                    });
+                    const stroke = ctx.createLinearGradient(pad.l, 0, w - pad.r, 0);
+                    stroke.addColorStop(0, '#22d3ee');
+                    stroke.addColorStop(1, '#e879f9');
+                    ctx.strokeStyle = stroke;
+                    ctx.lineWidth = 3;
+                    ctx.lineJoin = 'round';
+                    ctx.lineCap = 'round';
+                    ctx.shadowColor = 'rgba(232, 121, 249, .85)';
+                    ctx.shadowBlur = 14;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+
+                    const orb = pointAlong(curve, progress);
+                    orb.y = clampY(orb.y);
+                    const glow = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, 18);
+                    glow.addColorStop(0, '#ffffff');
+                    glow.addColorStop(0.28, '#f9a8d4');
+                    glow.addColorStop(1, 'rgba(249, 168, 212, 0)');
+                    ctx.fillStyle = glow;
+                    ctx.beginPath();
+                    ctx.arc(orb.x, orb.y, 18, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#d4d4d8';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'alphabetic';
+                    s.days.forEach((day, i) => {
+                        if (i % 5 !== 0 && i !== s.days.length - 1) return;
+                        ctx.fillText(prettyDay(day.key), pts[i].x, h - 8);
+                    });
+                }
+
+                function renderList() {
+                    const s = snapshot;
+                    if (!s || !subtitle) return;
+                    const fmt = ymd => prettyDay(ymd) + ' ' + ymd.slice(0, 4);
+                    subtitle.textContent = s.rows.length + ' case(s) from ' + fmt(s.bounds.from) + ' to ' + fmt(s.bounds.to) +
+                        '. SKU, parent, channel, department and root cause filters apply.';
+                    const days = s.days.filter(d => d.rows.length).slice().reverse();
+                    if (!days.length) {
+                        list.innerHTML = '<div class="l30-empty">No L30 cases for the current filters.</div>';
+                        return;
+                    }
+                    list.innerHTML = days.map(day => {
+                        const cases = day.rows.map(r => {
+                            const bits = [String(r.sku || '').trim(), String(r.parent || '').trim(), rowRootCause(r)].filter(Boolean);
+                            return '<div class="l30-case">' + escapeHtml(bits.join(' · ') || '—') + '</div>';
+                        }).join('');
+                        return '<div class="l30-day"><div class="l30-day-head"><span>' + escapeHtml(prettyDay(day.key)) +
+                            '</span><span class="l30-count-pill">' + day.rows.length + '</span></div>' + cases + '</div>';
+                    }).join('');
+                }
+
+                function tick(ts) {
+                    if (!running) return;
+                    draw(((ts || 0) % 7000) / 7000);
+                    frame = requestAnimationFrame(tick);
+                }
+
+                function start() {
+                    snapshot = buildSnapshot();
+                    renderList();
+                    running = true;
+                    cancelAnimationFrame(frame);
+                    frame = requestAnimationFrame(tick);
+                }
+
+                function stop() {
+                    running = false;
+                    cancelAnimationFrame(frame);
+                }
+
+                dot.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const modal = window.bootstrap?.Modal?.getOrCreateInstance(modalEl);
+                    if (modal) modal.show();
+                    else showAlert('Could not open the L30 history. Please reload the page.');
+                });
+                modalEl.addEventListener('shown.bs.modal', start);
+                modalEl.addEventListener('hidden.bs.modal', stop);
+
+                if (badge && rangeSelect) {
+                    const toggle = () => {
+                        rangeSelect.value = rangeSelect.value === 'l30' ? '' : 'l30';
+                        rangeSelect.dispatchEvent(new Event('change'));
+                    };
+                    badge.addEventListener('click', (e) => {
+                        if (e.target.closest('#l30HistDot')) return;
+                        toggle();
+                    });
+                    badge.addEventListener('keydown', (e) => {
+                        if (e.target !== badge) return;
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        toggle();
+                    });
+                }
             })();
 
             btnShowHistory.addEventListener('click', () => {
