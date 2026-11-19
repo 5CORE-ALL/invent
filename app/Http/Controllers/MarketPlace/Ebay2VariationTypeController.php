@@ -47,6 +47,7 @@ class Ebay2VariationTypeController extends Controller
         foreach ($listings as $itemId => $listing) {
             $rec = $saved->get($itemId);
             $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
+            [$childSkus, $notOnEbay] = $this->childSkuLists($listing['skus'], $master[$parentNorm]['skus'] ?? []);
             $rows[] = [
                 'item_id' => (string) $itemId,
                 'main_listing' => $listing['main_listing'],
@@ -54,8 +55,12 @@ class Ebay2VariationTypeController extends Controller
                 'master_type' => $master[$parentNorm]['type'] ?? '',
                 'master_name' => $master[$parentNorm]['name'] ?? '',
                 'master_child_names' => $master[$parentNorm]['children'] ?? '',
-                // Lower-case SKUs of the children on the eBay listing and in Variation Master, for the SKU search box.
-                'sku_search' => mb_strtolower(implode(' ', array_values(array_unique(array_merge($listing['skus'], $master[$parentNorm]['skus'] ?? []))))),
+                // Every child SKU of this parent: on the eBay listing plus the Variation Master children.
+                'skus' => $childSkus,
+                // The Variation Master children that are not on the eBay listing.
+                'skus_not_on_ebay' => $notOnEbay,
+                // Lower-case SKUs for the SKU search box.
+                'sku_search' => mb_strtolower(implode(' ', $childSkus)),
             ] + ($rec ? $this->rowPayload($rec) : $this->emptyPayload());
         }
 
@@ -453,6 +458,50 @@ class Ebay2VariationTypeController extends Controller
             'success' => false,
             'message' => 'Run php artisan migrate (ebay2_variation_type_pushes table is missing).',
         ], 500);
+    }
+
+    /**
+     * All child SKUs of one parent: the SKUs on the live eBay listing plus the Variation Master children, without
+     * the PARENT label and without duplicates (compared the way Shopify SKUs are matched).
+     *
+     * @param  list<string>  $ebaySkus
+     * @param  list<string>  $masterSkus
+     * @return array{0: list<string>, 1: list<string>} [all SKUs sorted, Variation Master SKUs missing on eBay]
+     */
+    private function childSkuLists(array $ebaySkus, array $masterSkus): array
+    {
+        $all = [];
+        $onEbay = [];
+        foreach ($ebaySkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || preg_match('/^PARENT\b/i', $sku)) {
+                continue;
+            }
+            $key = ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
+            $onEbay[$key] = true;
+            $all[$key] = $sku;
+        }
+
+        $notOnEbay = [];
+        foreach ($masterSkus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || preg_match('/^PARENT\b/i', $sku)) {
+                continue;
+            }
+            $key = ShopifySku::normalizeSkuForShopifyLookup($sku) ?: strtoupper($sku);
+            if (isset($onEbay[$key])) {
+                continue;
+            }
+            $all[$key] = $all[$key] ?? $sku;
+            $notOnEbay[$key] = $sku;
+        }
+
+        $all = array_values($all);
+        $notOnEbay = array_values($notOnEbay);
+        natcasesort($all);
+        natcasesort($notOnEbay);
+
+        return [array_values($all), array_values($notOnEbay)];
     }
 
     /**

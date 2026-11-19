@@ -41,6 +41,7 @@
         .e2vt-chip { display: inline-block; padding: 0 7px; border-radius: 9px; background: #f1f5f9; color: #334155; font-size: 12px; border: 1px solid #e2e8f0; }
         .e2vt-chip--edit { background: #fef9c3; border-color: #facc15; color: #713f12; font-weight: 600; }
         .e2vt-chip--more { background: transparent; border-style: dashed; color: #64748b; }
+        .e2vt-chip--missing { background: #fef2f2; border-style: dashed; border-color: #f87171; color: #b91c1c; }
         .e2vt-aspect-label { font-size: 11px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: .02em; margin-right: 4px; }
         .e2vt-aspect-block + .e2vt-aspect-block { margin-top: 4px; }
 
@@ -165,6 +166,7 @@
             const csrf = document.querySelector('meta[name="csrf-token"]').content;
             const IMPORT_BATCH = 10;
             const CHIPS_SHOWN = 8;
+            const SKUS_SHOWN = 6;
             let table = null;
             let busy = false;
             let stopRequested = false;
@@ -446,6 +448,27 @@
                         {
                             title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
                             formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
+                        },
+                        {
+                            // Every child SKU of the parent: eBay listing SKUs plus Variation Master children.
+                            // A dashed red chip is in Variation Master but not on the eBay listing.
+                            title: 'SKU', field: 'skus', width: 280, headerHozAlign: 'center', headerSort: false,
+                            formatter: function (c) {
+                                const d = c.getData();
+                                const skus = Array.isArray(d.skus) ? d.skus : [];
+                                if (!skus.length) return '<span class="e2vt-muted">—</span>';
+                                const missing = new Set(Array.isArray(d.skus_not_on_ebay) ? d.skus_not_on_ebay : []);
+                                const chip = (s) => missing.has(s)
+                                    ? '<span class="e2vt-chip e2vt-chip--missing" title="In Variation Master, not on the eBay listing">' + esc(s) + '</span>'
+                                    : '<span class="e2vt-chip">' + esc(s) + '</span>';
+                                const shown = skus.slice(0, SKUS_SHOWN).map(chip);
+                                if (skus.length > SKUS_SHOWN) {
+                                    shown.push('<span class="e2vt-chip e2vt-chip--more" title="' + esc(skus.slice(SKUS_SHOWN).join(', ')) + '">+' + (skus.length - SKUS_SHOWN) + ' more</span>');
+                                }
+                                return '<div><span class="e2vt-aspect-label">' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's')
+                                    + (missing.size ? ' · ' + missing.size + ' not on eBay' : '') + '</span>'
+                                    + '<span class="e2vt-chips" style="display:flex;margin-top:2px">' + shown.join('') + '</span></div>';
+                            },
                         },
                         {
                             title: 'Item ID', field: 'item_id', width: 130, hozAlign: 'center', headerHozAlign: 'center',
