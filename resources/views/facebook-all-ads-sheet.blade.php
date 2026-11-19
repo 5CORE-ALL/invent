@@ -379,6 +379,9 @@
                 padding: 0;
             }
         }
+
+        /* Columns panel — shared with the Amazon analytics page. */
+        @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
     </style>
 @endsection
 
@@ -512,19 +515,14 @@
                                     aria-expanded="false">
                                 <i class="fas fa-eye"></i>
                             </button>
+                            {{-- Filled by AnalyticsColVis (Show All / Show Default + Basic /
+                                 Pricing / Discounts / Advertisement / Other groups). --}}
                             <ul class="dropdown-menu dropdown-menu-end px-2 py-1"
                                 id="faasColumnDropdownMenu"
-                                aria-labelledby="faasColumnsBtn"
-                                style="max-height:380px; overflow-y:auto; min-width:240px;">
+                                aria-labelledby="faasColumnsBtn">
                                 <li class="text-muted small px-2 py-1">Loading…</li>
                             </ul>
                         </div>
-                        <button type="button"
-                                id="faasShowAllColumnsBtn"
-                                class="btn btn-sm btn-outline-secondary"
-                                title="Show every column">
-                            <i class="fas fa-eye"></i>
-                        </button>
 
                         {{-- Opens the SBGT-Rule editor: bands of
                              "ACOS ≤ X% → suggested budget Y" stored in
@@ -1205,7 +1203,11 @@
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    @include('partials.analytics-column-visibility', ['colVisPart' => 'script'])
+</script>
+<script>
     (function () {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
                         || document.querySelector('input[name="_token"]')?.value
@@ -2904,21 +2906,51 @@
             }).catch(err => console.warn('column visibility save failed:', err));
         }
 
-        // Build a checkbox per column inside the Columns dropdown.
+        // Which group of the Columns panel a column belongs to. Anything not listed
+        // lands in "Other"; users can still drag a column to another group header
+        // (remembered in this browser, like on the Amazon analytics page).
+        const FAAS_COLVIS_GROUPS = {
+            basic: new Set(['ch', 'ad_type', 'b2b_b2c', 'Campaign name', 'CAMPAIGN ID', 'Link', 'Status',
+                            '_action', 'Audit Req', 'History']),
+            advertisement: new Set(['Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR', 'SPEND', 'SALES', 'SOLD', 'CVR',
+                                    'CPS', 'Sessions']),
+            pricing: new Set(['GPFT$', 'GPFT%', 'LMP']),
+        };
+        function faasColVisClassify(field) {
+            if (FAAS_COLVIS_GROUPS.basic.has(field)) return 'basic';
+            if (FAAS_COLVIS_GROUPS.advertisement.has(field)) return 'advertisement';
+            if (FAAS_COLVIS_GROUPS.pricing.has(field)) return 'pricing';
+            return 'other';   // Lifetime Spend / Sales / Acos / CTR, LT Sold / CVR / CPS, …
+        }
+
+        // Columns panel — the shared analytics panel (Show All / Show Default,
+        // Basic / Pricing / Discounts / Advertisement / Other groups, drag to regroup),
+        // built from whatever columns the table has, so new columns appear automatically.
         function buildColumnDropdown() {
+            if (!tabulator) return;
+            if (window.AnalyticsColVis) {
+                window.AnalyticsColVis.install({
+                    getTable:    function () { return tabulator; },
+                    menuId:      'faasColumnDropdownMenu',
+                    storageKey:  'facebook_all_ads_col_cats_v1',
+                    skipFields:  ['_select', '_row_index'],
+                    classify:    faasColVisClassify,
+                    onSave:      function () { saveColumnVisibility(); },
+                });
+                window.AnalyticsColVis.rebuild(savedColumnVisibility, 'faasColumnDropdownMenu');
+                return;
+            }
+            // Fallback if the shared panel script failed to load: plain checkbox list.
             const menu = document.getElementById('faasColumnDropdownMenu');
-            if (!menu || !tabulator) return;
+            if (!menu) return;
             menu.innerHTML = '';
             tabulator.getColumns().forEach(col => {
                 const def = col.getDefinition();
-                if (!def.field) return;
-                // Skip the row-index helper column — toggling it is meaningless.
-                if (def.field === '_row_index') return;
-
+                if (!def.field || def.field === '_row_index') return;
+                const title = String(def.title || def.field).replace(/<[^>]*>/g, ' ').trim() || def.field;
                 const li    = document.createElement('li');
                 const label = document.createElement('label');
                 label.style.cssText = 'display:flex; align-items:center; gap:6px; padding:4px 6px; cursor:pointer; user-select:none; white-space:nowrap;';
-
                 const cb = document.createElement('input');
                 cb.type    = 'checkbox';
                 cb.value   = def.field;
@@ -2928,20 +2960,12 @@
                     else            col.hide();
                     saveColumnVisibility();
                 });
-
                 label.appendChild(cb);
-                label.appendChild(document.createTextNode(def.title || def.field));
+                label.appendChild(document.createTextNode(title));
                 li.appendChild(label);
                 menu.appendChild(li);
             });
         }
-
-        // "Show all" — un-hides every column and persists the new state.
-        document.getElementById('faasShowAllColumnsBtn')?.addEventListener('click', function () {
-            if (!tabulator) return;
-            tabulator.getColumns().forEach(col => col.show());
-            saveColumnVisibility().then(() => buildColumnDropdown());
-        });
 
         function bindSearch() {
             const input = document.getElementById('faas-search');
