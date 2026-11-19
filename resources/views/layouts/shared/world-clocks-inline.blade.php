@@ -155,46 +155,21 @@
         ['prefix' => 'wc-cn', 'name' => 'China',      'tz' => 'Asia/Shanghai',       'flag' => 'cn'],
     ];
 @endphp
-{{-- Single, relevant clock (defaults to India; JS switches to the viewer's own zone if it is one of ours) --}}
+{{-- All office clocks shown side by side in the topbar --}}
 <div class="topbar-world-clocks d-none d-lg-flex" aria-label="Office time zones">
-    <button type="button" class="wc-zone wc-zone-btn" id="wc-top-btn"
-            data-bs-toggle="modal" data-bs-target="#worldClocksModal"
-            title="Click to view all country clocks" aria-label="Open all country clocks">
-        <div class="wc-flag-row">
-            <span class="wc-code wc-place-name" id="wc-top-name">India</span>
-            <img class="wc-flag-img" id="wc-top-flag" src="https://flagcdn.com/w40/in.png" width="18" height="14" alt="" decoding="async" loading="eager">
-        </div>
-        <div class="wc-time" id="wc-top-time">—</div>
-        <div class="wc-meta" id="wc-top-meta"></div>
-    </button>
-</div>
-
-{{-- Modal with all clocks (moved to <body> by JS so the topbar's stacking context can't clip it) --}}
-<div class="modal fade" id="worldClocksModal" tabindex="-1" aria-labelledby="worldClocksModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="worldClocksModalLabel">World Clocks</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    @foreach ($worldClockZones as $z)
+        @if (!$loop->first)
+            <div class="wc-divider" aria-hidden="true"></div>
+        @endif
+        <div class="wc-zone" style="padding: 0.2rem 0.6rem;">
+            <div class="wc-flag-row">
+                <span class="wc-code wc-place-name">{{ $z['name'] }}</span>
+                <img class="wc-flag-img" src="https://flagcdn.com/w40/{{ $z['flag'] }}.png" width="18" height="14" alt="" decoding="async" loading="eager">
             </div>
-            <div class="modal-body">
-                <div class="row g-3">
-                    @foreach ($worldClockZones as $z)
-                        <div class="col-12 col-sm-6">
-                            <div class="wc-modal-card" data-wc-tz="{{ $z['tz'] }}">
-                                <div class="wc-modal-name">
-                                    <span>{{ $z['name'] }}</span>
-                                    <img src="https://flagcdn.com/w40/{{ $z['flag'] }}.png" alt="" loading="lazy">
-                                </div>
-                                <div class="wc-modal-time" id="{{ $z['prefix'] }}-time">—</div>
-                                <div class="wc-modal-meta" id="{{ $z['prefix'] }}-meta"></div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            </div>
+            <div class="wc-time" id="{{ $z['prefix'] }}-time">—</div>
+            <div class="wc-meta" id="{{ $z['prefix'] }}-meta"></div>
         </div>
-    </div>
+    @endforeach
 </div>
 <script>
 (function () {
@@ -204,50 +179,6 @@
         @endforeach
     ];
 
-    // Browser timezone aliases -> one of our zones
-    var tzAliases = {
-        'Asia/Calcutta': 'Asia/Kolkata',
-        'America/Detroit': 'America/New_York',
-        'America/Kentucky/Louisville': 'America/New_York',
-        'Asia/Chongqing': 'Asia/Shanghai',
-        'Asia/Harbin': 'Asia/Shanghai'
-    };
-    var defaultTz = 'Asia/Kolkata';
-
-    // Move modal to <body> so it is not clipped by the topbar
-    var modalEl = document.getElementById('worldClocksModal');
-    if (modalEl && modalEl.parentNode !== document.body) {
-        document.body.appendChild(modalEl);
-    }
-
-    function detectRelevantZone() {
-        var local = '';
-        try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* ignore */ }
-        local = tzAliases[local] || local;
-        for (var i = 0; i < zones.length; i++) {
-            if (zones[i].tz === local) { return zones[i]; }
-        }
-        for (var j = 0; j < zones.length; j++) {
-            if (zones[j].tz === defaultTz) { return zones[j]; }
-        }
-        return zones[0];
-    }
-    var relevant = detectRelevantZone();
-
-    var topName = document.getElementById('wc-top-name');
-    var topFlag = document.getElementById('wc-top-flag');
-    if (topName) { topName.textContent = relevant.name; }
-    if (topFlag) { topFlag.src = 'https://flagcdn.com/w40/' + relevant.flag + '.png'; }
-
-    // Highlight the viewer's own zone inside the modal
-    if (modalEl) {
-        var cards = modalEl.querySelectorAll('.wc-modal-card');
-        for (var c = 0; c < cards.length; c++) {
-            if (cards[c].getAttribute('data-wc-tz') === relevant.tz) {
-                cards[c].classList.add('wc-current');
-            }
-        }
-    }
     function tzAbbrev(now, timeZone) {
         // Asia/Kolkata: browsers often emit GMT+05:30 (IST is ambiguous with Israel/Ireland).
         // Keep the short office label consistent with PDT / EDT / CST.
@@ -272,8 +203,6 @@
         var targets = zones.map(function (z) {
             return { tz: z.tz, timeId: z.prefix + '-time', metaId: z.prefix + '-meta' };
         });
-        // Topbar clock shows only the relevant zone
-        targets.push({ tz: relevant.tz, timeId: 'wc-top-time', metaId: 'wc-top-meta' });
         targets.forEach(function (z) {
             var timeEl = document.getElementById(z.timeId);
             var metaEl = document.getElementById(z.metaId);

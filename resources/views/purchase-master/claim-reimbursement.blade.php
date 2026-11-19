@@ -191,10 +191,10 @@
         padding-left: 8px; padding-right: 36px; font-size: .85rem;
     }
 
-    /* Supplier column: 50% of the previous width (180px -> 90px) */
+    /* Supplier column: wide enough to show full supplier names */
     #claimModal #claimTable th.col-supplier,
     #claimModal #claimTable td.col-supplier {
-        width: 90px; min-width: 90px; max-width: 90px;
+        width: 180px; min-width: 180px; max-width: 180px;
         padding-left: 4px; padding-right: 4px;
     }
     #claimModal #claimTable td.col-supplier .select2-container { width: 100% !important; }

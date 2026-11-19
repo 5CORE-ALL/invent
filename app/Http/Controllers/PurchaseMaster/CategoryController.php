@@ -981,8 +981,8 @@ class CategoryController extends Controller
     }
 
     /**
-     * Add CP Master SKUs to one or more categories (the category of the clicked row, or the categories of
-     * all selected rows). A category that has no matching CP Master MFR category yet gets one created,
+     * Add (move) CP Master SKUs to one or more categories (the category of the clicked row, or the categories
+     * of all selected rows); the SKUs leave the MFR categories they were in. A category that has no matching CP Master MFR category yet gets one created,
      * because that is what links SKUs to a category.
      */
     public function categoryRowsAdd(Request $request)
@@ -1008,7 +1008,8 @@ class CategoryController extends Controller
             return response()->json(['success' => false, 'message' => 'None of those SKUs exist in CP Master.'], 422);
         }
 
-        $added = 0;
+        // The CP Master MFR category that stands for each chosen category (created when missing).
+        $targets = [];
         foreach ($categories as $category) {
             $mfrIds = $this->mfrCategoryIdsForName($category->name);
             if ($mfrIds === []) {
@@ -1025,30 +1026,30 @@ class CategoryController extends Controller
                 }
                 $mfrIds = [(int) $created->id];
             }
-            $target = $mfrIds[0];
+            $targets[] = $mfrIds[0];
+        }
+        $targets = array_values(array_unique($targets));
 
-            foreach ($products as $product) {
-                $current = $products->firstWhere('id', $product->id);
-                $ids = $this->normalizeProductCategoryIds($current->mfr_category_ids, $current->category_id);
-                if (count(array_intersect($ids, $mfrIds)) > 0) {
-                    continue;
-                }
-                $ids[] = $target;
-                // Query-builder update: avoids the model's saving hooks; JSON is encoded by hand.
-                ProductMaster::query()->whereKey($product->id)->update([
-                    'mfr_category_ids' => json_encode(array_values($ids)),
-                    'category_id' => $ids[0],
-                ]);
-                // Keep the in-memory copy current so adding to several categories accumulates.
-                $current->mfr_category_ids = array_values($ids);
-                $current->category_id = $ids[0];
-                $added++;
+        // Adding SKUs to a category MOVES them: the SKU is listed only under the chosen category(ies) and is
+        // taken out of the MFR categories it was in before.
+        $added = 0;
+        foreach ($products as $product) {
+            $ids = $this->normalizeProductCategoryIds($product->mfr_category_ids, $product->category_id);
+            $same = count($ids) === count($targets) && count(array_diff($ids, $targets)) === 0;
+            if ($same) {
+                continue;
             }
+            // Query-builder update: avoids the model's saving hooks; JSON is encoded by hand.
+            ProductMaster::query()->whereKey($product->id)->update([
+                'mfr_category_ids' => json_encode($targets),
+                'category_id' => $targets[0],
+            ]);
+            $added++;
         }
 
         return response()->json([
             'success' => true,
-            'message' => $added === 1 ? '1 SKU added.' : $added.' SKU links added.',
+            'message' => $added === 1 ? '1 SKU moved.' : $added.' SKUs moved.',
             'added' => $added,
         ]);
     }
