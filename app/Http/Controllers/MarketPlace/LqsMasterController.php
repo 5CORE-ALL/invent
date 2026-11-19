@@ -1076,6 +1076,61 @@ class LqsMasterController extends Controller
     /**
      * CVR history for the CVR badge chart (total_l30 / total_sessions × 100 per day).
      */
+    /**
+     * Phone view of the Amazon buyer page. The site asks Amazon as an iPhone and shows that page,
+     * so every signed-in user gets the mobile layout without installing anything.
+     */
+    public function lqsAmzMobileView(string $asin)
+    {
+        $asin = strtoupper(trim($asin));
+        if (! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            abort(404);
+        }
+
+        $ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+        try {
+            $response = Http::withOptions(['verify' => false, 'timeout' => 25])
+                ->withHeaders([
+                    'User-Agent' => $ua,
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language' => 'en-US,en;q=0.9',
+                    'sec-ch-ua-mobile' => '?1',
+                    'sec-ch-ua-platform' => '"iOS"',
+                ])
+                ->get('https://www.amazon.com/dp/'.$asin);
+        } catch (\Throwable $e) {
+            \Log::warning('LQS Amz mobile view failed', ['asin' => $asin, 'error' => $e->getMessage()]);
+
+            return response($this->lqsAmzMobileNotice('Amazon did not open. Use the desktop icon.'), 502);
+        }
+
+        $html = (string) $response->body();
+        $blocked = ! $response->successful()
+            || $html === ''
+            || str_contains($html, 'api-services-support@amazon.com')
+            || stripos($html, 'Robot Check') !== false
+            || stripos($html, 'Type the characters you see') !== false;
+        if ($blocked) {
+            \Log::warning('LQS Amz mobile view blocked', ['asin' => $asin, 'status' => $response->status()]);
+
+            return response($this->lqsAmzMobileNotice('Amazon did not return the phone page. Use the desktop icon.'), 200);
+        }
+
+        $html = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $html) ?? $html;
+        $inject = '<base href="https://www.amazon.com/"><meta name="viewport" content="width=device-width, initial-scale=1">';
+        $html = preg_replace('#<head[^>]*>#i', '$0'.$inject, $html, 1) ?? ($inject.$html);
+
+        return response($html, 200)->header('Content-Type', 'text/html; charset=UTF-8');
+    }
+
+    private function lqsAmzMobileNotice(string $message): string
+    {
+        $safe = e($message);
+
+        return '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mobile view</title></head>'
+            .'<body style="font-family:sans-serif;padding:24px;color:#212529;"><p>'.$safe.'</p></body></html>';
+    }
+
     public function getLqsAmzCvrHistory(Request $request)
     {
         try {

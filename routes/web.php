@@ -6594,6 +6594,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/amz/action', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'saveLqsAmzAction'])->name('lqs.amz.action.save');
     Route::get('/lqs/amz/action-history/{sku}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzActionHistory'])->name('lqs.amz.action.history');
     Route::get('/lqs/amz/cvr-history', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzCvrHistory'])->name('lqs.amz.cvr.history');
+    Route::get('/lqs/amz/mobile/{asin}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzMobileView'])->where('asin', '[A-Za-z0-9]{10}')->name('lqs.amz.mobile');
 
     // LQS Marketplaces (same functions as /lqs-amz; API metrics when available, sheet upload otherwise)
     foreach (\App\Support\Lqs\LqsMarketplaceCatalog::all() as $lqsSlug => $_lqsConfig) {

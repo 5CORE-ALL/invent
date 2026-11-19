@@ -647,23 +647,8 @@
             $('#amz-lqs-below9-badge').text('< 9: ' + lqsBelow9Count);
         }
 
-        // Amazon serves the desktop page to this browser even in a narrow window.
-        // The phone add-on (browser-extension/lqs-amz-mobile) sends that one window as an iPhone.
-        window.amzOpenMobile = function (url) {
-            const missing = function () {
-                window.alert('Amazon is still sending the desktop page. Install the phone add-on once: Chrome \u2192 Extensions \u2192 Developer mode \u2192 Load unpacked \u2192 folder browser-extension\\lqs-amz-mobile in this project. Then click Mobile again.');
-            };
-            try {
-                if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
-                    missing();
-                    return;
-                }
-                chrome.runtime.sendMessage('kjdjgekgokefnkafkmikgafmineikjgd', { type: 'open-mobile', url: url }, function (res) {
-                    if (!res || !res.ok || (chrome.runtime && chrome.runtime.lastError)) missing();
-                });
-            } catch (e) {
-                missing();
-            }
+        window.amzOpenMobile = function (asin) {
+            window.open('/lqs/amz/mobile/' + encodeURIComponent(asin), 'amzMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
         };
 
         $(document).ready(function() {
@@ -755,7 +740,7 @@
                                 + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view"'
                                 + ' onclick="event.stopPropagation();window.open(\'' + desk + '\',\'_blank\',\'noopener\')"><i class="fas fa-desktop"></i></button>'
                                 + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view"'
-                                + ' onclick="event.stopPropagation();amzOpenMobile(\'' + desk + '\')"><i class="fas fa-mobile-screen-button"></i></button>'
+                                + ' onclick="event.stopPropagation();amzOpenMobile(\'' + asin + '\')"><i class="fas fa-mobile-screen-button"></i></button>'
                                 + '</span></div>';
                         }
                     },
