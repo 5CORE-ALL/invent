@@ -578,13 +578,13 @@
 
                 // ---- Rules (first match wins) ----
                 //  1. INV = 0                          -> bid 0, ads paused
-                //  2. eBay L30 sold = 0 (permanent)    -> the ES Bid
+                //  2. eBay L30 sold = 0 (permanent)    -> the category Highest + 1 (ES Bid only when the category has no Highest)
                 //  3. category has the value its Rules dropdown picks -> Highest or Lowest
                 //  4. no match                         -> the old Dil vs SBid S Bid (when enabled; else no bid)
                 const PMT_SBID_FALLBACK = @json((bool) $pmtSbidFallback);
                 const RULE_DEFS = [
                     { key: '1', label: 'INV = 0', bid: '0 &mdash; ads paused' },
-                    { key: '2', label: 'eBay L30 sold = 0 <i>(always on)</i>', bid: 'ES Bid' },
+                    { key: '2', label: 'eBay L30 sold = 0 <i>(always on)</i>', bid: 'Highest + 1' },
                     { key: '3', label: 'Category has the value the Rules pick (match)', bid: 'Highest / Lowest / Avg / Highest+1 / Lowest-1' },
                     { key: '4', label: 'No match for the category', bid: PMT_SBID_FALLBACK ? 'Old rule: S BID' : 'no bid' }
                 ];
@@ -771,8 +771,9 @@
                 function classifyRow(row) {
                     if (rowInv(row) <= 0) return '1';
                     if (pauseMatchRow(row)) return '1';
-                    if (rowSold(row) <= 0 && rowEsBid(row) !== null) return '2'; // permanent: no eBay L30 sale -> ES Bid
                     const saved = savedBids[String(row.excel_category || '').trim()] || {};
+                    // permanent: no eBay L30 sale -> category Highest + 1 (ES Bid only when the category has no Highest)
+                    if (rowSold(row) <= 0 && (num(saved.highest) !== null || rowEsBid(row) !== null)) return '2';
                     if (pickedBid(saved, row).value !== null) return '3';
                     return '4';
                 }
@@ -807,7 +808,7 @@
                     const pausedByConds = rowInv(row) > 0 && pauseMatchRow(row);
                     if (rowInv(row) > 0 && pauseRule.enabled) out.steps.push('Do the pause conditions match (DIL ' + Math.round(rowDil(row) * 100) / 100 + '%, L30 ' + (parseFloat(row.L30) || 0) + ', INV ' + rowInv(row) + ')?  ' + (pausedByConds ? 'Yes -> bid 0, the ad is paused' : 'No'));
                     if (rowInv(row) > 0 && !pausedByConds) {
-                        out.steps.push('Is eBay L30 sold 0?  ' + (rowSold(row) <= 0 ? (rowEsBid(row) !== null ? 'Yes -> use the ES Bid (' + rowEsBid(row) + '%)' : 'Yes, but this row has no ES Bid') : 'No (sold ' + rowSold(row) + ')'));
+                        out.steps.push('Is eBay L30 sold 0?  ' + (rowSold(row) <= 0 ? (num(saved.highest) !== null ? 'Yes -> use the category Highest + 1 (' + (Math.round((num(saved.highest) + 1) * 100) / 100) + '%)' : (rowEsBid(row) !== null ? 'Yes, but the category has no Highest -> use the ES Bid (' + rowEsBid(row) + '%)' : 'Yes, but the category has no Highest and this row has no ES Bid')) : 'No (sold ' + rowSold(row) + ')'));
                     }
                     if (rowInv(row) > 0 && !pausedByConds && rule !== '2') out.steps.push('Bid from the category (' + pickName + '):  ' + (pick.value !== null ? 'Yes -> ' + (Math.round(pick.value * 100) / 100) + '%' : 'No, the category value it needs is not set'));
                     if (rowInv(row) > 0 && !pausedByConds && rule === '4') {
@@ -820,8 +821,13 @@
                         return out;
                     }
                     if (rule === '2') {
-                        calc = rowEsBid(row);
-                        out.title = 'Rule 2: eBay L30 sold = 0\nBid = the ES Bid of this listing (' + calc + '%), kept between 2 and 100.';
+                        if (num(saved.highest) !== null) {
+                            calc = num(saved.highest) + 1;
+                            out.title = 'Rule 2: eBay L30 sold = 0\nBid = category "' + cat + '" Highest + 1 = ' + (Math.round(calc * 100) / 100) + '%, kept between 2 and 100.';
+                        } else {
+                            calc = rowEsBid(row);
+                            out.title = 'Rule 2: eBay L30 sold = 0, the category has no Highest\nBid = the ES Bid of this listing (' + calc + '%), kept between 2 and 100.';
+                        }
                     } else if (rule === '3') {
                         calc = pick.value;
                         out.title = 'Rule 3: category "' + cat + '" -> ' + pickName + ' = ' + (Math.round(calc * 100) / 100) + '%\nBid kept between 2 and 100.';
@@ -1654,7 +1660,7 @@
                         field: "pmt_rule_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay L30 sold 0 = the ES Bid (always); else the category Highest or Lowest (Rules column); no match = the old rule S BID (eBay 1).{{ $pmtByParent ? ' Decided per PARENT (family INV, OV L30 and eBay sold) and shown on the PARENT row; every ad listing of that parent gets this bid.' : '' }} Display only.",
+                        headerTooltip: "Suggested PMT bid from Ads Rule PMT: INV 0 = 0 and ads paused; eBay L30 sold 0 = the category Highest + 1 (always; the ES Bid only if the category has no Highest); else the category Highest or Lowest (Rules column); no match = the old rule S BID (eBay 1).{{ $pmtByParent ? ' Decided per PARENT (family INV, OV L30 and eBay sold) and shown on the PARENT row; every ad listing of that parent gets this bid.' : '' }} Display only.",
                         sorter: function(a, b, aRow, bRow) {
                             const f = function(row) {
                                 const r = typeof window.ebayPmtRuleBid === 'function' ? window.ebayPmtRuleBid(row.getData()) : null;

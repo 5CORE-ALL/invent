@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Rules, first match wins:
  *   1. INV = 0 (or the pause conditions match) -> bid 0 and the ad is paused
- *   2. eBay L30 sold = 0 (permanent rule)   -> the ES Bid of the listing
+ *   2. eBay L30 sold = 0 (permanent rule)   -> the category Highest + 1 (the ES Bid only when the category has no Highest)
  *   3. the category Highest or Lowest       -> the Rules column of the first matching condition group picks which
  *                                              (Highest when no group matches)
  *   4. no match                             -> the old Dil vs SBid S Bid of the listing (when enabled)
@@ -304,9 +304,15 @@ final class PmtCategoryBidRule
         if ($pauseMatch) {
             return ['rule' => '1', 'pause' => true, 'bid' => null, 'label' => 'PMT rule 1: pause conditions matched, ad paused', 'fallback' => false];
         }
-        // Permanent rule: nothing sold on eBay in the last 30 days -> the ES Bid.
-        if ($sold <= 0 && $esBid !== null && $esBid > 0) {
-            return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($esBid, 2)), 'label' => 'PMT rule 2: eBay L30 sold 0, ES Bid', 'fallback' => false];
+        // Permanent rule: nothing sold on eBay in the last 30 days -> the category Highest + 1
+        // (not the eBay suggested ES Bid). Only when the category has no Highest does it use the ES Bid.
+        if ($sold <= 0) {
+            if ($highest !== null) {
+                return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($highest + 1, 2)), 'label' => 'PMT rule 2: eBay L30 sold 0, Highest + 1', 'fallback' => false];
+            }
+            if ($esBid !== null && $esBid > 0) {
+                return ['rule' => '2', 'pause' => false, 'bid' => max(0.0, round($esBid, 2)), 'label' => 'PMT rule 2: eBay L30 sold 0, no category Highest, ES Bid', 'fallback' => false];
+            }
         }
         $use = in_array($use, self::BID_PICKS, true) ? $use : 'highest';
         $picked = self::pickValue($use, $highest, $lowest);
