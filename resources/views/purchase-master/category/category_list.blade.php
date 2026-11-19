@@ -190,6 +190,7 @@
                                     $cpSkus = $category->cp_master_skus ?? [];
                                     $rowspan = max(1, count($cpSkus));
                                     $firstSku = $cpSkus[0] ?? null;
+                                    $supplierNames = $category->supplier_names ?? [];
                                 @endphp
                                 {{-- One <tbody> per category: one row per CP Master SKU (parent rows included);
                                      the category-level cells span all of its SKU rows. --}}
@@ -242,16 +243,16 @@
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
-                                            <div class="d-flex justify-content-center align-items-center">
-                                                <div
-                                                    class="d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm">
-                                                    <i class="mdi mdi-account-group text-info me-2"></i>
-                                                    <span
-                                                        class="fw-semibold text-info">{{ $category->supplier_count }}</span>
-                                                    <span class="ms-1 text-muted medium fw-bold">Suppliers</span>
+                                        <td class="text-center align-middle supplier-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                            @if (count($supplierNames) > 0)
+                                                <div class="d-flex flex-wrap justify-content-center align-items-start py-1" style="line-height:1.6;">
+                                                    @foreach ($supplierNames as $supplierName)
+                                                        <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $supplierName }}</span>
+                                                    @endforeach
                                                 </div>
-                                            </div>
+                                            @else
+                                                <span class="text-muted">-</span>
+                                            @endif
                                         </td>
                                         <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             @php $parents = $category->parents_list ?? []; @endphp
@@ -312,6 +313,17 @@
                                             </td>
                                             <td class="text-center align-middle mfr-category-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                                 <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
+                                            </td>
+                                            <td class="text-center align-middle supplier-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                @if (count($supplierNames) > 0)
+                                                    <div class="d-flex flex-wrap justify-content-center align-items-start py-1" style="line-height:1.6;">
+                                                        @foreach ($supplierNames as $supplierName)
+                                                            <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $supplierName }}</span>
+                                                        @endforeach
+                                                    </div>
+                                                @else
+                                                    <span class="text-muted">-</span>
+                                                @endif
                                             </td>
                                         </tr>
                                     @endforeach

@@ -68,7 +68,7 @@ class CategoryController extends Controller
                     $query->orWhereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$categoryId]);
                 }
             })
-            ->get(['id', 'category_id', 'sku', 'parent']);
+            ->get(['id', 'name', 'category_id', 'sku', 'parent']);
 
         $suppliersByCategoryId = [];
         foreach ($suppliers as $supplier) {
@@ -88,6 +88,17 @@ class CategoryController extends Controller
         foreach ($categories as $category) {
             $categorySuppliers = $suppliersByCategoryId[$category->id] ?? [];
             $category->supplier_count = count($categorySuppliers);
+
+            $supplierNames = [];
+            foreach ($categorySuppliers as $supplier) {
+                $supplierName = trim((string) ($supplier->name ?? ''));
+                if ($supplierName !== '') {
+                    $supplierNames[$supplierName] = true;
+                }
+            }
+            $supplierNamesList = array_keys($supplierNames);
+            sort($supplierNamesList, SORT_NATURAL | SORT_FLAG_CASE);
+            $category->supplier_names = $supplierNamesList;
 
             $parents = [];
             $seeds = [];
