@@ -526,8 +526,8 @@ class EbayController extends Controller
 
     /**
      * eBay 1 CVR Price Rule (same rule as Amazon): a price change % for SKUs whose CVR 30 is down, within target of, or
-     * up vs LT O CVR, plus a Lower cap. When enabled the S PRC column shows the suggested price next to its own value
-     * (display only: nothing is saved or pushed from it).
+     * up vs LT O CVR, plus a Lower cap. When enabled the % is taken off the S PRC the other rules produce (LMP cap and Std Prc
+     * maximum done), so S PRC, S GROI/SNROI and Push Prc all show and send the same price (server twin: EbayCvrPriceRule).
      */
     public static function ebayCvrPriceRuleConfig(): array
     {
@@ -553,6 +553,9 @@ class EbayController extends Controller
             ['channel_name' => 'ebay1_cvr_price_rule'],
             ['visibility' => $payload, 'column_order' => $keys]
         );
+
+        // The rule changes S PRC itself: re-save S PRC for every SKU right away (the Sprc Dil modal does the same).
+        \App\Support\EbayRuleSpriceApply::dispatch('ebay1');
 
         return response()->json(['success' => true] + $payload);
     }

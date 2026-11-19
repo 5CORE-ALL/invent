@@ -1639,6 +1639,22 @@
          * row has no rule price.
          */
         function ebayDisplayedSprice(rowData) {
+            const base = ebayDisplayedSpriceBase(rowData);
+            if (!rowData || rowData.is_parent_summary) return base;
+            // CVR Price Rule (eBay 1 CVR Price Rule modal): its % comes off the S PRC the other rules made. S PRC, S GROI / SNROI,
+            // Push Prc and the saved price all read this one number. Server twin: EbayRuleSprice::price() -> EbayCvrPriceRule.
+            try {
+                const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
+                // Only on top of a live rule price: with both S PRC switches OFF the saved S PRC is left alone (the server does the same).
+                if (!isClr && base > 0 && ebay1LiveRuleSprice(rowData) > 0 && typeof window.ebayCvrRuleApplyToPrice === 'function') {
+                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, base));
+                    if (isFinite(out) && out > 0) return Math.round(out * 100) / 100;
+                }
+            } catch (e) { /* no CVR Price Rule */ }
+            return base;
+        }
+        /** S PRC before the CVR Price Rule (the rule's base). */
+        function ebayDisplayedSpriceBase(rowData) {
             const saved = ebayRawRuleSprice(rowData);
             if (!rowData || rowData.is_parent_summary) return saved;
             try {
@@ -1658,6 +1674,7 @@
         window.ebayShouldCapSpriceToLmp = ebayShouldCapSpriceToLmp;
         window.ebayCapSpriceToLmp = ebayCapSpriceToLmp;
         window.ebayDisplayedSprice = ebayDisplayedSprice;
+        window.ebayDisplayedSpriceBase = ebayDisplayedSpriceBase;
         function ebayApplyL1FromEntries(row) {
             if (!row || row.is_parent_summary) return row;
             const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
@@ -5765,10 +5782,7 @@
                                     : ((typeof chPromoSavedOrLiveSprice === 'function')
                                         ? chPromoSavedOrLiveSprice(rowData)
                                         : (parseFloat(rowData.SPRICE) || 0)));
-                            // CVR Price Rule (ON): its price REPLACES the S PRC number (one price in the cell). Display only, never saved or pushed.
-                            let cvrShown = '';
-                            try { cvrShown = (typeof ebayCvrRuleShownHtml === 'function') ? ebayCvrRuleShownHtml(rowData, saved) : ''; } catch (e) { cvrShown = ''; }
-                            if (!(saved > 0)) return cvrShown ? '<span style="display:inline-flex;align-items:center;justify-content:center;">' + cvrShown + '</span>' : '';
+                            if (!(saved > 0)) return '';
                             const sprice = saved;
 
                             const lmpNow = (typeof ebayEffectiveLmp === 'function')
@@ -5804,10 +5818,14 @@
                                 : '';
                             const clearanceBadge = (window.chClr && chClr.markHtml) ? chClr.markHtml(rowData) : '';
 
-                            // The rule's price takes the place of the S PRC number (no second price in the cell).
-                            if (cvrShown) formattedValue = cvrShown;
+                            // CVR Price Rule: the number above already includes it; a small arrow shows it moved the price.
+                            let cvrMark = '';
+                            try {
+                                cvrMark = (liveRaw > 0 && typeof window.ebayCvrRuleMarkHtml === 'function' && typeof ebayDisplayedSpriceBase === 'function')
+                                    ? window.ebayCvrRuleMarkHtml(rowData, ebayDisplayedSpriceBase(rowData)) : '';
+                            } catch (e) { cvrMark = ''; }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
-                                + dot + formattedValue + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
+                                + dot + formattedValue + cvrMark + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
                         },
                         width: 118
                     },

@@ -24,7 +24,7 @@
                     <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-3" id="ebay-cvr-onoff-box">
                         <div>
                             <div class="fw-semibold">Rule <span id="ebay-cvr-onoff-txt" class="badge bg-secondary">OFF</span></div>
-                            <div class="text-muted" style="font-size:12px;">ON: the S PRC column suggests a new price next to its own value, from the price change % of the SKU's CVR case. OFF: no suggestion. Click Save to apply.</div>
+                            <div class="text-muted" style="font-size:12px;">ON: the SKU's price change % (by its CVR case) is taken off its S PRC, so S PRC, S GROI / SNROI and Push Prc all use the new price. OFF: S PRC is left as the other rules make it. Click Save to apply.</div>
                         </div>
                         <div class="form-check form-switch mb-0 ms-3">
                             <input class="form-check-input" type="checkbox" role="switch" id="ebay-cvr-rule-enabled" style="width:2.6em;height:1.3em;cursor:pointer;" aria-label="CVR Price Rule on or off">
@@ -191,10 +191,11 @@
             if (c === 'up') return Math.abs(p);
             return p;
         }
-        function ebayCvrRulePriceFor(row, cfg) {
+        function ebayCvrRulePriceFor(row, cfg, basePrice) {
             cfg = cfg || ebayCvrRule || {};
             const c = ebayCvrRuleCaseFor(row, cfg);
-            const price = parseFloat(row && row['eBay Price']);
+            // The % is taken off the S PRC the other rules produced (stable across pushes), not off the live Price.
+            const price = (basePrice > 0) ? Number(basePrice) : parseFloat(row && row['eBay Price']);
             if (!c || !(price > 0)) return null;
             const pct = ebayCvrRuleSignedPct(c, cfg[c]);
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
@@ -219,43 +220,42 @@
             $('#ebay-cvr-onoff-txt').text(on ? 'ON' : 'OFF').toggleClass('bg-success', on).toggleClass('bg-secondary', !on);
         }
         /**
-         * The suggested new price for the S PRC cell, or '' when the rule is OFF, the SKU has no case / % / price, or the
-         * suggestion equals the current price. Display only: nothing is saved or pushed from it.
+         * CVR Price Rule on one row's S PRC. `base` = the S PRC the other rules produced (LMP cap + Std Prc maximum done).
+         * Returns { price, capped, base, c, pct } or null when the rule is OFF or does not change this SKU.
+         * Server twin: EbayCvrPriceRule::apply(). Both read the same base, so a push never compounds the %.
          */
-        /** The suggested new price as a number (0 = none). Same conditions as the suggestion shown in the S PRC cell. */
-        function ebayCvrRuleSuggestedPrice(row) {
-            if (!ebayCvrRule || !ebayCvrRule.enabled || !row || row.is_parent_summary) return 0;
+        function ebayCvrRuleApply(row, base) {
+            if (!ebayCvrRule || !ebayCvrRule.enabled || !row || row.is_parent_summary) return null;
+            base = Math.round((Number(base) || 0) * 100) / 100;
+            if (!(base > 0)) return null;
             const c = ebayCvrRuleCaseFor(row, ebayCvrRule);
-            if (!c) return 0;
+            if (!c) return null;
             const pct = ebayCvrRuleSignedPct(c, ebayCvrRule[c]);
-            if (!isFinite(pct) || pct === 0 || ebayCvrRule[c] === null || ebayCvrRule[c] === '') return 0;
-            const res = ebayCvrRulePriceFor(row, ebayCvrRule);
-            const price = parseFloat(row['eBay Price']);
-            if (!res || !(res.price > 0) || Math.abs(res.price - price) < 0.005) return 0;
-            return res.price;
+            if (!isFinite(pct) || pct === 0 || ebayCvrRule[c] === null || ebayCvrRule[c] === '') return null;
+            const res = ebayCvrRulePriceFor(row, ebayCvrRule, base);
+            if (!res || !(res.price >= 0.01) || Math.abs(res.price - base) < 0.005) return null;
+            return { price: res.price, capped: res.capped, base: base, c: c, pct: pct };
         }
-        window.ebayCvrRuleSuggestedPrice = ebayCvrRuleSuggestedPrice;
-        /**
-         * The rule's price as the S PRC number itself (it replaces the S PRC value, the cell never shows two prices).
-         * '' when the rule has no suggestion for the row. Display only: nothing is saved or pushed from it.
-         */
-        function ebayCvrRuleShownHtml(row, savedSprice) {
-            if (!ebayCvrRuleSuggestedPrice(row)) return '';
-            const c = ebayCvrRuleCaseFor(row, ebayCvrRule);
-            const pct = ebayCvrRuleSignedPct(c, ebayCvrRule[c]);
-            const res = ebayCvrRulePriceFor(row, ebayCvrRule);
-            const price = parseFloat(row['eBay Price']);
-            const saved = parseFloat(savedSprice);
-            const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
-            const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
-                + (res.capped ? ' — set to the Lower cap price' : '')
-                + (saved > 0 ? '. Replaces the S PRC $' + saved.toFixed(2) + ' on screen.' : '.')
-                + ' Display only, not saved or pushed.';
-            const color = res.price < price ? '#a00211' : '#198754';
-            return '<span class="ebay-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
-                + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
-                + (res.capped ? ' <i class="fas fa-lock" style="font-size:9px;"></i>' : '') + '</span>';
-        }
+        window.ebayCvrRuleIsOn = function() { return !!(ebayCvrRule && ebayCvrRule.enabled); };
+        /** The price after the rule (the base when the rule does not apply). */
+        window.ebayCvrRuleApplyToPrice = function(row, base) {
+            let info = null;
+            try { info = ebayCvrRuleApply(row, base); } catch (e) { info = null; }
+            return info ? info.price : base;
+        };
+        /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
+        window.ebayCvrRuleMarkHtml = function(row, base) {
+            let info = null;
+            try { info = ebayCvrRuleApply(row, base); } catch (e) { info = null; }
+            if (!info) return '';
+            const word = info.c === 'down' ? 'CVR Down' : (info.c === 'up' ? 'CVR Up' : 'CVR within target');
+            const tip = 'CVR Price Rule (' + word + '): $' + info.base.toFixed(2) + ' ' + (info.pct > 0 ? '+' : '') + info.pct + '% = $' + info.price.toFixed(2)
+                + (info.capped ? ' (set to the Lower cap price)' : '');
+            const up = info.price > info.base;
+            return '<i class="fas fa-' + (up ? 'arrow-up' : 'arrow-down') + '" title="' + String(tip).replace(/"/g, '&quot;')
+                + '" style="font-size:10px;margin-left:2px;color:' + (up ? '#198754' : '#a00211') + ';"></i>'
+                + (info.capped ? '<i class="fas fa-lock" title="Lower cap price" style="font-size:9px;margin-left:1px;color:#6c757d;"></i>' : '');
+        };
         function ebayCvrRuleReadDraft() {
             const d = { enabled: $('#ebay-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#ebay-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#ebay-cvr-cap-npft').val(), min_nroi: $('#ebay-cvr-cap-nroi').val(), down_band: $('#ebay-cvr-band-down').val(), up_band: $('#ebay-cvr-band-up').val() };
             $('#ebay-cvr-rule-table tbody tr').each(function() {
@@ -282,7 +282,8 @@
                 const c = ebayCvrRuleCaseFor(r, cfg);
                 if (!c) return;
                 counts[c]++;
-                const res = ebayCvrRulePriceFor(r, cfg);
+                const baseNow = (typeof window.ebayDisplayedSpriceBase === 'function') ? (Number(window.ebayDisplayedSpriceBase(r)) || 0) : 0;
+                const res = ebayCvrRulePriceFor(r, cfg, baseNow);
                 if (res && res.capped) capped[c]++;
             });
             $('#ebay-cvr-rule-table tbody tr').each(function() {
@@ -307,7 +308,7 @@
             $('#ebay-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
             $('#ebay-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
             ebayCvrRulePaintCounts();
-            $('#ebay-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s current price).');
+            $('#ebay-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {
@@ -336,7 +337,7 @@
                     ebayCvrRuleRefreshLabels(ebayCvrRule);
                     ebayCvrRulePaintState();
                     if (typeof table !== 'undefined' && table) table.redraw(true);
-                    showToast('success', ebayCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC now shows the suggested prices.' : 'CVR Price Rule saved (OFF). No price suggestions.');
+                    showToast('success', ebayCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC is being re-saved with the new prices.' : 'CVR Price Rule saved (OFF). S PRC is being re-saved without it.');
                     const el = document.getElementById('ebayCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
                 }).fail(function() {
