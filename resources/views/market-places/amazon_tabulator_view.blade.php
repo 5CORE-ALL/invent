@@ -1877,6 +1877,12 @@
             if (!rowData || rowData.is_parent_summary) return 0;
             if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)
                 && !(typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(rowData))) return 0;
+            // CVR Price Rule (ON): its % comes off the rule price (or off Std Prc when both S PRC rules are OFF). One number for
+            // the cell, profit columns, blue triangle and push.
+            try {
+                const cvr = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(rowData) : null;
+                if (cvr && cvr.price > 0) return cvr.price;
+            } catch (e) { /* no CVR Price Rule */ }
             let raw = 0;
             if (typeof amzDisplayedSprice === 'function') {
                 raw = Number(amzDisplayedSprice(rowData)) || 0;
@@ -1891,11 +1897,6 @@
             const shown = (typeof amazonCapSpriceToLmp === 'function')
                 ? amazonCapSpriceToLmp(rowData, raw)
                 : +Number(raw).toFixed(2);
-            // CVR Price Rule (ON): its % comes off this price. One number for the cell, profit columns, blue triangle and push.
-            try {
-                const cvr = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(rowData) : null;
-                if (cvr && cvr.price > 0) return cvr.price;
-            } catch (e) { /* no CVR Price Rule */ }
             return shown > 0 ? shown : 0;
         }
         function amazonRowSprice(rowData) {

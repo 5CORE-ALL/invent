@@ -236,8 +236,16 @@
         function amzCvrRuleBaseFor(d) {
             if (!d || d.is_parent_summary) return 0;
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return 0;
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
             if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) return 0;
+            // Sprc Dil and Std prc vs dil both OFF: the CVR Price Rule prices on its own, off Std Prc (LMP-capped, no discounts).
+            // Server twin: AmazonSprcDilAutoPushService::computeCvrOnlyTarget().
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                if (!amzCvrRule || !amzCvrRule.enabled) return 0;
+                const std = Number(d.STANDARD_PRICE) || 0;
+                if (!(std > 0)) return 0;
+                const stdCapped = (typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, std)) : std;
+                return stdCapped > 0 ? Math.round(stdCapped * 100) / 100 : 0;
+            }
             if (typeof amzLiveRuleSprice !== 'function') return 0;
             const live = Number(amzLiveRuleSprice(d)) || 0;
             if (!(live > 0)) return 0;
@@ -262,6 +270,7 @@
             return { price: res.price, capped: res.capped, base: base, c: c, pct: pct };
         }
         window.amzCvrRuleInfo = amzCvrRuleInfo;
+        window.amzCvrRuleIsOn = function() { return !!(amzCvrRule && amzCvrRule.enabled); };
         /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
         window.amzCvrRuleMarkHtml = function(info) {
             if (!info) return '';
@@ -367,6 +376,13 @@
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');
                     // The CVR price is the S PRC now: re-save every SKU's S PRC (page twin of AmazonSprcDilAutoPushService).
                     if (typeof amzScheduleRuleSpriceSync === 'function') amzScheduleRuleSpriceSync({ force: true, delay: 600 });
+                    // Same as switching Sprc Dil / Std prc vs dil: the blue SKUs (S PRC != Price) are queued for push right away,
+                    // not only on the next page load. Needs "Push on reload" ON.
+                    setTimeout(function() {
+                        window._amzReloadPushQueued = false;
+                        window._amzLeftoverPasses = 0;
+                        if (typeof window.amzTryQueuePushOnReload === 'function') window.amzTryQueuePushOnReload();
+                    }, 1500);
                     amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC is being re-saved with the new prices.' : 'CVR Price Rule saved (OFF). S PRC is being re-saved without it.');
                     const el = document.getElementById('amzCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();

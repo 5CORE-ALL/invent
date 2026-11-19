@@ -4899,8 +4899,14 @@
             return !!d && window.amzSpriceClearedSkus.size > 0 && window.amzSpriceClearedSkus.has(amzPefSku(d).toUpperCase());
         }
         /** True when no rule price may be shown or saved for this row: both rules OFF, or the SKU was just cleared. */
+        /** Sprc Dil and Std prc vs dil both OFF but the CVR Price Rule is ON: the CVR rule prices on its own (off Std Prc). */
+        function amzCvrOnlyMode() {
+            if (!(typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none')) return false;
+            try { return typeof window.amzCvrRuleIsOn === 'function' && !!window.amzCvrRuleIsOn(); } catch (e) { return false; }
+        }
+        window.amzCvrOnlyMode = amzCvrOnlyMode;
         function amzSpriceAutoFillOff(d) {
-            return (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') || amzSpriceIsCleared(d);
+            return (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && !amzCvrOnlyMode()) || amzSpriceIsCleared(d);
         }
         window.amzSpriceIsCleared = amzSpriceIsCleared;
         window.amzSpriceAutoFillOff = amzSpriceAutoFillOff;
@@ -5143,7 +5149,14 @@
         }
         function amzRuleSpricePlanForRow(d) {
             if (amzSpriceIsCleared(d)) return null;
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return null;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+                // CVR Price Rule alone: its price (off Std Prc) is the plan. No CVR hit on this SKU = nothing to push.
+                if (!amzCvrOnlyMode() || amzIsClearanceSku(d)) return null;
+                const info = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (!info || !(info.price > 0)) return null;
+                const stdOnly = Number(d && d.STANDARD_PRICE) || 0;
+                return { effective: info.price, sale: info.price, std: stdOnly > 0 ? stdOnly : info.price, max: Math.max(stdOnly, info.price) };
+            }
             if (amzIsClearanceSku(d) && !amzClearanceHasPrice(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const live = amzLiveRuleSprice(d);
@@ -5205,7 +5218,7 @@
                 return done.promise();
             }
             // Both rules OFF: nothing fills S PRC, so nothing is cleared or saved. Existing S PRC values stay.
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && !amzCvrOnlyMode()) {
                 try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                 done.resolve(0);
                 return done.promise();
@@ -5223,6 +5236,8 @@
                 if (!amzPefIsChildRow(d)) return;
                 const sku = amzPefSku(d);
                 if (!sku) return;
+                // CVR Price Rule alone (both S PRC rules OFF): only the SKUs it changes are re-saved. The rest keep their stored S PRC.
+                if (amzCvrOnlyMode() && !amzRuleSpricePlanForRow(d)) return;
                 clearSkus.push(sku);
                 amzClearStoredSpriceOnRow(d);
                 row.update({
@@ -6169,6 +6184,7 @@
             }
             queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
         }
+        window.amzTryQueuePushOnReload = amzTryQueuePushOnReload;
         function bindAmzReloadPushOnTable() {
             if (typeof table === 'undefined' || !table || !table.on) {
                 setTimeout(bindAmzReloadPushOnTable, 400);

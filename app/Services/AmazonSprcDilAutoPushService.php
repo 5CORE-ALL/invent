@@ -79,8 +79,9 @@ class AmazonSprcDilAutoPushService
         ];
 
         // Both Sprc Dil and Std prc vs dil switched OFF on the page: no rule prices anything, so nothing is saved or pushed.
-        if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'none') {
-            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+        // The CVR Price Rule is a rule of its own: with it ON the run still goes ahead and prices from Std Prc (see computeCvrOnlyTarget).
+        if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'none' && ! $this->cvrPriceRuleOn()) {
+            $this->log($logger, 'Skipped: Sprc Dil, Std prc vs dil and CVR Price Rule are all OFF');
 
             return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
         }
@@ -270,6 +271,10 @@ class AmazonSprcDilAutoPushService
         array $stdPromo = [],
         bool $noReviewsNoDiscount = true
     ): ?array {
+        // Sprc Dil and Std prc vs dil both OFF, CVR Price Rule ON: the CVR rule prices on its own.
+        if (\App\Support\SpriceActiveRule::forChannel('amazon') === 'none') {
+            return $this->computeCvrOnlyTarget($row, $adsPct);
+        }
         $computed = $this->computeTargetBase($row, $dilRules, $cvrRules, $reviewRules, $reviewMax, $cvrAdj, $adsPct, $stdPromo, $noReviewsNoDiscount);
         if ($computed === null || (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
             return $computed;
@@ -292,6 +297,73 @@ class AmazonSprcDilAutoPushService
         }
 
         return $computed;
+    }
+
+    protected function cvrPriceRuleOn(): bool
+    {
+        $cfg = $this->cvrPriceRuleCfg ??= \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonCvrPriceRuleConfig();
+
+        return ! empty($cfg['enabled']);
+    }
+
+    /**
+     * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF). The base is Std Prc, LMP-capped like the Std rule
+     * does but with no discounts, so it is the same number on every run and a push never compounds the %.
+     * null = the rule does not change this SKU (nothing is saved or pushed). Clearance SKUs are left alone.
+     * Page twin: amzCvrRuleBaseFor() in CVR-only mode.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    protected function computeCvrOnlyTarget(array $row, ?float $adsPct): ?array
+    {
+        if (! ((float) ($row['inv'] ?? 0) > 0) || ! $this->cvrPriceRuleOn()
+            || (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+            return null;
+        }
+        $std = (float) ($row['standard_price'] ?? 0);
+        if (! ($std > 0)) {
+            return null;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $lmp = (float) ($row['lmp'] ?? 0);
+        $base = round(AmazonDilGroiRule::capSpriceToLmp($std, $lmp, $lp, $ship, AmazonDilGroiRule::TAKE_HOME, $std, 0.0), 2);
+        if (! ($base >= 0.01)) {
+            return null;
+        }
+        $cvrPrice = \App\Support\AmazonCvrPriceRule::apply(
+            $base,
+            $row,
+            $this->cvrPriceRuleCfg,
+            (float) ($adsPct ?? $this->amazonAdsPercent()),
+            $this->dynamicAdsRule()
+        );
+        if ($cvrPrice === null) {
+            return null;
+        }
+
+        return [
+            'sprice' => round((float) $cvrPrice['price'], 2),
+            'sprice_before_cvr' => $base,
+            'cvr_price' => true,
+            'dil' => round((float) ($row['dil'] ?? 0), 2),
+            'groi' => null,
+            'nroi' => null,
+            'cvr_disc' => 0.0,
+            'review_disc' => 0.0,
+            'buss_disc' => 0.0,
+            'zero_sold_disc' => 0.0,
+            'lmp_cvr_disc' => 0.0,
+            'roi_disc' => 0.0,
+            'dil_disc' => 0.0,
+            'age_disc' => 0.0,
+            'sum_disc' => 0.0,
+            'dil_groi' => false,
+            'lmp_capped' => $lmp > 0 && ($std - $base) > 0.009,
+            'snroi_capped' => false,
+            'base' => round($std, 2),
+        ];
     }
 
     /**
