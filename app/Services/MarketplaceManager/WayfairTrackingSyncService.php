@@ -436,7 +436,7 @@ class WayfairTrackingSyncService
                     'limit' => max(20, count($poNumbers) * 4),
                     'filters' => [[
                         'field' => 'poNumber',
-                        'in' => array_values($poNumbers),
+                        'in' => array_values(array_unique(array_map([$this, 'poFilterValue'], $poNumbers))),
                     ]],
                 ],
             ]);
@@ -452,7 +452,43 @@ class WayfairTrackingSyncService
             return $this->labelTrackingOneByOne($token, $poNumbers, $deadline);
         }
 
-        return $this->mapLabelEvents(is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : []);
+        return $this->rekeyByRequestedPo(
+            $this->mapLabelEvents(is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : []),
+            $poNumbers
+        );
+    }
+
+    /**
+     * Wayfair label filters take only the nine digits of a PO (CS687661369 -> 687661369).
+     */
+    protected function poFilterValue(string $poNumber): string
+    {
+        $digits = preg_replace('/\D+/', '', $poNumber) ?? '';
+
+        return strlen($digits) > 9 ? substr($digits, -9) : $digits;
+    }
+
+    /**
+     * Wayfair may answer with the digits or the full PO; hand every hit back under the PO we asked about.
+     *
+     * @param  array<string, array{tracking: string, carrier: string}>  $hits
+     * @param  list<string>  $poNumbers
+     * @return array<string, array{tracking: string, carrier: string}>
+     */
+    protected function rekeyByRequestedPo(array $hits, array $poNumbers): array
+    {
+        $byDigits = [];
+        foreach ($poNumbers as $po) {
+            $byDigits[$this->poFilterValue((string) $po)][] = (string) $po;
+        }
+        $out = [];
+        foreach ($hits as $key => $hit) {
+            foreach ($byDigits[$this->poFilterValue((string) $key)] ?? [] as $po) {
+                $out[$po] = $hit;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -479,7 +515,7 @@ class WayfairTrackingSyncService
         $response = Http::withoutVerifying()->connectTimeout(8)->timeout(20)->withToken($token)
             ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, [
                 'query' => $query,
-                'variables' => ['limit' => 5, 'filters' => [['field' => 'poNumber', 'equals' => trim($poNumber)]]],
+                'variables' => ['limit' => 5, 'filters' => [['field' => 'poNumber', 'equals' => $this->poFilterValue($poNumber)]]],
             ]);
         $json = $response->json();
         if (! empty($json['errors'])) {
@@ -520,7 +556,7 @@ class WayfairTrackingSyncService
                         'limit' => 5,
                         'filters' => [[
                             'field' => 'poNumber',
-                            'equals' => $po,
+                            'equals' => $this->poFilterValue((string) $po),
                         ]],
                     ],
                 ]);
@@ -532,7 +568,10 @@ class WayfairTrackingSyncService
                 ]);
                 continue;
             }
-            $out = array_merge($out, $this->mapLabelEvents(is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : []));
+            $out = array_merge($out, $this->rekeyByRequestedPo(
+                $this->mapLabelEvents(is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : []),
+                [(string) $po]
+            ));
         }
 
         return $out;
