@@ -2963,7 +2963,8 @@
         // Export CSV button
         $('#export-btn').on('click', function() {
             const exportData = [];
-            const visibleColumns = table.getColumns().filter(col => col.isVisible() && col.getField() !== '_select');
+            const visibleColumns = (window.tabDownloadColumns ? window.tabDownloadColumns(table) : table.getColumns().filter(col => col.isVisible() && col.getField() !== '_select'));
+            // ^ every column of the page (shown or hidden), see js/tabulator-download-all-columns.js
             
             // Get headers
             const headers = visibleColumns.map(col => {

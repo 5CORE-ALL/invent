@@ -5652,10 +5652,12 @@
             }
             function amzExportColumns() {
                 var out = [];
+                // Hidden-but-available columns are exported too (js/tabulator-download-all-columns.js).
+                var allowedCols = window.tabDownloadColumns ? window.tabDownloadColumns(table) : null;
                 table.getColumns().forEach(function (col) {
                     var def = col.getDefinition();
                     if (!def || def.field === '__sel' || def.field === '__task' || !def.field) return;
-                    if (!col.isVisible()) return;
+                    if (!col.isVisible() && !(allowedCols && allowedCols.indexOf(col) !== -1)) return;
                     var el = col.getElement();
                     var titleEl = el ? el.querySelector('.tabulator-col-title') : null;
                     var title = String(def.title || '').trim();

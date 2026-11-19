@@ -1295,7 +1295,8 @@
         });
 
         document.getElementById('export-btn').addEventListener('click', function() {
-            const visibleCols = table.getColumns().filter(c => c.isVisible() && c.getField() !== '_select');
+            const visibleCols = (window.tabDownloadColumns ? window.tabDownloadColumns(table) : table.getColumns().filter(c => c.isVisible() && c.getField() !== '_select'));
+            // ^ every column of the page (shown or hidden), see js/tabulator-download-all-columns.js
             const headers = visibleCols.map(c => c.getDefinition().title || c.getField());
             const rows = table.getData('active').map(row => visibleCols.map(col => {
                 let v = row[col.getField()];

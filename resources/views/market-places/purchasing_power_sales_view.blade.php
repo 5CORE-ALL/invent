@@ -505,7 +505,8 @@
 
         // Export CSV
         document.getElementById('export-btn').addEventListener('click', function () {
-            const visibleCols = table.getColumns().filter(c => c.isVisible());
+            const visibleCols = (window.tabDownloadColumns ? window.tabDownloadColumns(table) : table.getColumns().filter(c => c.isVisible()));
+            // ^ every column of the page (shown or hidden), see js/tabulator-download-all-columns.js
             const headers = visibleCols.map(c => c.getDefinition().title || c.getField());
             const rows = table.getData('active').map(row =>
                 visibleCols.map(col => {

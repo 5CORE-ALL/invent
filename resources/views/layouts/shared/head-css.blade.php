@@ -298,3 +298,8 @@
      was added (▲ +N) or deducted (▼ −N) from the previous count to the next. Must load
      before any chart library so it can self-register when the library is loaded. --}}
 <script src="{{ asset('js/chart-delta-labels.js') }}?v=20261031"></script>
+
+{{-- Global: every download includes ALL columns of the page (shown or hidden), for Tabulator's
+     table.download() and for hand-written exports via window.tabDownloadColumns(table).
+     Safe to load before or after tabulator.min.js. --}}
+<script src="{{ asset('js/tabulator-download-all-columns.js') }}?v={{ file_exists(public_path('js/tabulator-download-all-columns.js')) ? filemtime(public_path('js/tabulator-download-all-columns.js')) : '1' }}"></script>

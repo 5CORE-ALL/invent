@@ -4279,9 +4279,11 @@
 
         function ebay3VisibleExportColumns() {
             var cols = [];
+            // Hidden-but-available columns are exported too (js/tabulator-download-all-columns.js).
+            var allowedCols = window.tabDownloadColumns ? window.tabDownloadColumns(table) : null;
             table.getColumns().forEach(function(col) {
                 try {
-                    if (!col.isVisible()) {
+                    if (!col.isVisible() && !(allowedCols && allowedCols.indexOf(col) !== -1)) {
                         return;
                     }
                     var def = col.getDefinition();

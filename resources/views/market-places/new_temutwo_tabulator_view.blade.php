@@ -3422,9 +3422,10 @@
     }
     function temuDownloadSheet(filename) {
         if (!table) return;
-        const cols = table.getColumns().filter(function(col) {
+        // Every column of the page (shown or hidden): js/tabulator-download-all-columns.js
+        const cols = (window.tabDownloadColumns ? window.tabDownloadColumns(table) : table.getColumns().filter(function(col) { return col.isVisible(); })).filter(function(col) {
             const def = col.getDefinition();
-            return def.field && def.field !== '_select' && col.isVisible() && alwaysHiddenColumns.indexOf(def.field) === -1;
+            return def.field && def.field !== '_select' && alwaysHiddenColumns.indexOf(def.field) === -1;
         });
         const headers = cols.map(function(col) {
             const def = col.getDefinition();

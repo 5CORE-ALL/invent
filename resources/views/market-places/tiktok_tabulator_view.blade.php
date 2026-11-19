@@ -6158,8 +6158,9 @@
             $('#export-btn').on('click', function(e) {
                 e.preventDefault();
                 const exportData = [];
-                const visibleColumns = table.getColumns().filter(col => col.isVisible() && col
-                .getField() !== '_select');
+                const visibleColumns = (window.tabDownloadColumns ? window.tabDownloadColumns(table) : table.getColumns().filter(col => col.isVisible() && col
+                .getField() !== '_select'));
+            // ^ every column of the page (shown or hidden), see js/tabulator-download-all-columns.js
 
                 const headers = visibleColumns.map(col => {
                     let title = col.getDefinition().title || col.getField();

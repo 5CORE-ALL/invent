@@ -4812,8 +4812,8 @@
 
         function faasVisibleExportColumns() {
             if (!tabulator) return [];
-            return tabulator.getColumns()
-                .filter(col => col.isVisible())
+            // Every column of the page (shown or hidden): js/tabulator-download-all-columns.js
+            return (window.tabDownloadColumns ? window.tabDownloadColumns(tabulator) : tabulator.getColumns().filter(col => col.isVisible()))
                 .map(col => ({
                     field: col.getField(),
                     title: faasColumnExportTitle(col),
