@@ -5501,6 +5501,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay2-listing-variation-verify/data', [Ebay2ListingVariationVerifyController::class, 'data'])->name('ebay2.listing.variation.verify.data');
     Route::post('/ebay2-listing-variation-verify/pull-listings', [Ebay2ListingVariationVerifyController::class, 'pullListings'])->name('ebay2.listing.variation.verify.pull');
 
+    // Ebay 2 Variation Type: import current types (Trading API GetItem), edit, push (ReviseFixedPriceItem)
+    Route::get('/ebay2-variation-type', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'index'])->name('ebay2.variation.type');
+    Route::get('/ebay2-variation-type/data', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'data'])->name('ebay2.variation.type.data');
+    Route::post('/ebay2-variation-type/import', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'import'])->name('ebay2.variation.type.import');
+    Route::post('/ebay2-variation-type/save', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'save'])->name('ebay2.variation.type.save');
+    Route::post('/ebay2-variation-type/push', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'push'])->name('ebay2.variation.type.push');
+
     // Listing Audit ebay2
     Route::get('/analytics/dil-badge-chart-data', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'chart'])->name('analytics.dil.badge.chart');
     Route::get('/analytics/dil-badge-prev-day', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'prevDay'])->name('analytics.dil.badge.prev');
