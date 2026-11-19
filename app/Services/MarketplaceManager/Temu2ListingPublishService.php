@@ -626,7 +626,26 @@ class Temu2ListingPublishService
                 $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
                 $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
             }
-            $payloadV2['skuList'] = $this->withUniqueOutSkuSns($payloadV2['skuList'] ?? []);
+            // The Contribution SKU (outSkuSn) must stay exactly the SKU of the app: sales, stock and price sync match
+            // Temu to the app by it. A SKU still held by an old (deleted) goods is released, never renamed with a
+            // random suffix on the new listing.
+            $stillHeld = $this->releaseHeldOutSkuSns($prepared);
+            if ($stillHeld !== []) {
+                Log::warning('Temu2 publish: SKU still held by another goods, not publishing with a changed SKU', [
+                    'parent' => $parentKey,
+                    'held' => $stillHeld,
+                ]);
+                if ($trackPublish) {
+                    TemuGoodsStatusSync::clearPublishing(array_values(array_map(static fn ($row) => (string) $row['sku'], $prepared)));
+                }
+
+                return [
+                    'success' => false,
+                    'message' => 'Nothing was published. '.$this->shopLabel().' still holds the SKU on an old listing, and the SKU is not changed: '
+                        .implode(', ', array_map(static fn ($h) => $h['sku'].' (goods '.($h['goods_id'] !== '' ? $h['goods_id'] : '?').')', $stillHeld))
+                        .'. Delete that old goods permanently in Seller Center (Recycle bin), then publish again.',
+                ];
+            }
             $data = $this->submitGoodsAdd($payloadV2);
         }
         if (! ($data['success'] ?? false)) {
@@ -4967,6 +4986,39 @@ class Temu2ListingPublishService
     }
 
     /**
+     * Releases every SKU of these rows that another goods still holds (a deleted listing keeps its seller SKU).
+     * The old goods gets the renamed SKU, so the new listing can use the exact SKU.
+     *
+     * @param  list<array<string, mixed>>  $prepared
+     * @return list<array{sku: string, goods_id: string}>  SKUs that are still held after trying
+     */
+    private function releaseHeldOutSkuSns(array $prepared): array
+    {
+        $held = [];
+        foreach ($prepared as $row) {
+            $sku = (string) ($row['sku'] ?? '');
+            if ($sku === '') {
+                continue;
+            }
+            $remote = $this->remoteSkuDuplicate($sku);
+            if ($remote === null) {
+                continue;
+            }
+            $life = $this->remoteGoodsLifecycle($remote['goodsId']);
+            if (in_array($life, ['deleted', 'draft', 'unknown'], true)) {
+                $this->freeDeletedOutSkuSn($sku, $remote);
+                $remote = $this->remoteSkuDuplicate($sku);
+                if ($remote === null) {
+                    continue;
+                }
+            }
+            $held[] = ['sku' => $sku, 'goods_id' => $remote['goodsId']];
+        }
+
+        return $held;
+    }
+
+    /**
      * @param  array{goodsId: string, skuId: string}  $remote
      */
     private function freeDeletedOutSkuSn(string $sku, array $remote): void
@@ -4998,48 +5050,6 @@ class Temu2ListingPublishService
                 'message' => $this->apiErrorMessage($data),
             ]);
         }
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $skuList
-     * @return list<array<string, mixed>>
-     */
-    private function withUniqueOutSkuSns(array $skuList): array
-    {
-        foreach ($skuList as $index => $item) {
-            $current = trim((string) ($item['outSkuSn'] ?? $item['externalSkuId'] ?? ''));
-            if ($current === '') {
-                continue;
-            }
-            $unique = $this->uniqueOutSkuSn($current);
-            $skuList[$index]['outSkuSn'] = $unique;
-            $skuList[$index]['externalSkuId'] = $unique;
-        }
-
-        return $skuList;
-    }
-
-    private function uniqueOutSkuSn(string $sku): string
-    {
-        $base = mb_substr($this->sanitizeGoodsName($sku), 0, 32);
-        if ($base === '') {
-            $base = 'SKU';
-        }
-        foreach ([$sku, $base.'-'.substr(md5($sku.microtime(true)), 0, 6)] as $candidate) {
-            $sn = mb_substr($this->sanitizeGoodsName((string) $candidate), 0, 40);
-            if ($sn !== '' && ! $this->outSkuSnTaken($sn)) {
-                return $sn;
-            }
-        }
-
-        return mb_substr($base.'-'.time(), 0, 40);
-    }
-
-    private function outSkuSnTaken(string $sn): bool
-    {
-        $dup = $this->remoteSkuDuplicate($sn);
-
-        return $dup !== null;
     }
 
     /**
