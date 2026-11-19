@@ -692,6 +692,7 @@
                     {{-- Sprc Dil (Dil -> Target SNROI) + the Sprc Dil / Std prc vs dil switch, same as /amazon-tabulator-view --}}
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
+                    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'buttons', 'ebayCvrRuleChannel' => 'shopify_b2c'])
                 </div>
 
                 <!-- Summary Stats (order:-1 → shown above filters, same as Amz) -->
@@ -782,6 +783,7 @@
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2c'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shopify_b2c'])
+    @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'modals', 'ebayCvrRuleChannel' => 'shopify_b2c'])
 
     <div class="modal fade p-0" id="shopifyB2cMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
@@ -2799,6 +2801,17 @@
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         @include('partials.channel-clearance-badge', ['chClrPart' => 'script'])
         @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
+        @include('partials.ebay-cvr-price-rule', ['ebayCvrRulePart' => 'script', 'ebayCvrRuleChannel' => 'shopify_b2c'])
+        // CVR Price Rule: the server saves S PRC with the rule's % already in it (shopify-b2c:sprc-dil-auto-push). After a save the
+        // page waits for that re-save, then reloads. The modal's Capped count works from the rule price before the caps.
+        window.ebayCvrRuleOnSaved = function() {
+            if (typeof showToast === 'function') showToast('Re-saving S PRC with the CVR Price Rule…', 'info');
+            shopifyB2cReloadAfterRuleApply();
+        };
+        window.ebayDisplayedSpriceBase = function(d) {
+            const r = parseFloat(d && d.SPRICE_RULE_PRICE) || 0;
+            return r > 0 ? r : (parseFloat(d && d.Price) || 0);
+        };
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'shopifyb2c', 'temuRuleLiveLabel' => 'Price'])
 
         function shopifyB2cTableWrapHeight() {
@@ -3005,6 +3018,53 @@
 
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                     }
+                },
+                {
+                    title: "LT O CVR",
+                    field: "LT_O_CVR",
+                    hozAlign: "center",
+                    minWidth: 72,
+                    headerTooltip: "Overall CVR over the last 60 days: (B2C L30 + B2C L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views are the Shopify product sessions of days 31–60 (stored by the daily views run). Blank when they are not stored yet. A PARENT row adds up the SKUs that have them.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
+                        if (!isFinite(lto)) return '<span class="text-muted">—</span>';
+                        let tip = 'LT O CVR (last 60 days)';
+                        if (!isShopifyB2cParentRow(row)) {
+                            const units = (parseFloat(row['B2B L30']) || 0) + (parseFloat(row['B2B L60']) || 0);
+                            const views = (parseFloat(row.Views) || 0) + (parseFloat(row.views_prior) || 0);
+                            tip = units + ' orders ÷ ' + views + ' views (L30 + prior 30 days)';
+                        }
+                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '">' + lto.toFixed(1) + '%</span>';
+                    },
+                    sorter: function(a, b) {
+                        const x = (a === null || a === undefined || a === '') ? NaN : parseFloat(a);
+                        const y = (b === null || b === undefined || b === '') ? NaN : parseFloat(b);
+                        return (isFinite(x) ? x : -1) - (isFinite(y) ? y : -1);
+                    },
+                },
+                {
+                    title: "CVR Δ",
+                    field: "CVR_VS_LTO",
+                    hozAlign: "center",
+                    width: 60,
+                    headerTooltip: "CVR% vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const t = (typeof ebayCvrRuleTrendValue === 'function') ? ebayCvrRuleTrendValue(row, null) : null;
+                        if (t === null) return '<span class="text-muted">—</span>';
+                        const lto = parseFloat(row.LT_O_CVR);
+                        const tip = 'CVR ' + (parseFloat(row.SCVR) || 0).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
+                        const pcts = ebayCvrRuleBandPcts(null);
+                        if (t > 0) return '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                        if (t < 0) return '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                        return '<span title="' + tip + ' · within the CVR targets">--</span>';
+                    },
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ebayCvrRuleTrendValue(aRow.getData(), null);
+                        const y = ebayCvrRuleTrendValue(bRow.getData(), null);
+                        return (x === null ? -2 : x) - (y === null ? -2 : y);
+                    },
                 },
                 {
                     title: "B2C L30",

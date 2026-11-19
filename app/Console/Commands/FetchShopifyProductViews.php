@@ -94,6 +94,26 @@ class FetchShopifyProductViews extends Command
             $updated++;
         }
 
+        // Views of the 30 days before the L30 window (days 31-60 ago): the LT O CVR on /shopify-b2c-pricing needs them.
+        // Only on the standard L30 run, and only once the views_prior column exists. A failure here never fails the L30 run.
+        if ($days === 30 && \Illuminate\Support\Facades\Schema::hasColumn('shopify_skus', 'views_prior')) {
+            try {
+                $priorByPath = $this->fetchProductLandingSessions($storeUrl, $accessToken, $apiVersion, 60, 31);
+                $priorUpdated = 0;
+                foreach ($pathToSkuIds as $path => $skuIds) {
+                    $prior = $priorByPath[$path] ?? 0;
+                    foreach ($skuIds as $id) {
+                        ShopifySku::where('id', $id)->update(['views_prior' => $prior]);
+                        $priorUpdated++;
+                    }
+                }
+                $this->info("Updated views_prior (days 31-60) on {$priorUpdated} shopify_skus rows");
+            } catch (\Throwable $e) {
+                Log::warning('FetchShopifyProductViews: prior-30-day views failed', ['error' => $e->getMessage()]);
+                $this->warn('Prior-30-day views failed: '.$e->getMessage());
+            }
+        }
+
         Log::info('FetchShopifyProductViews completed', [
             'days' => $days,
             'paths' => count($viewsByPath),
@@ -112,11 +132,12 @@ class FetchShopifyProductViews extends Command
     /**
      * @return array<string, int> normalized /products/... path => sessions
      */
-    private function fetchProductLandingSessions(string $storeUrl, string $accessToken, string $apiVersion, int $days): array
+    private function fetchProductLandingSessions(string $storeUrl, string $accessToken, string $apiVersion, int $days, ?int $untilDaysAgo = null): array
     {
+        $window = "SINCE -{$days}d".($untilDaysAgo !== null ? " UNTIL -{$untilDaysAgo}d" : '');
         $query = "FROM sessions SHOW sessions, pageviews"
             ." WHERE landing_page_type = 'Product'"
-            ." SINCE -{$days}d"
+            ." {$window}"
             .' GROUP BY landing_page_path'
             .' ORDER BY sessions DESC'
             .' LIMIT 5000';

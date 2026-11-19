@@ -254,6 +254,47 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
+     * S PRC for one row: the Sprc Dil / Std prc vs dil price (caps done), then the CVR Price Rule % off that price
+     * (page twin: amzFinalSpriceToSave -> amzCvrRuleInfo). Clearance SKUs are left alone.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function computeTarget(
+        array $row,
+        array $dilRules,
+        array $cvrRules,
+        array $reviewRules,
+        int $reviewMax,
+        ?array $cvrAdj = null,
+        ?float $adsPct = null,
+        array $stdPromo = [],
+        bool $noReviewsNoDiscount = true
+    ): ?array {
+        $computed = $this->computeTargetBase($row, $dilRules, $cvrRules, $reviewRules, $reviewMax, $cvrAdj, $adsPct, $stdPromo, $noReviewsNoDiscount);
+        if ($computed === null || (new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+            return $computed;
+        }
+        $cfg = $this->cvrPriceRuleCfg ??= \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonCvrPriceRuleConfig();
+        if (empty($cfg['enabled'])) {
+            return $computed;
+        }
+        $cvrPrice = \App\Support\AmazonCvrPriceRule::apply(
+            (float) $computed['sprice'],
+            $row,
+            $cfg,
+            (float) ($adsPct ?? $this->amazonAdsPercent()),
+            $this->dynamicAdsRule()
+        );
+        if ($cvrPrice !== null) {
+            $computed['sprice_before_cvr'] = $computed['sprice'];
+            $computed['sprice'] = $cvrPrice['price'];
+            $computed['cvr_price'] = true;
+        }
+
+        return $computed;
+    }
+
+    /**
      * Page Push Prc / Sprc Dil formula (INV > 0 child SKUs).
      *
      * @param  array<string, mixed>  $row
@@ -265,7 +306,7 @@ class AmazonSprcDilAutoPushService
      * @param  bool  $noReviewsNoDiscount  No review count → 0 review discount
      * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_disc:float,age_disc:float,sum_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
-    public function computeTarget(
+    public function computeTargetBase(
         array $row,
         array $dilRules,
         array $cvrRules,
@@ -1337,6 +1378,9 @@ class AmazonSprcDilAutoPushService
     }
 
     /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
+    /** @var array<string, mixed>|null */
+    protected ?array $cvrPriceRuleCfg = null;
+
     protected function dynamicAdsRule(): array
     {
         return $this->dynamicAdsRuleCache ??= AmazonDilGroiRule::loadDynamicAdsRule();

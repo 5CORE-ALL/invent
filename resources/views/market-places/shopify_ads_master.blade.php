@@ -183,6 +183,8 @@
             flex-shrink: 0;
         }
 
+
+        
         #shopify-ads-master-wrap .tabulator .tabulator-data-tree-control:hover {
             background: #f1f5f9;
             border-color: #94a3b8;

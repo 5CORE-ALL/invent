@@ -2323,7 +2323,8 @@
             }
             return Number(d && (d.lmp_price || d.lmp || d.LMP)) || 0;
         }
-        function amzFinalSpriceToSave(d, sprice) {
+        /** LMP cap + Std Prc maximum only (no CVR Price Rule). */
+        function amzCapOnlySprice(d, sprice) {
             let val = Number(sprice);
             if (!(val > 0)) return 0;
             val = amzPefRound2(val);
@@ -2332,6 +2333,32 @@
             else if (window.SpriceLmpCap) val = SpriceLmpCap.prepare(d, val);
             return val > 0 ? amzPefRound2(val) : 0;
         }
+        /**
+         * The S PRC that is saved and pushed. Rule price -> caps -> CVR Price Rule (when ON and it hits the SKU).
+         * Safe to call again on its own result: a price that already is the CVR price comes back unchanged, so the % never compounds.
+         * Server twin: AmazonSprcDilAutoPushService::computeTarget() -> AmazonCvrPriceRule.
+         */
+        function amzFinalSpriceToSave(d, sprice) {
+            let val = Number(sprice);
+            if (!(val > 0)) return 0;
+            val = amzPefRound2(val);
+            const capped = amzCapOnlySprice(d, val);
+            try {
+                const info = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (info && (Math.abs(val - info.price) < 0.005 || (capped > 0 && Math.abs(capped - info.base) < 0.005))) return info.price;
+            } catch (e) { /* no CVR Price Rule */ }
+            return capped;
+        }
+        /** The visible rule S PRC as it will be saved / pushed (CVR Price Rule included). */
+        function amzDisplayedFinalSprice(d) {
+            const base = (typeof amzDisplayedSprice === 'function') ? amzDisplayedSprice(d) : 0;
+            try {
+                const info = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (info) return info.price;
+            } catch (e) { /* no CVR Price Rule */ }
+            return base;
+        }
+        window.amzDisplayedFinalSprice = amzDisplayedFinalSprice;
         function amzMarkPersistedSprice(row, val) {
             if (!row || typeof row.update !== 'function') return;
             const n = Number(val);
@@ -4758,7 +4785,7 @@
         function amzListingAlreadyAtPushTarget(d, plan) {
             const target = (plan && plan.effective > 0)
                 ? plan.effective
-                : ((typeof amzDisplayedSprice === 'function') ? amzDisplayedSprice(d) : 0);
+                : amzDisplayedFinalSprice(d);
             if (typeof amazonListingPriceEqualsSprice === 'function') {
                 return amazonListingPriceEqualsSprice(d, target);
             }
@@ -5506,7 +5533,7 @@
                     // A finished task only says what THAT job pushed. When the S PRC has moved since (an old job still
                     // listed in job.json), copying its price onto the row made Price ≠ S PRC and kept the blue badge on
                     // SKUs Amazon already had right. Skip tasks that no longer match the current S PRC.
-                    const wantNow = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedSprice(d) : d.SPRICE) || 0;
+                    const wantNow = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedFinalSprice(d) : d.SPRICE) || 0;
                     if (t.effective != null && wantNow > 0 && Math.abs(wantNow - Number(t.effective)) > 0.009) {
                         return;
                     }
@@ -5595,7 +5622,7 @@
                 table.getRows().some(function(row) {
                     const d = row.getData();
                     if (!d || String(amzPefSku(d)).toUpperCase() !== String(sku).toUpperCase()) return false;
-                    const want = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedSprice(d) : d.SPRICE) || 0;
+                    const want = Number(typeof amzDisplayedSprice === 'function' ? amzDisplayedFinalSprice(d) : d.SPRICE) || 0;
                     if (want > 0) expected[String(sku).toUpperCase()] = want;
                     return true;
                 });

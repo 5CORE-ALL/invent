@@ -24,7 +24,7 @@
                     <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-3" id="amz-cvr-onoff-box">
                         <div>
                             <div class="fw-semibold">Rule <span id="amz-cvr-onoff-txt" class="badge bg-secondary">OFF</span></div>
-                            <div class="text-muted" style="font-size:12px;">ON: the S PRC column shows the new price (the SKU's current Price with its CVR case's price change %) in place of its own value. OFF: S PRC is shown as the other rules make it. Click Save to apply.</div>
+                            <div class="text-muted" style="font-size:12px;">ON: the SKU's price change % (by its CVR case) is taken off its S PRC, so S PRC, the profit columns, the blue triangle and Push Prc all use the new price. OFF: S PRC is left as the other rules make it. Click Save to apply.</div>
                         </div>
                         <div class="form-check form-switch mb-0 ms-3">
                             <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-rule-enabled" style="width:2.6em;height:1.3em;cursor:pointer;" aria-label="CVR Price Rule on or off">
@@ -201,10 +201,11 @@
             if (c === 'up') return Math.abs(p);
             return p;
         }
-        function amzCvrRulePriceFor(row, cfg) {
+        function amzCvrRulePriceFor(row, cfg, basePrice) {
             cfg = cfg || amzCvrRule || {};
             const c = amzCvrRuleCaseFor(row, cfg);
-            const price = parseFloat(row && row.price);
+            // The % is taken off the S PRC the other rules produced (stable across pushes), not off the live Price.
+            const price = (basePrice > 0) ? Number(basePrice) : parseFloat(row && row.price);
             if (!c || !(price > 0)) return null;
             const pct = amzCvrRuleSignedPct(c, cfg[c]);
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
@@ -229,45 +230,56 @@
             $('#amz-cvr-onoff-txt').text(on ? 'ON' : 'OFF').toggleClass('bg-success', on).toggleClass('bg-secondary', !on);
         }
         /**
-         * The suggested new price for the S PRC cell, or '' when the rule is OFF, the SKU has no case / % / price, or the
-         * suggestion equals the current price. Display only: nothing is saved or pushed from it.
+         * The S PRC the other rules produced for a row (Sprc Dil / Std prc vs dil, LMP cap and Std Prc maximum done): the CVR
+         * Price Rule's base. 0 when the row has no rule price (rules OFF, cleared, clearance, parent, no INV).
          */
-        /** The suggested new price as a number (0 = none). Same conditions as the suggestion shown in the S PRC cell. */
-        function amzCvrRuleSuggestedPrice(row) {
-            if (!amzCvrRule || !amzCvrRule.enabled || !row || row.is_parent_summary) return 0;
-            const c = amzCvrRuleCaseFor(row, amzCvrRule);
-            if (!c) return 0;
-            const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
-            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return 0;
-            const res = amzCvrRulePriceFor(row, amzCvrRule);
-            const price = parseFloat(row.price);
-            if (!res || !(res.price > 0) || Math.abs(res.price - price) < 0.005) return 0;
-            return res.price;
+        function amzCvrRuleBaseFor(d) {
+            if (!d || d.is_parent_summary) return 0;
+            if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
+            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) return 0;
+            if (typeof amzLiveRuleSprice !== 'function') return 0;
+            const live = Number(amzLiveRuleSprice(d)) || 0;
+            if (!(live > 0)) return 0;
+            const capped = (typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, live)) : live;
+            return capped > 0 ? Math.round(capped * 100) / 100 : 0;
         }
-        window.amzCvrRuleSuggestedPrice = amzCvrRuleSuggestedPrice;
+        window.amzCvrRuleBaseFor = amzCvrRuleBaseFor;
         /**
-         * The rule's price as the S PRC number itself: it REPLACES the S PRC value in the cell (never two prices side by side).
-         * '' when the rule has no suggestion for the row. Display only: nothing is saved or pushed from it.
+         * CVR Price Rule on one row's S PRC: { price, capped, base, c, pct } or null when the rule is OFF or does not change the SKU.
+         * Server twin: AmazonCvrPriceRule::apply(). Both take the % off the same base, so a push never compounds it.
          */
-        function amzCvrRuleShownHtml(row, savedSprice) {
-            if (!amzCvrRuleSuggestedPrice(row)) return '';
-            const c = amzCvrRuleCaseFor(row, amzCvrRule);
+        function amzCvrRuleInfo(d) {
+            if (!amzCvrRule || !amzCvrRule.enabled || !d || d.is_parent_summary) return null;
+            const c = amzCvrRuleCaseFor(d, amzCvrRule);
+            if (!c) return null;
             const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
-            const res = amzCvrRulePriceFor(row, amzCvrRule);
-            const price = parseFloat(row.price);
-            const saved = parseFloat(savedSprice);
-            const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
-            const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
-                + (res.capped ? ' — set to the Lower cap price' : '')
-                + (saved > 0 ? '. Replaces the S PRC $' + saved.toFixed(2) + ' on screen.' : '.')
-                + ' Display only, not saved or pushed.';
-            const color = res.price < price ? '#a00211' : '#198754';
-            return '<span class="amz-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
-                + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
-                + (res.capped ? ' <i class="fas fa-lock" style="font-size:9px;"></i>' : '') + '</span>';
+            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return null;
+            const base = amzCvrRuleBaseFor(d);
+            if (!(base > 0)) return null;
+            const res = amzCvrRulePriceFor(d, amzCvrRule, base);
+            if (!res || !(res.price >= 0.01) || Math.abs(res.price - base) < 0.005) return null;
+            return { price: res.price, capped: res.capped, base: base, c: c, pct: pct };
         }
-        window.amzCvrRuleShownHtml = amzCvrRuleShownHtml;
-        /** Kept so the column definition does not change: the cell formatter itself now swaps in the rule's price. */
+        window.amzCvrRuleInfo = amzCvrRuleInfo;
+        /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
+        window.amzCvrRuleMarkHtml = function(info) {
+            if (!info) return '';
+            const word = info.c === 'down' ? 'CVR Down' : (info.c === 'up' ? 'CVR Up' : 'CVR within target');
+            const tip = 'CVR Price Rule (' + word + '): $' + info.base.toFixed(2) + ' ' + (info.pct > 0 ? '+' : '') + info.pct + '% = $' + info.price.toFixed(2)
+                + (info.capped ? ' (set to the Lower cap price)' : '');
+            const up = info.price > info.base;
+            return '<i class="fas fa-' + (up ? 'arrow-up' : 'arrow-down') + '" title="' + String(tip).replace(/"/g, '&quot;')
+                + '" style="font-size:10px;margin-left:2px;color:' + (up ? '#198754' : '#a00211') + ';"></i>'
+                + (info.capped ? '<i class="fas fa-lock" title="Lower cap price" style="font-size:9px;margin-left:1px;color:#6c757d;"></i>' : '');
+        };
+        /** The price after the CVR rule when it applies, else the given price. */
+        window.amzCvrRuleApplyTo = function(d, price) {
+            let info = null;
+            try { info = amzCvrRuleInfo(d); } catch (e) { info = null; }
+            return info ? info.price : price;
+        };
+        /** Kept so the column definition does not change. */
         function amzCvrRuleSpriceFormatter(inner) {
             return inner;
         }
@@ -297,7 +309,7 @@
                 const c = amzCvrRuleCaseFor(r, cfg);
                 if (!c) return;
                 counts[c]++;
-                const res = amzCvrRulePriceFor(r, cfg);
+                const res = amzCvrRulePriceFor(r, cfg, (typeof amzCvrRuleBaseFor === 'function') ? amzCvrRuleBaseFor(r) : 0);
                 if (res && res.capped) capped[c]++;
             });
             $('#amz-cvr-rule-table tbody tr').each(function() {
@@ -322,7 +334,7 @@
             $('#amz-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
             $('#amz-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s current price).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {
@@ -353,7 +365,9 @@
                     if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');
-                    amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC now shows the CVR rule prices.' : 'CVR Price Rule saved (OFF).');
+                    // The CVR price is the S PRC now: re-save every SKU's S PRC (page twin of AmazonSprcDilAutoPushService).
+                    if (typeof amzScheduleRuleSpriceSync === 'function') amzScheduleRuleSpriceSync({ force: true, delay: 600 });
+                    amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC is being re-saved with the new prices.' : 'CVR Price Rule saved (OFF). S PRC is being re-saved without it.');
                     const el = document.getElementById('amzCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
                 }).fail(function() {

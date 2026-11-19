@@ -4422,6 +4422,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2c-badge-prev-day', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getShopifyB2cBadgePrevDay'])->name('shopify.b2c.badge.prev.day');
     Route::post('/shopify-b2c-badge-stats-save', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'saveShopifyB2cBadgeStats'])->name('shopify.b2c.badge.stats.save');
     Route::post('/shopify-b2c-update-listed-live', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'updateShopifyB2cListedLive'])->name('shopify.b2c.update.listed.live');
+    Route::get('/shopify-b2c-cvr-price-rule', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cCvrPriceRuleGet'])->name('shopify.b2c.cvr-price-rule');
+    Route::post('/shopify-b2c-cvr-price-rule', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cCvrPriceRuleSave'])->name('shopify.b2c.cvr-price-rule.save');
     Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
     Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');
 

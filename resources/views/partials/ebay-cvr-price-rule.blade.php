@@ -1,4 +1,4 @@
-{{-- eBay 1 / 2 / 3 CVR Price Rule (pass ebayCvrRuleChannel): a saved price change % for SKUs whose CVR 30 is down, within target of, or up vs LT O CVR. Same rule as Amazon. Parts: buttons, modals, script. --}}
+{{-- eBay 1 / 2 / 3 + Shopify B2C CVR Price Rule (pass ebayCvrRuleChannel): a saved price change % for SKUs whose CVR 30 is down, within target of, or up vs LT O CVR. Same rule as Amazon. Parts: buttons, modals, script. --}}
 @php $ebayCvrRulePart = $ebayCvrRulePart ?? 'all'; $ebayCvrRuleChannel = $ebayCvrRuleChannel ?? 'ebay1'; @endphp
 
 @if($ebayCvrRulePart === 'buttons' || $ebayCvrRulePart === 'all')
@@ -142,7 +142,7 @@
         }
         /** Ads % used for the cap maths: the eBay channel Ads%. */
         function ebayCvrRuleChannelAds() {
-            try { return parseFloat(typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined' ? EBAY3_CHANNEL_ADS_PCT : (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined' ? EBAY2_CHANNEL_ADS_PCT : EBAY_CHANNEL_ADS_PCT)) || 0; } catch (e) { return 0; }
+            try { if (typeof shopifyChannelAdsPct === 'function') return parseFloat(shopifyChannelAdsPct()) || 0; return parseFloat(typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined' ? EBAY3_CHANNEL_ADS_PCT : (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined' ? EBAY2_CHANNEL_ADS_PCT : EBAY_CHANNEL_ADS_PCT)) || 0; } catch (e) { return 0; }
         }
         /**
          * Lowest price the Lower cap allows: the higher of the price where NPFT% = Min NPFT% and the price where NROI% = Min NROI%.
@@ -336,7 +336,7 @@
                 const $btn = $(this).prop('disabled', true);
                 const payload = ebayCvrRuleReadDraft();
                 $.ajax({
-                    url: @json($ebayCvrRuleChannel === 'ebay3' ? route('ebay3.cvr-price-rule.save') : ($ebayCvrRuleChannel === 'ebay2' ? route('ebay2.cvr-price-rule.save') : route('ebay.cvr-price-rule.save'))),
+                    url: @json($ebayCvrRuleChannel === 'shopify_b2c' ? route('shopify.b2c.cvr-price-rule.save') : ($ebayCvrRuleChannel === 'ebay3' ? route('ebay3.cvr-price-rule.save') : ($ebayCvrRuleChannel === 'ebay2' ? route('ebay2.cvr-price-rule.save') : route('ebay.cvr-price-rule.save')))),
                     method: 'POST',
                     data: JSON.stringify(payload),
                     contentType: 'application/json',
@@ -347,6 +347,8 @@
                     ebayCvrRuleRefreshLabels(ebayCvrRule);
                     ebayCvrRulePaintState();
                     if (typeof table !== 'undefined' && table) table.redraw(true);
+                    // Server-owned S PRC (Shopify B2C): the page waits for the server's re-save, then reloads its rows.
+                    if (typeof window.ebayCvrRuleOnSaved === 'function') window.ebayCvrRuleOnSaved();
                     showToast('success', ebayCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC is being re-saved with the new prices.' : 'CVR Price Rule saved (OFF). S PRC is being re-saved without it.');
                     const el = document.getElementById('ebayCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();

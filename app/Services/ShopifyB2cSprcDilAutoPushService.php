@@ -157,6 +157,9 @@ class ShopifyB2cSprcDilAutoPushService
         return ['dry_run' => $dryRun, 'stats' => $stats];
     }
 
+    /** @var array<string, mixed>|null CVR Price Rule (shopify_b2c_cvr_price_rule), loaded once per run. */
+    protected ?array $cvrPriceRuleCfg = null;
+
     /**
      * Page S PRC formula (INV > 0 child SKUs): the rule price of the ON switch, LMP cap, then the Amz cap.
      *  - Std prc vs dil switch ON ($dilContext = null): Std rule (Std is the maximum), LMP cap = LMP.
@@ -397,6 +400,24 @@ class ShopifyB2cSprcDilAutoPushService
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - AmazonDilGroiRule::lmpTargetPrice($lmp, $lmpReducePct)) <= 0.02;
+        // CVR Price Rule (CVR Price Rule modal): its % comes off the price the other rules made (LMP cap and Std Prc maximum
+        // done), before the Amz cap, so it never undercuts A Price. The % is taken off this stable price, not the live Price,
+        // so a push never compounds it. Page: the saved S PRC already carries it.
+        $cvrCfg = $this->cvrPriceRuleCfg ??= \App\Support\EbayCvrPriceRule::config('shopify_b2c');
+        if (! empty($cvrCfg['enabled'])) {
+            $cvrPrice = \App\Support\EbayCvrPriceRule::apply($capped, [
+                'cvr' => (float) ($row['cvr'] ?? 0),
+                'lto_cvr' => $row['lto_cvr'] ?? null,
+                'lp' => $lp,
+                'ship' => $ship,
+                'percentage' => $margin,
+                'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
+            ], $cvrCfg);
+            if ($cvrPrice !== null) {
+                $capped = $cvrPrice['price'];
+                $lmpCapped = false;
+            }
+        }
         $amzCapped = false;
         $final = $capped;
         if ($amz > 0) {
@@ -505,6 +526,8 @@ class ShopifyB2cSprcDilAutoPushService
                 'b2c_l30' => $b2cL30,
                 'views' => $views,
                 'cvr' => $views > 0 ? ($b2cL30 / $views) * 100 : 0.0,
+                // LT O CVR (CVR Price Rule): null when the prior-30-day views are not stored.
+                'lto_cvr' => (isset($r['LT_O_CVR']) && is_numeric($r['LT_O_CVR'])) ? (float) $r['LT_O_CVR'] : null,
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
                 'ship' => (float) ($r['Ship_productmaster'] ?? 0),
                 'amz' => (float) ($r['A Price'] ?? 0),

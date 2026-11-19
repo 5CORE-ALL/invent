@@ -1891,6 +1891,11 @@
             const shown = (typeof amazonCapSpriceToLmp === 'function')
                 ? amazonCapSpriceToLmp(rowData, raw)
                 : +Number(raw).toFixed(2);
+            // CVR Price Rule (ON): its % comes off this price. One number for the cell, profit columns, blue triangle and push.
+            try {
+                const cvr = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(rowData) : null;
+                if (cvr && cvr.price > 0) return cvr.price;
+            } catch (e) { /* no CVR Price Rule */ }
             return shown > 0 ? shown : 0;
         }
         function amazonRowSprice(rowData) {
@@ -2070,12 +2075,11 @@
         }
 
         /**
-         * The new S price the profit columns (S GPFT / SNROI / SNPFT / SGROI) are worked out from: the CVR Price Rule's suggested
-         * price when that rule is ON and suggests one, otherwise the S PRC the cell shows.
+         * The S price the profit columns (S GPFT / SNROI / SNPFT / SGROI) are worked out from: the S PRC the cell shows
+         * (the CVR Price Rule's price is already in it when that rule is ON).
          */
         function amazonProfitSprice(rowData) {
-            const sug = (typeof window.amzCvrRuleSuggestedPrice === 'function') ? Number(window.amzCvrRuleSuggestedPrice(rowData)) : 0;
-            return sug > 0 ? sug : amazonDisplaySprice(rowData);
+            return amazonDisplaySprice(rowData);
         }
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
@@ -5668,7 +5672,7 @@
                             return v > 0 ? v : null;
                         }),
                         editable: false,
-                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SNROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum. With the CVR Price Rule ON, its price (a % of the current Price) replaces the S PRC number.",
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SNROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum. With the CVR Price Rule ON, its % is taken off this price and the result is the S PRC that is saved and pushed.",
                         formatter: amzCvrRuleSpriceFormatter(function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -5696,19 +5700,14 @@
                             }
                             if (!(raw > 0) && !isClearance) raw = parseFloat(rowData.SPRICE) || 0;
 
-                            // CVR Price Rule (ON): its price REPLACES the S PRC number (one price in the cell). Display only.
-                            let cvrShown = '';
-                            try { cvrShown = (typeof window.amzCvrRuleShownHtml === 'function') ? window.amzCvrRuleShownHtml(rowData, raw) : ''; } catch (e) { cvrShown = ''; }
-
-                            if (!(raw > 0)) {
-                                if (cvrShown) return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + (isClearance ? clearanceBadge : '') + cvrShown + '</span>';
-                                return isClearance ? clearanceBadge : '';
-                            }
+                            if (!(raw > 0)) return isClearance ? clearanceBadge : '';
 
                             const lmpNow = lmpWithShipping(rowData);
                             const stdNow = amazonStdPrice(rowData);
                             const shown = amazonCapSpriceToLmp(rowData, raw);
-                            const sprice = shown > 0 ? shown : raw;
+                            // CVR Price Rule (ON): its price is the S PRC (one number; saved and pushed like the other rules).
+                            const cvrInfo = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(rowData) : null;
+                            const sprice = cvrInfo ? cvrInfo.price : (shown > 0 ? shown : raw);
                             const wouldHitLmp = lmpNow > 0 && raw + 0.0001 >= lmpNow;
                             const appliedLmp = wouldHitLmp && shown + 0.0001 <= lmpNow + 0.0001;
                             const atOrAboveLmp = wouldHitLmp;
@@ -5758,9 +5757,9 @@
                                 formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
                             }
 
-                            if (cvrShown) formattedValue = cvrShown;
+                            const cvrMark = (cvrInfo && typeof window.amzCvrRuleMarkHtml === 'function') ? window.amzCvrRuleMarkHtml(cvrInfo) : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + clearanceBadge + blueTri + redTri + reviewTri + stdTri + '</span>';
+                                dot + formattedValue + cvrMark + clearanceBadge + blueTri + redTri + reviewTri + stdTri + '</span>';
                         }),
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {

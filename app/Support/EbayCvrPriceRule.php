@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * eBay 1 CVR Price Rule — server twin of ebayCvrRuleApply() in partials/ebay-cvr-price-rule.blade.php.
+ * eBay 1 / 2 / 3 and Shopify B2C CVR Price Rule — server twin of ebayCvrRuleApply() in partials/ebay-cvr-price-rule.blade.php.
  *
  * The SKU's CVR 30 is compared with its LT O CVR: Down / within target / Up, each with a price change %. The change is
  * taken off the S PRC the other rules already produced (LMP cap and Std Prc maximum done), NOT off the live Price, so
@@ -14,7 +14,7 @@ class EbayCvrPriceRule
 {
     public const KEYS = ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band'];
 
-    /** Saved rule for a channel (ebay1 / ebay2), normalized. Stored under `{channel}_cvr_price_rule`. */
+    /** Saved rule for a channel (ebay1 / ebay2 / ebay3 / shopify_b2c), normalized. Stored under `{channel}_cvr_price_rule`. */
     public static function config(string $channel): array
     {
         try {

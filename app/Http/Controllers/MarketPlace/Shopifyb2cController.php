@@ -799,6 +799,21 @@ class Shopifyb2cController extends Controller
         ]);
     }
 
+    /** Shopify B2C CVR Price Rule (same rule as eBay / Amazon). Saved under shopify_b2c_cvr_price_rule. */
+    public function shopifyB2cCvrPriceRuleGet()
+    {
+        return response()->json(['success' => true] + \App\Support\EbayCvrPriceRule::config('shopify_b2c'));
+    }
+
+    public function shopifyB2cCvrPriceRuleSave(Request $request)
+    {
+        $payload = \App\Support\EbayCvrPriceRule::save('shopify_b2c', $request->all());
+        // The server owns S PRC here: re-save it right away (nothing is pushed). The page polls rule-apply-status, then reloads.
+        \App\Support\ShopifyB2cRuleSpriceApply::dispatch('shopify_b2c');
+
+        return response()->json(['success' => true] + $payload);
+    }
+
     public function shopifyB2cDataJson()
     {
         @ini_set('memory_limit', '512M');
@@ -869,6 +884,7 @@ class Shopifyb2cController extends Controller
 
         $shopifyData = $this->shopifyB2cSlimSkuMap($skus);
         $shopifyB2COrders = $this->shopifyB2cL30QtyBySku();
+        $shopifyB2COrdersL60 = $this->shopifyB2cL60QtyBySku();
         $amazonBySku = $this->shopifyB2cAmazonPriceBySku();
         $amazonStandardPrices = $this->shopifyB2cAmazonStandardPrices();
 
@@ -1023,6 +1039,16 @@ class Shopifyb2cController extends Controller
             // Calculate CVR% = (B2C L30 / Views) * 100 (B2C conversion rate)
             $views = $processedItem["Views"];
             $processedItem["CVR%"] = $views > 0 ? ($b2cL30 / $views) * 100 : 0;
+            // CVR Price Rule / LT O CVR: SCVR is the CVR% above; LT O CVR = (units L30 + L60) / (views + views of days 31-60) x 100.
+            // Blank when the prior-30-day views are not stored yet (views_prior column / ShopifyQL run).
+            $processedItem["SCVR"] = $processedItem["CVR%"];
+            $processedItem["B2B L60"] = $shopifyB2COrdersL60[$skuKey] ?? ($shopifyB2COrdersL60[$sku] ?? 0);
+            $viewsPrior = ($shopifyItem && isset($shopifyItem->views_prior) && is_numeric($shopifyItem->views_prior)) ? (float) $shopifyItem->views_prior : null;
+            $processedItem["views_prior"] = $viewsPrior;
+            $ltoViews = (float) $views + (float) ($viewsPrior ?? 0);
+            $processedItem["LT_O_CVR"] = ($viewsPrior !== null && $ltoViews > 0)
+                ? round((((float) $b2cL30 + (float) $processedItem["B2B L60"]) / $ltoViews) * 100, 2)
+                : null;
 
             // Add Google Ads Spend for this SKU
             $adSpend = (float) ($googleSpentData[$skuKey] ?? 0);
@@ -1153,6 +1179,11 @@ class Shopifyb2cController extends Controller
             $sales = (float) $rows->sum(fn ($r) => floatval($r['Sales L30'] ?? 0));
             $adSpend = (float) $rows->sum(fn ($r) => floatval($r['googleSpent'] ?? 0));
 
+            // LT O CVR of the family: only the SKUs with stored prior-30-day views count (same as eBay parents).
+            $ltoKids = $rows->filter(fn ($r) => isset($r['views_prior']) && is_numeric($r['views_prior']));
+            $ltoUnits = (float) $ltoKids->sum(fn ($r) => floatval($r['B2B L30'] ?? 0) + floatval($r['B2B L60'] ?? 0));
+            $ltoViewsSum = (float) $ltoKids->sum(fn ($r) => floatval($r['Views'] ?? 0) + floatval($r['views_prior']));
+
             $childPrices = $rows->pluck('Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
             $childAmzPrices = $rows->pluck('A Price')->filter(fn ($p) => is_numeric($p) && $p > 0);
             $gpftVals = $rows->pluck('GPFT%')->filter(fn ($v) => is_numeric($v));
@@ -1189,6 +1220,9 @@ class Shopifyb2cController extends Controller
                 'Sales L30' => round($sales, 2),
                 'DIL%' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0,
                 'CVR%' => $views > 0 ? ($b2cL30 / $views) * 100 : 0,
+                'SCVR' => $views > 0 ? ($b2cL30 / $views) * 100 : 0,
+                'views_prior' => null,
+                'LT_O_CVR' => ($ltoKids->count() > 0 && $ltoViewsSum > 0) ? round(($ltoUnits / $ltoViewsSum) * 100, 2) : null,
                 'googleSpent' => $adSpend,
                 'ADS%' => $sales > 0 ? ($adSpend / $sales) * 100 : 0,
                 'SPRICE' => 0,
@@ -1287,7 +1321,11 @@ class Shopifyb2cController extends Controller
     {
         $byNorm = [];
         ShopifySku::query()
-            ->select(['id', 'sku', 'variant_id', 'inv', 'quantity', 'price', 'views', 'image_src'])
+            ->select(array_merge(
+                ['id', 'sku', 'variant_id', 'inv', 'quantity', 'price', 'views', 'image_src'],
+                // views_prior (days 31-60 ago) feeds LT O CVR; the column only exists after its migration has run.
+                \Illuminate\Support\Facades\Schema::hasColumn('shopify_skus', 'views_prior') ? ['views_prior'] : []
+            ))
             ->orderBy('id')
             ->chunkById(2500, function ($rows) use (&$byNorm) {
                 // Same row the price push updates: a row with a variant id wins over a blank
@@ -1323,6 +1361,29 @@ class Shopifyb2cController extends Controller
             if ($c !== '' && isset($byNorm['c:' . $c])) {
                 $out[(string) $pmSku] = $byNorm['c:' . $c];
             }
+        }
+
+        return $out;
+    }
+
+    /** Units sold 31-60 days ago (period l60), same source and filter as the L30 units. */
+    private function shopifyB2cL60QtyBySku(): array
+    {
+        $out = [];
+        $rows = ShopifyB2CDailyData::query()
+            ->where('period', 'l60')
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('sku, SUM(quantity) as total_quantity')
+            ->groupBy('sku')
+            ->get();
+        foreach ($rows as $row) {
+            $qty = (float) ($row->total_quantity ?? 0);
+            $raw = trim((string) $row->sku);
+            if ($raw === '') {
+                continue;
+            }
+            $out[$raw] = $qty;
+            $out[strtoupper($raw)] = $qty;
         }
 
         return $out;
