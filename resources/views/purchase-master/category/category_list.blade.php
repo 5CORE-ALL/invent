@@ -994,6 +994,11 @@
                 });
             };
             const dash = '<span class="text-muted">-</span>';
+            // Sentence case for display only ("CAR SPK" -> "Car spk"); the saved name is not changed.
+            const sentenceCase = function(s) {
+                const t = String(s == null ? '' : s).trim().toLowerCase();
+                return t.charAt(0).toUpperCase() + t.slice(1);
+            };
 
             let filters = { parent: '', sku: '', mfr: '' };
             let filterTimer = null;
@@ -1032,7 +1037,7 @@
             const categoryFormatter = function(cell) {
                 const d = cell.getRow().getData();
                 if (d.kind === 'uncat') return '<span class="text-muted">No category</span>';
-                return '<span class="fw-semibold">' + esc(d.category_name) + '</span>';
+                return '<span class="fw-semibold">' + esc(sentenceCase(d.category_name)) + '</span>';
             };
 
             const supplierFormatter = function(cell) {
