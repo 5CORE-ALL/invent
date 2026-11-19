@@ -146,9 +146,6 @@
                                 value="{{ $mfrFilter ?? '' }}" placeholder="Filter by MFR category..." autocomplete="off">
                         </div>
                         <div class="col-md-auto d-flex gap-2">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="mdi mdi-filter-outline me-1"></i> Filter
-                            </button>
                             @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '' || ($mfrFilter ?? '') !== '')
                                 <a href="{{ route('category.list') }}" class="btn btn-light border">
                                     <i class="mdi mdi-close me-1"></i> Clear
@@ -1232,6 +1229,44 @@
                     $btn.prop('disabled', false);
                 });
             });
+        })();
+    </script>
+    <script>
+        // Parent / SKU / MFR category filters apply by themselves: after you stop typing (or press Enter)
+        // the page reloads with the filter, and the cursor goes back to the field you were typing in.
+        (function() {
+            const form = document.getElementById('cp-filter-form');
+            if (!form) return;
+            const inputs = form.querySelectorAll('input[type="text"]');
+            let timer = null;
+            const submit = function() { clearTimeout(timer); form.submit(); };
+
+            inputs.forEach(function(input) {
+                let last = input.value;
+                input.addEventListener('input', function() {
+                    if (input.value === last) return;
+                    last = input.value;
+                    try { sessionStorage.setItem('categoryFilterFocus', input.id); } catch (e) {}
+                    clearTimeout(timer);
+                    timer = setTimeout(submit, 600);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    try { sessionStorage.setItem('categoryFilterFocus', input.id); } catch (err) {}
+                    submit();
+                });
+            });
+
+            try {
+                const id = sessionStorage.getItem('categoryFilterFocus');
+                sessionStorage.removeItem('categoryFilterFocus');
+                const el = id ? document.getElementById(id) : null;
+                if (el) {
+                    el.focus();
+                    el.setSelectionRange(el.value.length, el.value.length);
+                }
+            } catch (e) {}
         })();
     </script>
 @endsection
