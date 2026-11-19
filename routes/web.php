@@ -6057,6 +6057,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/category/{id}/suppliers', [CategoryController::class, 'categorySupplierStore'])->name('category.suppliers.store');
     Route::put('/category/{id}/suppliers/{supplierId}', [CategoryController::class, 'categorySupplierUpdate'])->name('category.suppliers.update');
     Route::delete('/category/{id}/suppliers/{supplierId}', [CategoryController::class, 'categorySupplierDetach'])->name('category.suppliers.detach');
+    Route::post('/category/{id}/rows/delete', [CategoryController::class, 'categoryRowsDelete'])->name('category.rows.delete');
 
     // To Order Analysis routes
     Route::controller(ToOrderAnalysisController::class)->group(function () {

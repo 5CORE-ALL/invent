@@ -61,10 +61,24 @@ class CategoryController extends Controller
 
         // No paging: every matching category is shown on one page.
         $categories = $categoriesQuery->orderBy('id')->get();
+
+        // For the searchable Category Name dropdown: the MFR categories known to CP Master (a category is
+        // linked to SKUs by name), and the names already taken by categories on this page.
+        $mfrCategoryNames = ProductCategory::query()
+            ->pluck('category_name')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+        $usedCategoryNames = Category::query()->get(['id', 'name'])
+            ->mapWithKeys(fn ($c) => [mb_strtolower(trim((string) $c->name)) => (int) $c->id])
+            ->all();
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames'));
         }
 
         $suppliers = Supplier::query()
@@ -147,7 +161,7 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter', 'mfrCategoryNames', 'usedCategoryNames'));
     }
 
     private function likeContains(string $value): string
@@ -314,7 +328,12 @@ class CategoryController extends Controller
         $existingParentSkus = [];
         if ($parentSkuNames !== []) {
             foreach (array_chunk(array_keys($parentSkuNames), 500) as $chunk) {
-                foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'parent']) as $parentRow) {
+                foreach (ProductMaster::query()->whereIn('sku', $chunk)->get(['sku', 'parent', 'category_id', 'mfr_category_ids']) as $parentRow) {
+                    // Only a PARENT row that was never categorised is listed under its children's category.
+                    // One removed from the page (explicit empty list) or categorised elsewhere is not.
+                    if ($parentRow->category_id || $parentRow->mfr_category_ids !== null) {
+                        continue;
+                    }
                     $existingParentSkus[mb_strtoupper(trim((string) $parentRow->sku))] = trim((string) $parentRow->sku);
                 }
             }
@@ -655,6 +674,88 @@ class CategoryController extends Controller
         ]);
     }
 
+    /**
+     * Delete rows (SKU / PARENT lines) from a category's list: each given CP Master SKU is unlinked from
+     * this category's MFR category. The SKU itself stays in CP Master (and in its other categories).
+     * A PARENT row that was only shown because of its children has no category to remove, so it is
+     * marked as removed with an explicit empty category list. Only the SKUs given are touched; a PARENT
+     * row never removes its child SKUs.
+     */
+    public function categoryRowsDelete(Request $request, $id)
+    {
+        $category = Category::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'skus' => 'required|array|min:1|max:500',
+            'skus.*' => 'required|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $nameKey = mb_strtolower(trim((string) $category->name));
+        $mfrIds = [];
+        foreach (ProductCategory::query()->get(['id', 'category_name']) as $mfrCategory) {
+            if (mb_strtolower(trim((string) $mfrCategory->category_name)) === $nameKey) {
+                $mfrIds[] = (int) $mfrCategory->id;
+            }
+        }
+
+        $skus = array_values(array_unique(array_map('trim', $request->input('skus'))));
+        $products = ProductMaster::query()->whereIn('sku', $skus)->get(['id', 'sku', 'category_id', 'mfr_category_ids']);
+
+        $removed = 0;
+        $skipped = [];
+        foreach ($products as $product) {
+            $ids = $this->normalizeProductCategoryIds($product->mfr_category_ids, $product->category_id);
+            $remaining = array_values(array_filter($ids, fn ($cid) => ! in_array($cid, $mfrIds, true)));
+            $isParentRow = stripos((string) $product->sku, 'PARENT') === 0;
+
+            if (count($remaining) === count($ids)) {
+                // Not linked to this category. Only a never-categorised PARENT row (listed via its
+                // children) can still be removed: give it an explicit empty list.
+                if (! ($isParentRow && $ids === [] && $product->mfr_category_ids === null)) {
+                    $skipped[] = (string) $product->sku;
+                    continue;
+                }
+            }
+
+            // Query-builder update: no model events (the model's saving hooks recalculate values /
+            // may archive on Shopify) and the JSON has to be encoded by hand.
+            ProductMaster::query()->whereKey($product->id)->update([
+                'mfr_category_ids' => json_encode($remaining),
+                'category_id' => $remaining[0] ?? null,
+            ]);
+            $removed++;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $removed === 1 ? '1 row removed.' : $removed.' rows removed.',
+            'removed' => $removed,
+            'skipped' => $skipped,
+        ]);
+    }
+
+    /**
+     * @param  mixed  $mfrCategoryIds
+     * @return list<int>
+     */
+    private function normalizeProductCategoryIds($mfrCategoryIds, $categoryId): array
+    {
+        $ids = [];
+        foreach (is_array($mfrCategoryIds) ? $mfrCategoryIds : [] as $cid) {
+            if ((int) $cid > 0) {
+                $ids[(int) $cid] = (int) $cid;
+            }
+        }
+        if ($categoryId && (int) $categoryId > 0) {
+            $ids[(int) $categoryId] = (int) $categoryId;
+        }
+
+        return array_values($ids);
+    }
+
     public function show($id)
     {
         $category = Category::findOrFail($id);
@@ -694,8 +795,32 @@ class CategoryController extends Controller
             $category_obj = new Category;
         }
 
-        $category_obj->name = trim($inputs['category_name']);
-        $category_obj->status = ! empty($inputs['status']) ? $inputs['status'] : 'inactive';
+        $newName = trim($inputs['category_name']);
+        $nameChanged = ! $category_obj->exists
+            || mb_strtolower(trim((string) $category_obj->name)) !== mb_strtolower($newName);
+        if ($nameChanged) {
+            $duplicate = Category::query()
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($newName)])
+                ->when($category_obj->exists, fn ($q) => $q->where('id', '!=', $category_obj->id))
+                ->exists();
+            if ($duplicate) {
+                $message = 'A category named "'.$newName.'" already exists. Pick a different name.';
+                if ($request->ajax() || $request->wantsJson()) {
+                    return response()->json(['success' => false, 'message' => $message], 422);
+                }
+
+                return redirect()->back()->withErrors(['category_name' => $message])->withInput();
+            }
+        }
+
+        $category_obj->name = $newName;
+        // The form has no Status field any more: keep the saved status, and start new categories as active.
+        // (A status is still honoured when one is sent.)
+        if (! empty($inputs['status'])) {
+            $category_obj->status = $inputs['status'];
+        } elseif (! $category_obj->exists || empty($category_obj->status)) {
+            $category_obj->status = 'active';
+        }
 
         // Generate code if not exists
         if (empty($category_obj->code)) {

@@ -106,20 +106,12 @@
                                 </div>
 
                                 <div class="modal-body p-4">
-                                    {{-- Row: Category Name & Status --}}
+                                    {{-- Category Name: search the list and pick, or add a new one --}}
                                     <div class="row g-3">
-                                        <div class="col-md-8">
+                                        <div class="col-12">
                                             <label for="category_name" class="form-label fw-semibold">Category Name
                                                 <span class="text-danger">*</span></label>
-                                            <input type="text" class="form-control" id="category_name"
-                                                name="category_name" placeholder="Enter category name">
-                                        </div>
-                                        <div class="col-md-4">
-                                            <label for="category_status" class="form-label fw-semibold">Status </label>
-                                            <select class="form-select" id="category_status" name="status">
-                                                <option value="active" selected>Active</option>
-                                                <option value="inactive">Inactive</option>
-                                            </select>
+                                            @include('purchase-master.category.partials.category-name-combobox', ['inputId' => 'category_name', 'value' => '', 'currentId' => 0])
                                         </div>
                                     </div>
                                 </div>
@@ -217,13 +209,17 @@
                                 <tbody class="category-group" data-orig-index="{{ $loop->index }}"
                                     @foreach ($sortValues as $sortKey => $sortValue) data-sort-{{ $sortKey }}="{{ $sortValue }}" @endforeach>
                                     <tr>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
+                                        @if ($firstSku)
+                                        <td class="text-center align-middle {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                             <div class="form-check d-flex justify-content-center align-items-center">
-                                                <input type="checkbox" class="form-check-input category-checkbox"
-                                                    id="category-{{ $category->id }}" value="{{ $category->id }}"
+                                                <input type="checkbox" class="form-check-input row-checkbox"
+                                                    data-category-id="{{ $category->id }}" data-sku="{{ $firstSku['sku'] }}"
                                                     style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
                                             </div>
                                         </td>
+                                        @else
+                                        <td class="text-center align-middle"></td>
+                                        @endif
                                         <td class="text-center parent-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                             @if ($firstSku && $firstSku['parent'] !== '')
                                                 {{ $firstSku['parent'] }}
@@ -301,30 +297,40 @@
                                                 {{ ucfirst($category->status) }}
                                             </span>
                                         </td>
-                                        <td class="text-center align-middle" rowspan="{{ $rowspan }}">
+                                        @if ($firstSku)
+                                        <td class="text-center align-middle {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
                                             <div class="d-flex justify-content-center align-items-center gap-1">
-                                                <a href="#" class="btn btn-soft-primary btn-sm"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit">
-                                                    <i class="mdi mdi-square-edit-outline" data-bs-toggle="tooltip"
-                                                        data-bs-placement="top" title="Edit"></i>
+                                                <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
+                                                    data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
+                                                    <i class="mdi mdi-square-edit-outline"></i>
                                                 </a>
-
-                                                <form action="{{ route('category.delete', $category->id) }}"
-                                                    method="POST" class="delete-category-form"
-                                                    onsubmit="return confirm('Are you sure you want to delete this category?');">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="btn btn-soft-danger btn-sm"
-                                                        data-bs-toggle="tooltip" title="Delete">
-                                                        <i class="mdi mdi-delete"></i>
-                                                    </button>
-                                                </form>
+                                            <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
+                                                data-category-id="{{ $category->id }}" data-sku="{{ $firstSku['sku'] }}"
+                                                title="Delete this row (removes the SKU from this MFR category)">
+                                                <i class="mdi mdi-delete"></i>
+                                            </button>
                                             </div>
                                         </td>
+                                        @else
+                                        <td class="text-center align-middle ">
+                                            <div class="d-flex justify-content-center align-items-center gap-1">
+                                                <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
+                                                    data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
+                                                    <i class="mdi mdi-square-edit-outline"></i>
+                                                </a>
+                                            </div>
+                                        </td>
+                                        @endif
                                     </tr>
                                     @foreach (array_slice($cpSkus, 1) as $cpSku)
                                         <tr>
+                                            <td class="text-center align-middle {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                <div class="form-check d-flex justify-content-center align-items-center">
+                                                    <input type="checkbox" class="form-check-input row-checkbox"
+                                                        data-category-id="{{ $category->id }}" data-sku="{{ $cpSku['sku'] }}"
+                                                        style="cursor: pointer; width: 1.2rem; height: 1.2rem;">
+                                                </div>
+                                            </td>
                                             <td class="text-center parent-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle fw-bold' : '' }}">
                                                 @if ($cpSku['parent'] !== '')
                                                     {{ $cpSku['parent'] }}
@@ -346,6 +352,19 @@
                                                     <span class="fw-semibold text-info supplier-count" data-category-id="{{ $category->id }}">{{ $category->supplier_count }}</span>
                                                     <span class="ms-1 text-muted fw-bold">Suppliers</span>
                                                 </button>
+                                            </td>
+                                            <td class="text-center align-middle {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
+                                                <div class="d-flex justify-content-center align-items-center gap-1">
+                                                    <a href="#" class="btn btn-soft-primary btn-sm" data-bs-toggle="modal"
+                                                        data-bs-target="#editCategoryModal{{ $category->id }}" title="Edit category">
+                                                        <i class="mdi mdi-square-edit-outline"></i>
+                                                    </a>
+                                                <button type="button" class="btn btn-soft-danger btn-sm delete-row-btn"
+                                                    data-category-id="{{ $category->id }}" data-sku="{{ $cpSku['sku'] }}"
+                                                    title="Delete this row (removes the SKU from this MFR category)">
+                                                    <i class="mdi mdi-delete"></i>
+                                                </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -440,33 +459,16 @@
                                                     id="edit-container-{{ $category->id }}"
                                                     data-category-id="{{ $category->id }}">
                                                     <div class="modal-body p-4">
-                                                        <!-- Name & Status -->
+                                                        <!-- Category Name: search the list and pick, or add a new one -->
                                                         <div class="row g-2 mb-3">
-                                                            <div class="col-md-6">
+                                                            <div class="col-12">
                                                                 <label for="category_name_{{ $category->id }}"
                                                                     class="form-label fw-semibold">
                                                                     Category Name <span class="text-danger">*</span>
                                                                 </label>
-                                                                <input type="text" class="form-control"
-                                                                    id="category_name_{{ $category->id }}"
-                                                                    name="category_name" value="{{ $category->name }}">
-                                                            </div>
-                                                            <div class="col-md-6">
-                                                                <label for="category_status_{{ $category->id }}"
-                                                                    class="form-label fw-semibold">Status</label>
-                                                                <select class="form-select"
-                                                                    id="category_status_{{ $category->id }}"
-                                                                    name="status">
-                                                                    <option value="active"
-                                                                        @if ($category->status == 'active') selected @endif>
-                                                                        Active</option>
-                                                                    <option value="inactive"
-                                                                        @if ($category->status == 'inactive') selected @endif>
-                                                                        Inactive</option>
-                                                                </select>
+                                                                @include('purchase-master.category.partials.category-name-combobox', ['inputId' => 'category_name_'.$category->id, 'value' => $category->name, 'currentId' => $category->id])
                                                             </div>
                                                         </div>
-
                                                     </div>
 
                                                     <div class="modal-footer">
@@ -514,8 +516,7 @@
 
                 const data = {
                     _token: $('meta[name="csrf-token"]').attr('content'),
-                    category_name: categoryName,
-                    status: $('#category_status').val() || 'inactive'
+                    category_name: categoryName
                 };
 
                 // Disable button to prevent double submission
@@ -532,7 +533,6 @@
                             $('#addCategoryModal').modal('hide');
                             // Reset form
                             $('#category_name').val('');
-                            $('#category_status').val('active');
                             location.reload();
                         } else {
                             alert(response.message || 'Failed to save category.');
@@ -577,8 +577,7 @@
                 const data = {
                     _token: $('meta[name="csrf-token"]').attr('content'),
                     category_id: categoryIdAttr,
-                    category_name: categoryName,
-                    status: $('#category_status_' + categoryId).val() || 'inactive'
+                    category_name: categoryName
                 };
 
                 // Disable button to prevent double submission
@@ -621,44 +620,64 @@
         });
 
         $(document).ready(function() {
-            // Toggle All
-            $('#select-all').on('change', function() {
-                const isChecked = $(this).is(':checked');
-                $('.category-checkbox').prop('checked', isChecked).trigger('change');
-            });
+            // Rows (SKU / PARENT lines): delete one or several. Deleting a row removes that SKU from this
+            // MFR category (the SKU stays in CP Master). The category itself is never deleted from here.
+            const rowDeleteUrl = (categoryId) => '{{ url('/category') }}/' + categoryId + '/rows/delete';
 
-            // Enable/disable delete button
-            $(document).on('change', '.category-checkbox', function() {
-                const anyChecked = $('.category-checkbox:checked').length > 0;
-                $('#bulkDeleteBtn').prop('disabled', !anyChecked);
-            });
+            function deleteRows(selection, confirmText) {
+                // selection: { categoryId: [sku, ...] }
+                const categoryIds = Object.keys(selection);
+                if (!categoryIds.length) return;
+                if (!confirm(confirmText)) return;
 
-            // Handle bulk delete
-            $('#bulkDeleteBtn').click(function() {
-                const ids = $('.category-checkbox:checked').map(function() {
-                    return $(this).val();
-                }).get();
-
-                if (!ids.length) return;
-
-                $.ajax({
-                    url: "{{ route('category.bulk-delete') }}",
-                    method: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        ids: ids
-                    },
-                    success: function(res) {
-                        if (res.success) {
-                            location.reload(); // or manually remove rows
-                        } else {
-                            alert('Error: ' + res.message);
-                        }
-                    },
-                    error: function() {
-                        alert('Server error occurred.');
-                    }
+                const requests = categoryIds.map(function(categoryId) {
+                    return $.ajax({
+                        url: rowDeleteUrl(categoryId),
+                        method: 'POST',
+                        dataType: 'json',
+                        data: { _token: $('meta[name="csrf-token"]').attr('content'), skus: selection[categoryId] }
+                    });
                 });
+
+                $.when.apply($, requests).done(function() {
+                    location.reload();
+                }).fail(function(xhr) {
+                    const msg = xhr && xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.';
+                    alert('Error: ' + msg);
+                    location.reload();
+                });
+            }
+
+            // Toggle All (rows)
+            $('#select-all').on('change', function() {
+                $('.row-checkbox').prop('checked', $(this).is(':checked')).trigger('change');
+            });
+
+            // Enable/disable the bulk delete button
+            $(document).on('change', '.row-checkbox', function() {
+                $('#bulkDeleteBtn').prop('disabled', $('.row-checkbox:checked').length === 0);
+            });
+
+            // Delete selected rows in bulk
+            $('#bulkDeleteBtn').on('click', function() {
+                const selection = {};
+                let count = 0;
+                $('.row-checkbox:checked').each(function() {
+                    const categoryId = $(this).data('category-id');
+                    (selection[categoryId] = selection[categoryId] || []).push(String($(this).data('sku')));
+                    count++;
+                });
+                deleteRows(selection, 'Delete ' + count + ' selected row' + (count === 1 ? '' : 's') +
+                    '? Each SKU will be removed from this MFR category (it stays in CP Master).');
+            });
+
+            // Delete a single row
+            $(document).on('click', '.delete-row-btn', function() {
+                const categoryId = $(this).data('category-id');
+                const sku = String($(this).data('sku'));
+                const selection = {};
+                selection[categoryId] = [sku];
+                deleteRows(selection, 'Delete the row "' + sku + '"? It will be removed from this MFR category (the SKU stays in CP Master).');
             });
         });
 
@@ -666,7 +685,6 @@
             // Reset form when modal is closed
             $('#addCategoryModal').on('hidden.bs.modal', function() {
                 $('#category_name').val('');
-                $('#category_status').val('active');
             });
         });
     </script>
@@ -832,6 +850,84 @@
                     sortGroups(key, h.dataset.sortType, direction);
                     updateIcons();
                 });
+            });
+        })();
+    </script>
+    <script>
+        // Searchable Category Name dropdown: filter the known categories as you type and pick one; if nothing
+        // matches, "+ Add new category" keeps what you typed as a new category name.
+        (function() {
+            const mfrNames = @json($mfrCategoryNames ?? []);
+            const used = @json($usedCategoryNames ?? (object) []); // lower-case name => category id
+
+            function render($combo) {
+                const $input = $combo.find('.cat-combo-input');
+                const $menu = $combo.find('.cat-combo-menu').empty();
+                const $hint = $combo.find('.cat-combo-hint');
+                const typed = $.trim($input.val());
+                const typedLower = typed.toLowerCase();
+                const currentId = parseInt($combo.data('current-id'), 10) || 0;
+                const ownerOf = (nameLower) => (used[nameLower] !== undefined ? used[nameLower] : null);
+                let exactInList = false;
+                let shown = 0;
+
+                mfrNames.forEach(function(name) {
+                    const nameLower = name.toLowerCase();
+                    if (typedLower && nameLower.indexOf(typedLower) === -1) return;
+                    if (shown >= 100) return;
+                    if (nameLower === typedLower) exactInList = true;
+                    const owner = ownerOf(nameLower);
+                    const taken = owner !== null && owner !== currentId;
+                    const $item = $('<button type="button" class="list-group-item list-group-item-action py-1 cat-combo-item"></button>')
+                        .text(name).attr('data-name', name);
+                    if (taken) {
+                        $item.addClass('disabled text-muted').attr('data-taken', '1')
+                            .append($('<span class="badge bg-secondary-subtle text-dark ms-2"></span>').text('already added'));
+                    }
+                    $menu.append($item);
+                    shown++;
+                });
+
+                const ownerOfTyped = ownerOf(typedLower);
+                const typedTaken = typed !== '' && ownerOfTyped !== null && ownerOfTyped !== currentId;
+                if (typed !== '' && !exactInList && !typedTaken) {
+                    $menu.append($('<button type="button" class="list-group-item list-group-item-action py-1 text-primary fw-semibold cat-combo-new"></button>')
+                        .text('+ Add new category "' + typed + '"').attr('data-name', typed));
+                }
+                if (!$menu.children().length) {
+                    $menu.append('<div class="list-group-item text-muted py-1">Type a name to add a new category</div>');
+                }
+
+                const isOwn = ownerOfTyped !== null && ownerOfTyped === currentId;
+                if (typed === '') $hint.text('');
+                else if (typedTaken) $hint.addClass('text-danger').text('A category with this name already exists.');
+                else if (isOwn || exactInList) $hint.removeClass('text-danger').text('');
+                else $hint.removeClass('text-danger').text('New category (not in the CP Master MFR category list).');
+                return $menu;
+            }
+
+            function open($combo) { render($combo).show(); }
+            function close($combo) { $combo.find('.cat-combo-menu').hide(); }
+
+            $(document).on('focus input', '.cat-combo-input', function() { open($(this).closest('.cat-combo')); });
+
+            $(document).on('mousedown', '.cat-combo-item, .cat-combo-new', function(e) {
+                e.preventDefault(); // keep focus; avoids closing before the click is handled
+                const $item = $(this);
+                if ($item.attr('data-taken')) return;
+                const $combo = $item.closest('.cat-combo');
+                $combo.find('.cat-combo-input').val($item.attr('data-name'));
+                render($combo);
+                close($combo);
+            });
+
+            $(document).on('click', function(e) {
+                $('.cat-combo').each(function() {
+                    if (!$.contains(this, e.target)) close($(this));
+                });
+            });
+            $(document).on('keydown', '.cat-combo-input', function(e) {
+                if (e.key === 'Escape') close($(this).closest('.cat-combo'));
             });
         })();
     </script>
