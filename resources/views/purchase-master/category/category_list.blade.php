@@ -962,12 +962,15 @@
             const mfrNames = @json($mfrCategoryNames ?? []);
             const used = @json($usedCategoryNames ?? (object) []); // lower-case name => category id
 
-            function render($combo) {
+            // useFilter=false (on focus / when opened) lists every existing category; the list is only
+            // narrowed once the user types.
+            function render($combo, useFilter) {
                 const $input = $combo.find('.cat-combo-input');
                 const $menu = $combo.find('.cat-combo-menu').empty();
                 const $hint = $combo.find('.cat-combo-hint');
                 const typed = $.trim($input.val());
                 const typedLower = typed.toLowerCase();
+                const filterLower = useFilter ? typedLower : '';
                 const currentId = parseInt($combo.data('current-id'), 10) || 0;
                 const ownerOf = (nameLower) => (used[nameLower] !== undefined ? used[nameLower] : null);
                 let exactInList = false;
@@ -975,7 +978,7 @@
 
                 mfrNames.forEach(function(name) {
                     const nameLower = name.toLowerCase();
-                    if (typedLower && nameLower.indexOf(typedLower) === -1) return;
+                    if (filterLower && nameLower.indexOf(filterLower) === -1) return;
                     if (shown >= 100) return;
                     if (nameLower === typedLower) exactInList = true;
                     const owner = ownerOf(nameLower);
@@ -992,12 +995,16 @@
 
                 const ownerOfTyped = ownerOf(typedLower);
                 const typedTaken = typed !== '' && ownerOfTyped !== null && ownerOfTyped !== currentId;
-                if (typed !== '' && !exactInList && !typedTaken) {
-                    $menu.append($('<button type="button" class="list-group-item list-group-item-action py-1 text-primary fw-semibold cat-combo-new"></button>')
+                // The "new category" option is always the first row of the dropdown.
+                if (typed !== '' && useFilter && !exactInList && !typedTaken) {
+                    $menu.prepend($('<button type="button" class="list-group-item list-group-item-action py-1 text-primary fw-semibold cat-combo-new"></button>')
                         .text('+ Add new category "' + typed + '"').attr('data-name', typed));
+                } else {
+                    $menu.prepend($('<button type="button" class="list-group-item list-group-item-action py-1 text-primary fw-semibold cat-combo-new" data-clear="1"></button>')
+                        .text('+ Add new category...'));
                 }
-                if (!$menu.children().length) {
-                    $menu.append('<div class="list-group-item text-muted py-1">Type a name to add a new category</div>');
+                if (!shown) {
+                    $menu.append('<div class="list-group-item text-muted py-1">No existing category matches.</div>');
                 }
 
                 const isOwn = ownerOfTyped !== null && ownerOfTyped === currentId;
@@ -1008,18 +1015,26 @@
                 return $menu;
             }
 
-            function open($combo) { render($combo).show(); }
+            function open($combo, useFilter) { render($combo, !!useFilter).show(); }
             function close($combo) { $combo.find('.cat-combo-menu').hide(); }
 
-            $(document).on('focus input', '.cat-combo-input', function() { open($(this).closest('.cat-combo')); });
+            $(document).on('focus click', '.cat-combo-input', function() { open($(this).closest('.cat-combo'), false); });
+            $(document).on('input', '.cat-combo-input', function() { open($(this).closest('.cat-combo'), true); });
 
             $(document).on('mousedown', '.cat-combo-item, .cat-combo-new', function(e) {
                 e.preventDefault(); // keep focus; avoids closing before the click is handled
                 const $item = $(this);
                 if ($item.attr('data-taken')) return;
                 const $combo = $item.closest('.cat-combo');
-                $combo.find('.cat-combo-input').val($item.attr('data-name'));
-                render($combo);
+                const $input = $combo.find('.cat-combo-input');
+                if ($item.attr('data-clear')) {
+                    // "+ Add new category...": empty the field so a new name can be typed
+                    $input.val('').trigger('focus');
+                    open($combo, true);
+                    return;
+                }
+                $input.val($item.attr('data-name'));
+                render($combo, true);
                 close($combo);
             });
 
