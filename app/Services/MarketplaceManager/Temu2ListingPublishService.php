@@ -626,26 +626,15 @@ class Temu2ListingPublishService
                 $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
                 $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
             }
-            // The Contribution SKU (outSkuSn) must stay exactly the SKU of the app: sales, stock and price sync match
-            // Temu to the app by it. A SKU still held by an old (deleted) goods is released, never renamed with a
-            // random suffix on the new listing.
-            $stillHeld = $this->releaseHeldOutSkuSns($prepared);
-            if ($stillHeld !== []) {
-                Log::warning('Temu2 publish: SKU still held by another goods, not publishing with a changed SKU', [
-                    'parent' => $parentKey,
-                    'held' => $stillHeld,
-                ]);
-                if ($trackPublish) {
-                    TemuGoodsStatusSync::clearPublishing(array_values(array_map(static fn ($row) => (string) $row['sku'], $prepared)));
-                }
-
-                return [
-                    'success' => false,
-                    'message' => 'Nothing was published. '.$this->shopLabel().' still holds the SKU on an old listing, and the SKU is not changed: '
-                        .implode(', ', array_map(static fn ($h) => $h['sku'].' (goods '.($h['goods_id'] !== '' ? $h['goods_id'] : '?').')', $stillHeld))
-                        .'. Delete that old goods permanently in Seller Center (Recycle bin), then publish again.',
-                ];
-            }
+            // The Contribution SKU (outSkuSn) always stays exactly the SKU of the app: sales, stock and price sync match
+            // Temu to the app by it. Only the goods number is retried; the SKUs are sent as they are and nothing on
+            // Temu is renamed. If Temu still refuses, its own message is shown.
+            Log::info('Temu2 publish: duplicate on first add, retrying with the exact SKUs', [
+                'parent' => $parentKey,
+                'skus' => $skus,
+                'first_message' => $this->apiErrorMessage($data),
+                'out_goods_sn' => $payloadV2['goodsBasic']['outGoodsSn'] ?? '',
+            ]);
             $data = $this->submitGoodsAdd($payloadV2);
         }
         if (! ($data['success'] ?? false)) {
@@ -4983,39 +4972,6 @@ class Temu2ListingPublishService
         }
 
         return false;
-    }
-
-    /**
-     * Releases every SKU of these rows that another goods still holds (a deleted listing keeps its seller SKU).
-     * The old goods gets the renamed SKU, so the new listing can use the exact SKU.
-     *
-     * @param  list<array<string, mixed>>  $prepared
-     * @return list<array{sku: string, goods_id: string}>  SKUs that are still held after trying
-     */
-    private function releaseHeldOutSkuSns(array $prepared): array
-    {
-        $held = [];
-        foreach ($prepared as $row) {
-            $sku = (string) ($row['sku'] ?? '');
-            if ($sku === '') {
-                continue;
-            }
-            $remote = $this->remoteSkuDuplicate($sku);
-            if ($remote === null) {
-                continue;
-            }
-            $life = $this->remoteGoodsLifecycle($remote['goodsId']);
-            if (in_array($life, ['deleted', 'draft', 'unknown'], true)) {
-                $this->freeDeletedOutSkuSn($sku, $remote);
-                $remote = $this->remoteSkuDuplicate($sku);
-                if ($remote === null) {
-                    continue;
-                }
-            }
-            $held[] = ['sku' => $sku, 'goods_id' => $remote['goodsId']];
-        }
-
-        return $held;
     }
 
     /**
