@@ -58,6 +58,10 @@ class FindOrderTrackingCommand extends Command
                     return $hit ? ['tracking' => $hit['tracking'], 'carrier' => $hit['carrier']] : null;
                 });
             }
+            if ($slug === 'wayfair') {
+                $raw = app(WayfairTrackingSyncService::class)->debugLabelEvents($po);
+                $this->line('  Wayfair raw answer:    '.$raw['message']);
+            }
             $this->probe('GOFO', fn () => app(GofoExpressService::class)->findShipment([$po], true));
             $this->probe('4Seller', function () use ($po) {
                 $fs = app(FourSellerApiService::class);
