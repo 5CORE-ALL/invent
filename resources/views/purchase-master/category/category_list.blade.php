@@ -157,17 +157,6 @@
                         </div>
                     </form>
 
-                    <div class="row d-flex justify-content-end align-items-center mb-3">
-                        <div class="col-md-4">
-                            <label for="search-input" class="form-label fw-semibold">Search</label>
-                            <div class="input-group">
-                                <input type="text" id="search-input" class="form-control"
-                                    placeholder="Search categories...">
-                                <span class="input-group-text"><i class="mdi mdi-magnify"></i></span>
-                            </div>
-                        </div>
-                    </div>
-
     <style>
         /* Frozen columns: SKU sticks to the left edge, Action to the right edge, while the rest scrolls. */
         #category-table-body th.sticky-col,
@@ -642,16 +631,6 @@
 
     <script>
         $(document).ready(function() {
-            let searchTimer;
-            $('#search-input').on('keyup', function() {
-                clearTimeout(searchTimer);
-                searchTimer = setTimeout(() => {
-                    const value = $(this).val().toLowerCase();
-                    $("#category-table-body tbody.category-group").each(function() {
-                        $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
-                    });
-                }, 300);
-            });
             $('#submit-add').on('click', function(e) {
                 e.preventDefault();
                 
