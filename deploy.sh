@@ -79,9 +79,13 @@ fi
 
 # ─── Step 2: Maintenance mode ───────────────────────────────────────────────
 echo ""
-echo "[2/8] Entering maintenance mode..."
-${PHP_BIN} ${ARTISAN} down --retry=60 --refresh=15 2>/dev/null || true
-echo "  ✓ Maintenance mode ON"
+if [ "${DEPLOY_SKIP_MAINTENANCE:-0}" = "1" ]; then
+    echo "[2/8] Skipping maintenance mode (DEPLOY_SKIP_MAINTENANCE=1)"
+else
+    echo "[2/8] Entering maintenance mode..."
+    ${PHP_BIN} ${ARTISAN} down --retry=60 --refresh=15 2>/dev/null || true
+    echo "  ✓ Maintenance mode ON"
+fi
 
 # ─── Step 3: Clear all caches ───────────────────────────────────────────────
 echo ""
@@ -172,9 +176,13 @@ echo "  ✓ Permissions set"
 
 # ─── Step 8: Exit maintenance mode ──────────────────────────────────────────
 echo ""
-echo "[8/8] Exiting maintenance mode..."
-${PHP_BIN} ${ARTISAN} up
-echo "  ✓ Application is LIVE"
+if [ "${DEPLOY_SKIP_MAINTENANCE:-0}" = "1" ]; then
+    echo "[8/8] Maintenance mode was skipped; nothing to exit"
+else
+    echo "[8/8] Exiting maintenance mode..."
+    ${PHP_BIN} ${ARTISAN} up
+    echo "  ✓ Application is LIVE"
+fi
 
 echo ""
 echo "=============================================="
