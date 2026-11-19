@@ -6053,6 +6053,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/category.create', [CategoryController::class, 'postCategory'])->name('category.create');
     Route::delete('/category/delete/{id}', [CategoryController::class, 'destroy'])->name('category.delete');
     Route::post('/category/bulk-delete', [CategoryController::class, 'bulkDelete'])->name('category.bulk-delete');
+    Route::get('/category/{id}/suppliers', [CategoryController::class, 'categorySuppliers'])->name('category.suppliers');
+    Route::post('/category/{id}/suppliers', [CategoryController::class, 'categorySupplierStore'])->name('category.suppliers.store');
+    Route::put('/category/{id}/suppliers/{supplierId}', [CategoryController::class, 'categorySupplierUpdate'])->name('category.suppliers.update');
+    Route::delete('/category/{id}/suppliers/{supplierId}', [CategoryController::class, 'categorySupplierDetach'])->name('category.suppliers.detach');
 
     // To Order Analysis routes
     Route::controller(ToOrderAnalysisController::class)->group(function () {

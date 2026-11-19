@@ -134,7 +134,7 @@
                     </div>
 
                     {{-- 🔍 Search Bar --}}
-                    {{-- Parent / SKU filter (searches CP Master across all categories, not just this page) --}}
+                    {{-- Parent / SKU / MFR category filter (searches CP Master across all categories, not just this page) --}}
                     <form method="GET" action="{{ route('category.list') }}" class="row g-2 align-items-end mb-3"
                         id="cp-filter-form">
                         <div class="col-md-3">
@@ -147,11 +147,16 @@
                             <input type="text" id="filter-sku" name="sku" class="form-control"
                                 value="{{ $skuFilter ?? '' }}" placeholder="Filter by SKU..." autocomplete="off">
                         </div>
+                        <div class="col-md-3">
+                            <label for="filter-mfr" class="form-label fw-semibold">MFR category</label>
+                            <input type="text" id="filter-mfr" name="mfr" class="form-control"
+                                value="{{ $mfrFilter ?? '' }}" placeholder="Filter by MFR category..." autocomplete="off">
+                        </div>
                         <div class="col-md-auto d-flex gap-2">
                             <button type="submit" class="btn btn-primary">
                                 <i class="mdi mdi-filter-outline me-1"></i> Filter
                             </button>
-                            @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '')
+                            @if (($parentFilter ?? '') !== '' || ($skuFilter ?? '') !== '' || ($mfrFilter ?? '') !== '')
                                 <a href="{{ route('category.list') }}" class="btn btn-light border">
                                     <i class="mdi mdi-close me-1"></i> Clear
                                 </a>
@@ -190,7 +195,6 @@
                                     $cpSkus = $category->cp_master_skus ?? [];
                                     $rowspan = max(1, count($cpSkus));
                                     $firstSku = $cpSkus[0] ?? null;
-                                    $supplierNames = $category->supplier_names ?? [];
                                 @endphp
                                 {{-- One <tbody> per category: one row per CP Master SKU (parent rows included);
                                      the category-level cells span all of its SKU rows. --}}
@@ -244,15 +248,13 @@
                                             </div>
                                         </td>
                                         <td class="text-center align-middle supplier-cell {{ $firstSku && $firstSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                            @if (count($supplierNames) > 0)
-                                                <div class="d-flex flex-wrap justify-content-center align-items-start py-1" style="line-height:1.6;">
-                                                    @foreach ($supplierNames as $supplierName)
-                                                        <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $supplierName }}</span>
-                                                    @endforeach
-                                                </div>
-                                            @else
-                                                <span class="text-muted">-</span>
-                                            @endif
+                                            <button type="button" class="btn btn-sm supplier-count-btn d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm border-0"
+                                                data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                title="View / add / edit suppliers">
+                                                <i class="mdi mdi-account-group text-info me-2"></i>
+                                                <span class="fw-semibold text-info supplier-count" data-category-id="{{ $category->id }}">{{ $category->supplier_count }}</span>
+                                                <span class="ms-1 text-muted fw-bold">Suppliers</span>
+                                            </button>
                                         </td>
                                         <td class="text-center align-middle" rowspan="{{ $rowspan }}">
                                             @php $parents = $category->parents_list ?? []; @endphp
@@ -315,15 +317,13 @@
                                                 <h5 class="mb-0 fw-semibold">{{ $category->name }}</h5>
                                             </td>
                                             <td class="text-center align-middle supplier-cell {{ $cpSku['is_parent'] ? 'bg-warning-subtle' : '' }}">
-                                                @if (count($supplierNames) > 0)
-                                                    <div class="d-flex flex-wrap justify-content-center align-items-start py-1" style="line-height:1.6;">
-                                                        @foreach ($supplierNames as $supplierName)
-                                                            <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $supplierName }}</span>
-                                                        @endforeach
-                                                    </div>
-                                                @else
-                                                    <span class="text-muted">-</span>
-                                                @endif
+                                                <button type="button" class="btn btn-sm supplier-count-btn d-inline-flex align-items-center px-3 py-2 rounded-pill bg-info-subtle shadow-sm border-0"
+                                                    data-category-id="{{ $category->id }}" data-category-name="{{ $category->name }}"
+                                                    title="View / add / edit suppliers">
+                                                    <i class="mdi mdi-account-group text-info me-2"></i>
+                                                    <span class="fw-semibold text-info supplier-count" data-category-id="{{ $category->id }}">{{ $category->supplier_count }}</span>
+                                                    <span class="ms-1 text-muted fw-bold">Suppliers</span>
+                                                </button>
                                             </td>
                                         </tr>
                                     @endforeach
@@ -336,6 +336,70 @@
                                 </tbody>
                             @endforelse
                         </table>
+                    </div>
+                    {{-- Suppliers modal (opened from the Suppliers count on any SKU / parent row) --}}
+                    <div class="modal fade" id="categorySuppliersModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered modal-xl shadow-none">
+                            <div class="modal-content border-0">
+                                <div class="modal-header bg-primary text-white">
+                                    <h5 class="modal-title">
+                                        <i class="mdi mdi-account-group me-1"></i>
+                                        Suppliers - <span id="csm-category-name"></span>
+                                        <span class="badge bg-light text-dark ms-2" id="csm-count">0</span>
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-info py-2 small mb-3">
+                                        Suppliers belong to the category, so any change here applies to <strong>all SKUs and parents</strong>
+                                        of this category. <strong>Remove</strong> only unlinks the supplier from this category; the supplier stays in Supplier List.
+                                    </div>
+                                    <div id="csm-message" class="small mb-2"></div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th style="min-width:160px">Name</th>
+                                                    <th style="min-width:140px">Company</th>
+                                                    <th style="min-width:120px">Phone</th>
+                                                    <th style="min-width:160px">Email</th>
+                                                    <th style="min-width:120px">WhatsApp</th>
+                                                    <th style="min-width:120px">WeChat</th>
+                                                    <th style="min-width:110px">City</th>
+                                                    <th style="width:150px" class="text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="csm-body"></tbody>
+                                            <tfoot>
+                                                <tr class="table-light">
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-name" placeholder="New supplier name *"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-company" placeholder="Company"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-phone" placeholder="Phone"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-email" placeholder="Email"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-whatsapp" placeholder="WhatsApp"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-wechat" placeholder="WeChat"></td>
+                                                    <td><input type="text" class="form-control form-control-sm" id="csm-new-city" placeholder="City"></td>
+                                                    <td class="text-center">
+                                                        <button type="button" class="btn btn-success btn-sm" id="csm-add-new">
+                                                            <i class="mdi mdi-plus"></i> Add
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div class="d-flex gap-2 align-items-center mt-3">
+                                        <label for="csm-existing" class="form-label fw-semibold mb-0">Or link an existing supplier:</label>
+                                        <select id="csm-existing" class="form-select form-select-sm" style="max-width:320px">
+                                            <option value="">Select supplier...</option>
+                                        </select>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="csm-link-existing">
+                                            <i class="mdi mdi-link-variant"></i> Link
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     @foreach ($categories as $category)
                                     <!-- Edit Category Modal -->
@@ -585,5 +649,123 @@
                 $('#category_status').val('active');
             });
         });
+    </script>
+    <script>
+        (function() {
+            const baseUrl = '{{ url('/category') }}';
+            const csrf = $('meta[name="csrf-token"]').attr('content');
+            const fields = ['name', 'company', 'phone', 'email', 'whatsapp', 'wechat', 'city'];
+            let currentCategoryId = null;
+
+            const esc = (v) => $('<div>').text(v == null ? '' : v).html();
+            const url = (suffix) => baseUrl + '/' + currentCategoryId + '/suppliers' + (suffix || '');
+
+            function api(method, endpoint, data) {
+                return $.ajax({
+                    url: endpoint,
+                    method: method,
+                    data: data || {},
+                    dataType: 'json',
+                    headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' }
+                });
+            }
+
+            function errText(xhr) {
+                if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
+                return 'Something went wrong. Please try again.';
+            }
+
+            function showMessage(text, ok) {
+                $('#csm-message').html(text ? '<span class="' + (ok ? 'text-success' : 'text-danger') + '">' + esc(text) + '</span>' : '');
+            }
+
+            function setCount(n) {
+                $('#csm-count').text(n);
+                $('.supplier-count[data-category-id="' + currentCategoryId + '"]').text(n);
+            }
+
+            function rowHtml(s) {
+                let h = '<tr data-supplier-id="' + s.id + '">';
+                fields.forEach(function(f) {
+                    h += '<td><input type="text" class="form-control form-control-sm csm-field" data-field="' + f + '" value="' + esc(s[f]) + '"></td>';
+                });
+                h += '<td class="text-center text-nowrap">' +
+                    '<button type="button" class="btn btn-primary btn-sm csm-save" title="Save"><i class="mdi mdi-content-save"></i></button> ' +
+                    '<button type="button" class="btn btn-outline-danger btn-sm csm-remove" title="Remove from this category"><i class="mdi mdi-delete"></i></button>' +
+                    '</td></tr>';
+                return h;
+            }
+
+            function render(data) {
+                const rows = (data.suppliers || []).map(rowHtml).join('');
+                $('#csm-body').html(rows || '<tr class="csm-empty"><td colspan="8" class="text-center text-muted py-3">No suppliers for this category yet.</td></tr>');
+                const opts = ['<option value="">Select supplier...</option>'].concat((data.available || []).map(function(a) {
+                    return '<option value="' + a.id + '">' + esc(a.name) + '</option>';
+                }));
+                $('#csm-existing').html(opts.join(''));
+                setCount((data.suppliers || []).length);
+            }
+
+            function load() {
+                $('#csm-body').html('<tr><td colspan="8" class="text-center text-muted py-3">Loading...</td></tr>');
+                api('GET', url()).done(render).fail(function(xhr) {
+                    $('#csm-body').html('');
+                    showMessage(errText(xhr), false);
+                });
+            }
+
+            $(document).on('click', '.supplier-count-btn', function() {
+                currentCategoryId = $(this).data('category-id');
+                $('#csm-category-name').text($(this).data('category-name'));
+                showMessage('', true);
+                $('#categorySuppliersModal input').val('');
+                new bootstrap.Modal(document.getElementById('categorySuppliersModal')).show();
+                load();
+            });
+
+            $(document).on('click', '#csm-body .csm-save', function() {
+                const tr = $(this).closest('tr');
+                const data = {};
+                tr.find('.csm-field').each(function() { data[$(this).data('field')] = $(this).val(); });
+                if (!$.trim(data.name)) { showMessage('Supplier name is required.', false); return; }
+                const btn = $(this).prop('disabled', true);
+                api('PUT', url('/' + tr.data('supplier-id')), data)
+                    .done(function(res) { showMessage(res.message + ' Applies to all SKUs of this category.', true); })
+                    .fail(function(xhr) { showMessage(errText(xhr), false); })
+                    .always(function() { btn.prop('disabled', false); });
+            });
+
+            $(document).on('click', '#csm-body .csm-remove', function() {
+                const tr = $(this).closest('tr');
+                const name = tr.find('[data-field="name"]').val();
+                if (!confirm('Remove "' + name + '" from this category? It will disappear for all SKUs and parents of this category. The supplier stays in Supplier List.')) return;
+                api('DELETE', url('/' + tr.data('supplier-id')))
+                    .done(function(res) { showMessage(res.message, true); load(); })
+                    .fail(function(xhr) { showMessage(errText(xhr), false); });
+            });
+
+            $('#csm-add-new').on('click', function() {
+                const data = {};
+                fields.forEach(function(f) { data[f] = $('#csm-new-' + f).val(); });
+                if (!$.trim(data.name)) { showMessage('Enter a supplier name to add.', false); return; }
+                const btn = $(this).prop('disabled', true);
+                api('POST', url(), data)
+                    .done(function(res) {
+                        showMessage(res.message + ' It now applies to all SKUs of this category.', true);
+                        fields.forEach(function(f) { $('#csm-new-' + f).val(''); });
+                        load();
+                    })
+                    .fail(function(xhr) { showMessage(errText(xhr), false); })
+                    .always(function() { btn.prop('disabled', false); });
+            });
+
+            $('#csm-link-existing').on('click', function() {
+                const supplierId = $('#csm-existing').val();
+                if (!supplierId) { showMessage('Select a supplier to link.', false); return; }
+                api('POST', url(), { supplier_id: supplierId })
+                    .done(function(res) { showMessage(res.message, true); load(); })
+                    .fail(function(xhr) { showMessage(errText(xhr), false); });
+            });
+        })();
     </script>
 @endsection

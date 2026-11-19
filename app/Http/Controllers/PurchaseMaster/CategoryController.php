@@ -49,8 +49,12 @@ class CategoryController extends Controller
     {
         $parentFilter = trim((string) $request->query('parent', ''));
         $skuFilter = trim((string) $request->query('sku', ''));
+        $mfrFilter = trim((string) $request->query('mfr', ''));
 
         $categoriesQuery = Category::query();
+        if ($mfrFilter !== '') {
+            $categoriesQuery->where('name', 'like', $this->likeContains($mfrFilter));
+        }
         if ($parentFilter !== '' || $skuFilter !== '') {
             $categoriesQuery->whereIn('id', $this->categoryIdsMatchingCpMasterFilters($parentFilter, $skuFilter));
         }
@@ -59,7 +63,7 @@ class CategoryController extends Controller
         $categoryIds = $categories->pluck('id')->all();
 
         if ($categoryIds === []) {
-            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter'));
+            return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
         }
 
         $suppliers = Supplier::query()
@@ -88,18 +92,6 @@ class CategoryController extends Controller
         foreach ($categories as $category) {
             $categorySuppliers = $suppliersByCategoryId[$category->id] ?? [];
             $category->supplier_count = count($categorySuppliers);
-
-            $supplierNames = [];
-            foreach ($categorySuppliers as $supplier) {
-                $supplierName = trim((string) ($supplier->name ?? ''));
-                if ($supplierName !== '') {
-                    $supplierNames[$supplierName] = true;
-                }
-            }
-            $supplierNamesList = array_keys($supplierNames);
-            sort($supplierNamesList, SORT_NATURAL | SORT_FLAG_CASE);
-            $category->supplier_names = $supplierNamesList;
-
             $parents = [];
             $seeds = [];
             foreach ($categorySuppliers as $supplier) {
@@ -154,7 +146,7 @@ class CategoryController extends Controller
 
         $this->attachCpMasterSkus($categories, $parentFilter, $skuFilter);
 
-        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter'));
+        return view('purchase-master.category.category_list', compact('categories', 'parentFilter', 'skuFilter', 'mfrFilter'));
     }
 
     private function likeContains(string $value): string
@@ -173,15 +165,44 @@ class CategoryController extends Controller
         $products = ProductMaster::query()
             ->when($parentFilter !== '', fn ($q) => $q->where('parent', 'like', $this->likeContains($parentFilter)))
             ->when($skuFilter !== '', fn ($q) => $q->where('sku', 'like', $this->likeContains($skuFilter)))
-            ->get(['category_id', 'mfr_category_ids']);
+            ->get(['category_id', 'mfr_category_ids', 'parent']);
 
         $mfrIds = [];
+        $uncategorizedParents = [];
         foreach ($products as $product) {
+            $productMfrIds = [];
             foreach (is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [] as $id) {
-                $mfrIds[(int) $id] = true;
+                $productMfrIds[(int) $id] = true;
             }
             if ($product->category_id) {
-                $mfrIds[(int) $product->category_id] = true;
+                $productMfrIds[(int) $product->category_id] = true;
+            }
+            unset($productMfrIds[0]);
+
+            if ($productMfrIds === []) {
+                // e.g. a PARENT row, which usually has no Mfr category itself: it is listed under the
+                // categories of its child SKUs, so look those up through the parent name.
+                $parentName = trim((string) ($product->parent ?? ''));
+                if ($parentName !== '') {
+                    $uncategorizedParents[$parentName] = true;
+                }
+                continue;
+            }
+
+            $mfrIds += $productMfrIds;
+        }
+
+        foreach (array_chunk(array_keys($uncategorizedParents), 500) as $parentChunk) {
+            $siblings = ProductMaster::query()
+                ->whereIn('parent', $parentChunk)
+                ->get(['category_id', 'mfr_category_ids']);
+            foreach ($siblings as $sibling) {
+                foreach (is_array($sibling->mfr_category_ids) ? $sibling->mfr_category_ids : [] as $id) {
+                    $mfrIds[(int) $id] = true;
+                }
+                if ($sibling->category_id) {
+                    $mfrIds[(int) $sibling->category_id] = true;
+                }
             }
         }
         unset($mfrIds[0]);
@@ -436,6 +457,191 @@ class CategoryController extends Controller
         }
 
         return array_values(array_unique(array_filter(array_map('trim', $matched))));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function supplierCategoryIds(Supplier $supplier): array
+    {
+        $ids = [];
+        foreach (preg_split('/\s*,\s*/', (string) ($supplier->category_id ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $rawId) {
+            $id = (int) trim($rawId);
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    private function supplierInCategory(Supplier $supplier, int $categoryId): bool
+    {
+        return in_array($categoryId, $this->supplierCategoryIds($supplier), true);
+    }
+
+    private function categorySupplierPayload(Supplier $supplier): array
+    {
+        return [
+            'id' => (int) $supplier->id,
+            'name' => (string) ($supplier->name ?? ''),
+            'company' => (string) ($supplier->company ?? ''),
+            'phone' => (string) ($supplier->phone ?? ''),
+            'email' => (string) ($supplier->email ?? ''),
+            'whatsapp' => (string) ($supplier->whatsapp ?? ''),
+            'wechat' => (string) ($supplier->wechat ?? ''),
+            'city' => (string) ($supplier->city ?? ''),
+        ];
+    }
+
+    private function categorySuppliersQuery(int $categoryId)
+    {
+        return Supplier::query()
+            ->whereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$categoryId])
+            ->orderBy('name');
+    }
+
+    /**
+     * Suppliers linked to a category (what the Suppliers count on /category.list stands for), plus
+     * the other suppliers that could be linked to it.
+     * Suppliers are tied to categories, so every SKU / parent row of the category shares this list.
+     */
+    public function categorySuppliers($id)
+    {
+        $category = Category::findOrFail($id);
+        $suppliers = $this->categorySuppliersQuery((int) $category->id)->get();
+        $linkedIds = $suppliers->pluck('id')->all();
+
+        $available = Supplier::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->whereNotIn('id', $linkedIds)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($s) => ['id' => (int) $s->id, 'name' => (string) $s->name])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'category' => ['id' => (int) $category->id, 'name' => $category->name],
+            'suppliers' => $suppliers->map(fn ($s) => $this->categorySupplierPayload($s))->values(),
+            'available' => $available,
+        ]);
+    }
+
+    /**
+     * Add a supplier to a category: link an existing one (supplier_id) or create a new one (name).
+     */
+    public function categorySupplierStore(Request $request, $id)
+    {
+        $category = Category::findOrFail($id);
+        $categoryId = (int) $category->id;
+
+        $validator = Validator::make($request->all(), [
+            'supplier_id' => 'nullable|integer|exists:suppliers,id',
+            'name' => 'required_without:supplier_id|nullable|string|max:255',
+            'company' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'email' => 'nullable|string|max:255',
+            'whatsapp' => 'nullable|string|max:255',
+            'wechat' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+
+        if ($request->filled('supplier_id')) {
+            $supplier = Supplier::findOrFail((int) $request->input('supplier_id'));
+            $ids = $this->supplierCategoryIds($supplier);
+            if (! in_array($categoryId, $ids, true)) {
+                $ids[] = $categoryId;
+                $supplier->category_id = implode(',', $ids);
+                $supplier->save();
+            }
+        } else {
+            $supplier = new Supplier();
+            $supplier->type = 'Supplier';
+            $supplier->category_id = (string) $categoryId;
+            foreach (['name', 'company', 'phone', 'email', 'whatsapp', 'wechat', 'city'] as $field) {
+                $value = trim((string) $request->input($field, ''));
+                $supplier->{$field} = $value !== '' ? $value : null;
+            }
+            $supplier->save();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier added.',
+            'supplier' => $this->categorySupplierPayload($supplier),
+            'count' => $this->categorySuppliersQuery($categoryId)->count(),
+        ]);
+    }
+
+    /**
+     * Edit a supplier from the modal. Only the fields that are sent are changed, so nothing else on
+     * the supplier is lost. The supplier record is shared, so the edit applies everywhere it is linked.
+     */
+    public function categorySupplierUpdate(Request $request, $id, $supplierId)
+    {
+        $category = Category::findOrFail($id);
+        $supplier = Supplier::findOrFail($supplierId);
+        if (! $this->supplierInCategory($supplier, (int) $category->id)) {
+            return response()->json(['success' => false, 'message' => 'Supplier is not linked to this category.'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|required|string|max:255',
+            'company' => 'sometimes|nullable|string|max:255',
+            'phone' => 'sometimes|nullable|string|max:255',
+            'email' => 'sometimes|nullable|string|max:255',
+            'whatsapp' => 'sometimes|nullable|string|max:255',
+            'wechat' => 'sometimes|nullable|string|max:255',
+            'city' => 'sometimes|nullable|string|max:255',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+
+        foreach (['name', 'company', 'phone', 'email', 'whatsapp', 'wechat', 'city'] as $field) {
+            if ($request->has($field)) {
+                $value = trim((string) $request->input($field, ''));
+                $supplier->{$field} = $value !== '' ? $value : null;
+            }
+        }
+        $supplier->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier updated.',
+            'supplier' => $this->categorySupplierPayload($supplier),
+        ]);
+    }
+
+    /**
+     * Remove a supplier from a category. Only the link to this category is removed; the supplier
+     * record itself (and its other categories, bank accounts, ratings...) stays in /supplier.list.
+     */
+    public function categorySupplierDetach($id, $supplierId)
+    {
+        $category = Category::findOrFail($id);
+        $categoryId = (int) $category->id;
+        $supplier = Supplier::findOrFail($supplierId);
+
+        $ids = $this->supplierCategoryIds($supplier);
+        if (! in_array($categoryId, $ids, true)) {
+            return response()->json(['success' => false, 'message' => 'Supplier is not linked to this category.'], 404);
+        }
+
+        $remaining = array_values(array_filter($ids, fn ($cid) => $cid !== $categoryId));
+        $supplier->category_id = $remaining === [] ? null : implode(',', $remaining);
+        $supplier->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Supplier removed from this category.',
+            'count' => $this->categorySuppliersQuery($categoryId)->count(),
+        ]);
     }
 
     public function show($id)
