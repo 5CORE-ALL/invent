@@ -43,6 +43,7 @@
         .e2vt-chip--edit { background: #fef9c3; border-color: #facc15; color: #713f12; font-weight: 600; }
         .e2vt-chip--more { background: transparent; border-style: dashed; color: #64748b; }
         .e2vt-chip--name { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; font-weight: 600; }
+        .e2vt-chip--excess { background: #f3e8ff; border-color: #c084fc; color: #7e22ce; font-weight: 600; }
         .e2vt-chip--none { background: transparent; color: #94a3b8; }
         .e2vt-chip--differs { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
         .e2vt-chip--missing { background: #fef2f2; border-style: dashed; border-color: #f87171; color: #b91c1c; }
@@ -126,6 +127,7 @@
                                 <option value="changed">New Type waiting to be added</option>
                                 <option value="values_changed">Value edits waiting</option>
                                 <option value="differs_master">Differs from Variation Master</option>
+                                <option value="excess_sku">Has SKU not in CP Masters</option>
                                 <option value="failed">Any push failed</option>
                                 <option value="success">Any push succeeded</option>
                             </select>
@@ -292,13 +294,17 @@
                 if (filterMode === 'changed') filters.push((d) => isChanged(d));
                 if (filterMode === 'values_changed') filters.push((d) => editsOf(d).length > 0);
                 if (filterMode === 'differs_master' || typeFilter === 'red') filters.push(isTypeMismatch);
+                if (filterMode === 'excess_sku') filters.push((d) => Array.isArray(d.skus_not_in_cp) && d.skus_not_in_cp.length > 0);
                 if (filterMode === 'failed') filters.push((d) => d.push_status === 'failed' || d.values_status === 'failed');
                 if (filterMode === 'success') filters.push((d) => d.push_status === 'success' || d.values_status === 'success');
                 table.clearFilter();
                 filters.forEach((fn) => table.addFilter(fn));
             }
 
+            let pullNotice = ''; // set when the server could not store the pulled child SKUs (missing migration)
+
             async function importRows(rows) {
+                pullNotice = '';
                 const ids = rows.map((r) => r.item_id);
                 let done = 0;
                 for (let i = 0; i < ids.length; i += IMPORT_BATCH) {
@@ -307,6 +313,7 @@
                     document.getElementById('e2vt-progress').textContent = 'Importing ' + Math.min(i + batch.length, ids.length) + ' / ' + ids.length + '...';
                     try {
                         const res = await post(URLS.import, { item_ids: batch });
+                        if (res.notice) pullNotice = res.notice;
                         await applyRowUpdates(res.results || []);
                     } catch (e) {
                         await applyRowUpdates(batch.map((id) => ({ item_id: id, import_error: e.message })));
@@ -518,14 +525,20 @@
                                 const skus = Array.isArray(d.skus) ? d.skus : [];
                                 if (!skus.length) return '<span class="e2vt-muted">—</span>';
                                 const missing = new Set(Array.isArray(d.skus_not_on_ebay) ? d.skus_not_on_ebay : []);
-                                const chip = (s) => missing.has(s)
-                                    ? '<span class="e2vt-chip e2vt-chip--missing" title="In Variation Master, not on the eBay listing">' + esc(s) + '</span>'
-                                    : '<span class="e2vt-chip">' + esc(s) + '</span>';
+                                const excess = new Set(Array.isArray(d.skus_not_in_cp) ? d.skus_not_in_cp : []);
+                                const chip = (s) => excess.has(s)
+                                    ? '<span class="e2vt-chip e2vt-chip--excess" title="Excess SKU: not available in CP Masters"><i class="ri-alert-fill"></i> ' + esc(s) + '</span>'
+                                    : (missing.has(s)
+                                        ? '<span class="e2vt-chip e2vt-chip--missing" title="In Variation Master, not on the eBay listing">' + esc(s) + '</span>'
+                                        : '<span class="e2vt-chip">' + esc(s) + '</span>');
+                                // Same order as the Variation Name columns. SKUs hidden behind "+N more" are listed in its tooltip,
+                                // with a warning sign in front of the excess ones.
                                 const shown = skus.slice(0, SKUS_SHOWN).map(chip);
                                 if (skus.length > SKUS_SHOWN) {
-                                    shown.push('<span class="e2vt-chip e2vt-chip--more" title="' + esc(skus.slice(SKUS_SHOWN).join(', ')) + '">+' + (skus.length - SKUS_SHOWN) + ' more</span>');
+                                    shown.push('<span class="e2vt-chip e2vt-chip--more" title="' + esc(skus.slice(SKUS_SHOWN).map((s) => (excess.has(s) ? '⚠ ' : '') + s).join(', ')) + '">+' + (skus.length - SKUS_SHOWN) + ' more</span>');
                                 }
                                 return '<div><span class="e2vt-aspect-label">' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's')
+                                    + (excess.size ? ' · <span style="color:#7e22ce"><i class="ri-alert-fill"></i> ' + excess.size + ' not in CP Masters</span>' : '')
                                     + (missing.size ? ' · ' + missing.size + ' not on eBay' : '') + '</span>'
                                     + '<span class="e2vt-chips" style="display:flex;margin-top:2px">' + shown.join('') + '</span></div>';
                             },
@@ -747,7 +760,7 @@
                     stopRequested = false;
                     setBusy(true, 'Pulling...');
                     const done = await importRows(rows);
-                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Pulled ') + done + ' selected parent(s): child SKUs, variation type and variation names.');
+                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Pulled ') + done + ' selected parent(s): child SKUs, variation type and variation names.' + (pullNotice ? ' ' + pullNotice : ''));
                     table.redraw(true);
                     syncSelection();
                 });
@@ -769,7 +782,7 @@
                     stopRequested = false;
                     setBusy(true, 'Importing...');
                     const done = await importRows(rows);
-                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Imported ') + done + ' listing(s).');
+                    setBusy(false, (stopRequested ? 'Stopped after ' : 'Imported ') + done + ' listing(s).' + (pullNotice ? ' ' + pullNotice : ''));
                     table.redraw(true);
                 });
 

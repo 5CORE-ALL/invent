@@ -123,7 +123,11 @@ class Ebay2VariationTypeController extends Controller
             }
         }
 
-        return response()->json(['success' => true, 'results' => $results]);
+        return response()->json([
+            'success' => true,
+            'results' => $results,
+            'notice' => $this->liveColumnReady() ? null : self::LIVE_MIGRATE_NOTICE,
+        ]);
     }
 
     /** Remember the value typed in the New Type cell. */
@@ -288,9 +292,14 @@ class Ebay2VariationTypeController extends Controller
 
         [$childSkus, $notOnEbay] = $this->childSkuLists($live !== [] ? $liveSkus : $listing['skus'], $master[$parentNorm]['skus'] ?? []);
 
+        // Excess SKUs: on the parent's list but not in CP Masters (product_master) at all.
+        $cpSkus = $this->cpMasterSkuKeys();
+        $notInCp = array_values(array_filter($childSkus, fn (string $s) => ! isset($cpSkus[$this->skuKey($s)])));
+
         return [
             'skus' => $childSkus,
             'skus_not_on_ebay' => $notOnEbay,
+            'skus_not_in_cp' => $notInCp,
             'sku_names' => array_map(fn (string $s) => $master[$parentNorm]['names'][$this->skuKey($s)] ?? '', $childSkus),
             'ebay_names' => array_map(fn (string $s) => implode(' / ', $liveBySku[$this->skuKey($s)] ?? []), $childSkus),
             // Lower-case SKUs for the SKU search box.
@@ -317,7 +326,7 @@ class Ebay2VariationTypeController extends Controller
             // Edits typed against values that are no longer on the listing are dropped.
             $rec->value_edits = $this->pruneEdits((array) ($rec->value_edits ?? []), $values) ?: null;
         }
-        if ($variations !== null) {
+        if ($variations !== null && $this->liveColumnReady()) {
             $rec->live_variations = $variations;
         }
         $rec->import_error = $error;
@@ -543,9 +552,19 @@ class Ebay2VariationTypeController extends Controller
     private function tableReady(): bool
     {
         return Schema::hasTable('ebay2_variation_type_pushes')
-            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values')
-            && Schema::hasColumn('ebay2_variation_type_pushes', 'live_variations');
+            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values');
     }
+
+    /**
+     * The pulled child SKUs (live_variations) need a newer column. Without it the page still works and only that part
+     * is skipped, so a server that has not run the latest migration never shows an error page.
+     */
+    private function liveColumnReady(): bool
+    {
+        return Schema::hasColumn('ebay2_variation_type_pushes', 'live_variations');
+    }
+
+    private const LIVE_MIGRATE_NOTICE = 'The child SKUs and variation names could not be saved: run php artisan migrate on the server (it adds the live_variations column).';
 
     private function missingTable(): JsonResponse
     {
@@ -745,6 +764,28 @@ class Ebay2VariationTypeController extends Controller
         }
 
         return $out;
+    }
+
+    /** @var array<string, true>|null */
+    private ?array $cpSkuKeys = null;
+
+    /**
+     * Every SKU in CP Masters (product_master, not deleted), keyed the way skuKey() keys a SKU.
+     *
+     * @return array<string, true>
+     */
+    private function cpMasterSkuKeys(): array
+    {
+        if ($this->cpSkuKeys !== null) {
+            return $this->cpSkuKeys;
+        }
+
+        $keys = [];
+        foreach (DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            $keys[$this->skuKey((string) $sku)] = true;
+        }
+
+        return $this->cpSkuKeys = $keys;
     }
 
     /** Key that matches the same SKU across eBay and product_master (case, spacing and Shopify-style variants). */
