@@ -85,9 +85,6 @@
                                 title="Add CP Master SKUs to the categories of the selected rows">
                                 <i class="mdi mdi-plus-box-multiple-outline"></i> Add Products
                             </button>
-                            <button id="bulkDeleteBtn" class="btn btn-danger btn-sm" disabled>
-                                <i class="mdi mdi-delete"></i> Delete Selected
-                            </button>
                             <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#addCategoryModal">
                                 <i class="mdi mdi-plus me-1"></i> Add Category
@@ -751,29 +748,10 @@
                 $('.row-checkbox').prop('checked', $(this).is(':checked')).trigger('change');
             });
 
-            // Enable/disable the bulk delete button
+            // Enable/disable the bulk Add Products button
             $(document).on('change', '.row-checkbox', function() {
                 const anyChecked = $('.row-checkbox:checked').length > 0;
-                $('#bulkDeleteBtn, #bulkAddBtn').prop('disabled', !anyChecked);
-            });
-
-            // Delete selected rows in bulk
-            $('#bulkDeleteBtn').on('click', function() {
-                const selection = {};
-                let count = 0;
-                $('.row-checkbox:checked').each(function() {
-                    const categoryId = $(this).data('category-id');
-                    const sku = String($(this).data('sku') || '');
-                    if (!sku) return; // a category with no SKU rows has nothing to delete
-                    (selection[categoryId] = selection[categoryId] || []).push(sku);
-                    count++;
-                });
-                if (!count) {
-                    alert('The selected rows have no SKUs to delete.');
-                    return;
-                }
-                deleteRows(selection, 'Delete ' + count + ' selected row' + (count === 1 ? '' : 's') +
-                    '? Each SKU will be removed from this MFR category (it stays in CP Master).');
+                $('#bulkAddBtn').prop('disabled', !anyChecked);
             });
 
             // Delete a single row
