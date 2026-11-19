@@ -24,7 +24,7 @@
                     <div class="d-flex align-items-center justify-content-between border rounded p-2 mb-3" id="amz-cvr-onoff-box">
                         <div>
                             <div class="fw-semibold">Rule <span id="amz-cvr-onoff-txt" class="badge bg-secondary">OFF</span></div>
-                            <div class="text-muted" style="font-size:12px;">ON: the S PRC column suggests a new price next to its own value, from the price change % of the SKU's CVR case. OFF: no suggestion. Click Save to apply.</div>
+                            <div class="text-muted" style="font-size:12px;">ON: the S PRC column shows the new price (the SKU's current Price with its CVR case's price change %) in place of its own value. OFF: S PRC is shown as the other rules make it. Click Save to apply.</div>
                         </div>
                         <div class="form-check form-switch mb-0 ms-3">
                             <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-rule-enabled" style="width:2.6em;height:1.3em;cursor:pointer;" aria-label="CVR Price Rule on or off">
@@ -245,29 +245,31 @@
             return res.price;
         }
         window.amzCvrRuleSuggestedPrice = amzCvrRuleSuggestedPrice;
-        function amzCvrRuleSuggestHtml(row) {
+        /**
+         * The rule's price as the S PRC number itself: it REPLACES the S PRC value in the cell (never two prices side by side).
+         * '' when the rule has no suggestion for the row. Display only: nothing is saved or pushed from it.
+         */
+        function amzCvrRuleShownHtml(row, savedSprice) {
             if (!amzCvrRuleSuggestedPrice(row)) return '';
             const c = amzCvrRuleCaseFor(row, amzCvrRule);
             const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
             const res = amzCvrRulePriceFor(row, amzCvrRule);
             const price = parseFloat(row.price);
+            const saved = parseFloat(savedSprice);
             const word = c === 'down' ? 'CVR Down' : (c === 'up' ? 'CVR Up' : 'CVR within target');
             const tip = 'CVR Price Rule (' + word + '): Price $' + price.toFixed(2) + ' ' + (pct > 0 ? '+' : '') + pct + '% = $' + res.price.toFixed(2)
-                + (res.capped ? ' — set to the Lower cap price' : '') + '. Suggestion only, not saved or pushed.';
+                + (res.capped ? ' — set to the Lower cap price' : '')
+                + (saved > 0 ? '. Replaces the S PRC $' + saved.toFixed(2) + ' on screen.' : '.')
+                + ' Display only, not saved or pushed.';
             const color = res.price < price ? '#a00211' : '#198754';
-            return ' <span class="amz-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
+            return '<span class="amz-cvr-suggest" title="' + String(tip).replace(/"/g, '&quot;') + '" style="white-space:nowrap;font-weight:600;color:' + color + ';">'
                 + '<i class="fas fa-' + (res.price < price ? 'arrow-down' : 'arrow-up') + '" style="font-size:10px;"></i> $' + res.price.toFixed(2)
                 + (res.capped ? ' <i class="fas fa-lock" style="font-size:9px;"></i>' : '') + '</span>';
         }
-        /** Wraps the S PRC cell formatter: its own output stays, the rule's suggestion is added after it. */
+        window.amzCvrRuleShownHtml = amzCvrRuleShownHtml;
+        /** Kept so the column definition does not change: the cell formatter itself now swaps in the rule's price. */
         function amzCvrRuleSpriceFormatter(inner) {
-            return function(cell) {
-                const out = inner.apply(this, arguments);
-                let sug = '';
-                try { sug = amzCvrRuleSuggestHtml(cell.getRow().getData()); } catch (e) { sug = ''; }
-                if (!sug) return out;
-                return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;flex-wrap:wrap;">' + (out || '') + sug + '</span>';
-            };
+            return inner;
         }
         function amzCvrRuleReadDraft() {
             const d = { enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
@@ -351,7 +353,7 @@
                     if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');
-                    amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC now shows the suggested prices.' : 'CVR Price Rule saved (OFF). No price suggestions.');
+                    amzPefToast('success', amzCvrRule.enabled ? 'CVR Price Rule saved and ON. S PRC now shows the CVR rule prices.' : 'CVR Price Rule saved (OFF).');
                     const el = document.getElementById('amzCvrRuleModal');
                     if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).hide();
                 }).fail(function() {
