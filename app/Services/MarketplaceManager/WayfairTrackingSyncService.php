@@ -522,7 +522,51 @@ class WayfairTrackingSyncService
             return ['ok' => false, 'message' => 'HTTP '.$response->status().' errors: '.json_encode($json['errors'])];
         }
 
-        return ['ok' => true, 'message' => 'HTTP '.$response->status().' data: '.mb_substr((string) json_encode($json['data'] ?? null), 0, 600)];
+        $events = is_array($json['data']['labelGenerationEvents'] ?? null) ? $json['data']['labelGenerationEvents'] : [];
+        $want = $this->poFilterValue($poNumber);
+        $pos = [];
+        foreach ($events as $event) {
+            $pos[] = (string) ($event['poNumber'] ?? '?');
+        }
+        $matching = array_values(array_filter($events, fn ($e) => $this->poFilterValue((string) ($e['poNumber'] ?? '')) === $want));
+
+        return ['ok' => true, 'message' => sprintf(
+            'HTTP %d, asked for %s, got %d event(s) for PO [%s]; %d match the asked PO%s',
+            $response->status(),
+            $want,
+            count($events),
+            implode(', ', $pos),
+            count($matching),
+            $matching !== [] ? ' → '.mb_substr((string) json_encode($matching[0]['shippingLabelInfo'] ?? null), 0, 400) : ''
+        )];
+    }
+
+    /**
+     * Wayfair's own description of the label events query (arguments and filter fields). For diagnostics only.
+     */
+    public function debugLabelEventsSchema(): string
+    {
+        try {
+            $token = $this->api->getAccessTokenWithScope(null);
+        } catch (\Throwable $e) {
+            return 'token failed: '.$e->getMessage();
+        }
+        $query = '{ filter: __type(name: "LabelGenerationEventFilterInput") { name inputFields { name description type { name kind ofType { name kind } } } } '
+            .'query: __type(name: "Query") { fields { name args { name description type { name kind ofType { name kind } } } } } }';
+        $response = Http::withoutVerifying()->connectTimeout(8)->timeout(30)->withToken($token)
+            ->post(WayfairDailyOrderFetchService::GRAPHQL_URL, ['query' => $query]);
+        $json = $response->json();
+        if (! empty($json['errors'])) {
+            return 'errors: '.json_encode($json['errors']);
+        }
+        $out = ['filter' => $json['data']['filter'] ?? null, 'labelGenerationEvents' => null];
+        foreach ($json['data']['query']['fields'] ?? [] as $field) {
+            if (($field['name'] ?? '') === 'labelGenerationEvents') {
+                $out['labelGenerationEvents'] = $field;
+            }
+        }
+
+        return (string) json_encode($out, JSON_PRETTY_PRINT);
     }
 
     /**

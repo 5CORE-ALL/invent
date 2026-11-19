@@ -21,6 +21,7 @@ class FindOrderTrackingCommand extends Command
     protected $signature = 'order-fulfillment:find-tracking
         {orders* : Marketplace order ids (Wayfair PO numbers)}
         {--slug=wayfair : Marketplace slug}
+        {--schema : Also print how Wayfair describes the label events query (arguments and filter fields)}
         {--save : Store the tracking that is found (same as the page lookup)}';
 
     protected $description = 'Check, per order id, which source (saved, marketplace row, Veeqo, Wayfair labels, GOFO, 4Seller, Shopify) has a tracking number';
@@ -30,6 +31,9 @@ class FindOrderTrackingCommand extends Command
         $slug = strtolower(trim((string) $this->option('slug')));
         $orders = array_values(array_filter(array_map('trim', (array) $this->argument('orders'))));
         $veeqo = app(VeeqoShopifyFulfillmentService::class);
+        if ($this->option('schema') && $slug === 'wayfair') {
+            $this->line(app(WayfairTrackingSyncService::class)->debugLabelEventsSchema());
+        }
 
         foreach ($orders as $po) {
             $this->newLine();
