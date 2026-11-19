@@ -33,12 +33,6 @@
                         <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle fs-6 px-3 py-2">
                             Categories: <strong id="mcs-badge-categories">0</strong>
                         </span>
-                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle fs-6 px-3 py-2">
-                            With suppliers: <strong id="mcs-badge-with">0</strong>
-                        </span>
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fs-6 px-3 py-2">
-                            Without suppliers: <strong id="mcs-badge-without">0</strong>
-                        </span>
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle fs-6 px-3 py-2">
                             Under 13 suppliers: <strong id="mcs-badge-low">0</strong>
                         </span>
@@ -146,10 +140,7 @@
     function updateBadges() {
         if (!table) return;
         const rows = table.getData();
-        const withSuppliers = rows.filter(function(r) { return r.count > 0; }).length;
         document.getElementById('mcs-badge-categories').textContent = rows.length;
-        document.getElementById('mcs-badge-with').textContent = withSuppliers;
-        document.getElementById('mcs-badge-without').textContent = rows.length - withSuppliers;
         document.getElementById('mcs-badge-low').textContent = rows.filter(function(r) { return r.count < LOW_SUPPLIER_COUNT; }).length;
     }
 
