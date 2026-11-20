@@ -13,6 +13,21 @@
     .paste-box:focus { border-color: #0d6efd; background: #eef4ff; color: #0d6efd; }
     .paste-box-preview { max-width: 100%; max-height: 140px; border-radius: 4px; }
 
+    /* Bank dot (same look as /supplier.list): green = bank details on file, red = missing */
+    .supplier-data-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; }
+    .supplier-data-dot--ok { background-color: #198754; }
+    .supplier-data-dot--missing { background-color: #dc3545; }
+    .bank-dot-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; line-height: 1; padding: 0; }
+
+    /* Advance-required toggle: mustard = advance still required, green = proof image attached */
+    .adv-toggle { position: relative; display: inline-block; width: 38px; height: 20px; border-radius: 20px; background: #d4a017; vertical-align: middle; cursor: default; transition: background .2s; }
+    .adv-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .2s; }
+    .adv-toggle.is-done { background: #198754; }
+    .adv-toggle.is-done::after { left: 20px; }
+    #mustard-filter-btn { border-color: #d4a017; color: #8a6a00; }
+    #mustard-filter-btn:hover { background: rgba(212,160,23,.15); }
+    #mustard-filter-btn.active { background: #d4a017; color: #fff; border-color: #d4a017; }
+
     /* PO number link */
     #advance-payment-table a.po-link { color: #0d6efd; font-weight: 700; text-decoration: none; }
     #advance-payment-table a.po-link:hover { text-decoration: underline; }
@@ -155,6 +170,9 @@
                         </span>
                         <input type="text" id="advance-amount-search" class="form-control border-start-0" placeholder="Search VO Number, Supplier name...">
                     </div>
+                    <button type="button" id="mustard-filter-btn" class="btn btn-sm" title="Show only rows where the advance is still required (no Adv Img)">
+                        <span class="adv-toggle" style="width:28px;height:15px;vertical-align:-3px;"></span> Adv Required
+                    </button>
                     <select id="stage-filter" class="form-select form-select-sm" style="max-width: 160px;" aria-label="Stage filter" autocomplete="off">
                         <option value="" selected>All Stages</option>
                         <option value="to_order_analysis">Order</option>
@@ -367,6 +385,19 @@
     </div>
 </div>
 
+{{-- Read-only bank details (data from /supplier.list) --}}
+<div class="modal fade" id="bankViewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="fas fa-university me-2"></i> Bank Details &mdash; <span id="bankViewSupplierName"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="bankViewBody"></div>
+        </div>
+    </div>
+</div>
+
 <div id="image-preview-popup" 
      style="display:none; position:absolute; z-index:99999; border:1px solid #ccc; background:#fff; padding:5px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
     <img src="" style="height:150px;" id="preview-popup-img">
@@ -378,9 +409,17 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
+            // Advance required = mustard until an Adv Img is attached (then green)
+            let mustardOnly = false;
+            const hasAdvImage = function(row) { return !!(row && row.image && String(row.image).trim() !== ''); };
+
+            // Currency follows the PO: USD -> "$", RMB (Yuan) -> "¥"
+            const CURRENCY_SYMBOLS = { USD: '$', RMB: '¥' };
+            const currencySymbol = function(code) { return CURRENCY_SYMBOLS[code] || CURRENCY_SYMBOLS.USD; };
             const roundFormatter = function(cell) {
                 const num = parseFloat(cell.getValue());
-                return isNaN(num) ? '' : '$ ' + Math.round(num);
+                if (isNaN(num)) return '';
+                return currencySymbol(cell.getRow().getData().currency) + ' ' + Math.round(num);
             };
 
             let table = new Tabulator("#advance-payment-table", {
@@ -451,8 +490,52 @@
                             return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
                         }
                     },
+                    {
+                        title: "Bank",
+                        field: "bank_count",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        headerSort: true,
+                        width: 80,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const count = parseInt(row.bank_count) || 0;
+                            if (!row.supplier_id) return '<span class="text-muted">-</span>';
+                            const esc = function(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                            return '<button type="button" class="btn btn-link bank-dot-btn bank-view-btn"' +
+                                ' data-supplier-id="' + row.supplier_id + '"' +
+                                ' data-supplier-name="' + esc(row.supplier_name || '') + '"' +
+                                ' title="' + (count > 0 ? count + ' bank account(s)' : 'No bank details') + '">' +
+                                '<span class="supplier-data-dot ' + (count > 0 ? 'supplier-data-dot--ok' : 'supplier-data-dot--missing') + '"></span>' +
+                                '</button>';
+                        }
+                    },
                     { title: "Amount", field:"amount", hozAlign: "center", formatter: roundFormatter },
-                    { title: "Advance Amount", field:"advance_amount", hozAlign: "center", formatter: roundFormatter },
+                    { title: "Adv Amt", field:"advance_amount", hozAlign: "center", formatter: roundFormatter },
+                    {
+                        title: "Adv Req",
+                        field: "image",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        headerSort: false,
+                        width: 90,
+                        formatter: function(cell) {
+                            const done = hasAdvImage(cell.getRow().getData());
+                            return '<span class="adv-toggle ' + (done ? 'is-done' : '') + '" title="' + (done ? 'Advance proof attached' : 'Advance required - no image yet') + '"></span>';
+                        }
+                    },
+                    { 
+                        title: "Adv Img", 
+                        field: "image",
+                        formatter: function (cell) {
+                            const url = cell.getValue();
+                            if (!url) return '';
+                            return `<img src="${url}" 
+                                        class="hover-thumbnail" 
+                                        style="height:40px; cursor:pointer;" 
+                                        data-preview-url="${url}">`;
+                        }
+                    },
                     { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center", formatter: roundFormatter },
                     {
                         title: "Stage",
@@ -481,18 +564,6 @@
                                 return '<span class="stage-status-dot" title="' + title + '" style="background-color:' + (colors[s] || '#94a3b8') + ';"></span>';
                             }).join('');
                             return '<div class="stage-dot-cell">' + html + '</div>';
-                        }
-                    },
-                    { 
-                        title: "Adv Img", 
-                        field: "image",
-                        formatter: function (cell) {
-                            const url = cell.getValue();
-                            if (!url) return '';
-                            return `<img src="${url}" 
-                                        class="hover-thumbnail" 
-                                        style="height:40px; cursor:pointer;" 
-                                        data-preview-url="${url}">`;
                         }
                     },
                     { 
@@ -565,6 +636,7 @@
                 const keyword = document.getElementById("advance-amount-search").value.trim().toLowerCase();
                 const stage = document.getElementById("stage-filter").value;
 
+                if (mustardOnly && hasAdvImage(row)) return false;
                 if (keyword) {
                     const hay = (String(row.vo_number || '') + ' ' + String(row.supplier_name || '')).toLowerCase();
                     if (hay.indexOf(keyword) === -1) return false;
@@ -581,18 +653,28 @@
             // so they are correct on first load ("All Stages") and after every filter change.
             function updateTotalBadges(allData) {
                 const source = Array.isArray(allData) ? allData : table.getData();
-                let amount = 0, advance = 0, balance = 0;
+                // Totals are kept per currency (USD and RMB are never added together).
+                const totals = {
+                    USD: { amount: 0, advance: 0, balance: 0 },
+                    RMB: { amount: 0, advance: 0, balance: 0 }
+                };
                 const matched = source.filter(rowMatches);
                 document.getElementById('badge-rows').textContent = matched.length.toLocaleString('en-US');
                 matched.forEach(function(r) {
-                    amount  += parseFloat(r.amount) || 0;
-                    advance += parseFloat(r.advance_amount) || 0;
-                    balance += parseFloat(r.balance) || 0;
+                    const t = totals[r.currency === 'RMB' ? 'RMB' : 'USD'];
+                    t.amount  += parseFloat(r.amount) || 0;
+                    t.advance += parseFloat(r.advance_amount) || 0;
+                    t.balance += parseFloat(r.balance) || 0;
                 });
-                const fmt = function(n) { return '$ ' + Math.round(n).toLocaleString('en-US'); };
-                document.getElementById('badge-amount').textContent = fmt(amount);
-                document.getElementById('badge-advance').textContent = fmt(advance);
-                document.getElementById('badge-balance').textContent = fmt(balance);
+                // Always show USD; add the Yuan total only when RMB rows are in the current view.
+                const hasRmb = matched.some(function(r) { return r.currency === 'RMB'; });
+                const fmt = function(key) {
+                    const f = function(cur) { return currencySymbol(cur) + ' ' + Math.round(totals[cur][key]).toLocaleString('en-US'); };
+                    return hasRmb ? f('USD') + '  |  ' + f('RMB') : f('USD');
+                };
+                document.getElementById('badge-amount').textContent = fmt('amount');
+                document.getElementById('badge-advance').textContent = fmt('advance');
+                document.getElementById('badge-balance').textContent = fmt('balance');
             }
             table.on("dataLoaded", function(data) { updateTotalBadges(data); });
             table.on("tableBuilt", function() { updateTotalBadges(); });
@@ -613,6 +695,11 @@
             }
             document.getElementById("advance-amount-search").addEventListener("input", applyFilters);
             document.getElementById("stage-filter").addEventListener("change", applyFilters);
+            document.getElementById("mustard-filter-btn").addEventListener("click", function() {
+                mustardOnly = !mustardOnly;
+                this.classList.toggle("active", mustardOnly);
+                applyFilters();
+            });
 
             $('#delete-selected-btn').on('click', function() {
                 const selectedData = table.getSelectedData();
@@ -748,6 +835,41 @@
                 el.addEventListener('hidden.bs.modal', function() {
                     el.querySelectorAll('.paste-box').forEach(function(box) { setBoxPreview(box, null); });
                 });
+            });
+
+            // Bank dot -> read-only bank accounts of the supplier
+            $(document).on('click', '.bank-view-btn', function() {
+                const supplierId = $(this).data('supplier-id');
+                const supplierName = $(this).data('supplier-name') || '';
+                const esc = function(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                const labels = [
+                    ['supplier_name', 'Beneficiary'], ['nick_name', 'Nick Name'], ['company_name', 'Company'],
+                    ['swift', 'SWIFT'], ['address', 'Address'], ['city', 'City'], ['province', 'Province'],
+                    ['country', 'Country'], ['account_number', 'Account No.'], ['acc_type', 'Account Type']
+                ];
+
+                $('#bankViewSupplierName').text(supplierName);
+                $('#bankViewBody').html('<div class="text-center text-muted py-4">Loading...</div>');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('bankViewModal')).show();
+
+                $.getJSON('/supplier/' + supplierId + '/bank-accounts')
+                    .done(function(res) {
+                        const accounts = (res && res.accounts) || [];
+                        if (!accounts.length) {
+                            $('#bankViewBody').html('<div class="text-center text-muted py-4"><i class="fas fa-university me-1"></i> No bank details on file</div>');
+                            return;
+                        }
+                        const html = accounts.map(function(acc, i) {
+                            const fields = labels.filter(function(l) { return acc[l[0]]; }).map(function(l) {
+                                return '<div class="col-md-6"><div class="small text-muted">' + l[1] + '</div><div class="fw-semibold">' + esc(acc[l[0]]) + '</div></div>';
+                            }).join('');
+                            return '<div class="border rounded-3 p-3 mb-3"><div class="fw-bold mb-2">Account ' + (i + 1) + '</div><div class="row g-2">' + fields + '</div></div>';
+                        }).join('');
+                        $('#bankViewBody').html(html);
+                    })
+                    .fail(function() {
+                        $('#bankViewBody').html('<div class="text-center text-danger py-4">Could not load bank details.</div>');
+                    });
             });
 
             // Archive a row (red archive icon)

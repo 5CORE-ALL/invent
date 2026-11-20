@@ -183,7 +183,10 @@ class LedgerMasterController extends Controller
             'image',
             'remarks'
         )
-            ->with(['supplier:id,name', 'purchaseContract:id,po_number,po_date,items'])
+            ->with([
+                'supplier' => fn($q) => $q->select('id', 'name')->withCount('bankAccounts'),
+                'purchaseContract:id,po_number,po_date,items',
+            ])
             ->where('is_archived', false)
             ->get();
 
@@ -219,9 +222,17 @@ class LedgerMasterController extends Controller
             $advance = $payment->advance_amount ?? 0;
 
             $stages = [];
+            $currency = 'USD';
+            $currencySeen = false;
             $items = $payment->purchaseContract->items ?? null;
             $items = is_array($items) ? $items : json_decode((string) $items, true);
             foreach ((array) $items as $item) {
+                // PO currency = currency of its items (USD or RMB); first item wins on a mixed PO.
+                if (!$currencySeen && !empty($item['currency'])) {
+                    $cur = strtoupper(trim((string) $item['currency']));
+                    $currency = in_array($cur, ['RMB', 'CNY', 'CNH', 'YUAN'], true) ? 'RMB' : 'USD';
+                    $currencySeen = true;
+                }
                 $key = strtoupper(trim((string) ($item['sku'] ?? '')));
                 foreach ($skuStages[$key] ?? [] as $stage) {
                     $stages[$stage] = true;
@@ -234,11 +245,13 @@ class LedgerMasterController extends Controller
                 'vo_number' => $payment->vo_number,
                 'supplier_id' => $payment->supplier_id,
                 'supplier_name' => $payment->supplier->name ?? '',
+                'bank_count' => (int) ($payment->supplier->bank_accounts_count ?? 0),
                 'purchase_contract_id' => $payment->purchase_contract_id,
                 'purchase_contract' => $payment->purchaseContract->po_number ?? '',
                 'po_date' => $payment->purchaseContract && $payment->purchaseContract->po_date
                     ? Carbon::parse($payment->purchaseContract->po_date)->format('d M Y')
                     : '',
+                'currency' => $currency,
                 'stages' => $stages,
                 'amount' => $amount ?? '',
                 'advance_amount' => $advance ?? '',
