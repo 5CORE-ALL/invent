@@ -11,6 +11,12 @@
         const lqsHasApiSync = @json(!empty($lqsPage['has_api_sync']));
         const lqsHasYoast = @json(!empty($lqsPage['has_yoast_seo']));
         const lqsYoastSyncUrl = @json($lqsPage['routes']['seo_sync'] ?? null);
+        const LQS_SLUG = @json($lqsPage['slug'] ?? '');
+
+        function lqsNeweggUrl(id) {
+            const item = String(id || '').replace(/[^A-Za-z0-9]/g, '');
+            return item ? ('https://www.newegg.com/p/' + item) : '';
+        }
 
         function amzNotify(msg, type) {
             if (window.toastr) {
@@ -324,12 +330,14 @@
                             const d   = cell.getRow().getData();
                             const src = cell.getValue();
                             if (d.is_parent) return '';
-                            const listingUrl = d.listing_url || '';
+                            const listingUrl = (LQS_SLUG === 'newegg')
+                                ? lqsNeweggUrl(d.listing_id || d.asin || '')
+                                : (d.listing_url || '');
                             const imgTag = src
                                 ? `<img src="${src}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`
                                 : `<span style="color:#adb5bd;font-size:10px;">No img</span>`;
                             return listingUrl
-                                ? `<a href="${listingUrl}" target="_blank" title="View listing">${imgTag}</a>`
+                                ? `<a href="${listingUrl}" target="_blank" title="${LQS_SLUG === 'newegg' ? 'View on Newegg' : 'View listing'}">${imgTag}</a>`
                                 : imgTag;
                         }
                     },
@@ -351,12 +359,25 @@
                     {
                         title: {!! json_encode($lqsPage['listing_label'] ?? 'Listing ID') !!},
                         field: 'asin',
-                        width: 110,
+                        width: LQS_SLUG === 'newegg' ? 168 : 110,
                         formatter: function(cell) {
                             const d    = cell.getRow().getData();
                             const listingId = d.listing_id || cell.getValue() || '';
-                            const listingUrl = d.listing_url || '';
                             if (d.is_parent || !listingId) return '<span style="color:#adb5bd;">–</span>';
+                            if (LQS_SLUG === 'newegg') {
+                                const url = lqsNeweggUrl(listingId);
+                                const safe = String(listingId).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                                if (!url) return `<span style="font-weight:600;font-size:11px;">${safe}</span>`;
+                                return '<div class="amz-asin-cell">'
+                                    + '<span class="amz-asin-code">' + safe + '</span>'
+                                    + '<span class="amz-asin-views">'
+                                    + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view"'
+                                    + ' onclick="event.stopPropagation();window.open(\'' + url + '\',\'_blank\',\'noopener\')"><i class="fas fa-desktop"></i></button>'
+                                    + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view"'
+                                    + ' onclick="event.stopPropagation();window.open(\'' + url + '\',\'lqsNeweggMobile\',\'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes\')"><i class="fas fa-mobile-screen-button"></i></button>'
+                                    + '</span></div>';
+                            }
+                            const listingUrl = d.listing_url || '';
                             if (listingUrl) {
                                 return `<a href="${listingUrl}" target="_blank"
                                 style="color:#ff9900;font-weight:600;font-size:11px;">${listingId}</a>`;

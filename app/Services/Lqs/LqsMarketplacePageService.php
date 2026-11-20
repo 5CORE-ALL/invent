@@ -102,11 +102,13 @@ class LqsMarketplacePageService
             }
             $rating = $this->firstNullableNumber($score->rating ?? null, $api['rating'] ?? null);
             $reviews = $this->firstNullableInt($score->reviews ?? null, $api['reviews'] ?? null);
+            $marketplaceUrl = $this->listingUrl($channel['listing_url'] ?? null, $listingId);
             $listingUrl = ! empty($api['listing_url'])
                 ? $api['listing_url']
-                : (($shopifyRow && ! empty($shopifyRow->product_link))
-                    ? $shopifyRow->product_link
-                    : ($yoast['listing_url'] ?? $this->listingUrl($channel['listing_url'] ?? null, $listingId)));
+                : ($marketplaceUrl
+                    ?: (($shopifyRow && ! empty($shopifyRow->product_link))
+                        ? $shopifyRow->product_link
+                        : ($yoast['listing_url'] ?? null)));
 
             $displaySku = trim((string) ($productMaster->sku ?? $normalizedSku));
             $parent = $productMaster ? (trim((string) ($productMaster->parent ?? '')) ?: null) : null;

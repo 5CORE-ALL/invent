@@ -31,7 +31,7 @@ class LqsMarketplaceCatalog
             ['aliexpress', 'AliExpress', 'Product ID', 'sheet', 'aliexpress', 'https://www.aliexpress.com/item/{id}.html'],
             ['alibaba', 'Alibaba', 'Product ID', 'sheet', 'alibaba', null],
             ['reverb', 'Reverb', 'Product ID', 'sheet', 'reverb', 'https://reverb.com/item/{id}'],
-            ['newegg', 'Newegg', 'Product ID', 'sheet', 'newegg', null],
+            ['newegg', 'Newegg', 'Product ID', 'sheet', 'newegg', 'https://www.newegg.com/p/{id}'],
             ['shein', 'Shein', 'SKU Code', 'sheet', 'shein', null],
             ['wayfair', 'Wayfair', 'Listing ID', 'sheet', 'wayfair', null],
             ['bestbuy', 'Best Buy', 'Listing ID', 'sheet', null, null],

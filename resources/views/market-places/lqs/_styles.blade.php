@@ -242,4 +242,17 @@
         @media (max-width: 768px) {
             .lqs-yoast-dash { grid-template-columns: 1fr; }
         }
+        .amz-asin-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.1; }
+        .amz-asin-code { color: #212529; font-weight: 700; font-size: 11px; cursor: default; pointer-events: none; }
+        .amz-asin-views { display: flex; gap: 4px; }
+        .amz-asin-btn {
+            border: 1px solid #ff9900; background: #fff; color: #b36b00;
+            width: 22px; height: 18px; padding: 0; line-height: 1;
+            border-radius: 3px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .amz-asin-btn i { font-size: 11px; pointer-events: none; }
+        .amz-asin-btn:hover { background: #ff9900; color: #fff; }
+        .amz-asin-btn-m { border-color: #0d6efd; color: #0d6efd; }
+        .amz-asin-btn-m:hover { background: #0d6efd; color: #fff; }
     </style>
