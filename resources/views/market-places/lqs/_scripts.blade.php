@@ -23,7 +23,7 @@
         }
 
         window.lqsOpenNeweggMobile = function (id) {
-            const url = lqsNeweggItem(id) ? ('https://m.newegg.com/p/' + lqsNeweggItem(id)) : '';
+            const url = lqsNeweggUrl(id);
             if (!url) return;
             const popup = function () {
                 window.open(url, 'lqsNeweggMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
