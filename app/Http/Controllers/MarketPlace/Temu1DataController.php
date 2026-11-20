@@ -42,7 +42,8 @@ class Temu1DataController extends Ebay1DataController
             'title_name' => 'Product name',
             'price_name' => 'Base price',
             'title_max' => 500,
-            'item_url' => 'https://www.temu.com/us/goods.html?_bg_fs=1&goods_id=',
+            'item_url' => 'https://www.temu.com/us/product-g-',
+            'item_url_suffix' => '.html',
             'col_titles' => [
                 'item_id' => 'Goods ID',
                 'ebay_title' => 'Product name',
@@ -328,7 +329,7 @@ class Temu1DataController extends Ebay1DataController
                 $out[$this->skuKey((string) $r['sku'])] = [
                     'sku' => $r['sku'],
                     'item_id' => $goodsId,
-                    'ebay_link' => $goodsId !== '' ? 'https://www.temu.com/us/goods.html?_bg_fs=1&goods_id='.$goodsId : '',
+                    'ebay_link' => $goodsId !== '' ? 'https://www.temu.com/us/product-g-'.rawurlencode($goodsId).'.html' : '',
                     'ebay_price' => $r['base_price'] ?? null,
                     'ebay_stock' => $r['quantity'] ?? null,
                     'ebay_l7' => null,

@@ -502,6 +502,7 @@
             const E1_PRICE_NAME = @json($ebayCfg['price_name'] ?? 'Price');
             const E1_TITLE_MAX = @json((int) ($ebayCfg['title_max'] ?? 80));
             const E1_ITEM_URL = @json($ebayCfg['item_url'] ?? 'https://www.ebay.com/itm/');
+            const E1_ITEM_URL_SUFFIX = @json($ebayCfg['item_url_suffix'] ?? '');
             const E1_COL_TITLES = @json((object) ($ebayCfg['col_titles'] ?? []));
             const E1_COL_HIDE = @json($ebayCfg['hide'] ?? []);
             const E1_ID_RE = E1_TEMU ? /^\d{6,20}$/ : /^\d{9,15}$/;
@@ -3212,7 +3213,7 @@
                                 const id = String(cell.getValue() || '').trim();
                                 if (!id) return '<span class="e1d-muted">—</span>';
                                 const d = cell.getRow().getData();
-                                const href = /^https?:/i.test(d.buyer_link || '') ? d.buyer_link : E1_ITEM_URL + encodeURIComponent(id);
+                                const href = /^https?:/i.test(d.buyer_link || '') ? d.buyer_link : E1_ITEM_URL + encodeURIComponent(id) + E1_ITEM_URL_SUFFIX;
                                 return '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(id) + '</a>';
                             },
                         },
