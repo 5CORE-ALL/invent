@@ -351,7 +351,8 @@
         function temuRuleExplainSprice(d) {
             const steps = [];
             const notes = [];
-            const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            const ruleMode = typeof window.spriceActiveRule === 'function' ? window.spriceActiveRule() : 'std';
+            const dilOn = ruleMode === 'dil';
             const final = amazonShownSprice(d);
             const std = amazonStdPrice(d);
             const lmp = lmpWithShipping(d);
@@ -401,33 +402,30 @@
                         }
                     });
                 }
-                // LMP cap (Sprc Dil): when LMP is lower than the price, S PRC = LMP less the Reduce % of the SKU's Dil band
-                // (default 3%). No SNROI condition. Same as amazonCapSpriceToLmp and AmazonSprcDilAutoPushService.
-                if (base > 0) {
-                    const lmpOn = !(typeof window.amzRuleIsOn === 'function' && !window.amzRuleIsOn('lmp'));
-                    const lmpTitle = n + ' · LMP cap';
-                    if (!lmpOn) {
-                        steps.push(temuRuleStep('skip', lmpTitle, 'The LMP rule is <b>OFF</b>. No LMP cap.'));
-                    } else if (!(lmp > 0)) {
-                        steps.push(temuRuleStep('skip', lmpTitle, 'No LMP available, so no LMP cap applies.'));
-                    } else if (base <= lmp + 0.0001) {
-                        steps.push(temuRuleStep('skip', lmpTitle, 'Price ' + temuRuleMoney(base) + ' is not above LMP ' + temuRuleMoney(lmp) + '. The price is kept.'));
-                    } else {
-                        const pctRaw = (typeof window.amzLmpReducePct === 'function') ? Number(window.amzLmpReducePct(d)) : 3;
-                        const lmpPct = isFinite(pctRaw) ? Math.min(99, Math.max(0, pctRaw)) : 3;
-                        const afterLmp = +(lmp * (1 - lmpPct / 100)).toFixed(2);
-                        steps.push(temuRuleStep('ok', lmpTitle,
-                            'Price ' + temuRuleMoney(base) + ' is above LMP ' + temuRuleMoney(lmp) + ' → LMP − ' + lmpPct + '% (Dil band, LMP cap table) = LMP × ' + temuRulePctText(lmpPct) + ' = <b>' + temuRuleMoney(afterLmp) + '</b>'));
-                        base = afterLmp;
-                    }
-                    n++;
-                }
                 if (!(std > 0)) {
                     steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
                 } else if (base > std + 0.0001) {
                     steps.push(temuRuleStep('ok', n + ' · Std Prc maximum', 'Price ' + temuRuleMoney(base) + ' is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
                 } else {
                     steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
+                }
+            } else if (ruleMode === 'none') {
+                // Sprc Dil and Std prc vs dil are both OFF: no rule price is calculated. S PRC is the CVR Price Rule on the live Price,
+                // otherwise only an old saved value (not pushed).
+                base = Number(amzDisplayedSprice(d)) || 0;
+                steps.push(temuRuleStep('skip', '1 · Sprc Dil / Std prc vs dil',
+                    'Both rules are <b>OFF</b>. No rule price is calculated for this SKU.'));
+                const cvrNone = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
+                if (cvrNone) {
+                    steps.push(temuRuleStep('ok', '2 · CVR Price Rule',
+                        'CVR ' + (cvrNone.c === 'down' ? 'Down' : (cvrNone.c === 'up' ? 'Up' : 'within target')) + ': live Price ' + temuRuleMoney(cvrNone.base) + ' '
+                        + (cvrNone.pct > 0 ? '+' : '') + cvrNone.pct + '% = <b>' + temuRuleMoney(cvrNone.price) + '</b>' + (cvrNone.capped ? ' (set to the Lower cap price)' : '') + '.'));
+                } else {
+                    steps.push(temuRuleStep('skip', '2 · CVR Price Rule', 'The CVR Price Rule is not changing this SKU.'));
+                    if (final > 0) notes.push('S PRC ' + temuRuleMoney(final) + ' is an old saved value. It is not pushed and not counted in the blue badge.');
+                }
+                if (std > 0 && final > 0 && final + 0.0001 >= std) {
+                    steps.push(temuRuleStep('ok', '3 · Std Prc maximum', 'Held at Std Prc ' + temuRuleMoney(std) + '.'));
                 }
             } else {
                 base = Number(amzDisplayedSprice(d)) || 0;
@@ -456,14 +454,6 @@
                     n++;
                 }
                 if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(d)) notes.push('Clearance SKU: priced only from the Clearance SNROI block (or shows "C" with no price).');
-                const shouldCap = base > 0 && amazonShouldCapSpriceToLmp(d, base);
-                const sg = (lmp > 0) ? amazonSgroiAtPrice(d, lmp) : null;
-                const pct = (typeof window.amzStdLmpReducePct === 'function') ? (Number(window.amzStdLmpReducePct(d)) || 0) : 0;
-                temuRuleLmpStep(steps, {
-                    n: String(n), base: base, lmp: lmp, sgroiAtLmp: sg, pct: pct,
-                    src: 'LMP Reduce block',
-                    after: shouldCap ? +(lmp * (1 - Math.min(99, Math.max(0, pct)) / 100)).toFixed(2) : null
-                });
                 const afterLmp = (base > 0 && typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(d, base) : base;
                 // CVR Price Rule (its own modal): % off the price above. Shown only when it changed this SKU.
                 const cvrInfo = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
@@ -486,7 +476,7 @@
             if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
             return {
                 title: 'S PRC ' + temuRuleMoney(final),
-                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule'),
+                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : (ruleMode === 'none' ? 'Sprc Dil and Std prc vs dil are OFF' : 'Std prc vs dil rule')),
                 steps: steps, notes: notes, finalNote: ''
             };
         }

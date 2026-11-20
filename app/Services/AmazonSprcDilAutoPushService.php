@@ -515,13 +515,8 @@ class AmazonSprcDilAutoPushService
                     }
                 }
             }
-            // LMP cap (Sprc Dil modal): when LMP is available and lower than the new S PRC (after all the rules above),
-            // S PRC = LMP less the Reduce % of the SKU's Dil band (default 3% = LMP × 0.97). Std Prc is the maximum, below.
+            // No LMP cap: S PRC is never lowered to LMP. Std Prc is the maximum, below.
             $dilLmpCapped = false;
-            if ($this->dilRuleOn('lmp') && $lmp > 0 && $capped > $lmp + 0.0001) {
-                $capped = AmazonDilGroiRule::lmpTargetPrice($lmp, AmazonDilGroiRule::lmpCapReducePct($dil, $this->lmpCapCfg));
-                $dilLmpCapped = true;
-            }
             $capped = AmazonDilGroiRule::capToStdWhenNoLmp($capped, 0.0, $std);
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
@@ -627,22 +622,9 @@ class AmazonSprcDilAutoPushService
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
             $stdCeiling = (float) $sale;
         }
-        // LMP Reduce: when S PRC reaches LMP it lands on LMP less the % of its Dil slab (block in Std prc vs dil).
-        $lmpReducePct = self::stdRulePaused($stdPromo, 'lmpreduce')
-            ? 0.0
-            : AmazonDilGroiRule::lmpReducePct($dil, $stdPromo['lmp_reduce'] ?? null);
-        $capped = AmazonDilGroiRule::capSpriceToLmp(
-            $effective,
-            $lmp,
-            $lp,
-            $ship,
-            AmazonDilGroiRule::TAKE_HOME,
-            $stdCeiling,
-            $lmpReducePct
-        );
-        $lmpCapped = $lmp > 0
-            && ($effective - $capped) > 0.009
-            && abs($capped - AmazonDilGroiRule::lmpTargetPrice($lmp, $lmpReducePct)) <= 0.02;
+        // No LMP rule: S PRC is never lowered to LMP (the LMP Reduce block was removed). Std Prc stays the maximum.
+        $capped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $stdCeiling);
+        $lmpCapped = false;
         $sprice = $capped;
 
         if (! is_finite($sprice) || $sprice < 0.01) {

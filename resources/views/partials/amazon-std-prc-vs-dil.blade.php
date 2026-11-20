@@ -608,26 +608,6 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-snroicap-add">Add slab</button>
                         </div>
 
-                        <div class="amz-sp-col" data-amz-sp-panel="lmpreduce">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. When S PRC reaches LMP, it is set to LMP less the Reduce % of its Dil slab (for example 10% off LMP when Dil is under 25, 5% off LMP above). Leave the Reduce % blank to keep S PRC = LMP for that slab.">LMP Reduce</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause LMP Reduce rule" aria-label="Pause LMP Reduce rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize LMP Reduce" aria-label="Minimize LMP Reduce">−</button></span></div>
-                            <div class="amz-sp-sub">If S PRC = LMP, S PRC = LMP − Reduce %.</div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th class="text-center">Dil from</th>
-                                            <th class="text-center">Dil to</th>
-                                            <th class="text-center">At LMP</th>
-                                            <th class="text-end">Reduce %</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amz-sp-lmpreduce-tbody"></tbody>
-                                </table>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-lmpreduce-add">Add slab</button>
-                        </div>
-
                         <div class="amz-sp-col" data-amz-sp-panel="clrsnroi">
                             <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; Std Prc stays the maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Clearance SNROI rule" aria-label="Pause Clearance SNROI rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></span></div>
                             <div class="amz-sp-sub">Clearance (C) SKUs: S PRC = Target SNROI by Dil.</div>

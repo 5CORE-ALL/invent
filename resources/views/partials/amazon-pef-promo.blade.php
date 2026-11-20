@@ -9,7 +9,6 @@
 @php
     $amazonPefPromoPart = $amazonPefPromoPart ?? 'all';
     $amazonPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled('amazon');
-    $amazonIgnoreNegSnroi = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush('amazon');
 @endphp
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
@@ -862,15 +861,6 @@
                     <input type="checkbox" role="switch" id="amz-reload-push-switch"
                         {{ $amazonPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
-                <label class="amz-reload-push-switch{{ $amazonIgnoreNegSnroi ? '' : ' is-off' }}"
-                    id="amz-neg-snroi-wrap"
-                    title="Push Prc and cron skip a SKU whose SNROI at the push price is below 0. The price still saves.">
-                    <span class="amz-reload-push-text">
-                        Ignore neg SNROI
-                        <span class="amz-reload-push-state" id="amz-neg-snroi-label">{{ $amazonIgnoreNegSnroi ? 'On' : 'Off' }}</span>
-                    </span>
-                    <input type="checkbox" role="switch" id="amz-neg-snroi-switch" {{ $amazonIgnoreNegSnroi ? 'checked' : '' }}>
-                </label>
                 <div id="amz-reload-push-progress" class="amz-reload-push-progress"
                     aria-live="polite" title="Amazon Push Prc progress">
                     <div class="amz-reload-push-progress-track">
@@ -1190,71 +1180,6 @@
                     </button>
                     </div>
                     <div class="amz-dg-card-rules" data-card="age">
-                        <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
-                        <div class="amz-dg-rules-list"></div>
-                    </div>
-                    </div>
-                    <div class="amz-dg-card" data-amz-card="lmp">
-                    <button type="button" class="amz-dg-min-btn" title="Minimize" aria-label="Minimize">−</button>
-                    <button type="button" class="amz-dg-del-btn" data-amz-del="lmp" title="Delete this rule card" aria-label="Delete this rule card"><i class="fas fa-trash-alt"></i></button>
-                    <div class="amz-dg-side">
-                    <div class="amz-dg-rules-title amz-dg-has-sw mt-2"
-                        title="When LMP is available and lower than the new S PRC (after all the other rules), S PRC = LMP less the % of the SKU's Dil band. Std Prc stays the maximum. Count = SKUs (INV &gt; 0) in that Dil band.">
-                        <span>LMP cap — S PRC = LMP − x% by Dil</span>
-                        <label class="amz-dg-rule-sw" title="ON / OFF. OFF = S PRC is no longer brought down to LMP."><input type="checkbox" class="amz-dg-rule-sw-in" data-amz-rule="lmp" checked><span class="amz-dg-rule-sw-txt">ON</span></label>
-                    </div>
-                    </div>
-                    <div class="amz-dg-main">
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="amz-lmp-cap-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Dil band</th>
-                                    <th class="text-center">Dil %</th>
-                                    <th class="text-end">LMP reduce %</th>
-                                    <th class="text-center">S PRC</th>
-                                    <th class="text-center" style="width:80px;" title="SKUs (INV &gt; 0) whose Dil % is in this band">Count</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr data-row="low">
-                                    <td>Below</td>
-                                    <td class="text-center">
-                                        &lt;
-                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-lt" value="25">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-low-pct" value="3">
-                                    </td>
-                                    <td class="text-center text-muted amz-lmp-cap-eg-low">LMP × 0.97</td>
-                                    <td class="amz-dg-count"><span class="amz-lmp-cap-low-count">0</span></td>
-                                </tr>
-                                <tr data-row="mid">
-                                    <td>Between</td>
-                                    <td class="text-center"><span class="amz-lmp-cap-mid-range">25 – 50</span></td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-mid-pct" value="3">
-                                    </td>
-                                    <td class="text-center text-muted amz-lmp-cap-eg-mid">LMP × 0.97</td>
-                                    <td class="amz-dg-count"><span class="amz-lmp-cap-mid-count">0</span></td>
-                                </tr>
-                                <tr data-row="high">
-                                    <td>Above</td>
-                                    <td class="text-center">
-                                        &gt;
-                                        <input type="number" min="0" step="1" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-gt" value="50">
-                                    </td>
-                                    <td class="text-end">
-                                        <input type="number" min="0" max="99" step="0.5" class="form-control form-control-sm amz-lmp-cap-input amz-lmp-cap-high-pct" value="3">
-                                    </td>
-                                    <td class="text-center text-muted amz-lmp-cap-eg-high">LMP × 0.97</td>
-                                    <td class="amz-dg-count"><span class="amz-lmp-cap-high-count">0</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    </div>
-                    <div class="amz-dg-card-rules" data-card="lmp">
                         <div class="amz-dg-card-rules-head"><span><i class="fas fa-list-ul me-1"></i> Rules</span><button type="button" class="amz-dg-rule-add" title="Add a rule" aria-label="Add a rule">+</button></div>
                         <div class="amz-dg-rules-list"></div>
                     </div>
@@ -2167,7 +2092,6 @@
             ];
         }
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? false);
-        let amzIgnoreNegSnroi = @json((bool) $amazonIgnoreNegSnroi);
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -4748,8 +4672,8 @@
             const dropped = (origEffective - capped) > 0.009;
             plan.lmpAboveStd = dropped && lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow
                 && capped + 0.0001 <= stdNow + 0.0001;
-            plan.lmpCapped = dropped && lmpNow > 0 && !plan.lmpAboveStd && capped + 0.0001 <= lmpNow + 0.0001;
-            plan.stdCapped = dropped && !plan.lmpAboveStd && !plan.lmpCapped && stdNow > 0
+            plan.lmpCapped = false; // the LMP rule was removed
+            plan.stdCapped = dropped && !plan.lmpAboveStd && stdNow > 0
                 && capped + 0.0001 <= stdNow + 0.0001;
             return plan;
         }
@@ -5791,41 +5715,8 @@
         }
 
         /** Queue SKUs for background Push Prc (append-safe while a job is running). */
-        function amzPushBlockedByNegSnroi(item) {
-            if (!amzIgnoreNegSnroi) return false;
-            if (!item || typeof amazonComputeNroiAtSp !== 'function') return false;
-            // Clearance SKUs (Sprc Dil rule) are pushed even when SNROI is negative.
-            if (typeof window.amzClearanceDilActive === 'function' && typeof table !== 'undefined' && table
-                && typeof table.getRows === 'function') {
-                const skuKey = String(item.sku || '').trim().toUpperCase();
-                const isClr = table.getRows().some(function(r) {
-                    const rd = r.getData() || {};
-                    return String(amzPefSku(rd) || '').trim().toUpperCase() === skuKey
-                        && window.amzClearanceDilActive(rd);
-                });
-                if (isClr) return false;
-            }
-            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return false;
-            const sku = String(item.sku || '').trim().toUpperCase();
-            let d = null;
-            table.getRows().some(function(r) {
-                const row = r.getData() || {};
-                if (String(amzPefSku(row) || '').trim().toUpperCase() === sku) {
-                    d = row;
-                    return true;
-                }
-                return false;
-            });
-            if (!d) return false;
-            const price = Number(item.sale || item.effective || item.std) || 0;
-            const n = amazonComputeNroiAtSp(price, d);
-            return n != null && n < 0;
-        }
         function queueAmzPushPrcItems(items, opts) {
             opts = opts || {};
-            if (Array.isArray(items)) {
-                items = items.filter(function(item) { return !amzPushBlockedByNegSnroi(item); });
-            }
             if (!items || !items.length) {
                 if (!opts.silent) amzPefToast('error', 'Nothing to queue');
                 return Promise.resolve(null);
@@ -6001,23 +5892,6 @@
             $('#amz-reload-push-label').text(on ? 'On' : 'Off');
             if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
         }
-        function syncAmzNegSnroiSwitchUi() {
-            const on = !!amzIgnoreNegSnroi;
-            $('#amz-neg-snroi-wrap').toggleClass('is-off', !on);
-            $('#amz-neg-snroi-label').text(on ? 'On' : 'Off');
-            const $sw = $('#amz-neg-snroi-switch');
-            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
-        }
-        function saveAmzIgnoreNegSnroi(enabled) {
-            amzIgnoreNegSnroi = !!enabled;
-            syncAmzNegSnroiSwitchUi();
-            return $.ajax({
-                url: '/channel-promo-pricing/amazon/ignore-neg-snroi',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
-                data: { _token: amzPefCsrf(), enabled: enabled ? 1 : 0 },
-            });
-        }
         function saveAmzPageReloadPush(enabled) {
             amzPageReloadPushEnabled = !!enabled;
             syncAmzReloadPushSwitchUi();
@@ -6100,7 +5974,7 @@
         window.amzPushLeftoverBlues = amzPushLeftoverBlues;
         /** Console helper: window.amzDebugBlueSkip() — why blue-badge SKUs are not queued by Push on reload. */
         window.amzDebugBlueSkip = function() {
-            const why = { missing_amazon: [], no_plan: [], plan_equals_live: [], neg_snroi: [], queueable: [] };
+            const why = { missing_amazon: [], no_plan: [], plan_equals_live: [], queueable: [] };
             const seen = {};
             const rows = [];
             if (typeof table !== 'undefined' && table && table.getRows) {
@@ -6124,7 +5998,6 @@
                     why.plan_equals_live.push(sku + ' (plan ' + plan.effective + ' / shown ' + amazonVisibleSprice(d) + ' / live ' + live + ')');
                     return;
                 }
-                if (amzPushBlockedByNegSnroi(planToAmzPushPrcQueueItem(d, plan))) { why.neg_snroi.push(sku); return; }
                 why.queueable.push(sku);
             });
             console.log('reload push allowed:', amzPageReloadPushAllowed(),
@@ -6201,22 +6074,6 @@
 
         function initAmazonPefPromoUi() {
             syncAmzReloadPushSwitchUi();
-            syncAmzNegSnroiSwitchUi();
-            $('#amz-neg-snroi-switch').off('change.amzNeg').on('change.amzNeg', function() {
-                const on = !!this.checked;
-                const prev = amzIgnoreNegSnroi;
-                saveAmzIgnoreNegSnroi(on)
-                    .done(function() {
-                        amzPefToast('success', on
-                            ? 'Ignore neg SNROI on — SKUs with SNROI below 0 are skipped on push.'
-                            : 'Ignore neg SNROI off — negative-SNROI SKUs will be pushed too.');
-                    })
-                    .fail(function(xhr) {
-                        amzIgnoreNegSnroi = prev;
-                        syncAmzNegSnroiSwitchUi();
-                        amzPefToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save Ignore neg SNROI switch');
-                    });
-            });
             $('#amz-reload-push-switch').off('change.amzReload').on('change.amzReload', function() {
                 const on = !!this.checked;
                 const prev = amzPageReloadPushAllowed();

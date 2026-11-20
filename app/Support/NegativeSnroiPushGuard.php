@@ -38,6 +38,10 @@ class NegativeSnroiPushGuard
         if ($channel === 'newtemuone') {
             return false;
         }
+        // Amazon: the "Ignore neg SNROI" switch was removed. Every SKU is pushed, negative SNROI included.
+        if ($channel === 'amazon') {
+            return false;
+        }
         if (array_key_exists($channel, self::$enabled) && (time() - (self::$enabledAt[$channel] ?? 0)) < 10) {
             return self::$enabled[$channel];
         }
