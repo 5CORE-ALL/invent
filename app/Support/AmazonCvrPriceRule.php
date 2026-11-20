@@ -35,7 +35,14 @@ class AmazonCvrPriceRule
         $cvr = $sess30 == 0.0 ? 0.0 : ($aL30 / $sess30) * 100;
         $down = self::band($cfg['down_band'] ?? null, 20.0, 99.0) / 100;
         $up = self::band($cfg['up_band'] ?? null, 20.0, 1000.0) / 100;
-        if ($cvr > $lto * (1 + $up)) {
+        $pinkRaw = $cfg['pink'] ?? null;
+        $pinkOn = $pinkRaw !== null && $pinkRaw !== '' && is_numeric($pinkRaw);
+        $pinkAbove = (isset($cfg['pink_above']) && is_numeric($cfg['pink_above']) && (float) $cfg['pink_above'] >= 0)
+            ? (float) $cfg['pink_above'] : 12.99;
+        if ($pinkOn && $cvr > $pinkAbove) {
+            // Pink up arrow slab (CVR L30 above the pink target): replaces the down / within / up case.
+            $case = 'pink';
+        } elseif ($cvr > $lto * (1 + $up)) {
             $case = 'up';
         } elseif ($cvr < $lto * (1 - $down)) {
             $case = 'down';
@@ -47,7 +54,7 @@ class AmazonCvrPriceRule
             return null;
         }
         $pct = (float) $raw;
-        $pct = $case === 'down' ? -abs($pct) : ($case === 'up' ? abs($pct) : $pct);
+        $pct = $case === 'down' ? -abs($pct) : (($case === 'up' || $case === 'pink') ? abs($pct) : $pct);
         if ($pct == 0.0) {
             return null;
         }

@@ -3287,6 +3287,10 @@ class OverallAmazonController extends Controller
             'down' => $num($raw['down'] ?? null, -100.0, 100.0),
             'same' => $num($raw['same'] ?? null, -100.0, 100.0),
             'up' => $num($raw['up'] ?? null, -100.0, 100.0),
+            // Pink-arrow slab: a SKU whose CVR L30 is above pink_above % gets this price change % (it always raises the price,
+            // and takes the place of the down / within / up case). Blank = the slab is off.
+            'pink' => $num($raw['pink'] ?? null, -100.0, 100.0),
+            'pink_above' => $num($raw['pink_above'] ?? null, 0.0, 1000.0) ?? 12.99,
             'lower_cap' => filter_var($raw['lower_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'min_npft' => $num($raw['min_npft'] ?? null, -100.0, 79.0),
             'min_nroi' => $num($raw['min_nroi'] ?? null, -100.0, 1000.0),
@@ -3315,11 +3319,11 @@ class OverallAmazonController extends Controller
 
     public function amazonCvrPriceRuleSave(Request $request)
     {
-        $payload = self::amazonNormalizeCvrPriceRule($request->only(['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']));
+        $payload = self::amazonNormalizeCvrPriceRule($request->only(['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']));
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_cvr_price_rule'],
-            ['visibility' => $payload, 'column_order' => ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']]
+            ['visibility' => $payload, 'column_order' => ['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']]
         );
 
         return response()->json(['success' => true] + $payload);

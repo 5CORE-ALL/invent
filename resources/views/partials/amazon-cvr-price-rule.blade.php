@@ -89,6 +89,15 @@
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
                             </tr>
+                            <tr data-key="pink">
+                                <td><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i> <strong style="color:#e83e8c;">CVR pink arrow</strong>
+                                    <div class="text-muted" style="font-size:11px;">CVR L30 above
+                                        <span class="d-inline-flex align-items-center"><input type="number" min="0" max="1000" step="0.01" class="form-control form-control-sm d-inline-block px-1 py-0 amz-cvr-pink-above" style="width:64px;height:20px;font-size:11px;" value="12.99"></span>%
+                                        (the pink ↑ in CVR Δ). Takes the place of the three cases above and always raises the price. Leave the % blank to turn it off.</div></td>
+                                <td class="text-end text-muted"><span class="amz-cvr-rule-count">—</span></td>
+                                <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="off"><span class="input-group-text">%</span></div></td>
+                                <td class="text-end text-muted amz-cvr-rule-capped">—</td>
+                            </tr>
                         </tbody>
                     </table>
                     <div class="border rounded p-2 mb-2" id="amz-cvr-cap-box">
@@ -151,10 +160,28 @@
             if (cvr < lto * (1 - b.down)) return -1;
             return 0;
         }
-        /** Same as amzCvrRuleTrendValue but as 'up' / 'down' / 'same'. */
+        /** CVR L30 % above which the pink up arrow shows (CVR Δ column) and the pink slab applies. Default 12.99. */
+        function amzCvrRulePinkAbove(cfg) {
+            cfg = cfg || amzCvrRule || {};
+            const v = parseFloat(cfg.pink_above);
+            return (isFinite(v) && v >= 0) ? v : 12.99;
+        }
+        /** The pink slab is on once it has a price change % (blank = off). */
+        function amzCvrRulePinkOn(cfg) {
+            cfg = cfg || amzCvrRule || {};
+            return cfg.pink !== null && cfg.pink !== undefined && cfg.pink !== '' && isFinite(parseFloat(cfg.pink));
+        }
+        window.amzCvrRulePinkAbove = amzCvrRulePinkAbove;
+        /** Same as amzCvrRuleTrendValue but as 'pink' / 'up' / 'down' / 'same'. Pink (CVR L30 above the pink target) comes first. */
         function amzCvrRuleCaseFor(row, cfg) {
             const t = amzCvrRuleTrendValue(row, cfg);
-            return t === null ? null : (t > 0 ? 'up' : (t < 0 ? 'down' : 'same'));
+            if (t === null) return null;
+            if (amzCvrRulePinkOn(cfg)) {
+                const sess30 = parseFloat(row['Sess30']) || 0;
+                const cvr = sess30 === 0 ? 0 : ((parseFloat(row['A_L30']) || 0) / sess30) * 100;
+                if (cvr > amzCvrRulePinkAbove(cfg)) return 'pink';
+            }
+            return t > 0 ? 'up' : (t < 0 ? 'down' : 'same');
         }
         /** Keep the band wording in the modal and the CVR Δ filter in step with the targets. */
         function amzCvrRuleRefreshLabels(cfg) {
@@ -219,7 +246,7 @@
             const p = parseFloat(raw);
             if (!isFinite(p)) return NaN;
             if (c === 'down') return -Math.abs(p);
-            if (c === 'up') return Math.abs(p);
+            if (c === 'up' || c === 'pink') return Math.abs(p);
             return p;
         }
         function amzCvrRulePriceFor(row, cfg, basePrice) {
@@ -312,7 +339,7 @@
         /** Small arrow shown next to the S PRC number when the CVR Price Rule moved it (hover = the working). One price only. */
         window.amzCvrRuleMarkHtml = function(info) {
             if (!info) return '';
-            const word = info.c === 'down' ? 'CVR Down' : (info.c === 'up' ? 'CVR Up' : 'CVR within target');
+            const word = info.c === 'down' ? 'CVR Down' : (info.c === 'up' ? 'CVR Up' : (info.c === 'pink' ? 'CVR pink arrow' : 'CVR within target'));
             const tip = 'CVR Price Rule (' + word + '): $' + info.base.toFixed(2) + ' ' + (info.pct > 0 ? '+' : '') + info.pct + '% = $' + info.price.toFixed(2)
                 + (info.capped ? ' (set to the Lower cap price)' : '');
             const up = info.price > info.base;
@@ -331,7 +358,7 @@
             return inner;
         }
         function amzCvrRuleReadDraft() {
-            const d = { enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
+            const d = { pink_above: $('#amz-cvr-rule-table .amz-cvr-pink-above').val(), enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 d[$(this).data('key')] = $(this).find('.amz-cvr-rule-pct').val();
             });
@@ -347,8 +374,8 @@
         function amzCvrRuleCounts(cfg) {
             cfg = cfg || amzCvrRule || {};
             const rows = (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
-            const counts = { down: 0, same: 0, up: 0 };
-            const capped = { down: 0, same: 0, up: 0 };
+            const counts = { down: 0, same: 0, up: 0, pink: 0 };
+            const capped = { down: 0, same: 0, up: 0, pink: 0 };
             rows.forEach(function(r) {
                 if (!r || r.is_parent_summary) return;
                 const sku = String(r['(Child) sku'] || '').trim().toUpperCase();
@@ -390,8 +417,9 @@
             const counts = res.counts, capped = res.capped;
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 const k = $(this).data('key');
-                $(this).find('.amz-cvr-rule-count').text(counts[k].toLocaleString());
-                $(this).find('.amz-cvr-rule-capped').text(cfg.lower_cap ? capped[k].toLocaleString() : '—');
+                const live = counts[k] || 0;
+                $(this).find('.amz-cvr-rule-count').text(live.toLocaleString());
+                $(this).find('.amz-cvr-rule-capped').text(cfg.lower_cap ? (capped[k] || 0).toLocaleString() : '—');
             });
             amzCvrRulePaintDots(counts);
             $('#amz-cvr-cap-npft, #amz-cvr-cap-nroi').prop('disabled', !cfg.lower_cap);
@@ -413,6 +441,7 @@
                 const v = cfg[key];
                 $(this).find('.amz-cvr-rule-pct').val(v === null || v === undefined || v === '' ? '' : v);
             });
+            $('#amz-cvr-rule-table .amz-cvr-pink-above').val(amzCvrRulePinkAbove(cfg));
             $('#amz-cvr-rule-enabled').prop('checked', !!cfg.enabled);
             amzCvrRulePaintOnOffText();
             $('#amz-cvr-band-down').val(amzCvrRuleBandPcts(cfg).down);
@@ -448,7 +477,7 @@
                     headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
                 }).done(function(res) {
                     if (!res || !res.success) { amzPefToast('error', 'Could not save CVR Price Rule'); return; }
-                    amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, down_band: res.down_band, up_band: res.up_band };
+                    amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, pink: res.pink, pink_above: res.pink_above, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, down_band: res.down_band, up_band: res.up_band };
                     amzCvrRuleRefreshLabels(amzCvrRule);
                     amzCvrRulePaintState();
                     amzCvrRulePostCounts();

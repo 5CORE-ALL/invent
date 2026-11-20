@@ -418,7 +418,7 @@
                 const cvrNone = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
                 if (cvrNone) {
                     steps.push(temuRuleStep('ok', '2 · CVR Price Rule',
-                        'CVR ' + (cvrNone.c === 'down' ? 'Down' : (cvrNone.c === 'up' ? 'Up' : 'within target')) + ': live Price ' + temuRuleMoney(cvrNone.base) + ' '
+                        'CVR ' + (cvrNone.c === 'down' ? 'Down' : (cvrNone.c === 'up' ? 'Up' : (cvrNone.c === 'pink' ? 'pink arrow' : 'within target'))) + ': live Price ' + temuRuleMoney(cvrNone.base) + ' '
                         + (cvrNone.pct > 0 ? '+' : '') + cvrNone.pct + '% = <b>' + temuRuleMoney(cvrNone.price) + '</b>' + (cvrNone.capped ? ' (set to the Lower cap price)' : '') + '.'));
                 } else {
                     steps.push(temuRuleStep('skip', '2 · CVR Price Rule', 'The CVR Price Rule is not changing this SKU.'));
@@ -459,7 +459,7 @@
                 const cvrInfo = (typeof window.amzCvrRuleInfo === 'function') ? window.amzCvrRuleInfo(d) : null;
                 if (cvrInfo) {
                     steps.push(temuRuleStep('ok', (n + 1) + ' · CVR Price Rule',
-                        'CVR ' + (cvrInfo.c === 'down' ? 'Down' : (cvrInfo.c === 'up' ? 'Up' : 'within target')) + ': ' + temuRuleMoney(cvrInfo.base) + ' '
+                        'CVR ' + (cvrInfo.c === 'down' ? 'Down' : (cvrInfo.c === 'up' ? 'Up' : (cvrInfo.c === 'pink' ? 'pink arrow' : 'within target'))) + ': ' + temuRuleMoney(cvrInfo.base) + ' '
                         + (cvrInfo.pct > 0 ? '+' : '') + cvrInfo.pct + '% = <b>' + temuRuleMoney(cvrInfo.price) + '</b>' + (cvrInfo.capped ? ' (set to the Lower cap price)' : '') + '.'));
                     n++;
                 }

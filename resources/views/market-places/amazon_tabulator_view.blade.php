@@ -5165,14 +5165,15 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow. A pink up arrow is added when CVR L30 is above 12.99%.",
+                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow. A pink up arrow is added when CVR L30 is above the pink target set in the CVR Price Rule modal (default 12.99%).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = amazonCvrVsLtoTrend(row);
                             const cvr30 = amazonRowCvrL30(row);
-                            // CVR L30 above 12.99%: an extra pink up arrow next to the normal arrow.
-                            const pinkUp = (isFinite(cvr30) && cvr30 > 12.99)
-                                ? '<span title="' + escAttr('CVR L30 ' + cvr30.toFixed(1) + '% is above 12.99%') + '"><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i></span>'
+                            // CVR L30 above the pink target (CVR Price Rule modal, default 12.99%): an extra pink up arrow next to the normal arrow.
+                            const pinkAbove = (typeof amzCvrRulePinkAbove === 'function') ? amzCvrRulePinkAbove() : 12.99;
+                            const pinkUp = (isFinite(cvr30) && cvr30 > pinkAbove)
+                                ? '<span title="' + escAttr('CVR L30 ' + cvr30.toFixed(1) + '% is above ' + pinkAbove + '%') + '"><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i></span>'
                                 : '';
                             let main;
                             if (t === null) {
