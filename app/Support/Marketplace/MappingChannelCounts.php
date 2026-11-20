@@ -41,12 +41,13 @@ class MappingChannelCounts
     private const INACTIVE_PAGE_CACHE_TTL_DAYS = 7;
 
     /**
-     * Channels whose API cannot update inventory (TopDawg returns 403), so their mismatch SKUs
-     * are not counted on /map-issues or in the sidebar total.
+     * Channels whose inventory push is not updating the marketplace (TopDawg returns 403,
+     * Alibaba is not accepting inventory updates), so their mismatch SKUs are not counted
+     * on /map-issues or in the sidebar total.
      *
      * @var list<string>
      */
-    public const NOT_COUNTED = ['topdawg'];
+    public const NOT_COUNTED = ['topdawg', 'alibaba'];
 
     public static function isNotCounted(string $slug): bool
     {
@@ -61,11 +62,14 @@ class MappingChannelCounts
     {
         foreach ($rows as $i => $row) {
             if (is_array($row) && self::isNotCounted((string) ($row['channel_slug'] ?? ''))) {
+                $slug = self::normalize((string) ($row['channel_slug'] ?? ''));
                 $rows[$i]['missing_mapping_titas'] = 0;
                 $rows[$i]['not_counted'] = true;
                 $rows[$i]['inventory_push'] = 'failed';
                 $rows[$i]['inventory_push_label'] = 'Inventory push failed';
-                $rows[$i]['inventory_push_detail'] = 'The TopDawg API rejects inventory updates (403 Forbidden), so Shopify quantity cannot be pushed. Its mismatch SKUs are not counted here.';
+                $rows[$i]['inventory_push_detail'] = $slug === 'alibaba'
+                    ? 'Alibaba is not accepting inventory updates, so Shopify quantity cannot be pushed. Its mismatch SKUs are not counted here.'
+                    : 'The TopDawg API rejects inventory updates (403 Forbidden), so Shopify quantity cannot be pushed. Its mismatch SKUs are not counted here.';
             }
         }
 
@@ -98,7 +102,7 @@ class MappingChannelCounts
             $rows[$i]['missing_mapping_titas'] = 0;
             $rows[$i]['not_counted'] = true;
             $rows[$i]['inventory_push'] = 'failed';
-            $rows[$i]['inventory_push_label'] = 'inventory sync failed';
+            $rows[$i]['inventory_push_label'] = 'Inventory push failed';
             $rows[$i]['inventory_push_detail'] = 'Alibaba is not accepting inventory updates, so these SKUs are not counted as a mismatch.';
         }
 
@@ -479,14 +483,8 @@ class MappingChannelCounts
      */
     public static function countForSlug(string $slug): int
     {
-        if (self::normalize($slug) === 'alibaba') {
-            try {
-                if (AlibabaInventorySyncService::inventorySyncFailed()) {
-                    return 0;
-                }
-            } catch (\Throwable $e) {
-                // count it until the sync state can be read
-            }
+        if (self::isNotCounted($slug)) {
+            return 0;
         }
 
         $cached = self::cachedCountForSlug($slug);

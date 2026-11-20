@@ -235,7 +235,7 @@
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         if (String(row.inventory_push || '') === 'failed') {
-                            const label = escapeHtml(row.inventory_push_label || 'inventory sync failed');
+                            const label = escapeHtml(row.inventory_push_label || 'Inventory push failed');
                             const detail = escapeHtml(row.inventory_push_detail || '');
                             return `<span class="badge bg-danger" title="${detail}">${label}</span>`;
                         }
