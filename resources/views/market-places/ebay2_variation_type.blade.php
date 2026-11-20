@@ -43,6 +43,13 @@
         .e2vt-chip--edit { background: #fef9c3; border-color: #facc15; color: #713f12; font-weight: 600; }
         .e2vt-chip--more { background: transparent; border-style: dashed; color: #64748b; }
         .e2vt-chip--name { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; font-weight: 600; }
+        #e2vt-toasts { position: fixed; top: 80px; right: 18px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+        .e2vt-toast { display: flex; align-items: flex-start; gap: 10px; background: #fff; border-radius: 8px; border-left: 5px solid #16a34a; padding: 10px 12px; box-shadow: 0 6px 20px rgba(15, 23, 42, .25); font-size: 13px; }
+        .e2vt-toast > i { font-size: 20px; color: #16a34a; line-height: 1; }
+        .e2vt-toast--fail { border-left-color: #dc2626; }
+        .e2vt-toast--fail > i { color: #dc2626; }
+        .e2vt-toast-body { flex: 1; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; }
+        .e2vt-toast-body div { color: #475569; margin-top: 2px; }
         .e2vt-chip--excess { background: #f3e8ff; border-color: #c084fc; color: #7e22ce; font-weight: 600; }
         .e2vt-chip--none { background: transparent; color: #94a3b8; }
         .e2vt-chip--differs { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
@@ -327,17 +334,40 @@
 
             async function pushType(d) {
                 const newType = typeToAdd(d);
+                let outcome;
                 if (!newType) {
-                    await applyRowUpdates([{ item_id: d.item_id, push_status: 'failed', push_message: 'Enter the new variation type first.' }]);
-                    return;
-                }
-                try {
-                    const res = await post(URLS.push, { item_id: d.item_id, new_type: newType });
-                    await applyRowUpdates([res.row]);
-                } catch (e) {
-                    await applyRowUpdates([{ item_id: d.item_id, push_status: 'failed', push_message: e.message }]);
+                    outcome = { success: false, message: 'Enter the new variation type first.' };
+                    await applyRowUpdates([{ item_id: d.item_id, push_status: 'failed', push_message: outcome.message }]);
+                } else {
+                    try {
+                        const res = await post(URLS.push, { item_id: d.item_id, new_type: newType });
+                        await applyRowUpdates([res.row]);
+                        outcome = { success: !!res.success, message: String((res.row && res.row.push_message) || (res.success ? 'Variation type added.' : 'Add failed.')) };
+                    } catch (e) {
+                        outcome = { success: false, message: e.message };
+                        await applyRowUpdates([{ item_id: d.item_id, push_status: 'failed', push_message: e.message }]);
+                    }
                 }
                 recountBadges();
+                return outcome;
+            }
+
+            // Floating message in the top right: green for success, red for failure (failures stay until closed).
+            function showToast(success, title, message) {
+                let host = document.getElementById('e2vt-toasts');
+                if (!host) {
+                    host = document.createElement('div');
+                    host.id = 'e2vt-toasts';
+                    document.body.appendChild(host);
+                }
+                const el = document.createElement('div');
+                el.className = 'e2vt-toast ' + (success ? 'e2vt-toast--ok' : 'e2vt-toast--fail');
+                el.innerHTML = '<i class="' + (success ? 'ri-checkbox-circle-fill' : 'ri-error-warning-fill') + '"></i>'
+                    + '<div class="e2vt-toast-body"><b>' + esc(title) + '</b><div>' + esc(message) + '</div></div>'
+                    + '<button type="button" class="btn-close" aria-label="Close"></button>';
+                el.querySelector('.btn-close').addEventListener('click', () => el.remove());
+                host.appendChild(el);
+                if (success) setTimeout(() => el.remove(), 10000);
             }
 
             async function pushValues(d) {
@@ -633,8 +663,18 @@
                                         if (typeToAdd(d) === '') { alert('Type a New Type first. This parent has no Variation Master type to use.'); return; }
                                         if (hasAspect(d, typeToAdd(d)) && !confirm('The listing already has the variation type "' + typeToAdd(d) + '". Try to add it anyway?')) return;
                                         if (!confirm('Add the variation type "' + typeToAdd(d) + '" to ' + d.main_listing + ' on eBay 2? Every SKU gets its Variation Master Variation Name as the value. This changes the live listing.')) return;
-                                        setBusy(true, 'Adding type to ' + d.main_listing + '...');
-                                        try { await pushType(d); } finally { setBusy(false, ''); cell.getRow().reformat(); }
+                                        const btn = e.target.closest('.e2vt-push-type');
+                                        const typeName = typeToAdd(d);
+                                        // Loader on the button while eBay is called (can take a few seconds).
+                                        btn.disabled = true;
+                                        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Adding...';
+                                        setBusy(true, 'Adding "' + typeName + '" to ' + d.main_listing + '...');
+                                        let outcome = null;
+                                        try { outcome = await pushType(d); } finally { setBusy(false, ''); cell.getRow().reformat(); }
+                                        if (outcome) {
+                                            showToast(outcome.success, outcome.success ? 'Added "' + typeName + '" to ' + d.main_listing : 'Could not add "' + typeName + '" to ' + d.main_listing, outcome.message);
+                                            document.getElementById('e2vt-progress').textContent = (outcome.success ? 'Success: ' : 'Failed: ') + outcome.message;
+                                        }
                                     },
                                 },
                                 {
