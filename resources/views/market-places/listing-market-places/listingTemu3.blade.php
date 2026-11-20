@@ -1065,7 +1065,7 @@
 
             // Stable URLs (session/refer params omitted)
             const href = isBuyer
-                ? ('https://www.temu.com/goods.html?_bg_fs=1&goods_id=' + encodeURIComponent(goodsId))
+                ? ('https://www.temu.com/us/goods.html?_bg_fs=1&goods_id=' + encodeURIComponent(goodsId))
                 : ('https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(goodsId));
             const label = isBuyer ? 'Buyer' : 'Seller';
             const title = isBuyer
@@ -1254,7 +1254,7 @@
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/goods.html?_bg_fs=1&goods_id={goods_id}',
+                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/us/goods.html?_bg_fs=1&goods_id={goods_id}',
                         formatter: formatBuyerLink
                     },
                     {
