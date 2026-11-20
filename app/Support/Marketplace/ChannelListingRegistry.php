@@ -182,7 +182,7 @@ class ChannelListingRegistry
                 // Same "already listed" rule as the Temu publish window (live goods_id, pack aliases, Seller Center).
                 'listed' => ['type' => 'custom', 'method' => 'listedTemu'],
                 'id_field' => 'goods_id',
-                'buyer_tpl' => 'https://www.temu.com/us/product-g-{id}.html',
+                'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
             ],
             'temu2' => [
@@ -191,7 +191,7 @@ class ChannelListingRegistry
                 // Listed = Temu 2 products API → temu2_metrics.goods_id
                 'listed' => ['type' => 'column', 'model' => Temu2Metric::class, 'column' => 'goods_id', 'reject_sku' => true],
                 'id_field' => 'goods_id',
-                'buyer_tpl' => 'https://www.temu.com/us/product-g-{id}.html',
+                'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
             ],
             'temu3' => [
@@ -199,7 +199,7 @@ class ChannelListingRegistry
                 'status' => \App\Models\Temu3ListingStatus::class,
                 'listed' => ['type' => 'column', 'model' => \App\Models\Temu3Metric::class, 'column' => 'goods_id', 'reject_sku' => true],
                 'id_field' => 'goods_id',
-                'buyer_tpl' => 'https://www.temu.com/us/product-g-{id}.html',
+                'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
             ],
             'macys' => [

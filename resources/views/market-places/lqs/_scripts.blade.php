@@ -44,18 +44,39 @@
             return (!shopify || LQS_SHOPIFY_STORE) ? fallback : '';
         }
 
+        function lqsIsTemu() {
+            return LQS_SLUG === 'temu' || LQS_SLUG === 'temu2' || LQS_SLUG === 'temu3';
+        }
+
+        function lqsUseTemuUs(done) {
+            try {
+                if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage('kjdjgekgokefnkafkmikgafmineikjgd', { type: 'temu-us' }, function () { done(); });
+                    return;
+                }
+            } catch (e) {}
+            done();
+        }
+
         window.lqsOpenListing = function (mode, btn) {
             const url = btn && btn.getAttribute('data-url');
             if (!url) return;
-            if (mode !== 'mobile') {
-                window.open(url, '_blank', 'noopener');
+            const open = function () {
+                if (mode !== 'mobile') {
+                    window.open(url, '_blank', 'noopener');
+                    return;
+                }
+                if (LQS_SLUG === 'newegg' || LQS_SLUG === 'alibaba' || lqsIsTemu()) {
+                    lqsOpenAsPhone(url);
+                    return;
+                }
+                window.open(url, 'lqsMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
+            };
+            if (lqsIsTemu()) {
+                lqsUseTemuUs(open);
                 return;
             }
-            if (LQS_SLUG === 'newegg' || LQS_SLUG === 'alibaba' || LQS_SLUG === 'temu' || LQS_SLUG === 'temu2' || LQS_SLUG === 'temu3') {
-                lqsOpenAsPhone(url);
-                return;
-            }
-            window.open(url, 'lqsMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
+            open();
         };
 
         function lqsListingIcons(id, url) {

@@ -1065,15 +1065,18 @@
 
             // Stable URLs (session/refer params omitted)
             const href = isBuyer
-                ? ('https://www.temu.com/us/product-g-' + encodeURIComponent(goodsId) + '.html')
+                ? ('https://www.temu.com/goods.html?_bg_fs=1&goods_id=' + encodeURIComponent(goodsId))
                 : ('https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(goodsId));
             const label = isBuyer ? 'Buyer' : 'Seller';
             const title = isBuyer
                 ? ('Buyer — Temu goods_id ' + goodsId)
                 : ('Seller — Temu product-info goods_id ' + goodsId);
 
+            const click = isBuyer
+                ? 'event.stopPropagation();try{if(window.chrome&&chrome.runtime&&chrome.runtime.sendMessage){event.preventDefault();var a=this;chrome.runtime.sendMessage(\'kjdjgekgokefnkafkmikgafmineikjgd\',{type:\'temu-us\'},function(){window.open(a.href,\'_blank\',\'noopener\');});return;}}catch(e){}'
+                : 'event.stopPropagation();';
             return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
-                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
+                title="${escapeHtml(title)}" onclick="${click}">
                 <i class="fas fa-external-link-alt me-1"></i>${label}
             </a>`;
         }
@@ -1254,7 +1257,7 @@
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/us/product-g-{goods_id}.html',
+                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/goods.html?_bg_fs=1&goods_id={goods_id}',
                         formatter: formatBuyerLink
                     },
                     {

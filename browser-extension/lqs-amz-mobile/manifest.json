@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "LQS Amazon mobile view",
-  "version": "1.3",
-  "description": "Lets the LQS Mobile button open an Amazon, Newegg, Alibaba, or Temu product as a phone. A narrow window still gets the desktop page unless the request says it is a phone.",
+  "version": "1.4",
+  "description": "Lets the LQS Mobile button open an Amazon, Newegg, Alibaba, or Temu product as a phone, and opens Temu on the US store.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs+4Fu+Y9ehcvjcJX7xNP9fy5A7Yay1TQNvDseg+5E/nxo2FR1/wbXTlZyroUWKBVjtSNsiaJa4QI6StBbAFH31LxcaNVsQTcKaCsiuqd2AN5EXbn8lbzxtc7y+2fKy/kFEAf/cKZsentxmPSxaGgSgmce5MT4Sw4j270q/mqDSKEM/d3Ois4UZ0+6+ncd/63cOrzLCSLiKXwGFuHTgJa+ywJSq5vH2xX0UbQICdCL4w/b6wu8YQIvaCGpRUnKcVhEQ0Ni/E49ITlPEGaO95SEVbFTJ/wCKRP86Tyn8RFL6VQ3ybue+U4AlY1SCKdwxLw7Dq5kICS9xicH6xgy6hD5wIDAQAB",
-  "permissions": ["declarativeNetRequest", "declarativeNetRequestWithHostAccess", "tabs", "windows"],
+  "permissions": ["declarativeNetRequest", "declarativeNetRequestWithHostAccess", "tabs", "windows", "cookies"],
   "host_permissions": [
     "*://*.amazon.com/*",
     "*://*.amazon.in/*",
