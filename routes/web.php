@@ -2575,6 +2575,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return view('customer-care.qc_packing_tabulator', compact('marketplaces'));
     })->name('customer.care.qc.packing');
+    Route::get('/customer-care/qc-issues-supplier-wise', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'index'])
+        ->name('customer.care.qc.issues.supplier.wise');
+    Route::get('/customer-care/qc-issues-supplier-wise/data', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'data'])
+        ->name('customer.care.qc.issues.supplier.wise.data');
+    Route::post('/customer-care/qc-issues-supplier-wise/active', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'setActive'])
+        ->name('customer.care.qc.issues.supplier.wise.active');
+    Route::post('/customer-care/qc-issues-supplier-wise/summary', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'summarize'])
+        ->name('customer.care.qc.issues.supplier.wise.summary');
+    Route::get('/customer-care/qc-issues-supplier-wise/archived', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'archived'])
+        ->name('customer.care.qc.issues.supplier.wise.archived');
+    Route::put('/customer-care/qc-issues-supplier-wise/issues/{id}', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'updateIssue'])
+        ->name('customer.care.qc.issues.supplier.wise.issue.update');
+    Route::post('/customer-care/qc-issues-supplier-wise/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'archiveIssue'])
+        ->name('customer.care.qc.issues.supplier.wise.issue.archive');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {

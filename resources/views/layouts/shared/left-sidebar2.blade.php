@@ -664,6 +664,10 @@
                             <a href="{{ route('customer.care.qc.packing') }}">Issues QC / Packaging</a>
                         </li>
                         <li>
+                            <a href="{{ route('customer.care.qc.issues.supplier.wise') }}"
+                               class="{{ request()->routeIs('customer.care.qc.issues.supplier.wise') ? 'active' : '' }}">QC / PKG Supplier Wise</a>
+                        </li>
+                        <li>
                             <a href="{{ route('customer.care.label.issues') }}">Label/ Shipping Issues</a>
                         </li>
                         <li>
