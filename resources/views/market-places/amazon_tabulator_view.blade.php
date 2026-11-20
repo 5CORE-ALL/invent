@@ -5774,8 +5774,15 @@
                             }
 
                             const cvrMark = (cvrInfo && typeof window.amzCvrRuleMarkHtml === 'function') ? window.amzCvrRuleMarkHtml(cvrInfo) : '';
+                            // Sprc Dil and Std prc vs dil both OFF and the CVR rule is not changing this SKU: the number is an old saved
+                            // S PRC. It is not a pending push, so it gets no blue triangle and is not counted in the blue badge.
+                            const staleOffMark = (!cvrInfo && !isClearanceAny && Math.round(sprice * 100) !== Math.round(currentPrice * 100)
+                                && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none')
+                                ? '<i class="fas fa-pause-circle" style="color:#6c757d;font-size:10px;margin-left:3px;" title="Old saved S PRC $'
+                                    + sprice.toFixed(2) + '. Sprc Dil and Std prc vs dil are both OFF and the CVR Price Rule is not changing this SKU, so it is not pushed and not counted in the blue badge."></i>'
+                                : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + cvrMark + clearanceBadge + blueTri + redTri + reviewTri + stdTri + '</span>';
+                                dot + formattedValue + cvrMark + clearanceBadge + blueTri + staleOffMark + redTri + reviewTri + stdTri + '</span>';
                         }),
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
