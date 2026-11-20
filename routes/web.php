@@ -3651,6 +3651,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
+        Route::post('/purchase-orders/{id}/stage', 'updatePoStage')->name('purchase-orders.stage');
         Route::get('/purchase-orders/{id}', 'showPurchaseOrders');
         Route::post('/purchase-orders/{id}', 'updatePurchaseOrder');
     });
@@ -3875,6 +3876,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/advance-and-payments/data', 'getAdvancePaymentsData');
         Route::post('/advance-payments/delete', 'deleteAdvancePayments');
         Route::post('/advance-payments/archive', 'archiveAdvancePayment')->name('advance.payments.archive');
+        Route::post('/advance-payments/restore', 'restoreAdvancePayment')->name('advance.payments.restore');
         Route::post('/supplier-ledger/delete', 'deleteSupplierLedger');
     });
 

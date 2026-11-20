@@ -36,13 +36,8 @@
     .action-icon-btn { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 6px; font-size: 1rem; }
     .action-icon-btn.edit-payment-btn { color: #3fbfc4 !important; }
     .action-icon-btn.archive-payment-btn { color: #dc3545 !important; }
+    .action-icon-btn.restore-payment-btn { color: #198754 !important; }
     .action-icon-btn:hover { background: rgba(0,0,0,0.06) !important; }
-    /* Stage markers (same look as /forecast.analysis) */
-    .stage-dot-cell { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; min-height: 36px; }
-    .stage-dot-cell .stage-status-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
-    .stage-dot-cell .stage-transit-icon { font-size: 0.95rem; line-height: 1; display: inline-block; }
-    .stage-dot-cell .stage-mip-icon { font-size: 0.9rem; line-height: 1; color: #2563eb; }
-    .stage-empty-dash { color: #94a3b8; font-weight: 700; }
     /* Pagination styling */
     .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
         padding: 8px 16px;
@@ -173,13 +168,16 @@
                     <button type="button" id="mustard-filter-btn" class="btn btn-sm" title="Show only rows where the advance is still required (no Adv Img)">
                         <span class="adv-toggle" style="width:28px;height:15px;vertical-align:-3px;"></span> Adv Required
                     </button>
-                    <select id="stage-filter" class="form-select form-select-sm" style="max-width: 160px;" aria-label="Stage filter" autocomplete="off">
-                        <option value="" selected>All Stages</option>
-                        <option value="to_order_analysis">Order</option>
-                        <option value="mip">MIP</option>
-                        <option value="r2s">R2S</option>
-                        <option value="transit">Transit</option>
-                        <option value="all_good">All Good</option>
+                    <select id="archive-filter" class="form-select form-select-sm" style="max-width: 140px;" aria-label="Status filter" title="Archived here = archived on Purchase Contracts too" autocomplete="off">
+                        <option value="active" selected>Active</option>
+                        <option value="archived">Archived</option>
+                        <option value="all">All</option>
+                    </select>
+                    <select id="stage-filter" class="form-select form-select-sm" style="max-width: 180px;" aria-label="PO Stage filter" autocomplete="off">
+                        <option value="" selected>All PO Stages</option>
+                        @foreach(config('po_stages.stages', []) as $stageKey => $stageMeta)
+                            <option value="{{ $stageKey }}">{{ $stageMeta['label'] }}</option>
+                        @endforeach
                         <option value="none">No Stage</option>
                     </select>
                     <button class="btn btn-sm btn-danger d-none" id="delete-selected-btn">
@@ -426,6 +424,7 @@
 
 @endsection
 @section('script')
+@include('purchase-master.partials.po-stage')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
@@ -433,6 +432,7 @@
             // Advance required = mustard until an Adv Img is attached (then green)
             let mustardOnly = false;
             const hasAdvImage = function(row) { return !!(row && row.image && String(row.image).trim() !== ''); };
+            const hasBalImage = function(row) { return !!(row && row.balance_image && String(row.balance_image).trim() !== ''); };
 
             // Currency follows the PO: USD -> "$", RMB (Yuan) -> "¥"
             const CURRENCY_SYMBOLS = { USD: '$', RMB: '¥' };
@@ -486,7 +486,7 @@
                             const date = rowData.po_date;
                             if (!po) return '<span class="text-muted">-</span>';
                             const link = rowData.purchase_contract_id
-                                ? '<a href="/purchase-orders/' + rowData.purchase_contract_id + '" target="_blank" rel="noopener" class="po-link" title="Open Purchase Order">' + po + '</a>'
+                                ? '<a href="/purchase-order/' + rowData.purchase_contract_id + '/generate-pdf" target="_blank" rel="noopener" class="po-link" title="Open Purchase Order">' + po + '</a>'
                                 : po;
                             return '<div style="line-height:1.25;">' + link +
                                 (date ? '<div class="text-muted" style="font-size:0.72rem;font-weight:500;">' + date + '</div>' : '') +
@@ -559,6 +559,18 @@
                     },
                     { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center", formatter: roundFormatter },
                     {
+                        title: "Bal Req",
+                        field: "balance_image",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        headerSort: false,
+                        width: 90,
+                        formatter: function(cell) {
+                            const done = hasBalImage(cell.getRow().getData());
+                            return '<span class="adv-toggle ' + (done ? 'is-done' : '') + '" title="' + (done ? 'Balance proof attached' : 'Balance required - no image yet') + '"></span>';
+                        }
+                    },
+                    {
                         title: "Bal Img",
                         field: "balance_image",
                         formatter: function (cell) {
@@ -571,32 +583,14 @@
                         }
                     },
                     {
-                        title: "Stage",
-                        field: "stages",
+                        title: "PO Stage",
+                        field: "po_stage",
                         hozAlign: "center",
                         headerHozAlign: "center",
-                        headerSort: false,
-                        width: 90,
+                        headerSort: true,
+                        width: 170,
                         formatter: function(cell) {
-                            const stages = cell.getValue();
-                            if (!Array.isArray(stages) || stages.length === 0) {
-                                return '<span class="stage-empty-dash">-</span>';
-                            }
-                            const labels = {
-                                appr_req: 'Appr Req', to_order_analysis: 'Order', mip: 'MIP',
-                                r2s: 'R2S', transit: 'Transit', all_good: 'All Good'
-                            };
-                            const colors = {
-                                appr_req: '#facc15', to_order_analysis: '#c2410c',
-                                r2s: '#16a34a', all_good: '#0ea5e9'
-                            };
-                            const html = stages.map(function(s) {
-                                const title = labels[s] || s;
-                                if (s === 'transit') return '<span class="stage-transit-icon" title="' + title + '">🚢</span>';
-                                if (s === 'mip') return '<i class="fas fa-hammer stage-mip-icon" title="' + title + '"></i>';
-                                return '<span class="stage-status-dot" title="' + title + '" style="background-color:' + (colors[s] || '#94a3b8') + ';"></span>';
-                            }).join('');
-                            return '<div class="stage-dot-cell">' + html + '</div>';
+                            return poStageSelectHtml(cell.getRow().getData().purchase_contract_id, cell.getValue());
                         }
                     },
                     { 
@@ -654,18 +648,24 @@
                                         title="Edit">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <button class="btn btn-sm action-icon-btn archive-payment-btn"
-                                        data-id="${rowData.id}"
-                                        title="Archive">
-                                        <i class="fas fa-archive"></i>
-                                    </button>`;
+                                    ${rowData.is_archived
+                                        ? `<button class="btn btn-sm action-icon-btn restore-payment-btn"
+                                            data-id="${rowData.id}"
+                                            title="Restore (also restores the purchase contract)">
+                                            <i class="fas fa-undo"></i>
+                                        </button>`
+                                        : `<button class="btn btn-sm action-icon-btn archive-payment-btn"
+                                            data-id="${rowData.id}"
+                                            title="Archive (also archives the purchase contract)">
+                                            <i class="fas fa-archive"></i>
+                                        </button>`}`;
                         },
                         width: 120
                     },
                 ]
             });
 
-            // Does a row pass the current search + stage filters? (shared by the table filter and the badges)
+            // Does a row pass the current search + PO stage filters? (shared by the table filter and the badges)
             function rowMatches(row) {
                 const keyword = document.getElementById("advance-amount-search").value.trim().toLowerCase();
                 const stage = document.getElementById("stage-filter").value;
@@ -676,9 +676,8 @@
                     if (hay.indexOf(keyword) === -1) return false;
                 }
                 if (stage) {
-                    const stages = Array.isArray(row.stages) ? row.stages : [];
-                    if (stage === 'none') return stages.length === 0;
-                    return stages.indexOf(stage) !== -1;
+                    if (stage === 'none') return !row.po_stage;
+                    return row.po_stage === stage;
                 }
                 return true;
             }
@@ -729,6 +728,15 @@
             }
             document.getElementById("advance-amount-search").addEventListener("input", applyFilters);
             document.getElementById("stage-filter").addEventListener("change", applyFilters);
+            // PO stage changed in a row (the PO is shared with Purchase Contracts): update every row of that PO.
+            document.addEventListener("po-stage-changed", function(e) {
+                table.getRows().forEach(function(r) {
+                    if (String(r.getData().purchase_contract_id) === String(e.detail.poId)) {
+                        r.update({ po_stage: e.detail.stage });
+                    }
+                });
+                if (document.getElementById("stage-filter").value) applyFilters();
+            });
             document.getElementById("mustard-filter-btn").addEventListener("click", function() {
                 mustardOnly = !mustardOnly;
                 this.classList.toggle("active", mustardOnly);
@@ -909,7 +917,7 @@
             // Archive a row (red archive icon)
             $(document).on('click', '.archive-payment-btn', function() {
                 const id = $(this).data('id');
-                if (!confirm('Archive this payment voucher?')) return;
+                if (!confirm('Archive this payment voucher? Its purchase contract will be archived too.')) return;
 
                 $.ajax({
                     url: '/advance-payments/archive',
@@ -919,8 +927,7 @@
                         id: id
                     },
                     success: function() {
-                        table.deleteRow(id);
-                        updateTotalBadges();
+                        reloadPayments();
                     },
                     error: function(xhr) {
                         console.error(xhr.responseText);
@@ -928,6 +935,34 @@
                     }
                 });
             });
+
+            // Restore an archived row (also restores its purchase contract)
+            $(document).on('click', '.restore-payment-btn', function() {
+                const id = $(this).data('id');
+                if (!confirm('Restore this payment voucher? Its purchase contract will be restored too.')) return;
+
+                $.ajax({
+                    url: '/advance-payments/restore',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        id: id
+                    },
+                    success: function() {
+                        reloadPayments();
+                    },
+                    error: function(xhr) {
+                        console.error(xhr.responseText);
+                        alert('Could not restore this row.');
+                    }
+                });
+            });
+
+            // Reload rows from the server for the selected Status (Active / Archived / All)
+            function reloadPayments() {
+                table.setData("/advance-and-payments/data", { filter: document.getElementById("archive-filter").value });
+            }
+            document.getElementById("archive-filter").addEventListener("change", reloadPayments);
 
             // Handle edit button click
             $(document).on('click', '.edit-payment-btn', function() {
@@ -1001,7 +1036,7 @@
                     success: function(response) {
                         $('#editPaymentModal').modal('hide');
                         // Refresh table data
-                        table.replaceData("/advance-and-payments/data");
+                        table.replaceData("/advance-and-payments/data", { filter: document.getElementById("archive-filter").value });
                         // Show success message
                         alert('Payment updated successfully!');
                     },
@@ -1020,4 +1055,4 @@
     </script>
 
 
-@endsection
+@endsection

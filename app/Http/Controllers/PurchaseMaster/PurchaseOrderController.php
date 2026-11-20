@@ -1463,6 +1463,9 @@ class PurchaseOrderController extends Controller
         if (Schema::hasColumn('purchase_orders', 'advance_percent')) {
             $select[] = 'advance_percent';
         }
+        if (Schema::hasColumn('purchase_orders', 'po_stage')) {
+            $select[] = 'po_stage';
+        }
 
         $query = PurchaseOrder::select($select)
             ->with('supplier:id,name');
@@ -1540,6 +1543,7 @@ class PurchaseOrderController extends Controller
                 'balance' => $balance,
                 'total_cbm' => $totalCbm,
                 'is_archived' => (bool) ($order->is_archived ?? false),
+                'po_stage' => $order->po_stage ?? '',
                 'skus' => $skus,
                 'sku_list' => $skuList,
                 'photo' => $imageBySku[$firstSku] ?? ($firstItem->photo ?? ''),
@@ -1606,6 +1610,24 @@ class PurchaseOrderController extends Controller
         $po = PurchaseOrder::findOrFail($id);
         $po->update(['is_archived' => true]);
         return response()->json(['success' => true, 'message' => 'Purchase order archived.']);
+    }
+
+    /**
+     * Set the PO Stage (shared by the Purchase Contracts and Advance & Payments pages).
+     * Empty value clears the stage.
+     */
+    public function updatePoStage(Request $request, $id)
+    {
+        $allowed = array_keys(config('po_stages.stages', []));
+        $data = $request->validate([
+            'stage' => ['nullable', 'string', 'in:' . implode(',', $allowed)],
+        ]);
+
+        $po = PurchaseOrder::findOrFail($id);
+        $po->po_stage = ($data['stage'] ?? '') !== '' ? $data['stage'] : null;
+        $po->save();
+
+        return response()->json(['success' => true, 'stage' => $po->po_stage ?? '']);
     }
 
     public function restorePurchaseOrder($id)

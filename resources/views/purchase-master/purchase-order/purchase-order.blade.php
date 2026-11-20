@@ -429,6 +429,16 @@
                             <option value="all">All</option>
                         </select>
                     </div>
+                    <div class="input-group" style="max-width: 280px;">
+                        <label class="input-group-text bg-white border-end-0">PO Stage</label>
+                        <select id="po-stage-filter" class="form-select" autocomplete="off">
+                            <option value="">All</option>
+                            @foreach(config('po_stages.stages', []) as $stageKey => $stageMeta)
+                                <option value="{{ $stageKey }}">{{ $stageMeta['label'] }}</option>
+                            @endforeach
+                            <option value="none">No Stage</option>
+                        </select>
+                    </div>
                     <div class="input-group" style="max-width: 320px;">
                         <input type="date" id="po-date-filter" class="form-control" placeholder="Filter by PO Date">
                     </div>
@@ -442,6 +452,7 @@
                     </div>
                 </div>
                 <div class="mb-2 d-flex flex-wrap gap-2 align-items-center" id="po-summary-badges">
+                    <span class="badge bg-dark fs-6 px-3 py-2" title="Rows matching the current filters (all pages)">Rows: <span id="badge-row-count">0</span></span>
                     <span class="badge bg-info fs-6 px-3 py-2">O Amount: <span id="badge-sum-oamount">0</span></span>
                     <span class="badge bg-primary fs-6 px-3 py-2">Advance: <span id="badge-sum-advance">0</span></span>
                     <span class="badge bg-success fs-6 px-3 py-2">Balance: <span id="badge-sum-balance">0</span></span>
@@ -455,6 +466,7 @@
                                 <th class="po-sortable" data-sort="po_number" style="cursor: pointer; user-select: none;">PO <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="po_date" style="cursor: pointer; user-select: none;">Date <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="supplier_name" style="cursor: pointer; user-select: none;">Supplier <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="po_stage" style="cursor: pointer; user-select: none; min-width: 170px;">PO Stage <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="sku_list" style="cursor: pointer; user-select: none;">Summary <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="total_amount" style="cursor: pointer; user-select: none;">O Amount <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="advance_amount" style="cursor: pointer; user-select: none;">Advance <i class="fas fa-sort ms-1 sort-icon"></i></th>
@@ -594,6 +606,7 @@
 
 @endsection
 @section('script')
+@include('purchase-master.partials.po-stage')
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
     const poSkuSearchUrl = @json(url('/purchase/search-sku'));
@@ -926,6 +939,13 @@
         document.getElementById("purchase-order-search").addEventListener("input", applyFilters);
         document.getElementById("search-items").addEventListener("input", applyFilters);
         document.getElementById("po-date-filter").addEventListener("change", applyFilters);
+        document.getElementById("po-stage-filter").addEventListener("change", applyFilters);
+        // A stage was changed in a row: keep the in-memory data in step, re-filter if a stage filter is on.
+        document.addEventListener("po-stage-changed", function (e) {
+            const po = allPurchaseOrders.find(o => String(o.id) === String(e.detail.poId));
+            if (po) po.po_stage = e.detail.stage;
+            if (document.getElementById("po-stage-filter").value) applyFilters();
+        });
         document.getElementById("archive-filter").addEventListener("change", function() {
             currentPage = 1;
             getPurchaseOrderData();
@@ -1055,11 +1075,13 @@
         const searchValue = document.getElementById("purchase-order-search").value.toLowerCase();
         const searchItemsValue = document.getElementById("search-items").value.toLowerCase();
         const selectedDate = document.getElementById("po-date-filter").value;
+        const stageValue = document.getElementById("po-stage-filter").value;
         return allPurchaseOrders.filter(order => {
             const matchesSearch = !searchValue || (order.supplier_name && order.supplier_name.toLowerCase().includes(searchValue));
             const matchesItems = !searchItemsValue || (order.sku_list && order.sku_list.toLowerCase().includes(searchItemsValue));
             const matchesDate = selectedDate ? order.po_date === selectedDate : true;
-            return matchesSearch && matchesItems && matchesDate;
+            const matchesStage = !stageValue || (stageValue === 'none' ? !order.po_stage : order.po_stage === stageValue);
+            return matchesSearch && matchesItems && matchesDate && matchesStage;
         });
     }
 
@@ -1289,6 +1311,7 @@
         document.getElementById("badge-sum-oamount").textContent = formatNum(sumOAmount);
         document.getElementById("badge-sum-balance").textContent = formatNum(sumBalance);
         document.getElementById("badge-sum-cbm").textContent = formatNum(sumCbm);
+        document.getElementById("badge-row-count").textContent = source.length.toLocaleString('en-US');
 
         if (currentItems.length === 0) {
             const colCount = document.querySelectorAll("#po-table thead th").length;
@@ -1318,6 +1341,7 @@
                 <td class="text-center">${renderPoNumberCell(order.po_number)}</td>
                 <td class="text-center">${formatPoDateCell(order.po_date)}</td>
                 <td class="text-center">${renderSupplierCell(order.supplier_name)}</td>
+                <td class="text-center">${poStageSelectHtml(order.id, order.po_stage)}</td>
                 <td class="po-summary-cell">${renderSummarySkuTags(order)}</td>
                 <td class="text-center">${formatNum(order.total_amount)}</td>
                 <td class="text-center">${formatNum(order.advance_amount)}</td>
@@ -1520,6 +1544,7 @@
         const searchValue = document.getElementById("purchase-order-search").value.toLowerCase();
         const searchItemsValue = document.getElementById("search-items").value.toLowerCase();
         const selectedDate = document.getElementById("po-date-filter").value;
+        const stageValue = document.getElementById("po-stage-filter").value;
 
         currentPage = 1;
 
@@ -1527,8 +1552,9 @@
             const matchesSearch = !searchValue || (order.supplier_name && order.supplier_name.toLowerCase().includes(searchValue));
             const matchesItems = !searchItemsValue || (order.sku_list && order.sku_list.toLowerCase().includes(searchItemsValue));
             const matchesDate = selectedDate ? order.po_date === selectedDate : true;
+            const matchesStage = !stageValue || (stageValue === 'none' ? !order.po_stage : order.po_stage === stageValue);
 
-            return matchesSearch && matchesItems && matchesDate;
+            return matchesSearch && matchesItems && matchesDate && matchesStage;
         });
 
         renderPurchaseOrderTable(filtered);

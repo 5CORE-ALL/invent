@@ -175,9 +175,13 @@ class LedgerMasterController extends Controller
         return back()->with('flash_message', 'Advance and Payment saved successfully.');
     }
 
-    public function getAdvancePaymentsData()
+    public function getAdvancePaymentsData(Request $request)
     {
-        $payments = AdvancePayment::select(
+        // active (default) | archived | all. A row counts as archived when either the payment
+        // row or its purchase contract (PO) is archived, so both pages always agree.
+        $filter = $request->query('filter', 'active');
+
+        $query = AdvancePayment::select(
             'id',
             'vo_number',
             'supplier_id',
@@ -186,47 +190,33 @@ class LedgerMasterController extends Controller
             'advance_amount',
             'image',
             'balance_image',
-            'remarks'
+            'remarks',
+            'is_archived'
         )
             ->with([
                 'supplier' => fn($q) => $q->select('id', 'name')->withCount('bankAccounts'),
-                'purchaseContract:id,po_number,po_date,items',
-            ])
-            ->where('is_archived', false)
-            ->get();
+                'purchaseContract:' . implode(',', array_filter([
+                    'id', 'po_number', 'po_date', 'items', 'is_archived',
+                    \Schema::hasColumn('purchase_orders', 'po_stage') ? 'po_stage' : null,
+                ])),
+            ]);
 
-        // Stage per PO = union of the Forecast Analysis stages of the SKUs on that PO.
-        // The forecast snapshot is heavy (needs >128MB), so only the small SKU => stages map is
-        // cached for a short time, and the memory limit is raised just for building it.
-        $skuStages = [];
-        try {
-            $skuStages = \Cache::remember('advance_payments_sku_stages', 120, function () {
-                @ini_set('memory_limit', '1024M');
-                @set_time_limit(120);
-                $map = [];
-                $rows = app(\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
-                foreach ($rows as $row) {
-                    if (!empty($row->is_parent)) {
-                        continue;
-                    }
-                    $key = strtoupper(trim((string) ($row->SKU ?? '')));
-                    if ($key !== '' && !empty($row->stages) && is_array($row->stages)) {
-                        $map[$key] = array_values($row->stages);
-                    }
-                }
-                unset($rows);
-                return $map;
+        if ($filter === 'active') {
+            $query->where('is_archived', false)
+                ->whereDoesntHave('purchaseContract', fn($q) => $q->where('is_archived', true));
+        } elseif ($filter === 'archived') {
+            $query->where(function ($q) {
+                $q->where('is_archived', true)
+                    ->orWhereHas('purchaseContract', fn($p) => $p->where('is_archived', true));
             });
-        } catch (\Throwable $e) {
-            \Log::warning('Advance payments stage lookup failed: ' . $e->getMessage());
         }
-        $pipelineOrder = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
 
-        $payments = $payments->map(function ($payment) use ($skuStages, $pipelineOrder) {
+        $payments = $query->get();
+
+        $payments = $payments->map(function ($payment) {
             $amount = $payment->amount ?? 0;
             $advance = $payment->advance_amount ?? 0;
 
-            $stages = [];
             $currency = 'USD';
             $currencySeen = false;
             $items = $payment->purchaseContract->items ?? null;
@@ -238,12 +228,7 @@ class LedgerMasterController extends Controller
                     $currency = in_array($cur, ['RMB', 'CNY', 'CNH', 'YUAN'], true) ? 'RMB' : 'USD';
                     $currencySeen = true;
                 }
-                $key = strtoupper(trim((string) ($item['sku'] ?? '')));
-                foreach ($skuStages[$key] ?? [] as $stage) {
-                    $stages[$stage] = true;
-                }
             }
-            $stages = array_values(array_filter($pipelineOrder, fn($s) => isset($stages[$s])));
 
             return [
                 'id' => $payment->id,
@@ -257,13 +242,14 @@ class LedgerMasterController extends Controller
                     ? Carbon::parse($payment->purchaseContract->po_date)->format('d M Y')
                     : '',
                 'currency' => $currency,
-                'stages' => $stages,
+                'po_stage' => $payment->purchaseContract->po_stage ?? '',
                 'amount' => $amount ?? '',
                 'advance_amount' => $advance ?? '',
                 'balance' => $amount - $advance,
                 'image' => $payment->image ? asset('storage/' . $payment->image) : '',
                 'balance_image' => $payment->balance_image ? asset('storage/' . $payment->balance_image) : '',
                 'remarks' => $payment->remarks ?? '',
+                'is_archived' => (bool) ($payment->is_archived || ($payment->purchaseContract->is_archived ?? false)),
             ];
         });
 
@@ -327,12 +313,33 @@ class LedgerMasterController extends Controller
     {
         $request->validate(['id' => 'required|exists:advance_payments,id']);
 
-        AdvancePayment::where('id', $request->id)->update([
-            'is_archived' => true,
-            'archived_at' => now(),
-        ]);
+        $payment = AdvancePayment::findOrFail($request->id);
+        $payment->update(['is_archived' => true, 'archived_at' => now()]);
+
+        // Archived here => archived on the Purchase Contracts page too (the PO listener archives
+        // every payment row of that PO).
+        $po = $payment->purchaseContract;
+        if ($po && ! $po->is_archived) {
+            $po->update(['is_archived' => true]);
+        }
 
         return response()->json(['success' => true, 'message' => 'Archived successfully.']);
+    }
+
+    public function restoreAdvancePayment(Request $request)
+    {
+        $request->validate(['id' => 'required|exists:advance_payments,id']);
+
+        $payment = AdvancePayment::findOrFail($request->id);
+        $payment->update(['is_archived' => false, 'archived_at' => null]);
+
+        // Restored here => restored on the Purchase Contracts page too.
+        $po = $payment->purchaseContract;
+        if ($po && $po->is_archived) {
+            $po->update(['is_archived' => false]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Restored successfully.']);
     }
 
     function generateVoucherNumber()
@@ -346,7 +353,7 @@ class LedgerMasterController extends Controller
             ->first();
 
         if ($latestOrder) {
-            $parts = explode('-', $latestOrder->po_number);
+            $parts = explode('-', $latestOrder->vo_number);
             $lastSerial = intval(end($parts));
             $newSerial = str_pad($lastSerial + 1, 2, '0', STR_PAD_LEFT);
         } else {
