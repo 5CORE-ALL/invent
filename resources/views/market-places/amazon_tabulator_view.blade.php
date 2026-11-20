@@ -5453,7 +5453,7 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: amazonMetricSorter(function(d) { const n = parseFloat(d.STANDARD_PRICE); return n > 0 ? n : null; }),
-                        headerTooltip: "Standard Price. Not editable here. Magnifying glass opens Std Prc, Std NROI%, and Std NPFT%. Orange triangle = LMP is above Std Prc.",
+                        headerTooltip: "Standard Price. Not editable here. Magnifying glass opens Std Prc, Std NROI%, and Std NPFT%.",
                         width: 108,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -5469,11 +5469,8 @@
                                 return searchBtn || '';
                             }
                             const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
-                            const reviewTri = (window.SpriceLmpCap && SpriceLmpCap.reviewStdTriangleHtml)
-                                ? SpriceLmpCap.reviewStdTriangleHtml(rowData)
-                                : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + reviewTri + searchBtn + '</span>';
+                                dot + ('$' + std.toFixed(2)) + searchBtn + '</span>';
                         },
                         cellClick: function(e, cell) {
                             const btn = e.target && e.target.closest ? e.target.closest('.open-std-prc-modal') : null;
@@ -5746,51 +5743,20 @@
 
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            const redTri = (atOrAboveLmp && !stdCappedHighLmp && !stdCapped)
-                                ? (appliedLmp
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                        + lmpNow.toFixed(2) + '"></i>'
-                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                        + lmpNow.toFixed(2)
-                                        + ' not applied — SGROI would be '
-                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                        + '% (&lt; 20%)"></i>')
-                                : '';
-                            const reviewTri = stdCappedHighLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#fd7e14;font-size:10px;margin-left:3px;" title="LMP $'
-                                    + lmpNow.toFixed(2) + ' is above Std Prc $' + stdNow.toFixed(2)
-                                    + ' — S PRC capped at Std. Review Std price."></i>'
-                                : '';
-                            const stdTri = stdCapped
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#b45309;font-size:10px;margin-left:3px;" title="S PRC capped at Std Prc $'
-                                    + stdNow.toFixed(2) + '"></i>'
-                                : '';
                             const blueTri = amazonHasBlueTriangle(rowData)
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + sprice.toFixed(2) + ' ≠ Price $' + currentPrice.toFixed(2) + '"></i>'
                                 : '';
 
                             let formattedValue = '$' + sprice.toFixed(2);
-                            if (atOrAboveLmp && !stdCappedHighLmp && !stdCapped) {
-                                formattedValue = '<span style="color: #dc3545; font-weight: 600;">' + formattedValue + '</span>';
-                            } else if (stdCappedHighLmp) {
-                                formattedValue = '<span style="color: #fd7e14; font-weight: 600;">' + formattedValue + '</span>';
-                            } else if (stdCapped) {
-                                formattedValue = '<span style="color: #b45309; font-weight: 600;">' + formattedValue + '</span>';
-                            } else if (hasCustomSprice === false) {
+                            // Plain suggested price: no LMP / Std alert colours or triangles in this cell.
+                            if (hasCustomSprice === false) {
                                 formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
                             }
 
                             const cvrMark = (cvrInfo && typeof window.amzCvrRuleMarkHtml === 'function') ? window.amzCvrRuleMarkHtml(cvrInfo) : '';
-                            // Sprc Dil and Std prc vs dil both OFF and the CVR rule is not changing this SKU: the number is an old saved
-                            // S PRC. It is not a pending push, so it gets no blue triangle and is not counted in the blue badge.
-                            const staleOffMark = (!cvrInfo && !isClearanceAny && Math.round(sprice * 100) !== Math.round(currentPrice * 100)
-                                && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none')
-                                ? '<i class="fas fa-pause-circle" style="color:#6c757d;font-size:10px;margin-left:3px;" title="Old saved S PRC $'
-                                    + sprice.toFixed(2) + '. Sprc Dil and Std prc vs dil are both OFF and the CVR Price Rule is not changing this SKU, so it is not pushed and not counted in the blue badge."></i>'
-                                : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + cvrMark + clearanceBadge + blueTri + staleOffMark + redTri + reviewTri + stdTri + '</span>';
+                                dot + formattedValue + cvrMark + clearanceBadge + blueTri + '</span>';
                         }),
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
