@@ -84,6 +84,7 @@ class LqsMarketplacePageService
             $apiMetrics = $this->overlayTikTokListingIds($slug, $apiMetrics, $normalizeSku);
         }
         $apiMetrics = $this->overlayBuyerLinks($slug, $apiMetrics, $normalizeSku);
+        $apiMetrics = $this->applyKnownProductUrls($slug, $apiMetrics, $normalizeSku);
         $hasAuditColumns = Schema::hasColumn('lqs_marketplace_scores', 'audit_findings');
         $yoastBySku = $slug === 'shopify' ? $this->shopifySeoScoresBySku() : [];
 
@@ -92,6 +93,16 @@ class LqsMarketplacePageService
             $shopifyRow = $shopifyBySku[$normalizedSku] ?? null;
             $score = $scoresBySku[$normalizedSku] ?? null;
             $api = $apiMetrics[$normalizedSku] ?? [];
+            if (empty($api['listing_url'])) {
+                $compactSku = preg_replace('/[^A-Z0-9]/', '', $normalizedSku) ?? '';
+                $compactApi = ($compactSku !== '' && $compactSku !== $normalizedSku) ? ($apiMetrics[$compactSku] ?? []) : [];
+                if (! empty($compactApi['listing_url'])) {
+                    $api['listing_url'] = $compactApi['listing_url'];
+                    if (empty($api['listing_id']) && ! empty($compactApi['listing_id'])) {
+                        $api['listing_id'] = $compactApi['listing_id'];
+                    }
+                }
+            }
             $yoast = $yoastBySku[$normalizedSku] ?? [];
 
             $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
@@ -446,32 +457,50 @@ class LqsMarketplacePageService
     private function overlayBuyerLinks(string $slug, array $map, callable $normalizeSku): array
     {
         $tables = [
-            'shein' => 'shein_listing_statuses',
-            'wayfair' => 'wayfair_listing_statuses',
-            'bestbuy' => 'bestbuy_usa_listing_statuses',
-            'macy' => 'macys_listing_statuses',
-            'doba' => 'doba_listing_statuses',
-            'purchasingpower' => 'purchasing_power_listing_statuses',
-            'fbmarketplace' => 'fb_marketplace_listing_statuses',
-            'topdawg' => 'topdawg_listing_statuses',
+            'shein' => ['shein_listing_statuses', 'shein_data_views'],
+            'wayfair' => ['wayfair_listing_statuses', 'wayfair_data_view'],
+            'bestbuy' => ['bestbuy_usa_listing_statuses', 'bestbuy_usa_data_views'],
+            'macy' => ['macys_listing_statuses', 'macy_data_view'],
+            'doba' => ['doba_listing_statuses', 'doba_data_view'],
+            'purchasingpower' => ['purchasing_power_data_views', 'purchasing_power_listing_statuses'],
+            'fbmarketplace' => ['fb_marketplace_listing_statuses', 'fb_marketplace_data_views'],
+            'topdawg' => ['topdawg_data_views', 'topdawg_listing_statuses'],
         ];
-        $table = $tables[$slug] ?? null;
-        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'value')) {
+        foreach ($tables[$slug] ?? [] as $table) {
+            $map = $this->overlayBuyerLinkTable($slug, $table, $map, $normalizeSku);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlayBuyerLinkTable(string $slug, string $table, array $map, callable $normalizeSku): array
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'value')) {
             return $map;
         }
 
         $seen = [];
         foreach (DB::table($table)->select('sku', 'value')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
             $key = $normalizeSku($row->sku);
-            if ($key === '' || isset($seen[$key])) {
+            if ($key === '' || isset($seen[$key]) || ! empty($map[$key]['listing_url'])) {
                 continue;
             }
             $state = json_decode((string) $row->value, true);
+            if (is_string($state)) {
+                $state = json_decode($state, true);
+            }
             if (! is_array($state)) {
                 continue;
             }
-            $buyer = trim((string) ($state['buyer_link'] ?? ''));
-            if (! preg_match('#^https?://#i', $buyer) || preg_match('/shopify\.com|myshopify\.com/i', $buyer)) {
+            $buyer = $this->httpUrl((string) ($state['buyer_link'] ?? $state['B Link'] ?? ''));
+            if ($buyer === '' || preg_match('/shopify\.com|myshopify\.com/i', $buyer)) {
+                $buyer = $this->shopperUrl($slug, (string) ($state['seller_link'] ?? $state['S Link'] ?? ''));
+            }
+            if ($buyer === '') {
                 continue;
             }
             $seen[$key] = true;
@@ -484,10 +513,168 @@ class LqsMarketplacePageService
                 $id = trim((string) ($state['listing_id'] ?? $state['item_id'] ?? $state['goods_id'] ?? ''));
                 $existing['listing_id'] = $id !== '' ? $id : $this->listingLabelFromUrl($buyer);
             }
-            $map[$key] = $existing;
+            $map = $this->putListingLink($map, $key, $existing);
         }
 
         return $map;
+    }
+
+    /**
+     * A saved buyer link wins. Otherwise the listing id we already store opens that shop's product page.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function applyKnownProductUrls(string $slug, array $map, callable $normalizeSku): array
+    {
+        if ($slug === 'shein') {
+            $map = $this->overlaySheinGoodsUrls($map, $normalizeSku);
+        }
+
+        foreach ($map as $key => $row) {
+            if (! empty($row['listing_url'])) {
+                continue;
+            }
+            $id = trim((string) ($row['listing_id'] ?? ''));
+            $url = $this->knownProductUrl($slug, $id);
+            if ($url === '') {
+                continue;
+            }
+            $row['listing_url'] = $url;
+            $map[$key] = $row;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Shein storefront pages need the numeric goods id. A sku code is not that id.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlaySheinGoodsUrls(array $map, callable $normalizeSku): array
+    {
+        $rows = [];
+        if (Schema::hasTable('shein_order_metrics') && Schema::hasColumn('shein_order_metrics', 'product_id')) {
+            $latestOrders = DB::table('shein_order_metrics')
+                ->selectRaw('MAX(id) as id')
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->groupBy('sku');
+            $rows[] = DB::table('shein_order_metrics')
+                ->select('sku as seller_sku', 'product_id as item_id')
+                ->whereIn('id', $latestOrders)
+                ->get();
+        }
+        if (Schema::hasTable('shein_daily_data') && Schema::hasColumn('shein_daily_data', 'item_id')) {
+            $latest = DB::table('shein_daily_data')
+                ->selectRaw('MAX(id) as id')
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
+                ->groupBy('seller_sku');
+            $rows[] = DB::table('shein_daily_data')
+                ->select('seller_sku', 'shein_sku', 'item_id')
+                ->whereIn('id', $latest)
+                ->get();
+        }
+
+        $seen = [];
+        foreach ($rows as $set) {
+            foreach ($set as $row) {
+                $goodsId = trim((string) ($row->item_id ?? ''));
+                if (! preg_match('/^\d{5,}$/', $goodsId)) {
+                    continue;
+                }
+                foreach ([$row->seller_sku ?? '', $row->shein_sku ?? ''] as $sku) {
+                    $key = $normalizeSku($sku);
+                    if ($key === '' || isset($seen[$key]) || ! empty($map[$key]['listing_url'])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $existing = $map[$key] ?? [
+                        'l30' => null, 'sessions' => null, 'price' => null,
+                        'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+                    ];
+                    $existing['listing_url'] = 'https://us.shein.com/'.$goodsId.'-p-'.$goodsId.'.html';
+                    if (empty($existing['listing_id'])) {
+                        $existing['listing_id'] = $goodsId;
+                    }
+                    $map = $this->putListingLink($map, $key, $existing);
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    private function knownProductUrl(string $slug, string $id): string
+    {
+        $id = trim($id);
+        if ($id === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $id)) {
+            return preg_match('/shopify\.com|myshopify\.com/i', $id) ? '' : $id;
+        }
+
+        return match ($slug) {
+            'shein' => preg_match('/^\d{5,}$/', $id) ? 'https://us.shein.com/'.$id.'-p-'.$id.'.html' : '',
+            'bestbuy' => preg_match('/^\d{6,}$/', $id) ? 'https://www.bestbuy.com/site/'.$id.'.p' : '',
+            'macy' => preg_match('/^\d{5,}$/', $id) ? 'https://www.macys.com/shop/product/?ID='.$id : '',
+            'fbmarketplace' => preg_match('/^\d{10,}$/', $id) ? 'https://www.facebook.com/marketplace/item/'.$id.'/' : '',
+            default => '',
+        };
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $map
+     * @param  array<string, mixed>  $row
+     * @return array<string, array<string, mixed>>
+     */
+    private function putListingLink(array $map, string $key, array $row): array
+    {
+        $map[$key] = $row;
+        $compact = preg_replace('/[^A-Z0-9]/', '', $key) ?? '';
+        if ($compact !== '' && $compact !== $key && empty($map[$compact]['listing_url'])) {
+            $map[$compact] = $row;
+        }
+
+        return $map;
+    }
+
+    private function shopperUrl(string $slug, string $value): string
+    {
+        $url = $this->httpUrl($value);
+        if ($url === '' || preg_match('/shopify\.com|myshopify\.com/i', $url)) {
+            return '';
+        }
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $ok = match ($slug) {
+            'shein' => str_contains($host, 'shein.com'),
+            'wayfair' => str_contains($host, 'wayfair.com') && ! str_contains($host, 'partners.') && ! str_contains($url, 'auth.wayfair'),
+            'bestbuy' => str_contains($host, 'bestbuy.com'),
+            'macy' => str_contains($host, 'macys.com'),
+            'doba' => str_contains($host, 'doba.com') && ! str_contains($host, 'seller.'),
+            'purchasingpower' => str_contains($host, 'purchasingpower.com'),
+            'fbmarketplace' => str_contains($host, 'facebook.com') || str_contains($host, 'fb.com'),
+            'topdawg' => str_contains($host, 'topdawg.com') && ! str_contains($host, 'csp.') && ! str_contains($url, '/supplier/'),
+            default => false,
+        };
+
+        return $ok ? $url : '';
+    }
+
+    private function httpUrl(string $value): string
+    {
+        $value = trim($value);
+        if (str_starts_with($value, '//')) {
+            $value = 'https:'.$value;
+        } elseif (preg_match('#^www\.#i', $value)) {
+            $value = 'https://'.$value;
+        }
+
+        return preg_match('#^https?://#i', $value) ? $value : '';
     }
 
     private function listingLabelFromUrl(string $url): string
