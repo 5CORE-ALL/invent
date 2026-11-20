@@ -5595,13 +5595,13 @@
                             const lmpCmp = (typeof lmpWithShipping === 'function')
                                 ? lmpWithShipping(rowData)
                                 : lmpPrice;
-                            const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpCmp) : '');
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpCmp) : '');
                             // History dot (same as INV / A L30): opens the SKU chart on the Price metric.
                             const priceSku = rowData['(Child) sku'] || '';
                             const dotBtn = priceSku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(priceSku)}" data-metric="price" title="View Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
                             if (lmpCmp > 0 && price > lmpCmp) {
-                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${tri} ${dotBtn}`;
+                                // The red "Price above LMP" triangle is hidden here on purpose (the price still turns red).
+                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span> ${dotBtn}`;
                             }
                             return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri + ' ' + dotBtn;
                         },
