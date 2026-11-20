@@ -341,6 +341,37 @@ class EbayThreeApiService
      * Update listing title via ReviseItem (eBay title max 80 chars).
      * Fetches item details first and includes required fields (SKU, ListingType, Country, Currency, ConditionID).
      */
+    /**
+     * Package size (inches) and weight (lb) from Dim/Wt Master.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateShippingPackage($itemId, float $length, float $width, float $height, float $weightLb): array
+    {
+        try {
+            $authToken = $this->generateBearerToken();
+
+            return EbayTradingReviseItem::reviseShippingPackage(
+                (string) $this->endpoint,
+                (string) $this->compatLevel,
+                (string) $this->devId,
+                (string) $this->appId,
+                (string) $this->certId,
+                (string) $this->siteId,
+                (string) ($authToken ?? ''),
+                trim((string) $itemId),
+                $length,
+                $width,
+                $height,
+                $weightLb,
+            );
+        } catch (\Throwable $e) {
+            Log::error('eBay3 updateShippingPackage exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function updateTitle($itemId, $title, $sku = null)
     {
         $itemId = trim((string) $itemId);

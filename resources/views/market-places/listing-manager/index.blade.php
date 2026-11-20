@@ -1852,6 +1852,10 @@
                         <label class="form-check-label" for="lm-push-part-images">Images</label>
                     </div>
                     <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="lm-push-part-dim-wt">
+                        <label class="form-check-label" for="lm-push-part-dim-wt" title="Package size and weight from Dim/Wt Master. Sent to Amazon, eBay, Shopify Main and Shopify PLS (Shopify takes weight only).">Dim &amp; Wt</label>
+                    </div>
+                    <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="lm-push-part-variation-type">
                         <label class="form-check-label" for="lm-push-part-variation-type" title="Fetched from Variation Master. eBay only; sent together with Variation Name.">Variation Type</label>
                     </div>
@@ -5146,6 +5150,7 @@
             if ($('#lm-push-part-aplus').is(':checked')) parts.push('aplus');
             if ($('#lm-push-part-price').is(':checked')) parts.push('price');
             if ($('#lm-push-part-images').is(':checked')) parts.push('images');
+            if ($('#lm-push-part-dim-wt').is(':checked')) parts.push('dim_wt');
             if ($('#lm-push-part-variation-type').is(':checked')) parts.push('variation_type');
             if ($('#lm-push-part-variation-name').is(':checked')) parts.push('variation_name');
             return parts;
@@ -5250,6 +5255,9 @@
             add('variation_name', 'Variation Name (Variation Master)', fields.variation_name, varEmpty);
             add('price', 'Price', fields.price !== '' && fields.price != null && Number(fields.price) > 0 ? money(fields.price) : '');
             add('images', 'Images', fields.images.length ? (fields.images.length + ' image(s), main: ' + fields.images[0]) : '');
+            const pkgP = currentProduct || {};
+            const pkgText = [pkgP.package_dimensions, pkgP.package_weight].map(v => String(v || '').trim()).filter(Boolean).join(' · ');
+            add('dim_wt', 'Dim & Wt (Dim/Wt Master)', pkgText, 'Read from Dim/Wt Master when pushed');
             $('#lm-push-preview').html(cells.join('') || '<div class="text-muted small">Tick at least one field above.</div>');
         }
 
@@ -5373,8 +5381,9 @@
             $openBtn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
             $('#lm-push-results').addClass('d-none').empty();
             $('#lm-push-modal-sub').text((currentProduct && currentProduct.title ? currentProduct.title + ' · ' : '') + currentProductSku);
-            // Nothing is ticked by default: the user chooses exactly what goes to the live listings.
+            // Nothing is ticked by default except Dim & Wt, which should always follow a product update.
             $('#lm-push-parts input[type="checkbox"]').prop('checked', false);
+            $('#lm-push-part-dim-wt').prop('checked', true);
             pushVM = { sku: currentProductSku, aplus: '', type: '', name: '', attrsState: 'idle', aplusState: 'idle', attrsMsg: '', aplusMsg: '' };
             $('#lm-push-now-btn').prop('disabled', false).html('<i class="fas fa-cloud-upload-alt me-1"></i>Push Updates');
             refreshPushPreview();

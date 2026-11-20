@@ -42,6 +42,66 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Package size (inches) and weight (lb + oz) of a live listing. eBay has no "height": the third side is
+     * PackageDepth. GTC / fixed-price listings need ReviseFixedPriceItem, so the other call is only a fallback.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseShippingPackage(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        float $length,
+        float $width,
+        float $height,
+        float $weightLb,
+    ): array {
+        $itemId = trim($itemId);
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'Item ID is required.'];
+        }
+        $hasDims = $length > 0 && $width > 0 && $height > 0;
+        $hasWeight = $weightLb > 0;
+        if (! $hasDims && ! $hasWeight) {
+            return ['success' => false, 'message' => 'No dimensions or weight to send.'];
+        }
+
+        $package = '<MeasurementUnit>English</MeasurementUnit>';
+        if ($hasDims) {
+            $package .= '<PackageDepth unit="inches">'.round($height, 2).'</PackageDepth>'
+                .'<PackageLength unit="inches">'.round($length, 2).'</PackageLength>'
+                .'<PackageWidth unit="inches">'.round($width, 2).'</PackageWidth>';
+        }
+        if ($hasWeight) {
+            $totalOz = (int) round($weightLb * 16);
+            $package .= '<WeightMajor unit="lbs">'.intdiv($totalOz, 16).'</WeightMajor>'
+                .'<WeightMinor unit="oz">'.($totalOz % 16).'</WeightMinor>';
+        }
+
+        $build = static function (string $root) use ($authToken, $itemId, $package): string {
+            return '<?xml version="1.0" encoding="utf-8"?>'
+                .'<'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents">'
+                .'<RequesterCredentials><eBayAuthToken>'.htmlspecialchars($authToken, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</eBayAuthToken></RequesterCredentials>'
+                .'<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>'
+                .'<Item><ItemID>'.htmlspecialchars($itemId, ENT_XML1 | ENT_QUOTES, 'UTF-8').'</ItemID>'
+                .'<ShippingPackageDetails>'.$package.'</ShippingPackageDetails>'
+                .'</Item></'.$root.'>';
+        };
+
+        $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $build('ReviseFixedPriceItemRequest'), 'package dimensions and weight', 'ReviseFixedPriceItem');
+        if (! ($result['success'] ?? false) && self::isWrongListingTypeError((string) ($result['message'] ?? ''))) {
+            $result = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $build('ReviseItemRequest'), 'package dimensions and weight', 'ReviseItem');
+        }
+
+        return $result;
+    }
+
+    /**
      * After ReviseItem acks, re-read the listing so a description eBay accepted but did not apply is
      * reported instead of shown as "updated". GetItem failures keep the original result.
      *

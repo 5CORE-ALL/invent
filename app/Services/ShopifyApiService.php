@@ -132,6 +132,53 @@ class ShopifyApiService
     }
 
     /**
+     * Variant weight in pounds from Dim/Wt Master. Shopify variants have no length / width / height field.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateVariantWeight(string $sku, float $weightLb): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $weightLb <= 0) {
+            return ['success' => false, 'message' => 'No weight to send.'];
+        }
+
+        try {
+            $domain = config('services.shopify.store_url') ?: config('services.shopify.domain');
+            $token = config('services.shopify.access_token') ?: config('services.shopify.password');
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'Main Shopify credentials are not configured.'];
+            }
+            $domain = rtrim(preg_replace('#^https?://#', '', (string) $domain), '/');
+
+            $variantId = $this->resolveMainStoreVariantId($sku);
+            if (! $variantId) {
+                return ['success' => false, 'message' => 'Variant mapping not found for this SKU on the Main store.'];
+            }
+
+            $url = "https://{$domain}/admin/api/2024-01/variants/{$variantId}.json";
+            $res = $this->retryOnRateLimit(function () use ($token, $url, $variantId, $weightLb) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put($url, [
+                    'variant' => ['id' => $variantId, 'weight' => round($weightLb, 3), 'weight_unit' => 'lb'],
+                ]);
+            });
+            if ($res->successful()) {
+                return ['success' => true, 'message' => 'Variant weight updated (Shopify has no package size field).'];
+            }
+            Log::warning('Main Shopify weight update failed', ['sku' => $sku, 'status' => $res->status(), 'body' => $res->body()]);
+
+            return ['success' => false, 'message' => 'Shopify answered '.$res->status().'.'];
+        } catch (\Throwable $e) {
+            Log::warning('Main Shopify weight update exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Update the Shopify variant option/title for a SKU (Variation Name master).
      */
     public function updateVariantTitle(string $sku, string $title): bool

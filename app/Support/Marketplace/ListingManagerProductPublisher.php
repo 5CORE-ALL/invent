@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingManagerProductPublisher
 {
-    public const PARTS = ['title', 'bullets', 'description', 'aplus', 'price', 'images', 'variation_type', 'variation_name'];
+    public const PARTS = ['title', 'bullets', 'description', 'aplus', 'price', 'images', 'variation_type', 'variation_name', 'dim_wt'];
 
     public const MAX_IMAGES = 20;
 
@@ -508,6 +508,17 @@ class ListingManagerProductPublisher
                 $ok = $ok && $res['success'];
                 $messages[] = 'Images: '.$res['message'];
             }
+            if (in_array('dim_wt', $parts, true)) {
+                $res = $this->pushDimWt($key, $sku);
+                $partResults['dim_wt'] = $res['message'];
+                if (! empty($res['unsupported'])) {
+                    // Not an error: this marketplace has no Dim/Wt call, same as A+ outside eBay.
+                    $unsupported++;
+                } else {
+                    $ok = $ok && $res['success'];
+                }
+                $messages[] = 'Dim/Wt: '.$res['message'];
+            }
 
             if ($messages === []) {
                 $ok = false;
@@ -939,6 +950,64 @@ class ListingManagerProductPublisher
             return ['success' => true, 'message' => implode(' ', $messages)];
         } catch (\Throwable $e) {
             Log::warning('ListingManager variation push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Package size and weight from Dim/Wt Master (inches / pounds), sent to the live listing.
+     *
+     * @return array{success: bool, message: string, unsupported?: bool}
+     */
+    private function pushDimWt(string $marketplace, string $sku): array
+    {
+        $pkg = ListingManagerAmazonHydrator::dimWtPackage($sku);
+        $length = (float) ($pkg['length'] ?? 0);
+        $width = (float) ($pkg['width'] ?? 0);
+        $height = (float) ($pkg['height'] ?? 0);
+        $weightLb = round((float) ($pkg['weight_lb'] ?? 0) + ((float) ($pkg['weight_oz'] ?? 0) / 16), 3);
+        if (! ($length > 0 && $width > 0 && $height > 0) && $weightLb <= 0) {
+            return ['success' => false, 'message' => 'No dimensions or weight for this SKU in Dim/Wt Master.'];
+        }
+
+        $class = $this->serviceClass($marketplace);
+        if ($class === null || ! class_exists($class)) {
+            return ['success' => false, 'unsupported' => true, 'message' => 'Dim/Wt is not sent to this marketplace yet.'];
+        }
+
+        try {
+            $service = app($class);
+
+            if (method_exists($service, 'updateDimWt')) {
+                return $this->normalizeResult($service->updateDimWt($sku, $length, $width, $height, $weightLb), 'Dimensions and weight updated.');
+            }
+
+            if (method_exists($service, 'updateShippingPackage')) {
+                $table = ProductMasterMarketplaceMaps::metricsTableMap()[$marketplace] ?? null;
+                $itemId = '';
+                if ($table && Schema::hasTable($table)) {
+                    $row = DB::table($table)->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])->first();
+                    $itemId = trim((string) ($row->item_id ?? ''));
+                }
+                if ($itemId === '') {
+                    return ['success' => false, 'message' => 'No eBay item ID found for this SKU.'];
+                }
+
+                return $this->normalizeResult($service->updateShippingPackage($itemId, $length, $width, $height, $weightLb), 'Dimensions and weight updated.');
+            }
+
+            if (method_exists($service, 'updateVariantWeight')) {
+                if ($weightLb <= 0) {
+                    return ['success' => false, 'message' => 'No weight for this SKU in Dim/Wt Master.'];
+                }
+
+                return $this->normalizeResult($service->updateVariantWeight($sku, $weightLb), 'Weight updated.');
+            }
+
+            return ['success' => false, 'unsupported' => true, 'message' => 'Dim/Wt is not sent to this marketplace yet.'];
+        } catch (\Throwable $e) {
+            Log::warning('ListingManager dim/wt push failed', ['mp' => $marketplace, 'sku' => $sku, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage()];
         }

@@ -146,6 +146,69 @@ class ShopifyPLSApiService
         }
     }
 
+    /**
+     * Variant weight in pounds from Dim/Wt Master. Shopify variants have no length / width / height field.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateVariantWeight(string $sku, float $weightLb): array
+    {
+        $sku = trim($sku);
+        if ($sku === '' || $weightLb <= 0) {
+            return ['success' => false, 'message' => 'No weight to send.'];
+        }
+
+        try {
+            $domain = $this->plsDomain();
+            $token = $this->plsToken();
+            if (! $domain || ! $token) {
+                return ['success' => false, 'message' => 'PLS Shopify credentials are not configured.'];
+            }
+
+            $variantId = null;
+            $shopifySku = ShopifySku::where('sku', $sku)
+                ->orWhere('sku', strtoupper($sku))
+                ->orWhere('sku', strtolower($sku))
+                ->first();
+            if ($shopifySku && $shopifySku->variant_id) {
+                $probe = $this->retryOnRateLimit(function () use ($domain, $token, $shopifySku) {
+                    return Http::withHeaders(['X-Shopify-Access-Token' => $token])
+                        ->timeout(60)->connectTimeout(25)
+                        ->get("https://{$domain}/admin/api/2024-01/variants/{$shopifySku->variant_id}.json");
+                });
+                if ($probe->successful()) {
+                    $variantId = (string) $shopifySku->variant_id;
+                }
+            }
+            if (! $variantId) {
+                $found = $this->findProductBySkuViaGraphQL($domain, $token, $sku);
+                $variantId = $found['variant_id'] ?? null;
+            }
+            if (! $variantId) {
+                return ['success' => false, 'message' => 'SKU not found on the PLS store.'];
+            }
+
+            $res = $this->retryOnRateLimit(function () use ($domain, $token, $variantId, $weightLb) {
+                return Http::withHeaders([
+                    'X-Shopify-Access-Token' => $token,
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->connectTimeout(25)->put("https://{$domain}/admin/api/2024-01/variants/{$variantId}.json", [
+                    'variant' => ['id' => $variantId, 'weight' => round($weightLb, 3), 'weight_unit' => 'lb'],
+                ]);
+            });
+            if ($res->successful()) {
+                return ['success' => true, 'message' => 'Variant weight updated (Shopify has no package size field).'];
+            }
+            Log::warning('ShopifyPLS weight update failed', ['sku' => $sku, 'status' => $res->status(), 'body' => $res->body()]);
+
+            return ['success' => false, 'message' => 'Shopify answered '.$res->status().'.'];
+        } catch (\Throwable $e) {
+            Log::warning('ShopifyPLS weight update exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function updateVariantTitle(string $sku, string $title): bool
     {
         $sku = trim($sku);

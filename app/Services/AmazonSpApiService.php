@@ -1207,6 +1207,111 @@ class AmazonSpApiService
     }
 
     /**
+     * Update the package size (inches) and package weight (pounds) of a live listing from Dim/Wt Master.
+     * Listings Items PATCH on the seller SKU; the whole item_package_dimensions object is replaced so the
+     * three sides always travel together.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateDimWt(string $sku, float $length, float $width, float $height, float $weightLb): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        $hasDims = $length > 0 && $width > 0 && $height > 0;
+        if (! $hasDims && $weightLb <= 0) {
+            return ['success' => false, 'message' => 'No dimensions or weight to send.'];
+        }
+
+        $sellerId = config('services.amazon_sp.seller_id');
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+            }
+            $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken);
+            if (empty($amazonSku)) {
+                return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+            }
+            $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+            if (empty($productType)) {
+                return ['success' => false, 'message' => 'Product type not found for SKU.'];
+            }
+
+            $marketplaceId = 'ATVPDKIKX0DER';
+            $patches = [];
+            if ($hasDims) {
+                $patches[] = [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_dimensions',
+                    'value' => [[
+                        'length' => ['value' => round($length, 2), 'unit' => 'inches'],
+                        'width' => ['value' => round($width, 2), 'unit' => 'inches'],
+                        'height' => ['value' => round($height, 2), 'unit' => 'inches'],
+                        'marketplace_id' => $marketplaceId,
+                    ]],
+                ];
+            }
+            if ($weightLb > 0) {
+                $patches[] = [
+                    'op' => 'replace',
+                    'path' => '/attributes/item_package_weight',
+                    'value' => [[
+                        'value' => round($weightLb, 3),
+                        'unit' => 'pounds',
+                        'marketplace_id' => $marketplaceId,
+                    ]],
+                ];
+            }
+
+            $endpoint = 'https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/'.$sellerId.'/'.rawurlencode($amazonSku).'?marketplaceIds='.$marketplaceId;
+            $request = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(30);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->patch($endpoint, ['productType' => $productType, 'patches' => $patches]);
+            $body = $response->json();
+            $body = is_array($body) ? $body : [];
+
+            if ($response->failed()) {
+                $msg = trim((string) ($body['errors'][0]['message'] ?? '')) ?: 'HTTP '.$response->status();
+                Log::warning('Amazon dim/wt update failed', ['sku' => $sku, 'status' => $response->status(), 'response' => $body]);
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            $issues = [];
+            foreach ((array) ($body['issues'] ?? []) as $issue) {
+                if (is_array($issue) && strtoupper((string) ($issue['severity'] ?? '')) === 'ERROR') {
+                    $issues[] = trim((string) ($issue['message'] ?? 'Amazon reported an error for this update.'));
+                }
+            }
+            $status = strtoupper((string) ($body['status'] ?? 'ACCEPTED'));
+            if ($status !== 'ACCEPTED' || $issues !== []) {
+                $msg = $issues !== [] ? implode(' ', array_slice($issues, 0, 2)) : 'Amazon did not accept the update (status: '.$status.').';
+                Log::warning('Amazon dim/wt update not accepted', ['sku' => $sku, 'response' => $body]);
+
+                return ['success' => false, 'message' => $msg];
+            }
+
+            return ['success' => true, 'message' => 'Package dimensions and weight updated.'];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon dim/wt update exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Listings Items PATCH returns HTTP 200 with status/issues; treat non-ACCEPTED and ERROR issues as failure.
      *
      * @param  array<string,mixed>  $body
