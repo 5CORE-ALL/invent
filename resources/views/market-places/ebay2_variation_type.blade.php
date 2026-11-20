@@ -106,7 +106,7 @@
                     <div class="d-flex flex-wrap align-items-end gap-3 mb-2 p-2 bg-light border rounded">
                         <div style="min-width:220px">
                             <label class="form-label small fw-semibold mb-1" for="e2vt-search-parent">Search Parent</label>
-                            <input type="search" id="e2vt-search-parent" class="form-control form-control-sm" placeholder="Parent or item ID..." autocomplete="off" maxlength="100">
+                            <input type="search" id="e2vt-search-parent" class="form-control form-control-sm" placeholder="Parent, CP Parent or item ID..." autocomplete="off" maxlength="100">
                         </div>
                         <div style="min-width:220px">
                             <label class="form-label small fw-semibold mb-1" for="e2vt-search-sku">Search SKU</label>
@@ -284,7 +284,8 @@
             function applyFilters() {
                 const filters = [];
                 if (parentSearch) {
-                    filters.push((d) => norm(d.main_listing).includes(parentSearch) || norm(d.item_id).includes(parentSearch));
+                    filters.push((d) => norm(d.main_listing).includes(parentSearch) || norm(d.item_id).includes(parentSearch)
+                        || (Array.isArray(d.cp_parents) && d.cp_parents.some((p) => norm(p.parent).includes(parentSearch))));
                 }
                 if (skuSearch) {
                     // sku_search is the lower-cased child SKUs of the eBay listing and of Variation Master.
@@ -515,6 +516,21 @@
                         {
                             title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
                             formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
+                        },
+                        {
+                            // The Parent CP Masters (/product-master) holds for this listing's SKUs. More than one value means
+                            // the SKUs are under different parents there.
+                            title: 'CP Parent', field: 'cp_parent', width: 150, headerHozAlign: 'center',
+                            formatter: function (c) {
+                                const d = c.getData();
+                                const list = Array.isArray(d.cp_parents) ? d.cp_parents : [];
+                                if (!list.length) return '<span class="e2vt-muted" title="CP Masters has no Parent for these SKUs">—</span>';
+                                const tip = list.map((p) => p.parent + ': ' + p.count + ' SKU' + (p.count === 1 ? '' : 's')).join('\n');
+                                const extra = list.length > 1
+                                    ? ' <span class="e2vt-chip e2vt-chip--excess" title="' + esc('SKUs are under different parents in CP Masters:\n' + tip).replace(/\n/g, '&#10;') + '"><i class="ri-alert-fill"></i> +' + (list.length - 1) + '</span>'
+                                    : '';
+                                return '<b title="' + esc(tip).replace(/\n/g, '&#10;') + '">' + esc(list[0].parent) + '</b>' + extra;
+                            },
                         },
                         {
                             // Every child SKU of the parent: eBay listing SKUs plus Variation Master children.

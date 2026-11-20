@@ -296,10 +296,27 @@ class Ebay2VariationTypeController extends Controller
         $cpSkus = $this->cpMasterSkuKeys();
         $notInCp = array_values(array_filter($childSkus, fn (string $s) => ! isset($cpSkus[$this->skuKey($s)])));
 
+        // CP Parent: the Parent CP Masters holds for this listing's SKUs (the PARENT row and the children). Normally
+        // one value; more than one means the SKUs sit under different parents in CP Masters.
+        $cpCounts = [];
+        foreach (array_merge([$listing['main_listing']], $childSkus) as $s) {
+            $p = $cpSkus[$this->skuKey((string) $s)] ?? '';
+            if ($p !== '') {
+                $cpCounts[$p] = ($cpCounts[$p] ?? 0) + 1;
+            }
+        }
+        arsort($cpCounts);
+        $cpParents = [];
+        foreach ($cpCounts as $p => $n) {
+            $cpParents[] = ['parent' => (string) $p, 'count' => $n];
+        }
+
         return [
             'skus' => $childSkus,
             'skus_not_on_ebay' => $notOnEbay,
             'skus_not_in_cp' => $notInCp,
+            'cp_parent' => $cpParents[0]['parent'] ?? '',
+            'cp_parents' => $cpParents,
             'sku_names' => array_map(fn (string $s) => $master[$parentNorm]['names'][$this->skuKey($s)] ?? '', $childSkus),
             'ebay_names' => array_map(fn (string $s) => implode(' / ', $liveBySku[$this->skuKey($s)] ?? []), $childSkus),
             // Lower-case SKUs for the SKU search box.
@@ -766,13 +783,14 @@ class Ebay2VariationTypeController extends Controller
         return $out;
     }
 
-    /** @var array<string, true>|null */
+    /** @var array<string, string>|null */
     private ?array $cpSkuKeys = null;
 
     /**
-     * Every SKU in CP Masters (product_master, not deleted), keyed the way skuKey() keys a SKU.
+     * Every SKU in CP Masters (product_master, not deleted), keyed the way skuKey() keys a SKU, with the Parent that
+     * CP Masters holds for it ('' when it has none). isset() on a key tells whether the SKU is in CP Masters.
      *
-     * @return array<string, true>
+     * @return array<string, string>
      */
     private function cpMasterSkuKeys(): array
     {
@@ -781,8 +799,9 @@ class Ebay2VariationTypeController extends Controller
         }
 
         $keys = [];
-        foreach (DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
-            $keys[$this->skuKey((string) $sku)] = true;
+        $rows = DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'parent']);
+        foreach ($rows as $row) {
+            $keys[$this->skuKey((string) $row->sku)] = trim((string) preg_replace('/\s+/', ' ', trim((string) ($row->parent ?? ''))));
         }
 
         return $this->cpSkuKeys = $keys;
