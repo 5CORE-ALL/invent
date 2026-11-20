@@ -7,7 +7,9 @@ function phonePageUrl(url) {
         const host = parsed.hostname.toLowerCase();
         const amazon = /(^|\.)amazon\.(com|in|co\.uk|de|ca)$/.test(host) && /^\/(dp|gp)\//.test(parsed.pathname);
         const newegg = /(^|\.)newegg\.com$/.test(host) && /^\/p\//.test(parsed.pathname);
-        return (amazon || newegg) ? parsed.toString() : '';
+        const alibaba = /(^|\.)alibaba\.com$/.test(host) && /\/product-detail\//.test(parsed.pathname);
+        const temu = /(^|\.)temu\.com$/.test(host) && (/\/goods\.html$/i.test(parsed.pathname) || /-g-\d+/.test(parsed.pathname) || /(?:^|[?&])goods_id=\d+/.test(parsed.search));
+        return (amazon || newegg || alibaba || temu) ? parsed.toString() : '';
     } catch (e) {
         return '';
     }

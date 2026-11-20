@@ -80,6 +80,9 @@ class LqsMarketplacePageService
         }
 
         $apiMetrics = $this->apiMetricsBySku($channel['metrics'] ?? null, $normalizeSku);
+        if ($slug === 'tiktok' || $slug === 'tiktok2') {
+            $apiMetrics = $this->overlayTikTokListingIds($slug, $apiMetrics, $normalizeSku);
+        }
         $hasAuditColumns = Schema::hasColumn('lqs_marketplace_scores', 'audit_findings');
         $yoastBySku = $slug === 'shopify' ? $this->shopifySeoScoresBySku() : [];
 
@@ -431,6 +434,39 @@ class LqsMarketplacePageService
         }
 
         return [];
+    }
+
+    /**
+     * TikTok LQS scores stay on the sheet. The shop product id lives on the synced product row,
+     * and that id is what the desktop and phone icons open.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlayTikTokListingIds(string $slug, array $map, callable $normalizeSku): array
+    {
+        $table = $slug === 'tiktok2' ? 'tiktok_products_two' : 'tiktok_products';
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'product_id')) {
+            return $map;
+        }
+
+        $seen = [];
+        foreach (DB::table($table)->select('sku', 'product_id')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
+            $key = $normalizeSku($row->sku);
+            $productId = trim((string) ($row->product_id ?? ''));
+            if ($key === '' || ! preg_match('/^\d{8,}$/', $productId) || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $existing = $map[$key] ?? [
+                'l30' => null, 'sessions' => null, 'price' => null,
+                'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+            ];
+            $existing['listing_id'] = $productId;
+            $map[$key] = $existing;
+        }
+
+        return $map;
     }
 
     private function mapEbayStyleMetrics($rows, callable $normalizeSku): array

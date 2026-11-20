@@ -51,8 +51,8 @@
                 window.open(url, '_blank', 'noopener');
                 return;
             }
-            if (LQS_SLUG === 'newegg') {
-                lqsOpenNeweggMobile(url);
+            if (LQS_SLUG === 'newegg' || LQS_SLUG === 'alibaba' || LQS_SLUG === 'temu' || LQS_SLUG === 'temu2' || LQS_SLUG === 'temu3') {
+                lqsOpenAsPhone(url);
                 return;
             }
             window.open(url, 'lqsMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
@@ -71,12 +71,10 @@
                 + '</span></div>';
         }
 
-        window.lqsOpenNeweggMobile = function (idOrUrl) {
-            const given = String(idOrUrl || '');
-            const url = /^https?:\/\//i.test(given) ? given : lqsNeweggUrl(given);
+        function lqsOpenAsPhone(url) {
             if (!url) return;
             const popup = function () {
-                window.open(url, 'lqsNeweggMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
+                window.open(url, 'lqsMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
             };
             try {
                 if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
@@ -87,6 +85,12 @@
                 }
             } catch (e) {}
             popup();
+        }
+
+        window.lqsOpenNeweggMobile = function (idOrUrl) {
+            const given = String(idOrUrl || '');
+            const url = /^https?:\/\//i.test(given) ? given : lqsNeweggUrl(given);
+            lqsOpenAsPhone(url);
         };
 
         function lqsEsc(value) {
