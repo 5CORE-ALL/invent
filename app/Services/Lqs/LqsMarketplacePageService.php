@@ -83,6 +83,7 @@ class LqsMarketplacePageService
         if ($slug === 'tiktok' || $slug === 'tiktok2') {
             $apiMetrics = $this->overlayTikTokListingIds($slug, $apiMetrics, $normalizeSku);
         }
+        $apiMetrics = $this->overlayBuyerLinks($slug, $apiMetrics, $normalizeSku);
         $hasAuditColumns = Schema::hasColumn('lqs_marketplace_scores', 'audit_findings');
         $yoastBySku = $slug === 'shopify' ? $this->shopifySeoScoresBySku() : [];
 
@@ -434,6 +435,80 @@ class LqsMarketplacePageService
         }
 
         return [];
+    }
+
+    /**
+     * These shops have no public id template. The saved buyer link is the product page the icons open.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlayBuyerLinks(string $slug, array $map, callable $normalizeSku): array
+    {
+        $tables = [
+            'shein' => 'shein_listing_statuses',
+            'wayfair' => 'wayfair_listing_statuses',
+            'bestbuy' => 'bestbuy_usa_listing_statuses',
+            'macy' => 'macys_listing_statuses',
+            'doba' => 'doba_listing_statuses',
+            'purchasingpower' => 'purchasing_power_listing_statuses',
+            'fbmarketplace' => 'fb_marketplace_listing_statuses',
+            'topdawg' => 'topdawg_listing_statuses',
+        ];
+        $table = $tables[$slug] ?? null;
+        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, 'value')) {
+            return $map;
+        }
+
+        $seen = [];
+        foreach (DB::table($table)->select('sku', 'value')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
+            $key = $normalizeSku($row->sku);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $state = json_decode((string) $row->value, true);
+            if (! is_array($state)) {
+                continue;
+            }
+            $buyer = trim((string) ($state['buyer_link'] ?? ''));
+            if (! preg_match('#^https?://#i', $buyer) || preg_match('/shopify\.com|myshopify\.com/i', $buyer)) {
+                continue;
+            }
+            $seen[$key] = true;
+            $existing = $map[$key] ?? [
+                'l30' => null, 'sessions' => null, 'price' => null,
+                'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+            ];
+            $existing['listing_url'] = $buyer;
+            if (empty($existing['listing_id'])) {
+                $id = trim((string) ($state['listing_id'] ?? $state['item_id'] ?? $state['goods_id'] ?? ''));
+                $existing['listing_id'] = $id !== '' ? $id : $this->listingLabelFromUrl($buyer);
+            }
+            $map[$key] = $existing;
+        }
+
+        return $map;
+    }
+
+    private function listingLabelFromUrl(string $url): string
+    {
+        $parts = parse_url($url) ?: [];
+        $query = [];
+        parse_str((string) ($parts['query'] ?? ''), $query);
+        foreach (['ID', 'id', 'sku', 'item', 'item_id', 'product_id', 'goods_id', 'goodsId'] as $key) {
+            $value = trim((string) ($query[$key] ?? ''));
+            if ($value !== '') {
+                return substr($value, 0, 32);
+            }
+        }
+        $path = trim((string) ($parts['path'] ?? ''), '/');
+        $segment = $path === '' ? '' : basename($path);
+        $segment = (string) preg_replace('/\.(html|htm|php)$/i', '', $segment);
+        if (preg_match('/(\d{5,})/', $segment, $match)) {
+            return $match[1];
+        }
+
+        return $segment !== '' ? substr($segment, 0, 24) : 'Link';
     }
 
     /**

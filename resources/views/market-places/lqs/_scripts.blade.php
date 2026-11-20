@@ -496,11 +496,12 @@
                         width: 168,
                         formatter: function(cell) {
                             const d    = cell.getRow().getData();
-                            const listingId = d.listing_id || cell.getValue() || '';
-                            if (d.is_parent || !listingId) return '<span style="color:#adb5bd;">–</span>';
+                            if (d.is_parent) return '<span style="color:#adb5bd;">–</span>';
+                            const listingId = String(d.listing_id || cell.getValue() || '').trim();
                             const url = lqsMarketplaceUrl(listingId, d);
-                            if (!url) return '<span class="amz-asin-code">' + lqsEsc(String(listingId)) + '</span>';
-                            return lqsListingIcons(listingId, url);
+                            if (!listingId && !url) return '<span style="color:#adb5bd;">–</span>';
+                            if (!url) return '<span class="amz-asin-code">' + lqsEsc(listingId) + '</span>';
+                            return lqsListingIcons(listingId || 'Link', url);
                         }
                     },
                     {
