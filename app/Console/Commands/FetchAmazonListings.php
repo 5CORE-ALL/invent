@@ -194,7 +194,6 @@ class FetchAmazonListings extends Command
     }
 
     private function getUnitOrderedAndSessionsData(){
-        $accessToken = $this->getAccessToken();
         $marketplaceId = config('services.amazon_sp.marketplace_id');
 
         $l7End = Carbon::today()->copy()->subDay()->endOfDay();           
@@ -228,66 +227,36 @@ class FetchAmazonListings extends Command
         info('$dateRanges', [$dateRanges]);
 
         foreach ($dateRanges as $key => [$start, $end]) {
-            // 1. Create report
-            $response = Http::withHeaders([
-                'x-amz-access-token' => $accessToken,
-            ])->post('https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports', [
-                'reportType' => 'GET_SALES_AND_TRAFFIC_REPORT',
-                'marketplaceIds' => [$marketplaceId],
-                'dataStartTime' => $start,
-                'dataEndTime' => $end,
-                "reportOptions" => ['asinGranularity' => 'CHILD'],
-            ]);
-    
-            $reportId = $response['reportId'] ?? null;
-            if (!$reportId) {
-                $this->error("Failed to create report for $key");
-                continue;
+            // Amazon's Sales & Traffic report is occasionally returned partial (ASINs with
+            // real traffic missing), which silently left sessions/units NULL for those
+            // SKUs. Fetch with retries and reject a report that is far smaller than what
+            // is already stored for this window.
+            $salesAndTraffic = null;
+            $reportIsSane = false;
+            $storedCount = AmazonDatasheet::whereNotNull("sessions_{$key}")->where("sessions_{$key}", '>', 0)->count();
+            for ($attempt = 1; $attempt <= 3; $attempt++) {
+                $salesAndTraffic = $this->fetchSalesAndTrafficReport($key, $start, $end, $marketplaceId);
+                if (!empty($salesAndTraffic)) {
+                    $withTraffic = count(array_filter($salesAndTraffic, function ($row) {
+                        return (int) ($row['trafficByAsin']['sessions'] ?? 0) > 0;
+                    }));
+                    $reportIsSane = $storedCount === 0 || $withTraffic >= (int) floor($storedCount * 0.6);
+                    if ($reportIsSane) {
+                        break;
+                    }
+                    Log::warning("Sales & Traffic report for $key looks partial", [
+                        'attempt' => $attempt, 'report_asins_with_traffic' => $withTraffic, 'stored_rows_with_traffic' => $storedCount,
+                    ]);
+                }
+                if ($attempt < 3) {
+                    // createReport is heavily rate-limited (QuotaExceeded / 429); back off before retrying.
+                    sleep(75 * $attempt);
+                }
             }
-    
-            // 2. Wait for report to be ready
-            do {
-                sleep(15);
-                $status = Http::withHeaders([
-                    'x-amz-access-token' => $accessToken,
-                ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/{$reportId}");
-                $processingStatus = $status['processingStatus'] ?? 'UNKNOWN';
-            } while ($processingStatus !== 'DONE');
-    
-            // 3. Download document
-            $documentId = $status['reportDocumentId'] ?? null;
-            if (!$documentId) {
-                $this->error("No documentId for report $reportId");
-                continue;
-            }
-            $doc = Http::withHeaders([
-                'x-amz-access-token' => $accessToken,
-            ])->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/{$documentId}");
-    
-            $url = $doc['url'] ?? null;
-            if (!$url) {
-                Log::error("No document URL for $key");
-                continue;
-            }
-        
-            $rows = $this->getGZConvertedData($url);
-            if (!isset($rows[0])) {
-                Log::warning("Empty rows returned for $key");
-                continue;
-            }
-        
-            $decoded = json_decode($rows[0], true);
-            info('decoded', [$decoded]);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                Log::error('JSON decode error: ' . json_last_error_msg());
-                continue;
-            }
-        
-            $salesAndTraffic = $decoded['salesAndTrafficByAsin'] ?? [];
 
-            info("Decoded structure for $key", $decoded);
             if (empty($salesAndTraffic)) {
-                Log::warning("No salesAndTrafficByAsin data for $key");
+                Log::error("Sales & Traffic report for $key unavailable after retries; window skipped");
+                $this->error("Sales & Traffic report for $key unavailable; skipped");
                 continue;
             }
         
@@ -352,6 +321,7 @@ class FetchAmazonListings extends Command
                 $this->info("L7 Campaigns - KW: {$kwCampaignsL7->count()}, PT: {$ptCampaignsL7->count()}, HL: {$hlCampaignsL7->count()}");
             }
         
+            $seenAsins = [];
             foreach ($salesAndTraffic as $asinData) {
                 $asin = $asinData['childAsin'] ?? null;
                 $unitsOrdered = $asinData['salesByAsin']['unitsOrdered'] ?? 0;
@@ -361,6 +331,7 @@ class FetchAmazonListings extends Command
                     Log::warning("ASIN missing in entry");
                     continue;
                 }
+                $seenAsins[$asin] = true;
     
                 // Get the amazon_datasheet record to access SKU
                 $amazonSheet = AmazonDatasheet::where('asin', $asin)->first();
@@ -493,11 +464,111 @@ class FetchAmazonListings extends Command
                     ]);
                 }
                 
-                $amazonSheet->update($updateData);
+                try {
+                    $amazonSheet->update($updateData);
+                } catch (\Throwable $e) {
+                    // One bad row must not abort the rest of the window.
+                    Log::error("Sales & Traffic update failed for $key / $asin: " . $e->getMessage());
+                }
+            }
+
+            // ASINs absent from a complete report had no traffic in the window. Store 0 (not
+            // NULL / a stale old value) so CVR and the rules read a real number.
+            if ($reportIsSane && !empty($seenAsins)) {
+                $zero = ["sessions_{$key}" => 0];
+                if ($key !== 'l1') {
+                    $zero["units_ordered_{$key}"] = 0;
+                }
+                $affected = AmazonDatasheet::whereNotNull('asin')
+                    ->whereNotIn('asin', array_keys($seenAsins))
+                    ->where(function ($q) use ($key) {
+                        $q->whereNull("sessions_{$key}")->orWhere("sessions_{$key}", '>', 0);
+                    })
+                    ->update($zero);
+                Log::info("Sales & Traffic $key: zero-filled $affected SKUs absent from the report");
             }
         }
     
         $this->info('Sales and traffic data updated for L7, L15, L30, L60, and L90.');
+    }
+
+    /**
+     * Request, poll (bounded) and download one GET_SALES_AND_TRAFFIC_REPORT window.
+     * Returns the salesAndTrafficByAsin rows, or null when the report could not be had.
+     * A fresh access token is used per window (the token lives ~1h; the full run can exceed it).
+     */
+    private function fetchSalesAndTrafficReport(string $key, string $start, string $end, $marketplaceId): ?array
+    {
+        $accessToken = $this->getAccessToken();
+        $headers = ['x-amz-access-token' => $accessToken];
+
+        $response = Http::withHeaders($headers)
+            ->post('https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports', [
+                'reportType' => 'GET_SALES_AND_TRAFFIC_REPORT',
+                'marketplaceIds' => [$marketplaceId],
+                'dataStartTime' => $start,
+                'dataEndTime' => $end,
+                'reportOptions' => ['asinGranularity' => 'CHILD'],
+            ]);
+
+        $reportId = $response['reportId'] ?? null;
+        if (!$reportId) {
+            Log::error("Failed to create Sales & Traffic report for $key", ['body' => $response->body()]);
+            return null;
+        }
+
+        $status = null;
+        $processingStatus = 'UNKNOWN';
+        for ($i = 0; $i < 60; $i++) { // ~15 min max; the old loop could spin forever on CANCELLED/FATAL
+            sleep(15);
+            $status = Http::withHeaders($headers)
+                ->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/{$reportId}");
+            $processingStatus = $status['processingStatus'] ?? 'UNKNOWN';
+            if ($processingStatus === 'DONE') {
+                break;
+            }
+            if (in_array($processingStatus, ['CANCELLED', 'FATAL'], true)) {
+                break;
+            }
+        }
+        if ($processingStatus !== 'DONE') {
+            Log::error("Sales & Traffic report for $key ended as $processingStatus", ['reportId' => $reportId]);
+            return null;
+        }
+
+        $documentId = $status['reportDocumentId'] ?? null;
+        if (!$documentId) {
+            Log::error("No documentId for Sales & Traffic report $reportId ($key)");
+            return null;
+        }
+
+        $doc = Http::withHeaders($headers)
+            ->get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/{$documentId}");
+        $url = $doc['url'] ?? null;
+        if (!$url) {
+            Log::error("No document URL for $key");
+            return null;
+        }
+
+        $rows = $this->getGZConvertedData($url);
+        if (!isset($rows[0])) {
+            Log::warning("Empty rows returned for $key");
+            return null;
+        }
+
+        $decoded = json_decode($rows[0], true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            Log::error("JSON decode error for $key: " . json_last_error_msg());
+            return null;
+        }
+
+        $byAsin = $decoded['salesAndTrafficByAsin'] ?? [];
+        if (empty($byAsin)) {
+            Log::warning("No salesAndTrafficByAsin data for $key");
+            return null;
+        }
+
+        return $byAsin;
     }
 
     private function getGZConvertedData($url)

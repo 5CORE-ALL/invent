@@ -5169,6 +5169,9 @@
                             const row = cell.getRow().getData();
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
+                            if (sess30 === 0 && row['Sess30_missing']) {
+                                return '<span class="text-muted" title="Sessions L30 not synced yet (no value stored), so CVR cannot be computed">—</span>';
+                            }
                             const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
                             let color = '#e83e8c';
                             if (cvr <= 4) color = '#a00211';

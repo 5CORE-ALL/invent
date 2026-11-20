@@ -390,6 +390,9 @@ class OverallAmazonController extends Controller
                 $row['A_L15'] = $amazonSheet->units_ordered_l15 ?? 0;
                 $row['A_L7'] = $amazonSheet->units_ordered_l7 ?? 0;
                 $row['Sess30'] = $amazonSheet->sessions_l30 ?? 0;
+                // NULL = the sessions sync never stored a value (not "0 sessions"); lets the
+                // table show "—" instead of a misleading 0% CVR.
+                $row['Sess30_missing'] = $amazonSheet->sessions_l30 === null;
                 $row['Sess7'] = $amazonSheet->sessions_l7 ?? 0;
                 $row['price'] = $amazonSheet->price;
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
