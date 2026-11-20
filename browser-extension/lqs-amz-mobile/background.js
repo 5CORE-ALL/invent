@@ -1,12 +1,13 @@
 const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 
-function amazonUrl(url) {
+function phonePageUrl(url) {
     try {
         const parsed = new URL(url);
-        if (!/(^|\.)amazon\.(com|in|co\.uk|de|ca)$/i.test(parsed.hostname)) return '';
-        if (!/^\/(dp|gp)\//.test(parsed.pathname)) return '';
         if (parsed.protocol !== 'https:') return '';
-        return parsed.toString();
+        const host = parsed.hostname.toLowerCase();
+        const amazon = /(^|\.)amazon\.(com|in|co\.uk|de|ca)$/.test(host) && /^\/(dp|gp)\//.test(parsed.pathname);
+        const newegg = /(^|\.)newegg\.com$/.test(host) && /^\/p\//.test(parsed.pathname);
+        return (amazon || newegg) ? parsed.toString() : '';
     } catch (e) {
         return '';
     }
@@ -40,7 +41,7 @@ function applyRule(tabId, headers, done) {
 }
 
 chrome.runtime.onMessageExternal.addListener(function (msg, sender, sendResponse) {
-    const url = amazonUrl(msg && msg.url);
+    const url = phonePageUrl(msg && msg.url);
     if (!msg || msg.type !== 'open-mobile' || !url) {
         sendResponse({ ok: false });
         return;

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LQS Amazon mobile view",
-  "version": "1.0",
-  "description": "Lets the LQS Mobile button open an Amazon product as a phone. Amazon ignores a narrow window and keeps the desktop page unless the request says it is a phone.",
+  "version": "1.1",
+  "description": "Lets the LQS Mobile button open an Amazon or Newegg product as a phone. A narrow window still gets the desktop page unless the request says it is a phone.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs+4Fu+Y9ehcvjcJX7xNP9fy5A7Yay1TQNvDseg+5E/nxo2FR1/wbXTlZyroUWKBVjtSNsiaJa4QI6StBbAFH31LxcaNVsQTcKaCsiuqd2AN5EXbn8lbzxtc7y+2fKy/kFEAf/cKZsentxmPSxaGgSgmce5MT4Sw4j270q/mqDSKEM/d3Ois4UZ0+6+ncd/63cOrzLCSLiKXwGFuHTgJa+ywJSq5vH2xX0UbQICdCL4w/b6wu8YQIvaCGpRUnKcVhEQ0Ni/E49ITlPEGaO95SEVbFTJ/wCKRP86Tyn8RFL6VQ3ybue+U4AlY1SCKdwxLw7Dq5kICS9xicH6xgy6hD5wIDAQAB",
   "permissions": ["declarativeNetRequest", "declarativeNetRequestWithHostAccess", "tabs", "windows"],
   "host_permissions": [
@@ -10,7 +10,8 @@
     "*://*.amazon.in/*",
     "*://*.amazon.co.uk/*",
     "*://*.amazon.de/*",
-    "*://*.amazon.ca/*"
+    "*://*.amazon.ca/*",
+    "*://*.newegg.com/*"
   ],
   "background": {
     "service_worker": "background.js"

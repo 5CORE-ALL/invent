@@ -13,10 +13,31 @@
         const lqsYoastSyncUrl = @json($lqsPage['routes']['seo_sync'] ?? null);
         const LQS_SLUG = @json($lqsPage['slug'] ?? '');
 
+        function lqsNeweggItem(id) {
+            return String(id || '').trim().replace(/[^A-Za-z0-9-]/g, '');
+        }
+
         function lqsNeweggUrl(id) {
-            const item = String(id || '').replace(/[^A-Za-z0-9]/g, '');
+            const item = lqsNeweggItem(id);
             return item ? ('https://www.newegg.com/p/' + item) : '';
         }
+
+        window.lqsOpenNeweggMobile = function (id) {
+            const url = lqsNeweggItem(id) ? ('https://m.newegg.com/p/' + lqsNeweggItem(id)) : '';
+            if (!url) return;
+            const popup = function () {
+                window.open(url, 'lqsNeweggMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
+            };
+            try {
+                if (window.chrome && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage('kjdjgekgokefnkafkmikgafmineikjgd', { type: 'open-mobile', url: url }, function (res) {
+                        if (!res || !res.ok || (chrome.runtime && chrome.runtime.lastError)) popup();
+                    });
+                    return;
+                }
+            } catch (e) {}
+            popup();
+        };
 
         function amzNotify(msg, type) {
             if (window.toastr) {
@@ -374,7 +395,7 @@
                                     + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view"'
                                     + ' onclick="event.stopPropagation();window.open(\'' + url + '\',\'_blank\',\'noopener\')"><i class="fas fa-desktop"></i></button>'
                                     + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view"'
-                                    + ' onclick="event.stopPropagation();window.open(\'' + url + '\',\'lqsNeweggMobile\',\'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes\')"><i class="fas fa-mobile-screen-button"></i></button>'
+                                    + ' onclick="event.stopPropagation();lqsOpenNeweggMobile(\'' + lqsNeweggItem(listingId) + '\')"><i class="fas fa-mobile-screen-button"></i></button>'
                                     + '</span></div>';
                             }
                             const listingUrl = d.listing_url || '';
