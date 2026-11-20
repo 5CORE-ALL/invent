@@ -140,7 +140,7 @@
                             </select>
                         </div>
                         <div class="ms-auto small text-muted">
-                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. Use <b>Edit</b> in the values column to rename individual values (for example a colour), then <b>Push</b>.
+                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. In the values column, <b>Add</b> sets every SKU's value on eBay to its Variation Master name (the Variation Name (SKU wise) column); <b>Edit</b> renames individual values by hand.
                             A <span class="e2vt-dot e2vt-dot--success" style="width:10px;height:10px"></span> green dot is success, a
                             <span class="e2vt-dot e2vt-dot--failed" style="width:10px;height:10px"></span> red dot is a failure: hover it for the reason.
                         </div>
@@ -370,14 +370,19 @@
                 if (success) setTimeout(() => el.remove(), 10000);
             }
 
-            async function pushValues(d) {
+            // mode 'master': set every SKU's value to its Variation Master Variation Name; otherwise push the waiting edits.
+            async function pushValues(d, mode) {
+                let outcome;
                 try {
-                    const res = await post(URLS.pushValues, { item_id: d.item_id });
+                    const res = await post(URLS.pushValues, mode ? { item_id: d.item_id, mode: mode } : { item_id: d.item_id });
                     await applyRowUpdates([res.row]);
+                    outcome = { success: !!res.success, message: String((res.row && res.row.values_message) || (res.success ? 'Done.' : 'Failed.')) };
                 } catch (e) {
+                    outcome = { success: false, message: e.message };
                     await applyRowUpdates([{ item_id: d.item_id, values_status: 'failed', values_message: e.message }]);
                 }
                 recountBadges();
+                return outcome;
             }
 
             function visibleRows() {
@@ -778,22 +783,34 @@
                                     },
                                 },
                                 {
-                                    title: 'Push', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                                    // Add: sets every SKU's value on eBay to its Variation Master Variation Name (the column to the left).
+                                    title: 'Add', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
-                                        const can = editsOf(c.getData()).length > 0;
-                                        return '<button type="button" class="btn btn-sm ' + (can ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-values"' + (can ? '' : ' disabled') + ' title="' + (can ? 'Push the renamed values to eBay 2' : 'No value edits waiting. Use Edit first.') + '"><i class="ri-upload-2-line me-1"></i>Push</button>';
+                                        const d = c.getData();
+                                        const can = (Array.isArray(d.sku_names) ? d.sku_names : []).some((n) => n);
+                                        return '<button type="button" class="btn btn-sm ' + (can ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-values"' + (can ? '' : ' disabled')
+                                            + ' title="' + (can ? 'Add the Variation Master variation names to this parent on eBay 2: each SKU gets the name shown in the Variation Name (SKU wise) column' : 'No SKU of this parent has a Variation Name in Variation Master.') + '"><i class="ri-add-line me-1"></i>Add</button>';
                                     },
                                     cellClick: async function (e, cell) {
                                         const btn = e.target.closest('.e2vt-push-values');
                                         if (busy || !btn || btn.disabled) return;
                                         const d = cell.getData();
-                                        setBusy(true, 'Pushing values for ' + d.main_listing + '...');
-                                        try { await pushValues(d); } finally { setBusy(false, ''); cell.getRow().reformat(); }
+                                        if (!confirm('Add the Variation Master variation names to ' + d.main_listing + ' on eBay 2? Each SKU gets the name from the Variation Name (SKU wise) column. This changes the live listing.')) return;
+                                        // Loader on the button while eBay is called (can take a few seconds).
+                                        btn.disabled = true;
+                                        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Adding...';
+                                        setBusy(true, 'Adding variation names to ' + d.main_listing + '...');
+                                        let outcome = null;
+                                        try { outcome = await pushValues(d, 'master'); } finally { setBusy(false, ''); cell.getRow().reformat(); }
+                                        if (outcome) {
+                                            showToast(outcome.success, outcome.success ? 'Variation names added to ' + d.main_listing : 'Could not add variation names to ' + d.main_listing, outcome.message);
+                                            document.getElementById('e2vt-progress').textContent = (outcome.success ? 'Success: ' : 'Failed: ') + outcome.message;
+                                        }
                                     },
                                 },
                                 {
                                     title: 'Reason', field: 'values_status', width: 70, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
-                                    formatter: (c) => { const d = c.getData(); return dot(d.values_status, d.values_message, d.values_pushed_at, 'Values not pushed yet'); },
+                                    formatter: (c) => { const d = c.getData(); return dot(d.values_status, d.values_message, d.values_pushed_at, 'Values not added yet'); },
                                 },
                             ],
                         },

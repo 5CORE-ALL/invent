@@ -469,7 +469,10 @@ class Ebay2VariationTypeController extends Controller
     {
         $data = $request->validate([
             'item_id' => 'required|string|max:40',
+            // 'master': set every SKU's value to its Variation Master Variation Name instead of pushing waiting edits.
+            'mode' => 'nullable|in:master',
         ]);
+        $fromMaster = ($data['mode'] ?? null) === 'master';
 
         if (! $this->tableReady()) {
             return $this->missingTable();
@@ -485,7 +488,9 @@ class Ebay2VariationTypeController extends Controller
         $edits = is_array($rec->value_edits) ? array_values($rec->value_edits) : [];
 
         try {
-            if ($edits === []) {
+            if ($fromMaster) {
+                $result = $this->addMasterNamesToEbay($itemId);
+            } elseif ($edits === []) {
                 $result = ['success' => false, 'message' => 'No value edits to push. Use Edit to rename a value first.'];
             } else {
                 $result = $this->pushValuesToEbay($itemId, $edits);
@@ -566,6 +571,105 @@ class Ebay2VariationTypeController extends Controller
         return EbayTradingReviseItem::renameVariationValues(...$creds, getItemResponse: $item, renames: $edits);
     }
 
+    /**
+     * Set the value of every variation of the listing to the Variation Master "Variation Name" of its SKU, under the
+     * variation type Variation Master holds for the parent (for example Color: Black becomes "Black 1 Piece").
+     * SKUs without a Variation Name keep their value. Nothing is sent when the listing does not vary by that type
+     * (add the type first) or when two SKUs sharing a value would need different names.
+     *
+     * @return array{success: bool, message: string, applied?: list<array{aspect: string, old: string, new: string}>}
+     */
+    private function addMasterNamesToEbay(string $itemId): array
+    {
+        $listing = $this->mainListings()[$itemId] ?? null;
+        if ($listing === null) {
+            return ['success' => false, 'message' => 'This listing is not in the live eBay 2 list any more. Refresh the page.'];
+        }
+        $info = $this->variationMasterInfo()[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])] ?? null;
+        $names = $info['names'] ?? [];
+        if ($names === []) {
+            return ['success' => false, 'message' => 'Variation Master has no Variation Name for any SKU of this parent.'];
+        }
+
+        $service = app(Ebay2ApiService::class);
+        $item = $service->getItem($itemId);
+        if (! is_array($item)) {
+            $why = trim((string) ($service->lastGetItemError ?? ''));
+
+            return ['success' => false, 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+        }
+        $aspects = EbayTradingReviseItem::variationAspects($item);
+        if ($aspects === []) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations.'];
+        }
+
+        // The aspect the names belong to: the one called like the Variation Master type.
+        $type = mb_strtolower(trim((string) ($info['type'] ?? '')));
+        $aspect = null;
+        foreach (array_keys($aspects) as $name) {
+            if (($type !== '' && mb_strtolower(trim((string) $name)) === $type) || ($type === '' && count($aspects) === 1)) {
+                $aspect = (string) $name;
+                break;
+            }
+        }
+        if ($aspect === null) {
+            return ['success' => false, 'message' => $type !== ''
+                ? 'This eBay listing varies by '.implode(' and ', array_keys($aspects)).', not by the Variation Master type "'.$info['type'].'". Add that variation type first.'
+                : 'Variation Master has no variation type for this parent and the eBay listing varies by several types ('.implode(', ', array_keys($aspects)).').'];
+        }
+
+        $map = [];      // old value => new value
+        $renames = [];
+        $matched = 0;   // SKUs that have a Variation Name
+        $noName = [];
+        foreach (EbayTradingReviseItem::variationSpecificsList($item) as $variation) {
+            $new = trim((string) ($names[$this->skuKey($variation['sku'])] ?? ''));
+            if ($new === '') {
+                $noName[] = $variation['sku'];
+
+                continue;
+            }
+            $matched++;
+            $old = '';
+            foreach ($variation['specifics'] as $n => $v) {
+                if (mb_strtolower(trim((string) $n)) === mb_strtolower($aspect)) {
+                    $old = trim((string) $v);
+                }
+            }
+            if ($old === '' || $old === $new) {
+                continue;
+            }
+            if (mb_strlen($new) > self::MAX_TYPE_LENGTH) {
+                return ['success' => false, 'message' => 'The Variation Name of '.$variation['sku'].' is longer than '.self::MAX_TYPE_LENGTH.' characters, which eBay does not allow: "'.$new.'".'];
+            }
+            if (isset($map[$old]) && $map[$old] !== $new) {
+                return ['success' => false, 'message' => 'Several SKUs share the '.$aspect.' value "'.$old.'" but have different Variation Names ("'.$map[$old].'" and "'.$new.'" at '.$variation['sku'].'). Nothing was changed.'];
+            }
+            if (! isset($map[$old])) {
+                $map[$old] = $new;
+                $renames[] = ['aspect' => $aspect, 'old' => $old, 'new' => $new];
+            }
+        }
+
+        $skipNote = $noName === [] ? '' : ' '.count($noName).' SKU(s) have no Variation Name in Variation Master and were left as they are: '
+            .implode(', ', array_slice($noName, 0, 8)).(count($noName) > 8 ? ', ...' : '').'.';
+        if ($matched === 0) {
+            return ['success' => false, 'message' => 'None of the SKUs on this eBay listing has a Variation Name in Variation Master.'.$skipNote];
+        }
+        if ($renames === []) {
+            return ['success' => true, 'message' => 'Already up to date: the '.$aspect.' values on eBay already match the Variation Master names of '.$matched.' SKU(s).'.$skipNote, 'applied' => []];
+        }
+
+        $ctx = $service->tradingReviseContext();
+        $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
+        $result = EbayTradingReviseItem::renameVariationValues(...$creds, getItemResponse: $item, renames: $renames);
+        if ($result['success']) {
+            $result['message'] = 'Variation names from Variation Master set on '.count($renames).' '.$aspect.' value(s). '.$result['message'].$skipNote;
+        }
+
+        return $result;
+    }
+
     private function tableReady(): bool
     {
         return Schema::hasTable('ebay2_variation_type_pushes')
@@ -642,7 +746,7 @@ class Ebay2VariationTypeController extends Controller
      *
      * @return array<string, array{main_listing: string, parent_key: string, children: int, skus: list<string>}>
      */
-    private function mainListings(): array
+    protected function mainListings(): array
     {
         $hasStatus = Schema::hasColumn('ebay_2_metrics', 'listing_status');
         $hasRange = Schema::hasColumn('ebay_2_metrics', 'report_range');
@@ -721,7 +825,7 @@ class Ebay2VariationTypeController extends Controller
      *
      * @return array<string, array{type: string, skus: list<string>, names: array<string, string>}> normalized parent => info
      */
-    private function variationMasterInfo(): array
+    protected function variationMasterInfo(): array
     {
         $typeCounts = [];
         $skuNames = [];
