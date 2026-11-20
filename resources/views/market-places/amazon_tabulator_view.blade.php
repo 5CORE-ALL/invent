@@ -3131,7 +3131,7 @@
                     const refLabels = { cvr: 'CVR%', views: 'View L30', inv: 'INV', inv_amz: 'INV AMZ', al30: 'A L30', ovl30: 'OV L30', sprice: 'S PRC', prmt: 'PRMT %', cpn: 'CPN %', push_prc: 'Push Prc' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
-                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', inv: '#6c757d', inv_amz: '#17a2b8', al30: '#e83e8c', ovl30: '#fd7e14', sprice: '#0d6efd', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', price: '#6f42c1' };
                     if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
 
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.x) {
@@ -3142,7 +3142,7 @@
                     skuMetricsChart.data.datasets[0].data = values;
                     skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isSprice || isPushPrc) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', inv: 'rgba(108,117,125,0.1)', inv_amz: 'rgba(23,162,184,0.1)', al30: 'rgba(232,62,140,0.1)', ovl30: 'rgba(253,126,20,0.1)', sprice: 'rgba(13,110,253,0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', price: 'rgba(111,66,193,0.1)' };
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
                     const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
                     const viewsFmt = intFmt;
@@ -5597,13 +5597,16 @@
                                 : lmpPrice;
                             const tri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(price, lmpCmp) : '');
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpCmp) : '');
+                            // History dot (same as INV / A L30): opens the SKU chart on the Price metric.
+                            const priceSku = rowData['(Child) sku'] || '';
+                            const dotBtn = priceSku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(priceSku)}" data-metric="price" title="View Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
                             if (lmpCmp > 0 && price > lmpCmp) {
-                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${tri}`;
+                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>${tri} ${dotBtn}`;
                             }
-                            return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri;
+                            return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri + ' ' + dotBtn;
                         },
                         sorter: amazonMetricSorter(function(d) { const n = parseFloat(d.price); return n > 0 ? n : null; }),
-                        width: 70
+                        width: 88
                     },
 
                     {
