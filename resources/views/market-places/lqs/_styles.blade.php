@@ -255,4 +255,12 @@
         .amz-asin-btn:hover { background: #ff9900; color: #fff; }
         .amz-asin-btn-m { border-color: #0d6efd; color: #0d6efd; }
         .amz-asin-btn-m:hover { background: #0d6efd; color: #fff; }
+        .amz-sku-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+        .amz-sku-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .amz-copy-sku {
+            flex: 0 0 auto; border: 0; background: none; padding: 0; line-height: 1;
+            color: #64748b; cursor: pointer; font-size: 12px;
+        }
+        .amz-copy-sku:hover, .amz-copy-sku.is-copied { color: #0d6efd; }
+        .amz-copy-sku i { pointer-events: none; }
     </style>

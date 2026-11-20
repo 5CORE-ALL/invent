@@ -69,6 +69,19 @@ class ImageMasterController extends Controller
     }
 
     /**
+     * Daily count of distinct SKUs whose images were updated.
+     */
+    public function updateHistory(Request $request)
+    {
+        $days = (int) $request->query('days', 30);
+
+        return response()->json([
+            'success' => true,
+            'days' => ImageMasterActivityLog::dailyUpdatedSkuCounts($days),
+        ]);
+    }
+
+    /**
      * Product rows from Product Master + per-marketplace image_master_json (push state / last URLs).
      */
     public function getData(Request $request)

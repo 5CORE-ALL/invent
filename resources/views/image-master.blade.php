@@ -7,6 +7,21 @@
     @include('partials.marketplace-master-button-colors')
     <style>
         .card.im-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
+        .im-roll { position:relative; margin-bottom:14px; padding:14px 16px 8px; border-radius:18px; color:#f8fafc; background:#0b1020; overflow:hidden; box-shadow:0 10px 30px rgba(15,23,42,.18); }
+        .im-roll::before { content:''; position:absolute; inset:0; padding:1px; border-radius:18px; background:linear-gradient(120deg,#f472b6,#a78bfa,#22d3ee); -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+        .im-roll-shine { position:absolute; top:0; bottom:0; width:28%; background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); animation:imRollShine 7s linear infinite; pointer-events:none; }
+        @keyframes imRollShine { from { transform:translateX(-120%); } to { transform:translateX(420%); } }
+        .im-roll-head { position:relative; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+        .im-roll-kicker { font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#c4b5fd; font-weight:700; }
+        .im-roll-title { font-size:16px; font-weight:800; letter-spacing:-.02em; }
+        .im-roll-stats { display:flex; gap:14px; margin-left:auto; }
+        .im-roll-stats div { display:flex; flex-direction:column; align-items:flex-end; line-height:1; }
+        .im-roll-stats span { font-size:22px; font-weight:800; background:linear-gradient(90deg,#f9a8d4,#c4b5fd,#67e8f9); -webkit-background-clip:text; background-clip:text; color:transparent; }
+        .im-roll-stats small { margin-top:3px; font-size:10px; color:#94a3b8; letter-spacing:.04em; text-transform:uppercase; }
+        .im-roll-ranges { display:flex; gap:6px; }
+        .im-roll-ranges button { border:0; background:rgba(255,255,255,.08); color:#cbd5e1; border-radius:999px; font-size:11px; font-weight:700; padding:4px 10px; cursor:pointer; }
+        .im-roll-ranges button.on { background:#fff; color:#0b1020; }
+        .im-roll-canvas { position:relative; height:148px; margin-top:6px; }
         .table-responsive { position:relative; border:1px solid #e2e8f0; border-radius:10px; max-height:640px; overflow:auto; background:#fff; }
         #im-master-table thead th { position:sticky; top:0; vertical-align:middle!important; background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%)!important; color:#fff; z-index:10; padding:6px 8px; font-size:10px; font-weight:600; text-transform:uppercase; }
         #im-master-table tbody td { padding:8px 10px; vertical-align:middle!important; border-bottom:1px solid #edf2f9; font-size:11px; }
@@ -231,6 +246,25 @@
         <div class="col-12">
             <div class="card im-master-card">
                 <div class="card-body">
+                    <div class="im-roll" id="imRoll">
+                        <div class="im-roll-shine"></div>
+                        <div class="im-roll-head">
+                            <div>
+                                <div class="im-roll-kicker">rolling history</div>
+                                <div class="im-roll-title">SKUs updated each day</div>
+                            </div>
+                            <div class="im-roll-stats">
+                                <div><span id="imRollToday">–</span><small>today</small></div>
+                                <div><span id="imRollAvg">–</span><small>daily avg</small></div>
+                            </div>
+                            <div class="im-roll-ranges">
+                                <button type="button" data-days="14">14d</button>
+                                <button type="button" data-days="30" class="on">30d</button>
+                                <button type="button" data-days="60">60d</button>
+                            </div>
+                        </div>
+                        <div class="im-roll-canvas"><canvas id="imRollChart"></canvas></div>
+                    </div>
                     <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm" title="Export" aria-label="Export"><i class="fas fa-download"></i></button>
                         <button type="button" id="heroImageBtn" class="btn btn-warning btn-sm" title="Choose the main image per marketplace for the selected rows (or all rows in view if none selected)"><i class="fas fa-star"></i> Main</button>
@@ -649,8 +683,121 @@
 @include('partials.all-marketplace-master-channels', ['allMpMaster' => 'image'])
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    let imRollChart = null;
+    let imRollDays = 30;
+
+    function imRollStroke(context) {
+        const chart = context.chart;
+        const area = chart.chartArea;
+        if (!area) return '#c4b5fd';
+        const g = chart.ctx.createLinearGradient(area.left, 0, area.right, 0);
+        g.addColorStop(0, '#f472b6');
+        g.addColorStop(0.55, '#a78bfa');
+        g.addColorStop(1, '#22d3ee');
+        return g;
+    }
+
+    function drawImRoll(rows) {
+        const labels = rows.map(r => r.label);
+        const data = rows.map(r => Number(r.skus) || 0);
+        const today = data.length ? data[data.length - 1] : 0;
+        const avg = data.length ? Math.round(data.reduce((a, b) => a + b, 0) / data.length) : 0;
+        const todayEl = document.getElementById('imRollToday');
+        const avgEl = document.getElementById('imRollAvg');
+        if (todayEl) todayEl.textContent = today.toLocaleString();
+        if (avgEl) avgEl.textContent = avg.toLocaleString();
+        const canvas = document.getElementById('imRollChart');
+        if (!canvas || !window.Chart) return;
+        if (imRollChart) imRollChart.destroy();
+        imRollChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    borderColor: imRollStroke,
+                    backgroundColor: function (context) {
+                        const chart = context.chart;
+                        const area = chart.chartArea;
+                        if (!area) return 'rgba(167,139,250,.2)';
+                        const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                        g.addColorStop(0, 'rgba(244,114,182,.45)');
+                        g.addColorStop(0.55, 'rgba(167,139,250,.22)');
+                        g.addColorStop(1, 'rgba(34,211,238,0)');
+                        return g;
+                    },
+                    fill: true,
+                    tension: 0.42,
+                    borderWidth: 2.6,
+                    pointRadius: function (ctx) { return ctx.dataIndex === data.length - 1 ? 4 : 0; },
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#22d3ee',
+                    pointHoverRadius: 6,
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: '#f472b6',
+                    pointHoverBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 900, easing: 'easeOutQuart' },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#0b1220',
+                        borderColor: 'rgba(167,139,250,.55)',
+                        borderWidth: 1,
+                        padding: 10,
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#fff',
+                        displayColors: false,
+                        callbacks: {
+                            title: function (items) { return rows[items[0].dataIndex].date; },
+                            label: function (item) {
+                                const n = item.parsed.y;
+                                return n.toLocaleString() + ' SKU' + (n === 1 ? '' : 's') + ' updated';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        border: { display: false },
+                        ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10, weight: '600' } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        border: { display: false },
+                        grid: { color: 'rgba(148,163,184,.14)' },
+                        ticks: { color: '#94a3b8', precision: 0, font: { size: 10 } }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadImRoll(days) {
+        imRollDays = days;
+        document.querySelectorAll('.im-roll-ranges button').forEach(function (btn) {
+            btn.classList.toggle('on', Number(btn.dataset.days) === days);
+        });
+        fetch('/image-master/update-history?days=' + days)
+            .then(function (r) { return r.json(); })
+            .then(function (res) { drawImRoll(Array.isArray(res.days) ? res.days : []); })
+            .catch(function () {});
+    }
+
+    document.querySelectorAll('.im-roll-ranges button').forEach(function (btn) {
+        btn.addEventListener('click', function () { loadImRoll(Number(btn.dataset.days) || 30); });
+    });
+    loadImRoll(imRollDays);
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const __mp = window.__ALL_MP__ || {};
     const MARKETPLACES = __mp.marketplaces || [];

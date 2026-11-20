@@ -65,6 +65,14 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0 !important;
         }
+        .amz-sku-cell { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+        .amz-sku-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .amz-copy-sku {
+            flex: 0 0 auto; border: 0; background: none; padding: 0; line-height: 1;
+            color: #64748b; cursor: pointer; font-size: 12px;
+        }
+        .amz-copy-sku:hover, .amz-copy-sku.is-copied { color: #0d6efd; }
+        .amz-copy-sku i { pointer-events: none; }
 
         /* ── DIL dropdown (identical to aliexpress) ── */
         .lqs-manual-dropdown { position: relative; display: inline-block; }
@@ -291,6 +299,42 @@
         let summaryDataCache = [];
         let allTableData = [];
 
+        function lqsEsc(value) {
+            return String(value || '').replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        window.lqsCopySku = function (btn) {
+            const sku = String((btn && btn.getAttribute('data-sku')) || '').trim();
+            if (!sku || !btn) return;
+            const done = function () {
+                btn.classList.add('is-copied');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                lqsNotify('Copied ' + sku, 'success');
+                setTimeout(function () {
+                    btn.classList.remove('is-copied');
+                    btn.innerHTML = '<i class="fas fa-copy"></i>';
+                }, 1200);
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = sku;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); }
+                catch (err) { lqsNotify('Could not copy SKU.', 'error'); }
+                ta.remove();
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(sku).then(done).catch(fallback);
+            } else {
+                fallback();
+            }
+        };
+
         function lqsNotify(msg, type) {
             if (window.toastr) {
                 if (type === 'warning') toastr.warning(msg);
@@ -485,12 +529,16 @@
                         cssClass: "fw-bold text-primary",
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
-                            const val = cell.getValue() || '';
-                            if (d.is_parent) {
-                                return `<span style="color:#1e40af;font-size:13px;font-weight:700;">${val}</span>`;
-                            }
-                            const esc = val.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-                            return `<span class="fw-bold">${esc}</span>`;
+                            const val = String(cell.getValue() || '');
+                            if (!val) return '';
+                            const textStyle = d.is_parent
+                                ? 'color:#1e40af;font-size:13px;font-weight:700;'
+                                : 'font-weight:700;';
+                            return '<span class="amz-sku-cell">'
+                                + '<span class="amz-sku-text" style="' + textStyle + '">' + lqsEsc(val) + '</span>'
+                                + '<button type="button" class="amz-copy-sku" title="Copy SKU" aria-label="Copy SKU" data-sku="' + lqsEsc(val) + '"'
+                                + ' onclick="event.stopPropagation();lqsCopySku(this)"><i class="fas fa-copy"></i></button>'
+                                + '</span>';
                         }
                     },
                     {

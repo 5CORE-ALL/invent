@@ -103,10 +103,11 @@ class LqsMarketplacePageService
             $rating = $this->firstNullableNumber($score->rating ?? null, $api['rating'] ?? null);
             $reviews = $this->firstNullableInt($score->reviews ?? null, $api['reviews'] ?? null);
             $marketplaceUrl = $this->listingUrl($channel['listing_url'] ?? null, $listingId);
+            $shopifyStore = in_array($slug, ['shopify', 'pls', 'b5cb2b'], true);
             $listingUrl = ! empty($api['listing_url'])
                 ? $api['listing_url']
                 : ($marketplaceUrl
-                    ?: (($shopifyRow && ! empty($shopifyRow->product_link))
+                    ?: (($shopifyStore && $shopifyRow && ! empty($shopifyRow->product_link))
                         ? $shopifyRow->product_link
                         : ($yoast['listing_url'] ?? null)));
 

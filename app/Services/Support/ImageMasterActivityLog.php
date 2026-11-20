@@ -97,6 +97,52 @@ class ImageMasterActivityLog
         return $out;
     }
 
+    /**
+     * Distinct SKUs with an image change on each day, newest window, missing days as zero.
+     * Audit tasks are not image updates.
+     *
+     * @return list<array{date: string, label: string, skus: int}>
+     */
+    public static function dailyUpdatedSkuCounts(int $days = 30): array
+    {
+        $days = max(7, min(90, $days));
+        $tz = (string) (config('app.timezone') ?: 'UTC');
+        $start = now($tz)->startOfDay()->subDays($days - 1);
+        $byDay = [];
+
+        if (self::tableExists()) {
+            try {
+                $rows = DB::table(self::TABLE)
+                    ->where('created_at', '>=', $start->format('Y-m-d H:i:s'))
+                    ->where('action', '!=', 'audit')
+                    ->get(['sku', 'created_at']);
+                foreach ($rows as $r) {
+                    $sku = strtoupper(trim((string) $r->sku));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $day = \Carbon\Carbon::parse((string) $r->created_at, $tz)->timezone($tz)->toDateString();
+                    $byDay[$day][$sku] = true;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ImageMasterActivityLog dailyUpdatedSkuCounts failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $out = [];
+        for ($i = 0; $i < $days; $i++) {
+            $d = $start->copy()->addDays($i);
+            $key = $d->toDateString();
+            $out[] = [
+                'date' => $key,
+                'label' => $d->format('M j'),
+                'skus' => isset($byDay[$key]) ? count($byDay[$key]) : 0,
+            ];
+        }
+
+        return $out;
+    }
+
     private static function tableExists(): bool
     {
         if (self::$tableExists === null) {

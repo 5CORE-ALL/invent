@@ -12,6 +12,8 @@
         const lqsHasYoast = @json(!empty($lqsPage['has_yoast_seo']));
         const lqsYoastSyncUrl = @json($lqsPage['routes']['seo_sync'] ?? null);
         const LQS_SLUG = @json($lqsPage['slug'] ?? '');
+        const LQS_LISTING_TEMPLATE = @json($lqsPage['listing_url'] ?? null);
+        const LQS_SHOPIFY_STORE = ['shopify', 'pls', 'b5cb2b'].indexOf(LQS_SLUG) !== -1;
 
         function lqsNeweggItem(id) {
             return String(id || '').trim().replace(/[^A-Za-z0-9-]/g, '');
@@ -22,8 +24,56 @@
             return item ? ('https://www.newegg.com/p/' + item) : '';
         }
 
-        window.lqsOpenNeweggMobile = function (id) {
-            const url = lqsNeweggUrl(id);
+        function lqsListingItem(id) {
+            const raw = String(id || '').trim();
+            if (LQS_SLUG === 'ebay' || LQS_SLUG === 'ebay2' || LQS_SLUG === 'ebay3') {
+                return raw.replace(/\D/g, '');
+            }
+            if (LQS_SLUG === 'newegg') return lqsNeweggItem(raw);
+            return raw;
+        }
+
+        function lqsMarketplaceUrl(id, row) {
+            const item = lqsListingItem(id);
+            if (LQS_LISTING_TEMPLATE && item) {
+                return String(LQS_LISTING_TEMPLATE).replace('{id}', encodeURIComponent(item));
+            }
+            const fallback = String((row && row.listing_url) || '');
+            if (!/^https?:\/\//i.test(fallback)) return '';
+            const shopify = /shopify\.com|myshopify\.com/i.test(fallback);
+            return (!shopify || LQS_SHOPIFY_STORE) ? fallback : '';
+        }
+
+        window.lqsOpenListing = function (mode, btn) {
+            const url = btn && btn.getAttribute('data-url');
+            if (!url) return;
+            if (mode !== 'mobile') {
+                window.open(url, '_blank', 'noopener');
+                return;
+            }
+            if (LQS_SLUG === 'newegg') {
+                lqsOpenNeweggMobile(url);
+                return;
+            }
+            window.open(url, 'lqsMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
+        };
+
+        function lqsListingIcons(id, url) {
+            const safe = lqsEsc(String(id));
+            const safeUrl = lqsEsc(url);
+            return '<div class="amz-asin-cell">'
+                + '<span class="amz-asin-code">' + safe + '</span>'
+                + '<span class="amz-asin-views">'
+                + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view" data-url="' + safeUrl + '"'
+                + ' onclick="event.stopPropagation();lqsOpenListing(\'desk\', this)"><i class="fas fa-desktop"></i></button>'
+                + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view" data-url="' + safeUrl + '"'
+                + ' onclick="event.stopPropagation();lqsOpenListing(\'mobile\', this)"><i class="fas fa-mobile-screen-button"></i></button>'
+                + '</span></div>';
+        }
+
+        window.lqsOpenNeweggMobile = function (idOrUrl) {
+            const given = String(idOrUrl || '');
+            const url = /^https?:\/\//i.test(given) ? given : lqsNeweggUrl(given);
             if (!url) return;
             const popup = function () {
                 window.open(url, 'lqsNeweggMobile', 'width=420,height=900,menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes');
@@ -37,6 +87,42 @@
                 }
             } catch (e) {}
             popup();
+        };
+
+        function lqsEsc(value) {
+            return String(value || '').replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        window.lqsCopySku = function (btn) {
+            const sku = String((btn && btn.getAttribute('data-sku')) || '').trim();
+            if (!sku || !btn) return;
+            const done = function () {
+                btn.classList.add('is-copied');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                amzNotify('Copied ' + sku, 'success');
+                setTimeout(function () {
+                    btn.classList.remove('is-copied');
+                    btn.innerHTML = '<i class="fas fa-copy"></i>';
+                }, 1200);
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = sku;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); }
+                catch (err) { amzNotify('Could not copy SKU.', 'error'); }
+                ta.remove();
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(sku).then(done).catch(fallback);
+            } else {
+                fallback();
+            }
         };
 
         function amzNotify(msg, type) {
@@ -351,14 +437,12 @@
                             const d   = cell.getRow().getData();
                             const src = cell.getValue();
                             if (d.is_parent) return '';
-                            const listingUrl = (LQS_SLUG === 'newegg')
-                                ? lqsNeweggUrl(d.listing_id || d.asin || '')
-                                : (d.listing_url || '');
+                            const listingUrl = lqsMarketplaceUrl(d.listing_id || d.asin || '', d);
                             const imgTag = src
                                 ? `<img src="${src}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`
                                 : `<span style="color:#adb5bd;font-size:10px;">No img</span>`;
                             return listingUrl
-                                ? `<a href="${listingUrl}" target="_blank" title="${LQS_SLUG === 'newegg' ? 'View on Newegg' : 'View listing'}">${imgTag}</a>`
+                                ? `<a href="${lqsEsc(listingUrl)}" target="_blank" title="View listing">${imgTag}</a>`
                                 : imgTag;
                         }
                     },
@@ -369,41 +453,29 @@
                         frozen: true,
                         formatter: function(cell) {
                             const d   = cell.getRow().getData();
-                            const val = cell.getValue() || '';
-                            if (d.is_parent) {
-                                return `<span style="color:#664d03;font-size:13px;font-weight:700;">${val}</span>`;
-                            }
-                            const esc = val.replace(/&/g,'&amp;').replace(/</g,'&lt;');
-                            return `<span style="font-weight:600;">${esc}</span>`;
+                            const val = String(cell.getValue() || '');
+                            if (!val) return '';
+                            const textStyle = d.is_parent
+                                ? 'color:#664d03;font-size:13px;font-weight:700;'
+                                : 'font-weight:600;';
+                            return '<span class="amz-sku-cell">'
+                                + '<span class="amz-sku-text" style="' + textStyle + '">' + lqsEsc(val) + '</span>'
+                                + '<button type="button" class="amz-copy-sku" title="Copy SKU" aria-label="Copy SKU" data-sku="' + lqsEsc(val) + '"'
+                                + ' onclick="event.stopPropagation();lqsCopySku(this)"><i class="fas fa-copy"></i></button>'
+                                + '</span>';
                         }
                     },
                     {
                         title: {!! json_encode($lqsPage['listing_label'] ?? 'Listing ID') !!},
                         field: 'asin',
-                        width: LQS_SLUG === 'newegg' ? 168 : 110,
+                        width: 168,
                         formatter: function(cell) {
                             const d    = cell.getRow().getData();
                             const listingId = d.listing_id || cell.getValue() || '';
                             if (d.is_parent || !listingId) return '<span style="color:#adb5bd;">–</span>';
-                            if (LQS_SLUG === 'newegg') {
-                                const url = lqsNeweggUrl(listingId);
-                                const safe = String(listingId).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-                                if (!url) return `<span style="font-weight:600;font-size:11px;">${safe}</span>`;
-                                return '<div class="amz-asin-cell">'
-                                    + '<span class="amz-asin-code">' + safe + '</span>'
-                                    + '<span class="amz-asin-views">'
-                                    + '<button type="button" class="amz-asin-btn" title="Desktop view" aria-label="Desktop view"'
-                                    + ' onclick="event.stopPropagation();window.open(\'' + url + '\',\'_blank\',\'noopener\')"><i class="fas fa-desktop"></i></button>'
-                                    + '<button type="button" class="amz-asin-btn amz-asin-btn-m" title="Mobile view" aria-label="Mobile view"'
-                                    + ' onclick="event.stopPropagation();lqsOpenNeweggMobile(\'' + lqsNeweggItem(listingId) + '\')"><i class="fas fa-mobile-screen-button"></i></button>'
-                                    + '</span></div>';
-                            }
-                            const listingUrl = d.listing_url || '';
-                            if (listingUrl) {
-                                return `<a href="${listingUrl}" target="_blank"
-                                style="color:#ff9900;font-weight:600;font-size:11px;">${listingId}</a>`;
-                            }
-                            return `<span style="font-weight:600;font-size:11px;">${listingId}</span>`;
+                            const url = lqsMarketplaceUrl(listingId, d);
+                            if (!url) return '<span class="amz-asin-code">' + lqsEsc(String(listingId)) + '</span>';
+                            return lqsListingIcons(listingId, url);
                         }
                     },
                     {
