@@ -155,9 +155,10 @@ class Ebay2VariationTypeController extends Controller
     }
 
     /**
-     * Add a new variation type to one eBay 2 listing (Trading API ReviseFixedPriceItem) and record the result. The
-     * existing variation types stay; each variation gets the Variation Master "Variation Name" of its SKU as the
-     * value of the new type. Without a typed New Type the parent's Variation Master type is added.
+     * Change the variation type of one eBay 2 listing (Trading API ReviseFixedPriceItem) and record the result. The
+     * variations are added under the new type first (same SKU, price, quantity, UPC and pictures, the value being the
+     * Variation Master "Variation Name" of the SKU) and the old ones are deleted. Without a typed New Type the
+     * parent's Variation Master type is used.
      */
     public function push(Request $request): JsonResponse
     {
@@ -201,17 +202,17 @@ class Ebay2VariationTypeController extends Controller
         $rec->pushed_at = now();
         $rec->pushed_by = (string) ($request->user()->name ?? 'unknown');
         if ($result['success'] && is_array($result['aspects'] ?? null)) {
-            // The listing now varies by its old types plus the new one.
+            // The listing now varies by the new type only, with the new variations.
             $rec->current_values = $result['aspects'];
             $rec->current_type = implode(' / ', array_keys($result['aspects']));
             $rec->imported_at = now();
             $rec->import_error = null;
-            // Keep the pulled child variations in step: every SKU now has a value for the new type too.
+            // Value edits were typed against the old type's values: they no longer apply.
+            $rec->value_edits = null;
             if (is_array($rec->live_variations) && $rec->live_variations !== []) {
-                $rec->live_variations = array_map(function ($v) use ($result, $newType) {
+                $rec->live_variations = array_map(function ($v) use ($result) {
                     $sku = trim((string) ($v['sku'] ?? ''));
-                    $v['specifics'] = (array) ($v['specifics'] ?? []);
-                    $v['specifics'][$newType] = (string) ($result['values_by_sku'][$sku] ?? '');
+                    $v['specifics'] = $result['specifics_by_sku'][$sku] ?? (array) ($v['specifics'] ?? []);
 
                     return $v;
                 }, $rec->live_variations);
@@ -227,7 +228,7 @@ class Ebay2VariationTypeController extends Controller
 
     /**
      * @param  array<string, string>  $masterNames  normalized SKU => Variation Master Variation Name
-     * @return array{success: bool, message: string, aspects?: array<string, list<string>>, values_by_sku?: array<string, string>}
+     * @return array{success: bool, message: string, aspects?: array<string, list<string>>, specifics_by_sku?: array<string, array<string, string>>}
      */
     private function addToEbay(string $itemId, string $newType, array $masterNames): array
     {
@@ -255,10 +256,8 @@ class Ebay2VariationTypeController extends Controller
         $ctx = $service->tradingReviseContext();
         $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
 
-        $result = EbayTradingReviseItem::addVariationAspect(...$creds, getItemResponse: $item, newName: $newType, valuesBySku: $valuesBySku);
-        $result['values_by_sku'] = $valuesBySku;
-
-        return $result;
+        // The new type replaces the old one: the new variations are added first, then the old ones deleted.
+        return EbayTradingReviseItem::replaceVariationAspect(...$creds, getItemResponse: $item, newName: $newType, valuesBySku: $valuesBySku);
     }
 
     /**

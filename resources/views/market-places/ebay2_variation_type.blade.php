@@ -22,6 +22,9 @@
         .e2vt-stat { display: inline-flex; align-items: center; color: #fff; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 8px; white-space: nowrap; }
         .e2vt-stat > span { margin-left: 4px; font-size: 14px; font-weight: 800; }
         .e2vt-stat--total { background: #4c7ed8; }
+        .e2vt-stat--cp { background: #0d9488; }
+        .e2vt-stat--missing { background: #dc2626; }
+        .e2vt-missing { display: inline-block; padding: 1px 9px; border-radius: 10px; background: #fee2e2; color: #b91c1c; font-weight: 700; box-shadow: inset 0 0 0 1px #f87171; }
         .e2vt-stat--imported { background: #8b5cf6; }
         .e2vt-stat--success { background: #16a34a; }
         .e2vt-stat--failed { background: #dc2626; }
@@ -86,6 +89,8 @@
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <span class="e2vt-stat e2vt-stat--total" title="Live eBay 2 parents (main listings with variations). While a search or filter is on it reads shown / total.">PARENTS:<span id="e2vt-b-total">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--missing" title="Listings with no CP Parent: CP Masters holds no Parent for any of their SKUs (shown as Missing in the CP Parent column). While a search or filter is on it reads shown / total.">MISSING PARENTS:<span id="e2vt-b-missing">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--cp" title="Different Parents that CP Masters holds for the listings' SKUs (the CP Parent column). While a search or filter is on it reads shown / total.">CP PARENTS:<span id="e2vt-b-cp">0</span></span>
                         <span class="e2vt-stat e2vt-stat--imported" title="Listings whose variation type and values were imported from eBay">IMPORTED:<span id="e2vt-b-imported">0</span></span>
                         <span class="e2vt-stat e2vt-stat--success" title="Variation types added successfully">TYPE OK:<span id="e2vt-b-success">0</span></span>
                         <span class="e2vt-stat e2vt-stat--failed" title="Variation type adds that failed">TYPE FAILED:<span id="e2vt-b-failed">0</span></span>
@@ -100,7 +105,7 @@
                         <button type="button" id="e2vt-import-all" class="btn btn-sm btn-warning text-dark" title="Read the current variation type and values of every listing in the filtered view from eBay 2 (Trading API GetItem)">
                             <i class="ri-download-cloud-2-line me-1"></i> Import Current Types
                         </button>
-                        <button type="button" id="e2vt-push-changed" class="btn btn-sm btn-success" title="Add the typed New Type to every listing in the view that does not have it yet (each SKU gets its Variation Master Variation Name as the value)">
+                        <button type="button" id="e2vt-push-changed" class="btn btn-sm btn-success" title="For every listing in the view with a typed New Type that it does not have yet: add the variations under the new type first, then delete the old ones (same SKU, price, quantity, UPC and pictures; the value is the Variation Master Variation Name)">
                             <i class="ri-add-circle-line me-1"></i> Add All New Types
                         </button>
                         <button type="button" id="e2vt-push-values-all" class="btn btn-sm btn-success" title="Push every listing that has value edits waiting">
@@ -135,12 +140,13 @@
                                 <option value="values_changed">Value edits waiting</option>
                                 <option value="differs_master">Differs from Variation Master</option>
                                 <option value="excess_sku">Has SKU not in CP Masters</option>
+                                <option value="missing_cp">Missing CP Parent</option>
                                 <option value="failed">Any push failed</option>
                                 <option value="success">Any push succeeded</option>
                             </select>
                         </div>
                         <div class="ms-auto small text-muted">
-                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. In the values column, <b>Add</b> puts the Variation Master name (Variation Name (SKU wise) column) on every SKU whose eBay name differs: the old variation is deleted and added again with the same SKU, price, quantity, UPC and pictures. <b>Edit</b> renames individual values by hand.
+                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: the variations are added under the new type first (each SKU gets its Variation Master <b>Variation Name</b> as the value, with the same SKU, price, quantity, UPC and pictures) and then the old type's variations are deleted. In the values column, <b>Add</b> puts the Variation Master name (Variation Name (SKU wise) column) on every SKU whose eBay name differs: the old variation is deleted and added again with the same SKU, price, quantity, UPC and pictures. <b>Edit</b> renames individual values by hand.
                             A <span class="e2vt-dot e2vt-dot--success" style="width:10px;height:10px"></span> green dot is success, a
                             <span class="e2vt-dot e2vt-dot--failed" style="width:10px;height:10px"></span> red dot is a failure: hover it for the reason.
                         </div>
@@ -227,7 +233,9 @@
             const isChanged = (d) => norm(d.new_type) !== '' && !hasAspect(d, d.new_type);
             // What the Add button would add: the typed New Type, or the parent's Variation Master type when none is typed.
             const typeToAdd = (d) => String(d.new_type || '').trim() || String(d.master_type || '').trim();
-            const canAdd = (d) => typeToAdd(d) !== '' && !hasAspect(d, typeToAdd(d));
+            // The type can only be replaced on a listing that varies by one type (current type has no " / ").
+            const isMultiType = (d) => String(d.current_type || '').includes('/');
+            const canAdd = (d) => typeToAdd(d) !== '' && !hasAspect(d, typeToAdd(d)) && !isMultiType(d);
 
             // The red Current Type pill: eBay's type differs from the Variation Master type (both known).
             const isTypeMismatch = (d) => norm(d.current_type) !== '' && norm(d.master_type) !== '' && norm(d.master_type) !== norm(d.current_type);
@@ -257,6 +265,26 @@
                 document.getElementById('e2vt-b-total').textContent = shown === parentTotal ? parentTotal : shown + ' / ' + parentTotal;
             }
 
+            // CP PARENTS badge: how many different CP Masters parents the listings' SKUs sit under (all of a row's
+            // cp_parents count), as "shown / total" while a search or filter hides some rows.
+            let cpTotal = 0;
+            let cpShown = null;
+            function cpParentCount(rows) {
+                const seen = new Set();
+                (rows || []).forEach((d) => (Array.isArray(d.cp_parents) ? d.cp_parents : []).forEach((p) => { const k = norm(p.parent); if (k) seen.add(k); }));
+                return seen.size;
+            }
+            // MISSING PARENTS badge: listings that have no CP Parent (rows the CP Parent column shows as Missing).
+            const hasNoCpParent = (d) => !(Array.isArray(d.cp_parents) && d.cp_parents.length);
+            let cpMissingTotal = 0;
+            let cpMissingShown = null;
+            function showCpParentCount() {
+                const shown = cpShown === null ? cpTotal : cpShown;
+                document.getElementById('e2vt-b-cp').textContent = shown === cpTotal ? cpTotal : shown + ' / ' + cpTotal;
+                const mShown = cpMissingShown === null ? cpMissingTotal : cpMissingShown;
+                document.getElementById('e2vt-b-missing').textContent = mShown === cpMissingTotal ? cpMissingTotal : mShown + ' / ' + cpMissingTotal;
+            }
+
             function updateBadges(meta) {
                 if (!meta) return;
                 parentTotal = meta.total ?? 0;
@@ -278,6 +306,12 @@
                     values_success: rows.filter((r) => r.values_status === 'success').length,
                     values_failed: rows.filter((r) => r.values_status === 'failed').length,
                 });
+                const activeRows = table.getRows('active').map((r) => r.getData());
+                cpTotal = cpParentCount(rows);
+                cpShown = cpParentCount(activeRows);
+                cpMissingTotal = rows.filter(hasNoCpParent).length;
+                cpMissingShown = activeRows.filter(hasNoCpParent).length;
+                showCpParentCount();
             }
 
             // Cells that depend on several fields are re-rendered after any update.
@@ -302,6 +336,7 @@
                 if (filterMode === 'changed') filters.push((d) => isChanged(d));
                 if (filterMode === 'values_changed') filters.push((d) => editsOf(d).length > 0);
                 if (filterMode === 'differs_master' || typeFilter === 'red') filters.push(isTypeMismatch);
+                if (filterMode === 'missing_cp') filters.push(hasNoCpParent);
                 if (filterMode === 'excess_sku') filters.push((d) => Array.isArray(d.skus_not_in_cp) && d.skus_not_in_cp.length > 0);
                 if (filterMode === 'failed') filters.push((d) => d.push_status === 'failed' || d.values_status === 'failed');
                 if (filterMode === 'success') filters.push((d) => d.push_status === 'success' || d.values_status === 'success');
@@ -510,6 +545,11 @@
                     ajaxURL: URLS.data,
                     ajaxResponse: function (url, params, response) {
                         updateBadges(response.meta);
+                        cpTotal = cpParentCount(response.data);
+                        cpShown = null;
+                        cpMissingTotal = (response.data || []).filter(hasNoCpParent).length;
+                        cpMissingShown = null;
+                        showCpParentCount();
                         setTimeout(fitHeight, 0);
                         return response.data || [];
                     },
@@ -549,23 +589,23 @@
                             },
                         },
                         {
-                            title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
-                            formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
-                        },
-                        {
                             // The Parent CP Masters (/product-master) holds for this listing's SKUs. More than one value means
-                            // the SKUs are under different parents there.
-                            title: 'CP Parent', field: 'cp_parent', width: 150, headerHozAlign: 'center',
+                            // the SKUs are under different parents there. Frozen like Parent: frozen columns must be side by side.
+                            title: 'CP Parent', field: 'cp_parent', width: 150, frozen: true, headerHozAlign: 'center',
                             formatter: function (c) {
                                 const d = c.getData();
                                 const list = Array.isArray(d.cp_parents) ? d.cp_parents : [];
-                                if (!list.length) return '<span class="e2vt-muted" title="CP Masters has no Parent for these SKUs">—</span>';
+                                if (!list.length) return '<span class="e2vt-missing" title="Missing: CP Masters has no Parent for this listing\'s SKUs">Missing</span>';
                                 const tip = list.map((p) => p.parent + ': ' + p.count + ' SKU' + (p.count === 1 ? '' : 's')).join('\n');
                                 const extra = list.length > 1
                                     ? ' <span class="e2vt-chip e2vt-chip--excess" title="' + esc('SKUs are under different parents in CP Masters:\n' + tip).replace(/\n/g, '&#10;') + '"><i class="ri-alert-fill"></i> +' + (list.length - 1) + '</span>'
                                     : '';
                                 return '<b title="' + esc(tip).replace(/\n/g, '&#10;') + '">' + esc(list[0].parent) + '</b>' + extra;
                             },
+                        },
+                        {
+                            title: 'Parent', field: 'main_listing', width: 200, frozen: true, headerHozAlign: 'center',
+                            formatter: (c) => '<b>' + esc(c.getValue()) + '</b>',
                         },
                         {
                             // Every child SKU of the parent: eBay listing SKUs plus Variation Master children.
@@ -658,8 +698,9 @@
                                         const d = c.getData();
                                         const ok = canAdd(d);
                                         const tip = ok
-                                            ? 'Add the variation type "' + typeToAdd(d) + '" to this parent on eBay 2. Each SKU gets its Variation Master Variation Name as the value.'
-                                            : (typeToAdd(d) === '' ? 'Type a New Type first (this parent has no Variation Master type).' : 'The listing already has the variation type "' + typeToAdd(d) + '".');
+                                            ? 'Change this parent to the variation type "' + typeToAdd(d) + '" on eBay 2: the variations are added under it first (value = Variation Master Variation Name, same SKU, price, quantity, UPC and pictures), then the old ones are deleted.'
+                                            : (typeToAdd(d) === '' ? 'Type a New Type first (this parent has no Variation Master type).'
+                                                : (isMultiType(d) ? 'This listing varies by several types (' + d.current_type + '); only a one-type listing can be changed from here.' : 'The listing already has the variation type "' + typeToAdd(d) + '".'));
                                         return '<button type="button" class="btn btn-sm ' + (ok ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-type" title="' + esc(tip) + '"><i class="ri-add-line me-1"></i>Add</button>';
                                     },
                                     cellClick: async function (e, cell) {
@@ -667,7 +708,7 @@
                                         const d = cell.getData();
                                         if (typeToAdd(d) === '') { alert('Type a New Type first. This parent has no Variation Master type to use.'); return; }
                                         if (hasAspect(d, typeToAdd(d)) && !confirm('The listing already has the variation type "' + typeToAdd(d) + '". Try to add it anyway?')) return;
-                                        if (!confirm('Add the variation type "' + typeToAdd(d) + '" to ' + d.main_listing + ' on eBay 2? Every SKU gets its Variation Master Variation Name as the value. This changes the live listing.')) return;
+                                        if (!confirm('Change ' + d.main_listing + ' to the variation type "' + typeToAdd(d) + '" on eBay 2?\n\nThe variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old "' + (d.current_type || 'current') + '" variations are DELETED.\n\nThis changes the live listing.')) return;
                                         const btn = e.target.closest('.e2vt-push-type');
                                         const typeName = typeToAdd(d);
                                         // Loader on the button while eBay is called (can take a few seconds).
@@ -677,7 +718,7 @@
                                         let outcome = null;
                                         try { outcome = await pushType(d); } finally { setBusy(false, ''); cell.getRow().reformat(); }
                                         if (outcome) {
-                                            showToast(outcome.success, outcome.success ? 'Added "' + typeName + '" to ' + d.main_listing : 'Could not add "' + typeName + '" to ' + d.main_listing, outcome.message);
+                                            showToast(outcome.success, outcome.success ? 'Variation type "' + typeName + '" added to ' + d.main_listing + ', old one deleted' : 'Could not change ' + d.main_listing + ' to "' + typeName + '"', outcome.message);
                                             document.getElementById('e2vt-progress').textContent = (outcome.success ? 'Success: ' : 'Failed: ') + outcome.message;
                                         }
                                     },
@@ -820,6 +861,10 @@
                 table.on('dataFiltered', function (filters, rows) {
                     parentShown = rows.length;
                     showParentCount();
+                    const filteredData = rows.map((r) => r.getData());
+                    cpShown = cpParentCount(filteredData);
+                    cpMissingShown = filteredData.filter(hasNoCpParent).length;
+                    showCpParentCount();
                     syncSelection();
                 });
                 table.on('rowSelectionChanged', syncSelection);
@@ -877,7 +922,7 @@
                     if (busy) return;
                     const rows = visibleRows().filter(isChanged);
                     if (!rows.length) { alert('Nothing to add: no listing in this view has a typed New Type that the listing does not have yet.'); return; }
-                    if (!confirm('Add the typed New Type to ' + rows.length + ' listing(s) on eBay 2? Every SKU gets its Variation Master Variation Name as the value. This changes live listings.')) return;
+                    if (!confirm('Change ' + rows.length + ' listing(s) to their typed New Type on eBay 2?\n\nFor each one the variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old variations are DELETED.\n\nThis changes live listings.')) return;
                     await pushMany(rows, pushType, 'type');
                 });
 

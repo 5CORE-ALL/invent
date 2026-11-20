@@ -1332,6 +1332,225 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Change the variation type of a live listing that varies by one type (for example Color to Size) by adding the
+     * variations under the new type first and then deleting the old ones, in one request: every variation is added
+     * again with the same SKU, price, quantity still available, UPC/EAN/ISBN and pictures, its value under the new type
+     * taken from $valuesBySku, and the old variation (old type) is deleted. When eBay refuses, nothing changes.
+     *
+     * @param  array<string, mixed>  $getItemResponse
+     * @param  array<string, string>  $valuesBySku  exact eBay variation SKU => value under the new type
+     * @return array{success: bool, message: string, aspects?: array<string, list<string>>, specifics_by_sku?: array<string, array<string, string>>}
+     */
+    public static function replaceVariationAspect(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $newName,
+        array $valuesBySku,
+    ): array {
+        $newName = trim($newName);
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        $aspects = self::variationAspects($item);
+        if ($itemId === '' || $newName === '') {
+            return ['success' => false, 'message' => 'Missing eBay item or the new variation type.'];
+        }
+        if ($aspects === []) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations to change the type of.'];
+        }
+        if (count($aspects) !== 1) {
+            return ['success' => false, 'message' => 'This eBay listing varies by '.implode(' and ', array_keys($aspects)).'. Only a listing with one variation type can have its type replaced from here.'];
+        }
+        $oldName = (string) array_key_first($aspects);
+        if (self::aspectKey($oldName) === self::aspectKey($newName)) {
+            return ['success' => false, 'message' => 'This eBay listing already varies by "'.$oldName.'". Nothing to add.'];
+        }
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics'])) {
+            $vars = [$vars];
+        }
+        $esc = static fn (string $v): string => self::escapeXmlElementText($v);
+
+        // The variations as eBay holds them now, each with its value under the new type.
+        $records = [];
+        $missing = [];
+        $oldValueOf = []; // new value => old value (for the pictures)
+        $seen = [];
+        foreach ((array) $vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim(self::xmlText($variation['SKU'] ?? ''));
+            $map = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            $oldValue = '';
+            foreach ($map as $n => $v) {
+                if (self::aspectKey((string) $n) === self::aspectKey($oldName)) {
+                    $oldValue = trim((string) $v);
+                }
+            }
+            if ($vSku === '' || $oldValue === '') {
+                return ['success' => false, 'message' => 'A variation on this eBay listing has no SKU or no '.$oldName.' value, so nothing was changed.'];
+            }
+            $newValue = trim((string) ($valuesBySku[$vSku] ?? ''));
+            if ($newValue === '') {
+                $missing[] = $vSku;
+
+                continue;
+            }
+            if (isset($seen[mb_strtolower($newValue)])) {
+                return ['success' => false, 'message' => 'Two variations would both get the '.$newName.' value "'.$newValue.'" ('.$seen[mb_strtolower($newValue)].' and '.$vSku.'). Give each SKU its own Variation Name.'];
+            }
+            $seen[mb_strtolower($newValue)] = $vSku;
+            $price = trim(self::xmlText($variation['StartPrice'] ?? ''));
+            $qty = trim(self::xmlText($variation['Quantity'] ?? ''));
+            if (! is_numeric($price) || (float) $price <= 0 || ! is_numeric($qty)) {
+                return ['success' => false, 'message' => 'Could not read the live price or quantity of variation '.$vSku.' from eBay, so nothing was changed.'];
+            }
+            $sold = (int) trim(self::xmlText($variation['SellingStatus']['QuantitySold'] ?? '0'));
+            $details = [];
+            foreach (['UPC', 'EAN', 'ISBN'] as $key) {
+                $code = trim(self::xmlText($variation['VariationProductListingDetails'][$key] ?? ''));
+                if ($code !== '') {
+                    $details[$key] = $code;
+                }
+            }
+            $oldValueOf[$newValue] = $oldValue;
+            $records[] = [
+                'sku' => $vSku, 'oldSpecifics' => $map, 'oldValue' => $oldValue, 'newValue' => $newValue,
+                'price' => number_format((float) $price, 2, '.', ''), 'qty' => max(0, (int) $qty - max(0, $sold)), 'details' => $details,
+            ];
+        }
+        // Every variation needs a value under the new type: stop before sending anything if one has none.
+        if ($missing !== []) {
+            return ['success' => false, 'message' => count($missing).' variation(s) have no "'.$newName.'" value in Variation Master (Variation Name), so nothing was changed: '
+                .implode(', ', array_slice($missing, 0, 10)).(count($missing) > 10 ? ', ...' : '').'.'];
+        }
+        if ($records === []) {
+            return ['success' => false, 'message' => 'This eBay listing has no variations to change the type of.'];
+        }
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $xml->addChild('RequesterCredentials')->addChild('eBayAuthToken', $esc($authToken));
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $esc($itemId));
+        // A plain item specific called like the new type would clash with it as a variation type: drop it, keep the rest.
+        $itemRows = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
+        $keptRows = array_values(array_filter($itemRows, static fn ($r) => self::aspectKey((string) ($r['name'] ?? '')) !== self::aspectKey($newName)));
+        if (count($keptRows) !== count($itemRows) && $keptRows !== []) {
+            $spec = $itemNode->addChild('ItemSpecifics');
+            foreach ($keptRows as $r) {
+                $nvl = $spec->addChild('NameValueList');
+                $nvl->addChild('Name', $esc((string) $r['name']));
+                foreach ((array) ($r['values'] ?? []) as $v) {
+                    if (trim((string) $v) !== '') {
+                        $nvl->addChild('Value', $esc(trim((string) $v)));
+                    }
+                }
+            }
+        }
+
+        $block = $itemNode->addChild('Variations');
+        // 1. The new variations first ...
+        foreach ($records as $rec) {
+            $node = $block->addChild('Variation');
+            $node->addChild('SKU', $esc($rec['sku']));
+            $node->addChild('StartPrice', $rec['price']);
+            $node->addChild('Quantity', (string) $rec['qty']);
+            if ($rec['details'] !== []) {
+                $details = $node->addChild('VariationProductListingDetails');
+                foreach ($rec['details'] as $k => $code) {
+                    $details->addChild($k, $esc($code));
+                }
+            }
+            $nvl = $node->addChild('VariationSpecifics')->addChild('NameValueList');
+            $nvl->addChild('Name', $esc($newName));
+            $nvl->addChild('Value', $esc($rec['newValue']));
+        }
+        // 2. ... then the old ones are deleted.
+        foreach ($records as $rec) {
+            $node = $block->addChild('Variation');
+            $node->addChild('Delete', 'true');
+            $node->addChild('SKU', $esc($rec['sku']));
+            $specifics = $node->addChild('VariationSpecifics');
+            foreach ($rec['oldSpecifics'] as $n => $v) {
+                $nvl = $specifics->addChild('NameValueList');
+                $nvl->addChild('Name', $esc((string) $n));
+                $nvl->addChild('Value', $esc((string) $v));
+            }
+        }
+
+        // Pictures: each new value gets the pictures of the value it replaces.
+        $pics = self::extractVariationPictureState($item);
+        $picByOld = [];
+        foreach ($pics['sets'] as $set) {
+            $picByOld[(string) $set['value']] = (array) $set['urls'];
+        }
+        $picSets = [];
+        if ($pics['name'] !== '' && self::aspectKey($pics['name']) === self::aspectKey($oldName)) {
+            foreach ($records as $rec) {
+                $urls = $picByOld[$rec['oldValue']] ?? [];
+                if ($urls !== []) {
+                    $picSets[$rec['newValue']] = $urls;
+                }
+            }
+        }
+        if ($picSets !== []) {
+            $pictures = $block->addChild('Pictures');
+            $pictures->addChild('VariationSpecificName', $esc($newName));
+            foreach ($picSets as $value => $urls) {
+                $setNode = $pictures->addChild('VariationSpecificPictureSet');
+                $setNode->addChild('VariationSpecificValue', $esc((string) $value));
+                foreach (array_slice($urls, 0, 12) as $url) {
+                    $setNode->addChild('PictureURL', $esc((string) $url));
+                }
+            }
+        }
+
+        $newValues = array_values(array_unique(array_column($records, 'newValue')));
+        $setList = $block->addChild('VariationSpecificsSet')->addChild('NameValueList');
+        $setList->addChild('Name', $esc($newName));
+        foreach ($newValues as $value) {
+            $setList->addChild('Value', $esc($value));
+        }
+
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build the variation type request.'];
+        }
+        $res = self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'variation type', 'ReviseFixedPriceItem');
+        if ($res['success']) {
+            $specificsBySku = [];
+            foreach ($records as $rec) {
+                $specificsBySku[$rec['sku']] = [$newName => $rec['newValue']];
+            }
+            $res['message'] = 'Variation type changed from "'.$oldName.'" to "'.$newName.'": '.count($records).' variation(s) added under "'.$newName
+                .'" first and the old "'.$oldName.'" variations deleted (same SKU, price, quantity, UPC and pictures). '.$res['message'];
+            $res['aspects'] = [$newName => $newValues];
+            $res['specifics_by_sku'] = $specificsBySku;
+        } else {
+            Log::warning('eBay variation type replace refused', [
+                'itemId' => $itemId,
+                'from' => $oldName,
+                'to' => $newName,
+                'error' => $res['message'],
+                'variationCount' => count($records),
+                'request' => preg_replace('#<eBayAuthToken>.*?</eBayAuthToken>#s', '<eBayAuthToken>x</eBayAuthToken>', $xmlBody),
+            ]);
+            $res['message'] = 'eBay would not change the variation type "'.$oldName.'" to "'.$newName.'": '.$res['message'].' Nothing was changed on the listing.';
+        }
+
+        return $res;
+    }
+
+    /**
      * Give variations a new value name (for example Color: "BLUE 1Pc" becomes "Blue") by deleting the old variation and
      * adding a new one with the same SKU, price, quantity, UPC/EAN/ISBN and the same pictures, instead of renaming the
      * old variation in place (eBay refuses that with 21916664). One request does both; when eBay refuses that because
