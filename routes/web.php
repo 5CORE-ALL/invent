@@ -3874,6 +3874,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::put('/advance-payments/update', 'updateAdvancePayments')->name('advance.payments.update');
         Route::get('/advance-and-payments/data', 'getAdvancePaymentsData');
         Route::post('/advance-payments/delete', 'deleteAdvancePayments');
+        Route::post('/advance-payments/archive', 'archiveAdvancePayment')->name('advance.payments.archive');
         Route::post('/supplier-ledger/delete', 'deleteSupplierLedger');
     });
 

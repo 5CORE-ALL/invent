@@ -19,6 +19,13 @@ class AdvancePayment extends Model
         'advance_amount',
         'image',
         'remarks',
+        'is_archived',
+        'archived_at',
+    ];
+
+    protected $casts = [
+        'is_archived' => 'boolean',
+        'archived_at' => 'datetime',
     ];
 
     /**

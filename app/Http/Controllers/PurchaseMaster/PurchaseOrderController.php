@@ -3221,22 +3221,15 @@ class PurchaseOrderController extends Controller
 
     function generateOrderNumber()
     {
-        $datePart = Carbon::now()->format('dmy'); 
-        $prefix = 'PO-' . $datePart;
+        // Serial PO numbers: PO-01, PO-02, ... (no date part, never resets).
+        // Old date-based numbers (e.g. PO-081125-01) don't match ^PO-[0-9]+$ and are ignored,
+        // so numbering starts from 01 with the first PO created after this change.
+        $lastSerial = (int) PurchaseOrder::query()
+            ->whereRaw("po_number REGEXP '^PO-[0-9]+$'")
+            ->selectRaw("MAX(CAST(SUBSTRING(po_number, 4) AS UNSIGNED)) as max_serial")
+            ->value('max_serial');
 
-        $latestOrder = PurchaseOrder::select('po_number')
-            ->where('po_number', 'like', "$prefix-%")
-            ->orderBy('po_number', 'desc')
-            ->first();
-
-        if ($latestOrder) {
-            $parts = explode('-', $latestOrder->po_number);
-            $lastSerial = intval(end($parts));
-            $newSerial = str_pad($lastSerial + 1, 2, '0', STR_PAD_LEFT);
-        } else {
-            $newSerial = '01';
-        }
-        return "$prefix-$newSerial";
+        return 'PO-' . str_pad($lastSerial + 1, 2, '0', STR_PAD_LEFT);
     }
 
     public function deletePurchaseOrders(Request $request)

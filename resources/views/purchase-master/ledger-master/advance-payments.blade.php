@@ -4,6 +4,30 @@
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
 <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
 <style>
+    /* Center all headers and cell content */
+    #advance-payment-table .tabulator-col .tabulator-col-title { text-align: center; }
+    #advance-payment-table .tabulator-cell { text-align: center; }
+
+    /* Paste-snippet box */
+    .paste-box { border: 2px dashed #adb5bd; border-radius: 6px; min-height: 70px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; cursor: pointer; background: #f8f9fa; color: #6c757d; font-size: 0.8rem; outline: none; }
+    .paste-box:focus { border-color: #0d6efd; background: #eef4ff; color: #0d6efd; }
+    .paste-box-preview { max-width: 100%; max-height: 140px; border-radius: 4px; }
+
+    /* PO number link */
+    #advance-payment-table a.po-link { color: #0d6efd; font-weight: 700; text-decoration: none; }
+    #advance-payment-table a.po-link:hover { text-decoration: underline; }
+
+    /* Actions column: icon-only buttons, no background */
+    .action-icon-btn { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 6px; font-size: 1rem; }
+    .action-icon-btn.edit-payment-btn { color: #3fbfc4 !important; }
+    .action-icon-btn.archive-payment-btn { color: #dc3545 !important; }
+    .action-icon-btn:hover { background: rgba(0,0,0,0.06) !important; }
+    /* Stage markers (same look as /forecast.analysis) */
+    .stage-dot-cell { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 3px; min-height: 36px; }
+    .stage-dot-cell .stage-status-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+    .stage-dot-cell .stage-transit-icon { font-size: 0.95rem; line-height: 1; display: inline-block; }
+    .stage-dot-cell .stage-mip-icon { font-size: 0.9rem; line-height: 1; color: #2563eb; }
+    .stage-empty-dash { color: #94a3b8; font-weight: 700; }
     /* Pagination styling */
     .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
         padding: 8px 16px;
@@ -131,6 +155,15 @@
                         </span>
                         <input type="text" id="advance-amount-search" class="form-control border-start-0" placeholder="Search VO Number, Supplier name...">
                     </div>
+                    <select id="stage-filter" class="form-select form-select-sm" style="max-width: 160px;" aria-label="Stage filter" autocomplete="off">
+                        <option value="" selected>All Stages</option>
+                        <option value="to_order_analysis">Order</option>
+                        <option value="mip">MIP</option>
+                        <option value="r2s">R2S</option>
+                        <option value="transit">Transit</option>
+                        <option value="all_good">All Good</option>
+                        <option value="none">No Stage</option>
+                    </select>
                     <button class="btn btn-sm btn-danger d-none" id="delete-selected-btn">
                         <i class="fas fa-trash-alt me-1"></i> Delete Selected
                     </button>
@@ -139,6 +172,12 @@
                             <i class="fas fa-plus-circle me-1"></i> Create Payment Voucher
                         </button>
                     </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge bg-secondary fs-6 fw-semibold px-3 py-2">Rows: <span id="badge-rows">0</span></span>
+                    <span class="badge bg-primary fs-6 fw-semibold px-3 py-2">Amount: <span id="badge-amount">$ 0</span></span>
+                    <span class="badge bg-success fs-6 fw-semibold px-3 py-2">Advance: <span id="badge-advance">$ 0</span></span>
+                    <span class="badge bg-warning text-dark fs-6 fw-semibold px-3 py-2">Balance: <span id="badge-balance">$ 0</span></span>
                 </div>
                 <div id="advance-payment-table"></div>
             </div>
@@ -160,16 +199,16 @@
                 @csrf
                 <div class="modal-body">
                     <div class="row g-3">
-                        {{-- Voucher Number --}}
-                        <div class="col-md-4">
+                        {{-- Voucher Number (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Voucher Number</label>
                             <input type="text" class="form-control" name="vo_number" value="{{ $voNumber }}" readonly>
                         </div>
 
-                        {{-- Supplier --}}
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
-                            <select class="form-select" name="supplier_id" required>
+                        {{-- Supplier (hidden, auto-filled from the selected Purchase Contract) --}}
+                        <div class="col-md-4 d-none">
+                            <label class="form-label fw-semibold">Supplier</label>
+                            <select class="form-select" name="supplier_id" id="supplierSelect">
                                 <option value="" disabled selected>Select Supplier</option>
                                 @foreach($suppliers as $supplier)
                                     <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
@@ -183,25 +222,25 @@
                             <select class="form-select" name="purchase_contract_id" id="purchaseContractSelect" required>
                                 <option value="" disabled selected>Select Purchase Contract</option>
                                 @foreach($purchaseOrders as $order)
-                                    <option value="{{ $order->id }}" data-amount="{{ $order->total_amount }}" data-advance="{{ $order->advance_amount }}">{{ $order->po_number }}</option>
+                                    <option value="{{ $order->id }}" data-amount="{{ $order->total_amount }}" data-advance="{{ $order->advance_amount }}" data-supplier="{{ $order->supplier_id }}">{{ $order->po_number }}</option>
                                 @endforeach
                             </select>
                         </div>
 
-                        {{-- Dr Amount --}}
-                        <div class="col-md-4">
+                        {{-- Total Amount (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Total Amount</label>
                             <input type="number" name="amount" id="tota_amount" class="form-control" readonly>
                         </div>
 
-                        {{-- Advance Amount --}}
-                        <div class="col-md-4">
+                        {{-- Advance Amount (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Advance Amount</label>
                             <input type="number" name="advance_amount" id="advance_amount" class="form-control" readonly>
                         </div>
 
-                        {{-- Balance (Auto calc) --}}
-                        <div class="col-md-4">
+                        {{-- Balance (Auto calc) (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Balance</label>
                             <input type="number" id="balanceInput" class="form-control" readonly>
                         </div>
@@ -209,7 +248,11 @@
                         {{-- Payment Image --}}
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Payment Image</label>
-                            <input type="file" name="image" class="form-control" accept="image/*">
+                            <input type="file" name="image" id="create_image" class="form-control" accept="image/*">
+                            <div class="paste-box mt-2" tabindex="0" data-target="#create_image" title="Click here, then press Ctrl/Cmd + V to paste a screenshot">
+                                <span class="paste-box-hint"><i class="fas fa-paste me-1"></i> Click &amp; paste snippet here (Ctrl/Cmd + V)</span>
+                                <img class="paste-box-preview d-none" alt="Pasted snippet">
+                            </div>
                         </div>
 
                         {{-- Remarks --}}
@@ -221,9 +264,6 @@
                 </div>
 
                 <div class="modal-footer bg-white">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i> Close
-                    </button>
                     <button type="submit" class="btn btn-primary" id="submit-btn">
                         <i class="fas fa-save me-1"></i> Save
                     </button>
@@ -251,16 +291,16 @@
                 <input type="hidden" name="payment_id" id="edit_payment_id">
                 <div class="modal-body">
                     <div class="row g-3">
-                        {{-- Voucher Number --}}
-                        <div class="col-md-4">
+                        {{-- Voucher Number (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Voucher Number</label>
                             <input type="text" class="form-control" name="vo_number" id="edit_vo_number" readonly>
                         </div>
 
-                        {{-- Supplier --}}
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
-                            <select class="form-select" name="supplier_id" id="edit_supplier_id" required>
+                        {{-- Supplier (hidden, auto-filled from the selected Purchase Contract) --}}
+                        <div class="col-md-4 d-none">
+                            <label class="form-label fw-semibold">Supplier</label>
+                            <select class="form-select" name="supplier_id" id="edit_supplier_id">
                                 <option value="" disabled>Select Supplier</option>
                                 @foreach($suppliers as $supplier)
                                     <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
@@ -268,31 +308,31 @@
                             </select>
                         </div>
 
-                        {{-- Purchase Contract --}}
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Purchase Contract <span class="text-danger">*</span></label>
-                            <select class="form-select" name="purchase_contract_id" id="edit_purchase_contract_id" required>
+                        {{-- Purchase Contract (hidden in edit, still submitted) --}}
+                        <div class="col-md-4 d-none">
+                            <label class="form-label fw-semibold">Purchase Contract</label>
+                            <select class="form-select" name="purchase_contract_id" id="edit_purchase_contract_id">
                                 <option value="" disabled>Select Purchase Contract</option>
                                 @foreach($purchaseOrders as $order)
-                                    <option value="{{ $order->id }}" data-amount="{{ $order->total_amount }}" data-advance="{{ $order->advance_amount }}">{{ $order->po_number }}</option>
+                                    <option value="{{ $order->id }}" data-amount="{{ $order->total_amount }}" data-advance="{{ $order->advance_amount }}" data-supplier="{{ $order->supplier_id }}">{{ $order->po_number }}</option>
                                 @endforeach
                             </select>
                         </div>
 
-                        {{-- Total Amount --}}
-                        <div class="col-md-4">
+                        {{-- Total Amount (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Total Amount</label>
                             <input type="number" name="amount" id="edit_amount" class="form-control" readonly>
                         </div>
 
-                        {{-- Advance Amount --}}
-                        <div class="col-md-4">
+                        {{-- Advance Amount (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Advance Amount</label>
                             <input type="number" name="advance_amount" id="edit_advance_amount" class="form-control" readonly>
                         </div>
 
-                        {{-- Balance (Auto calc) --}}
-                        <div class="col-md-4">
+                        {{-- Balance (Auto calc) (hidden, still submitted) --}}
+                        <div class="col-md-4 d-none">
                             <label class="form-label fw-semibold">Balance</label>
                             <input type="number" id="edit_balance" class="form-control" readonly>
                         </div>
@@ -301,6 +341,10 @@
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Payment Image</label>
                             <input type="file" name="image" id="edit_image" class="form-control" accept="image/*">
+                            <div class="paste-box mt-2" tabindex="0" data-target="#edit_image" title="Click here, then press Ctrl/Cmd + V to paste a screenshot">
+                                <span class="paste-box-hint"><i class="fas fa-paste me-1"></i> Click &amp; paste snippet here (Ctrl/Cmd + V)</span>
+                                <img class="paste-box-preview d-none" alt="Pasted snippet">
+                            </div>
                             <div id="edit_image_preview" class="mt-2"></div>
                         </div>
 
@@ -313,9 +357,6 @@
                 </div>
 
                 <div class="modal-footer bg-white">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i> Close
-                    </button>
                     <button type="submit" class="btn btn-warning" id="edit_submit-btn">
                         <i class="fas fa-save me-1"></i> Update
                     </button>
@@ -337,10 +378,20 @@
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
+            const roundFormatter = function(cell) {
+                const num = parseFloat(cell.getValue());
+                return isNaN(num) ? '' : '$ ' + Math.round(num);
+            };
+
             let table = new Tabulator("#advance-payment-table", {
                 ajaxURL: "/advance-and-payments/data",
                 ajaxConfig: "GET",
                 layout: "fitColumns",
+                columnDefaults: {
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    vertAlign: "middle",
+                },
                 pagination: true,
                 paginationSize: 50,
                 paginationMode: "local",
@@ -361,9 +412,27 @@
                         hozAlign: "center",
                         width: 80,
                         headerHozAlign: "center",
+                        visible: false,
                     },
-                    { title: "VO Number", field: "vo_number", hozAlign: "center" },
-                    { title: "Purchase Contract", field:"purchase_contract", hozAlign: "center" },
+                    { title: "VO Number", field: "vo_number", hozAlign: "center", visible: false },
+                    {
+                        title: "PO",
+                        field: "purchase_contract",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        formatter: function(cell) {
+                            const po = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const date = rowData.po_date;
+                            if (!po) return '<span class="text-muted">-</span>';
+                            const link = rowData.purchase_contract_id
+                                ? '<a href="/purchase-orders/' + rowData.purchase_contract_id + '" target="_blank" rel="noopener" class="po-link" title="Open Purchase Order">' + po + '</a>'
+                                : po;
+                            return '<div style="line-height:1.25;">' + link +
+                                (date ? '<div class="text-muted" style="font-size:0.72rem;font-weight:500;">' + date + '</div>' : '') +
+                                '</div>';
+                        }
+                    },
                     {
                         title: "Supplier Name",
                         field: "supplier_name",
@@ -382,11 +451,40 @@
                             return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
                         }
                     },
-                    { title: "Amount", field:"amount", hozAlign: "center" },
-                    { title: "Advance Amount", field:"advance_amount", hozAlign: "center" },
-                    { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center" },
+                    { title: "Amount", field:"amount", hozAlign: "center", formatter: roundFormatter },
+                    { title: "Advance Amount", field:"advance_amount", hozAlign: "center", formatter: roundFormatter },
+                    { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center", formatter: roundFormatter },
+                    {
+                        title: "Stage",
+                        field: "stages",
+                        hozAlign: "center",
+                        headerHozAlign: "center",
+                        headerSort: false,
+                        width: 90,
+                        formatter: function(cell) {
+                            const stages = cell.getValue();
+                            if (!Array.isArray(stages) || stages.length === 0) {
+                                return '<span class="stage-empty-dash">-</span>';
+                            }
+                            const labels = {
+                                appr_req: 'Appr Req', to_order_analysis: 'Order', mip: 'MIP',
+                                r2s: 'R2S', transit: 'Transit', all_good: 'All Good'
+                            };
+                            const colors = {
+                                appr_req: '#facc15', to_order_analysis: '#c2410c',
+                                r2s: '#16a34a', all_good: '#0ea5e9'
+                            };
+                            const html = stages.map(function(s) {
+                                const title = labels[s] || s;
+                                if (s === 'transit') return '<span class="stage-transit-icon" title="' + title + '">🚢</span>';
+                                if (s === 'mip') return '<i class="fas fa-hammer stage-mip-icon" title="' + title + '"></i>';
+                                return '<span class="stage-status-dot" title="' + title + '" style="background-color:' + (colors[s] || '#94a3b8') + ';"></span>';
+                            }).join('');
+                            return '<div class="stage-dot-cell">' + html + '</div>';
+                        }
+                    },
                     { 
-                        title: "Image", 
+                        title: "Adv Img", 
                         field: "image",
                         formatter: function (cell) {
                             const url = cell.getValue();
@@ -439,7 +537,7 @@
                         headerHozAlign: "center",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            return `<button class="btn btn-sm btn-primary edit-payment-btn" 
+                            return `<button class="btn btn-sm action-icon-btn edit-payment-btn" 
                                         data-id="${rowData.id}"
                                         data-vo-number="${rowData.vo_number}"
                                         data-supplier-id="${rowData.supplier_id || ''}"
@@ -450,12 +548,55 @@
                                         data-image="${rowData.image || ''}"
                                         title="Edit">
                                         <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm action-icon-btn archive-payment-btn"
+                                        data-id="${rowData.id}"
+                                        title="Archive">
+                                        <i class="fas fa-archive"></i>
                                     </button>`;
                         },
-                        width: 100
+                        width: 120
                     },
                 ]
             });
+
+            // Does a row pass the current search + stage filters? (shared by the table filter and the badges)
+            function rowMatches(row) {
+                const keyword = document.getElementById("advance-amount-search").value.trim().toLowerCase();
+                const stage = document.getElementById("stage-filter").value;
+
+                if (keyword) {
+                    const hay = (String(row.vo_number || '') + ' ' + String(row.supplier_name || '')).toLowerCase();
+                    if (hay.indexOf(keyword) === -1) return false;
+                }
+                if (stage) {
+                    const stages = Array.isArray(row.stages) ? row.stages : [];
+                    if (stage === 'none') return stages.length === 0;
+                    return stages.indexOf(stage) !== -1;
+                }
+                return true;
+            }
+
+            // Totals badges: summed from the full data set using the same filter rules,
+            // so they are correct on first load ("All Stages") and after every filter change.
+            function updateTotalBadges(allData) {
+                const source = Array.isArray(allData) ? allData : table.getData();
+                let amount = 0, advance = 0, balance = 0;
+                const matched = source.filter(rowMatches);
+                document.getElementById('badge-rows').textContent = matched.length.toLocaleString('en-US');
+                matched.forEach(function(r) {
+                    amount  += parseFloat(r.amount) || 0;
+                    advance += parseFloat(r.advance_amount) || 0;
+                    balance += parseFloat(r.balance) || 0;
+                });
+                const fmt = function(n) { return '$ ' + Math.round(n).toLocaleString('en-US'); };
+                document.getElementById('badge-amount').textContent = fmt(amount);
+                document.getElementById('badge-advance').textContent = fmt(advance);
+                document.getElementById('badge-balance').textContent = fmt(balance);
+            }
+            table.on("dataLoaded", function(data) { updateTotalBadges(data); });
+            table.on("tableBuilt", function() { updateTotalBadges(); });
+            table.on("rowDeleted", function() { updateTotalBadges(); });
 
             table.on("rowSelectionChanged", function(data, rows){
                 if(data.length > 0){
@@ -465,16 +606,13 @@
                 }
             });
 
-            document.getElementById("advance-amount-search").addEventListener("input", function (e) {
-                const keyword = e.target.value.toLowerCase();
-
-                table.setFilter([
-                    [
-                        { field: "vo_number", type: "like", value: keyword },
-                        { field: "supplier_name", type: "like", value: keyword },
-                    ]
-                ]);
-            });
+            // Combined filter: search keyword AND stage.
+            function applyFilters() {
+                table.setFilter(rowMatches);
+                updateTotalBadges();
+            }
+            document.getElementById("advance-amount-search").addEventListener("input", applyFilters);
+            document.getElementById("stage-filter").addEventListener("change", applyFilters);
 
             $('#delete-selected-btn').on('click', function() {
                 const selectedData = table.getSelectedData();
@@ -517,6 +655,9 @@
                 let amount = parseFloat(selectedOption.getAttribute("data-amount")) || 0;
                 let advance = parseFloat(selectedOption.getAttribute("data-advance")) || 0;
                 let balance = amount - advance;
+
+                const supplierId = selectedOption.getAttribute("data-supplier");
+                if (supplierId) document.getElementById("supplierSelect").value = supplierId;
 
                 totalAmountInput.value = amount;
                 advanceInput.value = advance;
@@ -561,6 +702,77 @@
                 });
             }
 
+            // Paste a screenshot/snippet into the box -> becomes the Payment Image file
+            function setBoxPreview(box, file) {
+                const img = box.querySelector('.paste-box-preview');
+                const hint = box.querySelector('.paste-box-hint');
+                if (file) {
+                    img.src = URL.createObjectURL(file);
+                    img.classList.remove('d-none');
+                    hint.classList.add('d-none');
+                } else {
+                    img.removeAttribute('src');
+                    img.classList.add('d-none');
+                    hint.classList.remove('d-none');
+                }
+            }
+            document.querySelectorAll('.paste-box').forEach(function(box) {
+                box.addEventListener('paste', function(e) {
+                    const items = (e.clipboardData && e.clipboardData.items) || [];
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') === 0) {
+                            const blob = items[i].getAsFile();
+                            if (!blob) continue;
+                            const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+                            const file = new File([blob], 'pasted-snippet-' + Date.now() + '.' + ext, { type: blob.type });
+                            const dt = new DataTransfer();
+                            dt.items.add(file);
+                            document.querySelector(box.getAttribute('data-target')).files = dt.files;
+                            setBoxPreview(box, file);
+                            e.preventDefault();
+                            return;
+                        }
+                    }
+                    alert('No image found in the clipboard. Copy a screenshot first.');
+                    e.preventDefault();
+                });
+                // Choosing a file normally clears the pasted preview
+                document.querySelector(box.getAttribute('data-target')).addEventListener('change', function() {
+                    setBoxPreview(box, this.files && this.files[0] ? this.files[0] : null);
+                });
+            });
+            // Reset previews when a modal closes
+            ['createPaymentModal', 'editPaymentModal'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('hidden.bs.modal', function() {
+                    el.querySelectorAll('.paste-box').forEach(function(box) { setBoxPreview(box, null); });
+                });
+            });
+
+            // Archive a row (red archive icon)
+            $(document).on('click', '.archive-payment-btn', function() {
+                const id = $(this).data('id');
+                if (!confirm('Archive this payment voucher?')) return;
+
+                $.ajax({
+                    url: '/advance-payments/archive',
+                    type: 'POST',
+                    data: {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        id: id
+                    },
+                    success: function() {
+                        table.deleteRow(id);
+                        updateTotalBadges();
+                    },
+                    error: function(xhr) {
+                        console.error(xhr.responseText);
+                        alert('Could not archive this row.');
+                    }
+                });
+            });
+
             // Handle edit button click
             $(document).on('click', '.edit-payment-btn', function() {
                 const btn = $(this);
@@ -602,6 +814,9 @@
                 const advance = parseFloat(selectedOption.data('advance')) || 0;
                 const balance = amount - advance;
 
+                const poSupplier = selectedOption.data('supplier');
+                if (poSupplier) $('#edit_supplier_id').val(String(poSupplier));
+
                 $('#edit_amount').val(amount);
                 $('#edit_advance_amount').val(advance);
                 $('#edit_balance').val(balance);
@@ -641,4 +856,4 @@
     </script>
 
 
-@endsection
+@endsection

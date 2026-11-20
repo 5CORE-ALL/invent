@@ -18,7 +18,7 @@ class LedgerMasterController extends Controller
     {
         $voNumber = $this->generateVoucherNumber();
         $suppliers = Supplier::where('type', 'Supplier')->get();
-        $purchaseOrders = PurchaseOrder::select('id', 'po_number', 'total_amount', 'advance_amount')->get();
+        $purchaseOrders = PurchaseOrder::select('id', 'po_number', 'supplier_id', 'total_amount', 'advance_amount')->get();
         return view('purchase-master.ledger-master.advance-payments', compact('suppliers', 'purchaseOrders', 'voNumber'));
     }
 
@@ -183,12 +183,51 @@ class LedgerMasterController extends Controller
             'image',
             'remarks'
         )
-            ->with(['supplier:id,name', 'purchaseContract:id,po_number'])
+            ->with(['supplier:id,name', 'purchaseContract:id,po_number,po_date,items'])
+            ->where('is_archived', false)
             ->get();
 
-        $payments = $payments->map(function ($payment) {
+        // Stage per PO = union of the Forecast Analysis stages of the SKUs on that PO.
+        // The forecast snapshot is heavy (needs >128MB), so only the small SKU => stages map is
+        // cached for a short time, and the memory limit is raised just for building it.
+        $skuStages = [];
+        try {
+            $skuStages = \Cache::remember('advance_payments_sku_stages', 120, function () {
+                @ini_set('memory_limit', '1024M');
+                @set_time_limit(120);
+                $map = [];
+                $rows = app(\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
+                foreach ($rows as $row) {
+                    if (!empty($row->is_parent)) {
+                        continue;
+                    }
+                    $key = strtoupper(trim((string) ($row->SKU ?? '')));
+                    if ($key !== '' && !empty($row->stages) && is_array($row->stages)) {
+                        $map[$key] = array_values($row->stages);
+                    }
+                }
+                unset($rows);
+                return $map;
+            });
+        } catch (\Throwable $e) {
+            \Log::warning('Advance payments stage lookup failed: ' . $e->getMessage());
+        }
+        $pipelineOrder = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
+
+        $payments = $payments->map(function ($payment) use ($skuStages, $pipelineOrder) {
             $amount = $payment->amount ?? 0;
             $advance = $payment->advance_amount ?? 0;
+
+            $stages = [];
+            $items = $payment->purchaseContract->items ?? null;
+            $items = is_array($items) ? $items : json_decode((string) $items, true);
+            foreach ((array) $items as $item) {
+                $key = strtoupper(trim((string) ($item['sku'] ?? '')));
+                foreach ($skuStages[$key] ?? [] as $stage) {
+                    $stages[$stage] = true;
+                }
+            }
+            $stages = array_values(array_filter($pipelineOrder, fn($s) => isset($stages[$s])));
 
             return [
                 'id' => $payment->id,
@@ -197,6 +236,10 @@ class LedgerMasterController extends Controller
                 'supplier_name' => $payment->supplier->name ?? '',
                 'purchase_contract_id' => $payment->purchase_contract_id,
                 'purchase_contract' => $payment->purchaseContract->po_number ?? '',
+                'po_date' => $payment->purchaseContract && $payment->purchaseContract->po_date
+                    ? Carbon::parse($payment->purchaseContract->po_date)->format('d M Y')
+                    : '',
+                'stages' => $stages,
                 'amount' => $amount ?? '',
                 'advance_amount' => $advance ?? '',
                 'balance' => $amount - $advance,
@@ -250,6 +293,18 @@ class LedgerMasterController extends Controller
         AdvancePayment::whereIn('id', $ids)->delete();
 
         return response()->json(['success' => true, 'message' => 'Deleted successfully.']);
+    }
+
+    public function archiveAdvancePayment(Request $request)
+    {
+        $request->validate(['id' => 'required|exists:advance_payments,id']);
+
+        AdvancePayment::where('id', $request->id)->update([
+            'is_archived' => true,
+            'archived_at' => now(),
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Archived successfully.']);
     }
 
     function generateVoucherNumber()
