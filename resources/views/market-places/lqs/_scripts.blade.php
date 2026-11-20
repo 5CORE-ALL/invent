@@ -13,7 +13,7 @@
         const lqsYoastSyncUrl = @json($lqsPage['routes']['seo_sync'] ?? null);
         const LQS_SLUG = @json($lqsPage['slug'] ?? '');
         const LQS_LISTING_TEMPLATE = @json($lqsPage['listing_url'] ?? null);
-        const LQS_SHOPIFY_STORE = ['shopify', 'pls', 'b5cb2b'].indexOf(LQS_SLUG) !== -1;
+        const LQS_SHOPIFY_STORE = ['shopify', 'pls'].indexOf(LQS_SLUG) !== -1;
 
         function lqsNeweggItem(id) {
             return String(id || '').trim().replace(/[^A-Za-z0-9-]/g, '');
