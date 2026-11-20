@@ -700,20 +700,109 @@ document.addEventListener('DOMContentLoaded', () => {
         return g;
     }
 
+    const imRollReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function imRollCountTo(el, to) {
+        if (!el) return;
+        const target = Number(to) || 0;
+        if (imRollReduceMotion) {
+            el.textContent = target.toLocaleString();
+            return;
+        }
+        const from = Number(String(el.textContent).replace(/[^0-9.-]/g, '')) || 0;
+        const start = performance.now();
+        const dur = 800;
+        function step(now) {
+            const p = Math.min(1, (now - start) / dur);
+            const eased = 1 - Math.pow(1 - p, 3);
+            el.textContent = Math.round(from + (target - from) * eased).toLocaleString();
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function imRollPointAlong(pts, t) {
+        if (!pts.length) return null;
+        if (pts.length === 1) return pts[0];
+        const lengths = [];
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) {
+            const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            lengths.push(len);
+            total += len;
+        }
+        if (total <= 0) return pts[0];
+        let dist = ((t % 1) + 1) % 1 * total;
+        for (let i = 1; i < pts.length; i++) {
+            const len = lengths[i - 1];
+            if (dist <= len || i === pts.length - 1) {
+                const p = len === 0 ? 0 : Math.min(1, dist / len);
+                return {
+                    x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * p,
+                    y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * p
+                };
+            }
+            dist -= len;
+        }
+        return pts[pts.length - 1];
+    }
+
     function drawImRoll(rows) {
         const labels = rows.map(r => r.label);
         const data = rows.map(r => Number(r.skus) || 0);
         const today = data.length ? data[data.length - 1] : 0;
         const avg = data.length ? Math.round(data.reduce((a, b) => a + b, 0) / data.length) : 0;
-        const todayEl = document.getElementById('imRollToday');
-        const avgEl = document.getElementById('imRollAvg');
-        if (todayEl) todayEl.textContent = today.toLocaleString();
-        if (avgEl) avgEl.textContent = avg.toLocaleString();
+        imRollCountTo(document.getElementById('imRollToday'), today);
+        imRollCountTo(document.getElementById('imRollAvg'), avg);
         const canvas = document.getElementById('imRollChart');
         if (!canvas || !window.Chart) return;
         if (imRollChart) imRollChart.destroy();
+        const drawMs = imRollReduceMotion ? 0 : 1600;
+        const stepMs = data.length > 1 ? drawMs / (data.length - 1) : drawMs;
+        const previousY = function (ctx) {
+            if (ctx.index === 0) return ctx.chart.scales.y.getPixelForValue(0);
+            return ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.index - 1].getProps(['y'], true).y;
+        };
         imRollChart = new Chart(canvas, {
             type: 'line',
+            plugins: [{
+                id: 'imRollValues',
+                afterDatasetsDraw: function (chart) {
+                    const meta = chart.getDatasetMeta(0);
+                    const values = chart.data.datasets[0].data;
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = '700 10px sans-serif';
+                    ctx.fillStyle = '#e2e8f0';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    let lastX = -999;
+                    meta.data.forEach(function (pt, i) {
+                        const n = Number(values[i]) || 0;
+                        if (n <= 0 || pt.skip) return;
+                        if (pt.x - lastX < 26 && i !== values.length - 1) return;
+                        lastX = pt.x;
+                        ctx.fillText(n.toLocaleString(), pt.x, pt.y - 6);
+                    });
+                    if (!imRollReduceMotion && chart.$imReady && meta.data.length > 1) {
+                        const travel = (performance.now() % 3400) / 3400;
+                        for (let trail = 4; trail >= 0; trail--) {
+                            const pos = imRollPointAlong(meta.data, travel - trail * 0.018);
+                            if (!pos) continue;
+                            const radius = trail === 0 ? 11 : 7 - trail;
+                            const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius);
+                            glow.addColorStop(0, trail === 0 ? 'rgba(255,255,255,.95)' : 'rgba(34,211,238,.55)');
+                            glow.addColorStop(0.45, 'rgba(167,139,250,.45)');
+                            glow.addColorStop(1, 'rgba(34,211,238,0)');
+                            ctx.fillStyle = glow;
+                            ctx.beginPath();
+                            ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                    ctx.restore();
+                }
+            }],
             data: {
                 labels: labels,
                 datasets: [{
@@ -730,9 +819,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         return g;
                     },
                     fill: true,
-                    tension: 0.42,
+                    tension: 0.15,
                     borderWidth: 2.6,
-                    pointRadius: function (ctx) { return ctx.dataIndex === data.length - 1 ? 4 : 0; },
+                    pointRadius: function (ctx) { return data[ctx.dataIndex] > 0 ? 3 : 0; },
                     pointBackgroundColor: '#fff',
                     pointBorderColor: '#22d3ee',
                     pointHoverRadius: 6,
@@ -744,7 +833,34 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 900, easing: 'easeOutQuart' },
+                animation: imRollReduceMotion ? false : {
+                    x: {
+                        type: 'number',
+                        easing: 'linear',
+                        duration: stepMs,
+                        from: NaN,
+                        delay: function (ctx) {
+                            if (ctx.type !== 'data' || ctx.xStarted) return 0;
+                            ctx.xStarted = true;
+                            return ctx.index * stepMs;
+                        }
+                    },
+                    y: {
+                        type: 'number',
+                        easing: 'easeOutQuart',
+                        duration: stepMs,
+                        from: previousY,
+                        delay: function (ctx) {
+                            if (ctx.type !== 'data' || ctx.yStarted) return 0;
+                            ctx.yStarted = true;
+                            return ctx.index * stepMs;
+                        }
+                    },
+                    onComplete: function (anim) {
+                        const chart = anim && anim.chart ? anim.chart : this;
+                        if (chart) chart.$imReady = true;
+                    }
+                },
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { display: false },
@@ -797,6 +913,15 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', function () { loadImRoll(Number(btn.dataset.days) || 30); });
     });
     loadImRoll(imRollDays);
+    if (!imRollReduceMotion) {
+        (function imRollLoop() {
+            requestAnimationFrame(imRollLoop);
+            if (document.hidden || !imRollChart || !imRollChart.$imReady) return;
+            const box = imRollChart.canvas.getBoundingClientRect();
+            if (box.bottom < 0 || box.top > window.innerHeight) return;
+            imRollChart.draw();
+        })();
+    }
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const __mp = window.__ALL_MP__ || {};
