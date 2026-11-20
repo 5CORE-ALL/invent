@@ -98,8 +98,9 @@ class ImageMasterActivityLog
     }
 
     /**
-     * Distinct SKUs with an image change on each day, newest window, missing days as zero.
-     * Audit tasks are not image updates.
+     * Distinct SKUs whose images changed on each day. Missing days are zero.
+     * The activity log only exists from mid-November, so uploads and successful
+     * image pushes are included too. A SKU counts once per day. Audit tasks are not image updates.
      *
      * @return list<array{date: string, label: string, skus: int}>
      */
@@ -108,26 +109,16 @@ class ImageMasterActivityLog
         $days = max(7, min(90, $days));
         $tz = (string) (config('app.timezone') ?: 'UTC');
         $start = now($tz)->startOfDay()->subDays($days - 1);
+        $from = $start->format('Y-m-d H:i:s');
         $byDay = [];
 
-        if (self::tableExists()) {
-            try {
-                $rows = DB::table(self::TABLE)
-                    ->where('created_at', '>=', $start->format('Y-m-d H:i:s'))
-                    ->where('action', '!=', 'audit')
-                    ->get(['sku', 'created_at']);
-                foreach ($rows as $r) {
-                    $sku = strtoupper(trim((string) $r->sku));
-                    if ($sku === '') {
-                        continue;
-                    }
-                    $day = \Carbon\Carbon::parse((string) $r->created_at, $tz)->timezone($tz)->toDateString();
-                    $byDay[$day][$sku] = true;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('ImageMasterActivityLog dailyUpdatedSkuCounts failed', ['error' => $e->getMessage()]);
-            }
-        }
+        self::collectSkuDays($byDay, self::TABLE, 'created_at', $from, function ($query) {
+            $query->where('action', '!=', 'audit');
+        });
+        self::collectSkuDays($byDay, 'product_images', 'created_at', $from);
+        self::collectSkuDays($byDay, 'image_master_push_histories', 'pushed_at', $from, function ($query) {
+            $query->where('success', 1)->where('image_count', '>', 0);
+        });
 
         $out = [];
         for ($i = 0; $i < $days; $i++) {
@@ -141,6 +132,43 @@ class ImageMasterActivityLog
         }
 
         return $out;
+    }
+
+    /**
+     * Add one distinct SKU per calendar day from a timestamped image table.
+     *
+     * @param  array<string, array<string, true>>  $byDay
+     * @param  callable(\Illuminate\Database\Query\Builder): void|null  $constrain
+     */
+    private static function collectSkuDays(array &$byDay, string $table, string $atColumn, string $from, ?callable $constrain = null): void
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku') || ! Schema::hasColumn($table, $atColumn)) {
+            return;
+        }
+
+        try {
+            $query = DB::table($table)
+                ->where($atColumn, '>=', $from)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '');
+            if ($constrain) {
+                $constrain($query);
+            }
+            $rows = $query
+                ->selectRaw('DATE(`'.$atColumn.'`) as d, UPPER(TRIM(sku)) as sku_key')
+                ->groupByRaw('DATE(`'.$atColumn.'`), UPPER(TRIM(sku))')
+                ->get();
+            foreach ($rows as $r) {
+                $day = substr((string) $r->d, 0, 10);
+                $sku = strtoupper(trim((string) $r->sku_key));
+                if ($day === '' || $sku === '') {
+                    continue;
+                }
+                $byDay[$day][$sku] = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ImageMasterActivityLog daily source failed', ['table' => $table, 'error' => $e->getMessage()]);
+        }
     }
 
     private static function tableExists(): bool
