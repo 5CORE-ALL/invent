@@ -5165,20 +5165,30 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow.",
+                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow. A pink up arrow is added when CVR L30 is above 12.99%.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = amazonCvrVsLtoTrend(row);
-                            if (t === null) return '<span class="text-muted">—</span>';
-                            const lto = amazonRowLtoCvr(row);
-                            const tip = 'CVR ' + amazonRowCvrL30(row).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
-                            if (t > 0) {
-                                return '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().up + '% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            const cvr30 = amazonRowCvrL30(row);
+                            // CVR L30 above 12.99%: an extra pink up arrow next to the normal arrow.
+                            const pinkUp = (isFinite(cvr30) && cvr30 > 12.99)
+                                ? '<span title="' + escAttr('CVR L30 ' + cvr30.toFixed(1) + '% is above 12.99%') + '"><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i></span>'
+                                : '';
+                            let main;
+                            if (t === null) {
+                                main = pinkUp ? '' : '<span class="text-muted">—</span>';
+                            } else {
+                                const lto = amazonRowLtoCvr(row);
+                                const tip = 'CVR ' + cvr30.toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
+                                if (t > 0) {
+                                    main = '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().up + '% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                                } else if (t < 0) {
+                                    main = '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().down + '% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                                } else {
+                                    main = '<span title="' + escAttr(tip + ' · within the CVR targets') + '">--</span>';
+                                }
                             }
-                            if (t < 0) {
-                                return '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().down + '% below') + '"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
-                            }
-                            return '<span title="' + escAttr(tip + ' · within the CVR targets') + '">--</span>';
+                            return (main && pinkUp) ? (main + ' ' + pinkUp) : (main || pinkUp);
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const x = amazonCvrVsLtoTrend(aRow.getData());
