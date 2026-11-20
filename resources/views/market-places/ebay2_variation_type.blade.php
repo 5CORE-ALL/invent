@@ -140,7 +140,7 @@
                             </select>
                         </div>
                         <div class="ms-auto small text-muted">
-                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. In the values column, <b>Add</b> sets every SKU's value on eBay to its Variation Master name (the Variation Name (SKU wise) column); <b>Edit</b> renames individual values by hand.
+                            Type a <b>New Type</b> in its cell (or leave it empty to use the Variation Master type) and press <b>Add</b>: it is added to the parent as a new variation type and each SKU gets its Variation Master <b>Variation Name</b> as the value. In the values column, <b>Add</b> puts the Variation Master name (Variation Name (SKU wise) column) on every SKU whose eBay name differs: the old variation is deleted and added again with the same SKU, price, quantity, UPC and pictures. <b>Edit</b> renames individual values by hand.
                             A <span class="e2vt-dot e2vt-dot--success" style="width:10px;height:10px"></span> green dot is success, a
                             <span class="e2vt-dot e2vt-dot--failed" style="width:10px;height:10px"></span> red dot is a failure: hover it for the reason.
                         </div>
@@ -789,13 +789,13 @@
                                         const d = c.getData();
                                         const can = (Array.isArray(d.sku_names) ? d.sku_names : []).some((n) => n);
                                         return '<button type="button" class="btn btn-sm ' + (can ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-values"' + (can ? '' : ' disabled')
-                                            + ' title="' + (can ? 'Add the Variation Master variation names to this parent on eBay 2: each SKU gets the name shown in the Variation Name (SKU wise) column' : 'No SKU of this parent has a Variation Name in Variation Master.') + '"><i class="ri-add-line me-1"></i>Add</button>';
+                                            + ' title="' + (can ? 'Add the Variation Master variation names to this parent on eBay 2: each SKU whose name differs is deleted and added again with the name from the Variation Name (SKU wise) column (same SKU, price, quantity, UPC and pictures)' : 'No SKU of this parent has a Variation Name in Variation Master.') + '"><i class="ri-add-line me-1"></i>Add</button>';
                                     },
                                     cellClick: async function (e, cell) {
                                         const btn = e.target.closest('.e2vt-push-values');
                                         if (busy || !btn || btn.disabled) return;
                                         const d = cell.getData();
-                                        if (!confirm('Add the Variation Master variation names to ' + d.main_listing + ' on eBay 2? Each SKU gets the name from the Variation Name (SKU wise) column. This changes the live listing.')) return;
+                                        if (!confirm('Add the Variation Master variation names to ' + d.main_listing + ' on eBay 2?\n\nFor every SKU whose eBay name differs from the Variation Name (SKU wise) column, the old variation is DELETED and added again with the new name, using the same SKU, price, quantity, UPC and pictures.\n\nThis changes the live listing.')) return;
                                         // Loader on the button while eBay is called (can take a few seconds).
                                         btn.disabled = true;
                                         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Adding...';

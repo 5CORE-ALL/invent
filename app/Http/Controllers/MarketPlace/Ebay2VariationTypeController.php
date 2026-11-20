@@ -573,7 +573,8 @@ class Ebay2VariationTypeController extends Controller
 
     /**
      * Set the value of every variation of the listing to the Variation Master "Variation Name" of its SKU, under the
-     * variation type Variation Master holds for the parent (for example Color: Black becomes "Black 1 Piece").
+     * variation type Variation Master holds for the parent (for example Color: "BLUE 1Pc" becomes "Blue"). The old
+     * variation is deleted and added again with the same SKU, price, quantity, UPC and pictures under the new name.
      * SKUs without a Variation Name keep their value. Nothing is sent when the listing does not vary by that type
      * (add the type first) or when two SKUs sharing a value would need different names.
      *
@@ -662,9 +663,10 @@ class Ebay2VariationTypeController extends Controller
 
         $ctx = $service->tradingReviseContext();
         $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
-        $result = EbayTradingReviseItem::renameVariationValues(...$creds, getItemResponse: $item, renames: $renames);
+        // Not a rename in place (eBay refuses that): the old variation is deleted and added again under the new name.
+        $result = EbayTradingReviseItem::replaceVariationValues(...$creds, getItemResponse: $item, replacements: $renames);
         if ($result['success']) {
-            $result['message'] = 'Variation names from Variation Master set on '.count($renames).' '.$aspect.' value(s). '.$result['message'].$skipNote;
+            $result['message'] = 'Variation Master names set on '.count($renames).' '.$aspect.' value(s). '.$result['message'].$skipNote;
         }
 
         return $result;
