@@ -150,6 +150,7 @@ class LedgerMasterController extends Controller
             'amount' => 'nullable|numeric',
             'advance_amount' => 'nullable|numeric',
             'image' => 'nullable|image|mimes:jpg,jpeg,png',
+            'balance_image' => 'nullable|image|mimes:jpg,jpeg,png',
             'remarks' => 'nullable|string',
         ]);
 
@@ -166,6 +167,9 @@ class LedgerMasterController extends Controller
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('advance_payments', 'public');
         }
+        if ($request->hasFile('balance_image')) {
+            $data['balance_image'] = $request->file('balance_image')->store('advance_payments', 'public');
+        }
         AdvancePayment::create($data);
 
         return back()->with('flash_message', 'Advance and Payment saved successfully.');
@@ -181,6 +185,7 @@ class LedgerMasterController extends Controller
             'amount',
             'advance_amount',
             'image',
+            'balance_image',
             'remarks'
         )
             ->with([
@@ -257,6 +262,7 @@ class LedgerMasterController extends Controller
                 'advance_amount' => $advance ?? '',
                 'balance' => $amount - $advance,
                 'image' => $payment->image ? asset('storage/' . $payment->image) : '',
+                'balance_image' => $payment->balance_image ? asset('storage/' . $payment->balance_image) : '',
                 'remarks' => $payment->remarks ?? '',
             ];
         });
@@ -274,6 +280,7 @@ class LedgerMasterController extends Controller
             'amount' => 'nullable|numeric',
             'advance_amount' => 'nullable|numeric',
             'image' => 'nullable|image|mimes:jpg,jpeg,png',
+            'balance_image' => 'nullable|image|mimes:jpg,jpeg,png',
             'remarks' => 'nullable|string',
         ]);
 
@@ -293,6 +300,14 @@ class LedgerMasterController extends Controller
                 Storage::disk('public')->delete($payment->image);
             }
             $payment->image = $request->file('image')->store('advance_payments', 'public');
+        }
+
+        // Balance image - same handling as the advance image
+        if ($request->hasFile('balance_image')) {
+            if ($payment->balance_image && Storage::disk('public')->exists($payment->balance_image)) {
+                Storage::disk('public')->delete($payment->balance_image);
+            }
+            $payment->balance_image = $request->file('balance_image')->store('advance_payments', 'public');
         }
 
         $payment->save();

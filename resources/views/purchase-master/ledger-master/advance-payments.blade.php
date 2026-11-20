@@ -273,6 +273,16 @@
                             </div>
                         </div>
 
+                        {{-- Balance Image --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Balance Image</label>
+                            <input type="file" name="balance_image" id="create_balance_image" class="form-control" accept="image/*">
+                            <div class="paste-box mt-2" tabindex="0" data-target="#create_balance_image" title="Click here, then press Ctrl/Cmd + V to paste a screenshot">
+                                <span class="paste-box-hint"><i class="fas fa-paste me-1"></i> Click &amp; paste snippet here (Ctrl/Cmd + V)</span>
+                                <img class="paste-box-preview d-none" alt="Pasted snippet">
+                            </div>
+                        </div>
+
                         {{-- Remarks --}}
                         <div class="col-md-8">
                             <label class="form-label fw-semibold">Remarks</label>
@@ -364,6 +374,17 @@
                                 <img class="paste-box-preview d-none" alt="Pasted snippet">
                             </div>
                             <div id="edit_image_preview" class="mt-2"></div>
+                        </div>
+
+                        {{-- Balance Image --}}
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Balance Image</label>
+                            <input type="file" name="balance_image" id="edit_balance_image" class="form-control" accept="image/*">
+                            <div class="paste-box mt-2" tabindex="0" data-target="#edit_balance_image" title="Click here, then press Ctrl/Cmd + V to paste a screenshot">
+                                <span class="paste-box-hint"><i class="fas fa-paste me-1"></i> Click &amp; paste snippet here (Ctrl/Cmd + V)</span>
+                                <img class="paste-box-preview d-none" alt="Pasted snippet">
+                            </div>
+                            <div id="edit_balance_image_preview" class="mt-2"></div>
                         </div>
 
                         {{-- Remarks --}}
@@ -538,6 +559,18 @@
                     },
                     { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center", formatter: roundFormatter },
                     {
+                        title: "Bal Img",
+                        field: "balance_image",
+                        formatter: function (cell) {
+                            const url = cell.getValue();
+                            if (!url) return '';
+                            return `<img src="${url}"
+                                        class="hover-thumbnail"
+                                        style="height:40px; cursor:pointer;"
+                                        data-preview-url="${url}">`;
+                        }
+                    },
+                    {
                         title: "Stage",
                         field: "stages",
                         hozAlign: "center",
@@ -617,6 +650,7 @@
                                         data-advance-amount="${rowData.advance_amount || ''}"
                                         data-remarks="${(rowData.remarks || '').replace(/"/g, '&quot;')}"
                                         data-image="${rowData.image || ''}"
+                                        data-balance-image="${rowData.balance_image || ''}"
                                         title="Edit">
                                         <i class="fas fa-edit"></i>
                                     </button>
@@ -906,6 +940,7 @@
                 const advanceAmount = btn.data('advance-amount');
                 const remarks = btn.data('remarks');
                 const image = btn.data('image');
+                const balanceImage = btn.data('balance-image');
 
                 // Populate edit modal
                 $('#edit_payment_id').val(paymentId);
@@ -923,6 +958,13 @@
                     imagePreview.html(`<img src="${image}" style="max-height: 100px; border: 1px solid #ddd; border-radius: 4px;" alt="Current Image">`);
                 } else {
                     imagePreview.html('');
+                }
+
+                const balanceImagePreview = $('#edit_balance_image_preview');
+                if (balanceImage) {
+                    balanceImagePreview.html(`<img src="${balanceImage}" style="max-height: 100px; border: 1px solid #ddd; border-radius: 4px;" alt="Current Balance Image">`);
+                } else {
+                    balanceImagePreview.html('');
                 }
 
                 // Open edit modal

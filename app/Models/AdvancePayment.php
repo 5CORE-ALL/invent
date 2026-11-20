@@ -18,6 +18,7 @@ class AdvancePayment extends Model
         'amount',
         'advance_amount',
         'image',
+        'balance_image',
         'remarks',
         'is_archived',
         'archived_at',
