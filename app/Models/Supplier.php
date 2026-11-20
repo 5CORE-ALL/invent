@@ -13,7 +13,7 @@ class Supplier extends Model
     protected $fillable = [
         'type', 'category_id', 'name', 'company', 'alias', 'sku', 'parent', 'phone', 'city',
         'email', 'whatsapp', 'wechat', 'alibaba', 'link_1688', 'qq', 'others', 'address', 'bank_details',
-        'approval_status', 'next_followup',
+        'approval_status', 'next_followup', 'currency',
     ];
 
     public function ratings()

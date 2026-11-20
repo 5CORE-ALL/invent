@@ -198,6 +198,7 @@ class LedgerMasterController extends Controller
                 'purchaseContract:' . implode(',', array_filter([
                     'id', 'po_number', 'po_date', 'items', 'is_archived',
                     \Schema::hasColumn('purchase_orders', 'po_stage') ? 'po_stage' : null,
+                    \Schema::hasColumn('purchase_orders', 'currency') ? 'currency' : null,
                 ])),
             ]);
 
@@ -219,6 +220,11 @@ class LedgerMasterController extends Controller
 
             $currency = 'USD';
             $currencySeen = false;
+            // Currency chosen on the PO itself (Yuan contract) wins over the line-item guess.
+            if (strtoupper((string) ($payment->purchaseContract->currency ?? '')) === 'RMB') {
+                $currency = 'RMB';
+                $currencySeen = true;
+            }
             $items = $payment->purchaseContract->items ?? null;
             $items = is_array($items) ? $items : json_decode((string) $items, true);
             foreach ((array) $items as $item) {

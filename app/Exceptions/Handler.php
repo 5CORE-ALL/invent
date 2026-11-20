@@ -27,6 +27,22 @@ class Handler extends ExceptionHandler
             //
         });
 
+        // A stale login tab (expired session / old CSRF token) should land on a fresh
+        // login form instead of a dead-end "419 Page Expired" screen.
+        $this->renderable(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, $request) {
+            // Laravel converts TokenMismatchException into a 419 HttpException before render callbacks run.
+            if (! $e->getPrevious() instanceof \Illuminate\Session\TokenMismatchException
+                || $request->expectsJson()
+                || ! $request->isMethod('POST')
+                || ! $request->is('auth/login')) {
+                return null;
+            }
+
+            return redirect()->route('login')
+                ->withInput($request->except('password', '_token'))
+                ->withErrors(['email' => 'Your session expired. Please try signing in again.']);
+        });
+
         $this->renderable(function (Throwable $e, $request) {
             if (! $request->expectsJson()) {
                 return null;

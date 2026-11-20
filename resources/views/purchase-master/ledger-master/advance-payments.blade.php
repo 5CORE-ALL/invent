@@ -437,10 +437,14 @@
             // Currency follows the PO: USD -> "$", RMB (Yuan) -> "¥"
             const CURRENCY_SYMBOLS = { USD: '$', RMB: '¥' };
             const currencySymbol = function(code) { return CURRENCY_SYMBOLS[code] || CURRENCY_SYMBOLS.USD; };
+            // Yuan amounts are shown in red
+            const redYuan = function(code, text) {
+                return code === 'RMB' ? '<span style="color:#dc2626;font-weight:700;">' + text + '</span>' : text;
+            };
             const roundFormatter = function(cell) {
                 const num = parseFloat(cell.getValue());
                 if (isNaN(num)) return '';
-                return currencySymbol(cell.getRow().getData().currency) + ' ' + Math.round(num);
+                return redYuan(cell.getRow().getData().currency, currencySymbol(cell.getRow().getData().currency) + ' ' + Math.round(num));
             };
 
             let table = new Tabulator("#advance-payment-table", {
@@ -702,12 +706,12 @@
                 // Always show USD; add the Yuan total only when RMB rows are in the current view.
                 const hasRmb = matched.some(function(r) { return r.currency === 'RMB'; });
                 const fmt = function(key) {
-                    const f = function(cur) { return currencySymbol(cur) + ' ' + Math.round(totals[cur][key]).toLocaleString('en-US'); };
+                    const f = function(cur) { return redYuan(cur, currencySymbol(cur) + ' ' + Math.round(totals[cur][key]).toLocaleString('en-US')); };
                     return hasRmb ? f('USD') + '  |  ' + f('RMB') : f('USD');
                 };
-                document.getElementById('badge-amount').textContent = fmt('amount');
-                document.getElementById('badge-advance').textContent = fmt('advance');
-                document.getElementById('badge-balance').textContent = fmt('balance');
+                document.getElementById('badge-amount').innerHTML = fmt('amount');
+                document.getElementById('badge-advance').innerHTML = fmt('advance');
+                document.getElementById('badge-balance').innerHTML = fmt('balance');
             }
             table.on("dataLoaded", function(data) { updateTotalBadges(data); });
             table.on("tableBuilt", function() { updateTotalBadges(); });

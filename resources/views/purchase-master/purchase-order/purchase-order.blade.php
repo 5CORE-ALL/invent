@@ -528,9 +528,17 @@
                             <select class="form-select po-supplier-select2" name="supplier" required data-placeholder="Search supplier…">
                                 <option value=""></option>
                                 @foreach($suppliers as $supplier)
-                                    <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
+                                    <option value="{{ $supplier->id }}" data-currency="{{ $supplier->currency ?? '' }}">{{ $supplier->name }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Currency</label>
+                            <select class="form-select po-currency-dd is-usd" name="currency" id="createPoCurrency" title="Saved on the supplier for its next purchase contracts">
+                                <option value="USD">$ USD</option>
+                                <option value="RMB">¥ Yuan</option>
+                            </select>
+                            <div class="form-text">Saved on the supplier and used for its next contracts.</div>
                         </div>
                         <div class="col-12 d-none">
                             <label class="form-label fw-semibold">Advance Amount</label>
@@ -585,6 +593,13 @@
                             </select>
                         </div>
                         <div class="col-12">
+                            <label class="form-label fw-semibold">Currency</label>
+                            <select class="form-select po-currency-dd is-usd" name="currency" id="editPoCurrency" title="Saved on the supplier for its next purchase contracts">
+                                <option value="USD">$ USD</option>
+                                <option value="RMB">¥ Yuan</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
                             <label class="form-label fw-semibold">PO Date</label>
                             <input type="date" class="form-control" name="po_date">
                         </div>
@@ -607,6 +622,11 @@
 @endsection
 @section('script')
 @include('purchase-master.partials.po-stage')
+<style>
+    .cur-rmb { color: #dc2626 !important; font-weight: 700; }
+    .po-currency-dd.is-usd { background-color: #d1e7dd; border-color: #198754; color: #0f5132; font-weight: 600; }
+    .po-currency-dd.is-yuan { background-color: #f8d7da; border-color: #dc3545; color: #842029; font-weight: 600; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
     const poSkuSearchUrl = @json(url('/purchase/search-sku'));
@@ -1011,6 +1031,10 @@
                 // PO Date
                 form.querySelector("[name='po_date']").value = order.po_date ?? "";
 
+                // Currency (USD / Yuan)
+                const editCur = form.querySelector("[name='currency']");
+                if (editCur) { editCur.value = order.currency === 'RMB' ? 'RMB' : 'USD'; poColorCurrencyDd(editCur); }
+
                 //Finally show modal
                 let editModal = new bootstrap.Modal(document.getElementById("editPurchaseOrderModal"));
                 editModal.show();
@@ -1037,6 +1061,31 @@
             renderPurchaseOrderTable();
             renderPaginationControls();
         });
+    }
+
+    // Currency dropdown colour: green = USD, red = Yuan
+    function poColorCurrencyDd(sel) {
+        if (!sel) return;
+        const yuan = sel.value === 'RMB';
+        sel.classList.toggle('is-yuan', yuan);
+        sel.classList.toggle('is-usd', !yuan);
+    }
+
+    // Amount with its currency symbol; the Yuan symbol/amount is red.
+    function poMoney(order, val) {
+        const num = formatNum(val);
+        if (num === '-') return '-';
+        return (order && order.currency === 'RMB')
+            ? '<span class="cur-rmb">¥' + num + '</span>'
+            : '$' + num;
+    }
+
+    // "$ 1,200" or "$ 1,200 | ¥ 8,640" (¥ red) - totals are never added across currencies.
+    function poMoneyTotals(totals) {
+        const f = n => Math.round(n).toLocaleString('en-US');
+        let html = '$' + f(totals.USD);
+        if (totals.hasRmb) html += ' | <span class="cur-rmb">¥' + f(totals.RMB) + '</span>';
+        return html;
     }
 
     function formatNum(val) {
@@ -1300,16 +1349,21 @@
         const filterVal = document.getElementById("archive-filter").value;
 
         // Update summary badges from full source
-        let sumAdvance = 0, sumOAmount = 0, sumBalance = 0, sumCbm = 0;
+        let sumCbm = 0;
+        const sumAdvance = { USD: 0, RMB: 0, hasRmb: false };
+        const sumOAmount = { USD: 0, RMB: 0, hasRmb: false };
+        const sumBalance = { USD: 0, RMB: 0, hasRmb: false };
         source.forEach(o => {
-            sumAdvance += parseFloat(o.advance_amount) || 0;
-            sumOAmount += parseFloat(o.total_amount) || 0;
-            sumBalance += parseFloat(o.balance) || 0;
+            const k = o.currency === 'RMB' ? 'RMB' : 'USD';
+            if (k === 'RMB') { sumAdvance.hasRmb = sumOAmount.hasRmb = sumBalance.hasRmb = true; }
+            sumAdvance[k] += parseFloat(o.advance_amount) || 0;
+            sumOAmount[k] += parseFloat(o.total_amount) || 0;
+            sumBalance[k] += parseFloat(o.balance) || 0;
             sumCbm += parseFloat(o.total_cbm) || 0;
         });
-        document.getElementById("badge-sum-advance").textContent = formatNum(sumAdvance);
-        document.getElementById("badge-sum-oamount").textContent = formatNum(sumOAmount);
-        document.getElementById("badge-sum-balance").textContent = formatNum(sumBalance);
+        document.getElementById("badge-sum-advance").innerHTML = poMoneyTotals(sumAdvance);
+        document.getElementById("badge-sum-oamount").innerHTML = poMoneyTotals(sumOAmount);
+        document.getElementById("badge-sum-balance").innerHTML = poMoneyTotals(sumBalance);
         document.getElementById("badge-sum-cbm").textContent = formatNum(sumCbm);
         document.getElementById("badge-row-count").textContent = source.length.toLocaleString('en-US');
 
@@ -1343,9 +1397,9 @@
                 <td class="text-center">${renderSupplierCell(order.supplier_name)}</td>
                 <td class="text-center">${poStageSelectHtml(order.id, order.po_stage)}</td>
                 <td class="po-summary-cell">${renderSummarySkuTags(order)}</td>
-                <td class="text-center">${formatNum(order.total_amount)}</td>
-                <td class="text-center">${formatNum(order.advance_amount)}</td>
-                <td class="text-center">${formatNum(order.balance)}</td>
+                <td class="text-center">${poMoney(order, order.total_amount)}</td>
+                <td class="text-center">${poMoney(order, order.advance_amount)}</td>
+                <td class="text-center">${poMoney(order, order.balance)}</td>
                 <td class="text-center">${formatNum(order.total_cbm)}</td>
                 <td class="text-center">
                     <div class="btn-group btn-group-actions flex-wrap gap-1 justify-content-center">
@@ -1562,6 +1616,18 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        // Currency dropdown colouring (green USD / red Yuan)
+        document.querySelectorAll('.po-currency-dd').forEach(function (sel) {
+            poColorCurrencyDd(sel);
+            sel.addEventListener('change', function () { poColorCurrencyDd(sel); });
+        });
+        // Picking a supplier in the create modal preselects the currency saved for it.
+        $('#createPurchaseOrderModal select[name="supplier"]').on('change', function () {
+            const saved = $(this).find('option:selected').data('currency');
+            const dd = document.getElementById('createPoCurrency');
+            if (dd) { dd.value = saved === 'RMB' ? 'RMB' : 'USD'; poColorCurrencyDd(dd); }
+        });
+
         // Listen for checkbox changes
         document.addEventListener("change", function (e) {
             if (e.target.classList.contains("order-checkbox")) {

@@ -3652,6 +3652,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
         Route::post('/purchase-orders/{id}/stage', 'updatePoStage')->name('purchase-orders.stage');
+        Route::post('/purchase-orders/{id}/currency', 'updatePoCurrency')->name('purchase-orders.currency');
         Route::get('/purchase-orders/{id}', 'showPurchaseOrders');
         Route::post('/purchase-orders/{id}', 'updatePurchaseOrder');
     });

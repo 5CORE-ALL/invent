@@ -109,9 +109,29 @@ class PurchaseOrderController extends Controller
     public function index()
     {
         $poNumber = $this->generateOrderNumber();
-        $suppliers = Supplier::select('id', 'name')->get();
+        $supplierCols = Schema::hasColumn('suppliers', 'currency') ? ['id', 'name', 'currency'] : ['id', 'name'];
+        $suppliers = Supplier::select($supplierCols)->get();
         $orders = PurchaseOrder::with('supplier')->latest()->get();
         return view('purchase-master.purchase-order.purchase-order',compact('suppliers','orders','poNumber'));
+    }
+
+    /** USD / RMB (Yuan). Anything else falls back to $default. */
+    private function normalizePoCurrency($value, string $default = 'USD'): string
+    {
+        $v = strtoupper(trim((string) $value));
+        if (in_array($v, ['RMB', 'CNY', 'CNH', 'YUAN'], true)) {
+            return 'RMB';
+        }
+        return $v === 'USD' ? 'USD' : $default;
+    }
+
+    /** Remember the chosen currency on the supplier so the next purchase contract starts with it. */
+    private function rememberSupplierCurrency($supplierId, string $currency): void
+    {
+        if (! $supplierId || ! Schema::hasColumn('suppliers', 'currency')) {
+            return;
+        }
+        Supplier::where('id', $supplierId)->update(['currency' => $currency]);
     }
 
     public function store(Request $request)
@@ -119,23 +139,30 @@ class PurchaseOrderController extends Controller
         $validated = $request->validate([
             'po_number' => 'required|string|unique:purchase_orders,po_number',
             'supplier' => 'required|exists:suppliers,id',
+            'currency' => 'nullable|string|in:USD,RMB',
         ]);
 
         $poNumber = $request->po_number;
         $supplierId = $request->supplier;
+        $currency = $this->normalizePoCurrency($validated['currency'] ?? null, 'USD');
         $advanceAmt = $request->filled('advance_amount') ? $request->advance_amount : 0;
         // Always autogenerate PO date on create (today).
         $today = now()->toDateString();
 
         // Product Details removed from Create modal — start with empty items.
-        PurchaseOrder::create([
+        $poData = [
             'po_number' => $poNumber,
             'supplier_id' => $supplierId,
             'po_date' => $today,
             'items' => json_encode([]),
             'advance_amount' => $advanceAmt,
             'total_amount' => 0,
-        ]);
+        ];
+        if (Schema::hasColumn('purchase_orders', 'currency')) {
+            $poData['currency'] = $currency;
+        }
+        PurchaseOrder::create($poData);
+        $this->rememberSupplierCurrency($supplierId, $currency);
 
         return redirect()->back()->with('flash_message', 'Purchase Contract created successfully.');
     }
@@ -164,6 +191,7 @@ class PurchaseOrderController extends Controller
             'supplier_id' => $po->supplier_id,
             'advance_amount' => $po->advance_amount ?? 0,
             'po_date' => $po->po_date,
+            'currency' => $po->currency ?? 'USD',
             'items' => $items,
         ]);
     }
@@ -360,7 +388,12 @@ class PurchaseOrderController extends Controller
 
         $priceUsd = $validated['price_usd'] ?? null;
         $priceRmb = $validated['price_rmb'] ?? null;
-        if ($priceRmb !== null && $priceRmb !== '') {
+        if (($po->currency ?? 'USD') === 'RMB') {
+            // Yuan contract: every new line is in Yuan; whichever rate was typed is the ¥ rate.
+            $currency = 'RMB';
+            $typed = ($priceRmb !== null && $priceRmb !== '') ? $priceRmb : $priceUsd;
+            $price = ($typed !== null && $typed !== '') ? (float) $typed : 0;
+        } elseif ($priceRmb !== null && $priceRmb !== '') {
             $currency = 'RMB';
             $price = (float) $priceRmb;
         } else {
@@ -655,6 +688,15 @@ class PurchaseOrderController extends Controller
                 $pricedFromComparison++;
             }
 
+            // Comparison prices are USD; a Yuan contract converts them to ¥ at the current rate.
+            $lineCurrency = 'USD';
+            if (($po->currency ?? 'USD') === 'RMB') {
+                $lineCurrency = 'RMB';
+                if ($price > 0 && $usdToCny > 0) {
+                    $price = round($price * $usdToCny, 2);
+                }
+            }
+
             $items[] = [
                 'sku' => $sku,
                 'supplier_sku' => '',
@@ -665,7 +707,7 @@ class PurchaseOrderController extends Controller
                 'cbm' => null,
                 'qty' => $orderQty,
                 'price' => $price,
-                'currency' => 'USD',
+                'currency' => $lineCurrency,
                 'amount' => round($price * (float) $orderQty, 2),
                 'rate_not_lowest' => $rateNotLowest,
                 'comparison_price_source' => is_array($cmp) ? ($cmp['source'] ?? null) : null,
@@ -1445,10 +1487,15 @@ class PurchaseOrderController extends Controller
 
         $request->validate([
             'supplier' => 'required|exists:suppliers,id',
+            'currency' => 'nullable|string|in:USD,RMB',
         ]);
 
         $po->supplier_id = $request->supplier;
         $po->po_date = $request->po_date;
+        if ($request->filled('currency') && Schema::hasColumn('purchase_orders', 'currency')) {
+            $po->currency = $this->normalizePoCurrency($request->currency, 'USD');
+            $this->rememberSupplierCurrency($po->supplier_id, $po->currency);
+        }
         // Advance Amount + Product Details removed from Edit modal — keep existing values.
         $po->save();
 
@@ -1465,6 +1512,9 @@ class PurchaseOrderController extends Controller
         }
         if (Schema::hasColumn('purchase_orders', 'po_stage')) {
             $select[] = 'po_stage';
+        }
+        if (Schema::hasColumn('purchase_orders', 'currency')) {
+            $select[] = 'currency';
         }
 
         $query = PurchaseOrder::select($select)
@@ -1504,7 +1554,8 @@ class PurchaseOrderController extends Controller
             $skuList = implode(', ', $skus);
 
             // Same as proforma: Grand Total (USD preferred), Advance, Balance Due, CBM Total (qty × cbm).
-            $totals = $this->computePoListTotalsFromItems($items, $usdToCny);
+            $poCurrency = $this->normalizePoCurrency($order->currency ?? 'USD', 'USD');
+            $totals = $this->computePoListTotalsFromItems($items, $usdToCny, $poCurrency);
             $totalAmount = $totals['grand_total'];
             $totalCbm = $totals['cbm_total'];
 
@@ -1544,6 +1595,7 @@ class PurchaseOrderController extends Controller
                 'total_cbm' => $totalCbm,
                 'is_archived' => (bool) ($order->is_archived ?? false),
                 'po_stage' => $order->po_stage ?? '',
+                'currency' => $poCurrency,
                 'skus' => $skus,
                 'sku_list' => $skuList,
                 'photo' => $imageBySku[$firstSku] ?? ($firstItem->photo ?? ''),
@@ -1560,10 +1612,32 @@ class PurchaseOrderController extends Controller
      * @param  \Illuminate\Support\Collection|array  $items
      * @return array{grand_total: float, cbm_total: float}
      */
-    private function computePoListTotalsFromItems($items, ?float $usdToCny = null): array
+    private function computePoListTotalsFromItems($items, ?float $usdToCny = null, string $poCurrency = 'USD'): array
     {
         $items = collect($items);
         $usdToCny = $usdToCny ?? $this->usdToCnyRate();
+
+        // Yuan contract: total in ¥ (¥ lines as entered, $ lines converted at the current rate).
+        if ($poCurrency === 'RMB') {
+            $rmbTotal = 0.0;
+            $cbmTotalRmb = 0.0;
+            foreach ($items as $item) {
+                $item = is_array($item) ? (object) $item : $item;
+                $qty = (float) ($item->qty ?? $item->quantity ?? 0);
+                $price = (float) ($item->price ?? 0);
+                $cbmTotalRmb += $qty * (float) ($item->cbm ?? 0);
+                if ($qty <= 0 || $price <= 0) {
+                    continue;
+                }
+                $curr = strtoupper((string) ($item->currency ?? 'USD'));
+                $isRmbLine = in_array($curr, ['RMB', 'CNY'], true);
+                $rmbTotal += $isRmbLine ? $qty * $price : $qty * $price * max($usdToCny, 0);
+            }
+            return [
+                'grand_total' => (float) round($rmbTotal),
+                'cbm_total' => round($cbmTotalRmb, 2),
+            ];
+        }
 
         $subtotalUsd = 0.0;
         $subtotalOther = 0.0;
@@ -1628,6 +1702,67 @@ class PurchaseOrderController extends Controller
         $po->save();
 
         return response()->json(['success' => true, 'stage' => $po->po_stage ?? '']);
+    }
+
+    /**
+     * Switch a PO between USD and Yuan from the proforma page.
+     * The choice is saved on the PO and on its supplier (default for next POs).
+     * With convert_lines the existing lines are converted at the current USD->CNY rate.
+     */
+    public function updatePoCurrency(Request $request, $id)
+    {
+        $data = $request->validate([
+            'currency' => ['required', 'in:USD,RMB'],
+            'convert_lines' => ['nullable', 'boolean'],
+        ]);
+
+        if (! Schema::hasColumn('purchase_orders', 'currency')) {
+            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first.'], 422);
+        }
+
+        $po = PurchaseOrder::findOrFail($id);
+        $target = $data['currency'];
+        $converted = 0;
+
+        if (! empty($data['convert_lines'])) {
+            $rate = $this->usdToCnyRate();
+            $items = json_decode($po->items ?? '[]', true);
+            $items = is_array($items) ? $items : [];
+            $total = 0.0;
+            foreach ($items as &$row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $cur = strtoupper((string) ($row['currency'] ?? 'USD'));
+                $isRmb = in_array($cur, ['RMB', 'CNY', 'CNH', 'YUAN'], true);
+                $price = (float) ($row['price'] ?? 0);
+                if ($target === 'RMB' && ! $isRmb) {
+                    $row['price'] = round($price * $rate, 2);
+                    $row['currency'] = 'RMB';
+                    $converted++;
+                } elseif ($target === 'USD' && $isRmb && $rate > 0) {
+                    $row['price'] = round($price / $rate, 2);
+                    $row['currency'] = 'USD';
+                    $converted++;
+                }
+                $row['amount'] = round((float) ($row['qty'] ?? 0) * (float) ($row['price'] ?? 0), 2);
+                $total += (float) ($row['qty'] ?? 0) * (float) ($row['price'] ?? 0);
+            }
+            unset($row);
+            $po->items = json_encode($items);
+            $po->total_amount = $total;
+        }
+
+        $po->currency = $target;
+        $po->save();
+        $this->rememberSupplierCurrency($po->supplier_id, $target);
+
+        return response()->json([
+            'success' => true,
+            'currency' => $target,
+            'converted_lines' => $converted,
+            'message' => $target === 'RMB' ? 'Currency set to Yuan (¥).' : 'Currency set to USD ($).',
+        ]);
     }
 
     public function restorePurchaseOrder($id)
@@ -1851,6 +1986,7 @@ class PurchaseOrderController extends Controller
         }
         $qcHasIssuesBySku = $this->qcHasIssuesBySkus($qcLookupSkus);
         $supplierClaims = $this->supplierClaimsForProforma($supplierId);
+        $supplierIssues = $this->supplierQcPackagingIssues($supplierId, $qcLookupSkus);
 
         foreach ($items as $item) {
             if (! is_object($item)) {
@@ -1879,6 +2015,7 @@ class PurchaseOrderController extends Controller
             'supplierDefaultAdvancePercent' => $supplierDefaultAdvancePercent,
             'bankSupplierNames' => Supplier::distinctNamesForListPage()->values()->all(),
             'supplierClaims' => $supplierClaims,
+            'supplierIssues' => $supplierIssues,
             'claimNumber' => $claimNumber,
             'paymentTermOptions' => Schema::hasTable('po_payment_term_options')
                 ? PoPaymentTermOption::optionsList()
@@ -1947,6 +2084,101 @@ class PurchaseOrderController extends Controller
             'value' => $value,
             'options' => PoCustomTermOption::optionsList(),
         ]);
+    }
+
+    /**
+     * Open QC / Packaging issues for every SKU this supplier supplies
+     * (SKUs on any of the supplier's purchase orders, plus the current PO lines).
+     * Source: /customer-care/qc-and-packing (qc_and_packing_issues); the
+     * department column decides the card (QC or Packaging; a row can be in both).
+     *
+     * @param  list<string>  $poSkus  SKUs on the PO being viewed
+     * @return array{qc: list<array<string,mixed>>, packaging: list<array<string,mixed>>, sku_count: int}
+     */
+    private function supplierQcPackagingIssues(int $supplierId, array $poSkus): array
+    {
+        $out = ['qc' => [], 'packaging' => [], 'sku_count' => 0];
+        if ($supplierId <= 0 || ! Schema::hasTable('qc_and_packing_issues')) {
+            return $out;
+        }
+
+        $norm = static fn ($s) => mb_strtoupper(trim((string) $s));
+        $skuSet = [];
+        foreach ($poSkus as $s) {
+            if ($norm($s) !== '') {
+                $skuSet[$norm($s)] = true;
+            }
+        }
+        $currentPoSet = $skuSet;
+
+        $rawItemsList = DB::table('purchase_orders')->where('supplier_id', $supplierId)->pluck('items');
+        foreach ($rawItemsList as $raw) {
+            $list = is_array($raw) ? $raw : json_decode((string) $raw, true);
+            foreach ((array) $list as $line) {
+                if (! is_array($line)) {
+                    continue;
+                }
+                $k = $norm($line['sku'] ?? '');
+                if ($k !== '') {
+                    $skuSet[$k] = true;
+                }
+            }
+        }
+
+        $skus = array_keys($skuSet);
+        $out['sku_count'] = count($skus);
+        if ($skus === []) {
+            return $out;
+        }
+
+        $cols = ['id', 'sku', 'qty', 'order_qty', 'what_happened', 'issue', 'issue_remark', 'action_1',
+            'action_1_remark', 'close_note', 'department', 'created_by', 'created_at'];
+        $rows = collect();
+        foreach (array_chunk($skus, 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $rows = $rows->concat(
+                DB::table('qc_and_packing_issues')
+                    ->where(function ($q) {
+                        $q->whereNull('is_archived')->orWhere('is_archived', false);
+                    })
+                    ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $chunk)
+                    ->orderByDesc('id')
+                    ->limit(500)
+                    ->get($cols)
+            );
+        }
+        $rows = $rows->sortByDesc('id')->values();
+
+        $tz = config('app.timezone');
+        foreach ($rows as $row) {
+            $depts = array_map('strtolower', \App\Support\CustomerCareDepartments::decode($row->department ?? null));
+            $inPackaging = in_array('packaging', $depts, true);
+            $inQc = in_array('qc', $depts, true) || ! $inPackaging; // legacy / blank rows belong to QC
+
+            $entry = [
+                'id' => (int) $row->id,
+                'sku' => trim((string) $row->sku),
+                'in_this_po' => isset($currentPoSet[$norm($row->sku)]),
+                'qty' => $row->qty,
+                'order_qty' => $row->order_qty,
+                'what_happened' => trim((string) ($row->what_happened ?? '')),
+                'issue' => trim((string) ($row->issue ?? '')),
+                'issue_remark' => trim((string) ($row->issue_remark ?? '')),
+                'action' => trim((string) ($row->action_1 ?? '')),
+                'action_remark' => trim((string) ($row->action_1_remark ?? '')),
+                'closed' => trim((string) ($row->close_note ?? '')) !== '',
+                'created_by' => (string) ($row->created_by ?? ''),
+                'date' => $row->created_at ? Carbon::parse($row->created_at)->timezone($tz)->format('j M y') : '',
+            ];
+            if ($inQc) {
+                $out['qc'][] = $entry;
+            }
+            if ($inPackaging) {
+                $out['packaging'][] = $entry;
+            }
+        }
+
+        return $out;
     }
 
     /**

@@ -20,6 +20,7 @@ class PurchaseOrder extends Model
         'advance_percent',
         'is_archived',
         'po_stage',
+        'currency',
     ];
 
     protected $casts = [

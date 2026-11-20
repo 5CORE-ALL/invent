@@ -444,6 +444,25 @@
             color: #16a34a;
         }
 
+        /* Currency colours: $ (USD) amounts green, ¥ (Yuan) amounts red */
+        .cur-rmb { color: #dc2626 !important; font-weight: 700; }
+        .po-currency-dd.is-usd { background-color: #d1e7dd; border-color: #198754; color: #0f5132; font-weight: 700; }
+        .po-currency-dd.is-yuan { background-color: #f8d7da; border-color: #dc3545; color: #842029; font-weight: 700; }
+        td.col-price-usd,
+        td.col-total-usd,
+        th[data-copy-key="price_usd"] > .po-th-wrap > span:first-child,
+        th[data-copy-key="total_usd"] > .po-th-wrap > span:first-child {
+            color: #16a34a;
+            font-weight: 600;
+        }
+        td.col-price-rmb,
+        td.col-total-rmb,
+        th[data-copy-key="price_rmb"] > .po-th-wrap > span:first-child,
+        th[data-copy-key="total_rmb"] > .po-th-wrap > span:first-child {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
         .col-price-usd.po-rate-not-lowest,
         .col-price-usd.po-rate-not-lowest .po-rate-cell,
         .col-price-usd.po-rate-not-lowest .po-field-text {
@@ -900,6 +919,46 @@
             vertical-align: top !important;
             text-align: left;
         }
+
+        /* QC Issues / Packaging Issues cards (below Claim & Reimb.) */
+        .po-issue-section {
+            margin-top: 16px;
+            border-radius: 12px;
+            padding: 14px 16px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+        .po-issue-section.is-qc { border: 1px solid #fca5a5; background: linear-gradient(145deg, #fef2f2 0%, #fff1f2 60%, #fee2e2 100%); }
+        .po-issue-section.is-pkg { border: 1px solid #93c5fd; background: linear-gradient(145deg, #eff6ff 0%, #f0f9ff 60%, #dbeafe 100%); }
+        .po-issue-head {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+            margin-bottom: 12px; padding-bottom: 10px;
+        }
+        .is-qc .po-issue-head { border-bottom: 1px dashed #f87171; }
+        .is-pkg .po-issue-head { border-bottom: 1px dashed #60a5fa; }
+        .po-issue-title { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 800; }
+        .is-qc .po-issue-title { color: #991b1b; }
+        .is-pkg .po-issue-title { color: #1e40af; }
+        .po-issue-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .is-qc .po-issue-dot { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+        .is-pkg .po-issue-dot { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        .po-issue-count { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fff; }
+        .is-qc .po-issue-count { color: #991b1b; border: 1px solid #fca5a5; }
+        .is-pkg .po-issue-count { color: #1e40af; border: 1px solid #93c5fd; }
+        .po-issue-table { width: 100%; font-size: 12px; background: #fff; }
+        .po-issue-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 8px; }
+        .is-qc .po-issue-table th { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .is-pkg .po-issue-table th { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .po-issue-table td { padding: 5px 8px; vertical-align: top; }
+        .is-qc .po-issue-table td { border: 1px solid #fecaca; }
+        .is-pkg .po-issue-table td { border: 1px solid #bfdbfe; }
+        .po-issue-scroll { max-height: 340px; overflow-y: auto; }
+        .po-issue-empty { font-size: 13px; padding: 8px 0; }
+        .is-qc .po-issue-empty { color: #991b1b; }
+        .is-pkg .po-issue-empty { color: #1e40af; }
+        .po-issue-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+        .po-issue-badge.this-po { background: #ede9fe; color: #5b21b6; }
+        .po-issue-badge.open { background: #fef3c7; color: #92400e; }
+        .po-issue-badge.closed { background: #dcfce7; color: #166534; }
 
         .po-claim-section {
             margin-top: 16px;
@@ -1914,7 +1973,7 @@
             $grandTotals = [];
             // Show ¥ columns only when at least one line was entered in RMB.
             // USD-only POs show US$ columns only.
-            $showRmbColumns = false;
+            $showRmbColumns = strtoupper((string) ($order->currency ?? 'USD')) === 'RMB';
             foreach ($items as $__item) {
                 if (strtoupper((string) ($__item->currency ?? 'USD')) === 'RMB') {
                     $showRmbColumns = true;
@@ -1928,6 +1987,13 @@
         <div class="po-copy-toolbar no-print">
             <button type="button" class="po-add-row-btn" id="poAddRowBtn" title="Add row">+</button>
             <button type="button" class="po-add-row-btn" id="poAddFromToOrderBtn" title="Add SKUs from Order page for this supplier (Order qty &gt; 0 only)">++</button>
+            <select id="poCurrencyDd"
+                    class="form-select form-select-sm po-currency-dd {{ strtoupper((string) ($order->currency ?? 'USD')) === 'RMB' ? 'is-yuan' : 'is-usd' }}"
+                    style="width:auto;min-width:120px;"
+                    title="PO currency - saved on this PO and on the supplier">
+                <option value="USD" @selected(strtoupper((string) ($order->currency ?? 'USD')) !== 'RMB')>$ USD</option>
+                <option value="RMB" @selected(strtoupper((string) ($order->currency ?? 'USD')) === 'RMB')>¥ Yuan</option>
+            </select>
             <button type="button" class="po-copy-all-btn" id="poCopyAllBtn" title="Copy all columns">
                 {!! $poCopyIcon !!}
                 <span>For all</span>
@@ -1940,65 +2006,55 @@
                     <th class="col-product" data-copy-key="product">
                         <span class="po-th-wrap">
                             <span>Product</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="product" title="Copy Product column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-short-name" data-copy-key="short_name">
                         <span class="po-th-wrap">
                             <span>Name</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="short_name" title="Copy Name column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-tech" data-copy-key="tech">
                         <span class="po-th-wrap">
                             <span>Tech</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="tech" title="Copy Tech column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-pkg" data-copy-key="packaging">
                         <span class="po-th-wrap">
                             <span>Packaging</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="packaging" title="Copy Packaging column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-special-qc" data-copy-key="special_qc">
                         <span class="po-th-wrap">
                             <span>Special Instruction QC</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="special_qc" title="Copy Special Instruction QC column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-qc no-print" title="QC &amp; Packing issues (SKU + siblings)">QC</th>
                     <th data-copy-key="qty">
                         <span class="po-th-wrap">
                             <span>QTY</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="qty" title="Copy QTY column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th data-copy-key="price_usd">
                         <span class="po-th-wrap">
                             <span>Rate $</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="price_usd" title="Copy Rate $ column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     @if($showRmbColumns)
                         <th data-copy-key="price_rmb">
                             <span class="po-th-wrap">
                                 <span>Rate ¥</span>
-                                <button type="button" class="po-copy-col-btn no-print" data-copy-col="price_rmb" title="Copy Rate ¥ column">{!! $poCopyIcon !!}</button>
                             </span>
                         </th>
                     @endif
                     <th data-copy-key="total_usd">
                         <span class="po-th-wrap">
                             <span>Total ($)</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="total_usd" title="Copy Total ($) column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     @if($showRmbColumns)
                         <th data-copy-key="total_rmb">
                             <span class="po-th-wrap">
                                 <span>Total (¥)</span>
-                                <button type="button" class="po-copy-col-btn no-print" data-copy-col="total_rmb" title="Copy Total (¥) column">{!! $poCopyIcon !!}</button>
                             </span>
                         </th>
                     @endif
@@ -2482,7 +2538,7 @@
                     <td colspan="{{ $showRmbColumns ? 9 : 8 }}" class="text-end">Grand Total</td>
                     <td>{{ $hasUsdTotal ? number_format(round($subtotalUsd), 0) . '$' : '—' }}</td>
                     @if($showRmbColumns)
-                        <td>{{ $hasRmbTotal ? number_format(round($subtotalRmb), 0) . '¥' : '—' }}</td>
+                        <td class="cur-rmb">{{ $hasRmbTotal ? number_format(round($subtotalRmb), 0) . '¥' : '—' }}</td>
                     @endif
                     <td class="col-edit no-print"></td>
                 </tr>
@@ -2592,6 +2648,73 @@
             @endif
         </div>
 
+        @php
+            $supplierIssues = $supplierIssues ?? ['qc' => [], 'packaging' => [], 'sku_count' => 0];
+            $issueCards = [
+                ['key' => 'qc', 'cls' => 'is-qc', 'title' => 'QC Issues', 'empty' => 'No open QC issues for this supplier\'s items.'],
+                ['key' => 'packaging', 'cls' => 'is-pkg', 'title' => 'Packaging Issues', 'empty' => 'No open packaging issues for this supplier\'s items.'],
+            ];
+        @endphp
+        @foreach($issueCards as $card)
+            @php $cardIssues = $supplierIssues[$card['key']] ?? []; @endphp
+            <div class="po-issue-section {{ $card['cls'] }} no-print" id="po{{ ucfirst($card['key']) }}IssuesSection">
+                <div class="po-issue-head">
+                    <h6 class="po-issue-title">
+                        <span class="po-issue-dot" aria-hidden="true"></span>
+                        {{ $card['title'] }}
+                        <span class="po-issue-count">{{ count($cardIssues) }}</span>
+                    </h6>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted">Across {{ (int) ($supplierIssues['sku_count'] ?? 0) }} supplier SKU(s)</span>
+                        <a href="{{ url('/customer-care/qc-and-packing') }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">Open QC &amp; Packing page</a>
+                    </div>
+                </div>
+                @if(count($cardIssues) > 0)
+                    <div class="po-issue-scroll table-responsive">
+                        <table class="po-issue-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:70px">Date</th>
+                                    <th style="min-width:110px">SKU</th>
+                                    <th style="width:60px">Qty</th>
+                                    <th>What happened</th>
+                                    <th>Issue</th>
+                                    <th>Action</th>
+                                    <th style="width:70px">Status</th>
+                                    <th style="width:90px">By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($cardIssues as $iss)
+                                    <tr>
+                                        <td>{{ $iss['date'] }}</td>
+                                        <td>
+                                            <strong>{{ $iss['sku'] }}</strong>
+                                            @if($iss['in_this_po'])<span class="po-issue-badge this-po">This PO</span>@endif
+                                        </td>
+                                        <td>{{ $iss['qty'] !== null && $iss['qty'] !== '' ? rtrim(rtrim(number_format((float) $iss['qty'], 2, '.', ''), '0'), '.') : '—' }}</td>
+                                        <td>{{ $iss['what_happened'] !== '' ? $iss['what_happened'] : '—' }}</td>
+                                        <td>
+                                            {{ $iss['issue'] !== '' ? $iss['issue'] : '—' }}
+                                            @if($iss['issue_remark'] !== '')<div class="text-muted">{{ $iss['issue_remark'] }}</div>@endif
+                                        </td>
+                                        <td>
+                                            {{ $iss['action'] !== '' ? $iss['action'] : '—' }}
+                                            @if($iss['action_remark'] !== '')<div class="text-muted">{{ $iss['action_remark'] }}</div>@endif
+                                        </td>
+                                        <td><span class="po-issue-badge {{ $iss['closed'] ? 'closed' : 'open' }}">{{ $iss['closed'] ? 'Closed' : 'Open' }}</span></td>
+                                        <td>{{ $iss['created_by'] !== '' ? $iss['created_by'] : '—' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <div class="po-issue-empty">{!! $poMissing !!} <span class="ms-1">{{ $card['empty'] }}</span></div>
+                @endif
+            </div>
+        @endforeach
+
         <div class="row mt-4">
             <div class="col-md-6">
                 <div class="note-section">
@@ -2644,7 +2767,7 @@
                             $currencySymbol = ($curr === 'RMB' || $curr === 'CNY') ? '¥' : '$';
                             $isPrimary = $curr === $primaryCurr;
                         @endphp
-                        <div>Subtotal: <span class="float-end" @if($isPrimary) data-po-subtotal="1" data-currency="{{ $curr }}" data-amount="{{ round($total) }}" @endif>{{ $currencySymbol }}{{ number_format(round($total), 0) }}</span></div>
+                        <div>Subtotal: <span class="float-end {{ $currencySymbol === '¥' ? 'cur-rmb' : '' }}" @if($isPrimary) data-po-subtotal="1" data-currency="{{ $curr }}" data-amount="{{ round($total) }}" @endif>{{ $currencySymbol }}{{ number_format(round($total), 0) }}</span></div>
                         @if($isPrimary)
                             <div class="po-advance-row mt-1">
                                 <span class="po-advance-label">
@@ -2669,15 +2792,15 @@
                                     </span>
                                     <span class="no-print" id="po-advance-percent-missing" @if($poAdvancePercent !== null) style="display:none" @endif>{!! $poMissing !!}</span>
                                 </span>
-                                <span class="po-advance-amount float-end"
+                                <span class="po-advance-amount float-end {{ $primarySymbol === '¥' ? 'cur-rmb' : '' }}"
                                       id="po-advance-amount"
                                       data-currency-symbol="{{ $primarySymbol }}">{{ $primarySymbol }}{{ number_format(round($poAdvanceAmount), 0) }}</span>
                             </div>
                             <div class="po-advance-save-hint no-print" id="po-advance-save-hint"></div>
-                            <div>Balance Due: <span class="float-end po-balance-due" id="po-balance-due">{{ $primarySymbol }}{{ number_format(round($total - $poAdvanceAmount), 0) }}</span></div>
+                            <div>Balance Due: <span class="float-end po-balance-due {{ $primarySymbol === '¥' ? 'cur-rmb' : '' }}" id="po-balance-due">{{ $primarySymbol }}{{ number_format(round($total - $poAdvanceAmount), 0) }}</span></div>
                         @else
-                            <div>Advance: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($order->advance_amount ?? 0), 0) }}</span></div>
-                            <div>Balance Due: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($total - ($order->advance_amount ?? 0), 0), 0) }}</span></div>
+                            <div>Advance: <span class="float-end {{ $currencySymbol === '¥' ? 'cur-rmb' : '' }}">{{ $currencySymbol }}{{ number_format(round($order->advance_amount ?? 0), 0) }}</span></div>
+                            <div>Balance Due: <span class="float-end {{ $currencySymbol === '¥' ? 'cur-rmb' : '' }}">{{ $currencySymbol }}{{ number_format(round($total - ($order->advance_amount ?? 0), 0), 0) }}</span></div>
                         @endif
                     @endforeach
                     <div class="mt-2 pt-2" style="border-top: 1px solid rgba(106,27,154,0.3);">CBM Total: <span class="float-end">{{ number_format($cbmTotal, 2) }}</span></div>
@@ -3197,14 +3320,14 @@
                             <textarea class="form-control" id="poAddSpecialQc" rows="3" placeholder="One point per line" autocomplete="off"></textarea>
                         </div>
                         <div class="col-12"><hr class="my-1"></div>
-                        <div class="col-md-6">
+                        <div class="col-md-6{{ strtoupper((string) ($order->currency ?? 'USD')) === 'RMB' ? ' d-none' : '' }}">
                             <label for="poAddPriceUsd" class="form-label fw-semibold">Rate $</label>
                             <input type="number" step="any" min="0" class="form-control" id="poAddPriceUsd" autocomplete="off">
                         </div>
                         <div class="col-md-6">
                             <label for="poAddPriceRmb" class="form-label fw-semibold">Rate ¥</label>
                             <input type="number" step="any" min="0" class="form-control" id="poAddPriceRmb" autocomplete="off">
-                            <div class="form-text">If Rate ¥ is entered, the line is stored as RMB.</div>
+                            <div class="form-text">@if(strtoupper((string) ($order->currency ?? 'USD')) === 'RMB')This is a Yuan contract: lines are stored in ¥.@else If Rate ¥ is entered, the line is stored as RMB.@endif</div>
                         </div>
                     </div>
                 </div>
@@ -4985,6 +5108,44 @@
                 addSkuSelect2Ready = true;
             }
 
+            document.getElementById('poCurrencyDd')?.addEventListener('change', async (e) => {
+                const dd = e.target;
+                const prev = dd.dataset.prev || (dd.value === 'RMB' ? 'USD' : 'RMB');
+                const target = dd.value;
+                const convert = window.confirm(
+                    'Switch this PO to ' + (target === 'RMB' ? 'Yuan (¥)' : 'USD ($)') + '?\n\n'
+                    + 'OK = also convert the existing lines at the current exchange rate.\n'
+                    + 'Cancel = keep the lines as they are (new lines use the new currency).'
+                );
+                dd.disabled = true;
+                try {
+                    const res = await fetch(@json(url('/purchase-orders/' . $order->id . '/currency')), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        },
+                        body: JSON.stringify({ currency: target, convert_lines: convert }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok || !json.success) {
+                        throw new Error(json.message || 'Could not change currency.');
+                    }
+                    window.location.reload();
+                } catch (err) {
+                    dd.value = prev;
+                    dd.classList.toggle('is-yuan', prev === 'RMB');
+                    dd.classList.toggle('is-usd', prev !== 'RMB');
+                    dd.disabled = false;
+                    alert(err.message || 'Could not change currency.');
+                }
+            });
+            document.getElementById('poCurrencyDd')?.setAttribute('data-prev', document.getElementById('poCurrencyDd').value);
+            document.getElementById('poCurrencyDd')?.addEventListener('change', (e) => {
+                e.target.classList.toggle('is-yuan', e.target.value === 'RMB');
+                e.target.classList.toggle('is-usd', e.target.value !== 'RMB');
+            });
             document.getElementById('poAddRowBtn')?.addEventListener('click', () => {
                 if (!addItemUrl) {
                     alert('Purchase order id missing.');
