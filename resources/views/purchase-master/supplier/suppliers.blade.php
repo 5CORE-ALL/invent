@@ -197,6 +197,13 @@
         .supplier-data-dot--missing {
             background-color: #dc3545;
         }
+        /* Currency dropdown: green for USD, red for Yuan */
+        .supplier-bank-currency.is-usd { background-color: #d1e7dd; border-color: #198754; color: #0f5132; font-weight: 600; }
+        .supplier-bank-currency.is-yuan { background-color: #f8d7da; border-color: #dc3545; color: #842029; font-weight: 600; }
+        .supplier-bank-paste-box { border: 2px dashed #adb5bd; border-radius: 6px; min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 4px; cursor: pointer; background: #fff; color: #6c757d; font-size: 0.78rem; outline: none; }
+        .supplier-bank-paste-box:focus { border-color: #0d6efd; background: #eef4ff; color: #0d6efd; }
+        .supplier-bank-paste-box.is-disabled { opacity: .6; cursor: not-allowed; }
+        .supplier-bank-img-thumb { max-height: 90px; max-width: 160px; border-radius: 4px; border: 1px solid #dee2e6; background: #fff; }
         #suppliers-table tbody td .supplier-bank-open-btn {
             border: none !important;
             background: transparent !important;
@@ -591,6 +598,17 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        /* Copy icon beside each field label in the bank modal */
+        #supplierBankForm .supplier-bank-copy-btn {
+            border: 0;
+            background: transparent;
+            padding: 0 2px;
+            line-height: 1;
+            font-size: 0.9rem;
+            color: #8a93a0;
+            cursor: pointer;
+        }
+        #supplierBankForm .supplier-bank-copy-btn:hover { color: #0d6efd; }
     </style>
 @endsection
 
@@ -1107,7 +1125,7 @@
                     <form id="supplierBankForm" class="row g-2 border rounded-3 p-3 bg-light">
                         <div class="col-12">
                             <div class="fw-semibold mb-1" id="supplierBankFormTitle">Account details</div>
-                            <small class="text-muted">All fields required. Max 50 characters per field.</small>
+                            <small class="text-muted">All fields required except Address 2. Max 45 characters per field.</small>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label small fw-semibold mb-0">Supplier name <span class="text-danger">*</span></label>
@@ -1119,40 +1137,64 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Nick name <span class="text-danger">*</span></label>
-                            <input type="text" name="nick_name" maxlength="50" class="form-control form-control-sm" required disabled>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Benificiary <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="company_name" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="company_name" maxlength="45" class="form-control form-control-sm" required disabled>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Benificiary <span class="text-danger">*</span></label>
-                            <input type="text" name="company_name" maxlength="50" class="form-control form-control-sm" required disabled>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Swift <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="swift" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="swift" maxlength="45" class="form-control form-control-sm" required disabled>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Swift <span class="text-danger">*</span></label>
-                            <input type="text" name="swift" maxlength="50" class="form-control form-control-sm" required disabled>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Account number <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="account_number" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="account_number" maxlength="45" class="form-control form-control-sm" required disabled>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Account number <span class="text-danger">*</span></label>
-                            <input type="text" name="account_number" maxlength="50" class="form-control form-control-sm" required disabled>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Acc Type <span class="text-danger">*</span></label>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Acc Type <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="acc_type" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
                             <select name="acc_type" class="form-select form-select-sm" required disabled>
                                 <option value="">Select…</option>
                                 <option value="RMB">RMB</option>
                                 <option value="USD">US $</option>
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Address <span class="text-danger">*</span></label>
-                            <input type="text" name="address" maxlength="50" class="form-control form-control-sm" required disabled>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Address <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="address" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="address" maxlength="45" class="form-control form-control-sm" required disabled>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">City <span class="text-danger">*</span></label>
-                            <input type="text" name="city" maxlength="50" class="form-control form-control-sm" required disabled>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Address 2 <span class="text-muted fw-normal">(optional)</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="address_2" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="address_2" maxlength="45" class="form-control form-control-sm" disabled>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Province <span class="text-danger">*</span></label>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">City <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="city" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <input type="text" name="city" maxlength="45" class="form-control form-control-sm" required disabled>
+                        </div>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Province <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="province" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
                             <select name="province" id="supplierBankProvince" class="form-select form-select-sm" required disabled
                                     data-placeholder="Search province…">
                                 <option value="">Select…</option>
@@ -1161,8 +1203,11 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Country <span class="text-danger">*</span></label>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Country <span class="text-danger">*</span></label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="country" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
                             <select name="country" class="form-select form-select-sm" required disabled>
                                 <option value="">Select…</option>
                                 <option value="China">China</option>
@@ -1170,6 +1215,33 @@
                                 <option value="Hong Kong">Hong Kong</option>
                             </select>
                         </div>
+                        <div class="col-md-4 supplier-bank-field">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label class="form-label small fw-semibold mb-0">Currency</label>
+                                <button type="button" class="supplier-bank-copy-btn" data-field="currency" title="Copy"><i class="mdi mdi-content-copy"></i></button>
+                            </div>
+                            <select name="currency" id="supplierBankCurrency" class="form-select form-select-sm supplier-bank-currency is-usd" disabled>
+                                <option value="USD">$ USD</option>
+                                <option value="RMB">¥ Yuan</option>
+                            </select>
+                        </div>
+                        @foreach([['file_image', 'Add file', 'Choose an image file'], ['snippet_image', 'Add snippet', 'Click the box, then press Ctrl/Cmd + V to paste a snippet']] as [$imgField, $imgLabel, $imgHint])
+                            <div class="col-md-6 supplier-bank-img-slot d-none" data-field="{{ $imgField }}">
+                                <label class="form-label small fw-semibold mb-0">{{ $imgLabel }}</label>
+                                <input type="file" name="{{ $imgField }}" class="form-control form-control-sm supplier-bank-img-input" accept="image/*" disabled>
+                                <div class="supplier-bank-paste-box mt-1" tabindex="0" title="{{ $imgHint }}">
+                                    <span class="supplier-bank-paste-hint"><i class="mdi mdi-content-paste me-1"></i>Click &amp; paste snippet here (Ctrl/Cmd + V)</span>
+                                </div>
+                                <div class="supplier-bank-img-preview d-none mt-1 align-items-center gap-2">
+                                    <a href="#" target="_blank" rel="noopener" class="supplier-bank-img-link">
+                                        <img src="" alt="{{ $imgLabel }}" class="supplier-bank-img-thumb">
+                                    </a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary supplier-bank-img-copy" title="Copy image">
+                                        <i class="mdi mdi-content-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        @endforeach
                         <div class="col-12 d-flex gap-2 mt-2 d-none" id="supplierBankFormActions">
                             <button type="submit" class="btn btn-primary btn-sm" id="supplierBankSaveBtn">
                                 <i class="mdi mdi-content-save me-1"></i>Save
@@ -1193,7 +1265,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="supplierBankSaveCloseBtn">Save</button>
             </div>
         </div>
     </div>
@@ -2704,6 +2776,7 @@
         let supplierBankAccountsCache = [];
         let supplierBankDefaultName = '';
 
+        const SUPPLIER_BANK_MAX_LEN = 45;
         const SUPPLIER_BANK_PROVINCES = @json(config('supplier_bank.provinces', []));
 
         function initSupplierBankSelect2($el, placeholder) {
@@ -2736,6 +2809,7 @@
         function supplierBankSetFormEnabled(enabled) {
             $('#supplierBankForm').find('input, select').prop('disabled', !enabled);
             $('#supplierBankFormActions').toggleClass('d-none', !enabled);
+            $('#supplierBankForm .supplier-bank-paste-box').toggleClass('is-disabled', !enabled);
             ['#supplierBankSupplierName', '#supplierBankProvince'].forEach(function (sel) {
                 const $el = $(sel);
                 if ($el.hasClass('select2-hidden-accessible')) {
@@ -2744,10 +2818,173 @@
             });
         }
 
+        // ---- Copy helpers (used by the bank modal copy icons) ----
+        function supplierCopyText(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(text);
+            }
+            return new Promise(function (resolve, reject) {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                ok ? resolve() : reject(new Error('copy failed'));
+            });
+        }
+
+        function supplierCopyFlash($btn, ok) {
+            const $i = $btn.find('i');
+            $i.removeClass('mdi-content-copy mdi-check mdi-close text-success text-danger')
+              .addClass(ok ? 'mdi-check text-success' : 'mdi-close text-danger');
+            setTimeout(function () {
+                $i.removeClass('mdi-check mdi-close text-success text-danger').addClass('mdi-content-copy');
+            }, 1200);
+        }
+
+        // Copy icon beside each field label in the bank modal (text inputs and dropdowns)
+        $(document).on('click', '#supplierBankForm .supplier-bank-copy-btn', function (e) {
+            e.preventDefault();
+            const $btn = $(this);
+            const el = $btn.closest('.supplier-bank-field').find('input, select').filter('[name="' + $btn.data('field') + '"]')[0];
+            let text = '';
+            if (el) {
+                text = el.tagName === 'SELECT'
+                    ? ((el.selectedOptions[0] && el.value) ? el.selectedOptions[0].text.trim() : '')
+                    : String(el.value || '').trim();
+            }
+            if (!text) { supplierCopyFlash($btn, false); return; }
+            supplierCopyText(text)
+                .then(function () { supplierCopyFlash($btn, true); })
+                .catch(function () { supplierCopyFlash($btn, false); });
+        });
+
+        // ---- Image slots (Add file / Add snippet): preview, paste, copy ----
+        function supplierBankSlot(field) {
+            return $('#supplierBankForm .supplier-bank-img-slot[data-field="' + field + '"]');
+        }
+
+        // url '' hides the preview; otherwise shows it (saved URL or a local object URL)
+        function supplierBankSetSlotImage(field, url) {
+            const $slot = supplierBankSlot(field);
+            if (!$slot.length) return;
+            const $prev = $slot.find('.supplier-bank-img-preview');
+            if (url) {
+                $slot.find('.supplier-bank-img-thumb').attr('src', url);
+                $slot.find('.supplier-bank-img-link').attr('href', url);
+                $prev.removeClass('d-none').addClass('d-flex');
+            } else {
+                $slot.find('.supplier-bank-img-thumb').removeAttr('src');
+                $slot.find('.supplier-bank-img-link').attr('href', '#');
+                $prev.addClass('d-none').removeClass('d-flex');
+            }
+        }
+
+        $(document).on('change', '#supplierBankForm .supplier-bank-img-input', function () {
+            const field = this.name;
+            const file = this.files && this.files[0];
+            supplierBankSetSlotImage(field, file ? URL.createObjectURL(file) : '');
+        });
+
+        $(document).on('paste', '#supplierBankForm .supplier-bank-paste-box', function (e) {
+            const $slot = $(this).closest('.supplier-bank-img-slot');
+            const input = $slot.find('.supplier-bank-img-input')[0];
+            e.preventDefault();
+            if (input.disabled) return;
+            const items = (e.originalEvent.clipboardData && e.originalEvent.clipboardData.items) || [];
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') === 0) {
+                    const blob = items[i].getAsFile();
+                    if (!blob) continue;
+                    const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+                    const file = new File([blob], 'pasted-snippet-' + Date.now() + '.' + ext, { type: blob.type });
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                    supplierBankSetSlotImage($slot.data('field'), URL.createObjectURL(file));
+                    return;
+                }
+            }
+            alert('No image found in the clipboard. Copy a screenshot first.');
+        });
+
+        // Copy the image itself to the clipboard (re-encoded as PNG, which browsers accept)
+        $(document).on('click', '#supplierBankForm .supplier-bank-img-copy', function () {
+            const $btn = $(this);
+            const src = $btn.closest('.supplier-bank-img-slot').find('.supplier-bank-img-thumb').attr('src');
+            if (!src) return;
+            if (!navigator.clipboard || !window.ClipboardItem) {
+                alert('Copying images needs a secure (https / localhost) page and a supported browser.');
+                return;
+            }
+            const toPng = fetch(src)
+                .then(r => r.blob())
+                .then(blob => createImageBitmap(blob))
+                .then(bmp => new Promise(function (resolve, reject) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = bmp.width;
+                    canvas.height = bmp.height;
+                    canvas.getContext('2d').drawImage(bmp, 0, 0);
+                    canvas.toBlob(b => b ? resolve(b) : reject(new Error('encode failed')), 'image/png');
+                }));
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': toPng })])
+                .then(function () {
+                    const $i = $btn.find('i');
+                    $i.removeClass('mdi-content-copy').addClass('mdi-check text-success');
+                    setTimeout(function () { $i.removeClass('mdi-check text-success').addClass('mdi-content-copy'); }, 1500);
+                })
+                .catch(function () { alert('Could not copy the image.'); });
+        });
+
+        // Currency dropdown colour: green = USD, red = Yuan
+        function supplierBankColorCurrency() {
+            const $sel = $('#supplierBankCurrency');
+            const isYuan = $sel.val() === 'RMB';
+            $sel.toggleClass('is-yuan', isYuan).toggleClass('is-usd', !isYuan);
+            // Add file / Add snippet are only available for Yuan
+            $('#supplierBankForm .supplier-bank-img-slot').toggleClass('d-none', !isYuan);
+        }
+        $(document).on('change', '#supplierBankCurrency', supplierBankColorCurrency);
+
+        // ---- Special characters: typed text inputs allow letters, numbers and spaces only ----
+        const SUPPLIER_BANK_TEXT_SELECTOR = '#supplierBankForm input[type="text"]';
+        const SUPPLIER_BANK_NO_SPECIAL_RE = /^[\p{L}\p{N}\s]*$/u;
+
+        function supplierBankValidateSpecial(input) {
+            const $input = $(input);
+            const bad = !SUPPLIER_BANK_NO_SPECIAL_RE.test(input.value || '');
+            $input.toggleClass('is-invalid', bad);
+            let $msg = $input.siblings('.supplier-bank-special-msg');
+            if (bad && !$msg.length) {
+                $msg = $('<div class="invalid-feedback supplier-bank-special-msg">Special characters are not allowed.</div>').insertAfter($input);
+            }
+            $msg.toggle(bad);
+            return !bad;
+        }
+
+        function supplierBankValidateAllSpecial() {
+            let ok = true;
+            $(SUPPLIER_BANK_TEXT_SELECTOR).each(function () {
+                if (!supplierBankValidateSpecial(this)) ok = false;
+            });
+            return ok;
+        }
+
+        $(document).on('input blur', SUPPLIER_BANK_TEXT_SELECTOR, function () {
+            supplierBankValidateSpecial(this);
+        });
+
         function supplierBankClearForm(prefillName) {
             $('#supplierBankAccountId').val('');
             const form = document.getElementById('supplierBankForm');
             form.reset();
+            supplierBankSetSlotImage('file_image', '');
+            supplierBankSetSlotImage('snippet_image', '');
+            supplierBankColorCurrency();
+            supplierBankValidateAllSpecial();
             const nameVal = String(prefillName || '').trim();
             supplierBankEnsureSelectOption($('#supplierBankSupplierName'), nameVal);
             $('#supplierBankSupplierName').val(nameVal).trigger('change');
@@ -2759,9 +2996,16 @@
         function supplierBankFillForm(account) {
             $('#supplierBankAccountId').val(account.id || '');
             const form = document.getElementById('supplierBankForm');
-            ['nick_name','company_name','swift','address','city','country','account_number','acc_type'].forEach(function (f) {
+            ['company_name','swift','address','address_2','city','country','account_number','acc_type'].forEach(function (f) {
                 const el = form.querySelector('[name="' + f + '"]');
                 if (el) el.value = account[f] || '';
+            });
+            supplierBankValidateAllSpecial();
+            form.querySelector('[name="currency"]').value = account.currency || 'USD';
+            supplierBankColorCurrency();
+            ['file_image', 'snippet_image'].forEach(function (f) {
+                form.querySelector('[name="' + f + '"]').value = '';
+                supplierBankSetSlotImage(f, account[f + '_url'] || '');
             });
             const supplierNameVal = account.supplier_name || '';
             supplierBankEnsureSelectOption($('#supplierBankSupplierName'), supplierNameVal);
@@ -2874,15 +3118,51 @@
             }
         });
 
+        // Footer "Save": saves the account being edited, then closes the modal.
+        // When nothing is being edited (view only / history) it just closes.
+        let supplierBankCloseAfterSave = false;
+        $('#supplierBankSaveCloseBtn').on('click', function () {
+            const form = document.getElementById('supplierBankForm');
+            const editing = SUPPLIER_BANK_CAN_EDIT && supplierBankEditMode
+                && !$('#supplierBankAccountsPanel').hasClass('d-none');
+            if (!editing) {
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('supplierBankModal')).hide();
+                return;
+            }
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+            supplierBankCloseAfterSave = true;
+            form.requestSubmit();
+        });
+
         $('#supplierBankForm').on('submit', function (e) {
             e.preventDefault();
+            const closeAfterSave = supplierBankCloseAfterSave;
+            supplierBankCloseAfterSave = false;
             if (!SUPPLIER_BANK_CAN_EDIT) return;
             const supplierId = $('#supplierBankSupplierId').val();
             const accountId = $('#supplierBankAccountId').val();
-            const formData = new FormData(this);
-            const payload = {};
-            formData.forEach((v, k) => { payload[k] = String(v).slice(0, 50); });
-            if (!SUPPLIER_BANK_PROVINCES.includes(String(payload.province || '').trim())) {
+            if (!supplierBankValidateAllSpecial()) {
+                const first = $(SUPPLIER_BANK_TEXT_SELECTOR).filter('.is-invalid').first();
+                first.trigger('focus');
+                return;
+            }
+            const rawData = new FormData(this);
+            // Multipart body (images included); text values capped at SUPPLIER_BANK_MAX_LEN chars.
+            const formData = new FormData();
+            rawData.forEach((v, k) => {
+                if (v instanceof File) {
+                    // images only apply when Yuan is selected
+                    if (v.size > 0 && rawData.get('currency') === 'RMB') formData.append(k, v);
+                } else if (['currency', 'supplier_name', 'province', 'country', 'acc_type'].includes(k)) {
+                    formData.append(k, String(v));
+                } else {
+                    formData.append(k, String(v).slice(0, SUPPLIER_BANK_MAX_LEN));
+                }
+            });
+            if (!SUPPLIER_BANK_PROVINCES.includes(String(formData.get('province') || '').trim())) {
                 alert('Please select a valid province.');
                 $('#supplierBankProvince').select2('open');
                 return;
@@ -2891,16 +3171,15 @@
             const url = accountId
                 ? '/supplier/' + supplierId + '/bank-accounts/' + accountId
                 : '/supplier/' + supplierId + '/bank-accounts';
-            const method = accountId ? 'PUT' : 'POST';
+            if (accountId) formData.append('_method', 'PUT');
 
             fetch(url, {
-                method,
+                method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': SUPPLIER_BANK_CSRF
                 },
-                body: JSON.stringify(payload)
+                body: formData
             })
             .then(r => r.json().then(j => ({ ok: r.ok, j })))
             .then(({ ok, j }) => {
@@ -2913,6 +3192,9 @@
                 supplierBankLoadAccounts(supplierId).then(() => {
                     if (j.account) supplierBankFillForm(j.account);
                 });
+                if (closeAfterSave) {
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('supplierBankModal')).hide();
+                }
                 // Refresh table badge count
                 if (typeof loadSuppliers === 'function') {
                     const page = new URLSearchParams(window.location.search).get('page') || 1;

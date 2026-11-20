@@ -15,12 +15,28 @@ class SupplierBankAccount extends Model
         'company_name',
         'swift',
         'address',
+        'address_2',
         'city',
         'province',
         'country',
         'account_number',
         'acc_type',
+        'currency',
+        'file_image',
+        'snippet_image',
     ];
+
+    protected $appends = ['file_image_url', 'snippet_image_url'];
+
+    public function getFileImageUrlAttribute(): ?string
+    {
+        return $this->file_image ? asset('storage/' . $this->file_image) : null;
+    }
+
+    public function getSnippetImageUrlAttribute(): ?string
+    {
+        return $this->snippet_image ? asset('storage/' . $this->snippet_image) : null;
+    }
 
     public function supplier(): BelongsTo
     {

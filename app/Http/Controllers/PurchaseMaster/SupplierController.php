@@ -13,6 +13,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -148,10 +149,10 @@ class SupplierController extends Controller
     {
         return [
             'supplier_name',
-            'nick_name',
             'company_name',
             'swift',
             'address',
+            'address_2',
             'city',
             'province',
             'country',
@@ -161,13 +162,13 @@ class SupplierController extends Controller
     }
 
     /**
-     * Beneficiary + Address: letters, numbers, spaces only (no special characters).
+     * All typed text fields: letters, numbers, spaces only (no special characters).
      *
      * @return list<string>
      */
     protected function bankAccountNoSpecialCharFields(): array
     {
-        return ['company_name', 'address'];
+        return ['company_name', 'swift', 'account_number', 'address', 'address_2', 'city'];
     }
 
     protected function bankAccountFieldRules(): array
@@ -186,26 +187,67 @@ class SupplierController extends Controller
                 $rules[$field] = ['required', 'string', 'in:'.implode(',', config('supplier_bank.provinces', []))];
                 continue;
             }
-            $rules[$field] = ['required', 'string', 'min:1', 'max:50'];
+            // Typed text fields are capped at 45 chars (supplier_name is a pick-list, kept at the column size).
+            $rules[$field] = $field === 'address_2'
+                ? ['nullable', 'string', 'max:45']   // Address 2 is optional
+                : ['required', 'string', 'min:1', 'max:'.($field === 'supplier_name' ? 50 : 45)];
             if (in_array($field, $this->bankAccountNoSpecialCharFields(), true)) {
                 // Letters (any language), numbers, spaces only.
                 $rules[$field][] = 'regex:/^[\p{L}\p{N}\s]*$/u';
             }
         }
 
+        // Optional extras: amount + currency (USD / RMB) and two images (file / snippet).
+        $rules['currency'] = ['nullable', 'string', 'in:USD,RMB'];
+        $rules['file_image'] = ['nullable', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:5120'];
+        $rules['snippet_image'] = ['nullable', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:5120'];
+
         return $rules;
+    }
+
+    /**
+     * Apply currency / images to the account (not saved here).
+     * Returns the list of changes in history format.
+     */
+    protected function applyBankAccountExtras(Request $request, array $data, SupplierBankAccount $account): array
+    {
+        $changes = [];
+
+        $currency = ($data['currency'] ?? '') !== '' ? $data['currency'] : 'USD';
+
+        if ($account->currency !== $currency) {
+            $changes['currency'] = ['old' => $account->currency, 'new' => $currency];
+            $account->currency = $currency;
+        }
+
+        // Images (Add file / Add snippet) are only accepted for Yuan accounts.
+        foreach (['file_image', 'snippet_image'] as $col) {
+            if ($currency === 'RMB' && $request->hasFile($col)) {
+                $old = $account->{$col};
+                if ($old && Storage::disk('public')->exists($old)) {
+                    Storage::disk('public')->delete($old);
+                }
+                $account->{$col} = $request->file($col)->store('supplier_bank_accounts', 'public');
+                $changes[$col] = ['old' => $old, 'new' => $account->{$col}];
+            }
+        }
+
+        return $changes;
     }
 
     protected function bankAccountValidationMessages(): array
     {
         return [
             'supplier_name.required' => 'Supplier name is required.',
-            'nick_name.required' => 'Nick name is required.',
             'company_name.required' => 'Beneficiary is required.',
             'company_name.regex' => 'Beneficiary cannot contain special characters.',
             'swift.required' => 'Swift is required.',
             'address.required' => 'Address is required.',
             'address.regex' => 'Address cannot contain special characters.',
+            'address_2.regex' => 'Address 2 cannot contain special characters.',
+            'swift.regex' => 'Swift cannot contain special characters.',
+            'account_number.regex' => 'Account number cannot contain special characters.',
+            'city.regex' => 'City cannot contain special characters.',
             'city.required' => 'City is required.',
             'province.required' => 'Province is required.',
             'province.in' => 'Please select a valid province.',
@@ -262,9 +304,12 @@ class SupplierController extends Controller
             $data[$field] = trim((string) ($data[$field] ?? ''));
         }
 
-        $account = SupplierBankAccount::create(array_merge($data, [
-            'supplier_id' => $supplier->id,
-        ]));
+        $account = new SupplierBankAccount(array_merge(
+            array_intersect_key($data, array_flip($this->bankAccountFields())),
+            ['supplier_id' => $supplier->id]
+        ));
+        $this->applyBankAccountExtras($request, $data, $account);
+        $account->save();
 
         SupplierBankAccountHistory::create([
             'supplier_id' => $supplier->id,
@@ -272,7 +317,10 @@ class SupplierController extends Controller
             'user_id' => auth()->id(),
             'user_name' => $this->authBankUserName(),
             'action' => 'created',
-            'changes' => ['new' => $account->only($this->bankAccountFields())],
+            'changes' => ['new' => $account->only(array_merge(
+                $this->bankAccountFields(),
+                ['currency', 'file_image', 'snippet_image']
+            ))],
         ]);
 
         return response()->json([
@@ -307,6 +355,8 @@ class SupplierController extends Controller
             }
             $account->{$field} = $val;
         }
+
+        $changes = array_merge($changes, $this->applyBankAccountExtras($request, $data, $account));
 
         if ($changes === []) {
             return response()->json(['success' => true, 'account' => $account, 'message' => 'No changes.']);
