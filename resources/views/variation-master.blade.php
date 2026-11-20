@@ -156,6 +156,10 @@
             margin-bottom: 2px;
         }
 
+        .vm-col-menu { min-width: 250px; max-height: 70vh; overflow-y: auto; z-index: 1060; }
+        .vm-col-menu .vm-col-item { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0; font-size: 13px; cursor: pointer; border-radius: 4px; white-space: nowrap; }
+        .vm-col-menu .vm-col-item:hover { background: #f1f5f9; }
+
         .vm-toolbar {
             display: flex;
             align-items: center;
@@ -319,6 +323,19 @@
                             <option value="parent">Parent</option>
                             <option value="sku">SKU</option>
                         </select>
+                        {{-- Show / hide any column. The choice is remembered for this user. --}}
+                        <div class="dropdown d-inline-block">
+                            <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" id="vm-col-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Show or hide columns">
+                                <i class="bi bi-layout-three-columns"></i> <span id="vm-col-count" class="small"></span>
+                            </button>
+                            <div class="dropdown-menu vm-col-menu p-2" aria-labelledby="vm-col-btn">
+                                <div class="d-flex gap-1 mb-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="vm-col-all">Show all</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary flex-fill" id="vm-col-none" title="Hide every column except Parent SKU and SKU">Hide all</button>
+                                </div>
+                                <div class="vm-col-list" id="vm-col-list"></div>
+                            </div>
+                        </div>
                         <button type="button" class="btn btn-sm btn-primary" id="vm-upload-btn">
                             <i class="bi bi-upload me-1"></i>Upload
                         </button>
@@ -697,6 +714,104 @@
                     }
                 ]
             });
+
+            // ---------- Show / hide columns (remembered per user through /tabulator-column-visibility-user) ----------
+            const colVisGetUrl = @json(route('tabulator.column.visibility.user.get'));
+            const colVisSetUrl = @json(route('tabulator.column.visibility.user.set'));
+            const COL_VIS_CHANNEL = 'variation_master';
+            const COL_KEEP_ON_HIDE_ALL = ['parent', 'sku'];
+
+            function columnLabel(col) {
+                return String(col.getDefinition().title || '').replace(/<[^>]*>/g, '').trim();
+            }
+
+            // Every column that has a title and a field (the tick-box column has neither, so it always stays).
+            function toggleableColumns() {
+                return table.getColumns().filter(function (col) { return col.getField() && columnLabel(col); });
+            }
+
+            function refreshColumnMenu() {
+                const list = document.getElementById('vm-col-list');
+                if (!list) return;
+                const cols = toggleableColumns();
+                list.innerHTML = '';
+                cols.forEach(function (col) {
+                    const label = document.createElement('label');
+                    label.className = 'vm-col-item';
+                    const box = document.createElement('input');
+                    box.type = 'checkbox';
+                    box.className = 'form-check-input m-0';
+                    box.dataset.field = col.getField();
+                    box.checked = col.isVisible();
+                    label.appendChild(box);
+                    label.appendChild(document.createTextNode(columnLabel(col)));
+                    list.appendChild(label);
+                });
+                const shown = cols.filter(function (c) { return c.isVisible(); }).length;
+                const countEl = document.getElementById('vm-col-count');
+                if (countEl) countEl.textContent = shown + '/' + cols.length;
+            }
+
+            let colSaveTimer = null;
+            function saveColumnVisibility() {
+                clearTimeout(colSaveTimer);
+                colSaveTimer = setTimeout(function () {
+                    const visibility = {};
+                    toggleableColumns().forEach(function (col) { visibility[col.getField()] = col.isVisible(); });
+                    fetch(colVisSetUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({ channel: COL_VIS_CHANNEL, visibility: visibility })
+                    }).catch(function () { /* the choice still applies on this page */ });
+                }, 300);
+            }
+
+            function setColumnVisible(col, visible) {
+                if (visible) col.show(); else col.hide();
+            }
+
+            document.getElementById('vm-col-list')?.addEventListener('change', function (event) {
+                const box = event.target.closest('input[data-field]');
+                if (!box) return;
+                const col = table.getColumn(box.dataset.field);
+                if (!col) return;
+                setColumnVisible(col, box.checked);
+                refreshColumnMenu();
+                saveColumnVisibility();
+            });
+            document.getElementById('vm-col-all')?.addEventListener('click', function () {
+                toggleableColumns().forEach(function (col) { setColumnVisible(col, true); });
+                refreshColumnMenu();
+                saveColumnVisibility();
+            });
+            document.getElementById('vm-col-none')?.addEventListener('click', function () {
+                toggleableColumns().forEach(function (col) { setColumnVisible(col, COL_KEEP_ON_HIDE_ALL.indexOf(col.getField()) !== -1); });
+                refreshColumnMenu();
+                saveColumnVisibility();
+            });
+
+            let colVisReady = false;
+            function initColumnVisibility() {
+                if (colVisReady) return;
+                colVisReady = true;
+                refreshColumnMenu();
+                fetch(colVisGetUrl + '?channel=' + encodeURIComponent(COL_VIS_CHANNEL), { headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf } })
+                    .then(function (res) { return res.ok ? res.json() : {}; })
+                    .then(function (saved) {
+                        if (saved && typeof saved === 'object') {
+                            Object.keys(saved).forEach(function (field) {
+                                const col = table.getColumn(field);
+                                if (!col) return;
+                                const v = saved[field];
+                                setColumnVisible(col, v === true || v === 1 || v === '1' || v === 'true');
+                            });
+                        }
+                        refreshColumnMenu();
+                    })
+                    .catch(function () { refreshColumnMenu(); });
+            }
+            table.on('tableBuilt', initColumnVisibility);
+            if (table.initialized) initColumnVisibility();
 
             // Top filter: All rows, Parent rows only, or SKU (child) rows only.
             document.getElementById('vm-type-filter')?.addEventListener('change', function () {
