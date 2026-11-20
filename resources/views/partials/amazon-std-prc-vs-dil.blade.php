@@ -965,14 +965,10 @@
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             const margin = amzStdRowMargin(d);
             if (!(lp > 0)) return price;
-            // Ads % follows the Dynamic Rule slab the price lands in (channel Ads% when the rule is off).
-            const solveAt = function(adsPct) {
-                const adsFrac = adsPct / 100;
-                const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
-                if (!(net > 0)) return 0;
-                return Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
-            };
-            let solved = (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, amzStdAdsPct()) : solveAt(amzStdAdsPct());
+            // Real channel Ads %.
+            const adsFrac = amzStdAdsPct() / 100;
+            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+            let solved = net > 0 ? Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100 : 0;
             if (!(solved > 0)) return price;
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
@@ -1131,14 +1127,10 @@
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             const margin = amzStdRowMargin(d);
             if (!(lp > 0)) return price;
-            // Ads % follows the Dynamic Rule slab the price lands in (channel Ads% when the rule is off).
-            const solveAt = function(adsPct) {
-                const adsFrac = adsPct / 100;
-                const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
-                if (!(net > 0)) return 0;
-                return Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100;
-            };
-            let solved = (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, amzStdAdsPct()) : solveAt(amzStdAdsPct());
+            // Real channel Ads %.
+            const adsFrac = amzStdAdsPct() / 100;
+            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+            let solved = net > 0 ? Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100 : 0;
             if (!(solved > 0)) return price;
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;

@@ -926,7 +926,6 @@
                     </select>
 
                     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'buttons'])
-                    @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'buttons'])
                     @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'buttons'])
 
                     <!-- Selected Rows Count -->
@@ -1504,7 +1503,6 @@
     </div>
 
     @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'modals'])
-    @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'modals'])
     @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'modals'])
 
 @endsection
@@ -1556,7 +1554,6 @@
         }
 
         @include('partials.amazon-pef-promo', ['amazonPefPromoPart' => 'script'])
-        @include('partials.amazon-dynamic-ads-rule', ['amazonDynAdsPart' => 'script'])
         @include('partials.amazon-cvr-price-rule', ['amazonCvrRulePart' => 'script'])
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'amazon'])
 
@@ -1874,6 +1871,14 @@
          * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
          * Returns null when SPRICE/LP are missing.
          */
+        /** Ads % for a price: the real Amazon channel Ads% (same as the Ads badge). */
+        function amazonAdsPctAtPrice(price) {
+            if (typeof amzAmazonAdsPct === 'function') return Number(amzAmazonAdsPct()) || 0;
+            try { return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0; } catch (e) { return 0; }
+        }
+        function amazonRowAdsPct(rowData) {
+            return amazonAdsPctAtPrice(rowData && rowData.price);
+        }
         /** S PRC the column paints: ON rule, then the same LMP / Std cap. */
         function amazonShownSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
@@ -2093,7 +2098,7 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-            // Ads % of the Dynamic Rule slab this price falls in (channel Ads% when the rule is off or no slab matches).
+            // Real channel Ads%.
             const adsFrac = amazonAdsPctAtPrice(sprice) / 100;
             const grossPft = (sprice * margin) - ship - lp;
             const adSpend = sprice * adsFrac;
@@ -2117,7 +2122,7 @@
             return amazonComputeGpftAt(amazonProfitSprice(rowData), rowData);
         }
 
-        /** SNPFT = live S GPFT − Ads% (the Dynamic Rule slab for the S PRC when it is on, else the channel Ads%) */
+        /** SNPFT = live S GPFT − Ads% (the real channel Ads%) */
         function amazonComputeSpft(rowData) {
             const sgpft = amazonComputeSgpft(rowData);
             if (sgpft == null || !isFinite(sgpft)) return null;
@@ -2437,7 +2442,7 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalCountEmphasisHtml(row['A_L30'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalCvrL30ColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
-                    // PFT% = GPFT% − Ads% (Dynamic Rule slab for the price when on, else channel TACOS)
+                    // PFT% = GPFT% − Ads% (channel TACOS)
                     const modalPft = (parseFloat(row['GPFT%']) || 0) - amazonRowAdsPct(row);
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft, 'npft')));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
@@ -3282,7 +3287,7 @@
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
             const marginRaw = parseFloat(rowData.percentage);
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-            // Ads % of the Dynamic Rule slab this price falls in (channel Ads% when the rule is off or no slab matches).
+            // Real channel Ads%.
             const adsFrac = amazonAdsPctAtPrice(sprice) / 100;
             const grossPft = (sprice * margin) - ship - lp;
             const adSpend = sprice * adsFrac;
@@ -6049,7 +6054,7 @@
                         title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
-                        headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100, using current Amazon price. Ad spend uses the Dynamic Rule slab Ads % when it is on, else the channel Ads%.",
+                        headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100, using current Amazon price. Ad spend uses the channel Ads%.",
                         sorter: amazonMetricSorter(amazonRowNroiPct),
                         formatter: function(cell) {
                             const percent = amazonRowNroiPct(cell.getRow().getData());
@@ -6080,7 +6085,7 @@
                         title: "Ads %",
                         field: "ADS_PCT",
                         hozAlign: "center",
-                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. With the Dynamic Rule on, the Ads % of the price slab the SKU falls in. NPFT% = GPFT% − Ads%.",
+                        headerTooltip: "Amz channel Ads% (Total Ad Spend / L30 Sales) — same as the Ads badge. NPFT% = GPFT% − Ads%.",
                         sorter: amazonMetricSorter(function(d) {
                             return (d && d.is_parent_summary) ? null : amazonRowAdsPct(d);
                         }),
@@ -6246,7 +6251,7 @@
                         title: "SNROI%",
                         field: "SROI",
                         hozAlign: "center",
-                        headerTooltip: "SNROI% = (gross PFT$ at S PRC − ad spend$) / LP × 100. Ad spend uses the Dynamic Rule slab Ads % when it is on, else the channel Ads%.",
+                        headerTooltip: "SNROI% = (gross PFT$ at S PRC − ad spend$) / LP × 100. Ad spend uses the channel Ads%.",
                         // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
                         sorter: amazonMetricSorter(amazonComputeNetSroi),
                         formatter: function(cell) {

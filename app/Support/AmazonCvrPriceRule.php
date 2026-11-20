@@ -9,17 +9,16 @@ namespace App\Support;
  * target / Up, each with a price change %. The change is taken off the S PRC the other rules already produced (caps
  * done), NOT off the live Price, so the answer is the same before and after a push (a % off the live Price would
  * compound on every run). Lower cap: the new price never goes under the price where NPFT% or NROI% reaches its minimum,
- * solved against the Ads % of the price slab (Dynamic Rule) it lands in.
+ * solved with the real channel Ads %.
  */
 class AmazonCvrPriceRule
 {
     /**
      * @param  array<string, mixed>  $row  AmazonSprcDilAutoPushService::loadCandidates() row (a_l30, sess30, a_l60, sess60, lp, ship)
      * @param  array<string, mixed>|null  $cfg  OverallAmazonController::amazonCvrPriceRuleConfig()
-     * @param  array<string, mixed>|null  $dynamicAdsRule  AmazonDilGroiRule::loadDynamicAdsRule()
      * @return array{price: float, capped: bool}|null  null = the rule does not change this SKU
      */
-    public static function apply(float $base, array $row, ?array $cfg, float $channelAds, ?array $dynamicAdsRule): ?array
+    public static function apply(float $base, array $row, ?array $cfg, float $channelAds): ?array
     {
         if ($cfg === null || empty($cfg['enabled']) || ! ($base > 0)) {
             return null;
@@ -54,7 +53,7 @@ class AmazonCvrPriceRule
         }
         $next = $base * (1 + $pct / 100);
         $capped = false;
-        $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($row, $cfg, $channelAds, $dynamicAdsRule) : null;
+        $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($row, $cfg, $channelAds) : null;
         if ($floor !== null && $next < $floor) {
             $next = is_finite($floor) ? $floor : $base;
             $capped = true;
@@ -77,7 +76,7 @@ class AmazonCvrPriceRule
     }
 
     /** Lowest price the Lower cap allows (higher of the Min NPFT% price and the Min NROI% price). INF = unreachable, null = no limit. */
-    public static function floorPrice(array $row, array $cfg, float $channelAds, ?array $dynamicAdsRule): ?float
+    public static function floorPrice(array $row, array $cfg, float $channelAds): ?float
     {
         $lp = (float) ($row['lp'] ?? 0);
         $cost = $lp > 0 ? $lp : 0.0;
@@ -86,20 +85,16 @@ class AmazonCvrPriceRule
         $floor = null;
         if (isset($cfg['min_npft']) && is_numeric($cfg['min_npft'])) {
             $n = (float) $cfg['min_npft'];
-            $f = AmazonDilGroiRule::priceWithDynamicAds(static function (float $ads) use ($n, $ship, $cost, $margin): ?float {
-                $k = $margin - ($n + $ads) / 100;
-
-                return $k > 0 ? ($ship + $cost) / $k : INF;
-            }, $channelAds, $dynamicAdsRule) ?? INF;
+            $ads = $channelAds;
+            $k = $margin - ($n + $ads) / 100;
+            $f = $k > 0 ? ($ship + $cost) / $k : INF;
             $floor = $floor === null ? $f : max($floor, $f);
         }
         if (isset($cfg['min_nroi']) && is_numeric($cfg['min_nroi']) && $cost > 0) {
             $r = (float) $cfg['min_nroi'];
-            $f = AmazonDilGroiRule::priceWithDynamicAds(static function (float $ads) use ($r, $ship, $cost, $margin): ?float {
-                $k = $margin - $ads / 100;
-
-                return $k > 0 ? ($cost * (1 + $r / 100) + $ship) / $k : INF;
-            }, $channelAds, $dynamicAdsRule) ?? INF;
+            $ads = $channelAds;
+            $k = $margin - $ads / 100;
+            $f = $k > 0 ? ($cost * (1 + $r / 100) + $ship) / $k : INF;
             $floor = $floor === null ? $f : max($floor, $f);
         }
 

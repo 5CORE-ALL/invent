@@ -287,8 +287,7 @@ class AmazonSprcDilAutoPushService
             (float) $computed['sprice'],
             $row,
             $cfg,
-            (float) ($adsPct ?? $this->amazonAdsPercent()),
-            $this->dynamicAdsRule()
+            (float) ($adsPct ?? $this->amazonAdsPercent())
         );
         if ($cvrPrice !== null) {
             $computed['sprice_before_cvr'] = $computed['sprice'];
@@ -339,8 +338,7 @@ class AmazonSprcDilAutoPushService
             $base,
             $row,
             $this->cvrPriceRuleCfg,
-            (float) ($adsPct ?? $this->amazonAdsPercent()),
-            $this->dynamicAdsRule()
+            (float) ($adsPct ?? $this->amazonAdsPercent())
         );
         $newPrice = $cvrPrice === null ? null : \App\Support\EbayCvrPriceRule::clampUp((float) $cvrPrice['price'], $base, $stdCapped);
         if ($newPrice === null) {
@@ -485,12 +483,8 @@ class AmazonSprcDilAutoPushService
                     $nroi = AmazonDilGroiRule::adjustGroiForAge($nroi, (float) $row['age_days'], $this->ageAdjCfg);
                 }
             }
-            // Dynamic Rule (Ads % by price slab): solve the price against the Ads % of the slab it lands in.
-            $dilPrice = AmazonDilGroiRule::priceWithDynamicAds(
-                fn (float $a): ?float => AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, $a),
-                (float) $ads,
-                $this->dynamicAdsRule()
-            );
+            // Real channel Ads % (no price-slab Ads % rule any more).
+            $dilPrice = AmazonDilGroiRule::suggestedPriceFromNroi($lp, $ship, $nroi, (float) $ads);
             if ($dilPrice !== null && ! ($dilPrice >= 0.01)) {
                 $dilPrice = null;
             }
@@ -609,17 +603,13 @@ class AmazonSprcDilAutoPushService
         $snroiCapped = false;
         if ($snroiCap !== null) {
             // Clearance: the Clearance SNROI target replaces the SNROI Cap and the price rounds up so SNROI is never under it.
-            $afterCap = AmazonDilGroiRule::priceWithDynamicAds(
-                fn (float $a): ?float => StdPrcVsDilPricer::snroiTargetPrice(
-                    $snroiCap,
-                    $lp,
-                    AmazonDilGroiRule::TAKE_HOME,
-                    $ship,
-                    max(0.0, $a) / 100,
-                    $clearanceTarget !== null
-                ),
-                max(0.0, (float) $ads),
-                $this->dynamicAdsRule()
+            $afterCap = StdPrcVsDilPricer::snroiTargetPrice(
+                $snroiCap,
+                $lp,
+                AmazonDilGroiRule::TAKE_HOME,
+                $ship,
+                max(0.0, (float) $ads) / 100,
+                $clearanceTarget !== null
             );
             if ($clearanceTarget !== null && $afterCap === null) {
                 return null;
@@ -1416,9 +1406,6 @@ class AmazonSprcDilAutoPushService
         }
     }
 
-    /** @var array{enabled: bool, slabs: array}|null */
-    private ?array $dynamicAdsRuleCache = null;
-
     /** Ageing Rule slabs (age days → NROI points) saved in the Sprc Dil modal; null = defaults (0 points = no change). */
     private ?array $ageAdjCfg = null;
 
@@ -1454,14 +1441,8 @@ class AmazonSprcDilAutoPushService
         return ($this->ruleOnCfg[$key] ?? true) !== false;
     }
 
-    /** Dynamic Rule (Ads % by price slab) saved on /amazon-tabulator-view. Loaded once per service instance. */
     /** @var array<string, mixed>|null */
     protected ?array $cvrPriceRuleCfg = null;
-
-    protected function dynamicAdsRule(): array
-    {
-        return $this->dynamicAdsRuleCache ??= AmazonDilGroiRule::loadDynamicAdsRule();
-    }
 
     /** Channel Master Amazon Ads% — same source as /amazon-tabulator-view SNROI. */
     public function amazonAdsPercent(): float

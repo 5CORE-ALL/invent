@@ -5281,8 +5281,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-review-disc', [OverallAmazonController::class, 'amazonReviewDiscSaveRules'])->name('amazon.review-disc.save');
     Route::get('/amazon-std-prc-vs-dil', [OverallAmazonController::class, 'amazonStdPrcVsDilRules'])->name('amazon.std-prc-vs-dil');
     Route::post('/amazon-std-prc-vs-dil', [OverallAmazonController::class, 'amazonStdPrcVsDilSaveRules'])->name('amazon.std-prc-vs-dil.save');
-    Route::get('/amazon-dynamic-ads-rule', [OverallAmazonController::class, 'amazonDynamicAdsRuleGet'])->name('amazon.dynamic-ads-rule');
-    Route::post('/amazon-dynamic-ads-rule', [OverallAmazonController::class, 'amazonDynamicAdsRuleSave'])->name('amazon.dynamic-ads-rule.save');
     Route::get('/amazon-cvr-price-rule', [OverallAmazonController::class, 'amazonCvrPriceRuleGet'])->name('amazon.cvr-price-rule');
     Route::post('/amazon-cvr-price-rule', [OverallAmazonController::class, 'amazonCvrPriceRuleSave'])->name('amazon.cvr-price-rule.save');
     Route::get('/channel-lmp-cvr-disc-rule/{channel}', [\App\Http\Controllers\MarketPlace\ChannelLmpCvrDiscRuleController::class, 'get'])->name('channel.lmp-cvr-disc-rule');

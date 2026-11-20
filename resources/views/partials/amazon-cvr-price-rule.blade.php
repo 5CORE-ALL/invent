@@ -167,14 +167,14 @@
             $f.find('option[value="down"]').text('\u2193 Down (< -' + p.down + '%)');
             $f.attr('title', 'CVR L30 vs LT O CVR (down below -' + p.down + '%, up above +' + p.up + '%)');
         }
-        /** Ads % used for the cap maths: the channel Ads% (the slab price-rule, when ON, is handled in amzDynAdsSolve). */
+        /** Ads % used for the cap maths: the real channel Ads%. */
         function amzCvrRuleChannelAds() {
-            if (typeof amzDynAdsChannelPct === 'function') return Number(amzDynAdsChannelPct()) || 0;
+            if (typeof amzAmazonAdsPct === 'function') return Number(amzAmazonAdsPct()) || 0;
             try { return parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0; } catch (e) { return 0; }
         }
         /**
          * Lowest price the Lower cap allows: the higher of the price where NPFT% = Min NPFT% and the price where NROI% = Min NROI%.
-         * Same formulas as the NPFT% / NROI% columns, with the Ads % that applies at that price:
+         * Same formulas as the NPFT% / NROI% columns, with the channel Ads %:
          *   NPFT% = (p×0.80 − ship − LP) / p × 100 − Ads%        ->  p = (ship + LP) / (0.80 − (Min NPFT + Ads%) / 100)
          *   NROI% = (p×margin − ship − LP − p×Ads%) / LP × 100   ->  p = (LP × (1 + Min NROI / 100) + ship) / (margin − Ads% / 100)
          * Infinity when a minimum cannot be reached. null when no limit applies to this row.
@@ -188,7 +188,7 @@
             const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
             const chAds = amzCvrRuleChannelAds();
             const solve = function(solveAt) {
-                return (typeof amzDynAdsSolve === 'function') ? amzDynAdsSolve(solveAt, chAds) : solveAt(chAds);
+                return solveAt(chAds);
             };
             let floor = null;
             const n = parseFloat(cfg.min_npft);
