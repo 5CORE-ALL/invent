@@ -103,7 +103,7 @@ class LqsMarketplacePageService
             $rating = $this->firstNullableNumber($score->rating ?? null, $api['rating'] ?? null);
             $reviews = $this->firstNullableInt($score->reviews ?? null, $api['reviews'] ?? null);
             $marketplaceUrl = $this->listingUrl($channel['listing_url'] ?? null, $listingId);
-            $shopifyStore = in_array($slug, ['shopify', 'pls', 'b5cb2b'], true);
+            $shopifyStore = in_array($slug, ['shopify', 'pls'], true);
             $listingUrl = ! empty($api['listing_url'])
                 ? $api['listing_url']
                 : ($marketplaceUrl
@@ -379,11 +379,39 @@ class LqsMarketplacePageService
                 'price' => 'price',
             ]);
         }
-        if ($source === 'b5cb2b' && Schema::hasTable('business_5core_products')) {
-            return $this->mapGenericMetrics(DB::table('business_5core_products')->orderByDesc('id')->get(), $normalizeSku, [
-                'l30' => 'b5c_l30',
-                'price' => 'price',
-            ]);
+        if ($source === 'b5cb2b') {
+            $map = [];
+            if (Schema::hasTable('business_5core_products')) {
+                $map = $this->mapGenericMetrics(DB::table('business_5core_products')->orderByDesc('id')->get(), $normalizeSku, [
+                    'l30' => 'b5c_l30',
+                    'price' => 'price',
+                ]);
+            }
+            if (Schema::hasTable('b5c_b2b_products')) {
+                $base = rtrim((string) config('services.b5cb2b.url', 'https://business5core.com'), '/');
+                $seen = [];
+                foreach (DB::table('b5c_b2b_products')->select('sku', 'listing_id', 'slug')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
+                    $key = $normalizeSku($row->sku);
+                    if ($key === '' || isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $existing = $map[$key] ?? [
+                        'l30' => null, 'sessions' => null, 'price' => null,
+                        'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+                    ];
+                    if ($row->listing_id) {
+                        $existing['listing_id'] = (string) $row->listing_id;
+                    }
+                    $slugPath = trim((string) ($row->slug ?? ''));
+                    if ($slugPath !== '') {
+                        $existing['listing_url'] = $base.'/products/'.rawurlencode($slugPath);
+                    }
+                    $map[$key] = $existing;
+                }
+            }
+
+            return $map;
         }
         if ($source === 'topdawg' && class_exists(TopDawgProduct::class) && Schema::hasTable('topdawg_products')) {
             return $this->mapGenericMetrics(TopDawgProduct::query()->orderByDesc('id')->get(), $normalizeSku, [
