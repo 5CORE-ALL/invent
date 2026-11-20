@@ -1672,7 +1672,7 @@
             function toaSupplierFirstName(name) {
                 const v = String(name || '').trim();
                 if (!v) return '';
-                return v.split(/\s+/).filter(Boolean)[0] || v;
+                return toNameCase(v.split(/\s+/).filter(Boolean)[0] || v);
             }
 
             function formatToaSupplierCell(name) {
@@ -1681,9 +1681,9 @@
                 const display = toaSupplierFirstName(v);
                 const colors = toaSupplierColors(v);
                 if (!colors) {
-                    return `<span class="toa-readonly-cell-text" title="${escapeHtmlAttr(v)}">${escapeHtml(display)}</span>`;
+                    return `<span class="toa-readonly-cell-text" title="${escapeHtmlAttr(toNameCase(v))}">${escapeHtml(display)}</span>`;
                 }
-                return `<span class="toa-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtmlAttr(v)}">${escapeHtml(display)}</span>`;
+                return `<span class="toa-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtmlAttr(toNameCase(v))}">${escapeHtml(display)}</span>`;
             }
 
             const TOA_DATA_FIELD_META = {

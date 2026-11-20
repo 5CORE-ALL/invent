@@ -154,7 +154,7 @@
                         // May be comma-separated; shorten each name to first word.
                         const short = value.split(',').map(function(part) {
                             const t = part.trim();
-                            return t ? (t.split(/\s+/).filter(Boolean)[0] || t) : '';
+                            return t ? toNameCase(t.split(/\s+/).filter(Boolean)[0] || t) : '';
                         }).filter(Boolean).join(', ');
                         const esc = function(s) {
                             return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

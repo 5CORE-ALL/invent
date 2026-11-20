@@ -7,6 +7,25 @@
     /* Center all headers and cell content */
     #advance-payment-table .tabulator-col .tabulator-col-title { text-align: center; }
     #advance-payment-table .tabulator-cell { text-align: center; }
+    /* Remarks: wrap long text instead of truncating; row height grows to fit */
+    #advance-payment-table .tabulator-cell[tabulator-field="remarks"] {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.3;
+    }
+    /* Summary: PO SKU chips (same look as /list-all-purchase-orders) */
+    #advance-payment-table .tabulator-cell[tabulator-field="skus"] { white-space: normal; }
+    .po-summary-sku-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: flex-start; padding: 2px 0; }
+    .po-summary-sku-tag { display: inline-block; max-width: 140px; padding: 2px 8px; border-radius: 999px; background: #e8eaf6; border: 1px solid #c5cae9; color: #283593; font-size: 0.72rem; font-weight: 700; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .po-summary-sku-more { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #eceff1; color: #546e7a; font-size: 0.7rem; font-weight: 700; cursor: default; }
+    #advance-payment-table .remarks-wrap {
+        display: block;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        text-align: center;
+    }
 
     /* Paste-snippet box */
     .paste-box { border: 2px dashed #adb5bd; border-radius: 6px; min-height: 70px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; cursor: pointer; background: #f8f9fa; color: #6c757d; font-size: 0.8rem; outline: none; }
@@ -20,10 +39,15 @@
     .bank-dot-btn { border: 0 !important; background: transparent !important; box-shadow: none !important; line-height: 1; padding: 0; }
 
     /* Advance-required toggle: mustard = advance still required, green = proof image attached */
-    .adv-toggle { position: relative; display: inline-block; width: 38px; height: 20px; border-radius: 20px; background: #d4a017; vertical-align: middle; cursor: default; transition: background .2s; }
-    .adv-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .2s; }
+    .adv-toggle { position: relative; display: inline-block; width: 26px; height: 14px; border-radius: 14px; background: #d4a017; vertical-align: middle; cursor: default; transition: background .2s; }
+    .adv-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .2s; }
     .adv-toggle.is-done { background: #198754; }
-    .adv-toggle.is-done::after { left: 20px; }
+    .adv-toggle.is-done::after { left: 14px; }
+    /* Compact PO Stage dropdown (this page only; the shared default is 150px min-width) */
+    #advance-payment-table .po-stage-select { min-width: 0; width: 112px; padding: 2px 16px 2px 6px; font-size: 0.7rem; }
+    /* Tighter cells to save horizontal space */
+    #advance-payment-table .tabulator-cell { padding-left: 4px; padding-right: 4px; }
+    #advance-payment-table .tabulator-col .tabulator-col-content { padding-left: 4px; padding-right: 4px; }
     #mustard-filter-btn { border-color: #d4a017; color: #8a6a00; }
     #mustard-filter-btn:hover { background: rgba(212,160,23,.15); }
     #mustard-filter-btn.active { background: #d4a017; color: #fff; border-color: #d4a017; }
@@ -33,7 +57,10 @@
     #advance-payment-table a.po-link:hover { text-decoration: underline; }
 
     /* Actions column: icon-only buttons, no background */
-    .action-icon-btn { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 6px; font-size: 1rem; }
+    .action-icon-btn { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 3px; font-size: 1rem; }
+    /* Pinned Actions column: keep a solid background + divider so scrolled content doesn't show through */
+    #advance-payment-table .tabulator-frozen.tabulator-frozen-right { border-left: 2px solid #dee2e6; }
+    #advance-payment-table .tabulator-cell.tabulator-frozen { background: #fff; }
     .action-icon-btn.edit-payment-btn { color: #3fbfc4 !important; }
     .action-icon-btn.archive-payment-btn { color: #dc3545 !important; }
     .action-icon-btn.restore-payment-btn { color: #198754 !important; }
@@ -441,16 +468,23 @@
             const redYuan = function(code, text) {
                 return code === 'RMB' ? '<span style="color:#dc2626;font-weight:700;">' + text + '</span>' : text;
             };
+            // Table cells: Dollar amounts in dark green, Yuan amounts in red
+            const colorAmount = function(code, text) {
+                const color = code === 'RMB' ? '#dc2626' : '#14532d';
+                return '<span style="color:' + color + ';font-weight:700;">' + text + '</span>';
+            };
             const roundFormatter = function(cell) {
                 const num = parseFloat(cell.getValue());
                 if (isNaN(num)) return '';
-                return redYuan(cell.getRow().getData().currency, currencySymbol(cell.getRow().getData().currency) + ' ' + Math.round(num));
+                return colorAmount(cell.getRow().getData().currency, currencySymbol(cell.getRow().getData().currency) + ' ' + Math.round(num));
             };
 
             let table = new Tabulator("#advance-payment-table", {
                 ajaxURL: "/advance-and-payments/data",
                 ajaxConfig: "GET",
-                layout: "fitColumns",
+                // Each column is exactly as wide as its data (no spare space); scrolls sideways if needed
+                layout: "fitData",
+                layoutColumnsOnNewData: true,
                 columnDefaults: {
                     hozAlign: "center",
                     headerHozAlign: "center",
@@ -478,7 +512,7 @@
                         headerHozAlign: "center",
                         visible: false,
                     },
-                    { title: "VO Number", field: "vo_number", hozAlign: "center", visible: false },
+                    { title: "VO<br>Number", field: "vo_number", hozAlign: "center", visible: false },
                     {
                         title: "PO",
                         field: "purchase_contract",
@@ -498,7 +532,7 @@
                         }
                     },
                     {
-                        title: "Supplier Name",
+                        title: "Supplier<br>Name",
                         field: "supplier_name",
                         hozAlign: "center",
                         width: 72,
@@ -512,7 +546,7 @@
                             const esc = function(s) {
                                 return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                             };
-                            return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
+                            return '<span title="' + esc(toNameCase(value)) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(toNameCase(first)) + '</span>';
                         }
                     },
                     {
@@ -520,8 +554,9 @@
                         field: "bank_count",
                         hozAlign: "center",
                         headerHozAlign: "center",
-                        headerSort: true,
-                        width: 80,
+                        headerSort: false,
+                        width: 44,
+                        minWidth: 40,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const count = parseInt(row.bank_count) || 0;
@@ -536,22 +571,23 @@
                         }
                     },
                     { title: "Amount", field:"amount", hozAlign: "center", formatter: roundFormatter },
-                    { title: "Adv Amt", field:"advance_amount", hozAlign: "center", formatter: roundFormatter },
+                    { title: "Adv<br>Amt", field:"advance_amount", hozAlign: "center", formatter: roundFormatter },
                     {
-                        title: "Adv Req",
+                        title: "Adv<br>Req",
                         field: "image",
                         hozAlign: "center",
                         headerHozAlign: "center",
                         headerSort: false,
-                        width: 90,
+                        width: 52,
                         formatter: function(cell) {
                             const done = hasAdvImage(cell.getRow().getData());
                             return '<span class="adv-toggle ' + (done ? 'is-done' : '') + '" title="' + (done ? 'Advance proof attached' : 'Advance required - no image yet') + '"></span>';
                         }
                     },
                     { 
-                        title: "Adv Img", 
+                        title: "Adv<br>Img", 
                         field: "image",
+                        width: 60,
                         formatter: function (cell) {
                             const url = cell.getValue();
                             if (!url) return '';
@@ -563,20 +599,21 @@
                     },
                     { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center", formatter: roundFormatter },
                     {
-                        title: "Bal Req",
+                        title: "Bal<br>Req",
                         field: "balance_image",
                         hozAlign: "center",
                         headerHozAlign: "center",
                         headerSort: false,
-                        width: 90,
+                        width: 52,
                         formatter: function(cell) {
                             const done = hasBalImage(cell.getRow().getData());
                             return '<span class="adv-toggle ' + (done ? 'is-done' : '') + '" title="' + (done ? 'Balance proof attached' : 'Balance required - no image yet') + '"></span>';
                         }
                     },
                     {
-                        title: "Bal Img",
+                        title: "Bal<br>Img",
                         field: "balance_image",
+                        width: 60,
                         formatter: function (cell) {
                             const url = cell.getValue();
                             if (!url) return '';
@@ -587,20 +624,49 @@
                         }
                     },
                     {
-                        title: "PO Stage",
+                        title: "PO<br>Stage",
                         field: "po_stage",
                         hozAlign: "center",
                         headerHozAlign: "center",
                         headerSort: true,
-                        width: 170,
+                        width: 124,
+                        minWidth: 110,
                         formatter: function(cell) {
                             return poStageSelectHtml(cell.getRow().getData().purchase_contract_id, cell.getValue());
+                        }
+                    },
+                    {
+                        title: "Summary",
+                        field: "skus",
+                        hozAlign: "left",
+                        headerHozAlign: "center",
+                        minWidth: 200,
+                        width: 280,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const list = Array.isArray(cell.getValue()) ? cell.getValue() : [];
+                            if (!list.length) return '<span class="text-muted">-</span>';
+                            const esc = function(s) {
+                                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                            };
+                            const maxVisible = 8;
+                            const visible = list.slice(0, maxVisible);
+                            const extra = list.length - visible.length;
+                            const tags = visible.map(function(sku) {
+                                return '<span class="po-summary-sku-tag" title="' + esc(sku) + '">' + esc(sku) + '</span>';
+                            }).join('');
+                            const more = extra > 0
+                                ? '<span class="po-summary-sku-more" title="' + esc(list.slice(maxVisible).join(', ')) + '">+' + extra + '</span>'
+                                : '';
+                            return '<div class="po-summary-sku-tags">' + tags + more + '</div>';
                         }
                     },
                     { 
                         title: "Remarks", 
                         field:"remarks", 
                         hozAlign: "center",
+                        minWidth: 180,
+                        width: 220,
                         formatter: function(cell) {
                             const remarks = cell.getValue();
                             if (!remarks || remarks.trim() === '') {
@@ -615,21 +681,9 @@
                                 .replace(/'/g, '&#39;')
                                 .replace(/\n/g, '<br>');
                             
-                            // Truncate if too long for display
-                            const displayText = remarks.length > 30 ? remarks.substring(0, 30) + '...' : remarks;
-                            const escapedDisplayText = displayText
-                                .replace(/&/g, '&amp;')
-                                .replace(/</g, '&lt;')
-                                .replace(/>/g, '&gt;')
-                                .replace(/"/g, '&quot;')
-                                .replace(/'/g, '&#39;');
-                            
-                            return `<span class="remarks-tooltip-simple" 
-                                        data-remarks="${escapedRemarks}" 
-                                        title="${escapedRemarks}"
-                                        style="cursor: help; text-decoration: underline dotted;">
-                                        ${escapedDisplayText}
-                                    </span>`;
+                            // Show the full text and let it wrap (no truncation, no hover popup needed)
+                            const escapedTitle = escapedRemarks.replace(/<br>/g, '&#10;');
+                            return `<div class="remarks-wrap" title="${escapedTitle}">${escapedRemarks}</div>`;
                         }
                     },
                     {
@@ -664,7 +718,10 @@
                                             <i class="fas fa-archive"></i>
                                         </button>`}`;
                         },
-                        width: 120
+                        width: 64,
+                        minWidth: 64,
+                        headerSort: false,
+                        frozen: true   // last column => stays pinned on the right while scrolling
                     },
                 ]
             });

@@ -50,6 +50,9 @@ class AmazonDailyBadgeStat extends Model
         'y_cvr_pct',
         'y_bgt',
         'y_utilized_pct',
+        'cvr_down_count',
+        'cvr_same_count',
+        'cvr_up_count',
     ];
 
     protected $casts = [

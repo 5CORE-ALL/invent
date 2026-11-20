@@ -16,9 +16,12 @@
         .qcsw-label { color: #64748b; }
         .qcsw-count { font-size: 11px; color: #64748b; margin-top: 4px; }
         .qcsw-active { width: 80px; }
-        .qcsw-sum-item { padding: 6px 8px; margin-bottom: 6px; border-left: 3px solid #8b5cf6; background: #faf5ff; border-radius: 4px; line-height: 1.35; }
-        .qcsw-sum-item:last-child { margin-bottom: 0; }
-        .qcsw-sum-head { font-weight: 600; }
+        .qcsw-issue-total { font-size: 1.5em; } /* 2x the default badge size (0.75em) */
+        /* dark yellow "IG" (ignore) button; !important so Bootstrap's .btn colours don't win */
+        .btn.qcsw-cross { background-color: #c79100 !important; border-color: #c79100 !important; color: #fff !important; font-weight: 700; letter-spacing: .5px; }
+        .btn.qcsw-cross:hover, .btn.qcsw-cross:focus { background-color: #a87800 !important; border-color: #a87800 !important; }
+        .qcsw-ignored { opacity: .55; border-left-color: #94a3b8; }
+        .qcsw-ignored-tag { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #fee2e2; color: #991b1b; margin-left: 4px; }
         .qcsw-act { border-left-color: #ef4444; background: #fff; text-align: center; padding: 4px; white-space: nowrap; }
         .qcsw-list { scrollbar-width: thin; }
         .qcsw-detail .qcsw-issues { max-height: 75vh; }
@@ -36,8 +39,31 @@
             <div class="card shadow-sm">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <div class="d-flex align-items-center gap-1">
+                            <label class="small text-muted mb-0" for="qcsw-period">Period</label>
+                            <select id="qcsw-period" class="form-select form-select-sm" style="width:auto;" title="Only issues reported in this period">
+                                @foreach(['lifetime' => 'Lifetime', '365' => 'L365', '180' => 'L180', '90' => 'L90', '30' => 'L30'] as $pv => $pl)
+                                    <option value="{{ $pv }}" {{ ($period ?? 'lifetime') === (string) $pv ? 'selected' : '' }}>{{ $pl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <h4 class="mb-0 me-2">QC / PKG Supplier Wise{{ ($detailSupplier ?? null) ? ' — '.$detailSupplier : '' }}</h4>
-                        <span class="badge bg-light text-dark" id="qcsw-count">0</span>
+                        <span class="badge bg-light text-dark" id="qcsw-count" title="Suppliers">0</span>
+                        <span class="badge bg-danger qcsw-issue-total" id="qcsw-issue-total" title="Open issues (ignored issues not counted)">0 issues</span>
+                        @php
+                            $sumQuery = ['period' => $period ?? 'lifetime'] + (($detailSupplier ?? null) ? ['supplier' => $detailSupplier] : []);
+                        @endphp
+                            <a href="{{ route('customer.care.qc.issues.summary', ['mode' => 'sku'] + $sumQuery) }}" data-base="{{ route('customer.care.qc.issues.summary', ['mode' => 'sku']) }}" target="_blank" rel="noopener" class="btn btn-sm btn-warning qcsw-sum-link">
+                                <i class="bi bi-list-check"></i> Summary by SKU
+                            </a>
+                            <a href="{{ route('customer.care.qc.issues.summary', ['mode' => 'parent'] + $sumQuery) }}" data-base="{{ route('customer.care.qc.issues.summary', ['mode' => 'parent']) }}" target="_blank" rel="noopener" class="btn btn-sm btn-warning qcsw-sum-link">
+                                <i class="bi bi-diagram-3"></i> Summary by Parent
+                            </a>
+                        @if($detailSupplier ?? null)
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="qcsw-complaint-btn" title="Draft a polite email to this supplier asking for resolution">
+                                <i class="bi bi-envelope-exclamation"></i> Complaints / Resolution
+                            </button>
+                        @endif
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="qcsw-view-archived" title="View archived issues">
                             <i class="bi bi-eye"></i> Archived
                         </button>
@@ -47,7 +73,7 @@
                     </div>
                     <p class="text-muted small mb-2">
                         @if($detailSupplier ?? null)
-                            Open QC and Packaging issues for this supplier, with details, AI summary and per-issue actions.
+                            Open QC and Packaging issues for this supplier, with details and per-issue actions.
                         @else
                             Open QC and Packaging issues grouped by the supplier of each SKU. Set <b>Supplier Active</b> to Yes or No per supplier. Use the eye icon to open a supplier's issues in a new tab.
                         @endif
@@ -142,6 +168,45 @@
         </div>
     </div>
 
+    {{-- Complaints / Resolution email --}}
+    <div class="modal fade" id="qcsw-cr-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Complaints / Resolution <span class="text-muted small" id="qcsw-cr-sub"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2">From: <span id="qcsw-cr-from" class="fw-semibold">—</span> · the draft is editable; use the pen to rewrite it from a prompt.</div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="qcsw-cr-to">To (supplier email; separate several with commas)</label>
+                        <input type="text" class="form-control form-control-sm" id="qcsw-cr-to" autocomplete="off" placeholder="supplier@example.com">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="qcsw-cr-subject">Subject</label>
+                        <input type="text" class="form-control form-control-sm" id="qcsw-cr-subject" maxlength="255">
+                    </div>
+                    <div>
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <label class="form-label small mb-0" for="qcsw-cr-body">Message</label>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="qcsw-cr-pen" title="Refresh the email as per a prompt"><i class="bi bi-pencil-fill"></i></button>
+                        </div>
+                        <div class="input-group input-group-sm mb-2 d-none" id="qcsw-cr-prompt-wrap">
+                            <input type="text" class="form-control" id="qcsw-cr-prompt" maxlength="1000" placeholder="e.g. make it shorter and firmer, ask for a replacement within 7 days" autocomplete="off">
+                            <button type="button" class="btn btn-primary" id="qcsw-cr-refresh"><i class="bi bi-arrow-repeat"></i> Refresh draft</button>
+                        </div>
+                        <textarea class="form-control form-control-sm" id="qcsw-cr-body" rows="16" style="font-family: inherit;"></textarea>
+                    </div>
+                    <div class="small mt-2 d-none" id="qcsw-cr-msg"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="qcsw-cr-send"><i class="bi bi-send"></i> Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Archived issues and resolutions --}}
     <div class="modal fade" id="qcsw-archived-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -167,13 +232,29 @@
             const DETAIL = @json($detailSupplier ?? null); // set when opened from the eye icon (single supplier)
             const URLS = {
                 page: @json(route('customer.care.qc.issues.supplier.wise')),
+                summarySku: @json(route('customer.care.qc.issues.summary', ['mode' => 'sku'])),
+                summaryParent: @json(route('customer.care.qc.issues.summary', ['mode' => 'parent'])),
                 data: @json(route('customer.care.qc.issues.supplier.wise.data')),
                 active: @json(route('customer.care.qc.issues.supplier.wise.active')),
-                summary: @json(route('customer.care.qc.issues.supplier.wise.summary')),
                 archived: @json(route('customer.care.qc.issues.supplier.wise.archived')),
                 issueBase: @json(url('/customer-care/qc-issues-supplier-wise/issues')),
+                crDraft: @json(route('customer.care.qc.issues.complaint.draft')),
+                crRefresh: @json(route('customer.care.qc.issues.complaint.refresh')),
+                crSend: @json(route('customer.care.qc.issues.complaint.send')),
             };
+            let crSupplier = null;
             let table = null;
+
+            function currentPeriod() { return el('qcsw-period').value || 'lifetime'; }
+            function dataUrl() {
+                return URLS.data + '?period=' + encodeURIComponent(currentPeriod()) + (DETAIL ? '&supplier=' + encodeURIComponent(DETAIL) : '');
+            }
+
+            // Summary page for one supplier, opened in a new tab with the current Period.
+            function summaryLink(base, supplier, icon, tip) {
+                const url = base + '?supplier=' + encodeURIComponent(supplier) + '&period=' + encodeURIComponent(currentPeriod());
+                return '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="' + esc(tip) + '"><i class="bi ' + icon + '"></i></a>';
+            }
 
             async function api(method, url, body) {
                 const res = await fetch(url, {
@@ -219,7 +300,10 @@
             }
 
             function actionHtml(i) {
-                return '<div class="qcsw-issue qcsw-act" data-id="' + i.id + '">' +
+                const cross = i.ignored
+                    ? '<button type="button" class="btn btn-sm btn-outline-secondary qcsw-ignore" data-id="' + i.id + '" data-ignore="0" title="Ignored - Not supplier Fault (click to count it again)"><i class="bi bi-arrow-counterclockwise"></i></button> '
+                    : '<button type="button" class="btn btn-sm qcsw-ignore qcsw-cross" data-id="' + i.id + '" data-ignore="1" title="Ignore - Not supplier Fault">IG</button> ';
+                return '<div class="qcsw-issue qcsw-act" data-id="' + i.id + '">' + cross +
                     '<button type="button" class="btn btn-sm btn-outline-primary qcsw-edit" data-id="' + i.id + '" title="Edit this issue"><i class="bi bi-pencil-square"></i></button> ' +
                     '<button type="button" class="btn btn-sm btn-outline-danger qcsw-archive" data-id="' + i.id + '" title="Archive this issue"><i class="bi bi-archive"></i></button>' +
                     '</div>';
@@ -233,8 +317,9 @@
 
             function issueHtml(i) {
                 const what = [i.what_happened, i.issue].filter(Boolean).join(' — ');
-                return '<div class="qcsw-issue">' + issueHeadHtml(i) +
+                return '<div class="qcsw-issue' + (i.ignored ? ' qcsw-ignored' : '') + '">' + issueHeadHtml(i) +
                     (i.department ? '<span class="qcsw-dept">' + esc(i.department) + '</span>' : '') +
+                    (i.ignored ? '<span class="qcsw-ignored-tag" title="Ignore - Not supplier Fault">Ignored</span>' : '') +
                     '<div>' + (what ? esc(what) : '<span class="text-muted">—</span>') + '</div>' +
                     '</div>';
             }
@@ -244,50 +329,9 @@
                 if (i.issue_remark) lines.push('<span class="qcsw-label">Remark:</span> ' + esc(i.issue_remark));
                 if (i.action) lines.push('<span class="qcsw-label">Action:</span> ' + esc(i.action) + (i.action_remark ? ' (' + esc(i.action_remark) + ')' : ''));
                 if (i.root_cause_fixed) lines.push('<span class="qcsw-label">Root cause fixed:</span> ' + esc(i.root_cause_fixed) + (i.root_cause_fixed_remark ? ' (' + esc(i.root_cause_fixed_remark) + ')' : ''));
-                return '<div class="qcsw-issue">' + issueHeadHtml(i) +
+                return '<div class="qcsw-issue' + (i.ignored ? ' qcsw-ignored' : '') + '">' + issueHeadHtml(i) +
                     '<div>' + (lines.length ? lines.join('<br>') : '<span class="text-muted">—</span>') + '</div>' +
                     '</div>';
-            }
-
-            function summaryHtml(d) {
-                const btn = function (label, cls) {
-                    return '<button type="button" class="btn btn-sm ' + cls + ' qcsw-sum-btn" data-supplier="' + esc(d.supplier) + '">' + label + '</button>';
-                };
-                if (!Array.isArray(d.summary) || !d.summary.length) {
-                    return btn('<i class="bi bi-stars"></i> Generate summary', 'btn-outline-primary');
-                }
-                const items = d.summary.map(function (g) {
-                    const head = (g.group || (g.skus || []).length)
-                        ? '<div class="qcsw-sum-head">' + esc(g.group) + ((g.skus || []).length ? ' <span class="qcsw-label">(' + esc(g.skus.join(', ')) + ')</span>' : '') + '</div>'
-                        : '';
-                    return '<div class="qcsw-sum-item">' + head + '<div>' + esc(g.summary) + '</div></div>';
-                }).join('');
-                return '<div class="qcsw-issues">' + (d.summary_stale ? '<div class="text-warning small mb-1">Outdated — issues changed since this was written.</div>' : '') + items + '</div>' +
-                    '<div class="mt-1">' + btn('<i class="bi bi-arrow-repeat"></i> Regenerate', 'btn-link p-0') + '</div>';
-            }
-
-            async function generateSummary(btn) {
-                const supplier = btn.getAttribute('data-supplier');
-                const rowEl = btn.closest('.tabulator-row');
-                const row = table.getRows().find(function (r) { return r.getElement() === rowEl; });
-                if (!row) return;
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Summarising…';
-                try {
-                    const res = await fetch(URLS.summary, {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': CSRF },
-                        body: JSON.stringify({ supplier: supplier, force: true }),
-                    });
-                    const json = await res.json().catch(function () { return {}; });
-                    if (!res.ok || !json.success) throw new Error(json.message || 'Summary failed');
-                    row.update({ summary: json.summary, summary_stale: false });
-                    row.reformat();
-                } catch (e) {
-                    btn.disabled = false;
-                    btn.innerHTML = 'Retry';
-                    alert(e.message || 'Could not generate summary.');
-                }
             }
 
             async function saveActive(supplier, value, cell) {
@@ -306,11 +350,35 @@
                 }
             }
 
-            // After an edit/archive the issues change, so any saved AI summary is out of date.
+            // Badges: supplier rows and the total number of open issues across them.
+            function updateCounts(loaded) {
+                // dataLoaded fires before the table holds the rows, so use the data it hands over.
+                const rows = Array.isArray(loaded) ? loaded : table.getData();
+                const total = rows.reduce(function (n, r) { return n + (r.issue_count || 0); }, 0);
+                el('qcsw-count').textContent = rows.length + (rows.length === 1 ? ' supplier' : ' suppliers');
+                el('qcsw-issue-total').textContent = total + (total === 1 ? ' issue' : ' issues');
+            }
+
             function issuesChanged(row, issues) {
-                const d = row.getData();
-                row.update({ issues: issues, issue_count: issues.length, summary_stale: Array.isArray(d.summary) && d.summary.length > 0 });
+                row.update({ issues: issues, issue_count: issues.filter(function (x) { return !x.ignored; }).length });
                 row.reformat();
+                updateCounts();
+            }
+
+            async function toggleIgnore(btn) {
+                const id = parseInt(btn.getAttribute('data-id'), 10);
+                const ignore = btn.getAttribute('data-ignore') === '1';
+                const f = findIssue(id);
+                if (!f) return;
+                btn.disabled = true;
+                try {
+                    await api('POST', URLS.issueBase + '/' + id + '/ignore', { ignore: ignore });
+                    f.issue.ignored = ignore;
+                    issuesChanged(f.row, f.row.getData().issues);
+                } catch (e) {
+                    btn.disabled = false;
+                    alert(e.message || 'Could not update this issue.');
+                }
             }
 
             function openEdit(id) {
@@ -403,7 +471,7 @@
                         const rest = f.row.getData().issues.filter(function (x) { return x.id !== id; });
                         if (rest.length === 0) {
                             f.row.delete();
-                            el('qcsw-count').textContent = table.getDataCount();
+                            updateCounts();
                         } else {
                             issuesChanged(f.row, rest);
                         }
@@ -411,6 +479,70 @@
                     modalFor('qcsw-archive-modal').hide();
                 } catch (e) {
                     fail(e.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            function crMsg(text, ok) {
+                const m = el('qcsw-cr-msg');
+                m.textContent = text;
+                m.className = 'small mt-2 ' + (ok ? 'text-success' : 'text-danger');
+            }
+
+            async function openComplaint(supplier) {
+                crSupplier = supplier;
+                ['qcsw-cr-to', 'qcsw-cr-subject', 'qcsw-cr-body', 'qcsw-cr-prompt'].forEach(function (id) { el(id).value = ''; });
+                el('qcsw-cr-sub').textContent = '· ' + supplier;
+                el('qcsw-cr-from').textContent = '…';
+                el('qcsw-cr-prompt-wrap').classList.add('d-none');
+                el('qcsw-cr-msg').className = 'small mt-2 d-none';
+                modalFor('qcsw-cr-modal').show();
+                try {
+                    const j = await api('GET', URLS.crDraft + '?supplier=' + encodeURIComponent(supplier) + '&period=' + encodeURIComponent(currentPeriod()));
+                    el('qcsw-cr-to').value = j.to || '';
+                    el('qcsw-cr-subject').value = j.subject || '';
+                    el('qcsw-cr-body').value = j.body || '';
+                    el('qcsw-cr-from').textContent = j.from || '—';
+                    if (!j.to) crMsg('No email saved for supplier "' + supplier + '". Type the address in To.', false);
+                } catch (e) {
+                    crMsg('Could not load the draft: ' + e.message, false);
+                }
+            }
+
+            async function refreshComplaint() {
+                const prompt = el('qcsw-cr-prompt').value.trim();
+                if (!prompt) { crMsg('Type what you want changed first.', false); return; }
+                const btn = el('qcsw-cr-refresh');
+                btn.disabled = true;
+                crMsg('Refreshing the draft…', true);
+                try {
+                    const j = await api('POST', URLS.crRefresh, {
+                        supplier: crSupplier, period: currentPeriod(), prompt: prompt,
+                        subject: el('qcsw-cr-subject').value, body: el('qcsw-cr-body').value,
+                    });
+                    el('qcsw-cr-subject').value = j.subject || el('qcsw-cr-subject').value;
+                    el('qcsw-cr-body').value = j.body || '';
+                    crMsg('Draft refreshed. You can still edit it before sending.', true);
+                } catch (e) {
+                    crMsg(e.message, false);
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            async function sendComplaint() {
+                const btn = el('qcsw-cr-send');
+                btn.disabled = true;
+                crMsg('Sending…', true);
+                try {
+                    const j = await api('POST', URLS.crSend, {
+                        supplier: crSupplier, to: el('qcsw-cr-to').value,
+                        subject: el('qcsw-cr-subject').value, body: el('qcsw-cr-body').value,
+                    });
+                    crMsg(j.message || 'Email sent.', true);
+                } catch (e) {
+                    crMsg(e.message, false);
                 } finally {
                     btn.disabled = false;
                 }
@@ -449,10 +581,25 @@
                 el('qcsw-edit-save').addEventListener('click', saveEdit);
                 el('qcsw-archive-confirm').addEventListener('click', confirmArchive);
                 el('qcsw-view-archived').addEventListener('click', openArchived);
+                el('qcsw-cr-pen').addEventListener('click', function () {
+                    const w = el('qcsw-cr-prompt-wrap');
+                    w.classList.toggle('d-none');
+                    if (!w.classList.contains('d-none')) el('qcsw-cr-prompt').focus();
+                });
+                el('qcsw-cr-refresh').addEventListener('click', refreshComplaint);
+                el('qcsw-cr-prompt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); refreshComplaint(); } });
+                el('qcsw-cr-send').addEventListener('click', sendComplaint);
+                if (el('qcsw-complaint-btn')) el('qcsw-complaint-btn').addEventListener('click', function () { openComplaint(DETAIL); });
+                el('qcsw-period').addEventListener('change', function () {
+                    const p = currentPeriod();
+                    document.querySelectorAll('.qcsw-sum-link').forEach(function (a) { a.href = a.getAttribute('data-base') + '?period=' + encodeURIComponent(p) + (DETAIL ? '&supplier=' + encodeURIComponent(DETAIL) : ''); });
+                    if (DETAIL) history.replaceState(null, '', URLS.page + '?supplier=' + encodeURIComponent(DETAIL) + '&period=' + encodeURIComponent(p));
+                    table.setData(dataUrl());
+                });
                 document.querySelectorAll('input[name="qcsw-archive-taken"]').forEach(function (r) { r.addEventListener('change', archiveDetailsUi); });
 
                 table = new Tabulator('#qcsw-table', {
-                    ajaxURL: URLS.data + (DETAIL ? '?supplier=' + encodeURIComponent(DETAIL) : ''),
+                    ajaxURL: dataUrl(),
                     ajaxResponse: function (url, params, response) { return (response && response.data) || []; },
                     layout: 'fitColumns',
                     pagination: !DETAIL,
@@ -485,13 +632,34 @@
                         {
                             title: 'Issue Count', field: 'issue_count', width: 120, hozAlign: 'center', sorter: 'number', visible: !DETAIL,
                             headerFilter: 'number', headerFilterPlaceholder: 'Min', headerFilterFunc: '>=',
-                            formatter: function (c) { return '<span class="fw-semibold">' + esc(c.getValue()) + '</span>'; },
+                            formatter: function (c) {
+                                const ign = (c.getData().issues || []).filter(function (x) { return x.ignored; }).length;
+                                return '<span class="fw-semibold">' + esc(c.getValue()) + '</span>' + (ign ? '<div class="qcsw-count" title="Ignore - Not supplier Fault">+' + ign + ' ignored</div>' : '');
+                            },
                         },
                         {
                             title: 'View', field: 'view', headerSort: false, width: 80, hozAlign: 'center', visible: !DETAIL,
                             formatter: function (c) {
-                                const url = URLS.page + '?supplier=' + encodeURIComponent(c.getData().supplier);
-                                return '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Open issues, details, summary and actions in a new tab"><i class="bi bi-eye"></i></a>';
+                                const url = URLS.page + '?supplier=' + encodeURIComponent(c.getData().supplier) + '&period=' + encodeURIComponent(currentPeriod());
+                                return '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Open issues, details and actions in a new tab"><i class="bi bi-eye"></i></a>';
+                            },
+                        },
+                        {
+                            title: 'View SKU Wise', field: 'view_sku', headerSort: false, width: 110, hozAlign: 'center', visible: !DETAIL,
+                            formatter: function (c) { return summaryLink(URLS.summarySku, c.getData().supplier, 'bi-list-check', 'Open the SKU wise summary for this supplier in a new tab'); },
+                        },
+                        {
+                            title: 'View Parent Wise', field: 'view_parent', headerSort: false, width: 120, hozAlign: 'center', visible: !DETAIL,
+                            formatter: function (c) { return summaryLink(URLS.summaryParent, c.getData().supplier, 'bi-diagram-3', 'Open the parent wise summary for this supplier in a new tab'); },
+                        },
+                        {
+                            title: 'Complaints / Resolution', field: 'complaint', headerSort: false, width: 170, hozAlign: 'center', visible: !DETAIL,
+                            formatter: function (c) {
+                                if (c.getData().supplier_key === '(NO SUPPLIER)') return '<span class="text-muted">—</span>';
+                                return '<button type="button" class="btn btn-sm btn-outline-danger qcsw-complaint" title="Draft a polite email to this supplier asking for resolution"><i class="bi bi-envelope-exclamation"></i> Draft</button>';
+                            },
+                            cellClick: function (e, cell) {
+                                if (e.target.closest('.qcsw-complaint')) openComplaint(cell.getData().supplier);
                             },
                         },
                         {
@@ -507,12 +675,8 @@
                             },
                         },
                         {
-                            title: 'Summary', field: 'summary', headerSort: false, minWidth: 340, visible: !!DETAIL,
-                            formatter: function (c) { return summaryHtml(c.getData()); },
-                        },
-                        {
                             title: 'Action <i class="bi bi-eye qcsw-eye" title="View archived issues" style="cursor:pointer;"></i>',
-                            field: 'actions', headerSort: false, width: 110, hozAlign: 'center', visible: !!DETAIL,
+                            field: 'actions', headerSort: false, width: 140, hozAlign: 'center', visible: !!DETAIL,
                             formatter: function (c) {
                                 return '<div class="qcsw-issues qcsw-list">' + (c.getData().issues || []).map(actionHtml).join('') + '</div>';
                             },
@@ -532,8 +696,8 @@
 
                 table.on('tableBuilt', function () {
                     document.getElementById('qcsw-table').addEventListener('click', function (e) {
-                        const btn = e.target.closest('.qcsw-sum-btn');
-                        if (btn && !btn.disabled) { generateSummary(btn); return; }
+                        const ign = e.target.closest('.qcsw-ignore');
+                        if (ign && !ign.disabled) { toggleIgnore(ign); return; }
                         const edit = e.target.closest('.qcsw-edit');
                         if (edit) { openEdit(parseInt(edit.getAttribute('data-id'), 10)); return; }
                         const arch = e.target.closest('.qcsw-archive');
@@ -565,9 +729,7 @@
                     });
                 });
 
-                table.on('dataLoaded', function (data) {
-                    document.getElementById('qcsw-count').textContent = data.length;
-                });
+                table.on('dataLoaded', function (data) { updateCounts(data); });
 
                 if (DETAIL) document.getElementById('qcsw-table').classList.add('qcsw-detail');
                 document.getElementById('qcsw-search').addEventListener('input', function () {

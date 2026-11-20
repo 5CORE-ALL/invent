@@ -5,6 +5,18 @@
     'resources/scss/icons.scss'
     ])
 
+{{-- Global: Title Case for person/company names, e.g. "JIN LONG" -> "Jin Long" (display only) --}}
+<script>
+    window.toNameCase = window.toNameCase || function (value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .toLowerCase()
+            .replace(/(^|[\s\-\/(.&])([a-z\u00c0-\u024f])/g, function (m, sep, ch) {
+                return sep + ch.toUpperCase();
+            });
+    };
+</script>
+
 {{-- Global: badges with light backgrounds must use black text for readability --}}
 <style>
     .badge.bg-warning,

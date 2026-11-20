@@ -492,7 +492,7 @@
             { title: 'Issue',        field: 'issue_category',width: 130, hozAlign: 'center', formatter: issueFmt,
               headerFilter: 'list', headerFilterParams: { values: { '':'All', quality:'Quality', packaging:'Packaging', shipping:'Shipping', service:'Service', wrong_item:'Wrong Item', missing_parts:'Missing Parts', other:'Other' } } },
             { title: 'Supplier',     field: 'supplier_name', width: 140,
-              formatter: c => c.getValue() ? escapeHtml(c.getValue()) : '<span class="text-muted">—</span>',
+              formatter: c => c.getValue() ? escapeHtml(toNameCase(c.getValue())) : '<span class="text-muted">—</span>',
               headerFilter: 'input' },
             { title: 'Department',   field: 'department',    width: 130,
               formatter: c => c.getValue() ? `<small class="text-info">${escapeHtml(c.getValue())}</small>` : '<span class="text-muted">—</span>' },

@@ -195,7 +195,7 @@
                     const row = cell.getRow().getData();
                     if (!row.suppliers.length) return '<span class="text-muted fst-italic">No suppliers</span>';
                     return row.suppliers.map(function(s) {
-                        return '<span class="badge bg-info-subtle text-dark border mcs-supplier-badge" data-supplier-id="' + s.id + '" title="Click to see supplier details">' + esc(s.name) + '</span>';
+                        return '<span class="badge bg-info-subtle text-dark border mcs-supplier-badge" data-supplier-id="' + s.id + '" title="Click to see supplier details">' + esc(toNameCase(s.name)) + '</span>';
                     }).join('');
                 },
             },

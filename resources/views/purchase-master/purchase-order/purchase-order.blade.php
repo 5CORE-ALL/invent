@@ -1170,12 +1170,12 @@
     function renderSupplierCell(name) {
         const full = String(name || '').trim();
         if (!full) return '<span class="text-muted">-</span>';
-        const display = full.split(/\s+/).filter(Boolean)[0] || full;
+        const display = toNameCase(full.split(/\s+/).filter(Boolean)[0] || full);
         const colors = poSupplierColors(full);
         if (!colors) {
-            return `<span title="${escapeHtml(full)}" style="font-weight:700;font-size:0.72rem;">${escapeHtml(display)}</span>`;
+            return `<span title="${escapeHtml(toNameCase(full))}" style="font-weight:700;font-size:0.72rem;">${escapeHtml(display)}</span>`;
         }
-        return `<span class="po-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtml(full)}">${escapeHtml(display)}</span>`;
+        return `<span class="po-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtml(toNameCase(full))}">${escapeHtml(display)}</span>`;
     }
 
     function renderSummarySkuTags(order) {

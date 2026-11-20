@@ -7506,6 +7506,44 @@ class OverallAmazonController extends Controller
         'y_spend', 'y_acos_pct', 'y_tacos_pct', 'y_sales', 'y_cvr_pct', 'y_bgt', 'y_utilized_pct',
     ];
 
+    /** CVR Price Rule modal SKU counts (CVR Down / within target / CVR Up) that keep a daily history in amazon_daily_badge_stats. */
+    private const AMAZON_CVR_RULE_BADGE_METRICS = [
+        'cvr_down_count', 'cvr_same_count', 'cvr_up_count',
+    ];
+
+    /**
+     * Re-save today's CVR Price Rule SKU counts after the rule targets change. Only touches today's existing row
+     * (the page's daily badge save creates it), so no other badge value is ever overwritten.
+     */
+    public function saveAmazonCvrRuleCounts(Request $request)
+    {
+        try {
+            $values = [];
+            foreach (self::AMAZON_CVR_RULE_BADGE_METRICS as $key) {
+                $raw = $request->input($key);
+                if (is_numeric($raw) && \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $key)) {
+                    $values[$key] = max(0, intval($raw));
+                }
+            }
+            if ($values === []) {
+                return response()->json(['success' => true, 'saved' => false]);
+            }
+
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = \App\Models\AmazonDailyBadgeStat::query()->whereDate('snapshot_date', $today)->first();
+            if (! $row) {
+                return response()->json(['success' => true, 'saved' => false]);
+            }
+            $row->forceFill($values)->save();
+
+            return response()->json(['success' => true, 'saved' => true]);
+        } catch (\Throwable $e) {
+            Log::error('saveAmazonCvrRuleCounts error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error saving CVR rule counts'], 500);
+        }
+    }
+
     /**
      * Save daily badge stats (called from frontend after stats are computed)
      */
@@ -7561,6 +7599,14 @@ class OverallAmazonController extends Controller
                 }
             }
 
+            // CVR Price Rule SKU counts (only numeric values; skipped when absent) — needs the cvr_* migration.
+            foreach (self::AMAZON_CVR_RULE_BADGE_METRICS as $cKey) {
+                $raw = $request->input($cKey);
+                if (is_numeric($raw) && \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $cKey)) {
+                    $values[$cKey] = max(0, intval($raw));
+                }
+            }
+
             \App\Models\AmazonDailyBadgeStat::updateOrCreate(['snapshot_date' => $today], $values);
 
             return response()->json(['success' => true]);
@@ -7590,13 +7636,15 @@ class OverallAmazonController extends Controller
                 'total_l30_orders',
                 'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views',
                 ...self::AMAZON_YESTERDAY_BADGE_METRICS,
+                ...self::AMAZON_CVR_RULE_BADGE_METRICS,
             ];
 
             if (!in_array($metric, $allowedMetrics)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
-            // Yesterday metrics only exist after the y_* migration has run.
-            if (in_array($metric, self::AMAZON_YESTERDAY_BADGE_METRICS, true)
+            // Yesterday / CVR rule metrics only exist after their migrations have run.
+            if ((in_array($metric, self::AMAZON_YESTERDAY_BADGE_METRICS, true)
+                    || in_array($metric, self::AMAZON_CVR_RULE_BADGE_METRICS, true))
                 && ! \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $metric)) {
                 return response()->json(['success' => true, 'data' => []]);
             }
@@ -7684,7 +7732,7 @@ class OverallAmazonController extends Controller
 
             // Yesterday-block metrics: null (not captured) is left out so the dot stays grey instead of comparing to 0.
             $yMetrics = [];
-            foreach (self::AMAZON_YESTERDAY_BADGE_METRICS as $yKey) {
+            foreach ([...self::AMAZON_YESTERDAY_BADGE_METRICS, ...self::AMAZON_CVR_RULE_BADGE_METRICS] as $yKey) {
                 if (! \Illuminate\Support\Facades\Schema::hasColumn('amazon_daily_badge_stats', $yKey)) {
                     continue;
                 }

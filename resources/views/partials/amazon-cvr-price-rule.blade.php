@@ -10,6 +10,27 @@
 @endif
 
 @if($amazonCvrRulePart === 'modals' || $amazonCvrRulePart === 'all')
+    <style>
+        /* Dashboard-standard history dot (same as the summary badges): green = up, red = down, gray = same / no prior day. */
+        #amzCvrRuleModal .summary-trend-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 0.3rem;
+            flex-shrink: 0;
+            cursor: pointer;
+            vertical-align: 0.08em;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.85);
+            position: relative;
+            z-index: 2;
+        }
+        #amzCvrRuleModal .summary-trend-dot:hover { transform: scale(1.25); box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.25); }
+        #amzCvrRuleModal .summary-trend-dot.up { background: #22c55e; }
+        #amzCvrRuleModal .summary-trend-dot.down { background: #ef4444; }
+        #amzCvrRuleModal .summary-trend-dot.flat,
+        #amzCvrRuleModal .summary-trend-dot.none { background: #9ca3af; }
+    </style>
     <div class="modal fade" id="amzCvrRuleModal" tabindex="-1" aria-labelledby="amzCvrRuleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -52,19 +73,19 @@
                         <tbody>
                             <tr data-key="down">
                                 <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;">more than <span class="amz-cvr-down-lbl">20</span>% below LT O CVR</div></td>
-                                <td class="text-end text-muted amz-cvr-rule-count">—</td>
+                                <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_down_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
                             </tr>
                             <tr data-key="same">
                                 <td><strong>--</strong> <strong>CVR within target</strong><div class="text-muted" style="font-size:11px;">between <span class="amz-cvr-down-lbl">20</span>% below and <span class="amz-cvr-up-lbl">20</span>% above LT O CVR</div></td>
-                                <td class="text-end text-muted amz-cvr-rule-count">—</td>
+                                <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_same_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
                             </tr>
                             <tr data-key="up">
                                 <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;">more than <span class="amz-cvr-up-lbl">20</span>% above LT O CVR</div></td>
-                                <td class="text-end text-muted amz-cvr-rule-count">—</td>
+                                <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_up_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
                             </tr>
@@ -237,7 +258,7 @@
             $('#amz-cvr-onoff-txt').text(on ? 'ON' : 'OFF').toggleClass('bg-success', on).toggleClass('bg-secondary', !on);
         }
         /**
-         * The S PRC the other rules produced for a row (Sprc Dil / Std prc vs dil, LMP cap and Std Prc maximum done): the CVR
+         * The S PRC the other rules produced for a row (Sprc Dil / Std prc vs dil, Std Prc maximum done; the CVR rule adds no LMP cap of its own): the CVR
          * Price Rule's base. 0 when the row has no rule price (rules OFF, cleared, clearance, parent, no INV).
          */
         function amzCvrRuleBaseFor(d) {
@@ -258,8 +279,8 @@
             if (typeof amzLiveRuleSprice !== 'function') return 0;
             const live = Number(amzLiveRuleSprice(d)) || 0;
             if (!(live > 0)) return 0;
-            const capped = (typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, live)) : live;
-            return capped > 0 ? Math.round(capped * 100) / 100 : 0;
+            // No LMP cap here: the CVR Price Rule takes the S PRC the other rules produced as it is.
+            return Math.round(live * 100) / 100;
         }
         window.amzCvrRuleBaseFor = amzCvrRuleBaseFor;
         /**
@@ -277,12 +298,11 @@
             const res = amzCvrRulePriceFor(d, amzCvrRule, base);
             if (!res || !(res.price >= 0.01)) return null;
             let outPrice = res.price;
-            // Both S PRC rules OFF (base = live Price): Up stops at Std Prc (LMP-capped). Down never goes above live (amzCvrRulePriceFor).
+            // Both S PRC rules OFF (base = live Price): Up stops at Std Prc (no LMP cap). Down never goes above live (amzCvrRulePriceFor).
             if (outPrice > base && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
                 const std = Number(d.STANDARD_PRICE) || 0;
-                const stdCapped = std > 0 ? ((typeof amzCapRuleSprice === 'function') ? Number(amzCapRuleSprice(d, std)) : std) : 0;
-                if (!(stdCapped > 0)) return null;
-                outPrice = Math.round(Math.max(base, Math.min(outPrice, stdCapped)) * 100) / 100;
+                if (!(std > 0)) return null;
+                outPrice = Math.round(Math.max(base, Math.min(outPrice, std)) * 100) / 100;
             }
             if (Math.abs(outPrice - base) < 0.005) return null;
             return { price: outPrice, capped: res.capped, base: base, c: c, pct: pct };
@@ -323,9 +343,9 @@
             $('#amzCvrRuleModal .amz-cvr-down-lbl').text(p.down);
             $('#amzCvrRuleModal .amz-cvr-up-lbl').text(p.up);
         }
-        function amzCvrRulePaintCounts() {
-            const cfg = amzCvrRuleReadDraft();
-            amzCvrRuleRefreshLabelsModalOnly(cfg);
+        /** SKU count (and Lower-capped count) per CVR case for a rule config, over the child SKUs loaded in the table. */
+        function amzCvrRuleCounts(cfg) {
+            cfg = cfg || amzCvrRule || {};
             const rows = (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
             const counts = { down: 0, same: 0, up: 0 };
             const capped = { down: 0, same: 0, up: 0 };
@@ -339,12 +359,50 @@
                 const res = amzCvrRulePriceFor(r, cfg, (typeof amzCvrRuleBaseFor === 'function') ? amzCvrRuleBaseFor(r) : 0);
                 if (res && res.capped) capped[c]++;
             });
+            return { counts: counts, capped: capped };
+        }
+        const AMZ_CVR_RULE_COUNT_METRICS = { down: 'cvr_down_count', same: 'cvr_same_count', up: 'cvr_up_count' };
+        /** History dot per SKUs count: green up / red down / gray same vs the prior day's snapshot (CVR Down is lower-is-better). */
+        function amzCvrRulePaintDots(counts) {
+            $('#amz-cvr-rule-table tbody tr').each(function() {
+                const k = $(this).data('key');
+                const metric = AMZ_CVR_RULE_COUNT_METRICS[k];
+                const $dot = $(this).find('.summary-trend-dot');
+                if (!metric || !$dot.length) return;
+                const live = counts[k];
+                const prev = (typeof amzBadgePrevDay !== 'undefined' && amzBadgePrevDay) ? amzBadgePrevDay[metric] : null;
+                if (!isFinite(live) || prev == null || !isFinite(prev)) {
+                    $dot.attr('class', 'summary-trend-dot none').attr('title', 'Click for rolling history (no prior day yet)');
+                    return;
+                }
+                const cls = amzTrendClass(live, prev, !!amzBadgeInvertMetrics[metric]);
+                const word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same');
+                $dot.attr('class', 'summary-trend-dot ' + cls)
+                    .attr('title', word + ' vs prior day (' + Math.round(prev).toLocaleString('en-US') + ' → ' + Math.round(live).toLocaleString('en-US') + '). Click for rolling history.');
+            });
+        }
+        function amzCvrRulePaintCounts() {
+            const cfg = amzCvrRuleReadDraft();
+            amzCvrRuleRefreshLabelsModalOnly(cfg);
+            const res = amzCvrRuleCounts(cfg);
+            const counts = res.counts, capped = res.capped;
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 const k = $(this).data('key');
                 $(this).find('.amz-cvr-rule-count').text(counts[k].toLocaleString());
                 $(this).find('.amz-cvr-rule-capped').text(cfg.lower_cap ? capped[k].toLocaleString() : '—');
             });
+            amzCvrRulePaintDots(counts);
             $('#amz-cvr-cap-npft, #amz-cvr-cap-nroi').prop('disabled', !cfg.lower_cap);
+        }
+        /** Re-save today's counts after the targets change (the daily page save only runs once per load). */
+        function amzCvrRulePostCounts() {
+            const counts = amzCvrRuleCounts(amzCvrRule).counts;
+            $.ajax({
+                url: '/amazon-cvr-rule-counts-save',
+                method: 'POST',
+                data: { cvr_down_count: counts.down, cvr_same_count: counts.same, cvr_up_count: counts.up },
+                headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
+            });
         }
         function amzCvrRulePaintModal() {
             const cfg = amzCvrRule || {};
@@ -370,6 +428,8 @@
             $('#amz-cvr-rule-btn').off('click.amzcvr').on('click.amzcvr', function(e) {
                 e.preventDefault();
                 amzCvrRulePaintModal();
+                // Prior-day snapshot for the history dots (cached after the first load); repaint once it arrives.
+                if (typeof loadAmzBadgePrevDay === 'function') loadAmzBadgePrevDay(amzCvrRulePaintCounts);
                 const el = document.getElementById('amzCvrRuleModal');
                 if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
             });
@@ -389,6 +449,7 @@
                     amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, down_band: res.down_band, up_band: res.up_band };
                     amzCvrRuleRefreshLabels(amzCvrRule);
                     amzCvrRulePaintState();
+                    amzCvrRulePostCounts();
                     if (typeof amzTableRedrawPreserveScroll === 'function') amzTableRedrawPreserveScroll(true);
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');

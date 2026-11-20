@@ -8,10 +8,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class QcIssuesSupplierWiseController extends Controller
@@ -26,26 +23,35 @@ class QcIssuesSupplierWiseController extends Controller
         'Sent Wrong Item + Stock Outgoing', 'Cancelled', 'Refund', 'RTS', 'NA', 'Other',
     ];
 
-    /** Most recent issues sent to the AI per supplier (keeps the prompt small). */
-    private const SUMMARY_MAX_ISSUES = 120;
+    /** Period filter values: lifetime (all) or the last N days. */
+    public const PERIODS = ['lifetime' => null, '365' => 365, '180' => 180, '90' => 90, '30' => 30];
 
-    /** `?supplier=NAME` opens the single-supplier detail view (Issues, Details, Summary, Action). */
+    /** `?period=` from the request, as a number of days (null = lifetime). Unknown values mean lifetime. */
+    public static function periodKey(Request $request): string
+    {
+        $p = (string) $request->input('period', 'lifetime');
+
+        return array_key_exists($p, self::PERIODS) ? $p : 'lifetime';
+    }
+
+    /** `?supplier=NAME` opens the single-supplier detail view (Issues, Details, Action). */
     public function index(Request $request)
     {
         $detailSupplier = trim((string) $request->query('supplier', ''));
 
         return view('customer-care.qc_issues_supplier_wise', [
             'detailSupplier' => $detailSupplier !== '' ? $detailSupplier : null,
+            'period' => self::periodKey($request),
         ]);
     }
 
     /**
-     * One row per supplier: { supplier, supplier_active, issues: [...], issue_count, summary }.
+     * One row per supplier: { supplier, supplier_active, issues: [...], issue_count }.
      * Issues are the non-archived QC / Packaging rows, grouped by the supplier of each SKU.
      */
     public function data(Request $request): JsonResponse
     {
-        $groups = $this->groupsBySupplier();
+        $groups = $this->groupsBySupplier(self::PERIODS[self::periodKey($request)]);
 
         $only = trim((string) $request->query('supplier', ''));
         if ($only !== '') {
@@ -57,30 +63,15 @@ class QcIssuesSupplierWiseController extends Controller
         if (Schema::hasTable('qc_supplier_statuses')) {
             $statuses = DB::table('qc_supplier_statuses')->pluck('is_active', 'supplier_key')->all();
         }
-        $summaries = [];
-        if (Schema::hasTable('qc_supplier_summaries')) {
-            $summaries = DB::table('qc_supplier_summaries')->get(['supplier_key', 'issues_hash', 'summary'])->keyBy('supplier_key')->all();
-        }
-
         $data = [];
         foreach ($groups as $key => $group) {
-            $summary = null;
-            $stale = false;
-            if (isset($summaries[$key])) {
-                $decoded = json_decode((string) $summaries[$key]->summary, true);
-                if (is_array($decoded)) {
-                    $summary = $decoded;
-                    $stale = $summaries[$key]->issues_hash !== $this->issuesHash($group['issues']);
-                }
-            }
             $data[] = [
                 'supplier' => $group['supplier'],
                 'supplier_key' => $key,
                 'supplier_active' => ! isset($statuses[$key]) || (bool) $statuses[$key] ? 'Yes' : 'No',
-                'issue_count' => count($group['issues']),
+                // Issues marked "Ignore - Not supplier fault" are listed but not counted.
+                'issue_count' => count(array_filter($group['issues'], static fn ($i) => ! $i['ignored'])),
                 'issues' => $group['issues'],
-                'summary' => $summary,
-                'summary_stale' => $stale,
             ];
         }
 
@@ -124,92 +115,36 @@ class QcIssuesSupplierWiseController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /**
-     * AI summary of one supplier's issues, SKU wise. SKUs that share a parent (siblings) and the
-     * same supplier are summarised together. Cached until the supplier's issues change.
-     */
-    public function summarize(Request $request): JsonResponse
+    /** Mark / unmark one issue as "Ignore - Not supplier fault". Ignored issues are not counted. */
+    public function ignoreIssue(Request $request, int $id): JsonResponse
     {
-        $validated = $request->validate([
-            'supplier' => 'required|string|max:191',
-            'force' => 'sometimes|boolean',
-        ]);
+        $validated = $request->validate(['ignore' => 'required|boolean']);
 
-        if (! Schema::hasTable('qc_supplier_summaries')) {
-            return response()->json(['success' => false, 'message' => 'Run php artisan migrate first.'], 500);
+        if (! Schema::hasTable('qc_issue_ignores')) {
+            return response()->json(['message' => 'Run php artisan migrate first.'], 500);
         }
 
-        $key = mb_strtoupper(trim($validated['supplier']));
-        $group = $this->groupsBySupplier()[$key] ?? null;
-        if (! $group || $group['issues'] === []) {
-            return response()->json(['success' => false, 'message' => 'No issues found for this supplier.'], 404);
+        $row = DB::table('qc_and_packing_issues')->where('id', $id)->first();
+        if (! $row || $row->is_archived) {
+            return response()->json(['message' => 'Issue not found.'], 404);
         }
 
-        $hash = $this->issuesHash($group['issues']);
-        $cached = DB::table('qc_supplier_summaries')->where('supplier_key', $key)->first();
-        if ($cached && $cached->issues_hash === $hash && empty($validated['force'])) {
-            $decoded = json_decode((string) $cached->summary, true);
-            if (is_array($decoded)) {
-                return response()->json(['success' => true, 'summary' => $decoded, 'cached' => true]);
-            }
+        if ($validated['ignore']) {
+            $user = $request->user();
+            DB::table('qc_issue_ignores')->updateOrInsert(
+                ['issue_id' => $id],
+                [
+                    'ignored_by' => trim((string) ($user?->name ?? '')) ?: 'System',
+                    'ignored_by_user_id' => $user?->id,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        } else {
+            DB::table('qc_issue_ignores')->where('issue_id', $id)->delete();
         }
 
-        $apiKey = (string) (config('services.anthropic.key') ?: config('services.claude.key') ?: '');
-        if ($apiKey === '') {
-            return response()->json(['success' => false, 'message' => 'CLAUDE_API_KEY / ANTHROPIC_API_KEY is not configured.'], 503);
-        }
-
-        $blocks = $this->siblingBlocks($group['issues']);
-        $prompt = $this->buildPrompt($group['supplier'], $blocks);
-        $model = (string) config('services.anthropic.model', 'claude-haiku-4-5-20251001');
-
-        try {
-            $response = Http::timeout(90)
-                ->withHeaders([
-                    'x-api-key' => $apiKey,
-                    'anthropic-version' => (string) config('services.anthropic.version', '2023-06-01'),
-                    'content-type' => 'application/json',
-                ])
-                ->post('https://api.anthropic.com/v1/messages', [
-                    'model' => $model,
-                    'max_tokens' => 2500,
-                    'temperature' => 0.2,
-                    'messages' => [['role' => 'user', 'content' => $prompt]],
-                ]);
-        } catch (\Throwable $e) {
-            Log::warning('QC supplier summary request failed', ['supplier' => $key, 'error' => $e->getMessage()]);
-
-            return response()->json(['success' => false, 'message' => 'AI request failed: '.$e->getMessage()], 502);
-        }
-
-        if (! $response->successful()) {
-            $msg = (string) data_get($response->json(), 'error.message', '');
-            Log::warning('QC supplier summary Claude failed', [
-                'status' => $response->status(),
-                'body' => Str::limit($response->body(), 500),
-                'model' => $model,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => $msg !== '' ? $msg : 'Claude request failed (HTTP '.$response->status().').',
-            ], 502);
-        }
-
-        $summary = $this->parseSummary((string) data_get($response->json(), 'content.0.text', ''), $blocks);
-
-        DB::table('qc_supplier_summaries')->updateOrInsert(
-            ['supplier_key' => $key],
-            [
-                'issues_hash' => $hash,
-                'summary' => json_encode($summary, JSON_UNESCAPED_UNICODE),
-                'model' => $model,
-                'updated_at' => now(),
-                'created_at' => now(),
-            ]
-        );
-
-        return response()->json(['success' => true, 'summary' => $summary, 'cached' => false]);
+        return response()->json(['success' => true, 'ignored' => (bool) $validated['ignore']]);
     }
 
     /** Edit one issue (not the supplier). */
@@ -304,6 +239,115 @@ class QcIssuesSupplierWiseController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /** Ignore ("Not supplier fault") or un-ignore several issues at once, e.g. every issue of a summary row. */
+    public function ignoreBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:500',
+            'ids.*' => 'integer',
+            'ignore' => 'required|boolean',
+        ]);
+
+        if (! Schema::hasTable('qc_issue_ignores')) {
+            return response()->json(['message' => 'Run php artisan migrate first.'], 500);
+        }
+
+        $ids = $this->openIssueIds($validated['ids']);
+        if ($ids === []) {
+            return response()->json(['message' => 'No open issues found.'], 404);
+        }
+
+        $user = $request->user();
+        DB::transaction(function () use ($ids, $validated, $user) {
+            foreach ($ids as $id) {
+                if ($validated['ignore']) {
+                    DB::table('qc_issue_ignores')->updateOrInsert(
+                        ['issue_id' => $id],
+                        [
+                            'ignored_by' => trim((string) ($user?->name ?? '')) ?: 'System',
+                            'ignored_by_user_id' => $user?->id,
+                            'updated_at' => now(),
+                            'created_at' => now(),
+                        ]
+                    );
+                } else {
+                    DB::table('qc_issue_ignores')->where('issue_id', $id)->delete();
+                }
+            }
+        });
+
+        return response()->json(['success' => true, 'count' => count($ids)]);
+    }
+
+    /** Archive several issues at once with one corrective-action answer (every issue of a summary row). */
+    public function archiveBulk(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:500',
+            'ids.*' => 'integer',
+            'corrective_action_taken' => 'required|in:Yes,No',
+            'details' => 'required|string|max:1000',
+        ]);
+        $details = trim($validated['details']);
+        if ($details === '') {
+            $msg = $validated['corrective_action_taken'] === 'Yes' ? 'Enter the results obtained.' : 'Enter the reason for archiving these issues.';
+
+            return response()->json(['message' => $msg], 422);
+        }
+
+        if (! Schema::hasTable('qc_issue_archive_resolutions')) {
+            return response()->json(['message' => 'Run php artisan migrate first.'], 500);
+        }
+
+        $ids = $this->openIssueIds($validated['ids']);
+        if ($ids === []) {
+            return response()->json(['message' => 'No open issues found.'], 404);
+        }
+
+        $user = $request->user();
+        $actor = trim((string) ($user?->name ?? '')) ?: 'System';
+
+        DB::transaction(function () use ($ids, $validated, $details, $request, $user, $actor) {
+            $now = now();
+            foreach ($ids as $id) {
+                DB::table('qc_and_packing_issues')->where('id', $id)->update([
+                    'is_archived' => true,
+                    'archived_at' => $now,
+                    'archived_by' => $actor,
+                    'updated_at' => $now,
+                ]);
+                DB::table('qc_issue_archive_resolutions')->insert([
+                    'issue_id' => $id,
+                    'corrective_action_taken' => $validated['corrective_action_taken'] === 'Yes',
+                    'details' => $details,
+                    'archived_by' => $actor,
+                    'archived_by_user_id' => $user?->id,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+                $this->logHistory($id, 'archived', $request);
+            }
+        });
+
+        return response()->json(['success' => true, 'count' => count($ids)]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $ids
+     * @return list<int>
+     */
+    private function openIssueIds(array $ids): array
+    {
+        return DB::table('qc_and_packing_issues')
+            ->whereIn('id', array_map('intval', $ids))
+            ->where(function ($q) {
+                $q->whereNull('is_archived')->orWhere('is_archived', false);
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
     /** All archived QC / Packaging issues with their resolutions. */
     public function archived(): JsonResponse
     {
@@ -393,7 +437,7 @@ class QcIssuesSupplierWiseController extends Controller
      *
      * @return array<string, array{supplier: string, issues: list<array<string, mixed>>}>
      */
-    private function groupsBySupplier(): array
+    public function groupsBySupplier(?int $days = null): array
     {
         // Packaging / QC issues logged on All Issues are copied onto qc_and_packing_issues lazily;
         // do it here too so none are missing (same step the QC / Packaging page runs).
@@ -428,7 +472,21 @@ class QcIssuesSupplierWiseController extends Controller
                 'root_cause_fixed_remark' => trim((string) ($row->c_action_1_remark ?? '')),
                 'department' => implode(', ', $depts),
                 'date' => $row->created_at ? Carbon::parse($row->created_at)->timezone($tz)->format('d-m-Y') : '',
+                'date_iso' => $row->created_at ? Carbon::parse($row->created_at)->timezone($tz)->format('Y-m-d') : '',
             ];
+        }
+
+        $ignored = Schema::hasTable('qc_issue_ignores')
+            ? array_flip(DB::table('qc_issue_ignores')->pluck('issue_id')->map(fn ($id) => (int) $id)->all())
+            : [];
+        foreach ($issues as $k => $i) {
+            $issues[$k]['ignored'] = isset($ignored[$i['id']]);
+        }
+
+        if ($days !== null) {
+            // Issues reported in the last $days days (today counts as day 0).
+            $cutoff = Carbon::now($tz)->subDays($days)->format('Y-m-d');
+            $issues = array_values(array_filter($issues, static fn ($i) => $i['date_iso'] !== '' && $i['date_iso'] >= $cutoff));
         }
 
         $issues = app(QcAndPackingController::class)->attachSuppliers($issues);
@@ -448,105 +506,6 @@ class QcIssuesSupplierWiseController extends Controller
         }
 
         return $groups;
-    }
-
-    /** Changes whenever the supplier's issues change, so cached summaries can be flagged outdated. */
-    private function issuesHash(array $issues): string
-    {
-        return md5(json_encode(array_map(static fn ($i) => [
-            $i['id'], $i['what_happened'], $i['issue'], $i['issue_remark'], $i['action'], $i['action_remark'],
-            $i['root_cause_fixed'], $i['root_cause_fixed_remark'],
-        ], $issues)));
-    }
-
-    /**
-     * Sibling groups: issues of this supplier that share a parent are one block.
-     * SKUs without a parent stand alone.
-     *
-     * @return list<array{group: string, skus: list<string>, lines: list<string>}>
-     */
-    private function siblingBlocks(array $issues): array
-    {
-        $blocks = [];
-        foreach (array_slice($issues, 0, self::SUMMARY_MAX_ISSUES) as $i) {
-            $label = $i['parent'] !== '' ? $i['parent'] : $i['sku'];
-            $key = mb_strtoupper($label);
-            if (! isset($blocks[$key])) {
-                $blocks[$key] = ['group' => $label, 'skus' => [], 'lines' => []];
-            }
-            if (! in_array($i['sku'], $blocks[$key]['skus'], true)) {
-                $blocks[$key]['skus'][] = $i['sku'];
-            }
-            $parts = array_filter([
-                $i['date'],
-                'SKU '.$i['sku'],
-                $i['department'],
-                'issue: '.trim($i['what_happened'].' '.$i['issue']),
-                $i['issue_remark'] !== '' ? 'remark: '.$i['issue_remark'] : '',
-                $i['action'] !== '' ? 'action: '.$i['action'].($i['action_remark'] !== '' ? ' ('.$i['action_remark'].')' : '') : '',
-                $i['root_cause_fixed'] !== '' ? 'root cause fixed: '.$i['root_cause_fixed'] : '',
-            ], static fn ($p) => $p !== '');
-            $blocks[$key]['lines'][] = '- '.Str::limit(implode(' | ', $parts), 400);
-        }
-
-        return array_values($blocks);
-    }
-
-    private function buildPrompt(string $supplier, array $blocks): string
-    {
-        $text = '';
-        foreach ($blocks as $b) {
-            $text .= 'GROUP: '.$b['group'].' (SKUs: '.implode(', ', $b['skus']).")\n".implode("\n", $b['lines'])."\n\n";
-        }
-        $count = count($blocks);
-
-        return <<<PROMPT
-You are a QC analyst for an e-commerce brand (5 Core / musical gear & accessories).
-Below are the QC and Packaging issues recorded for supplier "{$supplier}", already grouped by product family (sibling SKUs share one parent).
-
-{$text}
-Write a short summary of the issues faced for EACH group (there are {$count}), SKU wise:
-- Mention which SKUs were affected and what went wrong, merging repeated problems across sibling SKUs of the same group.
-- Include how often it happened and the date range when there is more than one issue, and say whether the root cause was fixed if that is recorded.
-- Max 2 sentences per group. Use only facts from the data above; do not invent anything.
-
-Output ONLY valid JSON (no markdown fences), one entry per group, in the same order:
-[{"group":"<GROUP name>","skus":["<sku>", "..."],"summary":"<summary>"}]
-PROMPT;
-    }
-
-    /**
-     * @param  list<array{group: string, skus: list<string>, lines: list<string>}>  $blocks
-     * @return list<array{group: string, skus: list<string>, summary: string}>
-     */
-    private function parseSummary(string $content, array $blocks): array
-    {
-        $content = trim($content);
-        $parsed = null;
-        if (preg_match('/\[.*\]/s', $content, $m)) {
-            $parsed = json_decode($m[0], true);
-        }
-
-        $out = [];
-        if (is_array($parsed)) {
-            foreach ($parsed as $item) {
-                if (! is_array($item) || trim((string) ($item['summary'] ?? '')) === '') {
-                    continue;
-                }
-                $out[] = [
-                    'group' => trim((string) ($item['group'] ?? '')),
-                    'skus' => array_values(array_filter(array_map(fn ($s) => trim((string) $s), (array) ($item['skus'] ?? [])))),
-                    'summary' => trim((string) $item['summary']),
-                ];
-            }
-        }
-
-        if ($out === []) {
-            // Model did not return JSON: keep its text so the work is not lost.
-            $out[] = ['group' => '', 'skus' => [], 'summary' => $content];
-        }
-
-        return $out;
     }
 
     /** Department column is a JSON array or a "|" / "," separated list. */

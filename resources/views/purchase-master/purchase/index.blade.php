@@ -295,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     const esc = function(s) {
                         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                     };
-                    return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
+                    return '<span title="' + esc(toNameCase(value)) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(toNameCase(first)) + '</span>';
                 }
             },
             { 

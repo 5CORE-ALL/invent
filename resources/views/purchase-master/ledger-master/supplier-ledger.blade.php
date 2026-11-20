@@ -203,7 +203,7 @@
                                     <option value="">Select</option>
                                     ${suppliersList.map(supplier => `
                                         <option value="${supplier.id}" ${supplier.id == value ? 'selected' : ''}>
-                                            ${supplier.name}
+                                            ${toNameCase(supplier.name)}
                                         </option>
                                     `).join('')}
                                 </select>

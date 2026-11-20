@@ -227,6 +227,15 @@ class LedgerMasterController extends Controller
             }
             $items = $payment->purchaseContract->items ?? null;
             $items = is_array($items) ? $items : json_decode((string) $items, true);
+            // SKUs on the PO (shown as the Summary chips, same as /list-all-purchase-orders)
+            $skus = [];
+            foreach ((array) $items as $item) {
+                $sku = trim((string) (is_array($item) ? ($item['sku'] ?? '') : ''));
+                if ($sku !== '' && !in_array($sku, $skus, true)) {
+                    $skus[] = $sku;
+                }
+            }
+
             foreach ((array) $items as $item) {
                 // PO currency = currency of its items (USD or RMB); first item wins on a mixed PO.
                 if (!$currencySeen && !empty($item['currency'])) {
@@ -245,9 +254,10 @@ class LedgerMasterController extends Controller
                 'purchase_contract_id' => $payment->purchase_contract_id,
                 'purchase_contract' => $payment->purchaseContract->po_number ?? '',
                 'po_date' => $payment->purchaseContract && $payment->purchaseContract->po_date
-                    ? Carbon::parse($payment->purchaseContract->po_date)->format('d M Y')
+                    ? Carbon::parse($payment->purchaseContract->po_date)->format('j M y')
                     : '',
                 'currency' => $currency,
+                'skus' => $skus,
                 'po_stage' => $payment->purchaseContract->po_stage ?? '',
                 'amount' => $amount ?? '',
                 'advance_amount' => $advance ?? '',

@@ -374,7 +374,7 @@ function invVerifyColumns() {
             formatter: function(cell) {
                 const value = String(cell.getValue() == null ? '' : cell.getValue()).trim();
                 if (!value) return '-';
-                const display = escHtml(value.split(/\s+/).filter(Boolean)[0] || value);
+                const display = escHtml(toNameCase(value.split(/\s+/).filter(Boolean)[0] || value));
                 let color = '#212529';
                 if (value.toUpperCase() === 'FIND') {
                     color = '#eab308';
@@ -383,7 +383,7 @@ function invVerifyColumns() {
                     for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) % 360;
                     color = 'hsl(' + h + ', 70%, 40%)';
                 }
-                return '<span title="' + escHtml(value) + '" style="color:' + color + ';font-weight:700;font-size:0.72rem;white-space:nowrap;">' + display + '</span>';
+                return '<span title="' + escHtml(toNameCase(value)) + '" style="color:' + color + ';font-weight:700;font-size:0.72rem;white-space:nowrap;">' + display + '</span>';
             }
         },
         {

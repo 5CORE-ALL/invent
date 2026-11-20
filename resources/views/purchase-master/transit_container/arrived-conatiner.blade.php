@@ -351,7 +351,7 @@ tabs.forEach((tabName, index) => {
                     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
                 };
                 if (!value) return '-';
-                const display = esc(value.split(/\s+/).filter(Boolean)[0] || value);
+                const display = esc(toNameCase(value.split(/\s+/).filter(Boolean)[0] || value));
                 let color = '#212529';
                 if (value.toUpperCase() === 'FIND') {
                   color = '#eab308';
@@ -360,7 +360,7 @@ tabs.forEach((tabName, index) => {
                   for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) % 360;
                   color = 'hsl(' + h + ', 70%, 40%)';
                 }
-                return '<span title="' + esc(value) + '" style="color:' + color + ';font-weight:700;font-size:0.72rem;white-space:nowrap;">' + display + '</span>';
+                return '<span title="' + esc(toNameCase(value)) + '" style="color:' + color + ';font-weight:700;font-size:0.72rem;white-space:nowrap;">' + display + '</span>';
               }
             },
             {

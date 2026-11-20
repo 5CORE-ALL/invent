@@ -2457,7 +2457,7 @@
                         formatter: function(cell) {
                             const name = String(cell.getRow().getData().supplier || '').trim();
                             if (!name) return '<span class="text-muted">—</span>';
-                            return '<span title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+                            return '<span title="' + escapeHtml(toNameCase(name)) + '">' + escapeHtml(toNameCase(name)) + '</span>';
                         }
                     },
                     {

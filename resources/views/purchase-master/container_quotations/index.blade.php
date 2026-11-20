@@ -686,7 +686,10 @@
                       cellClick: function (e, cell) {
                           if (canEdit && e.target.closest('.qc-q-btn')) openModal(cell.getRow().getData());
                       } },
-                    { title: 'Supplier', field: 'supplier', formatter: textCell, minWidth: 140 },
+                    { title: 'Supplier', field: 'supplier', formatter: function (cell) {
+                          const v = String(cell.getValue() ?? '').trim();
+                          return v ? esc(toNameCase(v)) : '<span class="text-muted">—</span>';
+                      }, minWidth: 140 },
                     { title: 'Size', field: 'container_size', formatter: textCell },
                     { title: 'Pickup Address Supplier', field: 'pickup_address', formatter: wrapCell, width: 260 },
                     { title: 'Load Port', field: 'loading_port', formatter: textCell },

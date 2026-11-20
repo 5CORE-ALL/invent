@@ -856,7 +856,8 @@
                             <a href="{{ route('outgoing.view') }}">Inv Outgoing</a>
                         </li>
                         <li>
-                            <a href="{{ route('inventory.spares.dashboard') }}">Inv Spare Parts</a>
+                            <a href="{{ route('spare.part.packaging') }}"
+                               class="{{ request()->routeIs('spare.part.packaging') ? 'active' : '' }}">Spare / Parts / Packaging</a>
                         </li>
                         <li>
                             <a href="{{ route('stock.adjustment.view') }}">Inv Stock Adjustment</a>

@@ -1122,7 +1122,7 @@
             function supplierFirstName(name) {
                 const v = String(name || '').trim();
                 if (!v) return '';
-                return v.split(/\s+/).filter(Boolean)[0] || v;
+                return toNameCase(v.split(/\s+/).filter(Boolean)[0] || v);
             }
 
             function supplierFormatter(cell) {
@@ -1137,7 +1137,7 @@
                 if (!val) {
                     return '<span class="text-muted" title="Click to set supplier">—</span>';
                 }
-                return '<span class="mip-supplier-text" title="' + esc(val) + '">' + esc(supplierFirstName(val)) + '</span>';
+                return '<span class="mip-supplier-text" title="' + esc(toNameCase(val)) + '">' + esc(supplierFirstName(val)) + '</span>';
             }
 
             table = new Tabulator("#mfrg-table", {

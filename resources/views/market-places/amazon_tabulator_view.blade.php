@@ -653,6 +653,8 @@
             max-width: none !important;
             margin: 0.5rem 0 0 0 !important;
         }
+        /* The history chart can open on top of the CVR Price Rule modal (history dots in its SKUs column). */
+        #amzMetricChartModal.modal { z-index: 10800; }
         #skuMetricsModal .modal-content,
         #amzMetricChartModal .modal-content {
             border-radius: 0;
@@ -2499,6 +2501,7 @@
             'p_views': 'Projected Views',
             'y_spend': 'Y Spend', 'y_acos_pct': 'Y ACOS%', 'y_tacos_pct': 'Y TACOS%', 'y_sales': 'Y Sales',
             'y_cvr_pct': 'Y CVR%', 'y_bgt': 'Y Bgt', 'y_utilized_pct': 'Y Utilized%',
+            'cvr_down_count': 'CVR Down SKUs', 'cvr_same_count': 'CVR Within Target SKUs', 'cvr_up_count': 'CVR Up SKUs',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
@@ -2510,12 +2513,13 @@
             'tcos_pct', 'total_l30_orders',
             'p_sales', 'p_qty', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'p_views',
             'y_spend', 'y_acos_pct', 'y_tacos_pct', 'y_sales', 'y_cvr_pct', 'y_bgt', 'y_utilized_pct',
+            'cvr_down_count', 'cvr_same_count', 'cvr_up_count',
         ];
 
         const amzPctMetrics = ['gprofit', 'groi', 'npft', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'p_groi_pct', 'p_npft', 'p_nroi_pct', 'p_ads_pct', 'p_acos_pct', 'y_acos_pct', 'y_tacos_pct', 'y_cvr_pct', 'y_utilized_pct'];
         const amzDollarMetrics = ['l30_sales', 'total_pft', 'total_sales', 'p_sales', 'y_spend', 'y_sales', 'y_bgt'];
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const amzBadgeInvertMetrics = { p_ads_pct: true, p_acos_pct: true, tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true, y_acos_pct: true, y_tacos_pct: true, y_spend: true };
+        const amzBadgeInvertMetrics = { p_ads_pct: true, p_acos_pct: true, tcos_pct: true, zero_sold_count: true, prc_gt_lmp_count: true, y_acos_pct: true, y_tacos_pct: true, y_spend: true, cvr_down_count: true };
         let amzBadgePrevDay = null;
         let amzBadgePrevDayLoaded = false;
 
@@ -2756,7 +2760,7 @@
         });
 
         document.addEventListener('click', function(e) {
-            const el = e.target && e.target.closest ? e.target.closest('#summary-stats .summary-trend-dot') : null;
+            const el = e.target && e.target.closest ? e.target.closest('#summary-stats .summary-trend-dot, #amzCvrRuleModal .summary-trend-dot') : null;
             if (!el) return;
             e.preventDefault();
             e.stopPropagation();
@@ -2767,6 +2771,11 @@
                 showAmzMetricChart(m);
             }
         }, true);
+        // History chart opened over the CVR Price Rule modal: lift its backdrop above that modal too.
+        $(document).on('shown.bs.modal', '#amzMetricChartModal', function() {
+            $('.modal-backdrop').last().css('z-index', 10790);
+        });
+
         // Badge click handler
         $(document).on('click', '.amz-badge-chart', function(e) {
             if ($(e.target).closest('.summary-trend-dot').length) return;
@@ -7199,7 +7208,12 @@
                 // Only save when totalSkuCount > 0 (proof that real data was processed)
                 if (!window._badgeStatsSaved && totalSkuCount > 0) {
                     window._badgeStatsSaved = true;
+                    // CVR Price Rule modal SKU counts (saved targets) for its history dots.
+                    const cvrRuleCounts = (typeof amzCvrRuleCounts === 'function') ? amzCvrRuleCounts(amzCvrRule).counts : { down: '', same: '', up: '' };
                     $.post('/amazon-badge-stats-save', {
+                        cvr_down_count: cvrRuleCounts.down,
+                        cvr_same_count: cvrRuleCounts.same,
+                        cvr_up_count: cvrRuleCounts.up,
                         _token: $('meta[name="csrf-token"]').attr('content'),
                         sold_count: totalSoldCount,
                         zero_sold_count: zeroSoldCount,

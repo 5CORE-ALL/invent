@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const value = String(cell.getValue() || '').trim();
                     if (!value) return '-';
                     const first = value.split(/\s+/).filter(Boolean)[0] || value;
-                    return `<span title="${escapeHtml(value)}" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">${escapeHtml(first)}</span>`;
+                    return `<span title="${escapeHtml(toNameCase(value))}" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">${escapeHtml(toNameCase(first))}</span>`;
                 }
             },
             {

@@ -889,8 +889,8 @@
                     formatter: function (cell) {
                         const value = String(cell.getValue() || '').trim();
                         if (!value) return '-';
-                        const first = value.split(/\s+/).filter(Boolean)[0] || value;
-                        const esc = String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                        const first = toNameCase(value.split(/\s+/).filter(Boolean)[0] || value);
+                        const esc = String(toNameCase(value)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                         const escFirst = String(first).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                         return `<span title="${esc}" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">${escFirst}</span>`;
                     }

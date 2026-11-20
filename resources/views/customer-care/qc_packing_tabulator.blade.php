@@ -781,7 +781,7 @@
                     { title: '', field: 'image_url', width: 56, frozen: true, formatter: fmtImage, headerSort: false },
                     { title: 'Parent', field: 'parent', width: 140, frozen: true, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
                     { title: 'SKU', field: 'sku', width: 140, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + escapeHtml(c.getValue()) + '</span>'; } },
-                    { title: 'Supplier', field: 'supplier', width: 160, formatter: function (c) { return '<span title="' + escAttr(c.getValue()) + '">' + dash(c.getValue()) + '</span>'; } },
+                    { title: 'Supplier', field: 'supplier', width: 160, formatter: function (c) { return '<span title="' + escAttr(toNameCase(c.getValue())) + '">' + dash(toNameCase(c.getValue())) + '</span>'; } },
                 ];
                 if (main) cols.push({ title: 'Loss $', field: 'total_loss', width: 90, formatter: fmtLoss, headerSort: false, tooltip: false });
                 cols.push(

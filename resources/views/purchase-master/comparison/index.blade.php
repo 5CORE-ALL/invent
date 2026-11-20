@@ -11507,9 +11507,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!name) {
                 return '';
             }
-            const first = name.split(/\s+/).filter(Boolean)[0] || name;
+            const first = toNameCase(name.split(/\s+/).filter(Boolean)[0] || name);
             const link = String(s.link || '').trim();
-            const title = s.company ? `${name} — ${s.company}` : name;
+            const title = s.company ? `${toNameCase(name)} — ${s.company}` : toNameCase(name);
             if (link) {
                 return `<a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener noreferrer"
                     class="badge bg-secondary-subtle text-dark border text-decoration-none me-1 mb-1 comparison-supplier-badge"

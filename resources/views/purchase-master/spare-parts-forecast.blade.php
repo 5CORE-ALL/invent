@@ -23,9 +23,6 @@
                 <a href="{{ route('forecast.analysis') }}" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-arrow-left"></i> Forecast Analysis
                 </a>
-                <a href="{{ route('inventory.spares.dashboard') }}" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-screwdriver-wrench"></i> Spare Parts Dashboard
-                </a>
                 <button id="sp-export-btn" type="button" class="btn btn-sm btn-success">
                     <i class="fas fa-download"></i> Export CSV
                 </button>
@@ -108,10 +105,9 @@
             const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const routes = {
                 data: @json(route('forecast.analysis.spare-parts', ['ajax' => 1])),
-                createPo: @json(route('inventory.spares.purchase-orders.create')),
-                suppliers: @json(route('inventory.spares.dashboard', ['ajax' => 1]))
+                createPo: @json(route('inventory.spares.purchase-orders.create'))
             };
-            let supplierOptions = [];
+            let supplierOptions = @json($suppliers ?? []);
             let rows = @json($rows ?? []);
 
             function esc(v) {
@@ -191,7 +187,7 @@
                             return '<span title="' + esc(tip).replace(/&amp;#10;/g, '&#10;') + '" style="display:inline-block;max-width:100%;padding:1px 6px;border-radius:10px;font-size:0.7rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help;background:' + c[0] + ';color:' + c[1] + ';border:1px solid ' + c[2] + ';">&#9888; ' + esc(top.label) + more + '</span>';
                         }
                     },
-                    { title: 'Supplier', field: 'supplier', minWidth: 130 },
+                    { title: 'Supplier', field: 'supplier', minWidth: 130, formatter: c => c.getValue() ? esc(toNameCase(c.getValue())) : '' },
                     { title: 'Avail', field: 'available', sorter: 'number', hozAlign: 'center', width: 70, headerTooltip: 'Available stock', formatter: c => num(c.getValue()) },
                     { title: 'Resvd', field: 'reserved', sorter: 'number', hozAlign: 'center', width: 70, headerTooltip: 'Reserved: approved requisition qty not yet issued', formatter: c => num(c.getValue()) },
                     { title: 'On Order', field: 'on_order', sorter: 'number', hozAlign: 'center', width: 82, headerTooltip: 'Qty still to be received on open purchase orders', formatter: c => num(c.getValue()) },
@@ -287,11 +283,6 @@
             const poModalEl = document.getElementById('spPoModal');
             const poModal = new bootstrap.Modal(poModalEl);
             let poSku = '';
-
-            fetch(routes.suppliers, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(r => r.json())
-                .then(function (json) { supplierOptions = json.suppliers || []; })
-                .catch(function () {});
 
             function openPoModal(r) {
                 poSku = r.sku;

@@ -2581,14 +2581,32 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->name('customer.care.qc.issues.supplier.wise.data');
     Route::post('/customer-care/qc-issues-supplier-wise/active', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'setActive'])
         ->name('customer.care.qc.issues.supplier.wise.active');
-    Route::post('/customer-care/qc-issues-supplier-wise/summary', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'summarize'])
-        ->name('customer.care.qc.issues.supplier.wise.summary');
+    Route::get('/customer-care/qc-issues-supplier-wise/summary/{mode}', [\App\Http\Controllers\CustomerCare\QcIssuesSummaryController::class, 'page'])
+        ->where('mode', 'sku|parent')->name('customer.care.qc.issues.summary');
+    Route::get('/customer-care/qc-issues-supplier-wise/summary/{mode}/data', [\App\Http\Controllers\CustomerCare\QcIssuesSummaryController::class, 'data'])
+        ->where('mode', 'sku|parent')->name('customer.care.qc.issues.summary.data');
+    Route::post('/customer-care/qc-issues-supplier-wise/summary/{mode}/common-issue', [\App\Http\Controllers\CustomerCare\QcIssuesSummaryController::class, 'addCommonIssue'])
+        ->where('mode', 'sku|parent')->name('customer.care.qc.issues.summary.common.add');
+    Route::delete('/customer-care/qc-issues-supplier-wise/summary/{mode}/common-issue/{id}', [\App\Http\Controllers\CustomerCare\QcIssuesSummaryController::class, 'removeCommonIssue'])
+        ->where('mode', 'sku|parent')->name('customer.care.qc.issues.summary.common.remove');
     Route::get('/customer-care/qc-issues-supplier-wise/archived', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'archived'])
         ->name('customer.care.qc.issues.supplier.wise.archived');
+    Route::post('/customer-care/qc-issues-supplier-wise/issues/{id}/ignore', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'ignoreIssue'])
+        ->name('customer.care.qc.issues.supplier.wise.issue.ignore');
+    Route::post('/customer-care/qc-issues-supplier-wise/issues/ignore-bulk', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'ignoreBulk'])
+        ->name('customer.care.qc.issues.supplier.wise.issues.ignore.bulk');
+    Route::post('/customer-care/qc-issues-supplier-wise/issues/archive-bulk', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'archiveBulk'])
+        ->name('customer.care.qc.issues.supplier.wise.issues.archive.bulk');
     Route::put('/customer-care/qc-issues-supplier-wise/issues/{id}', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'updateIssue'])
         ->name('customer.care.qc.issues.supplier.wise.issue.update');
     Route::post('/customer-care/qc-issues-supplier-wise/issues/{id}/archive', [\App\Http\Controllers\CustomerCare\QcIssuesSupplierWiseController::class, 'archiveIssue'])
         ->name('customer.care.qc.issues.supplier.wise.issue.archive');
+    Route::get('/customer-care/qc-issues-supplier-wise/complaint/draft', [\App\Http\Controllers\CustomerCare\QcIssuesComplaintController::class, 'draft'])
+        ->name('customer.care.qc.issues.complaint.draft');
+    Route::post('/customer-care/qc-issues-supplier-wise/complaint/refresh', [\App\Http\Controllers\CustomerCare\QcIssuesComplaintController::class, 'refresh'])
+        ->name('customer.care.qc.issues.complaint.refresh');
+    Route::post('/customer-care/qc-issues-supplier-wise/complaint/send', [\App\Http\Controllers\CustomerCare\QcIssuesComplaintController::class, 'send'])
+        ->name('customer.care.qc.issues.complaint.send');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
         $sku = trim((string) $request->query('sku', ''));
         if ($sku === '') {
@@ -3509,13 +3527,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/send', [SparePartPurchaseOrderController::class, 'send'])->name('inventory.spare-parts.api.purchase-orders.send');
     Route::post('/inventory/spare-parts/api/purchase-orders/{sparePartPurchaseOrder}/receive', [SparePartPurchaseOrderController::class, 'receive'])->name('inventory.spare-parts.api.purchase-orders.receive');
 
-    Route::get('/inventory/spares/dashboard', [SpareController::class, 'index'])->name('inventory.spares.dashboard');
-    Route::post('/inventory/spares/store', [SpareController::class, 'storeSpare'])->name('inventory.spares.store');
-    Route::post('/inventory/spares/requisitions/create', [SpareController::class, 'createRequisition'])->name('inventory.spares.requisitions.create');
-    Route::post('/inventory/spares/requisitions/{requisition}/status', [SpareController::class, 'updateRequisitionStatus'])->name('inventory.spares.requisitions.status');
-    Route::post('/inventory/spares/issue', [SpareController::class, 'issueSpare'])->name('inventory.spares.issue');
     Route::post('/inventory/spares/purchase-orders/create', [SpareController::class, 'createPO'])->name('inventory.spares.purchase-orders.create');
-    Route::post('/inventory/spares/purchase-orders/{purchaseOrder}/receive', [SpareController::class, 'receivePO'])->name('inventory.spares.purchase-orders.receive');
+    Route::get('/inventory/spare-part-packaging', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'index'])->name('spare.part.packaging');
+    Route::get('/inventory/spare-part-packaging/data', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'data'])->name('spare.part.packaging.data');
+    Route::get('/inventory/spare-part-packaging/options', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'options'])->name('spare.part.packaging.options');
+    Route::post('/inventory/spare-part-packaging', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'store'])->name('spare.part.packaging.store');
+    Route::post('/inventory/spare-part-packaging/{id}/update', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'update'])->whereNumber('id')->name('spare.part.packaging.update');
+    Route::post('/inventory/spare-part-packaging/{id}/add-qty', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'addQty'])->whereNumber('id')->name('spare.part.packaging.add.qty');
+    Route::get('/inventory/spare-part-packaging/{id}/cr-draft', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'crDraft'])->whereNumber('id')->name('spare.part.packaging.cr.draft');
+    Route::post('/inventory/spare-part-packaging/{id}/cr-send', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'crSend'])->whereNumber('id')->name('spare.part.packaging.cr.send');
+    Route::delete('/inventory/spare-part-packaging/{id}', [\App\Http\Controllers\InventoryManagement\SparePartPackagingController::class, 'destroy'])->whereNumber('id')->name('spare.part.packaging.destroy');
     Route::post('/outgoing-archive', [OutgoingController::class, 'archive']);
 
     Route::get('/refunds-view', [RefundController::class, 'index'])->name('refunds.view');
@@ -5235,6 +5256,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
+    Route::post('/amazon-cvr-rule-counts-save', [OverallAmazonController::class, 'saveAmazonCvrRuleCounts']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
     Route::get('/amazon-badge-prev-day', [OverallAmazonController::class, 'getAmazonBadgePrevDay']);
     Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);

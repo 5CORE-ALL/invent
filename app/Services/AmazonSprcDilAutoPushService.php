@@ -307,8 +307,8 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF). The base is Std Prc, LMP-capped like the Std rule
-     * does but with no discounts, so it is the same number on every run and a push never compounds the %.
+     * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF). The ceiling is Std Prc (no LMP cap, no discounts),
+     * so it is the same number on every run and a push never compounds the %.
      * null = the rule does not change this SKU (nothing is saved or pushed). Clearance SKUs are left alone.
      * Page twin: amzCvrRuleBaseFor() in CVR-only mode.
      *
@@ -327,10 +327,10 @@ class AmazonSprcDilAutoPushService
         }
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
-        $lmp = (float) ($row['lmp'] ?? 0);
-        $stdCapped = round(AmazonDilGroiRule::capSpriceToLmp($std, $lmp, $lp, $ship, AmazonDilGroiRule::TAKE_HOME, $std, 0.0), 2);
+        // No LMP cap: the CVR rule's Up ceiling is Std Prc itself.
+        $stdCapped = round($std, 2);
         // Compares with the live Price: the rule's % comes off it. It acts once per price (holds when the saved S PRC already
-        // equals live), Up stops at Std Prc (LMP-capped), Down never goes above live.
+        // equals live), Up stops at Std Prc (no LMP cap), Down never goes above live.
         $base = round((float) ($row['price'] ?? 0), 2);
         if (! ($base >= 0.01) || \App\Support\EbayCvrPriceRule::holdsLive($base, (float) ($row['sprice'] ?? 0))) {
             return null;
@@ -365,7 +365,7 @@ class AmazonSprcDilAutoPushService
             'age_disc' => 0.0,
             'sum_disc' => 0.0,
             'dil_groi' => false,
-            'lmp_capped' => $lmp > 0 && ($std - $stdCapped) > 0.009,
+            'lmp_capped' => false,
             'snroi_capped' => false,
             'base' => round($std, 2),
         ];
