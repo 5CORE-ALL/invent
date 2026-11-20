@@ -1811,8 +1811,8 @@
                 return 'other';
             }
 
-            // Which tab each parent belongs to is decided by its SKUs; a parent without
-            // SKUs falls back to its own status.
+            // Which tab each parent belongs to is decided by its child SKUs.
+            // A parent whose last child was moved away has no status of its own, so it stays on Active.
             function pmParentTabMap(rows) {
                 const map = {};
                 (rows || []).forEach(item => {
@@ -1827,6 +1827,8 @@
                 if (isParentRowItem(item)) {
                     const kids = parentMap[item.Parent];
                     if (kids) return !!kids[tab];
+                    const own = pmItemStatusKey(item);
+                    return own === 'other' ? tab === 'active' : own === tab;
                 }
                 return pmItemStatusKey(item) === tab;
             }
