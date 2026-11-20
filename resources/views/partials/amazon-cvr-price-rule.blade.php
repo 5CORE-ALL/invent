@@ -353,6 +353,8 @@
                 if (!r || r.is_parent_summary) return;
                 const sku = String(r['(Child) sku'] || '').trim().toUpperCase();
                 if (sku.indexOf('PARENT ') === 0 || sku === 'PARENT') return;
+                // SKUs with 0 INV are not counted (they get no rule price).
+                if (!(parseFloat(r['INV']) > 0)) return;
                 const c = amzCvrRuleCaseFor(r, cfg);
                 if (!c) return;
                 counts[c]++;
@@ -419,7 +421,7 @@
             $('#amz-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
             $('#amz-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs loaded in the table. A SKU with no LT O CVR (no sessions) is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s S PRC before this rule).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV, or with no LT O CVR (no sessions), is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {
