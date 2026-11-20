@@ -7,11 +7,18 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\TiktokOrder;
 use App\Services\TikTokShopService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class TikTokOrderSyncService
 {
+    /**
+     * Above this many jobs waiting on mm-tiktok no more imports are queued. A backlog that large
+     * means the worker is behind, and every extra copy only makes it longer.
+     */
+    public const MAX_PENDING_JOBS_BEFORE_PAUSE = 5000;
+
     use PreservesMarketplaceImportStatus;
     use ResolvesTikTokOrderRawJson;
 
@@ -129,6 +136,15 @@ class TikTokOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('tiktok', $settings);
 
+        // Orders that already have an import job waiting are not queued again, even if the unique
+        // lock is gone (cache cleared, expired). Null = backlog too large, queue nothing more.
+        // Checked first: the stuck-queue release below compares every queued row with every waiting
+        // payload, which is far too slow on a backlog of 100k jobs.
+        $pendingOrders = $this->pendingImportOrderIds(MarketplaceManagerRegistry::queueFor('tiktok'));
+        if ($pendingOrders === null) {
+            return 0;
+        }
+
         $this->releaseStuckQueuedImports();
 
         $cutoff = $this->autoImportFromDate();
@@ -198,6 +214,10 @@ class TikTokOrderSyncService
                 continue;
             }
 
+            if (isset($pendingOrders[$orderId])) {
+                continue;
+            }
+
             try {
                 if (! MarketplaceShopifyImportQueue::push(
                     new ImportTikTokOrderToShopify((int) $order->id),
@@ -222,6 +242,64 @@ class TikTokOrderSyncService
         }
 
         return $dispatched;
+    }
+
+    /**
+     * TikTok order ids that already have an ImportTikTokOrderToShopify job waiting on the queue.
+     *
+     * @return array<string, true>|null null when the queue is over MAX_PENDING_JOBS_BEFORE_PAUSE
+     */
+    public function pendingImportOrderIds(string $queue): ?array
+    {
+        try {
+            $waiting = DB::table('jobs')->where('queue', $queue)->count();
+            if ($waiting > self::MAX_PENDING_JOBS_BEFORE_PAUSE) {
+                Log::warning('TikTokOrderSyncService: import queue backlog too large, not queuing more imports', [
+                    'queue' => $queue,
+                    'waiting' => $waiting,
+                    'hint' => 'php artisan tiktok:dedupe-import-queue --apply',
+                ]);
+
+                return null;
+            }
+
+            $rowIds = [];
+            foreach (DB::table('jobs')
+                ->where('queue', $queue)
+                ->where('payload', 'like', '%ImportTikTokOrderToShopify%')
+                ->pluck('payload') as $payload) {
+                $rowId = self::importRowIdFromPayload((string) $payload);
+                if ($rowId !== null) {
+                    $rowIds[$rowId] = true;
+                }
+            }
+            if ($rowIds === []) {
+                return [];
+            }
+
+            $orders = [];
+            foreach (array_chunk(array_keys($rowIds), 1000) as $chunk) {
+                foreach (TiktokOrder::query()->whereIn('id', $chunk)->pluck('order_id') as $orderId) {
+                    $orders[(string) $orderId] = true;
+                }
+            }
+
+            return $orders;
+        } catch (\Throwable $e) {
+            Log::warning('TikTokOrderSyncService: could not read pending import jobs', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /** tiktok_orders.id held by a queued ImportTikTokOrderToShopify payload. */
+    public static function importRowIdFromPayload(string $payload): ?int
+    {
+        if (preg_match('/tiktokOrderId\\\\?";i:(\d+);/', $payload, $m) === 1) {
+            return (int) $m[1];
+        }
+
+        return null;
     }
 
     protected function releaseStuckQueuedImports(): void

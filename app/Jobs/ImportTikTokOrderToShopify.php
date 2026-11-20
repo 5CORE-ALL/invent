@@ -24,7 +24,12 @@ class ImportTikTokOrderToShopify implements ShouldQueue, ShouldBeUnique
 
     public int $timeout = 180;
 
-    public int $uniqueFor = 900;
+    /**
+     * The unique lock is released when the job finishes or fails. It has to outlast the time a job
+     * can wait in the queue: at 900 s it expired while the job was still waiting, so every sync
+     * cycle queued the same order again (129k jobs for 530 orders).
+     */
+    public int $uniqueFor = 21600;
 
     public array $backoff = [30, 60, 120, 300, 600];
 
