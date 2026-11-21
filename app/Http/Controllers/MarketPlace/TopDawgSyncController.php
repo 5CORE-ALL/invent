@@ -1588,14 +1588,25 @@ class TopDawgSyncController extends Controller
 
     /**
      * Same integers the /topdawg/sales-dashboard badges use.
-     * Every stored order is included. Sales is Amount. Ship is one weight slab.
+     * Orders in the 30 Pacific days ending yesterday. Sales is Amount. Ship is one weight slab.
      *
      * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
      */
-    public function dailySalesBadgeTotals(): array
+    public function dailySalesBadgeTotals(?string $startDate = null, ?string $endDate = null): array
     {
+        // Active Channel L30 = rolling 30 days through Pacific yesterday (same window as Y/L7).
+        // Summing every stored order made L30 show ~a year of sales, so P Growth read -65%.
+        $yesterday = \Illuminate\Support\Carbon::yesterday('America/Los_Angeles');
+        $endDate = $endDate ?? $yesterday->toDateString();
+        $startDate = $startDate ?? $yesterday->copy()->subDays(29)->toDateString();
+
         $payload = $this->getSalesData(request())->getData(true);
         $lines = is_array($payload) && array_is_list($payload) ? $payload : [];
+        $lines = array_values(array_filter($lines, function ($row) use ($startDate, $endDate) {
+            $d = is_array($row) ? (string) ($row['order_date'] ?? '') : '';
+
+            return $d !== '' && $d >= $startDate && $d <= $endDate;
+        }));
 
         return $this->badgeFromSalesLines($lines);
     }
