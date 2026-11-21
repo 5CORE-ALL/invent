@@ -1613,7 +1613,7 @@
                     rowToast('Nothing to pull: no SKU with a live eBay item ID.', false);
                     return;
                 }
-                if (!window.confirm('Pull the current item specifics of all ' + todo.length + ' listed SKUs from eBay 1?\n\nEach cell becomes what is on the live listing now. Edits that are not pushed yet are kept. This reads one listing at a time and can take a while.')) return;
+                if (!window.confirm('Pull the current item specifics of all ' + todo.length + ' listed SKUs from eBay 1?\n\nEmpty cells are filled from the live listing. Cells that already have a value are left as they are. This reads one listing at a time and can take a while.')) return;
                 const btn = document.getElementById('e1dPullEbay');
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 pullRunning = true;

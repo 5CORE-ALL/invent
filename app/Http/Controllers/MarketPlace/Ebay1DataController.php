@@ -598,8 +598,13 @@ class Ebay1DataController extends Controller
 
                 continue;
             }
-            $this->storePulledSpecifics($sku, $itemId, $item, $pending[$this->skuKey($sku)] ?? []);
-            $results[] = ['sku' => $sku, 'status' => 'pulled', 'message' => 'Read from eBay 1.'];
+            $written = $this->storePulledSpecifics($sku, $itemId, $item, $pending[$this->skuKey($sku)] ?? []);
+            if ($written === 0) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'eBay returned no item specifics. The saved values were left as they were.'];
+
+                continue;
+            }
+            $results[] = ['sku' => $sku, 'status' => 'pulled', 'message' => 'Filled '.$written.' empty cell'.($written === 1 ? '' : 's').' from eBay 1.'];
         }
 
         Cache::forget($this->cacheKey('column_options'));
@@ -610,8 +615,9 @@ class Ebay1DataController extends Controller
     /**
      * @param  array<string, mixed>  $item  GetItem Item node
      * @param  array<string, string>  $pending  aspect key => display name still waiting to be pushed
+     * @return int How many empty cells were filled. Existing values are never cleared or replaced.
      */
-    protected function storePulledSpecifics(string $sku, string $itemId, array $item, array $pending): void
+    protected function storePulledSpecifics(string $sku, string $itemId, array $item, array $pending): int
     {
         $key = $this->skuKey($sku);
         $existing = DB::table($this->t('item_specifics'))->where('sku', $key)->first();
@@ -636,20 +642,36 @@ class Ebay1DataController extends Controller
                 $live[$name] = $value;
             }
         }
+        if ($live === []) {
+            return 0;
+        }
 
-        $merged = [];
-        foreach ($stored as $name => $value) {
-            if (str_starts_with((string) $name, '__')) {
-                $merged[$name] = $value;
-            }
-        }
+        $blank = static function (mixed $value): bool {
+            $text = strtolower(trim(is_scalar($value) ? (string) $value : ''));
+
+            return in_array($text, ['', 'does not apply', 'not applicable', '—'], true);
+        };
+        $merged = $stored;
+        $filled = 0;
         foreach ($live as $name => $value) {
-            $merged[$name] = $value;
-        }
-        foreach ($stored as $name => $value) {
-            if (isset($pending[$this->aspectKey((string) $name)])) {
-                $merged[$name] = $value;
+            if ($blank($value) || isset($pending[$this->aspectKey((string) $name)])) {
+                continue;
             }
+            $target = (string) $name;
+            foreach (array_keys($merged) as $existingName) {
+                if ($this->aspectKey((string) $existingName) === $this->aspectKey((string) $name)) {
+                    $target = (string) $existingName;
+                    break;
+                }
+            }
+            if (! $blank($merged[$target] ?? '')) {
+                continue;
+            }
+            $merged[$target] = $value;
+            $filled++;
+        }
+        if ($filled === 0) {
+            return 0;
         }
 
         $categoryId = trim((string) ($item['PrimaryCategory']['CategoryID'] ?? ''));
@@ -670,6 +692,8 @@ class Ebay1DataController extends Controller
                 'created_at' => $now,
             ]);
         }
+
+        return $filled;
     }
 
     /**
