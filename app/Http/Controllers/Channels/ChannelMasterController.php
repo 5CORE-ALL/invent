@@ -1457,6 +1457,9 @@ class ChannelMasterController extends Controller
                     $l30ForAds = (float) ($liveSales['total_revenue'] ?? 0);
                     $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
                     $tacos = $l30ForAds > 0 ? ($spend / $l30ForAds) * 100 : 0.0;
+                    if ($isTemu2) {
+                        $tacos = $this->temu2AdsPagePercent() ?? $tacos;
+                    }
                     $row['TACOS %'] = round($tacos, 2).'%';
                     $row['Ads%'] = round($tacos, 2).'%';
                     $row['N PFT'] = round($gProfitPct - $tacos, 2).'%';
@@ -1522,6 +1525,9 @@ class ChannelMasterController extends Controller
                     } else {
                         $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
                         $tacos = $l30Sales > 0 ? ($spend / $l30Sales) * 100 : 0.0;
+                        if ($isTemu2) {
+                            $tacos = $this->temu2AdsPagePercent() ?? $tacos;
+                        }
                         $row['TACOS %'] = round($tacos, 2).'%';
                         $row['Ads%'] = round($tacos, 2).'%';
                         $row['N PFT'] = round($gProfitPct - $tacos, 2).'%';
@@ -2700,6 +2706,28 @@ class ChannelMasterController extends Controller
      * @param  array<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
+    /**
+     * Temu 2 Ads% / TACOS% exactly as /temu2/ads (TAcos% = L30 spend ÷ Shopify L30 × price) and
+     * /temu2-decrease use it. Dividing spend by the temu2_orders L30 (often a few hundred dollars
+     * while the order feed is incomplete) gave absurd values like 294%.
+     * Null when it cannot be read; callers keep their own fallback.
+     */
+    private function temu2AdsPagePercent(): ?float
+    {
+        static $cached = false;
+        if ($cached === false) {
+            try {
+                $m = \App\Http\Controllers\Campaigns\Temu2AdsController::adsPageBadgeMetrics('L30');
+                $cached = isset($m['tacos']) ? (float) $m['tacos'] : null;
+            } catch (\Throwable $e) {
+                Log::warning('Temu 2 /temu2/ads TAcos% lookup failed: '.$e->getMessage());
+                $cached = null;
+            }
+        }
+
+        return $cached;
+    }
+
     private function overlayLiveTemu2AdsOnChannelRows(array $rows): array
     {
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
@@ -2711,7 +2739,7 @@ class ChannelMasterController extends Controller
             }
 
             $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
-            $adsPct = $l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0.0;
+            $adsPct = $this->temu2AdsPagePercent() ?? ($l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0.0);
             $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
             $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
 
@@ -9026,7 +9054,7 @@ class ChannelMasterController extends Controller
                         ? round((float) $channel->y_pft, 2)
                         : $this->yProfitDollars($channel->yesterday_sales, $channel->gprofit_pct),
                     'Y NPFT' => $channel->y_pft !== null
-                        ? round((float) $channel->y_pft - $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage, $channel->channel), 2)
+                        ? round((float) $channel->y_pft - $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage), 2)
                         : $this->yProfitDollars($channel->yesterday_sales, $channel->n_pft),
                     // Measured one-day figures: Y GROI% / YNPFT% / YNROI% come from these,
                     // not from rescaling the L30 percentages. Y Day Sales is the YNPFT%
@@ -9035,7 +9063,7 @@ class ChannelMasterController extends Controller
                     'Y GPFT $' => $channel->y_pft !== null ? (float) $channel->y_pft : null,
                     'Y COGS' => $channel->y_cogs !== null ? (float) $channel->y_cogs : null,
                     'Y Spend' => $channel->y_pft !== null
-                        ? $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage, $channel->channel)
+                        ? $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage)
                         : null,
                     // Real one-day ad spend (campaign reports) for the Y Ads% / T Ads% columns. Only
                     // flagged measured for channels that have a daily ad source and where the
@@ -9811,6 +9839,9 @@ class ChannelMasterController extends Controller
             if ($key !== 'reverb') {
                 $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
                 $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
+                if ($key === 'temu2') {
+                    $adsPercentage = $this->temu2AdsPagePercent() ?? $adsPercentage;
+                }
                 $row['Ads%'] = round($adsPercentage, 2) . '%';
                 // Keep TACOS % in sync with Ads% (channel rows use "TACOS %"; cache may use "TACOS")
                 $row['TACOS %'] = $row['Ads%'];
@@ -13243,7 +13274,8 @@ class ChannelMasterController extends Controller
         $gRoi = $liveBadge['groi'];
         // Live Spend from temu2_campaign_reports (/temu2/ads) — same as Temu 1 path
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
-        $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+        // Ads% = /temu2/ads TAcos% (same as /temu2-decrease), not spend ÷ the order-feed L30.
+        $tacosPercentage = $this->temu2AdsPagePercent() ?? ($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0);
         $adsPercentage = $tacosPercentage;
         $nPft = $gProfitPct - $tacosPercentage;
         // Match /temu2-decrease: NROI% = GROI% − Ads%.
@@ -21052,13 +21084,13 @@ class ChannelMasterController extends Controller
             $ySales = 0.0;
             $yPft = 0.0;
             $yCogs = 0.0;
-            $columns = ['channel', 'yesterday_sales', 'gprofit_pct', 'n_pft', 'l30_sales', 'cogs', 'ads_percentage', 'y_day_sales', 'y_pft', 'y_cogs'];
+            $columns = ['yesterday_sales', 'gprofit_pct', 'n_pft', 'l30_sales', 'cogs', 'ads_percentage', 'y_day_sales', 'y_pft', 'y_cogs'];
             foreach (\App\Models\ChannelMasterCalculatedData::query()->get($columns) as $row) {
                 $ys = (float) ($row->yesterday_sales ?? 0);
                 $gp = (float) ($row->gprofit_pct ?? 0);
                 // Measured one-day dollars when channel:calculate-data stored them.
                 $measured = $row->y_pft !== null && $row->y_cogs !== null;
-                $ySpend = $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage, (string) ($row->channel ?? ''));
+                $ySpend = $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage);
                 if ($metric === 'y_groi_pct' || $metric === 'y_nroi_pct') {
                     if ($measured) {
                         $spend = $metric === 'y_nroi_pct' ? $ySpend : 0.0;
@@ -21875,14 +21907,8 @@ class ChannelMasterController extends Controller
      * same way N PFT is, so the two stay comparable. The measured figure is still
      * stored in y_ad_spend for when that wiring is reconciled.
      */
-    private function yesterdayAdSpend(mixed $yDaySales, mixed $adsPercent, ?string $channel = null): float
+    private function yesterdayAdSpend(mixed $yDaySales, mixed $adsPercent): float
     {
-        // Temu 2: Y columns follow /temu2-tabulator (gross, no ads). Its Ads% is spend ÷ a tiny
-        // order-feed L30 (e.g. 294%), which turned every net Y column hugely negative.
-        if ($channel !== null && $this->allMarketplaceYSalesLookupKey($channel) === 'temu2') {
-            return 0.0;
-        }
-
         return round(((float) $yDaySales * (float) $adsPercent) / 100, 2);
     }
 
@@ -23497,7 +23523,7 @@ class ChannelMasterController extends Controller
             $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
             $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
         }
-        $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage, (string) ($row->channel ?? '')), $row->y_day_sales);
+        $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage), $row->y_day_sales);
 
         return match ($metric) {
             'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
@@ -23562,7 +23588,7 @@ class ChannelMasterController extends Controller
                 $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
                 $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
             }
-            $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage, (string) ($row->channel ?? '')), $row->y_day_sales);
+            $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage), $row->y_day_sales);
             $live = [
                 'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
