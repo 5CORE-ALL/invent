@@ -143,8 +143,12 @@
     html[data-bs-theme="dark"] #mrqModal .mrq-note.mrq-note-info { color: #bfdbfe; }
 
     /* members picker */
-    #mrqModal .mrq-list { flex: 1 1 0; min-height: 260px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
+    /* members: three columns, alphabetical left-to-right then down, tall card */
+    #mrqModal .mrq-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 8px; align-content: start; flex: 1 1 0; min-height: 560px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
     #mrqModal .mrq-list label { display: flex; gap: 12px; align-items: center; padding: 8px 10px; margin: 0; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background .15s ease, box-shadow .15s ease; }
+    #mrqModal .mrq-list label > span:last-child { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+    #mrqModal .mrq-list > .text-muted, #mrqModal .mrq-list > .text-danger { grid-column: 1 / -1; }
+    @media (max-width: 767.98px) { #mrqModal .mrq-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     #mrqModal .mrq-list label:hover { background: var(--mq-hover); }
     #mrqModal .mrq-list label:has(input:checked) { background: var(--mq-sel); box-shadow: inset 0 0 0 1px var(--mq-accent); }
     #mrqModal .mrq-list input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--mq-accent); flex-shrink: 0; }
@@ -279,7 +283,6 @@
                             <label class="form-label d-block">Priority <span class="text-danger">*</span></label>
                             <div class="d-flex flex-wrap gap-2">
                                 <label class="mrq-popt urgent"><input type="radio" name="mrqPrio" value="urgent"><span><i></i>🔴 Urgent</span></label>
-                                <label class="mrq-popt immediate"><input type="radio" name="mrqPrio" value="immediate"><span><i></i>🟠 Immediate</span></label>
                                 <label class="mrq-popt normal"><input type="radio" name="mrqPrio" value="normal" checked><span><i></i>🟢 Normal</span></label>
                             </div>
                         </div>
@@ -301,7 +304,7 @@
                                 <input type="hidden" id="mrqDate"><input type="hidden" id="mrqStart">
                                 <div class="col-md-4"><label class="form-label" for="mrqApprox">Approx time <span class="text-danger">*</span></label>
                                     <select id="mrqApprox" class="form-select" title="Approximate length of the meeting">
-                                        <option value="15">~ 15 min</option><option value="30" selected>~ 30 min</option>
+                                        <option value="10" selected>~ 10 min</option><option value="15">~ 15 min</option><option value="30">~ 30 min</option>
                                         <option value="45">~ 45 min</option><option value="60">~ 1 hr</option>
                                         <option value="90">~ 1.5 hr</option><option value="120">~ 2 hr</option>
                                         <option value="180">~ 3 hr</option>
@@ -360,7 +363,7 @@
             <div class="modal-footer" id="mrqFooter">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="mrqBtnCancel">Cancel</button>
                 <button type="button" class="btn btn-outline-secondary mrq-hidden" id="mrqBtnBack">Back</button>
-                <button type="button" class="btn btn-primary" id="mrqBtnReview">Review request</button>
+                <button type="button" class="btn btn-primary" id="mrqBtnReview">Send</button>
                 <button type="button" class="btn btn-success mrq-hidden" id="mrqBtnConfirm"><i class="ri-send-plane-fill me-1"></i>Confirm &amp; send</button>
                 <a class="btn mrq-gmeet mrq-hidden" id="mrqBtnStart" href="#" target="_blank" rel="noopener noreferrer"><i class="ri-vidicon-fill me-1"></i><span id="mrqBtnStartLbl">Join Google Meet</span></a>
                 <a class="btn btn-outline-primary mrq-hidden" id="mrqBtnLobby" href="#">View meetings</a>
@@ -405,7 +408,9 @@
         function loadMembers() {
             if (members) return;
             call('GET', URLS.members).then(function (res) {
-                members = (res.data && res.data.members) || [];
+                members = ((res.data && res.data.members) || []).slice().sort(function (a, b) {
+                    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }); // A to Z
+                });
                 if (res.data && res.data.google && res.data.google.ok === false) {
                     // Not connected: no blocking error. The server creates the meeting-room link automatically.
                     googleOk = false;
@@ -493,12 +498,15 @@
         // ---------- meeting type toggle: phone (default) or Google Meet ----------
         var meetingType = 'phone', TYPE_NAME = { phone: 'Phone call', google_meet: 'Google Meet' };
         function setType(t) {
+            var changed = t !== meetingType;
             meetingType = t;
             document.querySelectorAll('#mrqType .mrq-type-opt').forEach(function (b) {
                 var on = b.getAttribute('data-type') === t;
                 b.classList.toggle('active', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
             });
             $('mrqTypeName').textContent = TYPE_NAME[t];
+            // default length: phone 10 min, Google Meet 30 min (still changeable; only reset when the type or the form changes)
+            if (changed || arguments[1] === true) $('mrqApprox').value = t === 'google_meet' ? '30' : '10';
             hide('mrqLinkWrap', t !== 'google_meet');
             if (t !== 'google_meet' && meetingType === 'phone') { // a phone call carries no Google Meet link
                 var ta = $('mrqAgenda');
@@ -564,56 +572,32 @@
             };
         }
 
+        // "Send": validates, sends the request straight away and closes the window (no review step).
         $('mrqBtnReview').addEventListener('click', function () {
             var p = collect();
             if (!p.title) return showErr('mrqError', 'Please enter a meeting title.');
             if (!p.invitee_ids.length) return showErr('mrqError', 'Add at least one member to the meeting.');
-            lastPayload = p;
-            $('mrqRvTitle').textContent = p.title;
-            $('mrqRvAgenda').textContent = p.agenda || '—';
-            $('mrqRvPrio').textContent = PRIO[p.priority][0] + ' ' + PRIO[p.priority][1];
-            $('mrqRvType').textContent = TYPE_NAME[meetingType];
-            hide('mrqRvRoomDt', meetingType !== 'google_meet'); hide('mrqRvRoom', meetingType !== 'google_meet');
-            $('mrqRvRoom').textContent = meetLink || (googleOk ? 'A Google Meet link will be created when you send the request.' : 'A meeting-room link will be created automatically.');
-            $('mrqRvCount').textContent = p.invitee_ids.length;
-            $('mrqRvMembers').textContent = Object.keys(selected).map(function (id) { return selected[id]; }).join(', ');
-            stampNow();
-            $('mrqRvWhen').textContent = $('mrqDate').value + ', ' + $('mrqStart').value + ' (set automatically when sent) · approx ' + approxLabel() + ' (' + tz + ')';
-            $('mrqRvNotify').textContent = p.invitee_ids.length + ' member' + (p.invitee_ids.length === 1 ? '' : 's') + (googleOk ? ' will get a Google Calendar invitation with the Google Meet link.' : ' will be notified and can join with the meeting-room link.');
-            setStep('review');
-        });
-        $('mrqBtnBack').addEventListener('click', function () { setStep('form'); });
-
-        $('mrqBtnConfirm').addEventListener('click', function () {
-            var btn = this; btn.disabled = true; btn.textContent = 'Creating meeting link…';
-            var reset = function () { btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-fill me-1"></i>Confirm &amp; send'; };
-            call('POST', URLS.request, lastPayload).then(function (res) {
+            var btn = this; btn.disabled = true; btn.textContent = 'Sending…';
+            $('mrqError').classList.add('mrq-hidden');
+            var reset = function () { btn.disabled = false; btn.textContent = 'Send'; };
+            call('POST', URLS.request, p).then(function (res) {
                 reset();
-                if (!res.ok || !res.data.ok) return showErr('mrqError2', firstError(res));
+                if (!res.ok || !res.data.ok) return showErr('mrqError', firstError(res));
                 var d = res.data;
-                var isG = d.meeting.is_google !== false;
-                $('mrqDoneTitle').textContent = isG ? (d.meeting.meet_url ? 'Google Meet created' : 'Meeting saved') : 'Meeting link created';
-                $('mrqDoneText').textContent = '"' + d.meeting.title + '" · ' + d.meeting.room + ' · ' + d.meeting.scheduled_at + '. '
-                    + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? ' has' : 's have') + (isG ? ' been invited through Google Calendar.' : ' been invited. They can join from "Requests for you".');
-                var warn = $('mrqDoneWarn');
-                warn.classList.toggle('mrq-hidden', !d.google_error);
-                warn.textContent = d.google_error ? 'Google Meet link not ready: ' + d.google_error : '';
-                $('mrqBtnStart').href = d.meeting.join_url || d.meeting.meet_url || d.details_url;
-                $('mrqBtnStartLbl').textContent = isG ? 'Join Google Meet' : 'Open meeting room';
-                $('mrqBtnStart').setAttribute('target', isG ? '_blank' : '_self');
-                $('mrqBtnLobby').href = d.details_url;
-                $('mrqBtnLobby').textContent = 'Open meeting details';
-                var inv = $('mrqDoneInvitees'); inv.innerHTML = '';
-                (d.meeting.invitees || []).forEach(function (n) { var b = document.createElement('span'); b.className = 'badge bg-warning text-dark'; b.textContent = n + ' · waiting for reply'; inv.appendChild(b); });
-                setStep('done');
-                hide('mrqBtnStart', !(d.meeting.join_url || d.meeting.meet_url));
-                // reset form for next time
-                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; clearLink(); setType('phone'); resetPriority(); stampNow(); $('mrqApprox').value = '30';
+                // reset the form for next time, then close the window
+                $('mrqTitleInput').value = ''; $('mrqAgenda').value = ''; selected = {}; clearLink(); setType('phone', true); resetPriority(); stampNow();
                 renderChips(); renderMembers();
+                var modalEl = $('mrqModal');
+                if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                var t = $('mrqToast');
+                t.innerHTML = '<strong>Meeting request sent</strong><br>' + esc(d.meeting.title) + ' &middot; ' + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? '' : 's') + ' invited'
+                    + (d.google_error ? '<br><small>Google Meet link not ready: ' + esc(d.google_error) + '</small>' : '');
+                t.style.display = ''; t.onclick = function () { t.style.display = 'none'; };
+                setTimeout(function () { t.style.display = 'none'; }, 8000);
                 poll(false);
             }).catch(function () {
                 reset();
-                showErr('mrqError2', 'Network problem. Your request was not sent — please try again.');
+                showErr('mrqError', 'Network problem. Your request was not sent — please try again.');
             });
         });
 
