@@ -289,6 +289,17 @@
                         </div>
                         <label for="of-track-number" class="form-label">Tracking number</label>
                         <input type="text" class="form-control" id="of-track-number" maxlength="128" required autocomplete="off">
+                        <div class="mt-3" id="of-track-status-wrap" style="display:none;">
+                            <label for="of-track-status" class="form-label">Tracking status</label>
+                            <select class="form-select" id="of-track-status">
+                                <option value="info_received">Label Created / No Scan</option>
+                                <option value="preshipment">Preshipment</option>
+                                <option value="pending">Pending</option>
+                                <option value="in_transit">In transit</option>
+                                <option value="lost">Lost in transit</option>
+                                <option value="delivered">Delivered</option>
+                            </select>
+                        </div>
                         <div id="of-track-error" class="text-danger small mt-2" style="display:none;"></div>
                     </div>
                     <div class="modal-footer">
@@ -1333,6 +1344,21 @@
         document.getElementById('of-track-order').textContent = row.order_id || '—';
         document.getElementById('of-track-sku').textContent = row.sku || '—';
         document.getElementById('of-track-number').value = row.tracking || '';
+        const statusWrap = document.getElementById('of-track-status-wrap');
+        const statusSelect = document.getElementById('of-track-status');
+        if (statusWrap) statusWrap.style.display = scanPendingOnly ? '' : 'none';
+        if (statusSelect && scanPendingOnly) {
+            const current = String(row.tracking_status || '').trim().toLowerCase();
+            const statusValue = {
+                'delivered': 'delivered',
+                'lost in transit': 'lost',
+                'in transit': 'in_transit',
+                'preshipment': 'preshipment',
+                'pending': 'pending',
+                'pending scan': 'pending',
+            };
+            statusSelect.value = statusValue[current] || 'info_received';
+        }
         const err = document.getElementById('of-track-error');
         err.style.display = 'none';
         err.textContent = '';
@@ -1366,6 +1392,7 @@
                 order_id: document.getElementById('of-track-order')?.textContent === '—' ? '' : document.getElementById('of-track-order')?.textContent,
                 sku: document.getElementById('of-track-sku')?.textContent === '—' ? '' : document.getElementById('of-track-sku')?.textContent,
                 tracking_number: number,
+                tracking_status: scanPendingOnly ? (document.getElementById('of-track-status')?.value || '') : '',
             },
         }).done(function (res) {
             if (!res || res.success === false) {
@@ -1374,6 +1401,11 @@
                 return;
             }
             applyTrackingUpdate(res);
+            const staysOnScanPending = ['label created / no scan', 'pending', 'pending scan', 'preshipment'];
+            if (scanPendingOnly && staysOnScanPending.indexOf(String(res.tracking_status || '').toLowerCase()) === -1) {
+                const savedRow = table.getRow(id);
+                if (savedRow) savedRow.delete();
+            }
             fillTrackingStatus(0);
             const el = document.getElementById('of-tracking-modal');
             if (window.bootstrap && bootstrap.Modal) {

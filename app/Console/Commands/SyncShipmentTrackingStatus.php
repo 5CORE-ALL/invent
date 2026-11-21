@@ -759,6 +759,7 @@ class SyncShipmentTrackingStatus extends Command
         $moving = [
             ShipmentTrackingService::STATUS_INFO_RECEIVED,
             ShipmentTrackingService::STATUS_PENDING,
+            ShipmentTrackingService::STATUS_PRESHIPMENT,
             ShipmentTrackingService::STATUS_IN_TRANSIT,
             ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
             ShipmentTrackingService::STATUS_PICKUP,
@@ -768,6 +769,7 @@ class SyncShipmentTrackingStatus extends Command
             ->where('shipment_status', '!=', '')
             ->whereNotIn('shipment_status', [
                 ShipmentTrackingService::STATUS_DELIVERED,
+                ShipmentTrackingService::STATUS_LOST,
                 ShipmentTrackingService::STATUS_EXPIRED,
             ])
             ->where(function ($q) use ($refreshCutoff) {
@@ -833,6 +835,7 @@ class SyncShipmentTrackingStatus extends Command
                     ->orWhereIn('shipment_status', [
                         ShipmentTrackingService::STATUS_INFO_RECEIVED,
                         ShipmentTrackingService::STATUS_PENDING,
+                        ShipmentTrackingService::STATUS_PRESHIPMENT,
                         ShipmentTrackingService::STATUS_NOT_FOUND,
                     ]);
             });

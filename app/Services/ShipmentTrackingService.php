@@ -36,6 +36,10 @@ class ShipmentTrackingService
 
     public const STATUS_NOT_FOUND = 'NotFound';
 
+    public const STATUS_LOST = 'LostInTransit';
+
+    public const STATUS_PRESHIPMENT = 'Preshipment';
+
     /** Transient API failure — callers must NOT overwrite a real shipment_status with this. */
     public const STATUS_RATE_LIMITED = 'RateLimited';
 

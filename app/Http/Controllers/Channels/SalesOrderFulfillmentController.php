@@ -4168,11 +4168,13 @@ class SalesOrderFulfillmentController extends Controller
     {
         return match ($shipmentStatus) {
             ShipmentTrackingService::STATUS_DELIVERED => 'Delivered',
+            ShipmentTrackingService::STATUS_LOST => 'Lost in transit',
             ShipmentTrackingService::STATUS_IN_TRANSIT => 'In Transit',
+            ShipmentTrackingService::STATUS_PRESHIPMENT => 'Preshipment',
             ShipmentTrackingService::STATUS_OUT_FOR_DELIV => 'Out for Delivery',
             ShipmentTrackingService::STATUS_PICKUP => 'Available for Pickup',
             ShipmentTrackingService::STATUS_INFO_RECEIVED => 'Label Created / No Scan',
-            ShipmentTrackingService::STATUS_PENDING => 'Pending Scan',
+            ShipmentTrackingService::STATUS_PENDING => 'Pending',
             ShipmentTrackingService::STATUS_NOT_FOUND => 'Not Found (carrier)',
             ShipmentTrackingService::STATUS_EXPIRED => 'Expired',
             ShipmentTrackingService::STATUS_EXCEPTION => 'Exception',

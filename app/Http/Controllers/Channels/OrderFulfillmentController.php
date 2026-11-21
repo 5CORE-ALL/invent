@@ -368,7 +368,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $tracking = strtolower(trim((string) ($row['tracking_status'] ?? '')));
 
         return $tracking === ''
-            || in_array($tracking, ['label created / no scan', 'pending scan'], true);
+            || in_array($tracking, ['label created / no scan', 'pending', 'pending scan', 'preshipment'], true);
     }
 
     /**
@@ -2344,6 +2344,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'order_id' => 'nullable|string|max:128',
             'sku' => 'nullable|string|max:191',
             'tracking_number' => 'required|string|max:128',
+            'tracking_status' => 'nullable|string|in:info_received,delivered,pending,in_transit,lost,preshipment',
         ]);
 
         $this->ensureTrackingTable();
@@ -2370,6 +2371,20 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         );
 
         $carrier = TrackingCarrierGuesser::labelFromNumber($number) ?? '';
+        $statusChoice = (string) ($validated['tracking_status'] ?? '');
+        $statusLabel = '';
+        if ($statusChoice !== '') {
+            $stored = match ($statusChoice) {
+                'delivered' => ShipmentTrackingService::STATUS_DELIVERED,
+                'pending' => ShipmentTrackingService::STATUS_PENDING,
+                'in_transit' => ShipmentTrackingService::STATUS_IN_TRANSIT,
+                'lost' => ShipmentTrackingService::STATUS_LOST,
+                'preshipment' => ShipmentTrackingService::STATUS_PRESHIPMENT,
+                default => ShipmentTrackingService::STATUS_INFO_RECEIVED,
+            };
+            $this->storeCarrierStatus($number, $carrier, $stored, 'Set manually on Scan Pending');
+            $statusLabel = $this->carrierShipmentStatusLabel($stored) ?? $stored;
+        }
 
         return response()->json([
             'success' => true,
@@ -2378,8 +2393,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'tracking_source' => 'manual',
             'tracking_checked' => true,
             'carrier' => $carrier,
-            'tracking_status' => '',
-            'tracking_status_checked' => false,
+            'tracking_status' => $statusLabel,
+            'tracking_status_checked' => $statusLabel !== '',
         ]);
     }
 
