@@ -3126,6 +3126,11 @@
                     if (cmPlayParentKey !== null && String(item.Parent || '').trim() !== cmPlayParentKey) {
                         return false;
                     }
+                    // ...and always show that parent's own summary (PARENT) row with its SKUs, whatever the other
+                    // filters / REQ badge say (it has no compliance fields of its own, so it would otherwise be hidden).
+                    if (cmPlayParentKey !== null && complianceRowHasParentKeyword(item)) {
+                        return true;
+                    }
 
                     // Parent search filter
                     const parentSearchEl = document.getElementById('parentSearch');
