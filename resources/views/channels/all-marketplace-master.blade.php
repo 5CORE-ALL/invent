@@ -2191,6 +2191,12 @@
             const sign = isUp ? '+' : '−';
             return `<span class="p-sales-vs-sales-pct" style="color:${color};">${sign}${Math.abs(pct).toFixed(0)}%</span>`;
         }
+        // Low-volume, lumpy channels (a handful of orders a month). One quiet week against a lumpy 30-day
+        // total reads -78%, which is order timing, not a real decline, so a below-L30 P Growth is not shown.
+        var P_GROWTH_HIDE_NEGATIVE_CHANNELS = { vinted: 1, faire: 1, depop: 1 };
+        function hideNegativePGrowthFor(channelName) {
+            return !!P_GROWTH_HIDE_NEGATIVE_CHANNELS[snapshotChannelKey(channelName)];
+        }
         function pSalesVsL30Title(pct) {
             if (pct == null || !isFinite(pct)) return 'P-Sales vs Sales — click for chart';
             if (Math.abs(pct) < 0.1) return 'P-Sales in line with Sales — click for chart';
@@ -4720,6 +4726,9 @@
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="p_sales" data-p-sales="${pSales}" data-l30-sales="${l30}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="${pSalesVsL30Title(pct)}"></i>`;
                             if (!l7 || l7 === 0) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            if (hideNegativePGrowthFor(channel) && pct != null && isFinite(pct) && Math.round(pct) < 0) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="Last 7 days are below the 30-day pace. Not shown for low-volume channels.">-</span>${chartIcon}`;
                             }
                             return `<span style="white-space:nowrap;">${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
                         },
