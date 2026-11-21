@@ -1077,7 +1077,7 @@
                             <button type="button" class="btn btn-sm btn-success" id="downloadExcel" title="Download Excel" aria-label="Download Excel">
                                 <i class="bi bi-download"></i>
                         </button>
-                            <button type="button" class="btn btn-sm btn-warning" id="cmBatchEditBtn" disabled title="Tick rows with the checkboxes (shift-click selects a range), then batch edit them">
+                            <button type="button" class="btn btn-sm btn-warning" id="cmBatchEditBtn" disabled title="Tick rows with the checkboxes (Shift + drag selects a range), then batch edit them - or click the pencil icon on any ticked row">
                                 <i class="bi bi-pencil-square me-1"></i><span id="cmBatchEditLabel">Batch edit</span>
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="cmClearSelectionBtn" title="Clear the selection" aria-label="Clear the selection">
@@ -2646,8 +2646,9 @@
                             headerSort: false
                         },
                         columns: getComplianceTabulatorColumnDefinitions(),
+                        // Plain click / checkbox toggles a row without clearing the others (several rows can be ticked);
+                        // Shift + drag over rows selects a range. ('click' range mode would reset to one row on every click.)
                         selectableRows: true,
-                        selectableRowsRangeMode: 'click',
                         selectableRowsCheck: function(row) {
                             return !complianceRowHasParentKeyword(row.getData());
                         },
@@ -3572,16 +3573,31 @@
             function setupActionButtons() {
                 const gridHost = document.getElementById('compliance-tabulator');
                 if (!gridHost) return;
+                // Capture phase: runs before the row's own click (which would toggle its tick), so the selection
+                // is read as the user left it and clicking the edit icon never changes it.
                 gridHost.addEventListener('click', function(e) {
                     const editBtn = e.target.closest('.edit-btn');
                     if (editBtn && this.contains(editBtn)) {
                         e.preventDefault();
+                        e.stopPropagation();
                         const sku = editBtn.getAttribute('data-sku');
+                        // Several rows ticked and this icon belongs to one of them: edit them all together (Batch edit).
+                        if (sku && complianceTable) {
+                            const picked = new Set();
+                            complianceTable.getSelectedData().forEach(function(item) {
+                                const s = String(item.SKU || '').trim().toUpperCase();
+                                if (s && !complianceRowHasParentKeyword(item)) picked.add(s);
+                            });
+                            if (picked.size > 1 && picked.has(String(sku).trim().toUpperCase())) {
+                                openComplianceBatchModal();
+                                return;
+                            }
+                        }
                         if (sku) {
                             openComplianceModal('edit', sku);
                         }
                     }
-                });
+                }, true);
             }
 
             async function openComplianceModal(mode, editSku = null) {
