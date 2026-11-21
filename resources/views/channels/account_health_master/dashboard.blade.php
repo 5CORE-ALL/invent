@@ -814,6 +814,7 @@
                         refund_rate: pick(item, ['refund_rate', 'Refund Rate'], 'N/A'),
                         refund_rate_allowed: pick(item, ['refund_rate_allowed'], ''),
                         sheet_link: pick(item, ['sheet_link'], ''),
+                        missing_link: pick(item, ['missing_link'], ''),
                         type: pick(item, ['type'], '')
                     }));
                 },
@@ -850,9 +851,12 @@
                                 'walmart': '/walmartAnalysis',
                                 'bestbuy usa': '/bestbuyusa-analytics',
                             };
-                            const routeUrl = routeMap[channelName];
+                            // Same link as /all-marketplace-master (channel_master.missing_link); the fixed map is only a fallback.
+                            const masterLink = String(cell.getRow().getData().missing_link || '').trim();
+                            const routeUrl = masterLink || routeMap[channelName];
+                            const safeUrl = routeUrl ? String(routeUrl).replace(/"/g, '&quot;') : '';
                             return routeUrl ?
-                                `<a href="${routeUrl}" target="_blank" style="color: #007bff; text-decoration: underline;">${value}</a>` :
+                                `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color: #007bff; text-decoration: underline;">${value}</a>` :
                                 `<span style="background:#f5f5f5;color:#000;font-weight:600;padding:4px 14px;border-radius:12px;">${value}</span>`;
                         },
                         hozAlign: "left"

@@ -138,7 +138,12 @@ class AccountHealthMasterDashboardController extends Controller
                 $channelsQuery->where('channel', 'LIKE', '%' . $channelFilter . '%');
             }
 
-            $channels = $channelsQuery->get(['id', 'channel', 'sheet_link', 'type', 'w_ads', 'nr', 'update']);
+            // missing_link = the channel's page link, the same one /all-marketplace-master uses for the channel name.
+            $channelColumns = ['id', 'channel', 'sheet_link', 'type', 'w_ads', 'nr', 'update'];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('channel_master', 'missing_link')) {
+                $channelColumns[] = 'missing_link';
+            }
+            $channels = $channelsQuery->get($channelColumns);
 
             if ($channels->isEmpty()) {
                 return response()->json([
@@ -199,6 +204,7 @@ class AccountHealthMasterDashboardController extends Controller
                 $row = [
                     'channel' => ucfirst($channel),
                     'sheet_link' => $channelRow->sheet_link,
+                    'missing_link' => ($channelRow->missing_link ?? null) ?: \App\Http\Controllers\Channels\ChannelMasterController::defaultMissingLinkForChannel((string) $channel),
                     'l30_orders' => 0,
                     'l60_orders' => 0,
                     'l30_sales' => 0,

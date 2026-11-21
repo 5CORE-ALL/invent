@@ -191,7 +191,7 @@ class ChannelMasterController extends Controller
         $this->apiController = $apiController;
     }
 
-    private function defaultMissingLinkForChannel(string $channel): ?string
+    public static function defaultMissingLinkForChannel(string $channel): ?string
     {
         $paths = [
             'PLS' => '/pls-pricing',
