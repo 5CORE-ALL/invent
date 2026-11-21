@@ -27,7 +27,7 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  CVR Disc = CVR slab + CVR up/down promotional discount
- *  Then LMP cap when LMP is lower (Std prc vs dil: and SNROI at LMP ≥ 20%; Sprc Dil: no 20% condition). Std Prc is the maximum.
+ *  Then LMP cap when LMP is lower (Std prc vs dil: and SNROI at LMP ≥ 20%; Sprc Dil: no 20% condition). There is no Std Prc maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
  */
 class AmazonSprcDilAutoPushService
@@ -306,7 +306,7 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF). The ceiling is Std Prc (no LMP cap, no discounts),
+     * CVR Price Rule on its own (Sprc Dil and Std prc vs dil both OFF). There is no ceiling (no LMP cap, no Std Prc maximum),
      * so it is the same number on every run and a push never compounds the %.
      * null = the rule does not change this SKU (nothing is saved or pushed). Clearance SKUs are left alone.
      * Page twin: amzCvrRuleBaseFor() in CVR-only mode.
@@ -314,6 +314,14 @@ class AmazonSprcDilAutoPushService
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
+    /** The CVR rule's price with no Std Prc ceiling. null = no change from the live Price. */
+    protected static function cvrNoCeiling(float $price, float $live): ?float
+    {
+        $price = round($price, 2);
+
+        return abs($price - $live) < 0.005 ? null : $price;
+    }
+
     protected function computeCvrOnlyTarget(array $row, ?float $adsPct): ?array
     {
         if (! ((float) ($row['inv'] ?? 0) > 0) || ! $this->cvrPriceRuleOn()
@@ -321,15 +329,10 @@ class AmazonSprcDilAutoPushService
             return null;
         }
         $std = (float) ($row['standard_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
-        // No LMP cap: the CVR rule's Up ceiling is Std Prc itself.
-        $stdCapped = round($std, 2);
         // Compares with the live Price: the rule's % comes off it. It acts once per price (holds when the saved S PRC already
-        // equals live), Up stops at Std Prc (no LMP cap), Down never goes above live.
+        // equals live), Up has no ceiling, Down never goes above live.
         $base = round((float) ($row['price'] ?? 0), 2);
         if (! ($base >= 0.01) || \App\Support\EbayCvrPriceRule::holdsLive($base, (float) ($row['sprice'] ?? 0))) {
             return null;
@@ -340,7 +343,7 @@ class AmazonSprcDilAutoPushService
             $this->cvrPriceRuleCfg,
             (float) ($adsPct ?? $this->amazonAdsPercent())
         );
-        $newPrice = $cvrPrice === null ? null : \App\Support\EbayCvrPriceRule::clampUp((float) $cvrPrice['price'], $base, $stdCapped);
+        $newPrice = $cvrPrice === null ? null : \App\Support\self::cvrNoCeiling((float) $cvrPrice['price'], $base);
         if ($newPrice === null) {
             return null;
         }
@@ -515,9 +518,8 @@ class AmazonSprcDilAutoPushService
                     }
                 }
             }
-            // No LMP cap: S PRC is never lowered to LMP. Std Prc is the maximum, below.
+            // No LMP cap and no Std Prc maximum: the price the rules produced is used as it is.
             $dilLmpCapped = false;
-            $capped = AmazonDilGroiRule::capToStdWhenNoLmp($capped, 0.0, $std);
             if (! is_finite($capped) || $capped < 0.01) {
                 return null;
             }
@@ -609,21 +611,14 @@ class AmazonSprcDilAutoPushService
             if ($clearanceTarget !== null && $afterCap === null) {
                 return null;
             }
-            if ($afterCap !== null && $std > 0 && $afterCap > $std) {
-                $afterCap = round($std, 2);
-            }
             if ($afterCap !== null && $afterCap > 0 && abs($afterCap - $effective) > 0.0001) {
                 $effective = $afterCap;
                 $sale = $afterCap;
                 $snroiCapped = true;
             }
         }
-        $stdCeiling = $std;
-        if ($totalDisc < 0 && $std > 0 && $sale !== null) {
-            $stdCeiling = (float) $sale;
-        }
-        // No LMP rule: S PRC is never lowered to LMP (the LMP Reduce block was removed). Std Prc stays the maximum.
-        $capped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $stdCeiling);
+        // No LMP rule and no Std Prc maximum: S PRC is the price the rules produced.
+        $capped = round($effective, 2);
         $lmpCapped = false;
         $sprice = $capped;
 

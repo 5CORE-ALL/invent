@@ -67,7 +67,7 @@
                                 <th style="width:40%;">CVR vs LT O CVR</th>
                                 <th style="width:14%;" class="text-end">SKUs</th>
                                 <th style="width:28%;">Price change %</th>
-                                <th style="width:18%;" class="text-end" title="SKUs whose new price is set to the Lower cap price">Capped</th>
+                                <th style="width:18%;" class="text-end" title="SKUs whose new price is set to the Lower or Upper cap price">Capped</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -114,6 +114,23 @@
                             <div class="col-6">
                                 <label class="form-label small fw-bold mb-1" for="amz-cvr-cap-nroi">Min NROI%</label>
                                 <div class="input-group input-group-sm"><input type="number" step="0.1" class="form-control" id="amz-cvr-cap-nroi" placeholder="no limit"><span class="input-group-text">%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border rounded p-2 mb-2" id="amz-cvr-ucap-box">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="amz-cvr-ucap-enabled">
+                            <label class="form-check-label fw-semibold" for="amz-cvr-ucap-enabled">Upper cap</label>
+                        </div>
+                        <div class="text-muted mb-2" style="font-size:12px;">If the new price would make either NPFT% or NROI% rise above its maximum, the price is set to the Upper cap price instead. Whichever limit is hit first sets the highest allowed price.</div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1" for="amz-cvr-ucap-npft">Max NPFT%</label>
+                                <div class="input-group input-group-sm"><input type="number" max="79" step="0.1" class="form-control" id="amz-cvr-ucap-npft" placeholder="no limit"><span class="input-group-text">%</span></div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1" for="amz-cvr-ucap-nroi">Max NROI%</label>
+                                <div class="input-group input-group-sm"><input type="number" step="0.1" class="form-control" id="amz-cvr-ucap-nroi" placeholder="no limit"><span class="input-group-text">%</span></div>
                             </div>
                         </div>
                     </div>
@@ -237,7 +254,32 @@
             return floor;
         }
         /**
-         * Price after the CVR Price Rule % for a row, with the Lower cap applied. The new price never goes below the cap price:
+         * Highest price the Upper cap allows: the lower of the price where NPFT% = Max NPFT% and the price where NROI% = Max NROI%
+         * (same formulas as the Lower cap). null when no limit applies to this row (or a maximum can never be reached).
+         */
+        function amzCvrRuleCeilingPrice(row, cfg) {
+            if (!cfg || !cfg.upper_cap) return null;
+            const lp = parseFloat(row && row.LP_productmaster);
+            const ship = parseFloat(row && row.Ship_productmaster) || 0;
+            const cost = (isFinite(lp) && lp > 0) ? lp : 0;
+            const marginRaw = parseFloat(row && row.percentage);
+            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
+            const ads = amzCvrRuleChannelAds();
+            let ceil = null;
+            const n = parseFloat(cfg.max_npft);
+            if (isFinite(n) && cfg.max_npft !== null && cfg.max_npft !== '') {
+                const k = 0.80 - (n + ads) / 100;
+                if (k > 0) { const f = (ship + cost) / k; ceil = ceil === null ? f : Math.min(ceil, f); }
+            }
+            const r = parseFloat(cfg.max_nroi);
+            if (isFinite(r) && cfg.max_nroi !== null && cfg.max_nroi !== '' && cost > 0) {
+                const k = margin - ads / 100;
+                if (k > 0) { const f = (cost * (1 + r / 100) + ship) / k; ceil = ceil === null ? f : Math.min(ceil, f); }
+            }
+            return ceil;
+        }
+        /**
+         * Price after the CVR Price Rule % for a row, with the Lower cap and the Upper cap applied. The new price never goes below the cap price:
          * if it would, it is set to the cap price (this can raise a SKU whose current price is already under the cap).
          * Returns { price, capped } or null when the row has no price or no LT O CVR.
          */
@@ -259,6 +301,12 @@
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
             let next = price * (1 + pct / 100);
             let capped = false;
+            // Upper cap: a new price above the cap price is brought down to it (CVR Up / pink never lower the price, see below).
+            const ceil = amzCvrRuleCeilingPrice(row, cfg);
+            if (ceil !== null && next > ceil) {
+                next = ceil;
+                capped = true;
+            }
             // Lower cap: a new price below the cap price is brought up to the cap price (even when the current price is already
             // below it). When a minimum can never be reached (no finite cap price) the price is left where it is.
             const floor = amzCvrRuleFloorPrice(row, cfg);
@@ -266,6 +314,8 @@
                 next = isFinite(floor) ? floor : price;
                 capped = true;
             }
+            // CVR Up / pink must never LOWER the price: not below where it started (the Upper cap can pull a high price down).
+            if (pct > 0) next = Math.max(next, price);
             // CVR Down must never RAISE the price: not above where it started (the Lower cap lifted a low price up to its floor),
             // and not above the live price. Server twin does the same.
             if (pct < 0) {
@@ -325,12 +375,8 @@
             const res = amzCvrRulePriceFor(d, amzCvrRule, base);
             if (!res || !(res.price >= 0.01)) return null;
             let outPrice = res.price;
-            // Both S PRC rules OFF (base = live Price): Up stops at Std Prc (no LMP cap). Down never goes above live (amzCvrRulePriceFor).
-            if (outPrice > base && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
-                const std = Number(d.STANDARD_PRICE) || 0;
-                if (!(std > 0)) return null;
-                outPrice = Math.round(Math.max(base, Math.min(outPrice, std)) * 100) / 100;
-            }
+            // No Std Prc maximum: Up is not held at Std Prc. Down never goes above live (amzCvrRulePriceFor).
+            outPrice = Math.round(outPrice * 100) / 100;
             if (Math.abs(outPrice - base) < 0.005) return null;
             return { price: outPrice, capped: res.capped, base: base, c: c, pct: pct };
         }
@@ -341,11 +387,11 @@
             if (!info) return '';
             const word = info.c === 'down' ? 'CVR Down' : (info.c === 'up' ? 'CVR Up' : (info.c === 'pink' ? 'CVR pink arrow' : 'CVR within target'));
             const tip = 'CVR Price Rule (' + word + '): $' + info.base.toFixed(2) + ' ' + (info.pct > 0 ? '+' : '') + info.pct + '% = $' + info.price.toFixed(2)
-                + (info.capped ? ' (set to the Lower cap price)' : '');
+                + (info.capped ? ' (set to the Lower / Upper cap price)' : '');
             const up = info.price > info.base;
             return '<i class="fas fa-' + (up ? 'arrow-up' : 'arrow-down') + '" title="' + String(tip).replace(/"/g, '&quot;')
                 + '" style="font-size:10px;margin-left:2px;color:' + (up ? '#198754' : '#a00211') + ';"></i>'
-                + (info.capped ? '<i class="fas fa-lock" title="Lower cap price" style="font-size:9px;margin-left:1px;color:#6c757d;"></i>' : '');
+                + (info.capped ? '<i class="fas fa-lock" title="Lower / Upper cap price" style="font-size:9px;margin-left:1px;color:#6c757d;"></i>' : '');
         };
         /** The price after the CVR rule when it applies, else the given price. */
         window.amzCvrRuleApplyTo = function(d, price) {
@@ -358,7 +404,7 @@
             return inner;
         }
         function amzCvrRuleReadDraft() {
-            const d = { pink_above: $('#amz-cvr-rule-table .amz-cvr-pink-above').val(), enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
+            const d = { pink_above: $('#amz-cvr-rule-table .amz-cvr-pink-above').val(), enabled: $('#amz-cvr-rule-enabled').is(':checked') ? 1 : 0, lower_cap: $('#amz-cvr-cap-enabled').is(':checked') ? 1 : 0, min_npft: $('#amz-cvr-cap-npft').val(), min_nroi: $('#amz-cvr-cap-nroi').val(), upper_cap: $('#amz-cvr-ucap-enabled').is(':checked') ? 1 : 0, max_npft: $('#amz-cvr-ucap-npft').val(), max_nroi: $('#amz-cvr-ucap-nroi').val(), down_band: $('#amz-cvr-band-down').val(), up_band: $('#amz-cvr-band-up').val() };
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 d[$(this).data('key')] = $(this).find('.amz-cvr-rule-pct').val();
             });
@@ -419,10 +465,11 @@
                 const k = $(this).data('key');
                 const live = counts[k] || 0;
                 $(this).find('.amz-cvr-rule-count').text(live.toLocaleString());
-                $(this).find('.amz-cvr-rule-capped').text(cfg.lower_cap ? (capped[k] || 0).toLocaleString() : '—');
+                $(this).find('.amz-cvr-rule-capped').text((cfg.lower_cap || cfg.upper_cap) ? (capped[k] || 0).toLocaleString() : '—');
             });
             amzCvrRulePaintDots(counts);
             $('#amz-cvr-cap-npft, #amz-cvr-cap-nroi').prop('disabled', !cfg.lower_cap);
+            $('#amz-cvr-ucap-npft, #amz-cvr-ucap-nroi').prop('disabled', !cfg.upper_cap);
         }
         /** Re-save today's counts after the targets change (the daily page save only runs once per load). */
         function amzCvrRulePostCounts() {
@@ -449,8 +496,11 @@
             $('#amz-cvr-cap-enabled').prop('checked', !!cfg.lower_cap);
             $('#amz-cvr-cap-npft').val(cfg.min_npft === null || cfg.min_npft === undefined ? '' : cfg.min_npft);
             $('#amz-cvr-cap-nroi').val(cfg.min_nroi === null || cfg.min_nroi === undefined ? '' : cfg.min_nroi);
+            $('#amz-cvr-ucap-enabled').prop('checked', !!cfg.upper_cap);
+            $('#amz-cvr-ucap-npft').val(cfg.max_npft === null || cfg.max_npft === undefined ? '' : cfg.max_npft);
+            $('#amz-cvr-ucap-nroi').val(cfg.max_nroi === null || cfg.max_nroi === undefined ? '' : cfg.max_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV, or with no LT O CVR (no sessions), is not counted. Capped = SKUs whose new price is set to the Lower cap price (based on each SKU\'s S PRC before this rule).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV, or with no LT O CVR (no sessions), is not counted. Capped = SKUs whose new price is set to the Lower or Upper cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {
@@ -464,7 +514,7 @@
                 const el = document.getElementById('amzCvrRuleModal');
                 if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
             });
-            $(document).off('input.amzcvrcount change.amzcvrcount').on('input.amzcvrcount change.amzcvrcount', '#amz-cvr-rule-table input, #amz-cvr-cap-box input, #amz-cvr-band-box input', amzCvrRulePaintCounts);
+            $(document).off('input.amzcvrcount change.amzcvrcount').on('input.amzcvrcount change.amzcvrcount', '#amz-cvr-rule-table input, #amz-cvr-cap-box input, #amz-cvr-ucap-box input, #amz-cvr-band-box input', amzCvrRulePaintCounts);
             $(document).off('change.amzcvronoff').on('change.amzcvronoff', '#amz-cvr-rule-enabled', amzCvrRulePaintOnOffText);
             $('#amz-cvr-rule-save').off('click.amzcvr').on('click.amzcvr', function() {
                 const $btn = $(this).prop('disabled', true);
@@ -477,7 +527,7 @@
                     headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' }
                 }).done(function(res) {
                     if (!res || !res.success) { amzPefToast('error', 'Could not save CVR Price Rule'); return; }
-                    amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, pink: res.pink, pink_above: res.pink_above, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, down_band: res.down_band, up_band: res.up_band };
+                    amzCvrRule = { enabled: !!res.enabled, down: res.down, same: res.same, up: res.up, pink: res.pink, pink_above: res.pink_above, lower_cap: !!res.lower_cap, min_npft: res.min_npft, min_nroi: res.min_nroi, upper_cap: !!res.upper_cap, max_npft: res.max_npft, max_nroi: res.max_nroi, down_band: res.down_band, up_band: res.up_band };
                     amzCvrRuleRefreshLabels(amzCvrRule);
                     amzCvrRulePaintState();
                     amzCvrRulePostCounts();

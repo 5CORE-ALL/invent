@@ -1194,7 +1194,7 @@
                     </div>
                     <div class="amz-dg-clearance-wrap">
                         <div class="small text-muted mb-1">
-                            <strong>Clearance Rule:</strong> If Item is On Clearance Then its Target <strong>NROI%</strong> is exactly the value below. The Dil slab, CVR, Ageing and custom rules do not apply to it. Std Prc stays the maximum.
+                            <strong>Clearance Rule:</strong> If Item is On Clearance Then its Target <strong>NROI%</strong> is exactly the value below. The Dil slab, CVR, Ageing and custom rules do not apply to it. There is no Std Prc maximum.
                         </div>
                         <div id="amz-dg-clearance-block" class="amz-dg-clr">
                             <div class="amz-dg-clr-stats" title="INV &gt; 0 and Clearance Yes on Inv Days.">
@@ -1273,7 +1273,7 @@
                 'When a price is calculated from a Dil slab match: it auto-applies to S PRC and Push Prc Sale.',
                 'When you change the first Target NROI%: later rows fill as first +5, +10, \u2026 (increasing down the table).',
                 'When INV \u2264 0: Count and pies skip that SKU.',
-                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay and Ageing Rule in the order of their Seq numbers (lowest first). Std Prc is the maximum S PRC. Clearance adds its points to the Target NROI of clearance SKUs, in its Seq place.',
+                'Sequence: every card has a Seq number you can change; the cards sort by it. The Dil slab runs first, then the CVR overlay and Ageing Rule in the order of their Seq numbers (lowest first). There is no Std Prc maximum. Clearance adds its points to the Target NROI of clearance SKUs, in its Seq place.',
             ],
             cvr: [
                 'When a SKU matches a row in the CVR overlay table (Down = down-arrow CVR and CVR < threshold; Up = up-arrow CVR and CVR > threshold; horizontal / opposite arrows are excluded): apply that Adj NROI to the Dil slab Target NROI (Count updates as you edit).',
@@ -1282,10 +1282,10 @@
                 'If the SKU\u2019s age (days) is inside an age band, add that band\u2019s points to the Target NROI (use a negative number to lower it). Applies on Sprc Dil only. A SKU with no age, or in no band, is not changed.',
             ],
             lmp: [
-                'If LMP is available and is lower than the new S PRC after applying all the rules, then use S PRC = LMP × (1 − x%), x by the SKU\u2019s Dil band (default 3% = LMP × 0.97). Std Prc stays the maximum.',
+                'If LMP is available and is lower than the new S PRC after applying all the rules, then use S PRC = LMP × (1 − x%), x by the SKU\u2019s Dil band (default 3% = LMP × 0.97). There is no Std Prc maximum.',
             ],
             clearance: [
-                'If an item is on clearance, its Target NROI is exactly the Clearance Target NROI% above (0 included). The Dil slab, CVR overlay, Ageing and custom rules do not apply to it. Std Prc stays the maximum.',
+                'If an item is on clearance, its Target NROI is exactly the Clearance Target NROI% above (0 included). The Dil slab, CVR overlay, Ageing and custom rules do not apply to it. There is no Std Prc maximum.',
             ],
         };
         function amzDgRulesStore() {
@@ -4589,7 +4589,7 @@
             }
             let effective = sale != null ? sale : std;
             // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
-            // Std Prc stays the maximum. The sale price follows so the push writes the capped price.
+            // No Std Prc maximum. The sale price follows so the push writes the price.
             let snroiCapped = false;
             // Clearance (C) SKUs: the Clearance SNROI block (target SNROI by Dil) replaces the discounts and the SNROI Cap.
             const clearancePriced = typeof amzClearanceHasPrice === 'function' && amzClearanceHasPrice(d);
@@ -4670,11 +4670,9 @@
             const lmpNow = (typeof amzPefLmp === 'function') ? amzPefLmp(d) : 0;
             const stdNow = Number(d && (d.STANDARD_PRICE || d.standard_price || d.std_price)) || 0;
             const dropped = (origEffective - capped) > 0.009;
-            plan.lmpAboveStd = dropped && lmpNow > 0 && stdNow > 0 && lmpNow + 0.0001 > stdNow
-                && capped + 0.0001 <= stdNow + 0.0001;
-            plan.lmpCapped = false; // the LMP rule was removed
-            plan.stdCapped = dropped && !plan.lmpAboveStd && stdNow > 0
-                && capped + 0.0001 <= stdNow + 0.0001;
+            plan.lmpAboveStd = false; // the LMP rule and the Std Prc maximum were removed
+            plan.lmpCapped = false;
+            plan.stdCapped = false;
             return plan;
         }
         /**
@@ -4842,7 +4840,7 @@
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
                 if (!(raw > 0)) return 0;
                 // The price rules (custom "change the S PRC by %" cards) run in the order of their sequence numbers.
-                // There is no LMP cap and no CVR up / down discount any more: Std Prc stays the maximum (amzFinalSpriceToSave).
+                // There is no LMP cap and no CVR up / down discount any more: no Std Prc maximum.
                 let capped = raw;
                 const clrExact = amzClearanceExactNroi(d) !== null;
                 amzPriceOrder().forEach(function(step) {

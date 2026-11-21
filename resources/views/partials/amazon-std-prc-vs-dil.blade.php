@@ -380,7 +380,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs are priced from the Clearance SNROI block (target SNROI by Dil); with no target for their Dil they stay on the discount price, shown only. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs are priced from the Clearance SNROI block (target SNROI by Dil); with no target for their Dil they stay on the discount price, shown only. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). There is no Std Prc maximum.</div>
                     </div>
                     @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'std_switch', 'spriceRuleChannel' => 'amazon', 'spriceRuleIndependent' => true])
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -609,7 +609,7 @@
                         </div>
 
                         <div class="amz-sp-col" data-amz-sp-panel="clrsnroi">
-                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; Std Prc stays the maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Clearance SNROI rule" aria-label="Pause Clearance SNROI rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></span></div>
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %, for SKUs marked C (Inv Days clearance = YES). Target is the SNROI % their S PRC is priced at, instead of the discounts. Dil up to 25 → 0%, over 25 up to 50 → 20%, over 50 → 30%. A slab covers Dil over From and up to To. S PRC rounds up to the cent so SNROI is never under the target; there is no Std Prc maximum. Leave Target blank to keep clearance SKUs unpriced for that slab.">Clearance SNROI</div><span class="amz-sp-head-btns"><button type="button" class="amz-sp-pause-btn" title="Pause Clearance SNROI rule" aria-label="Pause Clearance SNROI rule" aria-pressed="false"><i class="fas fa-pause"></i></button><button type="button" class="amz-sp-min-btn" title="Minimize Clearance SNROI" aria-label="Minimize Clearance SNROI">−</button></span></div>
                             <div class="amz-sp-sub">Clearance (C) SKUs: S PRC = Target SNROI by Dil.</div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0">
@@ -931,7 +931,7 @@
         /**
          * SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
          * SNROI = ((price x (margin - ads%)) - ship - LP) / LP, the same number as the SNROI% column. Rounded down to the
-         * cent. Std Prc stays the maximum. Same math as StdPrcVsDilPricer::snroiTargetPrice on the server.
+         * cent. There is no Std Prc maximum. Same math as StdPrcVsDilPricer::snroiTargetPrice on the server.
          */
         function amzStdApplySnroiCap(d, price, rules) {
             const p = Number(price);
@@ -950,8 +950,7 @@
             const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
             let solved = net > 0 ? Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100 : 0;
             if (!(solved > 0)) return price;
-            const std = Number(d && d.STANDARD_PRICE) || 0;
-            if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
+            // No Std Prc maximum: the price that lands on the Target SNROI is used as it is.
             return solved > 0 ? solved : price;
         }
         window.amzStdApplySnroiCap = amzStdApplySnroiCap;
@@ -1098,7 +1097,7 @@
         }
         /**
          * Clearance SKU price from its Target SNROI. Same SNROI as the SNROI Cap, rounded UP to the cent so SNROI is never
-         * under the target (0% must not land at -0.01%). Std Prc stays the maximum.
+         * under the target (0% must not land at -0.01%). There is no Std Prc maximum.
          */
         function amzStdApplyClearanceSnroi(d, price, rules) {
             const target = amzStdClearanceTarget(d, rules);
@@ -1112,8 +1111,7 @@
             const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
             let solved = net > 0 ? Math.ceil((((lp * (1 + target / 100)) + ship) / net) * 100 - 0.00001) / 100 : 0;
             if (!(solved > 0)) return price;
-            const std = Number(d && d.STANDARD_PRICE) || 0;
-            if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
+            // No Std Prc maximum: the price that lands on the Target SNROI is used as it is.
             return solved > 0 ? solved : price;
         }
         window.amzStdClearanceTarget = amzStdClearanceTarget;

@@ -402,13 +402,6 @@
                         }
                     });
                 }
-                if (!(std > 0)) {
-                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
-                } else if (base > std + 0.0001) {
-                    steps.push(temuRuleStep('ok', n + ' · Std Prc maximum', 'Price ' + temuRuleMoney(base) + ' is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
-                } else {
-                    steps.push(temuRuleStep('skip', n + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
-                }
             } else if (ruleMode === 'none') {
                 // Sprc Dil and Std prc vs dil are both OFF: no rule price is calculated. S PRC is the CVR Price Rule on the live Price,
                 // otherwise only an old saved value (not pushed).
@@ -419,13 +412,10 @@
                 if (cvrNone) {
                     steps.push(temuRuleStep('ok', '2 · CVR Price Rule',
                         'CVR ' + (cvrNone.c === 'down' ? 'Down' : (cvrNone.c === 'up' ? 'Up' : (cvrNone.c === 'pink' ? 'pink arrow' : 'within target'))) + ': live Price ' + temuRuleMoney(cvrNone.base) + ' '
-                        + (cvrNone.pct > 0 ? '+' : '') + cvrNone.pct + '% = <b>' + temuRuleMoney(cvrNone.price) + '</b>' + (cvrNone.capped ? ' (set to the Lower cap price)' : '') + '.'));
+                        + (cvrNone.pct > 0 ? '+' : '') + cvrNone.pct + '% = <b>' + temuRuleMoney(cvrNone.price) + '</b>' + (cvrNone.capped ? ' (set to the Lower / Upper cap price)' : '') + '.'));
                 } else {
                     steps.push(temuRuleStep('skip', '2 · CVR Price Rule', 'The CVR Price Rule is not changing this SKU.'));
                     if (final > 0) notes.push('S PRC ' + temuRuleMoney(final) + ' is an old saved value. It is not pushed and not counted in the blue badge.');
-                }
-                if (std > 0 && final > 0 && final + 0.0001 >= std) {
-                    steps.push(temuRuleStep('ok', '3 · Std Prc maximum', 'Held at Std Prc ' + temuRuleMoney(std) + '.'));
                 }
             } else {
                 base = Number(amzDisplayedSprice(d)) || 0;
@@ -460,18 +450,9 @@
                 if (cvrInfo) {
                     steps.push(temuRuleStep('ok', (n + 1) + ' · CVR Price Rule',
                         'CVR ' + (cvrInfo.c === 'down' ? 'Down' : (cvrInfo.c === 'up' ? 'Up' : (cvrInfo.c === 'pink' ? 'pink arrow' : 'within target'))) + ': ' + temuRuleMoney(cvrInfo.base) + ' '
-                        + (cvrInfo.pct > 0 ? '+' : '') + cvrInfo.pct + '% = <b>' + temuRuleMoney(cvrInfo.price) + '</b>' + (cvrInfo.capped ? ' (set to the Lower cap price)' : '') + '.'));
+                        + (cvrInfo.pct > 0 ? '+' : '') + cvrInfo.pct + '% = <b>' + temuRuleMoney(cvrInfo.price) + '</b>' + (cvrInfo.capped ? ' (set to the Lower / Upper cap price)' : '') + '.'));
                     n++;
                 }
-                const capped = (std > 0 && afterLmp > 0) && Math.abs(afterLmp - final) < 0.0001 && Math.abs(final - std) < 0.0001;
-                if (!(std > 0)) {
-                    steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Std Prc is blank, so there is no maximum.'));
-                } else if (capped || (final > 0 && Math.abs(final - std) < 0.0001)) {
-                    steps.push(temuRuleStep('ok', (n + 1) + ' · Std Prc maximum', 'Price is above Std Prc ' + temuRuleMoney(std) + ' → held at <b>' + temuRuleMoney(std) + '</b>.'));
-                } else {
-                    steps.push(temuRuleStep('skip', (n + 1) + ' · Std Prc maximum', 'Price is within Std Prc ' + temuRuleMoney(std) + '. Not capped.'));
-                }
-                if (lmp > 0 && std > 0 && lmp > std + 0.0001) notes.push('LMP ' + temuRuleMoney(lmp) + ' is above Std Prc ' + temuRuleMoney(std) + ': every price is capped at Std Prc. Review the Std price.');
             }
             if (amzPefInv(d) <= 0) notes.push('INV is 0, so no S PRC is set for this SKU.');
             return {

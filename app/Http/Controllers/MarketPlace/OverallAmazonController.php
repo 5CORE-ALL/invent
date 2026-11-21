@@ -3294,6 +3294,10 @@ class OverallAmazonController extends Controller
             'lower_cap' => filter_var($raw['lower_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'min_npft' => $num($raw['min_npft'] ?? null, -100.0, 79.0),
             'min_nroi' => $num($raw['min_nroi'] ?? null, -100.0, 1000.0),
+            // Upper cap: a new price never takes NPFT% above Max NPFT% or NROI% above Max NROI% (whichever is hit first holds it).
+            'upper_cap' => filter_var($raw['upper_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'max_npft' => $num($raw['max_npft'] ?? null, -100.0, 79.0),
+            'max_nroi' => $num($raw['max_nroi'] ?? null, -100.0, 1000.0),
             'enabled' => filter_var($raw['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'down_band' => $num($raw['down_band'] ?? null, 0.0, 99.0) ?? 20.0,
             'up_band' => $num($raw['up_band'] ?? null, 0.0, 1000.0) ?? 20.0,
@@ -3319,11 +3323,11 @@ class OverallAmazonController extends Controller
 
     public function amazonCvrPriceRuleSave(Request $request)
     {
-        $payload = self::amazonNormalizeCvrPriceRule($request->only(['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']));
+        $payload = self::amazonNormalizeCvrPriceRule($request->only(['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'upper_cap', 'max_npft', 'max_nroi', 'down_band', 'up_band']));
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_cvr_price_rule'],
-            ['visibility' => $payload, 'column_order' => ['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band']]
+            ['visibility' => $payload, 'column_order' => ['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'upper_cap', 'max_npft', 'max_nroi', 'down_band', 'up_band']]
         );
 
         return response()->json(['success' => true] + $payload);

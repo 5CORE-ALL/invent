@@ -1737,27 +1737,13 @@
             const n = parseFloat(raw);
             return (isFinite(n) && n > 0) ? n : 0;
         }
-        /** Std Prc is the maximum when it is set, unless a negative Std prc vs dil disc raises the price. */
+        /** The Std Prc maximum was removed: S PRC is never held at Std Prc. Kept as a function so existing callers keep working. */
         function amazonCapToStdWhenNoLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
-            const rounded = +Number(s).toFixed(2);
-            const std = amazonStdPrice(rowData);
-            let ceiling = std;
-            // Sprc Dil rule: Std Prc is always the maximum (modal text + AmazonSprcDilAutoPushService). Only the Std prc vs dil
-            // rule may raise the ceiling with a negative stack discount. Raising it here made the page push 27.26 on a
-            // 26.99 Std while the cron priced the same SKU at 26.99, so the two kept re-pushing each other.
-            const dilRuleOn = (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil');
-            if (!dilRuleOn && std > 0 && typeof computeAmzSumDiscountPct === 'function') {
-                const disc = Number(computeAmzSumDiscountPct(rowData));
-                if (isFinite(disc) && disc < 0) {
-                    ceiling = +Number(std * (1 - (disc / 100))).toFixed(2);
-                }
-            }
-            if (!(ceiling > 0) || rounded + 0.0001 <= ceiling) return rounded;
-            return +Number(ceiling).toFixed(2);
+            return +Number(s).toFixed(2);
         }
-        /** S PRC the rules produced, with the Std Prc maximum. There is no LMP cap any more (the LMP rule was removed). */
+        /** S PRC the rules produced. There is no LMP cap and no Std Prc maximum any more. */
         function amazonCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
@@ -5688,7 +5674,7 @@
                             return v > 0 ? v : null;
                         }),
                         editable: false,
-                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SNROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum. With the CVR Price Rule ON, its % is taken off this price and the result is the S PRC that is saved and pushed.",
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). There is no LMP cap and no Std Prc maximum. With the CVR Price Rule ON, its % is taken off this price and the result is the S PRC that is saved and pushed.",
                         formatter: amzCvrRuleSpriceFormatter(function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';

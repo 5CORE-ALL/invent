@@ -9,7 +9,7 @@ namespace App\Support;
  * target / Up, each with a price change %. The change is taken off the S PRC the other rules already produced (caps
  * done), NOT off the live Price, so the answer is the same before and after a push (a % off the live Price would
  * compound on every run). Lower cap: the new price never goes under the price where NPFT% or NROI% reaches its minimum,
- * solved with the real channel Ads %.
+ * solved with the real channel Ads %. Upper cap: the new price never goes over the price where NPFT% or NROI% reaches its maximum.
  */
 class AmazonCvrPriceRule
 {
@@ -60,10 +60,21 @@ class AmazonCvrPriceRule
         }
         $next = $base * (1 + $pct / 100);
         $capped = false;
+        // Upper cap: a new price above the cap price is brought down to it. CVR Up / pink never LOWER the price (see below).
+        $ceil = ! empty($cfg['upper_cap']) ? self::ceilingPrice($row, $cfg, $channelAds) : null;
+        if ($ceil !== null && is_finite($ceil) && $next > $ceil) {
+            $next = $ceil;
+            $capped = true;
+        }
         $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($row, $cfg, $channelAds) : null;
         if ($floor !== null && $next < $floor) {
             $next = is_finite($floor) ? $floor : $base;
             $capped = true;
+        }
+        // CVR Up / pink must never LOWER the price: not below the price it started from (the Upper cap can pull a high
+        // price down to its ceiling).
+        if ($pct > 0) {
+            $next = max($next, $base);
         }
         // CVR Down must never RAISE the price: not above the price it started from (the Lower cap can lift a low price
         // up to its floor, which made a Down SKU go up), and not above the live price either.
@@ -106,6 +117,32 @@ class AmazonCvrPriceRule
         }
 
         return $floor;
+    }
+
+    /** Highest price the Upper cap allows (lower of the Max NPFT% price and the Max NROI% price). null = no limit. */
+    public static function ceilingPrice(array $row, array $cfg, float $channelAds): ?float
+    {
+        $lp = (float) ($row['lp'] ?? 0);
+        $cost = $lp > 0 ? $lp : 0.0;
+        $ship = (float) ($row['ship'] ?? 0);
+        $margin = AmazonDilGroiRule::TAKE_HOME;
+        $ceil = null;
+        if (isset($cfg['max_npft']) && is_numeric($cfg['max_npft'])) {
+            $k = $margin - ((float) $cfg['max_npft'] + $channelAds) / 100;
+            if ($k > 0) {
+                $f = ($ship + $cost) / $k;
+                $ceil = $ceil === null ? $f : min($ceil, $f);
+            }
+        }
+        if (isset($cfg['max_nroi']) && is_numeric($cfg['max_nroi']) && $cost > 0) {
+            $k = $margin - $channelAds / 100;
+            if ($k > 0) {
+                $f = ($cost * (1 + (float) $cfg['max_nroi'] / 100) + $ship) / $k;
+                $ceil = $ceil === null ? $f : min($ceil, $f);
+            }
+        }
+
+        return $ceil;
     }
 
     private static function band(mixed $v, float $default, float $max): float
