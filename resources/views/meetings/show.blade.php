@@ -75,7 +75,7 @@
                         <button class="btn btn-lg btn-secondary" disabled><i class="ri-vidicon-fill me-1"></i>Google Meet link not ready</button>
                     @endif
                 @else
-                    <a href="{{ route('meetings.room', $meeting) }}" class="btn btn-success">Open legacy room</a>
+                    @if($open)<a href="{{ route('meetings.room', $meeting) }}" class="btn btn-lg mt-join"><i class="ri-vidicon-fill me-1"></i>Switch to Google Meet</a>@endif
                     <a href="{{ route('meetings.minutes.show', $meeting) }}" class="btn btn-outline-secondary btn-sm">Legacy minutes</a>
                 @endif
                 @if($canManage && $isGoogle && ! $meeting->isCancelled())

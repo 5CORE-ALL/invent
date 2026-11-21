@@ -15,15 +15,12 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Create / update / cancel Google Meet meetings booked into one of the four internal rooms.
+ * Create / update / cancel Google Meet meetings (optionally booked into one of the four internal rooms).
  *
  * Order of operations (so a failure never leaves a fake meeting behind):
- *   1. When Google is connected the meeting becomes a real Google Meet. When it is NOT connected the meeting
- *      is still created, with an automatic in-app meeting-room link (provider = jitsi), so nobody is blocked
- *      waiting for a manager to connect the Google account. Connecting Google later switches new meetings
- *      back to Google Meet automatically.
- *   2. Room availability is checked and the meeting row is written in ONE database transaction, under a
- *      per-room lock so two people cannot grab the same slot at the same moment.
+ *   1. Google must be connected, otherwise nothing is created and a clear error is raised.
+ *   2. When a room is chosen, its availability is checked and the meeting row is written in ONE database
+ *      transaction, under a per-room lock so two people cannot grab the same slot at the same moment.
  *   3. Google Calendar is called after the commit. If Google fails, the meeting is kept with
  *      google_sync_status = failed and no Meet link; "Retry Google sync" reconciles it idempotently.
  */
@@ -69,18 +66,16 @@ class MeetingScheduler
      */
     public function create(array $data, User $host): array
     {
-        // Google connected -> real Google Meet. Not connected -> automatic in-app meeting-room link.
-        $useGoogle = $this->google->isConfigured();
+        // Every meeting is a real Google Meet (Google Workspace); a clear "connect Google" error is raised otherwise.
+        $this->google->assertConfigured();
 
         $inviteeIds = $this->normaliseInvitees($data['invitee_ids'] ?? [], $host);
-        if ($useGoogle) {
-            $this->assertInviteesHaveEmail($inviteeIds, $host);
-        }
+        $this->assertInviteesHaveEmail($inviteeIds, $host);
 
         // Rooms are optional: a meeting without a room (the "Create New Google Meeting" flow) has nothing to clash with.
         $room = ! empty($data['room_slot']) ? (int) $data['room_slot'] : null;
-        $build = function () use ($data, $host, $inviteeIds, $useGoogle, $room) {
-            return DB::transaction(function () use ($data, $host, $inviteeIds, $useGoogle, $room) {
+        $build = function () use ($data, $host, $inviteeIds, $room) {
+            return DB::transaction(function () use ($data, $host, $inviteeIds, $room) {
                 if ($room) {
                     $this->assertRoomFree($room, $data['start'], $data['end'], null);
                 }
@@ -88,21 +83,20 @@ class MeetingScheduler
                 $meeting = Meeting::create([
                     'title' => trim($data['title']),
                     'agenda' => $data['agenda'] ?? null,
-                    'room_name' => ($useGoogle ? 'gm-' : 'mr-').Str::lower(Str::random(24)),
+                    'room_name' => 'gm-'.Str::lower(Str::random(24)),
                     'host_user_id' => $host->id,
-                    'provider' => $useGoogle ? Meeting::PROVIDER_GOOGLE_MEET : Meeting::PROVIDER_JITSI,
+                    'provider' => Meeting::PROVIDER_GOOGLE_MEET,
                     'priority' => $data['priority'],
                     'room_slot' => $room,
                     'scheduled_at' => $data['start'],
                     'scheduled_end_at' => $data['end'],
                     'status' => Meeting::STATUS_SCHEDULED,
                     'minutes_status' => Meeting::MINUTES_PENDING,
-                ] + ($useGoogle ? [
                     // A link created earlier with the "Create New Google Meeting" button is adopted, not duplicated.
                     'google_request_id' => $data['google_request_id'] ?? bin2hex(random_bytes(16)),
                     'google_meet_url' => $data['google_meet_url'] ?? null,
                     'google_sync_status' => Meeting::SYNC_PENDING,
-                ] : []));
+                ]);
 
                 MeetingParticipant::create([
                     'meeting_id' => $meeting->id, 'user_id' => $host->id, 'is_invited' => false,
@@ -117,8 +111,30 @@ class MeetingScheduler
         };
         $meeting = $room ? $this->withRoomLock($room, $build) : $build();
 
-        // In-app room meetings have nothing to sync: their link exists as soon as the meeting is saved.
-        return ['meeting' => $meeting, 'google_error' => $useGoogle ? $this->trySync($meeting) : null];
+        return ['meeting' => $meeting, 'google_error' => $this->trySync($meeting)];
+    }
+
+    /**
+     * Move an unfinished legacy (pre-Google) meeting onto Google Meet: same meeting, same people, a real Meet link.
+     * Returns the Google error text, or null on success.
+     *
+     * @throws GoogleMeetException when Google is not connected
+     */
+    public function convertToGoogleMeet(Meeting $meeting): ?string
+    {
+        $this->google->assertConfigured();
+
+        $start = $meeting->scheduled_at ?? now();
+        $meeting->forceFill([
+            'provider' => Meeting::PROVIDER_GOOGLE_MEET,
+            'room_name' => 'gm-'.Str::lower(Str::random(24)),
+            'google_request_id' => bin2hex(random_bytes(16)),
+            'google_sync_status' => Meeting::SYNC_PENDING,
+            'scheduled_at' => $start,
+            'scheduled_end_at' => $meeting->scheduled_end_at ?? $start->copy()->addMinutes(60),
+        ])->save();
+
+        return $this->trySync($meeting);
     }
 
     /**

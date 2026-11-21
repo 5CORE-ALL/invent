@@ -32,7 +32,7 @@
                     <div class="d-flex gap-2 flex-wrap">
                         <a href="{{ route('meetings.minutes.index') }}" class="btn btn-outline-secondary btn-sm">&larr; All minutes</a>
                         @if($meeting->isLive())
-                            <a href="{{ route('meetings.room', $meeting) }}" class="btn btn-success btn-sm">Meeting is live — Join</a>
+                            <a href="{{ route('meetings.room', $meeting) }}" class="btn btn-success btn-sm">Meeting is live — open</a>
                         @endif
                         @if($canManage && $meeting->isEnded() && $meeting->minutes_status !== 'processing')
                             <form method="POST" action="{{ route('meetings.minutes.regenerate', $meeting) }}" onsubmit="return confirm('Generate the minutes again from the recordings? Tasks already created are kept and not duplicated.');">

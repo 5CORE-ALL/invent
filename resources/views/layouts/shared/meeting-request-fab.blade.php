@@ -147,8 +147,10 @@
     #mrqModal .mrq-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 8px; align-content: start; flex: 1 1 0; min-height: 560px; overflow-y: auto; border: 1px solid var(--mq-border); border-radius: 14px; padding: 6px; background: var(--mq-surface); scrollbar-width: thin; }
     #mrqModal .mrq-list label { display: flex; gap: 12px; align-items: center; padding: 8px 10px; margin: 0; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background .15s ease, box-shadow .15s ease; }
     #mrqModal .mrq-list label > span:last-child { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+    #mrqModal .mrq-list.mrq-vertical { grid-auto-flow: column; }
+    #mrqModal .mrq-list label small { display: block; margin-left: 0; }
     #mrqModal .mrq-list > .text-muted, #mrqModal .mrq-list > .text-danger { grid-column: 1 / -1; }
-    @media (max-width: 767.98px) { #mrqModal .mrq-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 767.98px) { #mrqModal .mrq-list, #mrqModal .mrq-list.mrq-vertical { grid-template-columns: repeat(1, minmax(0, 1fr)); grid-auto-flow: row; grid-template-rows: none !important; } }
     #mrqModal .mrq-list label:hover { background: var(--mq-hover); }
     #mrqModal .mrq-list label:has(input:checked) { background: var(--mq-sel); box-shadow: inset 0 0 0 1px var(--mq-accent); }
     #mrqModal .mrq-list input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--mq-accent); flex-shrink: 0; }
@@ -412,9 +414,9 @@
                     return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }); // A to Z
                 });
                 if (res.data && res.data.google && res.data.google.ok === false) {
-                    // Not connected: no blocking error. The server creates the meeting-room link automatically.
+                    // Not connected: meetings are Google Meet only, so a manager has to connect the Google account first.
                     googleOk = false;
-                    $('mrqProviderNote').innerHTML = '<i class="ri-link-m me-1"></i>A <strong>meeting-room link is created automatically</strong> when you send the request, and every member can join it from <strong>Requests for you</strong>. (Google Meet links are used once a manager connects the Google account.)';
+                    $('mrqProviderNote').innerHTML = '<i class="ri-error-warning-line me-1"></i><strong>Google Meet is not connected yet.</strong> A manager must click "Connect Google account" on the Meeting Room page before meetings can be created.';
                 }
                 if (res.data && res.data.timezone) { tz = res.data.timezone; $('mrqTz').textContent = tz; }
                 renderMembers();
@@ -434,7 +436,11 @@
                 html += '<label><input type="checkbox" value="' + m.id + '"' + (selected[m.id] ? ' checked' : '') + '>'
                     + avatar(m) + '<span>' + esc(m.name) + ' <small>' + esc(m.designation) + '</small></span></label>';
             });
-            $('mrqMembers').innerHTML = html || '<div class="text-muted small py-2">No members match.</div>';
+            var box = $('mrqMembers'), count = box.dataset.count = String(html ? (html.match(/<label>/g) || []).length : 0);
+            box.innerHTML = html || '<div class="text-muted small py-2">No members match.</div>';
+            // A to Z down each column: fill column by column, 3 columns
+            if (html) { box.classList.add('mrq-vertical'); box.style.gridTemplateRows = 'repeat(' + Math.ceil(Number(count) / 3) + ', auto)'; }
+            else { box.classList.remove('mrq-vertical'); box.style.gridTemplateRows = ''; }
         }
         function renderChips() {
             var box = $('mrqChips'); box.innerHTML = '';
@@ -591,9 +597,10 @@
                 if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 var t = $('mrqToast');
                 t.innerHTML = '<strong>Meeting request sent</strong><br>' + esc(d.meeting.title) + ' &middot; ' + d.meeting.invited + ' member' + (d.meeting.invited === 1 ? '' : 's') + ' invited'
+                    + (d.meeting.meet_url ? '<br><a href="' + esc(d.meeting.meet_url) + '" target="_blank" rel="noopener noreferrer" style="color:#8ab4f8;font-weight:600">Join Google Meet</a>' : '')
                     + (d.google_error ? '<br><small>Google Meet link not ready: ' + esc(d.google_error) + '</small>' : '');
-                t.style.display = ''; t.onclick = function () { t.style.display = 'none'; };
-                setTimeout(function () { t.style.display = 'none'; }, 8000);
+                t.style.display = ''; t.onclick = function (e) { if (!e.target.closest('a')) t.style.display = 'none'; };
+                setTimeout(function () { t.style.display = 'none'; }, 15000);
                 poll(false);
             }).catch(function () {
                 reset();

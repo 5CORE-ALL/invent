@@ -17,16 +17,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
  * Company meeting section.
  *
- * New meetings are real Google Meet meetings (Google Calendar API) booked into one of four internal
- * rooms. Meetings created before the Google integration (provider = jitsi) keep working through the
- * original in-app room, with mandatory microphone recording and AI minutes.
+ * Every meeting is a real Google Meet meeting (Google Calendar API). Meetings created before the Google
+ * integration keep their saved minutes and recordings; unfinished ones are moved onto Google Meet when opened.
  */
 class MeetingController extends Controller
 {
@@ -506,256 +503,18 @@ class MeetingController extends Controller
                 ->with('success', 'This meeting has ended. Minutes are below once they are ready.');
         }
 
-        $me = Auth::user();
-
-        return view('meetings.room', [
-            'meeting' => $meeting->load('host:id,name'),
-            'me' => $me,
-            'isHost' => $this->canManage($meeting, $me),
-            'jitsiDomain' => (string) config('services.meetings.jitsi_domain', 'meet.jit.si'),
-        ]);
-    }
-
-    /**
-     * Video server settings for one participant.
-     *
-     * With JaaS (8x8) credentials configured, every participant gets a signed JWT, so nobody is ever
-     * asked to log in (the host is the moderator). Without them it falls back to the plain Jitsi
-     * domain, where meet.jit.si makes the first person log in as moderator.
-     *
-     * @return array{domain: string, room_name: string, script_url: string, jwt: ?string}
-     */
-    private function videoConfig(Meeting $meeting, User $me): array
-    {
-        $domain = (string) config('services.meetings.jitsi_domain', 'meet.jit.si');
-        $appId = (string) config('services.meetings.jaas.app_id');
-        $kid = (string) config('services.meetings.jaas.key_id');
-        $key = (string) config('services.meetings.jaas.private_key');
-
-        if ($appId === '' || $kid === '' || $key === '') {
-            return ['domain' => $domain, 'room_name' => $meeting->room_name, 'script_url' => 'https://'.$domain.'/external_api.js', 'jwt' => null];
+        // An unfinished legacy (pre-Google) meeting is moved onto Google Meet and opened on its details page,
+        // where the "Join Google Meet" button is.
+        try {
+            $error = $this->scheduler->convertToGoogleMeet($meeting);
+        } catch (GoogleMeetException $e) {
+            return redirect()->route('meetings.index')->with('error', $e->getMessage());
         }
 
-        if (! str_contains($key, 'BEGIN') && is_file($key)) {
-            $key = (string) file_get_contents($key); // value was a path to the .pk file
-        }
-        $key = str_replace('\n', "\n", $key);
-
-        $b64 = fn (string $s) => rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
-        $now = time();
-        $signing = $b64(json_encode(['alg' => 'RS256', 'kid' => $kid, 'typ' => 'JWT'])).'.'.$b64(json_encode([
-            'aud' => 'jitsi',
-            'iss' => 'chat',
-            'iat' => $now,
-            'nbf' => $now - 10,
-            'exp' => $now + 6 * 3600,
-            'sub' => $appId,
-            'room' => '*',
-            'context' => [
-                'user' => [
-                    'id' => (string) $me->id,
-                    'name' => (string) $me->name,
-                    'email' => (string) $me->email,
-                    'moderator' => $this->canManage($meeting, $me) ? 'true' : 'false',
-                ],
-                'features' => ['recording' => 'false', 'livestreaming' => 'false', 'transcription' => 'false', 'outbound-call' => 'false'],
-            ],
-        ]));
-
-        $signature = '';
-        if (! openssl_sign($signing, $signature, $key, OPENSSL_ALGO_SHA256)) {
-            report(new \RuntimeException('Could not sign the JaaS meeting token; check MEETING_JAAS_PRIVATE_KEY.'));
-
-            return ['domain' => $domain, 'room_name' => $meeting->room_name, 'script_url' => 'https://'.$domain.'/external_api.js', 'jwt' => null];
-        }
-
-        return [
-            'domain' => '8x8.vc',
-            'room_name' => $appId.'/'.$meeting->room_name,
-            'script_url' => 'https://8x8.vc/'.$appId.'/external_api.js',
-            'jwt' => $signing.'.'.$b64($signature),
-        ];
-    }
-
-    public function join(Meeting $meeting): JsonResponse
-    {
-        if ($meeting->isGoogleMeet()) {
-            return response()->json(['ok' => false, 'message' => 'Use the Join Google Meet button on the meeting page.'], 409);
-        }
-        if ($meeting->isEnded()) {
-            return response()->json(['ok' => false, 'message' => 'This meeting has already ended.'], 409);
-        }
-
-        $me = Auth::user();
-        $now = now();
-
-        DB::transaction(function () use ($meeting, $me, $now) {
-            $p = MeetingParticipant::firstOrNew(['meeting_id' => $meeting->id, 'user_id' => $me->id]);
-            $p->first_joined_at ??= $now;
-            $p->joined_at = $now;
-            $p->left_at = null;
-            $p->last_seen_at = $now;
-            $p->recording_state = 'none';
-            $p->rsvp = 'accepted'; // walking into the room is an acceptance
-            $p->rsvp_at ??= $now;
-            $p->save();
-
-            if ($meeting->status === Meeting::STATUS_SCHEDULED) {
-                $meeting->forceFill(['status' => Meeting::STATUS_LIVE, 'started_at' => $now])->save();
-            }
-        });
-
-        $video = $this->videoConfig($meeting, $me);
-
-        return response()->json([
-            'ok' => true,
-            'session' => Str::random(32),
-            'server_time_ms' => (int) round(microtime(true) * 1000),
-            'room_name' => $video['room_name'],
-            'domain' => $video['domain'],
-            'script_url' => $video['script_url'],
-            'jwt' => $video['jwt'],
-            'display_name' => (string) $me->name,
-            'email' => (string) $me->email,
-        ]);
-    }
-
-    public function heartbeat(Request $request, Meeting $meeting): JsonResponse
-    {
-        $me = Auth::user();
-        $recording = $request->boolean('recording');
-
-        $p = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $me->id)->first();
-        if ($p) {
-            $p->last_seen_at = now();
-            if ($p->left_at !== null && ! $meeting->isEnded()) {
-                $p->left_at = null; // swept as stale during a network blip; they are clearly still here
-            }
-            if (! $recording) {
-                $p->recording_gaps = (int) $p->recording_gaps + 1;
-                $p->recording_state = 'stopped';
-            }
-            $p->save();
-        }
-
-        return response()->json([
-            'status' => $meeting->fresh()->status,
-            'participants' => $this->roomParticipants($meeting),
-        ]);
-    }
-
-    /**
-     * Receives sequential audio chunks of one browser recording session and appends them to a
-     * single file. Out-of-order chunks are refused with the sequence number the server expects.
-     */
-    public function recording(Request $request, Meeting $meeting): JsonResponse
-    {
-        $data = $request->validate([
-            'session' => 'required|string|min:16|max:64',
-            'seq' => 'required|integer|min:0',
-            'chunk' => 'required|file|max:8192',
-            'mime' => 'nullable|string|max:64',
-            'started_at_ms' => 'nullable|integer|min:0',
-        ]);
-
-        $me = Auth::user();
-
-        if ($meeting->minutes_status !== Meeting::MINUTES_PENDING) {
-            return response()->json(['ok' => false, 'message' => 'Recording is closed for this meeting.'], 409);
-        }
-
-        $participant = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $me->id)->first();
-        if (! $participant) {
-            return response()->json(['ok' => false, 'message' => 'You have not joined this meeting.'], 403);
-        }
-
-        $disk = Storage::disk(config('services.meetings.disk', 'local'));
-        $seq = (int) $data['seq'];
-
-        $result = DB::transaction(function () use ($data, $meeting, $me, $participant, $disk, $request, $seq) {
-            $rec = MeetingRecording::query()
-                ->where('meeting_id', $meeting->id)
-                ->where('user_id', $me->id)
-                ->where('session_token', $data['session'])
-                ->lockForUpdate()
-                ->first();
-
-            if (! $rec) {
-                if ($seq !== 0) {
-                    return ['conflict' => true, 'expected' => 0];
-                }
-                $mime = (string) ($data['mime'] ?? 'audio/webm');
-                $ext = str_contains($mime, 'ogg') ? 'ogg' : (str_contains($mime, 'mp4') ? 'm4a' : 'webm');
-                $startedMs = (int) ($data['started_at_ms'] ?? 0);
-                $rec = MeetingRecording::create([
-                    'meeting_id' => $meeting->id,
-                    'user_id' => $me->id,
-                    'session_token' => $data['session'],
-                    'path' => 'meetings/'.$meeting->id.'/rec-'.$me->id.'-'.substr(sha1($data['session']), 0, 12).'.'.$ext,
-                    'mime' => $mime,
-                    'started_at' => $startedMs > 0 ? \Carbon\Carbon::createFromTimestampMs($startedMs) : now(),
-                ]);
-            }
-
-            if ($seq < $rec->chunks_received) {
-                return ['conflict' => false, 'received' => $rec->chunks_received]; // duplicate retry
-            }
-            if ($seq > $rec->chunks_received) {
-                return ['conflict' => true, 'expected' => $rec->chunks_received];
-            }
-
-            $absolute = $disk->path($rec->path);
-            File::ensureDirectoryExists(dirname($absolute));
-            $bytes = $request->file('chunk')->get();
-            if (file_put_contents($absolute, $bytes, FILE_APPEND | LOCK_EX) === false) {
-                throw new \RuntimeException('Could not write recording chunk.');
-            }
-
-            $rec->chunks_received = $seq + 1;
-            $rec->size_bytes = (int) $rec->size_bytes + strlen($bytes);
-            $rec->last_chunk_at = now();
-            $rec->save();
-
-            // A chunk that arrives after the person left (final flush) must not make them look present again.
-            if ($participant->left_at === null) {
-                $participant->forceFill(['recording_state' => 'recording', 'last_seen_at' => now()])->save();
-            }
-
-            return ['conflict' => false, 'received' => $rec->chunks_received];
-        });
-
-        if ($result['conflict'] ?? false) {
-            return response()->json(['ok' => false, 'expected' => $result['expected']], 409);
-        }
-
-        return response()->json(['ok' => true, 'received' => $result['received']]);
-    }
-
-    public function leave(Request $request, Meeting $meeting): JsonResponse
-    {
-        $me = Auth::user();
-
-        $p = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $me->id)->first();
-        if ($p) {
-            $p->forceFill(['left_at' => now(), 'recording_state' => 'stopped'])->save();
-        }
-
-        $session = (string) $request->input('session', '');
-        if ($session !== '') {
-            $rec = MeetingRecording::where('meeting_id', $meeting->id)
-                ->where('user_id', $me->id)
-                ->where('session_token', $session)
-                ->first();
-            if ($rec && $rec->finalized_at === null) {
-                $rec->finalized_at = now();
-                $rec->duration_seconds = $rec->started_at && $rec->last_chunk_at
-                    ? max(0, (int) $rec->started_at->diffInSeconds($rec->last_chunk_at))
-                    : null;
-                $rec->save();
-            }
-        }
-
-        return response()->json(['ok' => true, 'minutes_url' => route('meetings.minutes.show', $meeting)]);
+        return redirect()->route('meetings.show', $meeting)->with(
+            $error ? 'error' : 'success',
+            $error ? 'Moved to Google Meet, but the link is not ready: '.$error : 'This meeting now uses Google Meet. Use the Join Google Meet button.'
+        );
     }
 
     public function end(Meeting $meeting): JsonResponse
@@ -941,24 +700,5 @@ class MeetingController extends Controller
     private function canManage(Meeting $meeting, ?User $user): bool
     {
         return $meeting->canBeManagedBy($user);
-    }
-
-    /**
-     * @return list<array{name: string, in_room: bool, recording: bool}>
-     */
-    private function roomParticipants(Meeting $meeting): array
-    {
-        return $meeting->participants()
-            ->with('user:id,name')
-            ->whereNotNull('joined_at')
-            ->get()
-            ->map(fn (MeetingParticipant $p) => [
-                'name' => (string) ($p->user?->name ?? 'Unknown'),
-                'in_room' => $p->isInRoom(),
-                'recording' => $p->isInRoom() && $p->recording_state === 'recording',
-            ])
-            ->sortByDesc('in_room')
-            ->values()
-            ->all();
     }
 }
