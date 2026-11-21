@@ -2279,6 +2279,17 @@
             }
             return spend;
         }
+        // Ad spend charged against PROJECTED sales. Temu 2's L30 spend is the full Seller Center total
+        // while its order-feed sales are far smaller, so the dollar spend swamps P-Sales and makes
+        // P NPFT / P NROI hugely negative. Charge it at its Ads% (/temu2/ads TAcos%) × P-Sales instead.
+        function pAdSpendFromRow(row) {
+            const chKey = (row['Channel '] || row['Channel'] || '').toString().toLowerCase().replace(/[\s_-]/g, '');
+            if (chKey === 'temu2') {
+                const adsPct = parseNumber(row['Ads%'] != null ? row['Ads%'] : row['TACOS %']) || 0;
+                return (pSalesFromRow(row) * adsPct) / 100;
+            }
+            return rowAdSpendFromRow(row);
+        }
         function pCogsFromRow(row) {
             const pSales = pSalesFromRow(row);
             if (!pSales) return 0;
@@ -2302,12 +2313,12 @@
         function pNpftPctFromRow(row) {
             const l7 = parseNumber(row['L7 Sales'] || 0);
             if (!l7) return null;
-            return projectedNpftFromL7(l7, parseNumber(row['Gprofit%'] || 0), rowAdSpendFromRow(row));
+            return projectedNpftFromL7(l7, parseNumber(row['Gprofit%'] || 0), pAdSpendFromRow(row));
         }
         function pNetPftFromRow(row) {
             const l7 = parseNumber(row['L7 Sales'] || 0);
             if (!l7) return 0;
-            return pGrossPftFromRow(row) - rowAdSpendFromRow(row);
+            return pGrossPftFromRow(row) - pAdSpendFromRow(row);
         }
         function rowNetPftFromRow(row) {
             const l30 = parseNumber(row['L30 Sales'] || 0);
@@ -4812,7 +4823,7 @@
                             data.forEach(function(row) {
                                 pGross += pGrossPftFromRow(row);
                                 pSales += pSalesFromRow(row);
-                                spend += rowAdSpendFromRow(row);
+                                spend += pAdSpendFromRow(row);
                             });
                             return pSales > 0 ? ((pGross - spend) / pSales) * 100 : null;
                         },
@@ -7448,7 +7459,7 @@
                     let pCogs = 0;
                     data.forEach(function(row) {
                         if (!pSalesFromRow(row)) return;
-                        pNet += pGrossPftFromRow(row) - rowAdSpendFromRow(row);
+                        pNet += pGrossPftFromRow(row) - pAdSpendFromRow(row);
                         pCogs += pCogsFromRow(row);
                     });
                     const avgPNroi = pCogs > 0 ? (pNet / pCogs) * 100 : 0;
@@ -10282,7 +10293,7 @@
                 if (!pSales) return null;
                 const pCogs = pCogsFromRow(row);
                 if (!(pCogs > 0)) return null;
-                return ((pGrossPftFromRow(row) - rowAdSpendFromRow(row)) / pCogs) * 100;
+                return ((pGrossPftFromRow(row) - pAdSpendFromRow(row)) / pCogs) * 100;
             }
 
             function renderProjectedMarketplaceRows(rows) {
@@ -10299,7 +10310,7 @@
                     const l30 = parseNumber(row['L30 Sales'] || 0);
                     const pGross = pGrossPftFromRow(row);
                     const pCogs = pCogsFromRow(row);
-                    const spend = rowAdSpendFromRow(row);
+                    const spend = pAdSpendFromRow(row);
 
                     sumPSales += pSales;
                     sumL30 += l30;

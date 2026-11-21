@@ -809,15 +809,7 @@ class TemuShopifySalesService
         ];
     }
 
-    /**
-     * Same rows and dollars as the /temu-tabulator badges.
-     * Each sheet row counts as an order. Parent-column "PARENT …" is the family name, not a skip.
-     * sales / l30_sales = Σ Temu Price × Qty (the L30 Sales column).
-     * base_sales = API Line Sales. full_sales = Line Sales × 1.1364 (GPFT% denominator).
-     * GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. GROI% divides that GPFT$ by COGS.
-     *
-     * @return array{sales: float, base_sales: float, full_sales: float, l30_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
-     */
+   
     public static function computeTemuTabulatorMetrics(Carbon $startDate, Carbon $endDate): array
     {
         $empty = [

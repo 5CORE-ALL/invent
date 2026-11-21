@@ -19532,7 +19532,7 @@ class ChannelMasterController extends Controller
                         $pNpft = $this->projectedNpftFromL7(
                             $summaryData['l7_sales'],
                             $summaryData['gprofit_percent'] ?? 0,
-                            $summaryData['total_ad_spend'] ?? 0
+                            $summaryData['p_ad_spend'] ?? $summaryData['total_ad_spend'] ?? 0
                         );
                         if ($pNpft === null) {
                             continue;
@@ -19545,7 +19545,7 @@ class ChannelMasterController extends Controller
                         $pNpftAmt = $this->projectedNpftDollarsFromL7(
                             $summaryData['l7_sales'],
                             $summaryData['gprofit_percent'] ?? 0,
-                            $summaryData['total_ad_spend'] ?? 0
+                            $summaryData['p_ad_spend'] ?? $summaryData['total_ad_spend'] ?? 0
                         );
                         if ($pNpftAmt === null) {
                             continue;
@@ -20933,7 +20933,7 @@ class ChannelMasterController extends Controller
             return $this->projectedNpftFromL7(
                 $summaryData['l7_sales'],
                 $summaryData['gprofit_percent'] ?? 0,
-                $summaryData['total_ad_spend'] ?? 0
+                $summaryData['p_ad_spend'] ?? $summaryData['total_ad_spend'] ?? 0
             );
         }
         if ($metric === 'p_npft_amt') {
@@ -20944,7 +20944,7 @@ class ChannelMasterController extends Controller
             return $this->projectedNpftDollarsFromL7(
                 $summaryData['l7_sales'],
                 $summaryData['gprofit_percent'] ?? 0,
-                $summaryData['total_ad_spend'] ?? 0
+                $summaryData['p_ad_spend'] ?? $summaryData['total_ad_spend'] ?? 0
             );
         }
         if ($metric === 'p_groi_pct') {
@@ -21026,11 +21026,11 @@ class ChannelMasterController extends Controller
             $pGross = 0.0;
             $pSales = 0.0;
             $spend = 0.0;
-            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['channel', 'ads_percentage', 'l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
                 $ps = $this->projectedSalesFromL7($row->l7_sales);
                 $pSales += $ps;
                 $pGross += ((float) ($row->gprofit_pct ?? 0) / 100) * $ps;
-                $spend += (float) ($row->total_ad_spend ?? 0);
+                $spend += $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage);
             }
 
             return $pSales > 0 ? round((($pGross - $spend) / $pSales) * 100, 1) : null;
@@ -21039,8 +21039,8 @@ class ChannelMasterController extends Controller
         if ($metric === 'p_npft_amt') {
             $total = 0.0;
             $any = false;
-            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
-                $amt = $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend);
+            foreach (\App\Models\ChannelMasterCalculatedData::query()->get(['channel', 'ads_percentage', 'l7_sales', 'gprofit_pct', 'total_ad_spend']) as $row) {
+                $amt = $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage));
                 if ($amt === null) {
                     continue;
                 }
@@ -21789,6 +21789,21 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Ad spend to charge against projected (P) sales.
+     * Temu 2: its L30 spend is the full Seller Center total while order-feed sales are far smaller,
+     * so dollar spend swamps P-Sales (hugely negative P NPFT / P NROI). Charge Ads% × P-Sales
+     * (Ads% = /temu2/ads TAcos%) instead. Every other channel keeps its real spend.
+     */
+    private function projectedAdSpend(?string $channel, mixed $l7Sales, mixed $adSpend, mixed $adsPct): float
+    {
+        if ($channel !== null && $this->allMarketplaceYSalesLookupKey($channel) === 'temu2') {
+            return round($this->projectedSalesFromL7($l7Sales) * ((float) $adsPct / 100), 2);
+        }
+
+        return (float) $adSpend;
+    }
+
+    /**
      * Projected NPFT% at L7 sales pace: GPFT% − (ad spend / P-Sales) × 100.
      */
     private function projectedNpftFromL7(mixed $l7Sales, mixed $gprofitPercent, mixed $adSpend): ?float
@@ -21887,7 +21902,7 @@ class ChannelMasterController extends Controller
             $summaryData['gprofit_percent'] ?? 0,
             $summaryData['l30_sales'] ?? 0,
             $summaryData['cogs'] ?? 0,
-            $summaryData['total_ad_spend'] ?? 0,
+            $summaryData['p_ad_spend'] ?? $summaryData['total_ad_spend'] ?? 0,
             $summaryData['nroi_percent'] ?? null
         );
     }
@@ -23530,10 +23545,10 @@ class ChannelMasterController extends Controller
             'today_sales' => $row->today_sales !== null ? (float) $row->today_sales : null,
             'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
             'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
-            'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
-            'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+            'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage)) : null,
+            'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $this->projectedAdSpend($channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage)) : null,
             'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
-            'p_nroi_pct' => $row->l7_sales !== null ? $this->pNroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->total_ad_spend, $row->n_roi) : null,
+            'p_nroi_pct' => $row->l7_sales !== null ? $this->pNroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $this->projectedAdSpend($channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage), $row->n_roi) : null,
             'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
             'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
             'y_npft_pct' => $yPct['npft'] ?? ($row->n_pft !== null ? (float) $row->n_pft : null),
@@ -23593,10 +23608,10 @@ class ChannelMasterController extends Controller
                 'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
                 'p_sales' => $row->l7_sales !== null ? $this->projectedSalesFromL7($row->l7_sales) : null,
-                'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
-                'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $row->total_ad_spend) : null,
+                'p_npft' => $row->l7_sales !== null ? $this->projectedNpftFromL7($row->l7_sales, $row->gprofit_pct, $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage)) : null,
+                'p_npft_amt' => $row->l7_sales !== null ? $this->projectedNpftDollarsFromL7($row->l7_sales, $row->gprofit_pct, $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage)) : null,
                 'p_groi_pct' => $row->l7_sales !== null ? $this->pGroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->g_roi) : null,
-                'p_nroi_pct' => $row->l7_sales !== null ? $this->pNroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $row->total_ad_spend, $row->n_roi) : null,
+                'p_nroi_pct' => $row->l7_sales !== null ? $this->pNroiPercentFromL7($row->l7_sales, $row->gprofit_pct, $row->l30_sales, $row->cogs, $this->projectedAdSpend((string) $row->channel, $row->l7_sales, $row->total_ad_spend, $row->ads_percentage), $row->n_roi) : null,
                 'y_pft' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->gprofit_pct) : null,
                 'y_npft_amt' => $row->yesterday_sales !== null ? $this->yProfitDollars($row->yesterday_sales, $row->n_pft) : null,
                 'y_npft_pct' => $yPct['npft'] ?? ($row->n_pft !== null ? (float) $row->n_pft : null),
@@ -24307,7 +24322,12 @@ class ChannelMasterController extends Controller
                 $adSpend = floatval($row['Total Ad Spend'] ?? 0);
                 $l30Sales = floatval($row['L30 Sales'] ?? 0);
                 $tcosPercent = $l30Sales > 0 ? ($adSpend / $l30Sales * 100) : 0;
+                if ($channelName === 'temu2' && isset($row['Ads%'])) {
+                    // Temu 2: Ads% = /temu2/ads TAcos% (spend ÷ order-feed L30 gave 294%).
+                    $tcosPercent = floatval($row['Ads%']);
+                }
                 $npftPercent = $gprofitPercent - $tcosPercent;
+                $pAdSpend = $this->projectedAdSpend($channelName, $row['L7 Sales'] ?? 0, $adSpend, floatval($row['Ads%'] ?? 0));
                 
                 // Get actual total_quantity from marketplace_daily_metrics (for units sold)
                 $channelNameForMetrics = $this->getChannelNameForMetrics($channelName);
@@ -24360,8 +24380,10 @@ class ChannelMasterController extends Controller
                     'groi_percent' => floatval($row['G Roi'] ?? 0),
                     'groi_l60' => floatval($row['G RoiL60'] ?? 0),
                     'npft_percent' => round($npftPercent, 2),
-                    'p_npft_percent' => $this->projectedNpftFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $adSpend),
-                    'p_npft_amt' => $this->projectedNpftDollarsFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $adSpend),
+                    'p_npft_percent' => $this->projectedNpftFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $pAdSpend),
+                    'p_npft_amt' => $this->projectedNpftDollarsFromL7($row['L7 Sales'] ?? 0, $gprofitPercent, $pAdSpend),
+                    // Spend charged against P-Sales (differs from total_ad_spend only for Temu 2).
+                    'p_ad_spend' => $pAdSpend,
                     'nroi_percent' => floatval($row['N ROI'] ?? 0),
                     'tcos_percent' => round($tcosPercent, 2),
                     'total_ad_spend' => $adSpend,
