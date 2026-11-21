@@ -621,6 +621,63 @@
                 loadSent();
             });
         });
+        // Inline "Reschedule" form on a sent-meeting card (works before, during and after the meeting, also once completed).
+        var DURATIONS = [[10, '10 min'], [15, '15 min'], [30, '30 min'], [45, '45 min'], [60, '1 hr'], [90, '1.5 hr'], [120, '2 hr'], [180, '3 hr']];
+        function toggleReschedule(card, m) {
+            var box = card.querySelector('[data-resched]');
+            if (!box.classList.contains('mrq-hidden')) { box.classList.add('mrq-hidden'); box.innerHTML = ''; return; }
+            var cur = (m.scheduled_date || '') + ' ' + (m.scheduled_time || ''), now = nowIn(0);
+            // keep the old slot if it is still ahead, otherwise suggest "in 30 minutes"
+            var pre = (m.scheduled_date && cur > now.date + ' ' + now.time) ? { date: m.scheduled_date, time: m.scheduled_time } : nowIn(30);
+            var dur = Number(m.duration_minutes) || 30;
+            var opts = DURATIONS.slice();
+            if (!opts.some(function (d) { return d[0] === dur; })) { opts.push([dur, dur + ' min']); opts.sort(function (a, b) { return a[0] - b[0]; }); }
+            box.innerHTML = '<div class="border rounded-3 p-2" style="background:rgba(245,158,11,.07)">'
+                + '<div class="small fw-semibold mb-2"><i class="ri-calendar-schedule-line"></i> Reschedule meeting</div>'
+                + '<div class="d-flex flex-wrap gap-1 mb-2" data-rs-quick>'
+                + [[1, 'After 1 day'], [2, 'After 2 days'], [3, 'After 3 days'], ['monday', 'Next Monday'], [7, 'After 1 week'], [14, 'After 2 weeks'], [0, 'Custom']].map(function (q) {
+                    return '<button type="button" class="btn btn-sm btn-outline-secondary" data-rs-days="' + q[0] + '">' + q[1] + '</button>';
+                }).join('') + '</div>'
+                + '<div class="row g-2 align-items-end">'
+                + '<div class="col-sm-4"><label class="form-label small mb-1">New date</label><input type="date" class="form-control form-control-sm" data-rs-date value="' + esc(pre.date) + '" min="' + esc(now.date) + '"></div>'
+                + '<div class="col-sm-3"><label class="form-label small mb-1">Start time</label><input type="time" class="form-control form-control-sm" data-rs-time value="' + esc(pre.time) + '"></div>'
+                + '<div class="col-sm-3"><label class="form-label small mb-1">Length</label><select class="form-select form-select-sm" data-rs-dur>'
+                + opts.map(function (d) { return '<option value="' + d[0] + '"' + (d[0] === dur ? ' selected' : '') + '>' + esc(d[1]) + '</option>'; }).join('') + '</select></div>'
+                + '<div class="col-sm-2 d-flex gap-1"><button type="button" class="btn btn-sm btn-warning flex-fill" data-rs-save>Save</button><button type="button" class="btn btn-sm btn-light" data-rs-cancel title="Close">&times;</button></div>'
+                + '</div><div class="small mt-2" data-rs-msg></div>'
+                + '<div class="small text-muted mt-1">Invitees see the new time under Requests for you' + (m.google ? ', and the Google Calendar event is updated' : '') + '. Members who marked it completed will see it again.</div></div>';
+            box.classList.remove('mrq-hidden');
+            var msg = box.querySelector('[data-rs-msg]'), save = box.querySelector('[data-rs-save]');
+            box.querySelector('[data-rs-cancel]').addEventListener('click', function () { box.classList.add('mrq-hidden'); box.innerHTML = ''; });
+            // Quick picks: N days from today (company time zone), same start time; "Custom" = pick any date yourself.
+            var dateIn = box.querySelector('[data-rs-date]'), quick = box.querySelectorAll('[data-rs-days]');
+            function mark(btn) { quick.forEach(function (b) { b.classList.toggle('btn-secondary', b === btn); b.classList.toggle('btn-outline-secondary', b !== btn); }); }
+            function addDays(ymd, n) { var p = ymd.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)); return d.toISOString().slice(0, 10); }
+            quick.forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var raw = b.getAttribute('data-rs-days'), n = Number(raw);
+                    if (raw === 'monday') { // next Monday that is after today
+                        var t0 = nowIn(0).date.split('-').map(Number), dow = new Date(Date.UTC(t0[0], t0[1] - 1, t0[2])).getUTCDay();
+                        n = ((8 - dow) % 7) || 7;
+                    }
+                    mark(b);
+                    if (n > 0) dateIn.value = addDays(nowIn(0).date, n); else { try { dateIn.showPicker(); } catch (e) { dateIn.focus(); } }
+                });
+            });
+            dateIn.addEventListener('input', function () { mark(box.querySelector('[data-rs-days="0"]')); });
+            save.addEventListener('click', function () {
+                var d = box.querySelector('[data-rs-date]').value, t = box.querySelector('[data-rs-time]').value;
+                if (!d || !t) { msg.innerHTML = '<span class="text-danger">Pick the new date and start time.</span>'; return; }
+                if (!confirm('Reschedule "' + m.title + '" to ' + d + ' ' + t + '?')) return;
+                save.disabled = true; msg.innerHTML = '<span class="text-muted">Saving…</span>';
+                call('POST', m.reschedule_url, { meeting_date: d, start_time: t, approx_minutes: Number(box.querySelector('[data-rs-dur]').value) }).then(function (r) {
+                    if (!r.ok || !(r.data && r.data.ok)) { save.disabled = false; msg.innerHTML = '<span class="text-danger">' + esc(firstError(r)) + '</span>'; return; }
+                    msg.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> Rescheduled to ' + esc(r.data.scheduled_at || (d + ' ' + t)) + '.</span>'
+                        + (r.data.google_error ? '<div class="text-warning-emphasis">Saved here, but Google Calendar was not updated: ' + esc(r.data.google_error) + '</div>' : '');
+                    setTimeout(function () { sentSig = ''; loadSent(); poll(false); }, 1200);
+                }).catch(function () { save.disabled = false; msg.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>'; });
+            });
+        }
         function loadSent(silent) {
             var box = $('mrqSentList'), done = sentFilter === 'completed', reqFilter = sentFilter;
             if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
@@ -631,7 +688,7 @@
                 var cc = (res.data && res.data.completed_count) || 0, cb = $('mrqCompletedCount');
                 cb.textContent = cc; cb.classList.toggle('mrq-hidden', !cc);
                 var sig = JSON.stringify(list);
-                if (silent && (sig === sentSig || tab !== 'sent')) return; // nothing changed: leave the list (and scroll position) alone
+                if (silent && (sig === sentSig || tab !== 'sent' || box.querySelector('[data-resched]:not(.mrq-hidden)'))) return; // nothing changed (or a reschedule form is open): leave the list alone
                 sentSig = sig;
                 if (!list.length) { box.innerHTML = done
                     ? '<div class="text-muted py-3 text-center">No completed meetings yet.</div>'
@@ -657,7 +714,11 @@
                         + '<div class="mb-2">' + (chips || '<span class="text-muted small">No members invited.</span>') + '</div>'
                         + join + '<a class="btn btn-sm btn-light" href="' + esc(m.details_url || m.room_url) + '">Details</a>'
                         + (done ? '' : ' <button type="button" class="btn btn-sm btn-primary" data-complete title="Mark this meeting as completed"><i class="ri-check-double-line"></i> Completed</button>')
+                        + (m.reschedule_url ? ' <button type="button" class="btn btn-sm btn-outline-warning" data-reschedule title="Move this meeting to another date and time"><i class="ri-calendar-schedule-line"></i> Reschedule</button>' : '')
+                        + '<div class="mt-2 mrq-hidden" data-resched></div>'
                         + '<div class="small mt-2" data-result></div>';
+                    var rbtn = div.querySelector('[data-reschedule]');
+                    if (rbtn) rbtn.addEventListener('click', function () { toggleReschedule(div, m); });
                     var cbtn = div.querySelector('[data-complete]');
                     if (cbtn) cbtn.addEventListener('click', function () {
                         if (!confirm('Mark "' + m.title + '" as completed? It will move to the Completed tab.')) return;
@@ -729,7 +790,7 @@
 
         var inboxSig = '';
         function renderInbox(list) {
-            inboxSig = list.map(function (x) { return x.id + ':' + x.rsvp; }).join('|');
+            inboxSig = list.map(function (x) { return x.id + ':' + x.rsvp + ':' + x.scheduled_at; }).join('|');
             if (!list.length) {
                 $('mrqInboxList').innerHTML = '<div class="text-muted py-3 text-center">No pending meeting requests.</div>';
                 return;
@@ -739,7 +800,7 @@
         }
         // Background refresh: redraw only when something changed and no card is mid-action (so buttons never vanish under the cursor).
         function refreshInboxLive(list) {
-            var sig = list.map(function (x) { return x.id + ':' + x.rsvp; }).join('|');
+            var sig = list.map(function (x) { return x.id + ':' + x.rsvp + ':' + x.scheduled_at; }).join('|');
             if (sig === inboxSig) return;
             var busy = Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-result]'), function (el) { return el.textContent.trim() !== ''; })
                 || Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-actions] button'), function (b) { return b.disabled; });

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed', 'skipHighcharts' => true])
+@extends('layouts.vertical', ['title' => $complianceTitle ?? 'Compliance Masters', 'mode' => $mode ?? '', 'demo' => $demo ?? '', 'sidenav' => 'condensed', 'skipHighcharts' => true])
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -983,8 +983,8 @@
     @endphp
 
     @include('layouts.shared.page-title', [
-        'page_title' => 'Compliance Masters',
-        'sub_title' => 'Compliance Masters Analysis',
+        'page_title' => $complianceTitle ?? 'Compliance Masters',
+        'sub_title' => isset($complianceTitle) ? $complianceTitle.' Analysis' : 'Compliance Masters Analysis',
     ])
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;"></div>
@@ -1268,7 +1268,14 @@
             let complianceAutoSaveQueued = false;
 
             const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch', 'energy_star_registration', 'us_energy_efficiency_label'];
-            let cmSummaryBadgeFilter = null;
+            // Set on the dedicated "Compliance <Badge>" pages: only that field's column + badge, pre-filtered to its REQ rows.
+            const CM_ONLY_FIELD = @json($complianceField ?? null);
+            let cmSummaryBadgeFilter = CM_ONLY_FIELD || null;
+            if (CM_ONLY_FIELD) {
+                document.querySelectorAll('#cm-summary-stats .cm-summary-badge').forEach(function(b) {
+                    if (b.getAttribute('data-cm-filter') !== CM_ONLY_FIELD) b.classList.add('d-none');
+                });
+            }
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -2251,8 +2258,12 @@
                         if (response && response.data && Array.isArray(response.data)) {
                             tableData = response.data;
                             filteredData = [...tableData];
-                            renderTable(filteredData);
-                            updateCounts();
+                            if (CM_ONLY_FIELD) {
+                                applyFilters(); // renders only this badge's REQ rows
+                            } else {
+                                renderTable(filteredData);
+                                updateCounts();
+                            }
                         } else {
                             console.error('Invalid data format received from server');
                         }
@@ -2483,6 +2494,7 @@
                 ];
 
                 COMPLIANCE_BULK_FIELD_KEYS.forEach(function(fk) {
+                    if (CM_ONLY_FIELD && fk !== CM_ONLY_FIELD) return;
                     const label = CM_FIELD_LABELS[fk] || fk;
                     const wide = label.length > 12;
                     cols.push({
@@ -2700,7 +2712,28 @@
                 sp('cm-summary-energy-star', summaryEnergyStar);
                 sp('cm-summary-us-energy', summaryUsEnergy);
                 syncComplianceSidebarBadge(summaryAny);
+                syncComplianceFieldSidebarBadges({
+                    battery: summaryBattery, wireless: summaryWireless, electric: summaryElectric, gcc: summaryGcc,
+                    rohs: summaryRohs, blanket: summaryBlanket, bluetooth: summaryBluetooth, logo: summaryLogo,
+                    graph: summaryGraph, tsp: summaryTsp, batch: summaryBatch,
+                    energy_star_registration: summaryEnergyStar, us_energy_efficiency_label: summaryUsEnergy
+                });
                 persistComplianceKpiSnapshot();
+            }
+
+            /** Keep the per-page counts in the left sidebar ("Compliance Pages") in step with the table. */
+            function syncComplianceFieldSidebarBadges(counts) {
+                let total = 0;
+                document.querySelectorAll('.cm-field-sidebar-badge').forEach(function(el) {
+                    const n = Number(counts[el.getAttribute('data-field')]) || 0;
+                    total += n;
+                    el.textContent = n.toLocaleString();
+                    el.style.display = n > 0 ? '' : 'none';
+                });
+                document.querySelectorAll('.cm-field-sidebar-total').forEach(function(el) {
+                    el.textContent = total.toLocaleString();
+                    el.style.display = total > 0 ? '' : 'none';
+                });
             }
 
             function syncComplianceSidebarBadge(count) {

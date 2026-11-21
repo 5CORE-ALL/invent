@@ -429,6 +429,10 @@ class MeetingController extends Controller
                 'details_url' => route('meetings.show', $m),
                 'room_url' => $m->isGoogleMeet() ? route('meetings.show', $m) : route('meetings.room', $m),
                 'end_url' => route('meetings.end', $m),
+                'reschedule_url' => route('meetings.reschedule', $m),
+                'scheduled_date' => $m->scheduled_at?->format('Y-m-d'),
+                'scheduled_time' => $m->scheduled_at?->format('H:i'),
+                'duration_minutes' => $m->scheduled_at && $m->scheduled_end_at ? (int) max(5, $m->scheduled_at->diffInMinutes($m->scheduled_end_at)) : 30,
                 'invitees' => $m->participants->map(fn (MeetingParticipant $p) => [
                     'name' => (string) ($p->user?->name ?? 'Unknown'),
                     'status' => $this->inviteeStatus($p),
@@ -528,6 +532,39 @@ class MeetingController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    /** Host moves a meeting (also one already joined / completed) to a new date and time. */
+    public function reschedule(Request $request, Meeting $meeting): JsonResponse
+    {
+        if (! $this->canManage($meeting, Auth::user())) {
+            return response()->json(['ok' => false, 'message' => 'Only the host can reschedule this meeting.'], 403);
+        }
+        if ($meeting->isCancelled()) {
+            return response()->json(['ok' => false, 'message' => 'A cancelled meeting cannot be rescheduled.'], 409);
+        }
+
+        $data = $request->validate([
+            'meeting_date' => 'required|date_format:Y-m-d',
+            'start_time' => 'required|date_format:H:i',
+            'approx_minutes' => 'required|integer|min:5|max:720',
+        ]);
+
+        $tz = \App\Casts\MeetingDateTime::timezone();
+        $start = \Carbon\Carbon::parse($data['meeting_date'].' '.$data['start_time'], $tz);
+        if ($start->lt(now($tz)->subMinutes(5))) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['start_time' => 'Pick a date and time in the future.']);
+        }
+        $end = $start->copy()->addMinutes((int) $data['approx_minutes']);
+
+        $result = $this->scheduler->reschedule($meeting, $start, $end);
+        $m = $result['meeting']->fresh();
+
+        return response()->json([
+            'ok' => true,
+            'google_error' => $result['google_error'],
+            'scheduled_at' => $this->whenLabel($m),
+        ]);
     }
 
     // ---------------------------------------------------------------------

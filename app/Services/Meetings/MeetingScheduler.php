@@ -192,6 +192,49 @@ class MeetingScheduler
     }
 
     /**
+     * Move a meeting to a new date/time. Works for scheduled, live and already-completed meetings (a completed one
+     * is re-opened as scheduled). Members whose request was marked "completed" see it again; Google Calendar is updated.
+     *
+     * @return array{meeting: Meeting, google_error: ?string}
+     *
+     * @throws ValidationException on a cancelled meeting or a room clash
+     */
+    public function reschedule(Meeting $meeting, Carbon $start, Carbon $end): array
+    {
+        if ($meeting->isCancelled()) {
+            throw ValidationException::withMessages(['meeting_date' => 'A cancelled meeting cannot be rescheduled.']);
+        }
+
+        $apply = function () use ($meeting, $start, $end) {
+            return DB::transaction(function () use ($meeting, $start, $end) {
+                $meeting = Meeting::query()->lockForUpdate()->findOrFail($meeting->id);
+                if ($meeting->room_slot) {
+                    $this->assertRoomFree((int) $meeting->room_slot, $start, $end, $meeting->id);
+                }
+
+                $meeting->forceFill([
+                    'scheduled_at' => $start,
+                    'scheduled_end_at' => $end,
+                    'status' => Meeting::STATUS_SCHEDULED,
+                    'started_at' => null,
+                    'ended_at' => null,
+                ])->save();
+
+                MeetingParticipant::query()
+                    ->where('meeting_id', $meeting->id)
+                    ->where('is_invited', true)
+                    ->where('rsvp', 'completed')
+                    ->update(['rsvp' => 'pending']);
+
+                return $meeting;
+            });
+        };
+        $meeting = $meeting->room_slot ? $this->withRoomLock((int) $meeting->room_slot, $apply) : $apply();
+
+        return ['meeting' => $meeting, 'google_error' => $meeting->isGoogleMeet() ? $this->trySync($meeting) : null];
+    }
+
+    /**
      * Retry the Google side of a meeting (create-or-update, idempotent).
      */
     public function retrySync(Meeting $meeting): ?string

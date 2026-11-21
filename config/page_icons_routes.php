@@ -92,6 +92,7 @@ return [
     'shipping.master' => 'sidebar_product',
     'general.specific.master' => 'sidebar_product',
     'compliance.master' => 'sidebar_product',
+    'compliance.page.*' => 'sidebar_product',
     'packing.instructions.master' => 'sidebar_product',
     'a.plus.images.master' => 'sidebar_product',
     'keywords.master' => 'sidebar_product',

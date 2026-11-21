@@ -3897,6 +3897,18 @@ class CategoryController extends Controller
         return view('compliance-master');
     }
 
+    /** Dedicated "Compliance <Badge>" page: the Compliance Masters table limited to one field. */
+    public function compliancePage(string $slug)
+    {
+        $page = \App\Support\Compliance\CompliancePages::all()[$slug] ?? abort(404);
+
+        return view('compliance-master', [
+            'complianceField' => $page['field'],
+            'complianceTitle' => $page['title'],
+            'complianceLabel' => $page['label'],
+        ]);
+    }
+
     public function packingInstructionsMaster()
     {
         return view('packing_instructions');

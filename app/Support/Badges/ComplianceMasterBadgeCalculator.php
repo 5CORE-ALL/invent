@@ -96,18 +96,31 @@ class ComplianceMasterBadgeCalculator implements PageBadgeCalculator
         }
     }
 
+    public const COUNTS_CACHE_KEY = 'compliance_master_counts_all';
+
     public static function cachedMissingSkuCount(): int
     {
+        return (int) (self::cachedCounts()['missing_any'] ?? 0);
+    }
+
+    /**
+     * All badge counts (missing_any + missing_<field>), cached for 5 minutes.
+     *
+     * @return array<string, int>
+     */
+    public static function cachedCounts(): array
+    {
         try {
-            return (int) Cache::remember(self::CACHE_KEY, 300, fn () => (int) (self::calculate()['missing_any'] ?? 0));
+            return (array) Cache::remember(self::COUNTS_CACHE_KEY, 300, fn () => self::calculate());
         } catch (\Throwable $e) {
-            return 0;
+            return self::emptyCounts();
         }
     }
 
     public static function forgetCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget(self::COUNTS_CACHE_KEY);
     }
 
     public static function missingSkuCount(): int

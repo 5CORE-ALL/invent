@@ -3008,6 +3008,29 @@
                                 <span class="badge bg-danger rounded-pill compliance-missing-sidebar-badge" title="SKUs with any REQ compliance field" @if($complianceMissingCount <= 0) style="display:none" @endif>{{ number_format($complianceMissingCount) }}</span>
                             </a>
                         </li>
+                        @php
+                            $compliancePagesMenu = \App\Support\Compliance\CompliancePages::withCounts();
+                            $compliancePagesTotal = array_sum(array_column($compliancePagesMenu, 'count'));
+                        @endphp
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#compliancePagesMenu" aria-expanded="{{ request()->routeIs('compliance.page.*') ? 'true' : 'false' }}" aria-controls="compliancePagesMenu">
+                                <span>Compliance Pages</span>
+                                <span class="badge bg-danger rounded-pill cm-field-sidebar-total" title="Total missing REQ across all compliance pages" @if($compliancePagesTotal <= 0) style="display:none" @endif>{{ number_format($compliancePagesTotal) }}</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse {{ request()->routeIs('compliance.page.*') ? 'show' : '' }}" id="compliancePagesMenu">
+                                <ul class="side-nav-third-level">
+                                    @foreach($compliancePagesMenu as $cpPage)
+                                        <li>
+                                            <a href="{{ route($cpPage['route']) }}">
+                                                {{ $cpPage['title'] }}
+                                                <span class="badge bg-danger rounded-pill cm-field-sidebar-badge" data-field="{{ $cpPage['field'] }}" title="{{ $cpPage['label'] }} REQ missing" @if($cpPage['count'] <= 0) style="display:none" @endif>{{ number_format($cpPage['count']) }}</span>
+                                            </a>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </li>
                         <li>
                             <a href="{{ route('packing.instructions.master') }}">Packing Carton</a>
                         </li>

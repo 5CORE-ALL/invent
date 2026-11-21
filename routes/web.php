@@ -6052,6 +6052,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/field-file/delete', [CategoryController::class, 'deleteComplianceFieldFile'])->name('compliance.master.field.file.delete');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
     Route::post('/compliance-master/badge-snapshot', [CategoryController::class, 'snapshotComplianceMasterBadges'])->name('compliance.master.badge.snapshot');
+    // One "Compliance <Badge>" page per badge (Battery, Wireless, ...), same table limited to that field.
+    foreach (\App\Support\Compliance\CompliancePages::all() as $__cpSlug => $__cpPage) {
+        Route::get($__cpPage['url'], [CategoryController::class, 'compliancePage'])->defaults('slug', $__cpSlug)->name($__cpPage['route']);
+    }
     Route::get('/packing-instructions-master', [CategoryController::class, 'packingInstructionsMaster'])->name('packing.instructions.master');
     Route::get('/packing-instructions-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('packing.instructions.master.data');
     Route::post('/packing-instructions-master/store', [CategoryController::class, 'storePackingInstructionsMaster'])->name('packing.instructions.master.store');
@@ -8148,6 +8152,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/meetings/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesIndex'])->name('meetings.minutes.index');
     Route::get('/meetings/{meeting}/room', [\App\Http\Controllers\MeetingController::class, 'room'])->name('meetings.room');
     Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\MeetingController::class, 'end'])->name('meetings.end');
+    Route::post('/meetings/{meeting}/reschedule', [\App\Http\Controllers\MeetingController::class, 'reschedule'])->whereNumber('meeting')->name('meetings.reschedule');
     Route::get('/meetings/{meeting}/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesShow'])->name('meetings.minutes.show');
     Route::post('/meetings/{meeting}/minutes/regenerate', [\App\Http\Controllers\MeetingController::class, 'regenerate'])->name('meetings.minutes.regenerate');
     Route::delete('/meetings/{meeting}', [\App\Http\Controllers\MeetingController::class, 'destroy'])->name('meetings.destroy');
