@@ -970,7 +970,6 @@ class YesterdayMarketplaceMetricsService
                 continue;
             }
             $pm = $this->pm((string) ($row->sku ?? ''));
-            $shipCost = $this->shipCost($pm['ship'], $pm['wt'], $quantity);
             $sales += $unitPrice * $quantity;
             $qty += $quantity;
             $oid = (string) ($row->po_number ?? $row->order_id ?? $row->id ?? '');
@@ -978,7 +977,9 @@ class YesterdayMarketplaceMetricsService
                 $orders[$oid] = true;
             }
             $cogs += $pm['lp'] * $quantity;
-            $pft += (($unitPrice * $margin) - $pm['lp'] - $shipCost) * $quantity;
+            // Wayfair profit has NO ship cost (same as /wayfair/daily-sales and the L30 row
+            // on /all-marketplace-master). Subtracting ship here made small-order days negative.
+            $pft += (($unitPrice * $margin) - $pm['lp']) * $quantity;
         }
 
         return $this->pack($sales, $sales, $pft, $cogs, 0.0, count($orders), $qty, $sales);
