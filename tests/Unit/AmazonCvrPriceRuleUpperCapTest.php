@@ -54,10 +54,22 @@ class AmazonCvrPriceRuleUpperCapTest extends TestCase
 
     public function test_no_lifetime_cvr_starts_from_zero_percent(): void
     {
-        // No sessions at all: CVR L30 = 0%, LT O CVR starts at 0% -> within target, so the "within" % applies.
-        $row = ['a_l30' => 0.0, 'sess30' => 0.0, 'a_l60' => 0.0, 'sess60' => 0.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
+        // No sessions, but sold 1 (inconsistent data): CVR L30 0%, LT O CVR starts at 0% -> within target.
+        $row = ['a_l30' => 1.0, 'sess30' => 0.0, 'a_l60' => 0.0, 'sess60' => 0.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
         $cfg = $this->cfg(['same' => 5.0, 'up' => 50.0]);
         $r = AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0);
         $this->assertSame(10.5, $r['price']);
+    }
+
+    public function test_sold_zero_is_always_cvr_down(): void
+    {
+        $row = ['a_l30' => 0.0, 'sess30' => 0.0, 'a_l60' => 0.0, 'sess60' => 0.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
+        $cfg = $this->cfg(['down' => 5.0, 'same' => 9.0, 'up' => 50.0]);
+        $r = AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0);
+        $this->assertSame(9.5, $r['price']); // Down always lowers, even with no lifetime CVR
+        // Sold 0 with sessions and a lifetime CVR inside the band is still Down.
+        $row2 = ['a_l30' => 0.0, 'sess30' => 50.0, 'a_l60' => 0.0, 'sess60' => 50.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
+        $r = AmazonCvrPriceRule::apply(10.0, $row2, $cfg, 0.0);
+        $this->assertSame(9.5, $r['price']);
     }
 }

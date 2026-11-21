@@ -172,6 +172,8 @@
             const lto = sess <= 0 ? 0 : (((parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0)) / sess) * 100;
             const cvr = sess30 === 0 ? 0 : ((parseFloat(row['A_L30']) || 0) / sess30) * 100;
             const b = amzCvrRuleBands(cfg);
+            // Sold 0 (CVR L30 = 0%): always CVR Down, whatever LT O CVR is.
+            if ((parseFloat(row['A_L30']) || 0) <= 0) return -1;
             if (cvr > lto * (1 + b.up)) return 1;
             if (cvr < lto * (1 - b.down)) return -1;
             return 0;

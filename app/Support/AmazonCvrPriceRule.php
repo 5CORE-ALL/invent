@@ -40,6 +40,9 @@ class AmazonCvrPriceRule
         if ($pinkOn && $cvr > $pinkAbove) {
             // Pink up arrow slab (CVR L30 above the pink target): replaces the down / within / up case.
             $case = 'pink';
+        } elseif ($aL30 <= 0) {
+            // Sold 0 (CVR L30 = 0%): always CVR Down, whatever LT O CVR is.
+            $case = 'down';
         } elseif ($cvr > $lto * (1 + $up)) {
             $case = 'up';
         } elseif ($cvr < $lto * (1 - $down)) {
