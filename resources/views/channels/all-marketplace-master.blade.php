@@ -2180,7 +2180,8 @@
             if (Math.abs(diff) < 0.5) return DEFAULT_DOT_GRAY;
             return diff > 0 ? '#28a745' : '#dc3545';
         }
-        function formatPSalesVsL30PctHtml(pct) {
+        // noMinus: P Growth column shows a drop as red "17%" (no "−"); the "+" on gains stays.
+        function formatPSalesVsL30PctHtml(pct, noMinus) {
             if (pct == null || !isFinite(pct)) return '';
             // Anything that displays as 0% (e.g. −0.3%) is flat: no sign, no red ("−0%" was misleading).
             if (Math.round(Math.abs(pct)) === 0) {
@@ -2188,14 +2189,8 @@
             }
             const isUp = pct > 0;
             const color = isUp ? '#198754' : '#dc3545';
-            const sign = isUp ? '+' : '−';
+            const sign = isUp ? '+' : (noMinus ? '' : '−');
             return `<span class="p-sales-vs-sales-pct" style="color:${color};">${sign}${Math.abs(pct).toFixed(0)}%</span>`;
-        }
-        // Low-volume, lumpy channels (a handful of orders a month). One quiet week against a lumpy 30-day
-        // total reads -78%, which is order timing, not a real decline, so a below-L30 P Growth is not shown.
-        var P_GROWTH_HIDE_NEGATIVE_CHANNELS = { vinted: 1, faire: 1, depop: 1 };
-        function hideNegativePGrowthFor(channelName) {
-            return !!P_GROWTH_HIDE_NEGATIVE_CHANNELS[snapshotChannelKey(channelName)];
         }
         function pSalesVsL30Title(pct) {
             if (pct == null || !isFinite(pct)) return 'P-Sales vs Sales — click for chart';
@@ -4727,10 +4722,7 @@
                             if (!l7 || l7 === 0) {
                                 return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
                             }
-                            if (hideNegativePGrowthFor(channel) && pct != null && isFinite(pct) && Math.round(pct) < 0) {
-                                return `<span style="color:#adb5bd;font-weight:600;" title="Last 7 days are below the 30-day pace. Not shown for low-volume channels.">-</span>${chartIcon}`;
-                            }
-                            return `<span style="white-space:nowrap;">${formatPSalesVsL30PctHtml(pct)}${chartIcon}</span>`;
+                            return `<span style="white-space:nowrap;">${formatPSalesVsL30PctHtml(pct, true)}${chartIcon}</span>`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -4752,7 +4744,7 @@
                             if (value === null || value === undefined || !isFinite(parseNumber(value))) {
                                 return '<strong style="color:#adb5bd;">-</strong>';
                             }
-                            return `<strong>${formatPSalesVsL30PctHtml(parseNumber(value))}</strong>`;
+                            return `<strong>${formatPSalesVsL30PctHtml(parseNumber(value), true)}</strong>`;
                         }
                     },
                     {
