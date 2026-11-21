@@ -651,7 +651,7 @@
 
             function isParentRow(row) {
                 const sku = String(row.sku || '').trim();
-                return /parent/i.test(sku) || (String(row.parent || '').trim() !== '' && sku.toLowerCase() === String(row.parent).trim().toLowerCase());
+                return /parent/i.test(sku);
             }
 
             function inStock(row) {

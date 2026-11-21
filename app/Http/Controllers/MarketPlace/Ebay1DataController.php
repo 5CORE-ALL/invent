@@ -1245,16 +1245,14 @@ class Ebay1DataController extends Controller
     }
 
     /**
-     * A parent row is a "PARENT ..." SKU, or a row whose SKU is the parent name itself.
+     * Placeholder parent rows ("PARENT ...") stay off this page.
+     * A real CP Master product whose SKU is its own parent name (GSS UKU, MS MOB) stays.
      */
     protected function isParentRow(string $sku, string $parent): bool
     {
         $sku = trim($sku);
-        if ($sku === '' || stripos($sku, 'PARENT') !== false) {
-            return true;
-        }
 
-        return $parent !== '' && $this->skuKey($sku) === $this->skuKey($parent);
+        return $sku === '' || stripos($sku, 'PARENT') !== false;
     }
 
     protected function categoryHash(string $category): string
