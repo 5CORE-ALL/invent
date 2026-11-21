@@ -2141,7 +2141,7 @@ class StockBalanceController extends Controller
                         ->values();
                     if ($comboSources->count() >= 2) {
                         $existingCombo = StockBalanceRule::query()->where('to_sku', $toSku)->first();
-                        $transferredAtCombo = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
+                        $transferredAtCombo = $this->transferredAtAsAppTime($transfer->transferred_at);
                         $editedAfter = ! $force && $existingCombo && $transferredAtCombo && $existingCombo->updated_at && $existingCombo->updated_at->gt($transferredAtCombo);
                         // Compare the full set of SKUs (primary + extras), not which one happens to be listed first.
                         $sameAsSaved = $existingCombo
@@ -2165,7 +2165,7 @@ class StockBalanceController extends Controller
                     }
 
                     $existing = StockBalanceRule::query()->where('to_sku', $toSku)->first();
-                    $transferredAt = $transfer->transferred_at ? Carbon::parse($transfer->transferred_at) : null;
+                    $transferredAt = $this->transferredAtAsAppTime($transfer->transferred_at);
                     if (! $force && $existing && $transferredAt && $existing->updated_at && $existing->updated_at->gt($transferredAt)) {
                         continue;
                     }
@@ -2205,6 +2205,20 @@ class StockBalanceController extends Controller
             });
 
         return $updated;
+    }
+
+    /**
+     * stock_balances.transferred_at is stored as New York wall-clock time, while rule updated_at uses the
+     * app timezone. Convert so "rule edited after the transfer" compares real moments; otherwise a rule
+     * saved within a few hours of a transfer is overwritten from history on the next page load.
+     */
+    private function transferredAtAsAppTime($value): ?Carbon
+    {
+        if (! $value) {
+            return null;
+        }
+
+        return Carbon::parse($value, 'America/New_York')->setTimezone(config('app.timezone'));
     }
 
     /**
