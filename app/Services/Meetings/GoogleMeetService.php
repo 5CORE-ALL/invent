@@ -472,6 +472,67 @@ class GoogleMeetService
         }
     }
 
+    /**
+     * Create a brand-new Google Meet link right now, before any meeting exists in the app.
+     *
+     * A placeholder calendar event (no guests, no notifications) carries the conference. Its id is derived from
+     * the returned request_id ('inv' + request_id), which is exactly how syncMeeting() finds an event, so a meeting
+     * saved later with google_request_id = request_id adopts this event (and this very link) instead of creating
+     * a second conference.
+     *
+     * @return array{request_id: string, meet_url: string}
+     *
+     * @throws GoogleMeetException
+     */
+    public function createStandaloneMeetLink(string $title = 'New Google Meet'): array
+    {
+        $this->assertConfigured();
+
+        $requestId = bin2hex(random_bytes(16));
+
+        try {
+            $service = $this->calendarService();
+            $calendarId = (string) config('services.meetings.google.calendar_id', 'primary');
+            $tz = MeetingDateTime::timezone();
+
+            $event = new Event();
+            $event->setId('inv'.$requestId);
+            $event->setSummary($title);
+            $start = new EventDateTime();
+            $start->setDateTime(now($tz)->toRfc3339String());
+            $start->setTimeZone($tz);
+            $end = new EventDateTime();
+            $end->setDateTime(now($tz)->addMinutes(30)->toRfc3339String());
+            $end->setTimeZone($tz);
+            $event->setStart($start);
+            $event->setEnd($end);
+
+            $key = new ConferenceSolutionKey();
+            $key->setType('hangoutsMeet');
+            $req = new CreateConferenceRequest();
+            $req->setRequestId('conf-'.$requestId);
+            $req->setConferenceSolutionKey($key);
+            $conf = new ConferenceData();
+            $conf->setCreateRequest($req);
+            $event->setConferenceData($conf);
+
+            $created = $this->withRetry(fn () => $service->events->insert($calendarId, $event, [
+                'conferenceDataVersion' => 1,
+                'sendUpdates' => 'none',
+            ]));
+            $created = $this->awaitConference($service, $calendarId, $created);
+
+            $link = $this->extractMeetLink($created);
+            if (! $link) {
+                throw new GoogleMeetException('Google is still generating the Meet link. Please click the button again in a moment.', 'conference_failed', true);
+            }
+
+            return ['request_id' => $requestId, 'meet_url' => $link];
+        } catch (\Throwable $e) {
+            throw $this->translate($e);
+        }
+    }
+
     private function upsertEvent(Calendar $service, Meeting $meeting, string $calendarId): Event
     {
         $eventId = $meeting->google_event_id ?: 'inv'.$meeting->google_request_id;
@@ -662,7 +723,7 @@ class GoogleMeetService
      *
      * @throws GoogleMeetException
      */
-    private function awaitConference(Calendar $service, string $calendarId, Event $event, Meeting $meeting): Event
+    private function awaitConference(Calendar $service, string $calendarId, Event $event, ?Meeting $meeting = null): Event
     {
         $attempts = max(1, (int) config('services.meetings.google.conference_poll_attempts', 6));
         $sleepMs = (int) config('services.meetings.google.conference_poll_sleep_ms', 1000);

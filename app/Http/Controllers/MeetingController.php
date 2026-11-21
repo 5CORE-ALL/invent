@@ -15,6 +15,7 @@ use App\Support\SuperAdminAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -240,6 +241,28 @@ class MeetingController extends Controller
         return response()->json(['room' => Meeting::ROOMS[(int) $data['room_slot']], 'busy' => $busy]);
     }
 
+    private function draftLinkKey(string $token): string
+    {
+        return 'meetings.draft-link.'.Auth::id().'.'.$token;
+    }
+
+    /** "Create New Google Meeting" button: makes a fresh Google Meet link and returns it. */
+    public function createLink(Request $request): JsonResponse
+    {
+        $data = $request->validate(['title' => 'nullable|string|max:255']);
+
+        try {
+            $link = $this->google->createStandaloneMeetLink(trim((string) ($data['title'] ?? '')) ?: 'New Google Meet');
+        } catch (GoogleMeetException $e) {
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        // Remembered for the creator only, so the saved meeting can adopt this exact link (and nobody can attach someone else's).
+        Cache::put($this->draftLinkKey($link['request_id']), $link['meet_url'], now()->addHours(6));
+
+        return response()->json(['ok' => true, 'meet_url' => $link['meet_url'], 'link_token' => $link['request_id']]);
+    }
+
     public function requestStore(Request $request): JsonResponse
     {
         $request->merge(['invitee_ids' => $request->input('invitee_ids', [])]);
@@ -247,7 +270,10 @@ class MeetingController extends Controller
             'title' => 'required|string|max:255',
             'agenda' => 'nullable|string|max:5000',
             'priority' => 'required|in:'.implode(',', array_keys(Meeting::PRIORITIES)),
-            'room_slot' => 'required|integer|in:'.implode(',', array_keys(Meeting::ROOMS)),
+            // No room is chosen any more: the Google Meet link is the meeting place.
+            'room_slot' => 'nullable|integer|in:'.implode(',', array_keys(Meeting::ROOMS)),
+            // Token of a link made with "Create New Google Meeting"; the meeting then uses that exact link.
+            'link_token' => 'nullable|string|regex:/^[a-f0-9]{32}$/',
             // Date and time are not asked: they are stamped automatically when the request is made.
             'approx_minutes' => 'required|integer|min:5|max:720',
             'invitee_ids' => 'required|array|min:1|max:200',
@@ -255,9 +281,19 @@ class MeetingController extends Controller
         ], [
             'invitee_ids.required' => 'Add at least one member to the meeting.',
             'invitee_ids.min' => 'Add at least one member to the meeting.',
-            'room_slot.required' => 'Choose one of the four meeting rooms.',
-            'room_slot.in' => 'Choose one of the four meeting rooms.',
         ]);
+
+        $linkCacheKey = null;
+        if (! empty($data['link_token'])) {
+            $linkCacheKey = $this->draftLinkKey($data['link_token']);
+            $url = Cache::get($linkCacheKey);
+            if (is_string($url) && $url !== '') {
+                $data['google_request_id'] = $data['link_token'];
+                $data['google_meet_url'] = $url;
+            }
+        }
+        unset($data['link_token']);
+
         $data['start'] = now(\App\Casts\MeetingDateTime::timezone())->startOfMinute();
         $data['end'] = $data['start']->copy()->addMinutes((int) $data['approx_minutes']);
 
@@ -265,6 +301,10 @@ class MeetingController extends Controller
             $result = $this->scheduler->create($data, Auth::user());
         } catch (GoogleMeetException $e) {
             return response()->json(['ok' => false, 'config_error' => true, 'message' => $e->getMessage()], 422);
+        }
+
+        if ($linkCacheKey) {
+            Cache::forget($linkCacheKey);
         }
 
         /** @var Meeting $meeting */

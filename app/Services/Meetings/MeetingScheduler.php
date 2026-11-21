@@ -77,9 +77,13 @@ class MeetingScheduler
             $this->assertInviteesHaveEmail($inviteeIds, $host);
         }
 
-        $meeting = $this->withRoomLock((int) $data['room_slot'], function () use ($data, $host, $inviteeIds, $useGoogle) {
-            return DB::transaction(function () use ($data, $host, $inviteeIds, $useGoogle) {
-                $this->assertRoomFree((int) $data['room_slot'], $data['start'], $data['end'], null);
+        // Rooms are optional: a meeting without a room (the "Create New Google Meeting" flow) has nothing to clash with.
+        $room = ! empty($data['room_slot']) ? (int) $data['room_slot'] : null;
+        $build = function () use ($data, $host, $inviteeIds, $useGoogle, $room) {
+            return DB::transaction(function () use ($data, $host, $inviteeIds, $useGoogle, $room) {
+                if ($room) {
+                    $this->assertRoomFree($room, $data['start'], $data['end'], null);
+                }
 
                 $meeting = Meeting::create([
                     'title' => trim($data['title']),
@@ -88,13 +92,15 @@ class MeetingScheduler
                     'host_user_id' => $host->id,
                     'provider' => $useGoogle ? Meeting::PROVIDER_GOOGLE_MEET : Meeting::PROVIDER_JITSI,
                     'priority' => $data['priority'],
-                    'room_slot' => (int) $data['room_slot'],
+                    'room_slot' => $room,
                     'scheduled_at' => $data['start'],
                     'scheduled_end_at' => $data['end'],
                     'status' => Meeting::STATUS_SCHEDULED,
                     'minutes_status' => Meeting::MINUTES_PENDING,
                 ] + ($useGoogle ? [
-                    'google_request_id' => bin2hex(random_bytes(16)),
+                    // A link created earlier with the "Create New Google Meeting" button is adopted, not duplicated.
+                    'google_request_id' => $data['google_request_id'] ?? bin2hex(random_bytes(16)),
+                    'google_meet_url' => $data['google_meet_url'] ?? null,
                     'google_sync_status' => Meeting::SYNC_PENDING,
                 ] : []));
 
@@ -108,7 +114,8 @@ class MeetingScheduler
 
                 return $meeting;
             });
-        });
+        };
+        $meeting = $room ? $this->withRoomLock($room, $build) : $build();
 
         // In-app room meetings have nothing to sync: their link exists as soon as the meeting is saved.
         return ['meeting' => $meeting, 'google_error' => $useGoogle ? $this->trySync($meeting) : null];

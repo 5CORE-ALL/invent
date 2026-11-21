@@ -8141,6 +8141,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/meetings', [\App\Http\Controllers\MeetingController::class, 'store'])->name('meetings.store');
     Route::get('/meetings/members', [\App\Http\Controllers\MeetingController::class, 'members'])->name('meetings.members');
     Route::post('/meetings/request', [\App\Http\Controllers\MeetingController::class, 'requestStore'])->name('meetings.request');
+    Route::post('/meetings/link', [\App\Http\Controllers\MeetingController::class, 'createLink'])->name('meetings.link');
     Route::get('/meetings/sent', [\App\Http\Controllers\MeetingController::class, 'sent'])->name('meetings.sent');
     Route::get('/meetings/requests', [\App\Http\Controllers\MeetingController::class, 'requests'])->name('meetings.requests');
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\MeetingController::class, 'rsvp'])->name('meetings.rsvp');
