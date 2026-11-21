@@ -291,6 +291,11 @@
                             <i class="fas fa-file-csv"></i>
                         </button>
                         <span class="small text-muted" id="e1dPullStatus"></span>
+                        @if (! $isTemu && ($ebayCfg['main'] ?? false))
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPullEbay" title="Pull from eBay 1: read the current item specifics of every listed SKU from the live eBay 1 listings">
+                                <i class="fas fa-cloud-download-alt"></i> Pull
+                            </button>
+                        @endif
                         <button type="button" class="btn btn-sm btn-primary" id="e1dPush" title="Push the item specifics of the ticked rows, or of the whole open tab, to the live {{ $ebayCfg['label'] }} listings" disabled>
                             <i class="fas fa-cloud-upload-alt"></i> <span id="e1dPushLabel">0</span>
                         </button>
@@ -651,7 +656,7 @@
 
             function isParentRow(row) {
                 const sku = String(row.sku || '').trim();
-                return /parent/i.test(sku) || (String(row.parent || '').trim() !== '' && sku.toLowerCase() === String(row.parent).trim().toLowerCase());
+                return /parent/i.test(sku);
             }
 
             function inStock(row) {
@@ -1595,6 +1600,52 @@
                 pullRunning = false;
                 btn.disabled = false;
                 jobShow('Pulled from Temu: ' + ok + ' of ' + todo.length, todo.length, ok, bad, false, problems);
+                await loadData();
+            }
+
+            // ---- Pull (eBay 1): every listed SKU, the item specifics currently on the live listing. ----
+            async function runEbayPull() {
+                if (pullRunning) return;
+                const todo = rows.filter(function (row) {
+                    return E1_ID_RE.test(String(row.item_id || '').trim()) && !isParentRow(row);
+                });
+                if (!todo.length) {
+                    rowToast('Nothing to pull: no SKU with a live eBay item ID.', false);
+                    return;
+                }
+                if (!window.confirm('Pull the current item specifics of all ' + todo.length + ' listed SKUs from eBay 1?\n\nEach cell becomes what is on the live listing now. Edits that are not pushed yet are kept. This reads one listing at a time and can take a while.')) return;
+                const btn = document.getElementById('e1dPullEbay');
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                pullRunning = true;
+                if (btn) btn.disabled = true;
+                let ok = 0, bad = 0, skipped = 0;
+                const problems = [];
+                const size = 4;
+                for (let i = 0; i < todo.length; i += size) {
+                    const part = todo.slice(i, i + size).map(function (row) { return row.sku; });
+                    jobShow('Pulling from eBay 1… ' + Math.min(i + size, todo.length) + ' / ' + todo.length, todo.length, ok, bad, true, problems);
+                    try {
+                        const res = await fetch(E1_BASE + '/pull', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+                            body: JSON.stringify({ skus: part }),
+                        });
+                        const json = await res.json().catch(function () { return {}; });
+                        if (!res.ok || json.success === false) throw new Error(json.message || ('HTTP ' + res.status));
+                        (json.results || []).forEach(function (r) {
+                            if (r.status === 'pulled') ok++;
+                            else if (r.status === 'skipped') skipped++;
+                            else { bad++; problems.push(r.sku + ': ' + (r.message || 'failed')); }
+                        });
+                    } catch (e) {
+                        bad += part.length;
+                        problems.push('Stopped: ' + (e.message || 'failed'));
+                        break;
+                    }
+                }
+                pullRunning = false;
+                if (btn) btn.disabled = false;
+                jobShow('Pulled from eBay 1: ' + ok + ' of ' + todo.length + (skipped ? ' (' + skipped + ' not listed)' : ''), todo.length, ok, bad, false, problems);
                 await loadData();
             }
 
@@ -4089,6 +4140,8 @@
                 bindCatModal();
                 const pullBtn = document.getElementById('e1dPull');
                 if (pullBtn) pullBtn.addEventListener('click', runPull);
+                const ebayPullBtn = document.getElementById('e1dPullEbay');
+                if (ebayPullBtn) ebayPullBtn.addEventListener('click', runEbayPull);
                 const allFieldsBtn = document.getElementById('e1dAllFields');
                 if (allFieldsBtn) allFieldsBtn.addEventListener('click', runAllFields);
                 const syncMainBtn = document.getElementById('e1dSyncMain');
