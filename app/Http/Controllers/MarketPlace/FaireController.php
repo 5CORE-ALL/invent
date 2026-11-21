@@ -603,7 +603,12 @@ class FaireController extends Controller
                 $l30Start->copy()->subSecond()
             );
         } else {
-            $lines = $this->faireMappedLines(self::faireL30Start(), null);
+            // 30 complete Pacific days ending yesterday (same window as L7/Y). Leaving the end open
+            // pulled in today's partial day, a 31st day that L7 never sees, biasing P Growth down.
+            $lines = $this->faireMappedLines(
+                self::faireL30Start(),
+                Carbon::yesterday('America/Los_Angeles')->endOfDay()
+            );
         }
 
         return $this->badgeFromSalesLines($lines);

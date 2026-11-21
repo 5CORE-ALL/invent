@@ -5006,9 +5006,7 @@
                         headerTooltip: "Per channel: server CVR when present (eBay 2 = eBay L30 ÷ Views, same as /ebay2-tabulator-view CVR). Else Qty ÷ Total Views. Reverb Views are ÷ 1000 first. Compare to &quot;AD CVR&quot; (ad sold ÷ clicks).",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
-                            // Prefer server-provided CVR (Temu / Temu 2 / Temu 3 use temu_l30 ÷ product_clicks
-                            // to match the decrease-page badges exactly); fall back
-                            // to Qty ÷ Total Views for channels that don't pre-compute it.
+                           
                             const aData = aRow.getData(), bData = bRow.getData();
                             const aServer = (aData['CVR'] !== undefined && aData['CVR'] !== null && aData['CVR'] !== '');
                             const bServer = (bData['CVR'] !== undefined && bData['CVR'] !== null && bData['CVR'] !== '');
