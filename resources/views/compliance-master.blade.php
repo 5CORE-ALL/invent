@@ -1035,7 +1035,10 @@
                     <div id="cmMailBody" style="display:none;">
                         <dl class="row small mb-2">
                             <dt class="col-sm-2">To</dt><dd class="col-sm-10" id="cmMailTo"></dd>
-                            <dt class="col-sm-2">From</dt><dd class="col-sm-10" id="cmMailFrom"></dd>
+                            <dt class="col-sm-2">From</dt><dd class="col-sm-10">
+                                <select id="cmMailSender" class="form-select form-select-sm d-inline-block w-auto" style="max-width:100%"></select>
+                                <span id="cmMailFrom" class="text-muted"></span>
+                            </dd>
                             <dt class="col-sm-2">Subject</dt><dd class="col-sm-10" id="cmMailSubject"></dd>
                         </dl>
                         <div class="border rounded p-2 mb-2" id="cmMailPreview" style="background:#fff;max-height:340px;overflow:auto;"></div>
@@ -4037,6 +4040,7 @@
                 const msg = document.getElementById('cmMailMsg');
                 const sendBtn = document.getElementById('cmMailSend');
                 const saveBtn = document.getElementById('cmMailSave');
+                const senderSel = document.getElementById('cmMailSender');
                 const filesInput = document.getElementById('cmMailFiles');
                 let noteTimer = null;
                 let previewSeq = 0;
@@ -4093,6 +4097,7 @@
                     fd.append('parent', sel.value);
                     fd.append('field', CM_ONLY_FIELD);
                     fd.append('note', note.value);
+                    fd.append('sender', senderSel.value || '');
                     Array.prototype.forEach.call(filesInput.files || [], function(f) { fd.append('attachments[]', f); });
                     return fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }, body: fd })
                         .then(function(r) { return r.json().catch(function() { return {}; }).then(function(j) { return { ok: r.ok, j: j }; }); });
@@ -4119,7 +4124,7 @@
                         return;
                     }
                     document.getElementById('cmMailLoading').textContent = 'Loading…';
-                    const qs = '?parent=' + encodeURIComponent(parent) + '&field=' + encodeURIComponent(CM_ONLY_FIELD) + '&note=' + encodeURIComponent(note.value);
+                    const qs = '?parent=' + encodeURIComponent(parent) + '&field=' + encodeURIComponent(CM_ONLY_FIELD) + '&note=' + encodeURIComponent(note.value) + '&sender=' + encodeURIComponent(senderSel.value || '');
                     makeRequest('/compliance-master/doc-request/preview' + qs, 'GET')
                         .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
                         .then(function(res) {
@@ -4133,8 +4138,17 @@
                                 ? escapeHtml(j.supplier || '') + ' &lt;' + j.to.map(escapeHtml).join(', ') + '&gt;'
                                 : '<span class="text-danger">' + escapeHtml(j.supplier || 'No supplier found') + ' — no email address saved</span>';
                             document.getElementById('cmMailTo').innerHTML = to;
-                            document.getElementById('cmMailFrom').innerHTML = escapeHtml(j.from_name || '') + ' &lt;' + escapeHtml(j.from_email || '') + '&gt;'
-                                + (j.reply_to ? ' <span class="text-muted">— replies go to ' + escapeHtml(j.reply_to) + '</span>' : '');
+                            if (!senderSel.options.length || senderSel.dataset.parent !== sel.value) {
+                                senderSel.innerHTML = (j.senders || []).map(function(o) {
+                                    return '<option value="' + escapeHtml(o.key) + '" data-email="' + escapeHtml(o.email) + '"' + (o.key === j.sender_key ? ' selected' : '') + '></option>';
+                                }).join('');
+                                senderSel.dataset.parent = sel.value;
+                            }
+                            // labels: "<your name> <mailbox>" (the name is the logged-in user's)
+                            Array.prototype.forEach.call(senderSel.options, function(opt) {
+                                opt.textContent = (j.from_name || '') + ' <' + opt.dataset.email + '>';
+                            });
+                            document.getElementById('cmMailFrom').innerHTML = (j.reply_to ? '— replies go to ' + escapeHtml(j.reply_to) : '');
                             document.getElementById('cmMailSubject').textContent = j.subject || '';
                             document.getElementById('cmMailPreview').innerHTML = j.html || '';
                             document.getElementById('cmMailLoading').style.display = 'none';
@@ -4162,10 +4176,13 @@
                     }).join('');
                     note.value = '';
                     filesInput.value = '';
+                    senderSel.innerHTML = '';
+                    senderSel.dataset.parent = '';
                     if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     loadPreview();
                 });
                 sel.addEventListener('change', loadPreview);
+                senderSel.addEventListener('change', loadPreview);
                 note.addEventListener('input', function() {
                     clearTimeout(noteTimer);
                     noteTimer = setTimeout(loadPreview, 600);

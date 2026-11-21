@@ -173,6 +173,7 @@ class ComplianceDocRequestController extends Controller
     {
         $request->validate([
             'note' => 'nullable|string|max:2000',
+            'sender' => 'nullable|string|max:64',
             'attachments' => 'nullable|array|max:5',
             'attachments.*' => 'file|max:10240|mimes:pdf,jpg,jpeg,png,gif,webp,doc,docx,xls,xlsx,csv,txt,zip',
         ]);
@@ -391,7 +392,7 @@ class ComplianceDocRequestController extends Controller
         $user = Auth::user();
         $userName = trim((string) ($user->name ?? '')) ?: 'Team';
         $userEmail = trim((string) ($user->email ?? ''));
-        $sender = $this->sender();
+        $sender = $this->sender((string) $request->input('sender', ''));
 
         $docs = self::FIELD_DOCS[$field] ?? [$label.' compliance test report', $label.' compliance certificate'];
         $skus = array_map(fn ($r) => (string) $r['SKU'], $skuRows);
@@ -432,6 +433,11 @@ class ComplianceDocRequestController extends Controller
             'to' => $b['to_emails'],
             'from_name' => $b['from_name'],
             'from_email' => $b['sender']['email'],
+            'sender_key' => $b['sender']['key'],
+            'senders' => array_values(array_map(
+                fn ($o) => ['key' => $o['key'], 'email' => $o['email']],
+                $this->senderOptions()
+            )),
             'reply_to' => $b['user_email'],
             'subject' => $b['subject'],
             'html' => $b['html'],
@@ -486,23 +492,59 @@ class ComplianceDocRequestController extends Controller
     }
 
     /**
-     * Mailbox for this page: the one set in config mail.compliance_sender (mgr-content@5core.com), for every user.
+     * Mailboxes this page can send from: sourcing1@5core.com plus every personal mailbox saved in .env
+     * (config mail.quote_senders) whose password is set. key => [key, mailer, email, name].
      *
-     * @return array{mailer: string, email: string, name: string}
+     * @return array<string, array{key: string, mailer: string, email: string, name: string}>
      */
-    private function sender(): array
+    private function senderOptions(): array
     {
-        $def = config('mail.quote_senders.'.(string) config('mail.compliance_sender', 'candy'));
-        $mailer = (string) ($def['mailer'] ?? '');
-        if ($mailer !== '' && trim((string) config('mail.mailers.'.$mailer.'.password')) !== '') {
-            return [
+        $has = fn (string $mailer) => $mailer !== '' && trim((string) config('mail.mailers.'.$mailer.'.password')) !== '';
+        $out = [];
+
+        $mailer = (string) config('mail.quote_mailer', 'quotes');
+        if ($has($mailer)) {
+            $out['sourcing'] = [
+                'key' => 'sourcing',
                 'mailer' => $mailer,
-                'email' => (string) ($def['from_email'] ?? ''),
-                'name' => (string) ($def['from_name'] ?? ''),
+                'email' => (string) config('mail.mailers.'.$mailer.'.username', 'sourcing1@5core.com'),
+                'name' => '5Core Sourcing',
             ];
         }
+        foreach ((array) config('mail.quote_senders', []) as $key => $def) {
+            $m = (string) ($def['mailer'] ?? '');
+            if ($has($m)) {
+                $out[(string) $key] = [
+                    'key' => (string) $key,
+                    'mailer' => $m,
+                    'email' => (string) ($def['from_email'] ?? ''),
+                    'name' => (string) ($def['from_name'] ?? ''),
+                ];
+            }
+        }
 
-        return app(ContainerQuoteRequestController::class)->sender();
+        return $out;
+    }
+
+    /**
+     * Mailbox for this mail: the one picked in the modal (must be one of senderOptions()), else the default
+     * config mail.compliance_sender (mgr-content@5core.com), else the normal per-user / sourcing1 sender.
+     *
+     * @return array{key: string, mailer: string, email: string, name: string}
+     */
+    private function sender(?string $picked = null): array
+    {
+        $options = $this->senderOptions();
+        $picked = trim((string) $picked);
+        if ($picked !== '' && isset($options[$picked])) {
+            return $options[$picked];
+        }
+        $default = (string) config('mail.compliance_sender', 'candy');
+        if (isset($options[$default])) {
+            return $options[$default];
+        }
+
+        return ['key' => 'default'] + app(ContainerQuoteRequestController::class)->sender();
     }
 
     /** The declaration letter format (empty when the badge has none). */
