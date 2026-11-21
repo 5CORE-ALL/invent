@@ -98,6 +98,17 @@ class Ebay1DataController extends Controller
         return [];
     }
 
+    /**
+     * Hook: the listing rows of the channel (CP Master SKUs with INV, REQ / NRL, Listed and the listing id).
+     * Amazon builds its own, because its listing page does not use the channel registry.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    protected function listingRows(): \Illuminate\Support\Collection
+    {
+        return AutomatedListingPage::rows($this->cfg()['registry'], false, false);
+    }
+
     /** Category Master column that holds this channel's category path of a SKU. */
     protected function categoryMasterColumn(): string
     {
@@ -157,7 +168,7 @@ class Ebay1DataController extends Controller
             @set_time_limit(300);
             @ini_set('memory_limit', '512M');
 
-            $listing = AutomatedListingPage::rows($this->cfg()['registry'], false, false);
+            $listing = $this->listingRows();
             $metrics = $this->metricsBySku();
             $pulled = $this->pulledSpecificsBySku();
             $categories = $this->categoriesBySku($listing);
