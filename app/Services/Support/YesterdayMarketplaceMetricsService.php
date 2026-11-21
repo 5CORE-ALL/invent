@@ -611,16 +611,24 @@ class YesterdayMarketplaceMetricsService
         $ads = $this->temuAdMetrics('temu2_campaign_reports', $date);
         $full = (float) ($m['full_sales'] ?? $m['sales'] ?? 0);
 
+        // One-day (Y) window: use the /temu2-tabulator Y Sales GPFT$ / COGS (Line Sales − COGS − Ship)
+        // so Active Channel's Y PFT / Y GROI% match that page. Multi-day windows keep the margin-based PFT.
+        $oneDay = $this->windowDays <= 1;
+        $pft = $oneDay ? (float) ($m['y_pft'] ?? $m['pft'] ?? 0) : (float) ($m['pft'] ?? 0);
+        $cogs = $oneDay ? (float) ($m['y_cogs'] ?? $m['cogs'] ?? 0) : (float) ($m['cogs'] ?? 0);
+
         $row = $this->pack(
             (float) ($m['base_sales'] ?? $m['sales'] ?? 0),
             $full,
-            (float) $m['pft'],
-            (float) $m['cogs'],
+            $pft,
+            $cogs,
             $ads['spend'],
             (int) $m['orders'],
             (int) $m['qty'],
             $full,
-            $ads['sales']
+            $ads['sales'],
+            // Y PFT% denominator = Line Sales × 1.1364, as on /temu2-tabulator (Y Sales GPFT%).
+            $oneDay ? $full : 0.0
         );
         $row['ad_unmeasured'] = ! $ads['measured'];
 

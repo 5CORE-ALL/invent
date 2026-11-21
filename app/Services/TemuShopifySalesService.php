@@ -757,6 +757,10 @@ class TemuShopifySalesService
         $totalGpft = 0.0;
         $totalCogs = 0.0;
         $orders = 0;
+        // Y columns exactly as the /temu2-tabulator badges: Y Sales GPFT$ = Line Sales − COGS − COGS Ship
+        // (no Temu margin), summed over every counted row.
+        $yPft = 0.0;
+        $yCogs = 0.0;
 
         foreach ($rows as $r) {
             $sku = trim((string) ($r['contribution_sku'] ?? ''));
@@ -779,6 +783,8 @@ class TemuShopifySalesService
             $orders++;
             $totalQty += $qty;
             $totalLine += $lineSales;
+            $yPft += $lineSales - ($lp * $qty) - $cogsShip;
+            $yCogs += $lp * $qty;
             if ($qty > 0 && $base > 0) {
                 $totalTemuPrice += self::computeFullTemuPrice($base) * $qty;
                 $totalGpft += ($lineSales * $margin) - ($lp * $qty) - $cogsShip;
@@ -798,6 +804,8 @@ class TemuShopifySalesService
             'pft' => round($totalGpft, 2),
             'gpft' => round($totalGpft, 2),
             'cogs' => round($totalCogs, 2),
+            'y_pft' => round($yPft, 2),
+            'y_cogs' => round($yCogs, 2),
         ];
     }
 
