@@ -307,8 +307,10 @@
             // The % is taken off the S PRC the other rules produced (stable across pushes), not off the live Price.
             const price = (basePrice > 0) ? Number(basePrice) : parseFloat(row && row.price);
             if (!c || !(price > 0)) return null;
-            const pct = amzCvrRuleSignedPct(c, cfg[c]);
-            if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
+            // "--" (within target) with no % still gets the Lower / Upper cap: it is a 0% change that the caps can move.
+            const blankPct = (cfg[c] === null || cfg[c] === undefined || cfg[c] === '');
+            const pct = (c === 'same' && blankPct) ? 0 : amzCvrRuleSignedPct(c, cfg[c]);
+            if (!isFinite(pct) || (blankPct && c !== 'same')) return { price: price, capped: false };
             let next = price * (1 + pct / 100);
             let capped = false;
             let capKind = '';
@@ -381,8 +383,11 @@
             if (!amzCvrRule || !amzCvrRule.enabled || !d || d.is_parent_summary) return null;
             const c = amzCvrRuleCaseFor(d, amzCvrRule);
             if (!c) return null;
-            const pct = amzCvrRuleSignedPct(c, amzCvrRule[c]);
-            if (!isFinite(pct) || pct === 0 || amzCvrRule[c] === null || amzCvrRule[c] === '') return null;
+            const blankPct = (amzCvrRule[c] === null || amzCvrRule[c] === undefined || amzCvrRule[c] === '');
+            const pct = (c === 'same' && blankPct) ? 0 : amzCvrRuleSignedPct(c, amzCvrRule[c]);
+            if (!isFinite(pct) || (blankPct && c !== 'same')) return null;
+            // A 0% change only matters for "--" (within target) with a cap on: the caps can still move the price.
+            if (pct === 0 && !(c === 'same' && (amzCvrRule.lower_cap || amzCvrRule.upper_cap))) return null;
             const base = amzCvrRuleBaseFor(d);
             if (!(base > 0)) return null;
             const res = amzCvrRulePriceFor(d, amzCvrRule, base);

@@ -83,4 +83,18 @@ class AmazonCvrPriceRuleUpperCapTest extends TestCase
         $r = AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0);
         $this->assertSame(10.4, $r['price']);
     }
+
+    public function test_within_target_with_no_percent_still_gets_the_caps(): void
+    {
+        // CVR L30 10% (7..13%) = within target, no % saved. LP 5, ship 1: NROI 100% price is 13.75.
+        $row = ['a_l30' => 10.0, 'sess30' => 100.0, 'a_l60' => 0.0, 'sess60' => 400.0, 'price' => 20.0, 'lp' => 5.0, 'ship' => 1.0];
+        $r = AmazonCvrPriceRule::apply(20.0, $row, $this->cfg(['same' => null, 'upper_cap' => true, 'max_nroi' => 100.0]), 0.0);
+        $this->assertSame(13.75, $r['price']); // pulled down to the Upper cap price
+        $this->assertTrue($r['capped']);
+        // Lower cap lifts a price that is under the floor: NROI 100% min -> 13.75.
+        $r = AmazonCvrPriceRule::apply(10.0, $row, $this->cfg(['same' => null, 'lower_cap' => true, 'min_nroi' => 100.0]), 0.0);
+        $this->assertSame(13.75, $r['price']);
+        // No cap on, no % saved: nothing changes.
+        $this->assertNull(AmazonCvrPriceRule::apply(10.0, $row, $this->cfg(['same' => null]), 0.0));
+    }
 }

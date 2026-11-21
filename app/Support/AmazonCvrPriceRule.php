@@ -54,12 +54,15 @@ class AmazonCvrPriceRule
             $case = 'same';
         }
         $raw = $cfg[$case] ?? null;
-        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+        $blank = $raw === null || $raw === '' || ! is_numeric($raw);
+        // "--" (within target) with no % still gets the Lower / Upper cap: it is a 0% change that the caps can move.
+        $capsOn = ! empty($cfg['lower_cap']) || ! empty($cfg['upper_cap']);
+        if ($blank && ! ($case === 'same' && $capsOn)) {
             return null;
         }
-        $pct = (float) $raw;
+        $pct = $blank ? 0.0 : (float) $raw;
         $pct = $case === 'down' ? -abs($pct) : (($case === 'up' || $case === 'pink') ? abs($pct) : $pct);
-        if ($pct == 0.0) {
+        if ($pct == 0.0 && ! ($case === 'same' && $capsOn)) {
             return null;
         }
         $next = $base * (1 + $pct / 100);
