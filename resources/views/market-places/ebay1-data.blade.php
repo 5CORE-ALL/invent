@@ -20,6 +20,7 @@
             height: 32px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 .6rem; font-size: .84rem;
         }
         .e1d-toolbar input { min-width: 240px; }
+        .e1d-toolbar input.e1d-find { min-width: 130px; width: 150px; }
         .e1d-toolbar .btn { padding: .3rem .65rem; font-size: .8rem; }
         .e1d-badges { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: auto; }
         .e1d-badge { padding: .25rem .6rem; border-radius: 6px; font-size: .78rem; font-weight: 700; color: #fff; }
@@ -265,6 +266,8 @@
                             <button type="button" class="btn btn-outline-secondary e1d-fmt-caret" id="e1dBgMenu" title="Pick a fill colour" aria-label="Pick a fill colour"><i class="fas fa-caret-down"></i></button>
                         </div>
                         <input type="search" id="e1dSearch" placeholder="Search SKU, parent, title or item ID…" autocomplete="off">
+                        <input type="search" id="e1dSearchParent" class="e1d-find" placeholder="Parent" title="Search the Parent column only" autocomplete="off">
+                        <input type="search" id="e1dSearchSku" class="e1d-find" placeholder="SKU" title="Search the SKU column only" autocomplete="off">
                         <select id="e1dListed" title="Listing state">
                             <option value="all">All listing states</option>
                             <option value="Listed">Listed</option>
@@ -665,6 +668,10 @@
                     const hay = (row.sku + ' ' + row.parent + ' ' + row.ebay_title + ' ' + row.item_id).toLowerCase();
                     if (hay.indexOf(q) === -1) return false;
                 }
+                const parentQ = String(document.getElementById('e1dSearchParent').value || '').trim().toLowerCase();
+                if (parentQ && String(row.parent || '').toLowerCase().indexOf(parentQ) === -1) return false;
+                const skuQ = String(document.getElementById('e1dSearchSku').value || '').trim().toLowerCase();
+                if (skuQ && String(row.sku || '').toLowerCase().indexOf(skuQ) === -1) return false;
                 const listed = document.getElementById('e1dListed').value;
                 if (listed === 'Listed' && row.listed !== 'Listed') return false;
                 if (listed === 'Created' && row.listed !== 'Created') return false;
@@ -4010,9 +4017,11 @@
             }
 
             document.addEventListener('DOMContentLoaded', function () {
-                document.getElementById('e1dSearch').addEventListener('input', function () {
-                    clearTimeout(searchTimer);
-                    searchTimer = setTimeout(refreshAll, 200);
+                ['e1dSearch', 'e1dSearchParent', 'e1dSearchSku'].forEach(function (id) {
+                    document.getElementById(id).addEventListener('input', function () {
+                        clearTimeout(searchTimer);
+                        searchTimer = setTimeout(refreshAll, 200);
+                    });
                 });
                 ['e1dListed', 'e1dNr', 'e1dStock'].forEach(function (id) {
                     document.getElementById(id).addEventListener('change', refreshAll);
