@@ -117,6 +117,12 @@
                         style="background-color: #6f42c1; color: white; font-weight: bold;"
                         title="Yesterday's Wayfair sales{{ !empty($ySalesDate) ? ' — ' . \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT)' : '' }}. Σ unit price × qty ({{ number_format((int) ($yQuantity ?? 0)) }} qty, {{ number_format((int) ($yOrders ?? 0)) }} orders). Same source as the Wayfair row on /all-marketplace-master.">Y Sales: ${{ number_format((float) ($ySales ?? 0), 2) }}</span>
                     @include('partials.y-badge-history', ['yhPage' => 'wayfair_daily_sales', 'yhValue' => $ySales ?? null, 'yhSel' => '#y-sales-badge'])
+                    <span class="badge fs-6 p-2" id="y-pft-badge"
+                        style="background-color: #17a2b8; color: white; font-weight: bold;"
+                        title="Yesterday's Wayfair PFT{{ !empty($ySalesDate) ? ' — ' . \Carbon\Carbon::parse($ySalesDate)->format('M j, Y') . ' (PT)' : '' }}. Σ (unit price × qty × Wayfair margin) − COGS. Wayfair has no ship.">Y PFT: ${{ number_format((float) ($yPft ?? 0), 0) }}</span>
+                    <span class="badge fs-6 p-2" id="y-groi-badge"
+                        style="background-color: purple; color: white; font-weight: bold;"
+                        title="Y GROI % = Y PFT ÷ Y COGS (${{ number_format((float) ($yCogs ?? 0), 2) }}). COGS = LP × Qty.">Y GROI: {{ number_format((float) ($yGroi ?? 0), 0) }}%</span>
                     <span class="badge bg-primary fs-6 p-2" id="total-orders-badge"
                         style="color: white; font-weight: bold;">Total Orders: 0</span>
                     <span class="badge bg-success fs-6 p-2" id="total-quantity-badge"

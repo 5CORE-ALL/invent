@@ -22,7 +22,30 @@ class WayfairSalesController extends Controller
             'ySalesDate' => $y['date'],
             'yQuantity'  => $y['quantity'],
             'yOrders'    => $y['orders'],
+            'yPft'       => $y['pft'],
+            'yCogs'      => $y['cogs'],
+            'yGroi'      => $y['groi'],
         ]);
+    }
+
+    /**
+     * LP (landed price) for a ProductMaster row — same lookup getData() uses.
+     */
+    private function lpFromProductMaster(?ProductMaster $pm): float
+    {
+        if (! $pm) {
+            return 0.0;
+        }
+
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        $values = is_array($values) ? $values : [];
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'lp') {
+                return (float) $v;
+            }
+        }
+
+        return isset($pm->lp) ? (float) $pm->lp : 0.0;
     }
 
     /**
@@ -32,7 +55,11 @@ class WayfairSalesController extends Controller
      * "Y Sales" badge matches the Wayfair row on /all-marketplace-master: Pacific
      * yesterday, summing unit_price × quantity. Do not reuse latest po_date − 1.
      *
-     * @return array{sales: float, date: ?string, quantity: int, orders: int}
+     * Also derives Y PFT / Y GROI from the same yesterday orders, using the page's row formula:
+     * PFT = (unit price × qty × Wayfair %) − COGS, COGS = LP × qty (Wayfair has no ship).
+     * Y GROI % = Y PFT ÷ Y COGS.
+     *
+     * @return array{sales: float, date: ?string, quantity: int, orders: int, pft: float, cogs: float, groi: float}
      */
     private function computeYesterdaySales(): array
     {
@@ -46,11 +73,37 @@ class WayfairSalesController extends Controller
             ->selectRaw('COUNT(DISTINCT po_number) as orders')
             ->first();
 
+        $sales = (float) ($agg->revenue ?? 0);
+
+        // Per-SKU yesterday totals for COGS (LP × qty).
+        $bySku = WayfairDailyData::where('sku', 'not like', '%Parent%')
+            ->whereDate('po_date', $yDate)
+            ->where('quantity', '>', 0)
+            ->selectRaw('sku, COALESCE(SUM(quantity), 0) as qty')
+            ->groupBy('sku')
+            ->get();
+
+        $productMasters = ProductMaster::whereIn('sku', $bySku->pluck('sku')->all())->get()->keyBy('sku');
+
+        $cogs = 0.0;
+        foreach ($bySku as $row) {
+            $cogs += $this->lpFromProductMaster($productMasters[$row->sku] ?? null) * (float) $row->qty;
+        }
+
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+        $percentage = $marketplaceData ? (float) $marketplaceData->percentage : 100.0;
+
+        $pft = ($sales * ($percentage / 100)) - $cogs;
+        $groi = $cogs > 0 ? ($pft / $cogs) * 100 : 0.0;
+
         return [
-            'sales'    => round((float) ($agg->revenue ?? 0), 2),
+            'sales'    => round($sales, 2),
             'date'     => $yDate,
             'quantity' => (int) ($agg->qty ?? 0),
             'orders'   => (int) ($agg->orders ?? 0),
+            'pft'      => round($pft, 2),
+            'cogs'     => round($cogs, 2),
+            'groi'     => round($groi, 1),
         ];
     }
 
