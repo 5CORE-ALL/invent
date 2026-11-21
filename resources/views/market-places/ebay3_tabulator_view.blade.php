@@ -1063,6 +1063,8 @@
             const steps = [];
             const notes = [];
             const dilOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            // Both Sprc Dil and Std prc vs dil switched OFF: no rule prices the SKU (the saved S PRC stays), so no rule steps are shown.
+            const noRule = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none';
             const saved = (typeof ebay3DisplayedSprice === 'function') ? ebay3DisplayedSprice(d) : (parseFloat(d.SPRICE) || 0);
             const std = parseFloat(d.STANDARD_PRICE) || 0;
             const lmp = (typeof ebayEffectiveLmp === 'function') ? ebayEffectiveLmp(d) : (parseFloat(d.lmp_price) || 0);
@@ -1119,6 +1121,16 @@
                         '(LP ' + ebayRuleMoney(lp) + ' × (1 + ' + meta.groi + '%) + Ship ' + ebayRuleMoney(ship) + ') ÷ (take-home '
                         + (margin * 100).toFixed(0) + '% − Ads ' + ads.toFixed(1) + '%) = <b>' + ebayRuleMoney(raw) + '</b>'));
                 }
+            } else if (noRule) {
+                const cvrOnly = (typeof window.ebayCvrOnlyRowPrice === 'function') ? Number(window.ebayCvrOnlyRowPrice(d)) || 0 : 0;
+                steps.push(ebayRuleStep('skip', 'Sprc Dil and Std prc vs dil (both OFF)',
+                    'Both switches are OFF, so no rule prices this SKU. S PRC stays the saved value ' + ebayRuleMoney(saved) + '.'));
+                if (typeof window.ebayCvrRuleIsOn === 'function' && window.ebayCvrRuleIsOn()) {
+                    steps.push(ebayRuleStep(cvrOnly > 0 ? 'ok' : 'skip', 'CVR Price Rule (ON)',
+                        cvrOnly > 0
+                            ? 'The CVR Price Rule takes its % off the live Price → S PRC = <b>' + ebayRuleMoney(cvrOnly) + '</b>.'
+                            : 'The CVR Price Rule does not change this SKU right now (no % for its case, or it already holds at the live Price).'));
+                }
             } else {
                 steps.push(ebayRuleStep('info', 'Std prc vs dil (switch ON)',
                     'S PRC = Std Prc ' + ebayRuleMoney(std) + ' × (1 − (Age + Dil + B Disc + 0 Sold + CVR + Review discounts) ÷ 100).'));
@@ -1127,7 +1139,7 @@
 
             // Caps applied after the rule price (same order as the grid: LMP cap, then Std Prc maximum)
             let afterLmp = raw;
-            if (raw > 0 || !dilOn) {
+            if (!noRule && (raw > 0 || !dilOn)) {
                 const stdLive = dilOn ? 0 : ((typeof ebay3LiveRuleSprice === 'function') ? ebay3LiveRuleSprice(d) : 0);
                 const base = dilOn ? raw : (stdLive > 0 ? stdLive : saved);
                 const n = dilOn ? '6' : '2';
@@ -1165,7 +1177,7 @@
             }
 
             // CVR up / down discount (Sprc Dil modal): Disc % of Std Prc comes off after the LMP and Std Prc steps.
-            if (typeof window.ebayLmpCvrStep === 'function') {
+            if (!noRule && typeof window.ebayLmpCvrStep === 'function') {
                 const cvrStep = window.ebayLmpCvrStep(d, saved);
                 if (cvrStep) steps.push(ebayRuleStep(cvrStep.state, cvrStep.title, cvrStep.detail));
             }
@@ -1185,7 +1197,7 @@
             }
             return {
                 title: 'S PRC ' + ebayRuleMoney(saved),
-                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : 'Std prc vs dil rule'),
+                sub: (d['(Child) sku'] || '') + ' · ' + (dilOn ? 'Sprc Dil rule' : (noRule ? 'Sprc Dil and Std prc vs dil OFF' : 'Std prc vs dil rule')),
                 steps: steps, notes: notes, finalNote: finalNote
             };
         }
