@@ -488,6 +488,7 @@
                 if (!c) return;
                 counts[c]++;
                 let baseNow = (typeof window.ebayDisplayedSpriceBase === 'function') ? (Number(window.ebayDisplayedSpriceBase(r)) || 0) : 0;
+                if (typeof window.ebayCvrRuleBase === 'function') baseNow = Number(window.ebayCvrRuleBase(r, baseNow)) || 0;
                 // CVR rule on its own (Amazon version): the % comes off the live Price.
                 if (EBAY_CVR_V2 && typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') {
                     baseNow = Math.round((parseFloat(r['eBay Price']) || parseFloat(r.Price) || 0) * 100) / 100;

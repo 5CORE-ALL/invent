@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Support\EbayCvrPriceRule;
 use PHPUnit\Framework\TestCase;
 
-/** eBay 1 runs the same CVR Price Rule as Amazon (see AmazonCvrPriceRuleUpperCapTest). */
+/** eBay 1 / 2 / 3 run the same CVR Price Rule as Amazon (see AmazonCvrPriceRuleUpperCapTest). */
 class EbayCvrPriceRuleAmazonStyleTest extends TestCase
 {
     private function cfg(array $over = []): array
@@ -24,11 +24,11 @@ class EbayCvrPriceRuleAmazonStyleTest extends TestCase
         ], $over);
     }
 
-    public function test_amazon_style_flag_only_for_ebay1(): void
+    public function test_amazon_style_flag_for_ebay_channels_only(): void
     {
         $this->assertTrue(EbayCvrPriceRule::amazonStyle('ebay1'));
-        $this->assertFalse(EbayCvrPriceRule::amazonStyle('ebay2'));
-        $this->assertFalse(EbayCvrPriceRule::amazonStyle('ebay3'));
+        $this->assertTrue(EbayCvrPriceRule::amazonStyle('ebay2'));
+        $this->assertTrue(EbayCvrPriceRule::amazonStyle('ebay3'));
         $this->assertFalse(EbayCvrPriceRule::amazonStyle('shopify_b2c'));
     }
 

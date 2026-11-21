@@ -419,7 +419,11 @@ class EbayRuleSprice
         }
 
         // CVR Price Rule (eBay 1 / 2 / 3): % off the price above (not off the live Price, so a push never compounds it).
-        $cvrPriceRule = EbayCvrPriceRule::apply(round($final, 2), $input, is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null);
+        // Amazon version (eBay 1): the rule is not bounded by LMP or Std Prc, like Amazon: its % comes off the price the rule produced,
+        // before the LMP cap and the Std Prc maximum. Only the rule's own Lower / Upper cap bounds it.
+        $cvrCfg = is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null;
+        $cvrBase = (! empty($cvrCfg['amazon_style'])) ? round($rulePrice, 2) : round($final, 2);
+        $cvrPriceRule = EbayCvrPriceRule::apply($cvrBase, $input, $cvrCfg);
         if ($cvrPriceRule !== null) {
             $final = $cvrPriceRule['price'];
         }

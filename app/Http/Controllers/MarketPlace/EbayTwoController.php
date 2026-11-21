@@ -676,7 +676,8 @@ class EbayTwoController extends Controller
     {
         $payload = \App\Support\EbayCvrPriceRule::save('ebay2', $request->all());
         // The rule changes S PRC itself: re-save S PRC for every SKU right away (nothing is pushed here).
-        \App\Support\EbayRuleSpriceApply::dispatch('ebay2');
+        // Saving applies the rule now: the % comes off the live Price even when the saved S PRC already equals it.
+        \App\Support\EbayRuleSpriceApply::dispatch('ebay2', true);
 
         return response()->json(['success' => true] + $payload);
     }

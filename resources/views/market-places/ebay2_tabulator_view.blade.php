@@ -1000,12 +1000,26 @@
                 const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
                 // Only on top of a live rule price (the saved S PRC is left alone while the rules are not loaded).
                 if (!isClr && base > 0 && ebay2LiveRuleSprice(rowData) > 0 && typeof window.ebayCvrRuleApplyToPrice === 'function') {
-                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, base));
+                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, ebay2CvrRuleBase(rowData, base)));
                     if (isFinite(out) && out > 0) return Math.round(out * 100) / 100;
                 }
             } catch (e) { /* no CVR Price Rule */ }
             return base;
         }
+        /**
+         * The price the CVR Price Rule takes its % off. Not bounded by LMP or Std Prc (same as Amazon / eBay 1): the rule's own price
+         * before those caps. Server twin: EbayRuleSprice::price().
+         */
+        function ebay2CvrRuleBase(rowData, cappedBase) {
+            if (typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2) {
+                try {
+                    const raw = Number(ebay2LiveRuleSprice(rowData));
+                    if (isFinite(raw) && raw > 0) return Math.round(raw * 100) / 100;
+                } catch (e) { /* use the capped base */ }
+            }
+            return cappedBase;
+        }
+        window.ebayCvrRuleBase = ebay2CvrRuleBase;
         /** S PRC before the CVR Price Rule (the rule's base). */
         function ebay2DisplayedSpriceBase(rowData) {
             const saved = ebay2RawRuleSprice(rowData);
@@ -3566,7 +3580,9 @@
                         headerTooltip: "Overall CVR over the last 60 days: (eBay L30 + eBay L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views come from the daily snapshot saved 30 days ago. Blank when that snapshot is missing. A PARENT row adds up the SKUs that have a snapshot.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            const lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
+                            let lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
+                            // CVR Price Rule: a SKU with no lifetime CVR starts from LT O CVR = 0% (a PARENT row stays blank).
+                            if (!isFinite(lto) && !isEbay2TabulatorParentRow(row) && !row.is_parent_summary && typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2) lto = 0;
                             if (!isFinite(lto)) return '<span class="text-muted">—</span>';
                             let tip = 'LT O CVR (last 60 days, ads + organic)';
                             if (!isEbay2TabulatorParentRow(row)) {
@@ -3586,18 +3602,28 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        width: 60,
-                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow.",
+                        width: 66,
+                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow. A CVR L30 between 7% and 13% never shows an up / down arrow. A pink up arrow is added when CVR L30 is above the pink target set in the CVR Price Rule modal (default 12.99%).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = (typeof ebayCvrRuleTrendValue === 'function') ? ebayCvrRuleTrendValue(row, null) : null;
                             if (t === null) return '<span class="text-muted">—</span>';
-                            const lto = parseFloat(row.LT_O_CVR);
+                            // CVR L30 above the pink target (CVR Price Rule modal, default 12.99%): an extra pink up arrow next to the normal arrow.
+                            let pinkUp = '';
+                            if (typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2) {
+                                const cvr30 = parseFloat(row.SCVR) || 0;
+                                const pinkAbove = (typeof ebayCvrRulePinkAbove === 'function') ? ebayCvrRulePinkAbove() : 12.99;
+                                if (cvr30 > pinkAbove) pinkUp = '<span title="CVR L30 ' + cvr30.toFixed(1) + '% is above ' + pinkAbove + '%"><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i></span>';
+                            }
+                            const ltoRaw = parseFloat(row.LT_O_CVR);
+                            const lto = isFinite(ltoRaw) ? ltoRaw : 0; // no lifetime CVR starts from 0%
                             const tip = 'CVR ' + (parseFloat(row.SCVR) || 0).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
                             const pcts = ebayCvrRuleBandPcts(null);
-                            if (t > 0) return '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
-                            if (t < 0) return '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
-                            return '<span title="' + tip + ' · within the CVR targets">--</span>';
+                            let main;
+                            if (t > 0) main = '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            else if (t < 0) main = '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                            else main = '<span title="' + tip + ' · within the CVR targets">--</span>';
+                            return pinkUp ? (main + ' ' + pinkUp) : main;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const x = ebayCvrRuleTrendValue(aRow.getData(), null);
@@ -4050,7 +4076,7 @@
                             let cvrMark = '';
                             try {
                                 cvrMark = (liveRaw > 0 && typeof window.ebayCvrRuleMarkHtml === 'function')
-                                    ? window.ebayCvrRuleMarkHtml(rowData, ebay2DisplayedSpriceBase(rowData)) : '';
+                                    ? window.ebayCvrRuleMarkHtml(rowData, ebay2CvrRuleBase(rowData, ebay2DisplayedSpriceBase(rowData))) : '';
                             } catch (e) { cvrMark = ''; }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                                 + dot + formattedValue + cvrMark + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';

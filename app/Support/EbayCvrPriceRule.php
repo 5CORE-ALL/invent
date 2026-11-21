@@ -19,7 +19,7 @@ class EbayCvrPriceRule
      * sold 0 = CVR Down, CVR 7% to 13% = within target, no lifetime CVR starts at 0%, caps for "--", no Std Prc ceiling when
      * it runs on its own. The other channels keep the first version until they are moved over (add them here).
      */
-    public const AMAZON_STYLE_CHANNELS = ['ebay1'];
+    public const AMAZON_STYLE_CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
 
     public static function amazonStyle(string $channel): bool
     {

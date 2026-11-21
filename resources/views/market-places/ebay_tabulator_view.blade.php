@@ -1652,12 +1652,26 @@
                 const isClr = (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData));
                 // Only on top of a live rule price: with both S PRC switches OFF the saved S PRC is left alone (the server does the same).
                 if (!isClr && base > 0 && ebay1LiveRuleSprice(rowData) > 0 && typeof window.ebayCvrRuleApplyToPrice === 'function') {
-                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, base));
+                    const out = Number(window.ebayCvrRuleApplyToPrice(rowData, ebayCvrRuleBase(rowData, base)));
                     if (isFinite(out) && out > 0) return Math.round(out * 100) / 100;
                 }
             } catch (e) { /* no CVR Price Rule */ }
             return base;
         }
+        /**
+         * The price the CVR Price Rule takes its % off. Amazon version (eBay 1): not bounded by LMP or Std Prc, so the rule's own price
+         * before those caps; the first version (other channels) uses the capped S PRC. Server twin: EbayRuleSprice::price().
+         */
+        function ebayCvrRuleBase(rowData, cappedBase) {
+            if (typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2) {
+                try {
+                    const raw = Number(ebay1LiveRuleSprice(rowData));
+                    if (isFinite(raw) && raw > 0) return Math.round(raw * 100) / 100;
+                } catch (e) { /* use the capped base */ }
+            }
+            return cappedBase;
+        }
+        window.ebayCvrRuleBase = ebayCvrRuleBase;
         /** S PRC before the CVR Price Rule (the rule's base). */
         function ebayDisplayedSpriceBase(rowData) {
             const saved = ebayRawRuleSprice(rowData);
@@ -5844,7 +5858,7 @@
                             let cvrMark = '';
                             try {
                                 cvrMark = (liveRaw > 0 && typeof window.ebayCvrRuleMarkHtml === 'function' && typeof ebayDisplayedSpriceBase === 'function')
-                                    ? window.ebayCvrRuleMarkHtml(rowData, ebayDisplayedSpriceBase(rowData)) : '';
+                                    ? window.ebayCvrRuleMarkHtml(rowData, ebayCvrRuleBase(rowData, ebayDisplayedSpriceBase(rowData))) : '';
                             } catch (e) { cvrMark = ''; }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">'
                                 + dot + formattedValue + cvrMark + clearanceBadge + blueTri + cap.redTri + cap.reviewTri + cap.stdTri + '</span>';
