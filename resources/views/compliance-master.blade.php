@@ -265,6 +265,35 @@
         #cmBatchModal .cm-batch-label { font-size: 13px; font-weight: 600; }
         #compliance-tabulator .tabulator-cell.cm-select-col { padding-left: 0; padding-right: 0; }
 
+        .cm-play-group {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 3px;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 2px 5px;
+            background: #f8f9fa;
+        }
+        .cm-play-group .btn.rounded-circle {
+            width: 26px;
+            height: 26px;
+            min-width: 26px;
+            min-height: 26px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .cm-play-group .btn.rounded-circle i { font-size: 11px; }
+        .cm-play-group .cm-play-label {
+            font-size: 0.65rem;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #cm-summary-stats .cm-summary-badge.cm-mail-badge { flex: 0 0 auto; padding-left: 0.9rem; padding-right: 0.9rem; color: #1f2937 !important; }
+
         .cm-toolbar-actions .btn {
             display: inline-flex;
             align-items: center;
@@ -989,6 +1018,41 @@
 
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11000;"></div>
 
+    @if(!empty($complianceField))
+    <div class="modal fade" id="cmMailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0"><i class="bi bi-envelope-fill me-1"></i> Request {{ $complianceLabel ?? '' }} compliance documents</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1" for="cmMailParent">Parent</label>
+                        <select id="cmMailParent" class="form-select form-select-sm"></select>
+                    </div>
+                    <div id="cmMailLoading" class="text-muted small py-3">Loading…</div>
+                    <div id="cmMailBody" style="display:none;">
+                        <dl class="row small mb-2">
+                            <dt class="col-sm-2">To</dt><dd class="col-sm-10" id="cmMailTo"></dd>
+                            <dt class="col-sm-2">From</dt><dd class="col-sm-10" id="cmMailFrom"></dd>
+                            <dt class="col-sm-2">Subject</dt><dd class="col-sm-10" id="cmMailSubject"></dd>
+                        </dl>
+                        <div class="border rounded p-2 mb-2" id="cmMailPreview" style="background:#fff;max-height:340px;overflow:auto;"></div>
+                        <label class="form-label small mb-1" for="cmMailNote">Extra note (optional)</label>
+                        <textarea id="cmMailNote" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="Added above the sign-off"></textarea>
+                    </div>
+                    <div id="cmMailMsg" class="small mt-2"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-warning btn-sm" id="cmMailSend" disabled><i class="bi bi-send-fill me-1"></i>Send mail</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm">
@@ -1008,6 +1072,14 @@
                                 <i class="bi bi-x-lg"></i>
                             </button>
                     </div>
+                        <div class="cm-play-group" title="Play by Parent: step through one parent (with its SKUs) at a time">
+                            <small class="text-muted fw-semibold">Parent</small>
+                            <button type="button" id="cm-play-backward" class="btn btn-light btn-sm rounded-circle p-0" title="Previous parent" disabled><i class="bi bi-skip-backward-fill"></i></button>
+                            <button type="button" id="cm-play-pause" class="btn btn-primary btn-sm rounded-circle p-0" title="Pause: show all parents again" style="display:none;"><i class="bi bi-pause-fill"></i></button>
+                            <button type="button" id="cm-play-auto" class="btn btn-primary btn-sm rounded-circle p-0" title="Play: show one parent at a time"><i class="bi bi-play-fill"></i></button>
+                            <button type="button" id="cm-play-forward" class="btn btn-light btn-sm rounded-circle p-0" title="Next parent" disabled><i class="bi bi-skip-forward-fill"></i></button>
+                            <span class="badge bg-primary cm-play-label" id="cm-play-label" style="display:none;"></span>
+                        </div>
                         <div id="cm-summary-stats">
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="any" data-kpi-key="badge:compliance-master|missing_any" data-kpi-label="Compliance-M" data-kpi-value="0" title="Show SKUs with any REQ compliance field"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Compliance-M <span id="cm-summary-any">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="battery" data-kpi-key="badge:compliance-master|missing_battery" data-kpi-label="Battery" data-kpi-value="0" title="Show rows with Battery REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Battery <span id="cm-summary-battery">(0)</span></button>
@@ -1023,6 +1095,9 @@
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="batch" data-kpi-key="badge:compliance-master|missing_batch" data-kpi-label="Batch" data-kpi-value="0" title="Show rows with Batch REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Batch <span id="cm-summary-batch">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="energy_star_registration" data-kpi-key="badge:compliance-master|missing_energy_star_registration" data-kpi-label="Energy Star" data-kpi-value="0" title="Show rows with Energy Star Registration REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Energy Star <span id="cm-summary-energy-star">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="us_energy_efficiency_label" data-kpi-key="badge:compliance-master|missing_us_energy_efficiency_label" data-kpi-label="US Energy" data-kpi-value="0" title="Show rows with US Energy Efficiency Label REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>US Energy <span id="cm-summary-us-energy">(0)</span></button>
+                            @if(!empty($complianceField))
+                                <button type="button" class="badge bg-warning text-dark cm-summary-badge cm-mail-badge" id="cmMailBadge" title="Email the supplier of the current parent asking for the missing {{ $complianceLabel ?? '' }} compliance documents"><i class="bi bi-envelope-fill"></i> Mail</button>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -1271,9 +1346,12 @@
             // Set on the dedicated "Compliance <Badge>" pages: only that field's column + badge, pre-filtered to its REQ rows.
             const CM_ONLY_FIELD = @json($complianceField ?? null);
             let cmSummaryBadgeFilter = CM_ONLY_FIELD || null;
+            let cmPlayParentKey = null; // set while "Play by Parent" is on
+            let cmPlayParents = [];
+            let cmPlayIndex = 0;
             if (CM_ONLY_FIELD) {
                 document.querySelectorAll('#cm-summary-stats .cm-summary-badge').forEach(function(b) {
-                    if (b.getAttribute('data-cm-filter') !== CM_ONLY_FIELD) b.classList.add('d-none');
+                    if (!b.classList.contains('cm-mail-badge') && b.getAttribute('data-cm-filter') !== CM_ONLY_FIELD) b.classList.add('d-none');
                 });
             }
 
@@ -2258,8 +2336,8 @@
                         if (response && response.data && Array.isArray(response.data)) {
                             tableData = response.data;
                             filteredData = [...tableData];
-                            if (CM_ONLY_FIELD) {
-                                applyFilters(); // renders only this badge's REQ rows
+                            if (CM_ONLY_FIELD || cmPlayParentKey !== null) {
+                                applyFilters(); // renders only this badge's REQ rows (and the played parent)
                             } else {
                                 renderTable(filteredData);
                                 updateCounts();
@@ -3032,6 +3110,11 @@
             // Apply all filters
             function applyFilters() {
                 filteredData = tableData.filter(item => {
+                    // Play by Parent: only the current parent's group
+                    if (cmPlayParentKey !== null && String(item.Parent || '').trim() !== cmPlayParentKey) {
+                        return false;
+                    }
+
                     // Parent search filter
                     const parentSearchEl = document.getElementById('parentSearch');
                     const parentSearch = parentSearchEl ? parentSearchEl.value.toLowerCase() : '';
@@ -3876,7 +3959,175 @@
                 });
             }
 
+            // ---------- Play / Pause by Parent: show one parent (with its SKUs) at a time ----------
+            function cmParentList() {
+                const seen = new Set();
+                const out = [];
+                (filteredData || []).forEach(function(it) {
+                    const p = String(it.Parent || '').trim();
+                    if (p && !seen.has(p)) { seen.add(p); out.push(p); }
+                });
+                return out;
+            }
+
+            function cmSyncPlayUi() {
+                const playing = cmPlayParentKey !== null;
+                document.getElementById('cm-play-pause').style.display = playing ? 'inline-flex' : 'none';
+                document.getElementById('cm-play-auto').style.display = playing ? 'none' : 'inline-flex';
+                document.getElementById('cm-play-backward').disabled = !playing;
+                document.getElementById('cm-play-forward').disabled = !playing;
+                const lbl = document.getElementById('cm-play-label');
+                if (playing) {
+                    lbl.textContent = (cmPlayIndex + 1) + '/' + cmPlayParents.length + ' ' + cmPlayParentKey;
+                    lbl.title = cmPlayParentKey;
+                    lbl.style.display = 'inline-block';
+                } else {
+                    lbl.style.display = 'none';
+                }
+            }
+
+            function cmShowPlayParent() {
+                cmPlayParentKey = cmPlayParents[cmPlayIndex];
+                cmSyncPlayUi();
+                applyFilters();
+            }
+
+            function setupParentPlay() {
+                document.getElementById('cm-play-auto').addEventListener('click', function() {
+                    cmPlayParents = cmParentList();
+                    if (!cmPlayParents.length) { showToast('warning', 'No parents to play.'); return; }
+                    cmPlayIndex = 0;
+                    cmShowPlayParent();
+                });
+                document.getElementById('cm-play-forward').addEventListener('click', function() {
+                    if (cmPlayParentKey === null) return;
+                    cmPlayIndex = (cmPlayIndex + 1) % cmPlayParents.length;
+                    cmShowPlayParent();
+                });
+                document.getElementById('cm-play-backward').addEventListener('click', function() {
+                    if (cmPlayParentKey === null) return;
+                    cmPlayIndex = (cmPlayIndex - 1 + cmPlayParents.length) % cmPlayParents.length;
+                    cmShowPlayParent();
+                });
+                document.getElementById('cm-play-pause').addEventListener('click', function() {
+                    cmPlayParentKey = null;
+                    cmPlayParents = [];
+                    cmSyncPlayUi();
+                    applyFilters();
+                });
+                cmSyncPlayUi();
+            }
+
+            // ---------- Mail badge: ask the parent's supplier for the missing documents of this badge ----------
+            function setupComplianceMail() {
+                const badge = document.getElementById('cmMailBadge');
+                if (!badge || !CM_ONLY_FIELD) return;
+                const modalEl = document.getElementById('cmMailModal');
+                const sel = document.getElementById('cmMailParent');
+                const note = document.getElementById('cmMailNote');
+                const msg = document.getElementById('cmMailMsg');
+                const sendBtn = document.getElementById('cmMailSend');
+                let noteTimer = null;
+                let previewSeq = 0;
+                let canSend = false;
+
+                function parentOptions() {
+                    return cmPlayParentKey !== null ? cmPlayParents.slice() : cmParentList();
+                }
+
+                function currentParent(list) {
+                    if (cmPlayParentKey !== null) return cmPlayParentKey;
+                    const picked = complianceTable && complianceTable.getSelectedData ? complianceTable.getSelectedData() : [];
+                    if (picked.length && picked[0].Parent) return String(picked[0].Parent);
+                    return list[0] || '';
+                }
+
+                function setMsg(html) { msg.innerHTML = html || ''; }
+
+                function loadPreview() {
+                    const parent = sel.value;
+                    const seq = ++previewSeq;
+                    canSend = false;
+                    sendBtn.disabled = true;
+                    setMsg('');
+                    document.getElementById('cmMailBody').style.display = 'none';
+                    document.getElementById('cmMailLoading').style.display = 'block';
+                    if (!parent) {
+                        document.getElementById('cmMailLoading').textContent = 'No parent to mail.';
+                        return;
+                    }
+                    document.getElementById('cmMailLoading').textContent = 'Loading…';
+                    const qs = '?parent=' + encodeURIComponent(parent) + '&field=' + encodeURIComponent(CM_ONLY_FIELD) + '&note=' + encodeURIComponent(note.value);
+                    makeRequest('/compliance-master/doc-request/preview' + qs, 'GET')
+                        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+                        .then(function(res) {
+                            if (seq !== previewSeq) return;
+                            if (!res.ok || !res.j.success) {
+                                document.getElementById('cmMailLoading').textContent = (res.j && res.j.message) || 'Could not build the mail.';
+                                return;
+                            }
+                            const j = res.j;
+                            const to = (j.to || []).length
+                                ? escapeHtml(j.supplier || '') + ' &lt;' + j.to.map(escapeHtml).join(', ') + '&gt;'
+                                : '<span class="text-danger">' + escapeHtml(j.supplier || 'No supplier found') + ' — no email address saved</span>';
+                            document.getElementById('cmMailTo').innerHTML = to;
+                            document.getElementById('cmMailFrom').innerHTML = escapeHtml(j.from_name || '') + ' &lt;' + escapeHtml(j.from_email || '') + '&gt;'
+                                + (j.reply_to ? ' <span class="text-muted">— replies go to ' + escapeHtml(j.reply_to) + '</span>' : '');
+                            document.getElementById('cmMailSubject').textContent = j.subject || '';
+                            document.getElementById('cmMailPreview').innerHTML = j.html || '';
+                            document.getElementById('cmMailLoading').style.display = 'none';
+                            document.getElementById('cmMailBody').style.display = 'block';
+                            canSend = (j.to || []).length > 0;
+                            sendBtn.disabled = !canSend;
+                            if (!canSend) setMsg('<span class="text-danger">Add this supplier\'s email on the Suppliers page to enable sending.</span>');
+                        })
+                        .catch(function() {
+                            if (seq === previewSeq) document.getElementById('cmMailLoading').textContent = 'Network problem. Please try again.';
+                        });
+                }
+
+                badge.addEventListener('click', function() {
+                    const list = parentOptions();
+                    if (!list.length) { showToast('warning', 'No parents with pending ' + (CM_FIELD_LABELS[CM_ONLY_FIELD] || '') + ' documents.'); return; }
+                    const cur = currentParent(list);
+                    sel.innerHTML = list.map(function(p) {
+                        return '<option value="' + escapeHtml(p) + '"' + (p === cur ? ' selected' : '') + '>' + escapeHtml(p) + '</option>';
+                    }).join('');
+                    note.value = '';
+                    if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    loadPreview();
+                });
+                sel.addEventListener('change', loadPreview);
+                note.addEventListener('input', function() {
+                    clearTimeout(noteTimer);
+                    noteTimer = setTimeout(loadPreview, 600);
+                });
+                sendBtn.addEventListener('click', function() {
+                    if (!canSend) return;
+                    if (!confirm('Send this email to the supplier of ' + sel.value + '?')) return;
+                    sendBtn.disabled = true;
+                    setMsg('<span class="text-muted">Sending…</span>');
+                    makeRequest('/compliance-master/doc-request/send', 'POST', { parent: sel.value, field: CM_ONLY_FIELD, note: note.value })
+                        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+                        .then(function(res) {
+                            if (!res.ok || !res.j.success) {
+                                sendBtn.disabled = false;
+                                setMsg('<span class="text-danger">' + escapeHtml((res.j && res.j.message) || 'Could not send the mail.') + '</span>');
+                                return;
+                            }
+                            setMsg('<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill"></i> ' + escapeHtml(res.j.message || 'Mail sent.') + '</span>');
+                            showToast('success', res.j.message || 'Mail sent.');
+                        })
+                        .catch(function() {
+                            sendBtn.disabled = false;
+                            setMsg('<span class="text-danger">Network problem. The mail was not sent.</span>');
+                        });
+                });
+            }
+
             // Initialize
+            setupParentPlay();
+            setupComplianceMail();
             setupComplianceImageHoverPreview();
             setupComplianceEmailHover();
             setupComplianceFileHoverActions();

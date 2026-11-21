@@ -213,6 +213,17 @@ class PurchaseController extends Controller
             $skuExpr = $normalizedColumn('sku');
             $parentExpr = $normalizedColumn('parent');
 
+            // Best matches first: the exact SKU, then SKUs starting with what was typed, then SKUs containing it,
+            // then everything else that only matched word by word (or through the parent).
+            $fullNeedle = preg_replace('/[^a-z0-9]/', '', strtolower($search));
+            if ($fullNeedle !== '') {
+                $escaped = addcslashes($fullNeedle, '\\%_');
+                $query->orderByRaw(
+                    "CASE WHEN {$skuExpr} = ? THEN 0 WHEN {$skuExpr} LIKE ? THEN 1 WHEN {$skuExpr} LIKE ? THEN 2 ELSE 3 END",
+                    [$fullNeedle, $escaped . '%', '%' . $escaped . '%']
+                );
+            }
+
             foreach (preg_split('/\s+/', $search) as $token) {
                 $needle = preg_replace('/[^a-z0-9]/', '', strtolower($token));
                 if ($needle === '') {

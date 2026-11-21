@@ -6052,6 +6052,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/field-file/delete', [CategoryController::class, 'deleteComplianceFieldFile'])->name('compliance.master.field.file.delete');
     Route::post('/compliance-master/import', [CategoryController::class, 'importComplianceMaster'])->name('compliance.master.import');
     Route::post('/compliance-master/badge-snapshot', [CategoryController::class, 'snapshotComplianceMasterBadges'])->name('compliance.master.badge.snapshot');
+    Route::get('/compliance-master/doc-request/preview', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'preview'])->name('compliance.doc.request.preview');
+    Route::post('/compliance-master/doc-request/send', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'send'])->name('compliance.doc.request.send');
     // One "Compliance <Badge>" page per badge (Battery, Wireless, ...), same table limited to that field.
     foreach (\App\Support\Compliance\CompliancePages::all() as $__cpSlug => $__cpPage) {
         Route::get($__cpPage['url'], [CategoryController::class, 'compliancePage'])->defaults('slug', $__cpSlug)->name($__cpPage['route']);
