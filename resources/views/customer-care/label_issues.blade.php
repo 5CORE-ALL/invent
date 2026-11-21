@@ -548,7 +548,7 @@
                 const v = (n != null && n !== '' && !isNaN(parseFloat(n))) ? String(Math.round(parseFloat(n))) : '';
                 return '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
                     'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" data-issue-id="' + escAttr(String(d.id)) +
-                    '" inputmode="decimal" autocomplete="off" aria-label="Loss $" readonly tabindex="-1">';
+                    '" inputmode="decimal" autocomplete="off" aria-label="Loss $">';
             };
             const fmtActions = function () {
                 let html = '<button type="button" class="li-row-btn li-edit" title="Edit"><i class="bi bi-pencil-fill"></i></button>';
@@ -876,7 +876,6 @@
                 return isNaN(n) ? null : Math.round(n * 100) / 100;
             }
             async function saveLoss(input) {
-                return; // Loss $ is read-only on this board.
                 const id = input.getAttribute('data-issue-id');
                 if (!id) return;
                 const parsed = parseLoss(input.value);

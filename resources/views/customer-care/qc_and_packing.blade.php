@@ -3221,12 +3221,12 @@
                     '<input type="number" step="0.01" class="form-control form-control-sm issue-loss-input" ' +
                     'value="' + escAttr(v) + '" data-original="' + escAttr(v) + '" ' +
                     'data-issue-id="' + escAttr(String(row.id)) + '" inputmode="decimal" ' +
-                    'autocomplete="off" aria-label="Loss $"' + (rootCauseOnlyEdit ? ' readonly tabindex="-1"' : '') + '>' +
+                    'autocomplete="off" aria-label="Loss $">' +
                     '</td>';
             }
 
             async function saveTotalLossFromInput(input) {
-                if (!showLossColumn || rootCauseOnlyEdit) return;
+                if (!showLossColumn) return;
                 const id = input.getAttribute('data-issue-id');
                 if (!id) return;
                 const parsed = parseLossInput(input.value);
@@ -5413,6 +5413,7 @@
 
             // Edit mode on root-cause-only boards: everything except Root Cause Found / Fixed is read-only.
             const ROOT_CAUSE_EDITABLE_IDS = [
+                'hold_issue_total_loss',
                 'hold_issue_text', 'hold_issue_remark', 'hold_issue_c_action_1', 'hold_issue_c_action_1_remark',
                 'add-root-cause-found-option', 'delete-root-cause-found-option',
                 'add-root-cause-fixed-option', 'delete-root-cause-fixed-option',
