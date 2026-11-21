@@ -38,13 +38,64 @@ class ComplianceDocRequestController extends Controller
 
     /** What to ask for, per badge. Badges not listed get a generic request. */
     private const FIELD_DOCS = [
-        'battery' => ['UN38.3 test summary / report', 'MSDS / SDS (safety data sheet) for the battery', 'Battery test report and certificate (IEC 62133 / UL)', 'Battery label / marking photos'],
+        'battery' => ['UN38.3 test summary / report', 'MSDS / SDS (safety data sheet) for the battery', 'Battery test report and certificate (IEC 62133 / UL)', 'Battery label / marking photos', 'Signed OEM manufacturing & certified battery compliance declaration (format given below, on your company letterhead)'],
         'wireless' => ['FCC / CE-RED test report', 'Wireless compliance certificate'],
         'electric' => ['Electrical safety test report', 'Safety certificate (UL / ETL / CE-LVD)'],
         'gcc' => ['GCC certificate of conformity'],
         'rohs' => ['RoHS test report', 'RoHS certificate / declaration of conformity'],
         'bluetooth' => ['Bluetooth SIG listing (QDID) / certificate', 'Bluetooth test report'],
         'energy_star_registration' => ['Energy Star registration / certificate'],
+    ];
+
+    /**
+     * Approved testing agencies, listed in the mail when the supplier has no valid report yet (name, contact e-mail, website).
+     * Only the badges listed here get the section.
+     */
+    private const APPROVED_AGENCIES = [
+        'battery' => [
+            ['BV - Bureau Veritas', 'CPSGlobalSellers@bureauveritas.com', 'group.bureauveritas.com'],
+            ['CSA GROUP', 'shawn.nelson@csagroup.org', 'csagroup.org'],
+            ['CVC Certification Testing', 'amazondv@cei1958.com', 'www.cvc.org.cn'],
+            ['China Quality Certification Centre', 'international@vip.cqc.com.cn', 'www.cqc.com.cn'],
+            ['Cotecna', 'dv-services@cotecna.com', 'www.cotecna.com'],
+            ['DEKRA', 'testlab@dekra.com', 'www.dekra.com'],
+            ['Eurofins', 'USCPTinquiries@cpt.eurofinsus.com', 'www.eurofinsus.com'],
+            ['ITS - Intertek Testing Services', 'amazon.dv@intertek.com', 'www.intertek.com'],
+            ['Nemko', 'sdsales@nemko.com', 'www.nemko.com'],
+            ['QIMA', 'claire.mouclier@qima.com', 'www.qima.com'],
+            ['SGS', 'Amazon.Requests@sgs.com', 'www.sgs.com'],
+            ['Shenzhen Anbotek Compliance Laboratory Limited', 'dv@anbotek.com', 'www.anbotek.com'],
+            ['Shenzhen BCTC Testing', 'sales01@bctc-lab.com.cn', 'www.chnbctc.com'],
+            ['TUV Rheinland', 'spnamazon@tuv.com', 'www.tuv.com'],
+            ['TUV SUD', 'amazon-testing@tuvsud.com', 'www.tuvsud.com'],
+            ['UL - Underwriters Laboratories', 'Amazon.SellerSupport@ul.com', 'www.ul.com'],
+        ],
+    ];
+
+    /**
+     * Declaration letter the supplier must issue (on its letterhead, signed and stamped), per badge. Printed in the mail
+     * as the exact format to follow. {supplier} = the supplier's name (placeholder text when it is not known).
+     */
+    private const DECLARATIONS = [
+        'battery' => [
+            'title' => 'OEM MANUFACTURING & CERTIFIED BATTERY COMPLIANCE DECLARATION',
+            'date' => 'Date: [DD/MM/YYYY]',
+            'to' => 'TO WHOMSOEVER IT MAY CONCERN',
+            'intro' => 'We hereby confirm and certify that our company, {supplier}, is engaged in the manufacturing of products for the brand "5 CORE" as an Original Equipment Manufacturer (OEM).',
+            'lead' => 'We further certify and confirm the following:',
+            'points' => [
+                ['OEM Manufacturing', 'We manufacture and supply products for the brand "5 CORE" in accordance with the specifications, requirements, and quality standards provided by 5 CORE.'],
+                ['Certified Batteries', 'We confirm that the batteries used in products manufactured for the brand "5 CORE" are certified and comply with the applicable safety and regulatory standards. Copies of the relevant battery certificates are attached herewith for reference and verification.'],
+                ['Safety & Compliance Commitment', 'We are committed to maintaining the highest standards of product quality, consumer safety, and regulatory compliance. We undertake to follow all applicable safety standards, regulations, and compliance guidelines as specified by 5 CORE.'],
+                ['Ongoing Compliance', 'We further undertake to ensure that the materials and components used in manufacturing products for 5 CORE continue to meet the required safety and certification standards.'],
+            ],
+            'closing' => [
+                'This declaration is issued upon request for official verification and compliance purposes.',
+                'We hereby confirm that the above statements are true and correct to the best of our knowledge and belief.',
+            ],
+            'sign_for' => 'For {supplier}',
+            'sign_lines' => ['Authorized Signatory: ______________________', 'Name: ___________________________________', 'Designation: ______________________________', 'Company Seal & Stamp:'],
+        ],
     ];
 
     /** GET: recipient, sender, subject and body for one parent (nothing is sent). */
@@ -270,6 +321,7 @@ class ComplianceDocRequestController extends Controller
                 'supplier' => $b['supplier'],
                 'skus' => $b['skus'],
                 'docs' => $b['docs'],
+                'agencies' => $b['agencies'],
                 'note' => $b['note'],
                 'userName' => $b['from_name'],
                 'userEmail' => $b['user_email'],
@@ -346,7 +398,8 @@ class ComplianceDocRequestController extends Controller
         $note = trim((string) $request->input('note', ''));
 
         $subject = $label.' compliance documents required - '.$data['parent'];
-        $html = $this->html($supplier, $label, $data['parent'], $skus, $docs, $imageUrl, $note, $userName, $userEmail);
+        $agencies = self::APPROVED_AGENCIES[$field] ?? [];
+        $html = $this->html($supplier, $label, $data['parent'], $skus, $docs, $imageUrl, $note, $userName, $userEmail, $agencies, $field);
 
         return [
             'parent' => $data['parent'],
@@ -363,6 +416,7 @@ class ComplianceDocRequestController extends Controller
             'image_path' => $imagePath,
             'skus' => $skus,
             'docs' => $docs,
+            'agencies' => $agencies,
             'note' => $note,
             'pdf_name' => 'Document-Request-'.(preg_replace('/[^A-Za-z0-9_-]+/', '-', $data['parent'].'-'.$label) ?: 'request').'.pdf',
         ];
@@ -387,7 +441,7 @@ class ComplianceDocRequestController extends Controller
         ];
     }
 
-    private function html(string $supplier, string $label, string $parent, array $skus, array $docs, ?string $imageUrl, string $note, string $userName, string $userEmail): string
+    private function html(string $supplier, string $label, string $parent, array $skus, array $docs, ?string $imageUrl, string $note, string $userName, string $userEmail, array $agencies = [], string $field = ''): string
     {
         $e = fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         $maxList = 40;
@@ -414,11 +468,50 @@ class ComplianceDocRequestController extends Controller
             $h .= '<p><strong>SKUs ('.count($skus).'):</strong></p><ul>'.$skuItems.'</ul>';
         }
         $h .= '<p><strong>Documents required:</strong></p><ul>'.$docItems.'</ul>';
+        if ($agencies !== []) {
+            $h .= '<p><strong>Approved testing agencies:</strong><br>If you do not have a valid '.$e(strtolower($label)).' report yet, the testing must be done by one of the approved agencies below:</p><ul>';
+            foreach ($agencies as [$name, $mail, $site]) {
+                $h .= '<li><strong>'.$e($name).'</strong> &ndash; <a href="mailto:'.$e($mail).'">'.$e($mail).'</a> &ndash; '.$e($site).'</li>';
+            }
+            $h .= '</ul>';
+        }
+        $h .= $this->declarationHtml($field, $supplier);
         if ($note !== '') {
             $h .= '<p>'.nl2br($e($note)).'</p>';
         }
         $h .= '<p>Please reply to this email with the files attached (PDF or clear images).</p>';
         $h .= '<p>Thank you,<br>'.$e($userName).($userEmail !== '' ? '<br>'.$e($userEmail) : '').'<br>5Core</p>';
+
+        return $h.'</div>';
+    }
+
+    /** The declaration letter format (empty when the badge has none). */
+    private function declarationHtml(string $field, string $supplier): string
+    {
+        $d = self::DECLARATIONS[$field] ?? null;
+        if ($d === null) {
+            return '';
+        }
+        $e = fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+        $name = $supplier !== '' ? $supplier : '[Supplier/Manufacturer Company Name]';
+        $fill = fn (string $t) => $e(str_replace('{supplier}', $name, $t));
+
+        $h = '<p><strong>Declaration letter format:</strong><br>Please issue the declaration below on your company letterhead, with signature and company seal/stamp, and send it with the documents.</p>';
+        $h .= '<div style="border:1px solid #d1d5db;border-radius:6px;padding:12px 16px;background:#f9fafb">';
+        $h .= '<p style="text-align:center;margin:0 0 10px"><strong>'.$e($d['title']).'</strong></p>';
+        $h .= '<p style="margin:0 0 10px"><strong>'.$e($d['date']).'</strong></p>';
+        $h .= '<p style="margin:0 0 10px"><strong>'.$e($d['to']).'</strong></p>';
+        $h .= '<p style="margin:0 0 10px">'.$fill($d['intro']).'</p>';
+        $h .= '<p style="margin:0 0 6px">'.$e($d['lead']).'</p><ol style="margin:0 0 10px;padding-left:20px">';
+        foreach ($d['points'] as [$head, $text]) {
+            $h .= '<li style="margin-bottom:6px"><strong>'.$e($head).':</strong> '.$e($text).'</li>';
+        }
+        $h .= '</ol>';
+        foreach ($d['closing'] as $c) {
+            $h .= '<p style="margin:0 0 10px">'.$e($c).'</p>';
+        }
+        $h .= '<p style="margin:14px 0 6px"><strong>'.$fill($d['sign_for']).'</strong></p>';
+        $h .= '<p style="margin:0;line-height:1.9">'.implode('<br>', array_map($e, $d['sign_lines'])).'</p>';
 
         return $h.'</div>';
     }

@@ -50,6 +50,16 @@
         @endforeach
     </ul>
 
+    @if(!empty($agencies))
+        <div class="sec">Approved testing agencies</div>
+        <div style="margin-bottom:6px">If you do not have a valid {{ strtolower($label) }} report yet, the testing must be done by one of these approved agencies:</div>
+        <table class="grid">
+            @foreach($agencies as [$aName, $aMail, $aSite])
+                <tr><td class="k">{{ $aName }}</td><td>{{ $aMail }}<br>{{ $aSite }}</td></tr>
+            @endforeach
+        </table>
+    @endif
+
     @if(count($skus))
         <div class="sec">SKUs ({{ count($skus) }})</div>
         <ul>
