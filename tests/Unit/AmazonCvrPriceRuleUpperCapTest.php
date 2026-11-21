@@ -51,4 +51,13 @@ class AmazonCvrPriceRuleUpperCapTest extends TestCase
         $r = AmazonCvrPriceRule::apply(10.0, $this->row(), $this->cfg(['upper_cap' => false, 'max_nroi' => 100.0]), 0.0);
         $this->assertSame(15.0, $r['price']);
     }
+
+    public function test_no_lifetime_cvr_starts_from_zero_percent(): void
+    {
+        // No sessions at all: CVR L30 = 0%, LT O CVR starts at 0% -> within target, so the "within" % applies.
+        $row = ['a_l30' => 0.0, 'sess30' => 0.0, 'a_l60' => 0.0, 'sess60' => 0.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
+        $cfg = $this->cfg(['same' => 5.0, 'up' => 50.0]);
+        $r = AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0);
+        $this->assertSame(10.5, $r['price']);
+    }
 }

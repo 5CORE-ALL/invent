@@ -28,10 +28,8 @@ class AmazonCvrPriceRule
         $aL60 = (float) ($row['a_l60'] ?? $row['units_ordered_l60'] ?? 0);
         $sess60 = (float) ($row['sess60'] ?? $row['sessions_l60'] ?? 0);
         $sess = $sess30 + $sess60;
-        if ($sess <= 0) {
-            return null;
-        }
-        $lto = (($aL30 + $aL60) / $sess) * 100;
+        // No lifetime CVR (no sessions): it starts from LT O CVR = 0%.
+        $lto = $sess <= 0 ? 0.0 : (($aL30 + $aL60) / $sess) * 100;
         $cvr = $sess30 == 0.0 ? 0.0 : ($aL30 / $sess30) * 100;
         $down = self::band($cfg['down_band'] ?? null, 20.0, 99.0) / 100;
         $up = self::band($cfg['up_band'] ?? null, 20.0, 1000.0) / 100;

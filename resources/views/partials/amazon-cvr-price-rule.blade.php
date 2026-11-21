@@ -72,7 +72,7 @@
                         </thead>
                         <tbody>
                             <tr data-key="down">
-                                <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;">more than <span class="amz-cvr-down-lbl">20</span>% below LT O CVR</div></td>
+                                <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-down-more">more than <span class="amz-cvr-down-lbl">20</span>% </span>below LT O CVR</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_down_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
@@ -84,7 +84,7 @@
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
                             </tr>
                             <tr data-key="up">
-                                <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;">more than <span class="amz-cvr-up-lbl">20</span>% above LT O CVR</div></td>
+                                <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-up-more">more than <span class="amz-cvr-up-lbl">20</span>% </span>above LT O CVR</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_up_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped">—</td>
@@ -164,13 +164,12 @@
             const b = amzCvrRuleBands(cfg);
             return { down: Math.round(b.down * 10000) / 100, up: Math.round(b.up * 10000) / 100 };
         }
-        /** CVR (L30) vs LT O CVR for a row: 1 up, -1 down, 0 within the targets, null when LT O CVR is unknown. */
+        /** CVR (L30) vs LT O CVR for a row: 1 up, -1 down, 0 within the targets. A SKU with no lifetime CVR (no sessions) starts from LT O CVR = 0%. */
         function amzCvrRuleTrendValue(row, cfg) {
             if (!row) return null;
             const sess30 = parseFloat(row['Sess30']) || 0;
             const sess = sess30 + (parseFloat(row['sessions_l60']) || 0);
-            if (sess <= 0) return null;
-            const lto = (((parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0)) / sess) * 100;
+            const lto = sess <= 0 ? 0 : (((parseFloat(row['A_L30']) || 0) + (parseFloat(row['units_ordered_l60']) || 0)) / sess) * 100;
             const cvr = sess30 === 0 ? 0 : ((parseFloat(row['A_L30']) || 0) / sess30) * 100;
             const b = amzCvrRuleBands(cfg);
             if (cvr > lto * (1 + b.up)) return 1;
@@ -205,6 +204,8 @@
             const p = amzCvrRuleBandPcts(cfg);
             $('.amz-cvr-down-lbl').text(p.down);
             $('.amz-cvr-up-lbl').text(p.up);
+            $('.amz-cvr-down-more').toggle(p.down > 0);
+            $('.amz-cvr-up-more').toggle(p.up > 0);
             const $f = $('#cvr-delta-filter');
             $f.find('option[value="up"]').text('\u2191 Up (> +' + p.up + '%)');
             $f.find('option[value="same"]').text('-- Within target');
@@ -415,6 +416,8 @@
             const p = amzCvrRuleBandPcts(cfg);
             $('#amzCvrRuleModal .amz-cvr-down-lbl').text(p.down);
             $('#amzCvrRuleModal .amz-cvr-up-lbl').text(p.up);
+            $('#amzCvrRuleModal .amz-cvr-down-more').toggle(p.down > 0);
+            $('#amzCvrRuleModal .amz-cvr-up-more').toggle(p.up > 0);
         }
         /** SKU count (and Lower-capped count) per CVR case for a rule config, over the child SKUs loaded in the table. */
         function amzCvrRuleCounts(cfg) {
@@ -500,7 +503,7 @@
             $('#amz-cvr-ucap-npft').val(cfg.max_npft === null || cfg.max_npft === undefined ? '' : cfg.max_npft);
             $('#amz-cvr-ucap-nroi').val(cfg.max_nroi === null || cfg.max_nroi === undefined ? '' : cfg.max_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV, or with no LT O CVR (no sessions), is not counted. Capped = SKUs whose new price is set to the Lower or Upper cap price (based on each SKU\'s S PRC before this rule).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV is not counted. A SKU with no lifetime CVR (no sessions) starts from LT O CVR = 0%. Capped = SKUs whose new price is set to the Lower or Upper cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {

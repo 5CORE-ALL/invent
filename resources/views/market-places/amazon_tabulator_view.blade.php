@@ -4565,7 +4565,7 @@
                 return isFinite(n) ? n : null;
             }
 
-            /** CVR vs LT O CVR: 1 = above the Up target, -1 = below the Down target (CVR Price Rule modal, default 20% each), 0 = within, null = no LT O CVR. */
+            /** CVR vs LT O CVR: 1 = above the Up target, -1 = below the Down target (CVR Price Rule modal, default 20% each), 0 = within. No lifetime CVR (no sessions) starts from LT O CVR = 0%. */
             function amazonCvrVsLtoTrend(rd) {
                 return amzCvrRuleTrendValue(rd, null);
             }
@@ -5178,7 +5178,7 @@
                             if (t === null) {
                                 main = pinkUp ? '' : '<span class="text-muted">—</span>';
                             } else {
-                                const lto = amazonRowLtoCvr(row);
+                                const lto = amazonRowLtoCvr(row) || 0; // no lifetime CVR starts from 0%
                                 const tip = 'CVR ' + cvr30.toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
                                 if (t > 0) {
                                     main = '<span title="' + escAttr(tip + ' · more than ' + amzCvrRuleBandPcts().up + '% above') + '"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
