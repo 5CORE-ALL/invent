@@ -72,4 +72,15 @@ class AmazonCvrPriceRuleUpperCapTest extends TestCase
         $r = AmazonCvrPriceRule::apply(10.0, $row2, $cfg, 0.0);
         $this->assertSame(9.5, $r['price']);
     }
+
+    public function test_cvr_between_7_and_13_is_always_within_target(): void
+    {
+        // CVR L30 10% vs LT O CVR 2% would be Up, but 7..13% has no up / down arrow.
+        $row = ['a_l30' => 10.0, 'sess30' => 100.0, 'a_l60' => 0.0, 'sess60' => 400.0, 'price' => 10.0, 'lp' => 5.0, 'ship' => 1.0];
+        $cfg = $this->cfg(['same' => null, 'up' => 50.0]);
+        $this->assertNull(AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0));
+        $cfg['same'] = 4.0;
+        $r = AmazonCvrPriceRule::apply(10.0, $row, $cfg, 0.0);
+        $this->assertSame(10.4, $r['price']);
+    }
 }

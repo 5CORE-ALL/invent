@@ -37,7 +37,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amzCvrRuleModalLabel"><i class="fas fa-chart-line me-1"></i> CVR Price Rule</h5>
-                        <div class="text-muted" style="font-size:12px;">CVR L30 is compared with LT O CVR (the CVR Δ column). Set the targets, then the price change % for each case: CVR Down always lowers the price and CVR Up always raises it, whatever sign you type (type 5 or -5, the price still goes down for CVR Down). For CVR within target a positive % raises the price and a negative % lowers it.</div>
+                        <div class="text-muted" style="font-size:12px;">CVR L30 is compared with LT O CVR (the CVR Δ column). Set the targets, then the price change % for each case: CVR Down always lowers the price and CVR Up always raises it, whatever sign you type (type 5 or -5, the price still goes down for CVR Down). For CVR within target a positive % raises the price and a negative % lowers it. A CVR L30 between 7% and 13% is always within target (no up / down arrow).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -179,6 +179,8 @@
             const b = amzCvrRuleBands(cfg);
             // Sold 0 (CVR L30 = 0%): always CVR Down, whatever LT O CVR is.
             if ((parseFloat(row['A_L30']) || 0) <= 0) return -1;
+            // CVR L30 between 7% and 13%: no up / down arrow, always within target.
+            if (cvr >= 7 && cvr <= 13) return 0;
             if (cvr > lto * (1 + b.up)) return 1;
             if (cvr < lto * (1 - b.down)) return -1;
             return 0;

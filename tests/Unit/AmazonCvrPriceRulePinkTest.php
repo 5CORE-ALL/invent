@@ -27,8 +27,8 @@ class AmazonCvrPriceRulePinkTest extends TestCase
         $r = AmazonCvrPriceRule::apply(20.0, $this->row(15.0, 100.0), $cfg, 0.0);
         $this->assertSame(20.4, $r['price']); // blank pink -> normal Up case
         $cfg['pink'] = 7.0;
-        $r = AmazonCvrPriceRule::apply(20.0, $this->row(12.0, 100.0), $cfg, 0.0); // 12% <= 12.99
-        $this->assertSame(20.4, $r['price']);
+        // 12% <= 12.99: no pink. It is also between 7% and 13%, so it is within target (no Up), and "within" has no % here.
+        $this->assertNull(AmazonCvrPriceRule::apply(20.0, $this->row(12.0, 100.0), $cfg, 0.0));
     }
 
     public function test_pink_target_is_dynamic(): void

@@ -43,6 +43,9 @@ class AmazonCvrPriceRule
         } elseif ($aL30 <= 0) {
             // Sold 0 (CVR L30 = 0%): always CVR Down, whatever LT O CVR is.
             $case = 'down';
+        } elseif ($cvr >= 7.0 && $cvr <= 13.0) {
+            // CVR L30 between 7% and 13%: no up / down arrow, always within target.
+            $case = 'same';
         } elseif ($cvr > $lto * (1 + $up)) {
             $case = 'up';
         } elseif ($cvr < $lto * (1 - $down)) {

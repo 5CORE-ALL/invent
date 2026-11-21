@@ -5164,7 +5164,7 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow. A pink up arrow is added when CVR L30 is above the pink target set in the CVR Price Rule modal (default 12.99%).",
+                        headerTooltip: "CVR L30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target shows the up arrow, below the Down target shows the down arrow. A CVR L30 between 7% and 13% never shows an up / down arrow. A pink up arrow is added when CVR L30 is above the pink target set in the CVR Price Rule modal (default 12.99%).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = amazonCvrVsLtoTrend(row);
