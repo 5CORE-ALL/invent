@@ -420,7 +420,10 @@
     function parseBadge(text) {
         var t = String(text || '').replace(/\s+/g, ' ').trim();
         var NUM = '([-+]?\\s*[$\u20b9\u20ac\u00a3]?\\s*[-+]?\\d[\\d,]*(?:\\.\\d+)?)\\s*([kKmMbB%]?)';
-        var m = t.match(new RegExp('^(.*?)\\s*[:=]\\s*' + NUM)) || t.match(new RegExp('^(.*?)\\s+' + NUM)) || t.match(new RegExp('^()' + NUM));
+        // also "Battery (7)" / "Compliance-M (1,234)": the number in trailing parentheses
+        var m = t.match(new RegExp('^(.*?)\\s*[:=]\\s*' + NUM))
+            || t.match(new RegExp('^(.*?)\\s*\\(\\s*' + NUM + '\\s*\\)\\s*$'))
+            || t.match(new RegExp('^(.*?)\\s+' + NUM)) || t.match(new RegExp('^()' + NUM));
         if (!m) return null;
         var n = parseFloat(String(m[2]).replace(/[^0-9.\-]/g, ''));
         if (isNaN(n)) return null;
