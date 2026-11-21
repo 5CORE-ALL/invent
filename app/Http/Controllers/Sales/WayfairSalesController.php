@@ -25,6 +25,7 @@ class WayfairSalesController extends Controller
             'yPft'       => $y['pft'],
             'yCogs'      => $y['cogs'],
             'yGroi'      => $y['groi'],
+            'yPftPct'    => $y['pft_pct'],
         ]);
     }
 
@@ -59,7 +60,7 @@ class WayfairSalesController extends Controller
      * PFT = (unit price × qty × Wayfair %) − COGS, COGS = LP × qty (Wayfair has no ship).
      * Y GROI % = Y PFT ÷ Y COGS.
      *
-     * @return array{sales: float, date: ?string, quantity: int, orders: int, pft: float, cogs: float, groi: float}
+     * @return array{sales: float, date: ?string, quantity: int, orders: int, pft: float, cogs: float, groi: float, pft_pct: float}
      */
     private function computeYesterdaySales(): array
     {
@@ -95,6 +96,7 @@ class WayfairSalesController extends Controller
 
         $pft = ($sales * ($percentage / 100)) - $cogs;
         $groi = $cogs > 0 ? ($pft / $cogs) * 100 : 0.0;
+        $pftPct = $sales > 0 ? ($pft / $sales) * 100 : 0.0;
 
         return [
             'sales'    => round($sales, 2),
@@ -104,6 +106,7 @@ class WayfairSalesController extends Controller
             'pft'      => round($pft, 2),
             'cogs'     => round($cogs, 2),
             'groi'     => round($groi, 1),
+            'pft_pct'  => round($pftPct, 1),
         ];
     }
 
