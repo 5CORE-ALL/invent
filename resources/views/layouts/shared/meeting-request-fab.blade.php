@@ -234,6 +234,7 @@
                     <button type="button" class="mrq-tab active" data-tab="new"><i class="ri-add-circle-line me-1"></i>Request a meeting</button>
                     <button type="button" class="mrq-tab" data-tab="sent"><i class="ri-send-plane-line me-1"></i>Sent by you</button>
                     <button type="button" class="mrq-tab" data-tab="inbox"><i class="ri-inbox-line me-1"></i>Requests for you <span class="badge bg-danger mrq-hidden" id="mrqTabBadge">0</span></button>
+                    <button type="button" class="mrq-tab" data-tab="resched"><i class="ri-calendar-schedule-line me-1"></i>Reschedule <span class="badge bg-warning text-dark mrq-hidden" id="mrqReschedBadge">0</span></button>
                 </div>
 
                 {{-- STEP 1: form --}}
@@ -361,6 +362,11 @@
                 <div id="mrqInbox" class="mrq-hidden">
                     <div id="mrqInboxList"><div class="text-muted">Loading…</div></div>
                 </div>
+
+                {{-- Reschedule: requests waiting for my decision + history of moved meetings --}}
+                <div id="mrqResched" class="mrq-hidden">
+                    <div id="mrqReschedList"><div class="text-muted">Loading…</div></div>
+                </div>
             </div>
             <div class="modal-footer" id="mrqFooter">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="mrqBtnCancel">Cancel</button>
@@ -386,7 +392,8 @@
             request: @json(route('meetings.request')),
             requests: @json(route('meetings.requests')),
             sent: @json(route('meetings.sent')),
-            link: @json(route('meetings.link'))
+            link: @json(route('meetings.link')),
+            resched: @json(route('meetings.reschedules'))
         };
         var CSRF = @json(csrf_token());
         var $ = function (id) { return document.getElementById(id); };
@@ -550,12 +557,13 @@
             var isNew = t === 'new';
             hide('mrqInbox', t !== 'inbox');
             hide('mrqSent', t !== 'sent');
+            hide('mrqResched', t !== 'resched');
             if (isNew) { setStep(step); }
             else {
                 ['mrqStepForm', 'mrqStepReview', 'mrqStepDone'].forEach(function (id) { hide(id, true); });
                 ['mrqBtnCancel', 'mrqBtnReview', 'mrqBtnBack', 'mrqBtnConfirm', 'mrqBtnLobby', 'mrqBtnStart'].forEach(function (id) { hide(id, true); });
                 hide('mrqBtnClose', false);
-                if (t === 'inbox') loadInbox(); else loadSent();
+                if (t === 'inbox') loadInbox(); else if (t === 'resched') loadResched(); else loadSent();
             }
         }
         document.querySelectorAll('#mrqTabs .mrq-tab').forEach(function (b) {
@@ -633,7 +641,7 @@
             var opts = DURATIONS.slice();
             if (!opts.some(function (d) { return d[0] === dur; })) { opts.push([dur, dur + ' min']); opts.sort(function (a, b) { return a[0] - b[0]; }); }
             box.innerHTML = '<div class="border rounded-3 p-2" style="background:rgba(245,158,11,.07)">'
-                + '<div class="small fw-semibold mb-2"><i class="ri-calendar-schedule-line"></i> Reschedule meeting</div>'
+                + '<div class="small fw-semibold mb-2"><i class="ri-calendar-schedule-line"></i> ' + (m.can_manage ? 'Reschedule meeting' : 'Request a new time') + '</div>'
                 + '<div class="d-flex flex-wrap gap-1 mb-2" data-rs-quick>'
                 + [[1, 'After 1 day'], [2, 'After 2 days'], [3, 'After 3 days'], ['monday', 'Next Monday'], [7, 'After 1 week'], [14, 'After 2 weeks'], [0, 'Custom']].map(function (q) {
                     return '<button type="button" class="btn btn-sm btn-outline-secondary" data-rs-days="' + q[0] + '">' + q[1] + '</button>';
@@ -643,9 +651,12 @@
                 + '<div class="col-sm-3"><label class="form-label small mb-1">Start time</label><input type="time" class="form-control form-control-sm" data-rs-time value="' + esc(pre.time) + '"></div>'
                 + '<div class="col-sm-3"><label class="form-label small mb-1">Length</label><select class="form-select form-select-sm" data-rs-dur>'
                 + opts.map(function (d) { return '<option value="' + d[0] + '"' + (d[0] === dur ? ' selected' : '') + '>' + esc(d[1]) + '</option>'; }).join('') + '</select></div>'
-                + '<div class="col-sm-2 d-flex gap-1"><button type="button" class="btn btn-sm btn-warning flex-fill" data-rs-save>Save</button><button type="button" class="btn btn-sm btn-light" data-rs-cancel title="Close">&times;</button></div>'
-                + '</div><div class="small mt-2" data-rs-msg></div>'
-                + '<div class="small text-muted mt-1">Invitees see the new time under Requests for you' + (m.google ? ', and the Google Calendar event is updated' : '') + '. Members who marked it completed will see it again.</div></div>';
+                + '<div class="col-sm-2 d-flex gap-1"><button type="button" class="btn btn-sm btn-warning flex-fill" data-rs-save>' + (m.can_manage ? 'Save' : 'Request') + '</button><button type="button" class="btn btn-sm btn-light" data-rs-cancel title="Close">&times;</button></div>'
+                + '</div><input type="text" class="form-control form-control-sm mt-2" data-rs-reason maxlength="500" placeholder="Reason (optional)">'
+                + '<div class="small mt-2" data-rs-msg></div>'
+                + '<div class="small text-muted mt-1">' + (m.can_manage
+                    ? 'Invitees see the new time under Requests for you' + (m.google ? ', and the Google Calendar event is updated' : '') + '. Members who marked it completed will see it again.'
+                    : 'This sends a request to the host. The meeting moves only when the host approves it in the Reschedule tab.') + '</div></div>';
             box.classList.remove('mrq-hidden');
             var msg = box.querySelector('[data-rs-msg]'), save = box.querySelector('[data-rs-save]');
             box.querySelector('[data-rs-cancel]').addEventListener('click', function () { box.classList.add('mrq-hidden'); box.innerHTML = ''; });
@@ -668,16 +679,95 @@
             save.addEventListener('click', function () {
                 var d = box.querySelector('[data-rs-date]').value, t = box.querySelector('[data-rs-time]').value;
                 if (!d || !t) { msg.innerHTML = '<span class="text-danger">Pick the new date and start time.</span>'; return; }
-                if (!confirm('Reschedule "' + m.title + '" to ' + d + ' ' + t + '?')) return;
-                save.disabled = true; msg.innerHTML = '<span class="text-muted">Saving…</span>';
-                call('POST', m.reschedule_url, { meeting_date: d, start_time: t, approx_minutes: Number(box.querySelector('[data-rs-dur]').value) }).then(function (r) {
+                if (!confirm((m.can_manage ? 'Reschedule "' : 'Ask the host to reschedule "') + m.title + '" to ' + d + ' ' + t + '?')) return;
+                save.disabled = true; msg.innerHTML = '<span class="text-muted">' + (m.can_manage ? 'Saving…' : 'Sending…') + '</span>';
+                call('POST', m.reschedule_url, { meeting_date: d, start_time: t, approx_minutes: Number(box.querySelector('[data-rs-dur]').value), reason: box.querySelector('[data-rs-reason]').value.trim() }).then(function (r) {
                     if (!r.ok || !(r.data && r.data.ok)) { save.disabled = false; msg.innerHTML = '<span class="text-danger">' + esc(firstError(r)) + '</span>'; return; }
-                    msg.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> Rescheduled to ' + esc(r.data.scheduled_at || (d + ' ' + t)) + '.</span>'
-                        + (r.data.google_error ? '<div class="text-warning-emphasis">Saved here, but Google Calendar was not updated: ' + esc(r.data.google_error) + '</div>' : '');
-                    setTimeout(function () { sentSig = ''; loadSent(); poll(false); }, 1200);
+                    msg.innerHTML = r.data.applied === false
+                        ? '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> ' + esc(r.data.message || 'Request sent to the host.') + '</span>'
+                        : '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> Rescheduled to ' + esc(r.data.scheduled_at || (d + ' ' + t)) + '.</span>'
+                            + (r.data.google_error ? '<div class="text-warning-emphasis">Saved here, but Google Calendar was not updated: ' + esc(r.data.google_error) + '</div>' : '');
+                    setTimeout(function () {
+                        sentSig = '';
+                        if (tab === 'sent') loadSent(); else if (tab === 'inbox') loadInbox(); else if (tab === 'resched') loadResched();
+                        poll(false);
+                    }, 1400);
                 }).catch(function () { save.disabled = false; msg.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>'; });
             });
         }
+        // ---------- Reschedule tab: requests waiting for me + history of moved meetings ----------
+        function setReschedBadge(n) {
+            var b = $('mrqReschedBadge'); b.textContent = n; b.classList.toggle('mrq-hidden', !n);
+        }
+        var reschedSig = '';
+        var RS_STATUS = { pending: ['Waiting for host', 'bg-warning text-dark'], approved: ['Rescheduled', 'bg-success'], declined: ['Declined', 'bg-secondary'] };
+        function reschedCard(r, incoming) {
+            var div = document.createElement('div'); div.className = 'mrq-req';
+            var st = RS_STATUS[r.status] || RS_STATUS.pending;
+            var who = incoming ? '<strong>' + esc(r.by) + '</strong> asks to move this meeting' : (r.by_me ? 'You ' + (r.self_applied ? 'moved this meeting' : 'asked to move this meeting') : '<strong>' + esc(r.by) + '</strong> ' + (r.self_applied ? 'moved this meeting' : 'asked to move this meeting'));
+            div.innerHTML = '<div class="mrq-req-row"><div class="mrq-req-info"><h6>' + esc(r.title) + ' <span class="badge ' + st[1] + '">' + st[0] + '</span></h6>'
+                + '<div class="small mb-1">' + who + ' <span class="text-muted">&middot; ' + esc(r.requested || '') + '</span></div>'
+                + (r.old ? '<div class="small text-muted"><i class="ri-calendar-event-line"></i> From: <s>' + esc(r.old) + '</s></div>' : '')
+                + '<div class="small"><i class="ri-calendar-check-line"></i> <strong>To:</strong> ' + esc(r.new) + '</div>'
+                + (r.reason ? '<div class="small mt-1"><span class="text-muted">Reason:</span> ' + esc(r.reason) + '</div>' : '')
+                + (!incoming && r.status !== 'pending' && !r.self_applied && r.decided_by ? '<div class="small text-muted mt-1">' + (r.status === 'approved' ? 'Approved' : 'Declined') + ' by ' + esc(r.decided_by) + ' ' + esc(r.decided || '') + '</div>' : '')
+                + '</div><div class="d-flex gap-2" data-actions></div></div><div class="small mt-2" data-result></div>';
+            var actions = div.querySelector('[data-actions]'), result = div.querySelector('[data-result]');
+            if (incoming) {
+                [['approve', 'Approve', 'btn-success', 'ri-check-line'], ['decline', 'Decline', 'btn-outline-danger', 'ri-close-line']].forEach(function (a) {
+                    var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm ' + a[2];
+                    b.innerHTML = '<i class="' + a[3] + '"></i> ' + a[1];
+                    b.addEventListener('click', function () {
+                        if (!confirm((a[0] === 'approve' ? 'Move "' : 'Decline the request for "') + r.title + (a[0] === 'approve' ? '" to ' + r.new + '?' : '"?'))) return;
+                        actions.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+                        call('POST', r.decide_url, { decision: a[0] }).then(function (res) {
+                            if (!res.ok || !(res.data && res.data.ok)) {
+                                actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+                                result.innerHTML = '<span class="text-danger">' + esc(firstError(res)) + '</span>'; return;
+                            }
+                            result.innerHTML = '<span class="text-success fw-semibold"><i class="ri-checkbox-circle-fill"></i> ' + esc(res.data.message || 'Done.') + '</span>'
+                                + (res.data.google_error ? '<div class="text-warning-emphasis">Google Calendar was not updated: ' + esc(res.data.google_error) + '</div>' : '');
+                            setTimeout(function () { reschedSig = ''; loadResched(); poll(false); }, 1400);
+                        }).catch(function () {
+                            actions.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+                            result.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>';
+                        });
+                    });
+                    actions.appendChild(b);
+                });
+            } else {
+                var d = document.createElement('a'); d.className = 'btn btn-sm btn-light'; d.href = r.details_url; d.textContent = 'Details'; actions.appendChild(d);
+            }
+            return div;
+        }
+        function loadResched(silent) {
+            var box = $('mrqReschedList');
+            if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
+            call('GET', URLS.resched).then(function (res) {
+                if (!res.ok) { if (!silent) box.innerHTML = '<div class="text-danger">Could not load reschedules.</div>'; return; }
+                var d = res.data || {};
+                setReschedBadge(d.count || 0);
+                var sig = JSON.stringify([d.incoming, d.history]);
+                if (silent && (sig === reschedSig || tab !== 'resched')) return;
+                reschedSig = sig;
+                if (d.setup_needed) { box.innerHTML = '<div class="alert alert-warning small">Reschedule requests are not set up yet. Run <code>php artisan migrate</code> on the server.</div>'; return; }
+                var inc = d.incoming || [], his = d.history || [];
+                box.innerHTML = '';
+                if (!inc.length && !his.length) {
+                    box.innerHTML = '<div class="text-muted py-3 text-center">No reschedules yet. Use the <strong>Reschedule</strong> button on a meeting to move it or ask the host for a new time.</div>';
+                    return;
+                }
+                if (inc.length) {
+                    var h = document.createElement('div'); h.className = 'small fw-bold text-uppercase text-muted mb-2'; h.textContent = 'Waiting for your decision (' + inc.length + ')'; box.appendChild(h);
+                    inc.forEach(function (r) { box.appendChild(reschedCard(r, true)); });
+                }
+                if (his.length) {
+                    var h2 = document.createElement('div'); h2.className = 'small fw-bold text-uppercase text-muted mb-2 mt-3'; h2.textContent = 'Rescheduled meetings & your requests'; box.appendChild(h2);
+                    his.forEach(function (r) { box.appendChild(reschedCard(r, false)); });
+                }
+            }).catch(function () { if (!silent) box.innerHTML = '<div class="text-danger">Could not load reschedules.</div>'; });
+        }
+
         function loadSent(silent) {
             var box = $('mrqSentList'), done = sentFilter === 'completed', reqFilter = sentFilter;
             if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
@@ -762,6 +852,7 @@
                 if (!res.ok) return;
                 var list = res.data.requests || [];
                 setBadge(res.data.count || 0);
+                setReschedBadge(res.data.reschedule_count || 0);
                 var modalOpen = $('mrqModal').classList.contains('show');
                 if (showToast !== false && modalOpen && tab === 'inbox') {
                     // Inbox is on screen: update it in place (no toast, no reload).
@@ -769,6 +860,8 @@
                     refreshInboxLive(list);
                 } else if (showToast !== false && modalOpen && tab === 'sent') {
                     loadSent(true);
+                } else if (showToast !== false && modalOpen && tab === 'resched') {
+                    loadResched(true);
                 }
                 if (showToast !== false && !(modalOpen && tab === 'inbox')) {
                     var seen = seenIds();
@@ -802,7 +895,8 @@
         function refreshInboxLive(list) {
             var sig = list.map(function (x) { return x.id + ':' + x.rsvp + ':' + x.scheduled_at; }).join('|');
             if (sig === inboxSig) return;
-            var busy = Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-result]'), function (el) { return el.textContent.trim() !== ''; })
+            var busy = !!$('mrqInboxList').querySelector('[data-resched]:not(.mrq-hidden)')
+                || Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-result]'), function (el) { return el.textContent.trim() !== ''; })
                 || Array.prototype.some.call($('mrqInboxList').querySelectorAll('[data-actions] button'), function (b) { return b.disabled; });
             if (!busy) renderInbox(list);
         }
@@ -822,7 +916,7 @@
                 + '<i class="ri-calendar-event-line"></i> <strong>Date &amp; time:</strong> ' + esc(r.scheduled_at || (r.live ? 'happening now' : 'time not set')) + (r.room ? ' &middot; <span class="mrq-room">' + esc(r.room) + '</span>' : '')
                 + (r.requested_at ? ' &middot; requested ' + esc(r.requested_at) : '') + '</div>'
                 + (r.agenda ? '<div class="small" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(r.agenda) + '</div>' : '')
-                + '</div><div class="d-flex gap-2" data-actions></div></div><div class="small mt-2" data-result></div>';
+                + '</div><div class="d-flex gap-2" data-actions></div></div><div class="mt-2 mrq-hidden" data-resched></div><div class="small mt-2" data-result></div>';
             var actions = div.querySelector('[data-actions]'), result = div.querySelector('[data-result]');
             function btn(label, cls, fn) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm mrq-ico ' + cls;
                 // icon only; the text becomes the tooltip / screen-reader label
@@ -866,6 +960,7 @@
                 btn('<i class="ri-vidicon-line"></i> ' + (r.google ? 'Meeting details' : 'Join meeting'), 'btn-primary', function () { window.location.href = r.room_url; });
             }
             btn('<i class="ri-check-double-line"></i> Completed', 'btn-outline-primary', function () { answer('completed'); });
+            if (r.reschedule_url) btn('<i class="ri-calendar-schedule-line"></i> Reschedule', 'btn-outline-warning', function () { toggleReschedule(div, r); });
             return div;
         }
 

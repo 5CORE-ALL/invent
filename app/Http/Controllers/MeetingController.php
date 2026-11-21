@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Meeting;
 use App\Models\MeetingParticipant;
 use App\Models\MeetingRecording;
+use App\Models\MeetingReschedule;
 use App\Models\User;
 use App\Services\Meetings\GoogleMeetException;
 use App\Services\Meetings\GoogleMeetService;
@@ -17,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -356,9 +358,24 @@ class MeetingController extends Controller
         // Accepted-but-not-yet-joined invites stay listed so the user can still join; only unanswered ones count for the badge.
         $rows = $this->pendingInvites(true);
 
+        $reschedulePending = 0;
+        try {
+            if (Schema::hasTable('meeting_reschedules')) {
+                $reschedulePending = $this->incomingReschedules(Auth::user())->count();
+            }
+        } catch (\Throwable $e) {
+            $reschedulePending = 0;
+        }
+
         return response()->json([
             'count' => $rows->where('rsvp', 'pending')->count(),
+            'reschedule_count' => $reschedulePending,
             'requests' => $rows->map(fn (MeetingParticipant $p) => [
+                'reschedule_url' => route('meetings.reschedule', $p->meeting_id),
+                'can_manage' => $this->canManage($p->meeting, Auth::user()),
+                'scheduled_date' => $p->meeting->scheduled_at?->format('Y-m-d'),
+                'scheduled_time' => $p->meeting->scheduled_at?->format('H:i'),
+                'duration_minutes' => $p->meeting->scheduled_at && $p->meeting->scheduled_end_at ? (int) max(5, $p->meeting->scheduled_at->diffInMinutes($p->meeting->scheduled_end_at)) : 30,
                 'id' => (int) $p->meeting_id,
                 'rsvp' => (string) $p->rsvp,
                 'title' => $p->meeting->title,
@@ -430,6 +447,7 @@ class MeetingController extends Controller
                 'room_url' => $m->isGoogleMeet() ? route('meetings.show', $m) : route('meetings.room', $m),
                 'end_url' => route('meetings.end', $m),
                 'reschedule_url' => route('meetings.reschedule', $m),
+                'can_manage' => true,
                 'scheduled_date' => $m->scheduled_at?->format('Y-m-d'),
                 'scheduled_time' => $m->scheduled_at?->format('H:i'),
                 'duration_minutes' => $m->scheduled_at && $m->scheduled_end_at ? (int) max(5, $m->scheduled_at->diffInMinutes($m->scheduled_end_at)) : 30,
@@ -534,11 +552,18 @@ class MeetingController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Host moves a meeting (also one already joined / completed) to a new date and time. */
+    /**
+     * Move a meeting to a new date/time (also one already joined / completed).
+     *  - the host (or a task admin) moves it straight away;
+     *  - an invited member sends a reschedule request that the host approves or declines in the "Reschedule" tab.
+     */
     public function reschedule(Request $request, Meeting $meeting): JsonResponse
     {
-        if (! $this->canManage($meeting, Auth::user())) {
-            return response()->json(['ok' => false, 'message' => 'Only the host can reschedule this meeting.'], 403);
+        $me = Auth::user();
+        $manage = $this->canManage($meeting, $me);
+        $invited = ! $manage && MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', $me?->id)->where('is_invited', true)->exists();
+        if (! $manage && ! $invited) {
+            return response()->json(['ok' => false, 'message' => 'Only the host or an invited member can reschedule this meeting.'], 403);
         }
         if ($meeting->isCancelled()) {
             return response()->json(['ok' => false, 'message' => 'A cancelled meeting cannot be rescheduled.'], 409);
@@ -548,6 +573,7 @@ class MeetingController extends Controller
             'meeting_date' => 'required|date_format:Y-m-d',
             'start_time' => 'required|date_format:H:i',
             'approx_minutes' => 'required|integer|min:5|max:720',
+            'reason' => 'nullable|string|max:500',
         ]);
 
         $tz = \App\Casts\MeetingDateTime::timezone();
@@ -556,15 +582,153 @@ class MeetingController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['start_time' => 'Pick a date and time in the future.']);
         }
         $end = $start->copy()->addMinutes((int) $data['approx_minutes']);
+        $reason = trim((string) ($data['reason'] ?? '')) ?: null;
+        $hasLog = Schema::hasTable('meeting_reschedules');
 
+        if (! $manage) {
+            if (! $hasLog) {
+                return response()->json(['ok' => false, 'message' => 'Reschedule requests are not set up yet. Run "php artisan migrate" on the server.'], 503);
+            }
+            // One open request per person per meeting: a new one replaces the old.
+            MeetingReschedule::where('meeting_id', $meeting->id)->where('requested_by', $me->id)->where('status', MeetingReschedule::PENDING)->delete();
+            MeetingReschedule::create([
+                'meeting_id' => $meeting->id, 'requested_by' => $me->id,
+                'old_start' => $meeting->scheduled_at, 'old_end' => $meeting->scheduled_end_at,
+                'new_start' => $start, 'new_end' => $end, 'reason' => $reason, 'status' => MeetingReschedule::PENDING,
+            ]);
+
+            return response()->json([
+                'ok' => true,
+                'applied' => false,
+                'message' => 'Reschedule request sent to '.($meeting->host?->name ?: 'the host').'. It stays in the Reschedule tab until they decide.',
+            ]);
+        }
+
+        $old = [$meeting->scheduled_at, $meeting->scheduled_end_at];
         $result = $this->scheduler->reschedule($meeting, $start, $end);
         $m = $result['meeting']->fresh();
+
+        if ($hasLog) {
+            // The host's own move is logged as an already-approved reschedule (and any open requests are settled).
+            MeetingReschedule::where('meeting_id', $meeting->id)->where('status', MeetingReschedule::PENDING)
+                ->update(['status' => MeetingReschedule::APPROVED, 'decided_by' => $me->id, 'decided_at' => now()]);
+            MeetingReschedule::create([
+                'meeting_id' => $meeting->id, 'requested_by' => $me->id,
+                'old_start' => $old[0], 'old_end' => $old[1], 'new_start' => $start, 'new_end' => $end,
+                'reason' => $reason, 'status' => MeetingReschedule::APPROVED, 'decided_by' => $me->id, 'decided_at' => now(),
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'applied' => true,
+            'google_error' => $result['google_error'],
+            'scheduled_at' => $this->whenLabel($m),
+        ]);
+    }
+
+    /** Reschedule tab: requests waiting for my decision, and the history of reschedules I am part of. */
+    public function reschedules(): JsonResponse
+    {
+        if (! Schema::hasTable('meeting_reschedules')) {
+            return response()->json(['ok' => true, 'incoming' => [], 'history' => [], 'count' => 0, 'setup_needed' => true]);
+        }
+        $me = Auth::user();
+        $isAdmin = SuperAdminAccess::isTaskAdmin($me);
+
+        $incoming = $this->incomingReschedules($me)->get();
+
+        $history = MeetingReschedule::query()
+            ->with(['meeting:id,title,host_user_id', 'requester:id,name', 'decider:id,name'])
+            ->where(function ($q) use ($me, $isAdmin) {
+                if ($isAdmin) {
+                    return;
+                }
+                $q->where('requested_by', $me->id)
+                    ->orWhereHas('meeting', fn ($m) => $m->where('host_user_id', $me->id)
+                        ->orWhereHas('participants', fn ($p) => $p->where('user_id', $me->id)));
+            })
+            ->whereNotIn('id', $incoming->pluck('id'))
+            ->orderByDesc('id')->limit(30)->get();
+
+        return response()->json([
+            'ok' => true,
+            'count' => $incoming->count(),
+            'incoming' => $incoming->map(fn ($r) => $this->rescheduleRow($r, $me))->values(),
+            'history' => $history->map(fn ($r) => $this->rescheduleRow($r, $me))->values(),
+        ]);
+    }
+
+    /** Host approves (the meeting is moved) or declines a reschedule request. */
+    public function rescheduleDecide(Request $request, MeetingReschedule $reschedule): JsonResponse
+    {
+        $decision = $request->validate(['decision' => 'required|in:approve,decline'])['decision'];
+        $me = Auth::user();
+        $meeting = $reschedule->meeting;
+        if (! $meeting || ! $this->canManage($meeting, $me)) {
+            return response()->json(['ok' => false, 'message' => 'Only the host can decide on this request.'], 403);
+        }
+        if ($reschedule->status !== MeetingReschedule::PENDING) {
+            return response()->json(['ok' => false, 'message' => 'This request was already '.$reschedule->status.'.'], 409);
+        }
+
+        if ($decision === 'decline') {
+            $reschedule->forceFill(['status' => MeetingReschedule::DECLINED, 'decided_by' => $me->id, 'decided_at' => now()])->save();
+
+            return response()->json(['ok' => true, 'message' => 'Request declined. The meeting keeps its time.']);
+        }
+
+        if ($meeting->isCancelled()) {
+            return response()->json(['ok' => false, 'message' => 'This meeting was cancelled.'], 409);
+        }
+        if ($reschedule->new_start->lt(now(\App\Casts\MeetingDateTime::timezone())->subMinutes(5))) {
+            return response()->json(['ok' => false, 'message' => 'The requested time has already passed. Decline it and ask for a new time, or reschedule from the Sent by you tab.'], 422);
+        }
+
+        $reschedule->forceFill(['old_start' => $meeting->scheduled_at, 'old_end' => $meeting->scheduled_end_at])->save();
+        $result = $this->scheduler->reschedule($meeting, $reschedule->new_start, $reschedule->new_end);
+        $reschedule->forceFill(['status' => MeetingReschedule::APPROVED, 'decided_by' => $me->id, 'decided_at' => now()])->save();
 
         return response()->json([
             'ok' => true,
             'google_error' => $result['google_error'],
-            'scheduled_at' => $this->whenLabel($m),
+            'message' => 'Approved. The meeting is now '.$this->whenLabel($result['meeting']->fresh()).'.',
         ]);
+    }
+
+    /** Pending reschedule requests I am allowed to decide (hosts: their meetings; task admins: all). */
+    private function incomingReschedules(?User $me)
+    {
+        return MeetingReschedule::query()
+            ->with(['meeting:id,title,host_user_id', 'requester:id,name', 'decider:id,name'])
+            ->where('status', MeetingReschedule::PENDING)
+            ->when(! SuperAdminAccess::isTaskAdmin($me), fn ($q) => $q->whereHas('meeting', fn ($m) => $m->where('host_user_id', $me?->id)))
+            ->whereHas('meeting', fn ($m) => $m->whereNotIn('status', [Meeting::STATUS_CANCELLED]))
+            ->orderBy('id');
+    }
+
+    private function rescheduleRow(MeetingReschedule $r, ?User $me): array
+    {
+        $fmt = fn ($d) => $d ? $d->format('D, d M Y · h:i A') : null;
+        $range = fn ($a, $b) => $a ? $fmt($a).($b ? ' – '.$b->format('h:i A') : '') : null;
+
+        return [
+            'id' => $r->id,
+            'meeting_id' => (int) $r->meeting_id,
+            'title' => $r->meeting?->title ?? 'Meeting',
+            'status' => $r->status,
+            'by' => $r->requester?->name ?? 'Someone',
+            'by_me' => (int) $r->requested_by === (int) $me?->id,
+            'reason' => $r->reason,
+            'old' => $range($r->old_start, $r->old_end),
+            'new' => $range($r->new_start, $r->new_end),
+            'requested' => $r->created_at?->diffForHumans(),
+            'decided_by' => $r->decider?->name,
+            'decided' => $r->decided_at?->diffForHumans(),
+            'self_applied' => $r->status === MeetingReschedule::APPROVED && (int) $r->requested_by === (int) $r->decided_by,
+            'decide_url' => route('meetings.reschedules.decide', $r),
+            'details_url' => route('meetings.show', $r->meeting_id),
+        ];
     }
 
     // ---------------------------------------------------------------------

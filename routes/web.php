@@ -8158,6 +8158,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/meetings/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesIndex'])->name('meetings.minutes.index');
     Route::get('/meetings/{meeting}/room', [\App\Http\Controllers\MeetingController::class, 'room'])->name('meetings.room');
     Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\MeetingController::class, 'end'])->name('meetings.end');
+    Route::get('/meetings/reschedules', [\App\Http\Controllers\MeetingController::class, 'reschedules'])->name('meetings.reschedules');
+    Route::post('/meetings/reschedules/{reschedule}/decide', [\App\Http\Controllers\MeetingController::class, 'rescheduleDecide'])->whereNumber('reschedule')->name('meetings.reschedules.decide');
     Route::post('/meetings/{meeting}/reschedule', [\App\Http\Controllers\MeetingController::class, 'reschedule'])->whereNumber('meeting')->name('meetings.reschedule');
     Route::get('/meetings/{meeting}/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesShow'])->name('meetings.minutes.show');
     Route::post('/meetings/{meeting}/minutes/regenerate', [\App\Http\Controllers\MeetingController::class, 'regenerate'])->name('meetings.minutes.regenerate');
