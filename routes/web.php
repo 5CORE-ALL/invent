@@ -5123,6 +5123,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay1-data/edit-column', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'editColumn'])->name('ebay1.data.edit.column');
     Route::post('/ebay1-data/column-groups', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'saveColumnGroups'])->name('ebay1.data.column.groups');
     Route::post('/ebay1-data/delete-specific', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'deleteSpecific'])->name('ebay1.data.delete.specific');
+    Route::post('/ebay1-data/pull', [\App\Http\Controllers\MarketPlace\Ebay1DataController::class, 'pullFromEbay'])->name('ebay1.data.pull');
     // eBay 2 and eBay 3 Data: the same page and endpoints for their own accounts. eBay 1 is the main page and repeats its changes on these.
     foreach ([2 => \App\Http\Controllers\MarketPlace\Ebay2DataController::class, 3 => \App\Http\Controllers\MarketPlace\Ebay3DataController::class] as $ebayNo => $ebayCtl) {
         $ebayBase = '/ebay'.$ebayNo.'-item-data';

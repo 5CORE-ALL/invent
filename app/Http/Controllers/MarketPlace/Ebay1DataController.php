@@ -10,6 +10,7 @@ use App\Support\Marketplace\EbayListingEnded;
 use App\Models\ProductMaster;
 use App\Services\EbayApiService;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\EbayCategoryTree;
 use App\Support\Marketplace\EbaySpricePush;
@@ -547,6 +548,128 @@ class Ebay1DataController extends Controller
         }
 
         return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * POST /ebay1-data/pull
+     * Read the item specifics currently on each live eBay 1 listing and store them.
+     * An edit that has not been pushed yet is left as the user typed it.
+     */
+    public function pullFromEbay(Request $request)
+    {
+        $data = $request->validate([
+            'skus' => 'required|array|min:1|max:5',
+            'skus.*' => 'required|string|max:191',
+        ]);
+        if (! Schema::hasTable($this->t('item_specifics'))) {
+            return response()->json(['success' => false, 'message' => 'The item specifics table is missing.'], 500);
+        }
+        @set_time_limit(180);
+
+        $service = app($this->cfg()['service']);
+        $pending = $this->pendingSpecificsBySku();
+        $results = [];
+
+        foreach ($data['skus'] as $sku) {
+            $sku = trim((string) $sku);
+            $itemId = $this->liveItemId($sku);
+            if (! preg_match('/^\d{9,15}$/', $itemId)) {
+                $results[] = ['sku' => $sku, 'status' => 'skipped', 'message' => 'No live eBay listing.'];
+
+                continue;
+            }
+            try {
+                $response = $service->getItem($itemId);
+            } catch (\Throwable $e) {
+                Log::warning('Ebay1Data: pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
+
+                continue;
+            }
+            if (! is_array($response)) {
+                $why = trim((string) ($service->lastGetItemError ?? ''));
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $why !== '' ? $why : 'eBay did not return the listing.'];
+
+                continue;
+            }
+            $item = $response['Item'] ?? null;
+            if (! is_array($item)) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => 'eBay returned no item.'];
+
+                continue;
+            }
+            $this->storePulledSpecifics($sku, $itemId, $item, $pending[$this->skuKey($sku)] ?? []);
+            $results[] = ['sku' => $sku, 'status' => 'pulled', 'message' => 'Read from eBay 1.'];
+        }
+
+        Cache::forget($this->cacheKey('column_options'));
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item  GetItem Item node
+     * @param  array<string, string>  $pending  aspect key => display name still waiting to be pushed
+     */
+    protected function storePulledSpecifics(string $sku, string $itemId, array $item, array $pending): void
+    {
+        $key = $this->skuKey($sku);
+        $existing = DB::table($this->t('item_specifics'))->where('sku', $key)->first();
+        $stored = [];
+        if ($existing) {
+            $decoded = json_decode((string) ($existing->specifics ?? ''), true);
+            $stored = is_array($decoded) ? $decoded : [];
+        }
+
+        $live = [];
+        foreach (EbayTradingReviseItem::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null) as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $values = array_values(array_filter((array) ($row['values'] ?? []), static fn ($v) => trim((string) $v) !== ''));
+            if ($name !== '' && $values !== []) {
+                $live[$name] = implode(', ', $values);
+            }
+        }
+        foreach (EbayLiveListingMapper::variationSpecificsForSku($item, $sku) as $name => $value) {
+            $name = trim((string) $name);
+            $value = trim((string) $value);
+            if ($name !== '' && $value !== '') {
+                $live[$name] = $value;
+            }
+        }
+
+        $merged = [];
+        foreach ($stored as $name => $value) {
+            if (str_starts_with((string) $name, '__')) {
+                $merged[$name] = $value;
+            }
+        }
+        foreach ($live as $name => $value) {
+            $merged[$name] = $value;
+        }
+        foreach ($stored as $name => $value) {
+            if (isset($pending[$this->aspectKey((string) $name)])) {
+                $merged[$name] = $value;
+            }
+        }
+
+        $categoryId = trim((string) ($item['PrimaryCategory']['CategoryID'] ?? ''));
+        $now = now();
+        $payload = [
+            'item_id' => $itemId,
+            'category_id' => $categoryId !== '' ? mb_substr($categoryId, 0, 32) : ($existing->category_id ?? null),
+            'category_path' => $existing->category_path ?? null,
+            'specifics' => json_encode($merged, JSON_UNESCAPED_UNICODE),
+            'pulled_at' => $now,
+            'updated_at' => $now,
+        ];
+        if ($existing) {
+            DB::table($this->t('item_specifics'))->where('sku', $key)->update($payload);
+        } else {
+            DB::table($this->t('item_specifics'))->insert($payload + [
+                'sku' => $key,
+                'created_at' => $now,
+            ]);
+        }
     }
 
     /**
