@@ -292,6 +292,7 @@
                         <div class="mt-3" id="of-track-status-wrap" style="display:none;">
                             <label for="of-track-status" class="form-label">Tracking status</label>
                             <select class="form-select" id="of-track-status">
+                                <option value="blank">Select status</option>
                                 <option value="info_received">Label Created / No Scan</option>
                                 <option value="preshipment">Preshipment</option>
                                 <option value="pending">Pending</option>
@@ -1356,8 +1357,9 @@
                 'preshipment': 'preshipment',
                 'pending': 'pending',
                 'pending scan': 'pending',
+                'label created / no scan': 'info_received',
             };
-            statusSelect.value = statusValue[current] || 'info_received';
+            statusSelect.value = statusValue[current] || 'blank';
         }
         const err = document.getElementById('of-track-error');
         err.style.display = 'none';
@@ -1401,7 +1403,7 @@
                 return;
             }
             applyTrackingUpdate(res);
-            const staysOnScanPending = ['label created / no scan', 'pending', 'pending scan', 'preshipment'];
+            const staysOnScanPending = ['', 'label created / no scan', 'pending', 'pending scan', 'preshipment'];
             if (scanPendingOnly && staysOnScanPending.indexOf(String(res.tracking_status || '').toLowerCase()) === -1) {
                 const savedRow = table.getRow(id);
                 if (savedRow) savedRow.delete();

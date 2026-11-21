@@ -40,6 +40,9 @@ class ShipmentTrackingService
 
     public const STATUS_PRESHIPMENT = 'Preshipment';
 
+    /** shipment_status_detail when Scan Pending was saved with Select status (blank). */
+    public const DETAIL_MANUAL_BLANK = 'Cleared manually on Scan Pending';
+
     /** Transient API failure — callers must NOT overwrite a real shipment_status with this. */
     public const STATUS_RATE_LIMITED = 'RateLimited';
 

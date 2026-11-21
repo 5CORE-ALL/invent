@@ -826,7 +826,11 @@ class SyncShipmentTrackingStatus extends Command
     {
         $query = DB::table('carrier_tracking_statuses')
             ->whereNotNull('tracking_number')
-            ->where('tracking_number', '!=', '');
+            ->where('tracking_number', '!=', '')
+            ->where(function ($q) {
+                $q->whereNull('shipment_status_detail')
+                    ->orWhere('shipment_status_detail', '!=', ShipmentTrackingService::DETAIL_MANUAL_BLANK);
+            });
 
         if ($this->scanPendingOnly) {
             $query->where(function ($q) {

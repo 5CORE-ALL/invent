@@ -2344,7 +2344,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'order_id' => 'nullable|string|max:128',
             'sku' => 'nullable|string|max:191',
             'tracking_number' => 'required|string|max:128',
-            'tracking_status' => 'nullable|string|in:info_received,delivered,pending,in_transit,lost,preshipment',
+            'tracking_status' => 'nullable|string|in:blank,info_received,delivered,pending,in_transit,lost,preshipment',
         ]);
 
         $this->ensureTrackingTable();
@@ -2373,7 +2373,9 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $carrier = TrackingCarrierGuesser::labelFromNumber($number) ?? '';
         $statusChoice = (string) ($validated['tracking_status'] ?? '');
         $statusLabel = '';
-        if ($statusChoice !== '') {
+        if ($statusChoice === 'blank') {
+            $this->clearCarrierStatus($number, $carrier);
+        } elseif ($statusChoice !== '') {
             $stored = match ($statusChoice) {
                 'delivered' => ShipmentTrackingService::STATUS_DELIVERED,
                 'pending' => ShipmentTrackingService::STATUS_PENDING,
@@ -2394,7 +2396,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'tracking_checked' => true,
             'carrier' => $carrier,
             'tracking_status' => $statusLabel,
-            'tracking_status_checked' => $statusLabel !== '',
+            'tracking_status_checked' => $statusChoice !== '',
         ]);
     }
 
@@ -3000,9 +3002,12 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 continue;
             }
             $status = trim((string) ($hit->shipment_status ?? ''));
-            $row['tracking_status'] = $this->carrierShipmentStatusLabel($status) ?? ($status !== '' ? $status : '');
+            $cleared = $status === ''
+                && trim((string) ($hit->shipment_status_detail ?? '')) === ShipmentTrackingService::DETAIL_MANUAL_BLANK;
+            $row['tracking_status'] = $cleared ? '' : ($this->carrierShipmentStatusLabel($status) ?? ($status !== '' ? $status : ''));
             $checkedAt = $hit->shipment_checked_at ? \Carbon\Carbon::parse($hit->shipment_checked_at) : null;
-            $row['tracking_status_checked'] = $status !== '' && $checkedAt !== null && $checkedAt->greaterThan($freshAfter);
+            $row['tracking_status_checked'] = $cleared
+                || ($status !== '' && $checkedAt !== null && $checkedAt->greaterThan($freshAfter));
             if ($row['carrier'] === '' && trim((string) ($hit->carrier ?? '')) !== '') {
                 $row['carrier'] = TrackingCarrierGuesser::fill((string) $hit->carrier, $tracking) ?? (string) $hit->carrier;
             }
@@ -3029,7 +3034,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         foreach (array_chunk($keys, 500) as $chunk) {
             $rows = DB::table('carrier_tracking_statuses')
                 ->whereIn('tracking_number', $chunk)
-                ->get(['tracking_number', 'carrier', 'shipment_status', 'shipment_checked_at']);
+                ->get(['tracking_number', 'carrier', 'shipment_status', 'shipment_status_detail', 'shipment_checked_at']);
             foreach ($rows as $row) {
                 $key = strtoupper((string) preg_replace('/\s+/', '', (string) ($row->tracking_number ?? '')));
                 if ($key !== '') {
@@ -3089,6 +3094,28 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         return null;
+    }
+
+    protected function clearCarrierStatus(string $number, string $carrier): void
+    {
+        if (! Schema::hasTable('carrier_tracking_statuses') || trim($number) === '') {
+            return;
+        }
+
+        $now = now();
+        $stored = mb_substr(trim($number), 0, 128);
+        $existing = DB::table('carrier_tracking_statuses')->where('tracking_number', $stored)->first();
+        DB::table('carrier_tracking_statuses')->updateOrInsert(
+            ['tracking_number' => $stored],
+            [
+                'carrier' => $carrier !== '' ? mb_substr($carrier, 0, 128) : ($existing->carrier ?? null),
+                'shipment_status' => null,
+                'shipment_status_detail' => ShipmentTrackingService::DETAIL_MANUAL_BLANK,
+                'shipment_checked_at' => $now,
+                'updated_at' => $now,
+                'created_at' => $existing->created_at ?? $now,
+            ]
+        );
     }
 
     protected function storeCarrierStatus(string $number, string $carrier, string $status, string $detail): void
