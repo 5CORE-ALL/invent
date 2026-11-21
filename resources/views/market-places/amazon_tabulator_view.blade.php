@@ -3165,6 +3165,19 @@
 
                     const s0 = statsForArr(values);
                     setSkuRefCol(0, s0.max, s0.median, s0.min, refFmt);
+                    // Y axis min / max as per the standard metric chart: the data range plus 10% padding, never below 0
+                    // (it used to start at 0, which flattened price lines into a strip at the top).
+                    if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
+                        const finiteVals = values.filter(function(v) { return v !== null && v !== undefined && isFinite(v); });
+                        if (finiteVals.length) {
+                            const vMin = Math.min.apply(null, finiteVals);
+                            const vMax = Math.max.apply(null, finiteVals);
+                            const vRange = (vMax - vMin) || 1;
+                            skuMetricsChart.options.scales.y.beginAtZero = false;
+                            skuMetricsChart.options.scales.y.min = Math.max(0, vMin - vRange * 0.1);
+                            skuMetricsChart.options.scales.y.max = vMax + vRange * 0.1;
+                        }
+                    }
 
                     const refRed = '#dc3545';
                     const refGray = '#6c757d';
