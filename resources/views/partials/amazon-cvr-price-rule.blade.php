@@ -64,10 +64,11 @@
                     <table class="table table-sm align-middle mb-2" id="amz-cvr-rule-table">
                         <thead>
                             <tr>
-                                <th style="width:40%;">CVR vs LT O CVR</th>
-                                <th style="width:14%;" class="text-end">SKUs</th>
-                                <th style="width:28%;">Price change %</th>
-                                <th style="width:18%;" class="text-end" title="SKUs whose new price is set to the Lower or Upper cap price">Capped</th>
+                                <th style="width:32%;">CVR vs LT O CVR</th>
+                                <th style="width:12%;" class="text-end">SKUs</th>
+                                <th style="width:26%;">Price change %</th>
+                                <th style="width:15%;" class="text-end" title="SKUs whose new price is set to the Lower cap price">Low cap</th>
+                                <th style="width:15%;" class="text-end" title="SKUs whose new price is set to the Upper cap price">High cap</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -75,19 +76,22 @@
                                 <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-down-more">more than <span class="amz-cvr-down-lbl">20</span>% </span>below LT O CVR</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_down_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
-                                <td class="text-end text-muted amz-cvr-rule-capped">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-high">—</td>
                             </tr>
                             <tr data-key="same">
                                 <td><strong>--</strong> <strong>CVR within target</strong><div class="text-muted" style="font-size:11px;">between <span class="amz-cvr-down-lbl">20</span>% below and <span class="amz-cvr-up-lbl">20</span>% above LT O CVR</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_same_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
-                                <td class="text-end text-muted amz-cvr-rule-capped">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-high">—</td>
                             </tr>
                             <tr data-key="up">
                                 <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-up-more">more than <span class="amz-cvr-up-lbl">20</span>% </span>above LT O CVR</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_up_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
-                                <td class="text-end text-muted amz-cvr-rule-capped">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-high">—</td>
                             </tr>
                             <tr data-key="pink">
                                 <td><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i> <strong style="color:#e83e8c;">CVR pink arrow</strong>
@@ -96,7 +100,8 @@
                                         (the pink ↑ in CVR Δ). Takes the place of the three cases above and always raises the price. Leave the % blank to turn it off.</div></td>
                                 <td class="text-end text-muted"><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="off"><span class="input-group-text">%</span></div></td>
-                                <td class="text-end text-muted amz-cvr-rule-capped">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
+                                <td class="text-end text-muted amz-cvr-rule-capped-high">—</td>
                             </tr>
                         </tbody>
                     </table>
@@ -304,11 +309,13 @@
             if (!isFinite(pct) || cfg[c] === null || cfg[c] === '') return { price: price, capped: false };
             let next = price * (1 + pct / 100);
             let capped = false;
+            let capKind = '';
             // Upper cap: a new price above the cap price is brought down to it (CVR Up / pink never lower the price, see below).
             const ceil = amzCvrRuleCeilingPrice(row, cfg);
             if (ceil !== null && next > ceil) {
                 next = ceil;
                 capped = true;
+                capKind = 'high';
             }
             // Lower cap: a new price below the cap price is brought up to the cap price (even when the current price is already
             // below it). When a minimum can never be reached (no finite cap price) the price is left where it is.
@@ -316,6 +323,7 @@
             if (floor !== null && next < floor) {
                 next = isFinite(floor) ? floor : price;
                 capped = true;
+                capKind = 'low';
             }
             // CVR Up / pink must never LOWER the price: not below where it started (the Upper cap can pull a high price down).
             if (pct > 0) next = Math.max(next, price);
@@ -326,7 +334,7 @@
                 const live = (parseFloat(row && row.price) || 0);
                 if (live > 0) next = Math.min(next, live);
             }
-            return { price: Math.round(next * 100) / 100, capped: capped };
+            return { price: Math.round(next * 100) / 100, capped: capped, capKind: capKind };
         }
         /** Rule ON/OFF paint: the switch label in the modal and the badge on the toolbar button. */
         function amzCvrRulePaintState() {
@@ -427,6 +435,8 @@
             const rows = (typeof table !== 'undefined' && table && table.getData) ? (table.getData('all') || []) : [];
             const counts = { down: 0, same: 0, up: 0, pink: 0 };
             const capped = { down: 0, same: 0, up: 0, pink: 0 };
+            const cappedLow = { down: 0, same: 0, up: 0, pink: 0 };
+            const cappedHigh = { down: 0, same: 0, up: 0, pink: 0 };
             rows.forEach(function(r) {
                 if (!r || r.is_parent_summary) return;
                 const sku = String(r['(Child) sku'] || '').trim().toUpperCase();
@@ -437,9 +447,9 @@
                 if (!c) return;
                 counts[c]++;
                 const res = amzCvrRulePriceFor(r, cfg, (typeof amzCvrRuleBaseFor === 'function') ? amzCvrRuleBaseFor(r) : 0);
-                if (res && res.capped) capped[c]++;
+                if (res && res.capped) { capped[c]++; if (res.capKind === 'high') cappedHigh[c]++; else cappedLow[c]++; }
             });
-            return { counts: counts, capped: capped };
+            return { counts: counts, capped: capped, cappedLow: cappedLow, cappedHigh: cappedHigh };
         }
         const AMZ_CVR_RULE_COUNT_METRICS = { down: 'cvr_down_count', same: 'cvr_same_count', up: 'cvr_up_count' };
         /** History dot per SKUs count: green up / red down / gray same vs the prior day's snapshot (CVR Down is lower-is-better). */
@@ -465,12 +475,13 @@
             const cfg = amzCvrRuleReadDraft();
             amzCvrRuleRefreshLabelsModalOnly(cfg);
             const res = amzCvrRuleCounts(cfg);
-            const counts = res.counts, capped = res.capped;
+            const counts = res.counts, cappedLow = res.cappedLow, cappedHigh = res.cappedHigh;
             $('#amz-cvr-rule-table tbody tr').each(function() {
                 const k = $(this).data('key');
                 const live = counts[k] || 0;
                 $(this).find('.amz-cvr-rule-count').text(live.toLocaleString());
-                $(this).find('.amz-cvr-rule-capped').text((cfg.lower_cap || cfg.upper_cap) ? (capped[k] || 0).toLocaleString() : '—');
+                $(this).find('.amz-cvr-rule-capped-low').text(cfg.lower_cap ? (cappedLow[k] || 0).toLocaleString() : '—');
+                $(this).find('.amz-cvr-rule-capped-high').text(cfg.upper_cap ? (cappedHigh[k] || 0).toLocaleString() : '—');
             });
             amzCvrRulePaintDots(counts);
             $('#amz-cvr-cap-npft, #amz-cvr-cap-nroi').prop('disabled', !cfg.lower_cap);
@@ -505,7 +516,7 @@
             $('#amz-cvr-ucap-npft').val(cfg.max_npft === null || cfg.max_npft === undefined ? '' : cfg.max_npft);
             $('#amz-cvr-ucap-nroi').val(cfg.max_nroi === null || cfg.max_nroi === undefined ? '' : cfg.max_nroi);
             amzCvrRulePaintCounts();
-            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV is not counted. A SKU with no lifetime CVR (no sessions) starts from LT O CVR = 0%. Capped = SKUs whose new price is set to the Lower or Upper cap price (based on each SKU\'s S PRC before this rule).');
+            $('#amz-cvr-rule-note').text('SKU counts are the child SKUs with INV > 0 loaded in the table. A SKU with 0 INV is not counted. A SKU with no lifetime CVR (no sessions) starts from LT O CVR = 0%. Low cap / High cap = SKUs whose new price is set to the Lower / Upper cap price (based on each SKU\'s S PRC before this rule).');
         }
 
         $(document).ready(function() {
