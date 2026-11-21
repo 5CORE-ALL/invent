@@ -2182,7 +2182,8 @@
         }
         function formatPSalesVsL30PctHtml(pct) {
             if (pct == null || !isFinite(pct)) return '';
-            if (Math.abs(pct) < 0.1) {
+            // Anything that displays as 0% (e.g. −0.3%) is flat: no sign, no red ("−0%" was misleading).
+            if (Math.round(Math.abs(pct)) === 0) {
                 return '<span class="p-sales-vs-sales-pct" style="color:#6c757d;">0%</span>';
             }
             const isUp = pct > 0;

@@ -10683,11 +10683,12 @@ class ChannelMasterController extends Controller
      */
     private function computeTemuL7SalesLikeAmazon(bool $isTemu2): ?float
     {
+        // Same basis as the master's L30 Sales (Temu Price × Qty), so P-Sales vs L30 is like for like.
         if (! $isTemu2) {
-            return TemuShopifySalesService::computeL7SalesFromOrders();
+            return TemuShopifySalesService::computeL7MasterSalesFromOrders();
         }
 
-        return TemuShopifySalesService::computeL7SalesFromTemu2Orders();
+        return TemuShopifySalesService::computeL7MasterSalesFromTemu2Orders();
     }
 
     private function computeTemu3L7SalesLikeAmazon(): ?float

@@ -1671,6 +1671,34 @@ class TemuShopifySalesService
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
+    /**
+     * L7 for /all-marketplace-master on the SAME basis as its L30 Sales column (Σ Temu Price × Qty).
+     * computeL7SalesFromOrders() returns base-price line sales, which is ~10-17% lower, so
+     * P-Sales (= L7 ÷ 7 × 30) read negative vs L30 even when the pace was flat.
+     */
+    public static function computeL7MasterSalesFromOrders(): ?float
+    {
+        if (! TemuOrder::whereNotNull('parent_order_time')->exists()) {
+            return null;
+        }
+
+        [$start, $end] = self::channelMasterL7Window();
+
+        return (float) self::computeMetricsFromOrders($start, $end)['sales'];
+    }
+
+    /** Temu 2 counterpart of computeL7MasterSalesFromOrders() (same basis as the master's Temu 2 L30). */
+    public static function computeL7MasterSalesFromTemu2Orders(): ?float
+    {
+        if (! Schema::hasTable('temu2_orders') || ! Temu2Order::whereNotNull('parent_order_time')->exists()) {
+            return null;
+        }
+
+        [$start, $end] = self::channelMasterL7Window();
+
+        return (float) self::computeMetricsFromOrders($start, $end, true)['sales'];
+    }
+
    
     public static function getOrdersTableRows(Carbon $startDate, Carbon $endDate): array
     {
