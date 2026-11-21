@@ -365,7 +365,8 @@
                 const live = Math.round((parseFloat(d.price) || 0) * 100) / 100;
                 if (!(live > 0)) return 0;
                 const saved = parseFloat(d.SPRICE) || 0;
-                if (saved > 0 && Math.abs(saved - live) < 0.005) return 0;
+                // Saving the rule applies it now: an old S PRC that equals the live Price is overwritten (one more % off the live Price).
+                if (saved > 0 && Math.abs(saved - live) < 0.005 && !window._amzCvrApplyNow) return 0;
                 return live;
             }
             if (typeof amzLiveRuleSprice !== 'function') return 0;
@@ -558,7 +559,11 @@
                     else if (typeof table !== 'undefined' && table) table.redraw(true);
                     if ($('#cvr-delta-filter').val() !== 'all') $('#cvr-delta-filter').trigger('change');
                     // The CVR price is the S PRC now: re-save every SKU's S PRC (page twin of AmazonSprcDilAutoPushService).
+                    // Apply now: the sync below overwrites the old S PRC of every SKU the rule changes, even when that old S PRC
+                    // already equals the live Price. The flag is cleared once that sync has computed its prices.
+                    window._amzCvrApplyNow = !!(amzCvrRule && amzCvrRule.enabled);
                     if (typeof amzScheduleRuleSpriceSync === 'function') amzScheduleRuleSpriceSync({ force: true, delay: 600 });
+                    else window._amzCvrApplyNow = false;
                     // Same as switching Sprc Dil / Std prc vs dil: the blue SKUs (S PRC != Price) are queued for push right away,
                     // not only on the next page load. Needs "Push on reload" ON.
                     setTimeout(function() {

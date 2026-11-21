@@ -5137,6 +5137,7 @@
             }
             // Both rules OFF: nothing fills S PRC, so nothing is cleared or saved. Existing S PRC values stay.
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none' && !amzCvrOnlyMode()) {
+                window._amzCvrApplyNow = false;
                 try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                 done.resolve(0);
                 return done.promise();
@@ -5149,6 +5150,8 @@
             const rows = table.getRows('all') || [];
             const clearSkus = [];
             const saveJobs = [];
+            // window._amzCvrApplyNow (set when the CVR Price Rule is saved) stays on while this pass computes its prices, so the
+            // rule overwrites an old S PRC that equals the live Price. Every other sync holds there and never compounds.
             rows.forEach(function(row) {
                 const d = row.getData();
                 if (!amzPefIsChildRow(d)) return;
@@ -5174,6 +5177,7 @@
                 if (!(plan.effective > 0)) return;
                 saveJobs.push({ row: row, plan: plan, sku: sku });
             });
+            window._amzCvrApplyNow = false;
             if (!clearSkus.length) {
                 if (typeof window.updateAmazonSummary === 'function') {
                     try { window.updateAmazonSummary(); } catch (e) { /* ignore */ }
