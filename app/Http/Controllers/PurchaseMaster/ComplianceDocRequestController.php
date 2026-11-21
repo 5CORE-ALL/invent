@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\ComplianceDocRequest;
 use App\Support\Badges\ComplianceMasterBadgeCalculator;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * "Mail" badge on the Compliance <Badge> pages: writes (and sends) an e-mail asking the parent's supplier for the
@@ -55,32 +58,129 @@ class ComplianceDocRequestController extends Controller
         return response()->json(['success' => true] + $this->publicView($built));
     }
 
-    /** POST: send the e-mail to the parent's supplier. */
+    /**
+     * POST: send the e-mail to the parent's supplier. A request form (PDF) is always attached, plus any files the
+     * user picked in the modal; the mail and its attachments are saved (see history()).
+     */
     public function send(Request $request): JsonResponse
     {
-        $request->validate(['note' => 'nullable|string|max:2000']);
+        return $this->handle($request, true);
+    }
+
+    /** POST: save the mail and its attachments without sending it (a draft in the history list). */
+    public function save(Request $request): JsonResponse
+    {
+        return $this->handle($request, false);
+    }
+
+    /** GET: the saved mails (sent / drafts) of one parent + badge, newest first, with download links. */
+    public function history(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'parent' => 'required|string|max:255',
+            'field' => 'required|string|in:'.implode(',', ComplianceMasterBadgeCalculator::FIELD_KEYS),
+        ]);
+
+        $rows = ComplianceDocRequest::query()
+            ->where('parent', $data['parent'])->where('field', $data['field'])
+            ->orderByDesc('id')->limit(15)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows->map(function (ComplianceDocRequest $r) {
+                return [
+                    'id' => $r->id,
+                    'status' => $r->status,
+                    'subject' => $r->subject,
+                    'to' => $r->to_emails,
+                    'by' => $r->user_name,
+                    'when' => optional($r->sent_at ?: $r->created_at)->format('d M Y H:i'),
+                    'error' => $r->error,
+                    'attachments' => collect($r->attachments ?? [])->map(fn ($a, $i) => [
+                        'name' => $a['name'] ?? 'file',
+                        'size' => (int) ($a['size'] ?? 0),
+                        'url' => route('compliance.doc.request.download', ['id' => $r->id, 'index' => $i]),
+                    ])->values(),
+                ];
+            })->values(),
+        ]);
+    }
+
+    /** GET: download one saved attachment. */
+    public function download(int $id, int $index)
+    {
+        $r = ComplianceDocRequest::query()->findOrFail($id);
+        $att = ($r->attachments ?? [])[$index] ?? null;
+        if (! $att || empty($att['path']) || ! Storage::disk('local')->exists($att['path'])) {
+            abort(404);
+        }
+
+        return Storage::disk('local')->download($att['path'], $att['name'] ?? basename($att['path']));
+    }
+
+    private function handle(Request $request, bool $send): JsonResponse
+    {
+        $request->validate([
+            'note' => 'nullable|string|max:2000',
+            'attachments' => 'nullable|array|max:5',
+            'attachments.*' => 'file|max:10240|mimes:pdf,jpg,jpeg,png,gif,webp,doc,docx,xls,xlsx,csv,txt,zip',
+        ]);
         $built = $this->build($request);
         if ($built instanceof JsonResponse) {
             return $built;
         }
-        if ($built['to_emails'] === []) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No email address saved for supplier "'.($built['supplier'] ?: 'unknown').'". Add it on the Suppliers page first.',
-            ], 422);
-        }
 
         $sender = $built['sender'];
-        if (str_starts_with($sender['mailer'], 'quotes') && trim((string) config('mail.mailers.'.$sender['mailer'].'.password')) === '') {
-            return response()->json([
-                'success' => false,
-                'message' => 'The sending mailbox is not connected yet (mail password is missing in .env).',
-            ], 422);
+        if ($send) {
+            if ($built['to_emails'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No email address saved for supplier "'.($built['supplier'] ?: 'unknown').'". Add it on the Suppliers page first.',
+                ], 422);
+            }
+            if (str_starts_with($sender['mailer'], 'quotes') && trim((string) config('mail.mailers.'.$sender['mailer'].'.password')) === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The sending mailbox is not connected yet (mail password is missing in .env).',
+                ], 422);
+            }
         }
 
         $user = Auth::user();
+        $record = ComplianceDocRequest::query()->create([
+            'parent' => $built['parent'],
+            'field' => $built['field'],
+            'supplier' => $built['supplier'],
+            'to_emails' => implode(', ', $built['to_emails']),
+            'from_email' => $sender['email'],
+            'from_name' => $built['from_name'],
+            'subject' => $built['subject'],
+            'body_html' => $built['html'],
+            'note' => $built['note'] !== '' ? $built['note'] : null,
+            'status' => 'draft',
+            'user_id' => $user->id ?? null,
+            'user_name' => $built['from_name'],
+        ]);
+
+        // The request form (PDF) is always attached; uploaded files go along with it.
+        $files = $this->storeAttachments($record, $built, $request);
+        $names = array_column($files, 'name');
+        $html = $built['html'];
+        if ($names !== []) {
+            $html .= '<p style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280">Attached: '
+                .htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8').'</p>';
+        }
+        $record->update(['attachments' => $files, 'body_html' => $html]);
+
+        if (! $send) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Saved (not sent) with '.count($files).' attachment'.(count($files) === 1 ? '' : 's').'.',
+            ]);
+        }
+
         try {
-            Mail::mailer($sender['mailer'])->html($built['html'], function ($m) use ($built, $sender, $user) {
+            Mail::mailer($sender['mailer'])->html($html, function ($m) use ($built, $sender, $user, $files) {
                 $m->from($sender['email'], $built['from_name'])->subject($built['subject']);
                 $userEmail = trim((string) ($user->email ?? ''));
                 if ($userEmail !== '' && filter_var($userEmail, FILTER_VALIDATE_EMAIL)) {
@@ -90,17 +190,98 @@ class ComplianceDocRequestController extends Controller
                 foreach ($built['to_emails'] as $i => $addr) {
                     $m->to($addr, $i === 0 ? $built['supplier'] : null);
                 }
+                foreach ($files as $f) {
+                    $abs = Storage::disk('local')->path($f['path']);
+                    if (is_file($abs)) {
+                        $m->attach($abs, ['as' => $f['name'], 'mime' => $f['mime'] ?: 'application/octet-stream']);
+                    }
+                }
             });
         } catch (\Throwable $e) {
             Log::warning('Compliance document request mail failed: '.$e->getMessage());
+            $record->update(['status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 500)]);
 
-            return response()->json(['success' => false, 'message' => 'Could not send: '.mb_substr($e->getMessage(), 0, 200)], 500);
+            return response()->json(['success' => false, 'message' => 'Could not send: '.mb_substr($e->getMessage(), 0, 200).' (the mail is saved in the list below).'], 500);
         }
+
+        $record->update(['status' => 'sent', 'sent_at' => now(), 'error' => null]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Mail sent to '.($built['supplier'] ?: 'supplier').' ('.implode(', ', $built['to_emails']).').',
+            'message' => 'Mail sent to '.($built['supplier'] ?: 'supplier').' ('.implode(', ', $built['to_emails']).') with '.count($files).' attachment'.(count($files) === 1 ? '' : 's').'.',
         ]);
+    }
+
+    /**
+     * Writes the generated request form and the uploaded files under storage/app/compliance-doc-requests/{id}/.
+     *
+     * @return list<array{name:string,path:string,size:int,mime:string,generated:bool}>
+     */
+    private function storeAttachments(ComplianceDocRequest $record, array $built, Request $request): array
+    {
+        $disk = Storage::disk('local');
+        $dir = 'compliance-doc-requests/'.$record->id;
+        $out = [];
+
+        $pdf = $this->requestPdf($built);
+        if ($pdf !== null) {
+            $path = $dir.'/'.$built['pdf_name'];
+            $disk->put($path, $pdf);
+            $out[] = ['name' => $built['pdf_name'], 'path' => $path, 'size' => strlen($pdf), 'mime' => 'application/pdf', 'generated' => true];
+        }
+
+        foreach ((array) $request->file('attachments', []) as $i => $file) {
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+            $orig = $file->getClientOriginalName();
+            $name = trim(preg_replace('/[^A-Za-z0-9._ -]+/', '_', $orig), '. ') ?: 'attachment';
+            $mime = (string) ($file->getMimeType() ?: 'application/octet-stream');
+            $size = (int) $file->getSize();
+            $stored = $file->storeAs($dir, ($i + 1).'-'.$name, 'local');
+            if ($stored) {
+                $out[] = ['name' => $name, 'path' => $stored, 'size' => $size, 'mime' => $mime, 'generated' => false];
+            }
+        }
+
+        return $out;
+    }
+
+    /** The request form that is always attached (what we need, for which SKUs, product image). */
+    private function requestPdf(array $b): ?string
+    {
+        try {
+            $logoPath = public_path('images/5core_logo_tight.png');
+            $logo = is_file($logoPath) ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath)) : '';
+
+            $image = null;
+            $rel = trim((string) ($b['image_path'] ?? ''));
+            if ($rel !== '' && ! preg_match('#^https?://#i', $rel)) {
+                $abs = public_path(ltrim($rel, '/'));
+                $ext = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
+                if (is_file($abs) && filesize($abs) < 3 * 1024 * 1024 && in_array($ext, ['jpg', 'jpeg', 'png', 'gif'], true)) {
+                    $image = 'data:image/'.($ext === 'jpg' ? 'jpeg' : $ext).';base64,'.base64_encode((string) file_get_contents($abs));
+                }
+            }
+
+            return Pdf::loadView('purchase-master.compliance-doc-request-pdf', [
+                'label' => $b['label'],
+                'parent' => $b['parent'],
+                'supplier' => $b['supplier'],
+                'skus' => $b['skus'],
+                'docs' => $b['docs'],
+                'note' => $b['note'],
+                'userName' => $b['from_name'],
+                'userEmail' => $b['user_email'],
+                'logo' => $logo,
+                'image' => $image,
+                'date' => now()->format('d M Y'),
+            ])->setPaper('a4')->output();
+        } catch (\Throwable $e) {
+            Log::warning('Compliance request PDF could not be generated: '.$e->getMessage());
+
+            return null;
+        }
     }
 
     /** @return array<string, mixed>|JsonResponse */
@@ -179,8 +360,11 @@ class ComplianceDocRequestController extends Controller
             'subject' => $subject,
             'html' => $html,
             'image_url' => $imageUrl,
+            'image_path' => $imagePath,
             'skus' => $skus,
             'docs' => $docs,
+            'note' => $note,
+            'pdf_name' => 'Document-Request-'.(preg_replace('/[^A-Za-z0-9_-]+/', '-', $data['parent'].'-'.$label) ?: 'request').'.pdf',
         ];
     }
 
@@ -199,6 +383,7 @@ class ComplianceDocRequestController extends Controller
             'html' => $b['html'],
             'image_url' => $b['image_url'],
             'sku_count' => count($b['skus']),
+            'auto_attachments' => [$b['pdf_name']],
         ];
     }
 

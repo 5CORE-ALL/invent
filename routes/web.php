@@ -6055,6 +6055,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/compliance-master/badge-snapshot', [CategoryController::class, 'snapshotComplianceMasterBadges'])->name('compliance.master.badge.snapshot');
     Route::get('/compliance-master/doc-request/preview', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'preview'])->name('compliance.doc.request.preview');
     Route::post('/compliance-master/doc-request/send', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'send'])->name('compliance.doc.request.send');
+    Route::post('/compliance-master/doc-request/save', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'save'])->name('compliance.doc.request.save');
+    Route::get('/compliance-master/doc-request/history', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'history'])->name('compliance.doc.request.history');
+    Route::get('/compliance-master/doc-request/{id}/file/{index}', [\App\Http\Controllers\PurchaseMaster\ComplianceDocRequestController::class, 'download'])->whereNumber(['id', 'index'])->name('compliance.doc.request.download');
     // One "Compliance <Badge>" page per badge (Battery, Wireless, ...), same table limited to that field.
     foreach (\App\Support\Compliance\CompliancePages::all() as $__cpSlug => $__cpPage) {
         Route::get($__cpPage['url'], [CategoryController::class, 'compliancePage'])->defaults('slug', $__cpSlug)->name($__cpPage['route']);

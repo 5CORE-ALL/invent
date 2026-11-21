@@ -1041,11 +1041,20 @@
                         <div class="border rounded p-2 mb-2" id="cmMailPreview" style="background:#fff;max-height:340px;overflow:auto;"></div>
                         <label class="form-label small mb-1" for="cmMailNote">Extra note (optional)</label>
                         <textarea id="cmMailNote" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="Added above the sign-off"></textarea>
+                        <label class="form-label small mb-1 mt-2" for="cmMailFiles">Attachments</label>
+                        <div class="small mb-1" id="cmMailAutoAtt"></div>
+                        <input type="file" id="cmMailFiles" class="form-control form-control-sm" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip">
+                        <div class="form-text">The request form (PDF) is always attached. Add up to 5 more files (10 MB each).</div>
+                        <div class="mt-3" id="cmMailHistoryWrap" style="display:none;">
+                            <div class="small fw-semibold mb-1"><i class="bi bi-clock-history me-1"></i>Saved mails for this parent</div>
+                            <div id="cmMailHistory" class="small"></div>
+                        </div>
                     </div>
                     <div id="cmMailMsg" class="small mt-2"></div>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="cmMailSave" disabled><i class="bi bi-save me-1"></i>Save</button>
                     <button type="button" class="btn btn-warning btn-sm" id="cmMailSend" disabled><i class="bi bi-send-fill me-1"></i>Send mail</button>
                 </div>
             </div>
@@ -4027,6 +4036,8 @@
                 const note = document.getElementById('cmMailNote');
                 const msg = document.getElementById('cmMailMsg');
                 const sendBtn = document.getElementById('cmMailSend');
+                const saveBtn = document.getElementById('cmMailSave');
+                const filesInput = document.getElementById('cmMailFiles');
                 let noteTimer = null;
                 let previewSeq = 0;
                 let canSend = false;
@@ -4044,11 +4055,62 @@
 
                 function setMsg(html) { msg.innerHTML = html || ''; }
 
+                function fmtSize(n) {
+                    n = Number(n) || 0;
+                    return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+                }
+
+                function loadHistory() {
+                    const wrap = document.getElementById('cmMailHistoryWrap');
+                    const box = document.getElementById('cmMailHistory');
+                    if (!sel.value) { wrap.style.display = 'none'; return; }
+                    makeRequest('/compliance-master/doc-request/history?parent=' + encodeURIComponent(sel.value) + '&field=' + encodeURIComponent(CM_ONLY_FIELD), 'GET')
+                        .then(function(r) { return r.json(); })
+                        .then(function(j) {
+                            const rows = (j && j.success && j.data) || [];
+                            if (!rows.length) { wrap.style.display = 'none'; box.innerHTML = ''; return; }
+                            const badgeCls = { sent: 'bg-success', draft: 'bg-secondary', failed: 'bg-danger' };
+                            box.innerHTML = rows.map(function(r) {
+                                const files = (r.attachments || []).map(function(a) {
+                                    return '<a href="' + escapeHtml(a.url) + '" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>' + escapeHtml(a.name) + '</a> <span class="text-muted">(' + fmtSize(a.size) + ')</span>';
+                                }).join(' &nbsp; ');
+                                return '<div class="border rounded px-2 py-1 mb-1">'
+                                    + '<span class="badge ' + (badgeCls[r.status] || 'bg-secondary') + ' me-1">' + escapeHtml(r.status === 'draft' ? 'saved' : r.status) + '</span>'
+                                    + '<span class="text-muted">' + escapeHtml(r.when || '') + (r.by ? ' · ' + escapeHtml(r.by) : '') + (r.to ? ' · to ' + escapeHtml(r.to) : '') + '</span>'
+                                    + (r.error ? '<div class="text-danger">' + escapeHtml(r.error) + '</div>' : '')
+                                    + (files ? '<div>' + files + '</div>' : '')
+                                    + '</div>';
+                            }).join('');
+                            wrap.style.display = 'block';
+                        })
+                        .catch(function() {});
+                }
+
+                // multipart POST (files go along with the mail); same CSRF header as makeRequest
+                function postMail(url) {
+                    const fd = new FormData();
+                    fd.append('_token', csrfToken);
+                    fd.append('parent', sel.value);
+                    fd.append('field', CM_ONLY_FIELD);
+                    fd.append('note', note.value);
+                    Array.prototype.forEach.call(filesInput.files || [], function(f) { fd.append('attachments[]', f); });
+                    return fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }, body: fd })
+                        .then(function(r) { return r.json().catch(function() { return {}; }).then(function(j) { return { ok: r.ok, j: j }; }); });
+                }
+
+                function validateFiles() {
+                    const list = Array.prototype.slice.call(filesInput.files || []);
+                    if (list.length > 5) return 'Please attach at most 5 files.';
+                    const big = list.filter(function(f) { return f.size > 10 * 1024 * 1024; })[0];
+                    return big ? '"' + big.name + '" is larger than 10 MB.' : '';
+                }
+
                 function loadPreview() {
                     const parent = sel.value;
                     const seq = ++previewSeq;
                     canSend = false;
                     sendBtn.disabled = true;
+                    saveBtn.disabled = true;
                     setMsg('');
                     document.getElementById('cmMailBody').style.display = 'none';
                     document.getElementById('cmMailLoading').style.display = 'block';
@@ -4077,8 +4139,13 @@
                             document.getElementById('cmMailPreview').innerHTML = j.html || '';
                             document.getElementById('cmMailLoading').style.display = 'none';
                             document.getElementById('cmMailBody').style.display = 'block';
+                            document.getElementById('cmMailAutoAtt').innerHTML = (j.auto_attachments || []).map(function(n) {
+                                return '<span class="badge bg-light text-dark border"><i class="bi bi-file-earmark-pdf-fill text-danger"></i> ' + escapeHtml(n) + ' <span class="text-muted">(auto)</span></span>';
+                            }).join(' ');
                             canSend = (j.to || []).length > 0;
                             sendBtn.disabled = !canSend;
+                            saveBtn.disabled = false;
+                            loadHistory();
                             if (!canSend) setMsg('<span class="text-danger">Add this supplier\'s email on the Suppliers page to enable sending.</span>');
                         })
                         .catch(function() {
@@ -4094,6 +4161,7 @@
                         return '<option value="' + escapeHtml(p) + '"' + (p === cur ? ' selected' : '') + '>' + escapeHtml(p) + '</option>';
                     }).join('');
                     note.value = '';
+                    filesInput.value = '';
                     if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
                     loadPreview();
                 });
@@ -4104,23 +4172,51 @@
                 });
                 sendBtn.addEventListener('click', function() {
                     if (!canSend) return;
+                    const fileErr = validateFiles();
+                    if (fileErr) { setMsg('<span class="text-danger">' + escapeHtml(fileErr) + '</span>'); return; }
                     if (!confirm('Send this email to the supplier of ' + sel.value + '?')) return;
                     sendBtn.disabled = true;
+                    saveBtn.disabled = true;
                     setMsg('<span class="text-muted">Sending…</span>');
-                    makeRequest('/compliance-master/doc-request/send', 'POST', { parent: sel.value, field: CM_ONLY_FIELD, note: note.value })
-                        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+                    postMail('/compliance-master/doc-request/send')
                         .then(function(res) {
+                            saveBtn.disabled = false;
                             if (!res.ok || !res.j.success) {
                                 sendBtn.disabled = false;
                                 setMsg('<span class="text-danger">' + escapeHtml((res.j && res.j.message) || 'Could not send the mail.') + '</span>');
+                                loadHistory();
                                 return;
                             }
                             setMsg('<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill"></i> ' + escapeHtml(res.j.message || 'Mail sent.') + '</span>');
                             showToast('success', res.j.message || 'Mail sent.');
+                            filesInput.value = '';
+                            loadHistory();
                         })
                         .catch(function() {
                             sendBtn.disabled = false;
+                            saveBtn.disabled = false;
                             setMsg('<span class="text-danger">Network problem. The mail was not sent.</span>');
+                        });
+                });
+                saveBtn.addEventListener('click', function() {
+                    const fileErr = validateFiles();
+                    if (fileErr) { setMsg('<span class="text-danger">' + escapeHtml(fileErr) + '</span>'); return; }
+                    saveBtn.disabled = true;
+                    setMsg('<span class="text-muted">Saving…</span>');
+                    postMail('/compliance-master/doc-request/save')
+                        .then(function(res) {
+                            saveBtn.disabled = false;
+                            if (!res.ok || !res.j.success) {
+                                setMsg('<span class="text-danger">' + escapeHtml((res.j && res.j.message) || 'Could not save.') + '</span>');
+                                return;
+                            }
+                            setMsg('<span class="text-success fw-semibold"><i class="bi bi-check-circle-fill"></i> ' + escapeHtml(res.j.message || 'Saved.') + '</span>');
+                            filesInput.value = '';
+                            loadHistory();
+                        })
+                        .catch(function() {
+                            saveBtn.disabled = false;
+                            setMsg('<span class="text-danger">Network problem. Nothing was saved.</span>');
                         });
                 });
             }
