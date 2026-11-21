@@ -1633,23 +1633,6 @@
                 allTableData = response.data || [];
                 return response.data || [];
             },
-            dataLoaded: function() {
-                // Fetch server-saved preferences and rules so FROM SKU, ratio, and qty stay shared
-                $.get('/stock-balance-transfer-preferences').always(function(res) {
-                    if (res && res.preferences && typeof res.preferences === 'object') {
-                        serverSavedPreferences = res.preferences;
-                    }
-                    $.get('/stock-balance-rules').always(function(ruleRes) {
-                        if (ruleRes && ruleRes.rules && typeof ruleRes.rules === 'object') {
-                            rulesBySku = ruleRes.rules;
-                        }
-                        enrichTransferMetaFromPreferences();
-                        applyAllFilters();
-                        restoreSavedFromSku();
-                        refreshRuleButtons();
-                    });
-                });
-            },
             layout: "fitDataStretch",
             pagination: true,
             paginationSize: 50,
@@ -2164,8 +2147,25 @@
             });
         });
         
+        // Tabulator 6 ignores a `dataLoaded` option in the constructor; events must be registered with
+        // table.on(). Fetch server-saved preferences and rules here so FROM SKU, ratio, qty and combo
+        // rules are restored after every load.
         table.on('dataLoaded', function() {
             applyAllFilters();
+            $.get('/stock-balance-transfer-preferences').always(function(res) {
+                if (res && res.preferences && typeof res.preferences === 'object') {
+                    serverSavedPreferences = res.preferences;
+                }
+                $.get('/stock-balance-rules').always(function(ruleRes) {
+                    if (ruleRes && ruleRes.rules && typeof ruleRes.rules === 'object') {
+                        rulesBySku = ruleRes.rules;
+                    }
+                    enrichTransferMetaFromPreferences();
+                    applyAllFilters();
+                    restoreSavedFromSku();
+                    refreshRuleButtons();
+                });
+            });
         });
         
         // Restore saved FROM SKU/ratio into visible DOM only (no filter apply — avoids stack overflow)
