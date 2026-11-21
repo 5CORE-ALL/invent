@@ -202,7 +202,9 @@ class PurchaseController extends Controller
             // ("arm-set 16" matches "ARM SET 16"); every typed word must match.
             $normalizedColumn = static function (string $col): string {
                 $expr = "LOWER({$col})";
-                foreach ([' ', '-', '_', '.', '/', ',', '"', "'", '(', ')', '+', '&', '#', ':', '*'] as $ch) {
+                // Also ignore non-breaking spaces, tabs, line breaks and zero-width spaces: SKUs pasted from sheets/Shopify
+                // often carry them, they look identical on screen and made such SKUs impossible to find by typing.
+                foreach ([' ', "\u{00a0}", "\t", "\r", "\n", "\u{200b}", '-', '_', '.', '/', ',', '"', "'", '(', ')', '+', '&', '#', ':', '*'] as $ch) {
                     $expr = "REPLACE({$expr}, " . DB::getPdo()->quote($ch) . ", '')";
                 }
 
