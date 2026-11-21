@@ -678,13 +678,13 @@
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Ads Rules <span class="text-muted fw-normal small">(L7 Sold per Parent — Temu 1 sales)</span></h5>
+                    <h5 class="modal-title">Ads Rules <span class="text-muted fw-normal small">(<span class="ar-window-label">L7</span> Sold per Parent — Temu 1 sales)</span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded bg-light">
                         <button type="button" class="btn btn-sm btn-secondary" id="ads-rules-autorun-btn"
-                                title="When ON, every day the system checks each parent's L7 sold and runs / pauses the ad and pushes the slab Target ROAS through the Temu API.">
+                                title="When ON, every day the system checks each parent's sold (in the window set below) and runs / pauses the ad and pushes the slab Target ROAS through the Temu API.">
                             Auto run: <span id="ads-rules-autorun-state">OFF</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="ads-rules-runnow-btn"
@@ -692,9 +692,16 @@
                             <i class="fa fa-play"></i> Run now
                         </button>
                         <span class="small text-muted" id="ads-rules-lastrun"></span>
+                        <div class="ms-auto d-flex align-items-center gap-1">
+                            <label for="ads-rules-window-days" class="small fw-semibold mb-0 text-nowrap">Sold window</label>
+                            <input type="number" id="ads-rules-window-days" class="form-control form-control-sm" style="width:70px;"
+                                   min="1" max="60" step="1" value="7"
+                                   title="Number of complete days (ending yesterday, Pacific time) to count units sold over. Applies to the slabs, counts, Auto run and Create. Click Save to apply.">
+                            <span class="small text-muted">days</span>
+                        </div>
                     </div>
                     <p class="small text-muted mb-2">
-                        Slabs by <strong>Sold 7</strong> (units sold in the last 7 days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together). Only <strong>Multi SKU parents</strong> (one goods with 2+ SKU IDs) with <strong>Inv &gt; 0</strong> are counted and run — <strong>single-SKU goods are never touched</strong>.
+                        Slabs by <strong>Sold <span class="ar-window-days">7</span></strong> (units sold in the last <span class="ar-window-days">7</span> days from Temu 1 orders), grouped per <strong>Parent</strong> (one ad = all its SKUs added together). Only <strong>Multi SKU parents</strong> (one goods with 2+ SKU IDs) with <strong>Inv &gt; 0</strong> are counted and run — <strong>single-SKU goods are never touched</strong>.
                         Enter the <strong>Target ROAS</strong> for each slab. First matching range wins.
                         Leave <strong>Sold to</strong> empty for that value and above.
                         <strong>Auto run</strong>: ROAS &gt; 0 = run the ad with that ROAS, ROAS 0 = pause the ad, blank = leave as is.
@@ -703,10 +710,10 @@
                         <table class="table table-sm table-bordered align-middle mb-2">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Sold from</th>
-                                    <th>Sold to</th>
+                                    <th><span class="ar-window-label">L7</span> Sold from</th>
+                                    <th><span class="ar-window-label">L7</span> Sold to</th>
                                     <th>Target ROAS</th>
-                                    <th style="width:110px;" title="Parents (ads) whose L7 sold falls in this slab. Click the dot for daily history.">Parents</th>
+                                    <th style="width:110px;" title="Parents (ads) whose sold in the window falls in this slab. Click the dot for daily history.">Parents</th>
                                     <th style="width:70px;"></th>
                                 </tr>
                             </thead>
@@ -2307,6 +2314,7 @@
             const ADS_RULES_DOT_COLORS = ['#dc3545', '#fd7e14', '#ffc107', '#20c997', '#198754'];
             // L7 sold of every parent (one entry per ad / goods_id, SKUs summed) — from the server.
             let adsRulesParents = [];
+            let adsRulesWindowDays = 7;
             const adsRulesTbody = document.getElementById('ads-rules-slabs-tbody');
 
             function adsRulesStatus(html, ok) {
@@ -2315,6 +2323,20 @@
                 el.innerHTML = html
                     ? '<div class="alert ' + (ok ? 'alert-success' : 'alert-danger') + ' py-1 px-2 mb-0">' + html + '</div>'
                     : '';
+            }
+
+            function adsRulesClampDays(v) {
+                const n = parseInt(v, 10);
+                if (!isFinite(n)) return 7;
+                return Math.max(1, Math.min(60, n));
+            }
+
+            // Keep every "L7 / Sold 7 / 7 days" text in the modal in sync with the chosen window.
+            function paintAdsRulesWindow(days) {
+                adsRulesWindowDays = adsRulesClampDays(days);
+                document.querySelectorAll('#adsRulesModal .ar-window-label').forEach(function (el) { el.textContent = 'L' + adsRulesWindowDays; });
+                document.querySelectorAll('#adsRulesModal .ar-window-days').forEach(function (el) { el.textContent = String(adsRulesWindowDays); });
+                paintAdsRuleCounts();
             }
 
             function adsRulesNum(v) {
@@ -2377,7 +2399,7 @@
                     if (dot) {
                         const label = adsRulesSlabLabel(it.min, it.max);
                         dot.dataset.metric = 'slab:' + label;
-                        dot.dataset.label = 'Parents — Sold ' + label;
+                        dot.dataset.label = 'Parents — L' + adsRulesWindowDays + ' Sold ' + label;
                         dot.style.background = ADS_RULES_DOT_COLORS[Math.min(idx, ADS_RULES_DOT_COLORS.length - 1)];
                     }
                 });
@@ -2425,6 +2447,14 @@
 
             if (adsRulesTbody) {
                 adsRulesTbody.addEventListener('input', paintAdsRuleCounts);
+                const adsRulesWindowInput = document.getElementById('ads-rules-window-days');
+                if (adsRulesWindowInput) {
+                    // Live text update only; the counts refresh from the server once Save is clicked.
+                    adsRulesWindowInput.addEventListener('input', function () {
+                        const raw = parseInt(this.value, 10);
+                        if (isFinite(raw) && raw >= 1) paintAdsRulesWindow(raw);
+                    });
+                }
                 adsRulesTbody.addEventListener('click', function (e) {
                     const btn = e.target.closest('.ar-remove');
                     if (!btn) return;
@@ -2452,12 +2482,19 @@
                                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                             },
                             credentials: 'same-origin',
-                            body: JSON.stringify({ slabs: collectAdsRulesSlabs() }),
+                            body: JSON.stringify({
+                                slabs: collectAdsRulesSlabs(),
+                                window_days: adsRulesClampDays(document.getElementById('ads-rules-window-days').value),
+                            }),
                         });
                         const data = await res.json().catch(function () { return {}; });
                         if (res.ok && data.success) {
+                            adsRulesParents = data.parents || adsRulesParents;
+                            const wi = document.getElementById('ads-rules-window-days');
+                            if (wi && data.window_days) wi.value = data.window_days;
+                            paintAdsRulesWindow(data.window_days || adsRulesWindowDays);
                             renderAdsRulesSlabs(data.slabs);
-                            adsRulesStatus('Ads Rules saved.', true);
+                            adsRulesStatus('Ads Rules saved (sold window: ' + adsRulesWindowDays + ' days).', true);
                         } else {
                             adsRulesStatus((data && data.message) ? data.message : 'Save failed.', false);
                         }
@@ -2473,7 +2510,7 @@
                 document.getElementById('ads-rules-autorun-btn').addEventListener('click', async function () {
                     const btn = this;
                     const turnOn = btn.dataset.on !== '1';
-                    if (turnOn && !confirm('Turn Auto run ON? Every day each parent will be run / paused and its Target ROAS pushed to Temu from its L7 sold slab.')) return;
+                    if (turnOn && !confirm('Turn Auto run ON? Every day each parent will be run / paused and its Target ROAS pushed to Temu from its sold slab (L' + adsRulesWindowDays + ').')) return;
                     btn.disabled = true;
                     try {
                         const r = await adsRulesPost(ADS_RULES_AUTORUN_URL, { enabled: turnOn });
@@ -2544,6 +2581,9 @@
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         adsRulesParents = (data && data.parents) || [];
+                        const wi = document.getElementById('ads-rules-window-days');
+                        if (wi && data && data.window_days) wi.value = data.window_days;
+                        paintAdsRulesWindow(data && data.window_days ? data.window_days : 7);
                         paintAdsRulesAutoRun(!!(data && data.auto_run), data ? data.last_run : null);
                         renderAdsRulesSlabs(data && data.slabs ? data.slabs : []);
                     })

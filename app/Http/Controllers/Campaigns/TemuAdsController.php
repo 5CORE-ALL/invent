@@ -629,9 +629,9 @@ class TemuAdsController extends Controller
                 $slabRoas = $i === null ? null : $slabs[$i]['target_roas'];
                 if ($i !== null && $slabRoas !== null && (float) $slabRoas > 0) {
                     $roas = min(TemuSoldRoasRuleService::MAX_ROAS, max(0.1, round((float) $slabRoas, 2)));
-                    $roasNote = 'Ads Rules slab '.TemuSoldRoasRuleService::slabLabel($slabs[$i]).' (L7 sold '.$soldL7.')';
+                    $roasNote = 'Ads Rules slab '.TemuSoldRoasRuleService::slabLabel($slabs[$i]).' (L'.TemuSoldRoasRuleService::windowDays().' sold '.$soldL7.')';
                 } else {
-                    $roasNote = 'default ROAS (Ads Rules slab has no Target ROAS; L7 sold '.$soldL7.')';
+                    $roasNote = 'default ROAS (Ads Rules slab has no Target ROAS; L'.TemuSoldRoasRuleService::windowDays().' sold '.$soldL7.')';
                 }
             }
 
@@ -1064,6 +1064,7 @@ class TemuAdsController extends Controller
 
         return response()->json([
             'slabs' => $slabs,
+            'window_days' => TemuSoldRoasRuleService::windowDays(),
             'labels' => array_map([TemuSoldRoasRuleService::class, 'slabLabel'], $slabs),
             'parents' => array_map(fn ($p) => (int) $p['sold_l7'], array_values($parents)),
             'auto_run' => $rules->autoRunEnabled(),
@@ -1075,6 +1076,7 @@ class TemuAdsController extends Controller
     {
         $request->validate([
             'slabs' => 'required|array|min:1|max:50',
+            'window_days' => 'nullable|integer|min:'.TemuSoldRoasRuleService::MIN_WINDOW_DAYS.'|max:'.TemuSoldRoasRuleService::MAX_WINDOW_DAYS,
             'slabs.*.sold_min' => 'nullable|numeric|min:0|max:1000000',
             'slabs.*.sold_max' => 'nullable|numeric|min:0|max:1000000',
             'slabs.*.target_roas' => 'nullable|numeric|min:0|max:1000',
@@ -1082,11 +1084,17 @@ class TemuAdsController extends Controller
 
         $slabs = $rules->normalizeSlabs($request->input('slabs'));
         $rules->saveSlabs($slabs);
-        $rules->snapshot($rules->counts($slabs, $rules->parents()));
+        if ($request->filled('window_days')) {
+            TemuSoldRoasRuleService::setWindowDays((int) $request->input('window_days'));
+        }
+        $parents = $rules->parents();
+        $rules->snapshot($rules->counts($slabs, $parents));
 
         return response()->json([
             'success' => true,
             'slabs' => $slabs,
+            'window_days' => TemuSoldRoasRuleService::windowDays(),
+            'parents' => array_map(fn ($p) => (int) $p['sold_l7'], array_values($parents)),
             'labels' => array_map([TemuSoldRoasRuleService::class, 'slabLabel'], $slabs),
         ]);
     }

@@ -27,6 +27,11 @@ class TemuSoldRoasRuleService
     public const HISTORY_KEY = 'temu_ads_sold_roas_history';
     public const PUSHED_KEY = 'temu_ads_sold_roas_pushed';
     public const RUN_LOCK_KEY = 'temu_ads_sold_roas_run_lock';
+    public const WINDOW_KEY = 'temu_ads_sold_roas_window';
+
+    public const DEFAULT_WINDOW_DAYS = 7;
+    public const MIN_WINDOW_DAYS = 1;
+    public const MAX_WINDOW_DAYS = 60;
 
     /** Temu accepts a ROAS multiple up to 12. */
     public const MAX_ROAS = 12.0;
@@ -181,6 +186,66 @@ class TemuSoldRoasRuleService
     }
 
     /**
+     * Number of complete Pacific days (ending yesterday) the slabs count "Sold" over. Editable in Ads Rules.
+     */
+    public static function windowDays(): int
+    {
+        $row = ChannelTabulatorColumnSetting::query()->where('channel_name', self::WINDOW_KEY)->first();
+        $v = is_array($row?->visibility) ? $row->visibility : [];
+
+        return self::clampWindowDays($v['days'] ?? self::DEFAULT_WINDOW_DAYS);
+    }
+
+    public static function setWindowDays(int $days): int
+    {
+        $days = self::clampWindowDays($days);
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::WINDOW_KEY],
+            ['column_order' => [], 'visibility' => ['days' => $days, 'updated_at' => now()->toDateTimeString()]]
+        );
+
+        return $days;
+    }
+
+    public static function clampWindowDays($days): int
+    {
+        if (! is_numeric($days)) {
+            return self::DEFAULT_WINDOW_DAYS;
+        }
+
+        return max(self::MIN_WINDOW_DAYS, min(self::MAX_WINDOW_DAYS, (int) $days));
+    }
+
+    /**
+     * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon}
+     */
+    public static function windowFor(int $days): array
+    {
+        $days = self::clampWindowDays($days);
+        $end = \Carbon\Carbon::yesterday(TemuShopifySalesService::PST);
+
+        return [
+            $end->copy()->subDays($days - 1)->startOfDay(),
+            $end->copy()->endOfDay(),
+        ];
+    }
+
+    /**
+     * Units sold per SKU over the configured Ads Rules window ({@see windowDays()}).
+     *
+     * @return array<string, int>
+     */
+    public static function soldWindowBySku(?int $days = null): array
+    {
+        $days = $days ?? self::windowDays();
+        if ($days === 7) {
+            return self::soldL7BySku();
+        }
+
+        return self::soldBySkuForWindow(self::windowFor($days));
+    }
+
+    /**
      * Units sold per SKU in the Temu Channel Master L30 window (same source as {@see soldL7BySku()}).
      *
      * @return array<string, int>
@@ -233,7 +298,8 @@ class TemuSoldRoasRuleService
      */
     public function parents(): array
     {
-        $sold = self::soldL7BySku();
+        // Sold over the configured window (default 7 days); the 'sold_l7' key below holds that window's total.
+        $sold = self::soldWindowBySku();
 
         // Same ad set as the /temu/ads table (default L30 window), so counts match the page.
         $hasSkuId = Schema::hasColumn((new TemuAdsApiReport)->getTable(), 'sku_id');
