@@ -330,7 +330,7 @@
                         <dt>Members (<span id="mrqRvCount">0</span>)</dt><dd id="mrqRvMembers"></dd>
                         <dt>When</dt><dd id="mrqRvWhen"></dd>
                     </dl>
-                    <div class="mrq-note"><span id="mrqRvNotify"></span> They can accept or decline from the meeting icon.</div>
+                    <div class="mrq-note"><span id="mrqRvNotify"></span> They will see it under "Requests for you" from the meeting icon.</div>
                 </div>
 
                 {{-- STEP 3: sent --}}
@@ -813,8 +813,6 @@
             } else {
                 btn('<i class="ri-vidicon-line"></i> ' + (r.google ? 'Meeting details' : 'Join meeting'), 'btn-primary', function () { window.location.href = r.room_url; });
             }
-            if (r.rsvp !== 'accepted') btn('<i class="ri-check-line"></i> Accept', 'btn-success', function () { answer('accepted'); });
-            btn('<i class="ri-close-line"></i> Decline', 'btn-outline-danger', function () { answer('declined'); });
             btn('<i class="ri-check-double-line"></i> Completed', 'btn-outline-primary', function () { answer('completed'); });
             return div;
         }
