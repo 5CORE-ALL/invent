@@ -73,7 +73,7 @@
                         </thead>
                         <tbody>
                             <tr data-key="down">
-                                <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-down-more">more than <span class="amz-cvr-down-lbl">20</span>% </span>below LT O CVR</div></td>
+                                <td><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i> <strong>CVR Down</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-down-more">more than <span class="amz-cvr-down-lbl">20</span>% </span>below LT O CVR, or CVR L30 = 0% (sold 0, with or without views). Not when CVR L30 is 7% to 13%.</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_down_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
@@ -87,7 +87,7 @@
                                 <td class="text-end text-muted amz-cvr-rule-capped-high">—</td>
                             </tr>
                             <tr data-key="up">
-                                <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-up-more">more than <span class="amz-cvr-up-lbl">20</span>% </span>above LT O CVR</div></td>
+                                <td><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i> <strong>CVR Up</strong><div class="text-muted" style="font-size:11px;"><span class="amz-cvr-up-more">more than <span class="amz-cvr-up-lbl">20</span>% </span>above LT O CVR. Not when CVR L30 is 7% to 13%.</div></td>
                                 <td class="text-end text-muted"><span class="summary-trend-dot none" data-metric="cvr_up_count" title="Rolling history"></span><span class="amz-cvr-rule-count">—</span></td>
                                 <td><div class="input-group input-group-sm"><input type="number" min="-100" max="100" step="0.1" class="form-control amz-cvr-rule-pct" placeholder="0"><span class="input-group-text">%</span></div></td>
                                 <td class="text-end text-muted amz-cvr-rule-capped-low">—</td>
