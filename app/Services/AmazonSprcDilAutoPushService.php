@@ -67,6 +67,11 @@ class AmazonSprcDilAutoPushService
             .' Ads%='.$adsPct
             .' (amazon_dil_vs_groi Target NROI / amazon_cvr_vs_disc / amazon_review_vs_disc)');
 
+        // CVR Price Rule on its own: the scheduled runs (4 AM / 8 PM IST) take one more % off the live Price each time a SKU stays in
+        // CVR Down (compounding, down to the Lower cap price). The 10-minute blue catch-up and Push All never compound: they only push
+        // what the scheduled run saved, so a SKU is cut at most twice a day.
+        $this->cvrCompound = ! $blueCatchUp && ! $pushAll;
+
         $stats = [
             'candidates' => 0,
             'applied' => 0,
@@ -298,11 +303,22 @@ class AmazonSprcDilAutoPushService
         return $computed;
     }
 
+    /** True in the scheduled run: the CVR rule (both S PRC rules OFF) cuts another % off the live Price even when S PRC already equals it. */
+    protected bool $cvrCompound = false;
+
     protected function cvrPriceRuleOn(): bool
     {
         $cfg = $this->cvrPriceRuleCfg ??= \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonCvrPriceRuleConfig();
 
         return ! empty($cfg['enabled']);
+    }
+
+    /** The CVR rule's price with no Std Prc ceiling. null = no change from the live Price. */
+    protected static function cvrNoCeiling(float $price, float $live): ?float
+    {
+        $price = round($price, 2);
+
+        return abs($price - $live) < 0.005 ? null : $price;
     }
 
     /**
@@ -314,14 +330,6 @@ class AmazonSprcDilAutoPushService
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
-    /** The CVR rule's price with no Std Prc ceiling. null = no change from the live Price. */
-    protected static function cvrNoCeiling(float $price, float $live): ?float
-    {
-        $price = round($price, 2);
-
-        return abs($price - $live) < 0.005 ? null : $price;
-    }
-
     protected function computeCvrOnlyTarget(array $row, ?float $adsPct): ?array
     {
         if (! ((float) ($row['inv'] ?? 0) > 0) || ! $this->cvrPriceRuleOn()
@@ -331,10 +339,12 @@ class AmazonSprcDilAutoPushService
         $std = (float) ($row['standard_price'] ?? 0);
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
-        // Compares with the live Price: the rule's % comes off it. It acts once per price (holds when the saved S PRC already
-        // equals live), Up has no ceiling, Down never goes above live.
+        // Compares with the live Price: the rule's % comes off it. Between the scheduled runs it acts once per price (holds when the
+        // saved S PRC already equals live, so a 10-minute catch-up never compounds). The scheduled run compounds: it takes the %
+        // off the live Price again (68.60 -> 67.91 ...), down to the Lower cap price. Up has no ceiling, Down never goes above live.
         $base = round((float) ($row['price'] ?? 0), 2);
-        if (! ($base >= 0.01) || \App\Support\EbayCvrPriceRule::holdsLive($base, (float) ($row['sprice'] ?? 0))) {
+        if (! ($base >= 0.01)
+            || (! $this->cvrCompound && \App\Support\EbayCvrPriceRule::holdsLive($base, (float) ($row['sprice'] ?? 0)))) {
             return null;
         }
         $cvrPrice = \App\Support\AmazonCvrPriceRule::apply(
@@ -343,7 +353,7 @@ class AmazonSprcDilAutoPushService
             $this->cvrPriceRuleCfg,
             (float) ($adsPct ?? $this->amazonAdsPercent())
         );
-        $newPrice = $cvrPrice === null ? null : \App\Support\self::cvrNoCeiling((float) $cvrPrice['price'], $base);
+        $newPrice = $cvrPrice === null ? null : self::cvrNoCeiling((float) $cvrPrice['price'], $base);
         if ($newPrice === null) {
             return null;
         }
