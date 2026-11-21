@@ -67,7 +67,7 @@ class GoogleMeetMeetingsTest extends TestCase
         });
         // The real layout runs MySQL-only queries; use a stand-in with the same @yield sections.
         $this->app['view']->getFinder()->prependLocation(__DIR__.'/stubs/views');
-        foreach (['2026_10_28_000000_create_meeting_tables', '2026_10_28_010000_add_rsvp_to_meeting_participants', '2026_11_14_040000_add_google_meet_features_to_meetings'] as $m) {
+        foreach (['2026_10_28_000000_create_meeting_tables', '2026_10_28_010000_add_rsvp_to_meeting_participants', '2026_11_14_040000_add_google_meet_features_to_meetings', '2026_11_22_010000_add_postponed_until_to_meeting_participants', '2026_11_22_020000_add_recurrence_to_meetings'] as $m) {
             (require base_path("database/migrations/{$m}.php"))->up();
         }
 
@@ -340,22 +340,112 @@ class GoogleMeetMeetingsTest extends TestCase
 
     // ------------------------------------------------------------------ 15: failures, retries, duplicates, config
 
-    public function test_not_configured_shows_a_clear_message_and_creates_nothing(): void
+    public function test_not_configured_creates_a_manual_meeting_without_calling_google(): void
     {
         GoogleMeetConnection::query()->delete();
         config(['services.meetings.google.client_id' => null, 'services.meetings.google.client_secret' => null]);
         Cache::flush();
         $host = $this->user('Host Person');
 
-        try {
-            $this->scheduler()->create($this->payload(1), $host);
-            $this->fail('expected GoogleMeetException');
-        } catch (GoogleMeetException $e) {
-            $this->assertSame('not_configured', $e->reason);
-            $this->assertStringContainsString('GOOGLE_CLIENT_ID', $e->getMessage() . implode(' ', app(GoogleMeetService::class)->status()['missing']));
-        }
-        $this->assertSame(0, Meeting::count(), 'no fake meeting is created');
+        $result = $this->scheduler()->create($this->payload(1), $host);
+
+        $this->assertNull($result['google_error']);
+        $this->assertSame(Meeting::SYNC_MANUAL, $result['meeting']->google_sync_status);
+        $this->assertNull($result['meeting']->google_meet_url);
+        $this->assertSame(1, Meeting::count());
         $this->assertSame(0, $this->fake->requestCount());
+    }
+
+    public function test_pasted_meet_link_is_saved_without_calendar(): void
+    {
+        GoogleMeetConnection::query()->delete();
+        config(['services.meetings.google.client_id' => null, 'services.meetings.google.client_secret' => null]);
+        Cache::flush();
+        $host = $this->user('Host Person');
+
+        $result = $this->scheduler()->create($this->payload(1) + ['manual_meet_url' => 'https://meet.google.com/abc-defg-hij'], $host);
+
+        $this->assertSame('https://meet.google.com/abc-defg-hij', $result['meeting']->google_meet_url);
+        $this->assertTrue($result['meeting']->hasMeetLink());
+        $this->assertSame(0, $this->fake->requestCount());
+    }
+
+    public function test_rs_moves_a_request_below_the_divider_until_its_day(): void
+    {
+        $host = $this->user('Host Person');
+        $guest = $this->user('Guest One');
+        $a = $this->book($host, 1, '10:00', '11:00', [$guest->id]);
+        $b = $this->book($host, 2, '10:00', '11:00', [$guest->id]);
+
+        $this->actingAs($guest)->postJson(route('meetings.postpone', $a), ['option' => '7'])
+            ->assertOk()->assertJsonPath('ok', true);
+
+        $res = $this->actingAs($guest)->getJson(route('meetings.requests'))->assertOk();
+        $ids = collect($res->json('requests'))->pluck('id')->all();
+        $this->assertSame([$b->id, $a->id], $ids, 'the moved request is listed last');
+        $this->assertNotNull($res->json('requests.1.postponed_until'));
+        $this->assertSame(1, $res->json('count'), 'a moved request no longer counts as waiting');
+
+        // its day arrives -> back on top
+        \App\Models\MeetingParticipant::where('meeting_id', $a->id)->where('user_id', $guest->id)
+            ->update(['postponed_until' => now(\App\Casts\MeetingDateTime::timezone())->toDateString()]);
+        $res = $this->actingAs($guest)->getJson(route('meetings.requests'))->assertOk();
+        $this->assertNull($res->json('requests.0.postponed_until'));
+        $this->assertSame(2, $res->json('count'));
+
+        $this->actingAs($guest)->postJson(route('meetings.postpone', $a), ['option' => 'bogus'])->assertStatus(422);
+        $this->actingAs($this->user('Stranger'))->postJson(route('meetings.postpone', $a), ['option' => '7'])->assertStatus(403);
+    }
+
+    public function test_host_can_add_themselves_as_a_member(): void
+    {
+        $host = $this->user('Host Person');
+        $guest = $this->user('Guest One');
+
+        $names = collect($this->actingAs($host)->getJson(route('meetings.members'))->assertOk()->json('members'));
+        $this->assertTrue((bool) $names->firstWhere('id', $host->id)['is_me'], 'own name is listed and flagged');
+
+        $m = $this->book($host, 1, '10:00', '11:00', [$host->id, $guest->id]);
+        $this->assertSame(1, \App\Models\MeetingParticipant::where('meeting_id', $m->id)->where('user_id', $host->id)->count());
+        $this->assertTrue((bool) \App\Models\MeetingParticipant::where('meeting_id', $m->id)->where('user_id', $host->id)->value('is_invited'));
+
+        $ids = collect($this->actingAs($host)->getJson(route('meetings.requests'))->json('requests'))->pluck('id')->all();
+        $this->assertContains($m->id, $ids, 'the host sees their own meeting under Requests for you');
+    }
+
+    public function test_repeating_meetings_generate_the_next_request_on_its_day(): void
+    {
+        $host = $this->user('Host Person');
+        $guest = $this->user('Guest One');
+        $this->assertTrue(Meeting::supportsRecurrence());
+
+        // default is one time
+        $once = $this->book($host, 1, '10:00', '11:00', [$guest->id]);
+        $this->assertSame('once', $once->fresh()->recurrence);
+
+        $first = $this->scheduler()->create($this->payload(2, '10:00', '11:00', [$guest->id], ['recurrence' => 'weekly']), $host)['meeting'];
+        $this->assertSame('weekly', $first->fresh()->recurrence);
+        $this->assertSame($first->id, (int) $first->fresh()->series_id);
+
+        // not due yet: nothing is created
+        $this->artisan('meetings:generate-recurring')->assertSuccessful();
+        $this->assertSame(1, Meeting::where('series_id', $first->id)->count());
+
+        // the first meeting becomes a week old -> today is the next occurrence's day
+        $tz = \App\Casts\MeetingDateTime::timezone();
+        $when = now($tz)->subWeek()->setTime(10, 0);
+        Meeting::where('id', $first->id)->update(['scheduled_at' => $when->copy()->setTimezone(config('app.timezone')), 'scheduled_end_at' => $when->copy()->addHour()->setTimezone(config('app.timezone'))]);
+        $this->artisan('meetings:generate-recurring')->assertSuccessful();
+        $this->artisan('meetings:generate-recurring')->assertSuccessful(); // idempotent
+        $this->assertSame(2, Meeting::where('series_id', $first->id)->count());
+        $next = Meeting::where('series_id', $first->id)->where('id', '!=', $first->id)->first();
+        $this->assertSame('weekly', $next->recurrence);
+        $this->assertSame(now($tz)->toDateString(), $next->scheduled_at->toDateString());
+        $this->assertTrue($next->participants()->where('user_id', $guest->id)->where('is_invited', true)->exists());
+
+        // stop repeating
+        $this->actingAs($host)->postJson(route('meetings.recurrence.stop', $next))->assertOk();
+        $this->assertSame(0, Meeting::where('series_id', $first->id)->where('recurrence', '!=', 'once')->count());
     }
 
     public function test_transient_google_errors_are_retried_with_backoff(): void

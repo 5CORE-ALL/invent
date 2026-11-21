@@ -71,6 +71,8 @@
                     @if($meeting->hasMeetLink())
                         <a href="{{ $meeting->google_meet_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-lg mt-join" id="joinMeet"><i class="ri-vidicon-fill me-1"></i>Join Google Meet</a>
                         <div class="small text-muted" style="word-break:break-all">{{ $meeting->google_meet_url }}</div>
+                    @elseif($meeting->isManualMeet())
+                        <span class="text-muted fw-semibold"><i class="ri-phone-line me-1"></i>No Google Meet link (phone call)</span>
                     @else
                         <button class="btn btn-lg btn-secondary" disabled><i class="ri-vidicon-fill me-1"></i>Google Meet link not ready</button>
                     @endif
@@ -92,7 +94,7 @@
             </div>
         </div>
 
-        @if($isGoogle && ! $meeting->isCancelled() && $meeting->google_sync_status !== 'synced')
+        @if($isGoogle && ! $meeting->isCancelled() && ! $meeting->isManualMeet() && $meeting->google_sync_status !== 'synced')
             <div class="alert alert-{{ $meeting->google_sync_status === 'failed' ? 'danger' : 'warning' }} mt-3 mb-0 py-2">
                 <strong>{{ $meeting->google_sync_status === 'failed' ? 'Google Calendar sync failed.' : 'Waiting for Google.' }}</strong>
                 {{ $meeting->google_sync_error ?: 'The Google Meet link has not been returned yet.' }}
@@ -162,6 +164,7 @@
                                 <dt>Google Calendar</dt>
                                 <dd>@if($meeting->google_sync_status === 'synced')<span class="text-success">Synced{{ $meeting->google_synced_at ? ' '.$meeting->google_synced_at->diffForHumans() : '' }}</span>
                                     @elseif($meeting->google_sync_status === 'cancelled')<span class="text-danger">Event removed</span>
+                                    @elseif($meeting->isManualMeet())<span class="text-muted">Not used (link added by hand)</span>
                                     @else<span class="text-warning">{{ ucfirst((string) $meeting->google_sync_status) }}</span>@endif</dd>
                             @endif
                         </dl>

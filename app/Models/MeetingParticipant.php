@@ -16,6 +16,7 @@ class MeetingParticipant extends Model
         'is_invited',
         'rsvp',
         'rsvp_at',
+        'postponed_until',
         'first_joined_at',
         'joined_at',
         'left_at',
@@ -26,6 +27,7 @@ class MeetingParticipant extends Model
 
     protected $casts = [
         'is_invited' => 'boolean',
+        'postponed_until' => 'date:Y-m-d',
         'rsvp_at' => \App\Casts\MeetingDateTime::class,
         'first_joined_at' => \App\Casts\MeetingDateTime::class,
         'joined_at' => \App\Casts\MeetingDateTime::class,

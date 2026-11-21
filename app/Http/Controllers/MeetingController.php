@@ -201,14 +201,37 @@ class MeetingController extends Controller
         $me = Auth::id();
 
         return response()->json([
-            'members' => User::query()->active()->where('id', '!=', $me)->orderBy('name')
+            // Everyone including the logged-in user ("You"), so a person can add themselves to the meeting too.
+            'members' => User::query()->active()->orderBy('name')
                 ->get(['id', 'name', 'designation', 'avatar'])
-                ->map(fn (User $u) => MeetingPresenter::userCard($u))
+                ->map(fn (User $u) => MeetingPresenter::userCard($u) + ['is_me' => (int) $u->id === (int) $me])
                 ->values(),
-            'google' => ['ok' => $this->google->isConfigured(), 'message' => $this->google->status()['message']],
+            'google' => $this->googleStatusPayload(),
             'rooms' => Meeting::ROOMS,
             'timezone' => \App\Casts\MeetingDateTime::timezone(),
         ]);
+    }
+
+    /** Live Google connection state for the floating widget (re-checked whenever it opens). */
+    public function googleStatus(): JsonResponse
+    {
+        return response()->json($this->googleStatusPayload());
+    }
+
+    private function googleStatusPayload(): array
+    {
+        $s = $this->google->status();
+
+        return [
+            'ok' => (bool) $s['ok'],
+            'email' => $s['email'] ?? null,
+            'message' => $s['message'],
+            'oauth_configured' => $this->google->oauthClientConfigured(),
+            'can_connect' => SuperAdminAccess::isTaskAdmin(Auth::user()),
+            'connect_url' => route('meetings.google.connect'),
+            'redirect_uri' => (string) (config('services.meetings.google.redirect') ?: route('meetings.google.callback')),
+            'meetings_url' => route('meetings.index'),
+        ];
     }
 
     /** Busy slots of one room on a day, used for live conflict hints in the forms. */
@@ -273,8 +296,11 @@ class MeetingController extends Controller
             'room_slot' => 'nullable|integer|in:'.implode(',', array_keys(Meeting::ROOMS)),
             // Token of a link made with "Create New Google Meeting"; the meeting then uses that exact link.
             'link_token' => 'nullable|string|regex:/^[a-f0-9]{32}$/',
+            // Link pasted from https://meet.google.com/new (used when Google Calendar is not connected).
+            'meet_url' => ['nullable', 'string', 'max:200', 'regex:#^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}(\?.*)?$#'],
             // Date and time are not asked: they are stamped automatically when the request is made.
             'approx_minutes' => 'required|integer|min:5|max:720',
+            'recurrence' => 'nullable|in:'.implode(',', array_keys(Meeting::RECURRENCES)),
             'invitee_ids' => 'required|array|min:1|max:200',
             'invitee_ids.*' => 'integer|exists:users,id',
         ], [
@@ -292,6 +318,10 @@ class MeetingController extends Controller
             }
         }
         unset($data['link_token']);
+        if (! empty($data['meet_url'])) {
+            $data['manual_meet_url'] = strtok((string) $data['meet_url'], '?');
+        }
+        unset($data['meet_url']);
 
         $data['start'] = now(\App\Casts\MeetingDateTime::timezone())->startOfMinute();
         $data['end'] = $data['start']->copy()->addMinutes((int) $data['approx_minutes']);
@@ -356,7 +386,11 @@ class MeetingController extends Controller
     public function requests(): JsonResponse
     {
         // Accepted-but-not-yet-joined invites stay listed so the user can still join; only unanswered ones count for the badge.
-        $rows = $this->pendingInvites(true);
+        $today = $this->todayYmd();
+        // "RS" moved requests sit below the divider (soonest day first); they come back to the top when their day arrives.
+        $rows = $this->pendingInvites(true)
+            ->sortBy(fn (MeetingParticipant $p) => $this->isPostponed($p, $today) ? '1'.$p->postponed_until->format('Y-m-d') : '0')
+            ->values();
 
         $reschedulePending = 0;
         try {
@@ -368,9 +402,13 @@ class MeetingController extends Controller
         }
 
         return response()->json([
-            'count' => $rows->where('rsvp', 'pending')->count(),
+            'count' => $rows->filter(fn (MeetingParticipant $p) => $p->rsvp === 'pending' && ! $this->isPostponed($p, $today))->count(),
             'reschedule_count' => $reschedulePending,
             'requests' => $rows->map(fn (MeetingParticipant $p) => [
+                'postponed_until' => $this->isPostponed($p, $today) ? $p->postponed_until->format('Y-m-d') : null,
+                'postponed_label' => $this->isPostponed($p, $today) ? $p->postponed_until->format('D, d M Y') : null,
+                'postpone_url' => route('meetings.postpone', $p->meeting_id),
+                'recurrence_label' => $p->meeting->recurrenceLabel(),
                 'reschedule_url' => route('meetings.reschedule', $p->meeting_id),
                 'can_manage' => $this->canManage($p->meeting, Auth::user()),
                 'scheduled_date' => $p->meeting->scheduled_at?->format('Y-m-d'),
@@ -392,6 +430,69 @@ class MeetingController extends Controller
                 'rsvp_url' => route('meetings.rsvp', $p->meeting_id),
                 'room_url' => $p->meeting->isGoogleMeet() ? route('meetings.show', $p->meeting_id) : route('meetings.room', $p->meeting_id),
             ])->values(),
+        ]);
+    }
+
+    /** "Stop repeating": no further requests are generated for this meeting's series (existing meetings stay). */
+    public function stopRecurring(Meeting $meeting): JsonResponse
+    {
+        if (! $this->canManage($meeting, Auth::user())) {
+            return response()->json(['ok' => false, 'message' => 'Only the host can stop a repeating meeting.'], 403);
+        }
+        if (Meeting::supportsRecurrence()) {
+            Meeting::query()
+                ->where(fn ($q) => $q->where('id', $meeting->id)->orWhere(fn ($w) => $w->whereNotNull('series_id')->where('series_id', $meeting->series_id)))
+                ->update(['recurrence' => 'once']);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function todayYmd(): string
+    {
+        return now(\App\Casts\MeetingDateTime::timezone())->toDateString();
+    }
+
+    private function isPostponed(MeetingParticipant $p, string $today): bool
+    {
+        return $p->postponed_until !== null && $p->postponed_until->format('Y-m-d') > $today;
+    }
+
+    /**
+     * "RS": move MY copy of a meeting request to the bottom ("Scheduled" section) until a later day.
+     * tomorrow | 7 | 15 | month, or "now" to bring it back to the top. Other people's lists and the meeting time are untouched.
+     */
+    public function postpone(Request $request, Meeting $meeting): JsonResponse
+    {
+        $data = $request->validate(['option' => 'required|in:tomorrow,7,15,month,now']);
+
+        if ($meeting->isEnded() || $meeting->isCancelled()) {
+            return response()->json(['ok' => false, 'message' => $meeting->isCancelled() ? 'This meeting was cancelled.' : 'This meeting has already ended.'], 409);
+        }
+        if (! Schema::hasColumn('meeting_participants', 'postponed_until')) {
+            return response()->json(['ok' => false, 'message' => 'Run "php artisan migrate" once to enable this option.'], 503);
+        }
+
+        $p = MeetingParticipant::where('meeting_id', $meeting->id)->where('user_id', Auth::id())->where('is_invited', true)->first();
+        if (! $p) {
+            return response()->json(['ok' => false, 'message' => 'You were not invited to this meeting.'], 403);
+        }
+
+        $today = now(\App\Casts\MeetingDateTime::timezone())->startOfDay();
+        $until = match ($data['option']) {
+            'tomorrow' => $today->copy()->addDay(),
+            '7' => $today->copy()->addDays(7),
+            '15' => $today->copy()->addDays(15),
+            'month' => $today->copy()->addMonthNoOverflow(),
+            default => null,
+        };
+
+        $p->forceFill(['postponed_until' => $until?->toDateString()])->save();
+
+        return response()->json([
+            'ok' => true,
+            'postponed_until' => $until?->toDateString(),
+            'label' => $until?->format('D, d M Y'),
         ]);
     }
 
@@ -443,6 +544,9 @@ class MeetingController extends Controller
                 'meet_url' => $m->hasMeetLink() ? $m->google_meet_url : null,
                 'google' => $m->isGoogleMeet(),
                 'google_status' => $m->google_sync_status,
+                'recurrence' => $m->isRecurring() ? $m->recurrence : null,
+                'recurrence_label' => $m->recurrenceLabel(),
+                'stop_recurring_url' => $m->isRecurring() ? route('meetings.recurrence.stop', $m) : null,
                 'details_url' => route('meetings.show', $m),
                 'room_url' => $m->isGoogleMeet() ? route('meetings.show', $m) : route('meetings.room', $m),
                 'end_url' => route('meetings.end', $m),

@@ -66,21 +66,23 @@ class MeetingScheduler
      */
     public function create(array $data, User $host): array
     {
-        // Every meeting is a real Google Meet (Google Workspace); a clear "connect Google" error is raised otherwise.
-        $this->google->assertConfigured();
+        // With Google Calendar connected a real Meet link + calendar event is created. Without it (or when the user
+        // pasted a link from meet.google.com/new) the meeting is saved as "manual": no calendar event, optional link.
+        $manual = ! empty($data['manual_meet_url']) || ! $this->google->isConfigured();
+        $manualUrl = ! empty($data['manual_meet_url']) ? (string) $data['manual_meet_url'] : null;
 
         $inviteeIds = $this->normaliseInvitees($data['invitee_ids'] ?? [], $host);
         $this->assertInviteesHaveEmail($inviteeIds, $host);
 
         // Rooms are optional: a meeting without a room (the "Create New Google Meeting" flow) has nothing to clash with.
         $room = ! empty($data['room_slot']) ? (int) $data['room_slot'] : null;
-        $build = function () use ($data, $host, $inviteeIds, $room) {
-            return DB::transaction(function () use ($data, $host, $inviteeIds, $room) {
+        $build = function () use ($data, $host, $inviteeIds, $room, $manual, $manualUrl) {
+            return DB::transaction(function () use ($data, $host, $inviteeIds, $room, $manual, $manualUrl) {
                 if ($room) {
                     $this->assertRoomFree($room, $data['start'], $data['end'], null);
                 }
 
-                $meeting = Meeting::create([
+                $attrs = [
                     'title' => trim($data['title']),
                     'agenda' => $data['agenda'] ?? null,
                     'room_name' => 'gm-'.Str::lower(Str::random(24)),
@@ -93,16 +95,30 @@ class MeetingScheduler
                     'status' => Meeting::STATUS_SCHEDULED,
                     'minutes_status' => Meeting::MINUTES_PENDING,
                     // A link created earlier with the "Create New Google Meeting" button is adopted, not duplicated.
-                    'google_request_id' => $data['google_request_id'] ?? bin2hex(random_bytes(16)),
-                    'google_meet_url' => $data['google_meet_url'] ?? null,
-                    'google_sync_status' => Meeting::SYNC_PENDING,
-                ]);
+                    'google_request_id' => $manual ? null : ($data['google_request_id'] ?? bin2hex(random_bytes(16))),
+                    'google_meet_url' => $manual ? $manualUrl : ($data['google_meet_url'] ?? null),
+                    'google_sync_status' => $manual ? Meeting::SYNC_MANUAL : Meeting::SYNC_PENDING,
+                ];
+                $recurrence = $data['recurrence'] ?? 'once';
+                if (Meeting::supportsRecurrence() && array_key_exists($recurrence, Meeting::RECURRENCES)) {
+                    $attrs['recurrence'] = $recurrence;
+                    $attrs['series_id'] = $data['series_id'] ?? null;
+                }
+                $meeting = Meeting::create($attrs);
+                if (isset($attrs['recurrence']) && $recurrence !== 'once' && ! $meeting->series_id) {
+                    $meeting->forceFill(['series_id' => $meeting->id])->save(); // first meeting of the series
+                }
 
+                // The host can also pick themselves in the member list: they then get the request in their own inbox too.
+                $hostInvited = in_array((int) $host->id, $inviteeIds, true);
                 MeetingParticipant::create([
-                    'meeting_id' => $meeting->id, 'user_id' => $host->id, 'is_invited' => false,
-                    'rsvp' => 'accepted', 'rsvp_at' => now(),
+                    'meeting_id' => $meeting->id, 'user_id' => $host->id, 'is_invited' => $hostInvited,
+                    'rsvp' => $hostInvited ? 'pending' : 'accepted', 'rsvp_at' => $hostInvited ? null : now(),
                 ]);
                 foreach ($inviteeIds as $uid) {
+                    if ((int) $uid === (int) $host->id) {
+                        continue;
+                    }
                     MeetingParticipant::create(['meeting_id' => $meeting->id, 'user_id' => $uid, 'is_invited' => true, 'rsvp' => 'pending']);
                 }
 
@@ -111,7 +127,7 @@ class MeetingScheduler
         };
         $meeting = $room ? $this->withRoomLock($room, $build) : $build();
 
-        return ['meeting' => $meeting, 'google_error' => $this->trySync($meeting)];
+        return ['meeting' => $meeting, 'google_error' => $manual ? null : $this->trySync($meeting)];
     }
 
     /**
@@ -149,7 +165,10 @@ class MeetingScheduler
         if (! in_array($meeting->status, [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE], true)) {
             throw ValidationException::withMessages(['title' => 'Only scheduled or live meetings can be edited.']);
         }
-        $this->google->assertConfigured();
+        $manual = $meeting->isManualMeet();
+        if (! $manual) {
+            $this->google->assertConfigured();
+        }
 
         $host = $meeting->host ?? $actor;
         $inviteeIds = $this->normaliseInvitees($data['invitee_ids'] ?? [], $host);
@@ -174,10 +193,18 @@ class MeetingScheduler
                 MeetingParticipant::query()
                     ->where('meeting_id', $meeting->id)
                     ->where('is_invited', true)
+                    ->where('user_id', '!=', $meeting->host_user_id)
                     ->whereNotIn('user_id', $keep ?: [0])
                     ->whereNull('first_joined_at')
                     ->delete();
+                // The host's own row is never deleted: it only switches between "also invited" and "just the host".
+                MeetingParticipant::query()
+                    ->where('meeting_id', $meeting->id)->where('user_id', $meeting->host_user_id)
+                    ->update(['is_invited' => in_array((int) $meeting->host_user_id, $keep, true)]);
                 foreach ($keep as $uid) {
+                    if ((int) $uid === (int) $meeting->host_user_id) {
+                        continue;
+                    }
                     MeetingParticipant::query()->firstOrCreate(
                         ['meeting_id' => $meeting->id, 'user_id' => $uid],
                         ['is_invited' => true, 'rsvp' => 'pending']
@@ -188,7 +215,7 @@ class MeetingScheduler
             });
         });
 
-        return ['meeting' => $meeting, 'google_error' => $this->trySync($meeting)];
+        return ['meeting' => $meeting, 'google_error' => $manual ? null : $this->trySync($meeting)];
     }
 
     /**
@@ -231,7 +258,7 @@ class MeetingScheduler
         };
         $meeting = $meeting->room_slot ? $this->withRoomLock((int) $meeting->room_slot, $apply) : $apply();
 
-        return ['meeting' => $meeting, 'google_error' => $meeting->isGoogleMeet() ? $this->trySync($meeting) : null];
+        return ['meeting' => $meeting, 'google_error' => ($meeting->isGoogleMeet() && ! $meeting->isManualMeet()) ? $this->trySync($meeting) : null];
     }
 
     /**
@@ -239,7 +266,7 @@ class MeetingScheduler
      */
     public function retrySync(Meeting $meeting): ?string
     {
-        if (! $meeting->isGoogleMeet() || $meeting->isCancelled()) {
+        if (! $meeting->isGoogleMeet() || $meeting->isCancelled() || $meeting->isManualMeet()) {
             return null;
         }
 
@@ -309,7 +336,6 @@ class MeetingScheduler
     {
         return User::query()->active()
             ->whereIn('id', array_unique(array_map('intval', $ids)))
-            ->where('id', '!=', $host->id)
             ->orderBy('id')
             ->pluck('id')
             ->map(fn ($v) => (int) $v)

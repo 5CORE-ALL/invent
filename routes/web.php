@@ -8155,9 +8155,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/meetings/sent', [\App\Http\Controllers\MeetingController::class, 'sent'])->name('meetings.sent');
     Route::get('/meetings/requests', [\App\Http\Controllers\MeetingController::class, 'requests'])->name('meetings.requests');
     Route::post('/meetings/{meeting}/rsvp', [\App\Http\Controllers\MeetingController::class, 'rsvp'])->name('meetings.rsvp');
+    Route::post('/meetings/{meeting}/stop-recurring', [\App\Http\Controllers\MeetingController::class, 'stopRecurring'])->whereNumber('meeting')->name('meetings.recurrence.stop');
+    Route::post('/meetings/{meeting}/postpone', [\App\Http\Controllers\MeetingController::class, 'postpone'])->whereNumber('meeting')->name('meetings.postpone');
     Route::get('/meetings/minutes', [\App\Http\Controllers\MeetingController::class, 'minutesIndex'])->name('meetings.minutes.index');
     Route::get('/meetings/{meeting}/room', [\App\Http\Controllers\MeetingController::class, 'room'])->name('meetings.room');
     Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\MeetingController::class, 'end'])->name('meetings.end');
+    Route::get('/meetings/google/status', [\App\Http\Controllers\MeetingController::class, 'googleStatus'])->name('meetings.google.status');
     Route::get('/meetings/reschedules', [\App\Http\Controllers\MeetingController::class, 'reschedules'])->name('meetings.reschedules');
     Route::post('/meetings/reschedules/{reschedule}/decide', [\App\Http\Controllers\MeetingController::class, 'rescheduleDecide'])->whereNumber('reschedule')->name('meetings.reschedules.decide');
     Route::post('/meetings/{meeting}/reschedule', [\App\Http\Controllers\MeetingController::class, 'reschedule'])->whereNumber('meeting')->name('meetings.reschedule');

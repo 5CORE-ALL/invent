@@ -4387,6 +4387,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Repeating meetings (daily / weekly / fortnightly / monthly): create today's request when it is due.
+        $schedule->command('meetings:generate-recurring')
+            ->everyTenMinutes()
+            ->name('meetings-generate-recurring')
+            ->withoutOverlapping(10)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Google Meet meetings: retry failed/pending Google Calendar syncs, close overdue meetings and pull
         // real recordings / call times from Google when that is authorised.
         $schedule->command('meetings:google-sync')

@@ -30,6 +30,8 @@ class Meeting extends Model
     public const SYNC_SYNCED = 'synced';
     public const SYNC_FAILED = 'failed';
     public const SYNC_CANCELLED = 'cancelled';
+    /** Google Meet link pasted in by hand (or no link at all): no Google Calendar event, nothing to sync. */
+    public const SYNC_MANUAL = 'manual';
 
     /** Internal meeting rooms people can book. */
     public const ROOMS = [
@@ -69,6 +71,8 @@ class Meeting extends Model
         'tasks_generated_at',
         'provider',
         'priority',
+        'recurrence',
+        'series_id',
         'room_slot',
         'scheduled_end_at',
         'google_request_id',
@@ -160,6 +164,32 @@ class Meeting extends Model
     public function isGoogleMeet(): bool
     {
         return $this->provider === self::PROVIDER_GOOGLE_MEET;
+    }
+
+    public const RECURRENCES = ['once' => 'One time', 'daily' => 'Daily', 'weekly' => 'Weekly', 'fortnightly' => 'Fortnightly', 'monthly' => 'Monthly'];
+
+    private static ?bool $recurrenceReady = null;
+
+    /** False until "php artisan migrate" added the recurrence columns (the app keeps working without them). */
+    public static function supportsRecurrence(): bool
+    {
+        return self::$recurrenceReady ??= \Illuminate\Support\Facades\Schema::hasColumn((new self)->getTable(), 'recurrence');
+    }
+
+    public function isRecurring(): bool
+    {
+        return ($this->recurrence ?? 'once') !== 'once';
+    }
+
+    public function recurrenceLabel(): ?string
+    {
+        return $this->isRecurring() ? (self::RECURRENCES[$this->recurrence] ?? null) : null;
+    }
+
+    /** Created without Google Calendar (link pasted from meet.google.com/new, or a phone call with no link). */
+    public function isManualMeet(): bool
+    {
+        return $this->google_sync_status === self::SYNC_MANUAL;
     }
 
     /** True only when Google really returned a Meet link for this meeting. */
