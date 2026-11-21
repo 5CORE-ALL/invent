@@ -5159,7 +5159,7 @@
                             if (cvr <= 4) color = '#a00211';
                             else if (cvr > 4 && cvr <= 7) color = '#ffc107';
                             else if (cvr > 7 && cvr <= 13) color = '#28a745';
-                            const pctLabel = sess30 === 0 ? '0.0%' : (Math.round(cvr) + '%');
+                            const pctLabel = sess30 === 0 ? '0.0%' : (cvr.toFixed(1) + '%');
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                                 + '<span style="color:' + color + ';font-weight:600;">' + pctLabel + '</span>'
                                 + '</span>';
@@ -5619,7 +5619,6 @@
                             const lmpCmp = (typeof lmpWithShipping === 'function')
                                 ? lmpWithShipping(rowData)
                                 : lmpPrice;
-                            const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(price, lmpCmp) : '');
                             // History dot (same as INV / A L30): opens the SKU chart on the Price metric.
                             const priceSku = rowData['(Child) sku'] || '';
                             const dotBtn = priceSku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(priceSku)}" data-metric="price" title="View Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6f42c1;"></span></button>` : '';
@@ -5627,7 +5626,7 @@
                                 // The red "Price above LMP" triangle is hidden here on purpose (the price still turns red).
                                 return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span> ${dotBtn}`;
                             }
-                            return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri + ' ' + dotBtn;
+                            return `<span style="font-weight: 700;">${priceFormatted}</span> ${dotBtn}`;
                         },
                         sorter: amazonMetricSorter(function(d) { const n = parseFloat(d.price); return n > 0 ? n : null; }),
                         width: 88
