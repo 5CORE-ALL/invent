@@ -14,6 +14,7 @@ class OrderFulfillmentTracking extends Model
         'order_id',
         'sku',
         'tracking_number',
+        'pdf_name',
         'carrier',
         'source',
         'checked_at',

@@ -1786,12 +1786,14 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $row['tracking_source'] = '';
             $row['tracking_checked'] = false;
             $row['tracking_checked_at'] = null;
+            $row['pdf_name'] = '';
         }
         unset($row);
 
         if ($rows === [] || ! Schema::hasTable('order_fulfillment_trackings')) {
             return $rows;
         }
+        $this->ensurePdfNameColumn();
         $missCooldown = now()->subMinutes(self::TRACKING_MISS_COOLDOWN_MINUTES);
 
         $keys = [];
@@ -1820,6 +1822,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $number = trim((string) ($record->tracking_number ?? ''));
             $checkedAt = $record->checked_at ?? null;
             $row['tracking'] = $number;
+            $row['pdf_name'] = trim((string) ($record->pdf_name ?? ''));
             $row['tracking_source'] = (string) ($record->source ?? '');
             $savedCarrier = TrackingCarrierGuesser::knownLabel((string) ($record->carrier ?? ''));
             if ($savedCarrier !== null) {
@@ -2345,6 +2348,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'sku' => 'nullable|string|max:191',
             'tracking_number' => 'required|string|max:128',
             'tracking_status' => 'nullable|string|in:blank,info_received,delivered,pending,in_transit,lost,preshipment',
+            'pdf_name' => 'nullable|string|max:191',
         ]);
 
         $this->ensureTrackingTable();
@@ -2369,6 +2373,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'manual',
             true
         );
+
+        $pdfName = '';
+        if (array_key_exists('pdf_name', $validated)) {
+            $pdfName = trim((string) ($validated['pdf_name'] ?? ''));
+            OrderFulfillmentTracking::query()->where('row_key', $rowKey)->update([
+                'pdf_name' => $pdfName !== '' ? mb_substr($pdfName, 0, 191) : null,
+            ]);
+        } else {
+            $pdfName = trim((string) (OrderFulfillmentTracking::query()->where('row_key', $rowKey)->value('pdf_name') ?? ''));
+        }
 
         $carrier = TrackingCarrierGuesser::labelFromNumber($number) ?? '';
         $statusChoice = (string) ($validated['tracking_status'] ?? '');
@@ -2397,6 +2411,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'carrier' => $carrier,
             'tracking_status' => $statusLabel,
             'tracking_status_checked' => $statusChoice !== '',
+            'pdf_name' => $pdfName,
         ]);
     }
 
@@ -2725,6 +2740,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     protected function ensureTrackingTable(): void
     {
         if (Schema::hasTable('order_fulfillment_trackings')) {
+            $this->ensurePdfNameColumn();
             if (! Schema::hasColumn('order_fulfillment_trackings', 'shopify_fulfilled_at')) {
                 Schema::table('order_fulfillment_trackings', function ($table) {
                     $table->string('shopify_order_id', 64)->nullable()->after('checked_at');
@@ -2749,6 +2765,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             $table->string('order_id', 128)->nullable();
             $table->string('sku', 191)->nullable();
             $table->string('tracking_number', 128)->nullable();
+            $table->string('pdf_name', 191)->nullable();
             $table->string('carrier', 64)->nullable();
             $table->string('source', 32)->nullable();
             $table->timestamp('checked_at')->nullable();
@@ -2798,6 +2815,18 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         }
 
         return $lookup;
+    }
+
+    protected function ensurePdfNameColumn(): void
+    {
+        if (! Schema::hasTable('order_fulfillment_trackings')) {
+            return;
+        }
+        if (! Schema::hasColumn('order_fulfillment_trackings', 'pdf_name')) {
+            Schema::table('order_fulfillment_trackings', function ($table) {
+                $table->string('pdf_name', 191)->nullable()->after('tracking_number');
+            });
+        }
     }
 
     protected function rememberTracking(

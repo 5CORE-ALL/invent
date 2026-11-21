@@ -168,6 +168,15 @@
             font-weight: 600;
             color: #0f172a;
         }
+        .of-pdf-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            vertical-align: middle;
+        }
+        .of-pdf-dot.is-set { background: #198754; }
+        .of-pdf-dot.is-empty { background: #dc3545; }
     </style>
 @endsection
 
@@ -289,6 +298,10 @@
                         </div>
                         <label for="of-track-number" class="form-label">Tracking number</label>
                         <input type="text" class="form-control" id="of-track-number" maxlength="128" required autocomplete="off">
+                        <div class="mt-3" id="of-track-pdf-wrap" style="display:none;">
+                            <label for="of-track-pdf" class="form-label">PDF name</label>
+                            <input type="text" class="form-control" id="of-track-pdf" maxlength="191" autocomplete="off" placeholder="PDF name">
+                        </div>
                         <div class="mt-3" id="of-track-status-wrap" style="display:none;">
                             <label for="of-track-status" class="form-label">Tracking status</label>
                             <select class="form-select" id="of-track-status">
@@ -981,6 +994,19 @@
                 },
             },
             {
+                title: 'PDF',
+                field: 'pdf_name',
+                width: 70,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                visible: scanPendingOnly,
+                formatter: function (cell) {
+                    const name = String(cell.getValue() || '').trim();
+                    const tip = name !== '' ? name : 'No PDF name';
+                    return '<span class="of-pdf-dot ' + (name !== '' ? 'is-set' : 'is-empty') + '" title="' + escapeHtml(tip) + '" aria-label="' + escapeHtml(tip) + '"></span>';
+                },
+            },
+            {
                 title: 'Tracking Status',
                 field: 'tracking_status',
                 minWidth: 150,
@@ -1167,14 +1193,18 @@
     function applyTrackingUpdate(update) {
         const row = table.getRow(update.id);
         if (!row) return;
-        row.update({
+        const patch = {
             tracking: update.tracking || '',
             tracking_source: update.tracking_source || '',
             tracking_checked: true,
             carrier: update.carrier || '',
             tracking_status: update.tracking_status || '',
             tracking_status_checked: !!update.tracking_status_checked,
-        });
+        };
+        if (Object.prototype.hasOwnProperty.call(update, 'pdf_name')) {
+            patch.pdf_name = update.pdf_name || '';
+        }
+        row.update(patch);
     }
 
     function applyStatusUpdate(update) {
@@ -1345,6 +1375,10 @@
         document.getElementById('of-track-order').textContent = row.order_id || '—';
         document.getElementById('of-track-sku').textContent = row.sku || '—';
         document.getElementById('of-track-number').value = row.tracking || '';
+        const pdfWrap = document.getElementById('of-track-pdf-wrap');
+        const pdfInput = document.getElementById('of-track-pdf');
+        if (pdfWrap) pdfWrap.style.display = scanPendingOnly ? '' : 'none';
+        if (pdfInput) pdfInput.value = scanPendingOnly ? (row.pdf_name || '') : '';
         const statusWrap = document.getElementById('of-track-status-wrap');
         const statusSelect = document.getElementById('of-track-status');
         if (statusWrap) statusWrap.style.display = scanPendingOnly ? '' : 'none';
@@ -1383,19 +1417,23 @@
             return;
         }
         saveBtn.disabled = true;
+        const payload = {
+            id: id,
+            mm_slug: document.getElementById('of-track-slug')?.value || '',
+            order_id: document.getElementById('of-track-order')?.textContent === '—' ? '' : document.getElementById('of-track-order')?.textContent,
+            sku: document.getElementById('of-track-sku')?.textContent === '—' ? '' : document.getElementById('of-track-sku')?.textContent,
+            tracking_number: number,
+            tracking_status: scanPendingOnly ? (document.getElementById('of-track-status')?.value || '') : '',
+        };
+        if (scanPendingOnly) {
+            payload.pdf_name = document.getElementById('of-track-pdf')?.value || '';
+        }
         $.ajax({
             url: saveUrl,
             type: 'POST',
             dataType: 'json',
             headers: { 'X-CSRF-TOKEN': csrfToken() },
-            data: {
-                id: id,
-                mm_slug: document.getElementById('of-track-slug')?.value || '',
-                order_id: document.getElementById('of-track-order')?.textContent === '—' ? '' : document.getElementById('of-track-order')?.textContent,
-                sku: document.getElementById('of-track-sku')?.textContent === '—' ? '' : document.getElementById('of-track-sku')?.textContent,
-                tracking_number: number,
-                tracking_status: scanPendingOnly ? (document.getElementById('of-track-status')?.value || '') : '',
-            },
+            data: payload,
         }).done(function (res) {
             if (!res || res.success === false) {
                 err.textContent = (res && res.message) || 'Could not save the tracking number.';
