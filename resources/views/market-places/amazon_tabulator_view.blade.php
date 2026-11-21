@@ -4555,11 +4555,11 @@
                 return 'equal';
             }
 
-            /** LT O CVR (%): overall CVR over the last 60 days, ads + organic. (A L30 + L60 orders) ÷ (Sess30 + Sess60) × 100. Null with no sessions. */
+            /** LT O CVR (%): overall CVR over the last 60 days, ads + organic. (A L30 + L60 orders) ÷ (Sess30 + Sess60) × 100. A SKU with no sessions has no lifetime CVR yet: it starts at 0%. */
             function amazonRowLtoCvr(rd) {
                 if (!rd) return null;
                 const sess = (parseFloat(rd['Sess30']) || 0) + (parseFloat(rd['sessions_l60']) || 0);
-                if (sess <= 0) return null;
+                if (sess <= 0) return 0;
                 const units = (parseFloat(rd['A_L30']) || 0) + (parseFloat(rd['units_ordered_l60']) || 0);
                 const n = (units / sess) * 100;
                 return isFinite(n) ? n : null;
@@ -5113,7 +5113,7 @@
                         title: "LT O CVR",
                         field: "LT_O_CVR",
                         hozAlign: "center",
-                        headerTooltip: "Overall CVR, ads + organic together: (A L30 + units ordered L60) ÷ (Sess30 + Sess60) × 100 (the last 60 days, the longest window stored).",
+                        headerTooltip: "Overall CVR, ads + organic together: (A L30 + units ordered L60) ÷ (Sess30 + Sess60) × 100 (the last 60 days, the longest window stored). A SKU with no sessions starts at 0.0%.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const lto = amazonRowLtoCvr(row);
