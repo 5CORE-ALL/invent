@@ -62,6 +62,11 @@ return [
     // A user without a password in .env, or not listed, falls back to the sourcing mailbox.
     'quote_senders' => $quoteSenders,
 
+    // Compliance document requests (Compliance <Badge> pages -> Mail) always go out from this mailbox (a key of
+    // 'quote_senders', i.e. the QUOTE_MAIL_<KEY>_* block in .env), whoever is logged in. Falls back to the
+    // normal per-user / sourcing1 sender only if that mailbox has no password yet.
+    'compliance_sender' => env('COMPLIANCE_MAIL_SENDER', 'candy'),
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations

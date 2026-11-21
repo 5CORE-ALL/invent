@@ -391,7 +391,7 @@ class ComplianceDocRequestController extends Controller
         $user = Auth::user();
         $userName = trim((string) ($user->name ?? '')) ?: 'Team';
         $userEmail = trim((string) ($user->email ?? ''));
-        $sender = app(ContainerQuoteRequestController::class)->sender();
+        $sender = $this->sender();
 
         $docs = self::FIELD_DOCS[$field] ?? [$label.' compliance test report', $label.' compliance certificate'];
         $skus = array_map(fn ($r) => (string) $r['SKU'], $skuRows);
@@ -483,6 +483,26 @@ class ComplianceDocRequestController extends Controller
         $h .= '<p>Thank you,<br>'.$e($userName).($userEmail !== '' ? '<br>'.$e($userEmail) : '').'<br>5Core</p>';
 
         return $h.'</div>';
+    }
+
+    /**
+     * Mailbox for this page: the one set in config mail.compliance_sender (mgr-content@5core.com), for every user.
+     *
+     * @return array{mailer: string, email: string, name: string}
+     */
+    private function sender(): array
+    {
+        $def = config('mail.quote_senders.'.(string) config('mail.compliance_sender', 'candy'));
+        $mailer = (string) ($def['mailer'] ?? '');
+        if ($mailer !== '' && trim((string) config('mail.mailers.'.$mailer.'.password')) !== '') {
+            return [
+                'mailer' => $mailer,
+                'email' => (string) ($def['from_email'] ?? ''),
+                'name' => (string) ($def['from_name'] ?? ''),
+            ];
+        }
+
+        return app(ContainerQuoteRequestController::class)->sender();
     }
 
     /** The declaration letter format (empty when the badge has none). */
