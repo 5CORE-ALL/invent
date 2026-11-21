@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\ComplianceDocRequest;
+use App\Models\User;
 use App\Support\Badges\ComplianceMasterBadgeCalculator;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -211,7 +212,7 @@ class ComplianceDocRequestController extends Controller
             'note' => $built['note'] !== '' ? $built['note'] : null,
             'status' => 'draft',
             'user_id' => $user->id ?? null,
-            'user_name' => $built['from_name'],
+            'user_name' => trim((string) ($user->name ?? '')) ?: $built['from_name'],
         ]);
 
         // The request form (PDF) is always attached; uploaded files go along with it.
@@ -234,9 +235,9 @@ class ComplianceDocRequestController extends Controller
         try {
             Mail::mailer($sender['mailer'])->html($html, function ($m) use ($built, $sender, $user, $files) {
                 $m->from($sender['email'], $built['from_name'])->subject($built['subject']);
+                $m->replyTo($sender['email'], $built['from_name']);
                 $userEmail = trim((string) ($user->email ?? ''));
-                if ($userEmail !== '' && filter_var($userEmail, FILTER_VALIDATE_EMAIL)) {
-                    $m->replyTo($userEmail, $built['from_name']);
+                if ($userEmail !== '' && filter_var($userEmail, FILTER_VALIDATE_EMAIL) && strcasecmp($userEmail, $sender['email']) !== 0) {
                     $m->cc($userEmail); // a copy for the person who asked
                 }
                 foreach ($built['to_emails'] as $i => $addr) {
@@ -390,9 +391,10 @@ class ComplianceDocRequestController extends Controller
         $imageUrl = $imagePath ? (preg_match('#^https?://#i', $imagePath) ? $imagePath : url($imagePath)) : null;
 
         $user = Auth::user();
-        $userName = trim((string) ($user->name ?? '')) ?: 'Team';
-        $userEmail = trim((string) ($user->email ?? ''));
         $sender = $this->sender((string) $request->input('sender', ''));
+        // The mail is written and signed as the owner of the mailbox it goes out from (name from the users table).
+        $userName = $sender['owner'];
+        $userEmail = $sender['email'];
 
         $docs = self::FIELD_DOCS[$field] ?? [$label.' compliance test report', $label.' compliance certificate'];
         $skus = array_map(fn ($r) => (string) $r['SKU'], $skuRows);
@@ -435,7 +437,7 @@ class ComplianceDocRequestController extends Controller
             'from_email' => $b['sender']['email'],
             'sender_key' => $b['sender']['key'],
             'senders' => array_values(array_map(
-                fn ($o) => ['key' => $o['key'], 'email' => $o['email']],
+                fn ($o) => ['key' => $o['key'], 'email' => $o['email'], 'name' => $o['owner']],
                 $this->senderOptions()
             )),
             'reply_to' => $b['user_email'],
@@ -495,7 +497,7 @@ class ComplianceDocRequestController extends Controller
      * Mailboxes this page can send from: sourcing1@5core.com plus every personal mailbox saved in .env
      * (config mail.quote_senders) whose password is set. key => [key, mailer, email, name].
      *
-     * @return array<string, array{key: string, mailer: string, email: string, name: string}>
+     * @return array<string, array{key: string, mailer: string, email: string, name: string, owner: string}>
      */
     private function senderOptions(): array
     {
@@ -510,6 +512,7 @@ class ComplianceDocRequestController extends Controller
                 'email' => (string) config('mail.mailers.'.$mailer.'.username', 'sourcing1@5core.com'),
                 'name' => '5Core Sourcing',
             ];
+            $out['sourcing']['owner'] = $this->ownerName($out['sourcing']['email'], $out['sourcing']['name']);
         }
         foreach ((array) config('mail.quote_senders', []) as $key => $def) {
             $m = (string) ($def['mailer'] ?? '');
@@ -520,6 +523,7 @@ class ComplianceDocRequestController extends Controller
                     'email' => (string) ($def['from_email'] ?? ''),
                     'name' => (string) ($def['from_name'] ?? ''),
                 ];
+                $out[(string) $key]['owner'] = $this->ownerName($out[(string) $key]['email'], $out[(string) $key]['name']);
             }
         }
 
@@ -544,7 +548,21 @@ class ComplianceDocRequestController extends Controller
             return $options[$default];
         }
 
-        return ['key' => 'default'] + app(ContainerQuoteRequestController::class)->sender();
+        $fallback = app(ContainerQuoteRequestController::class)->sender();
+
+        return ['key' => 'default', 'owner' => $this->ownerName($fallback['email'], $fallback['name'])] + $fallback;
+    }
+
+    /** Real name of the person who owns a mailbox: users.name of the user with that e-mail, else $fallback. */
+    private function ownerName(string $email, string $fallback): string
+    {
+        try {
+            $name = User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($email))])->value('name');
+        } catch (\Throwable $e) {
+            $name = null;
+        }
+
+        return trim((string) $name) !== '' ? trim((string) $name) : (trim($fallback) !== '' ? trim($fallback) : 'Team');
     }
 
     /** The declaration letter format (empty when the badge has none). */

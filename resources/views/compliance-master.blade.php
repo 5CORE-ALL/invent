@@ -4145,13 +4145,13 @@
                             document.getElementById('cmMailTo').innerHTML = to;
                             if (!senderSel.options.length || senderSel.dataset.parent !== sel.value) {
                                 senderSel.innerHTML = (j.senders || []).map(function(o) {
-                                    return '<option value="' + escapeHtml(o.key) + '" data-email="' + escapeHtml(o.email) + '"' + (o.key === j.sender_key ? ' selected' : '') + '></option>';
+                                    return '<option value="' + escapeHtml(o.key) + '" data-email="' + escapeHtml(o.email) + '" data-name="' + escapeHtml(o.name || '') + '"' + (o.key === j.sender_key ? ' selected' : '') + '></option>';
                                 }).join('');
                                 senderSel.dataset.parent = sel.value;
                             }
-                            // labels: "<your name> <mailbox>" (the name is the logged-in user's)
+                            // labels: "<owner's name> <mailbox>" (name from the users table)
                             Array.prototype.forEach.call(senderSel.options, function(opt) {
-                                opt.textContent = (j.from_name || '') + ' <' + opt.dataset.email + '>';
+                                opt.textContent = (opt.dataset.name || '') + ' <' + opt.dataset.email + '>';
                             });
                             document.getElementById('cmMailFrom').innerHTML = (j.reply_to ? '— replies go to ' + escapeHtml(j.reply_to) : '');
                             document.getElementById('cmMailSubject').textContent = j.subject || '';
@@ -4196,7 +4196,6 @@
                     if (!canSend) return;
                     const fileErr = validateFiles();
                     if (fileErr) { setMsg('<span class="text-danger">' + escapeHtml(fileErr) + '</span>'); return; }
-                    if (!confirm('Send this email to the supplier of ' + sel.value + '?')) return;
                     sendBtn.disabled = true;
                     saveBtn.disabled = true;
                     setMsg('<span class="text-muted">Sending…</span>');
