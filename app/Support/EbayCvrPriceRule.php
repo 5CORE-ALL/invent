@@ -12,7 +12,19 @@ namespace App\Support;
  */
 class EbayCvrPriceRule
 {
-    public const KEYS = ['enabled', 'down', 'same', 'up', 'lower_cap', 'min_npft', 'min_nroi', 'down_band', 'up_band'];
+    public const KEYS = ['enabled', 'down', 'same', 'up', 'pink', 'pink_above', 'lower_cap', 'min_npft', 'min_nroi', 'upper_cap', 'max_npft', 'max_nroi', 'down_band', 'up_band'];
+
+    /**
+     * Channels on the Amazon version of the rule (the same CVR Price Rule as /amazon-tabulator-view): pink slab, Upper cap,
+     * sold 0 = CVR Down, CVR 7% to 13% = within target, no lifetime CVR starts at 0%, caps for "--", no Std Prc ceiling when
+     * it runs on its own. The other channels keep the first version until they are moved over (add them here).
+     */
+    public const AMAZON_STYLE_CHANNELS = ['ebay1'];
+
+    public static function amazonStyle(string $channel): bool
+    {
+        return in_array($channel, self::AMAZON_STYLE_CHANNELS, true);
+    }
 
     /** Saved rule for a channel (ebay1 / ebay2 / ebay3 / shopify_b2c), normalized. Stored under `{channel}_cvr_price_rule`. */
     public static function config(string $channel): array
@@ -23,7 +35,12 @@ class EbayCvrPriceRule
             $row = null;
         }
 
-        return \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonNormalizeCvrPriceRule($row?->visibility);
+        $cfg = \App\Http\Controllers\MarketPlace\OverallAmazonController::amazonNormalizeCvrPriceRule($row?->visibility);
+        if (self::amazonStyle($channel)) {
+            $cfg['amazon_style'] = true;
+        }
+
+        return $cfg;
     }
 
     public static function save(string $channel, array $input): array
@@ -101,6 +118,24 @@ class EbayCvrPriceRule
         if ($cfg === null || empty($cfg['enabled']) || ! ($base > 0)) {
             return null;
         }
+        if (! empty($cfg['amazon_style'])) {
+            // Amazon version: no lifetime CVR (no views yet) starts from LT O CVR = 0%.
+            $ltoRaw = $input['lto_cvr'] ?? null;
+            $lto = ($ltoRaw === null || $ltoRaw === '' || ! is_numeric($ltoRaw)) ? 0.0 : (float) $ltoRaw;
+            $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($input, $cfg) : null;
+            $ceil = ! empty($cfg['upper_cap']) ? self::ceilingPrice($input, $cfg) : null;
+
+            return AmazonCvrPriceRule::decide(
+                $base,
+                (float) ($input['cvr'] ?? 0),
+                $lto,
+                (float) ($input['ebay_l30'] ?? 0),
+                (float) ($input['price'] ?? 0),
+                $cfg,
+                $floor,
+                $ceil
+            );
+        }
         $lto = $input['lto_cvr'] ?? null;
         if ($lto === null || $lto === '' || ! is_numeric($lto)) {
             return null;
@@ -176,6 +211,47 @@ class EbayCvrPriceRule
         }
 
         return $floor;
+    }
+
+    /** Highest price the Upper cap allows (lower of the Max NPFT% price and the Max NROI% price). null = no limit. */
+    public static function ceilingPrice(array $input, array $cfg): ?float
+    {
+        $lp = (float) ($input['lp'] ?? 0);
+        $cost = $lp > 0 ? $lp : 0.0;
+        $ship = (float) ($input['ship'] ?? 0);
+        $margin = (float) ($input['percentage'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0)) {
+            $margin = AmazonDilGroiRule::TAKE_HOME;
+        }
+        $ads = max(0.0, (float) ($input['ads'] ?? 0)) * 100;
+        $ceil = null;
+        if (isset($cfg['max_npft']) && is_numeric($cfg['max_npft'])) {
+            $k = $margin - ((float) $cfg['max_npft'] + $ads) / 100;
+            if ($k > 0) {
+                $f = ($ship + $cost) / $k;
+                $ceil = $ceil === null ? $f : min($ceil, $f);
+            }
+        }
+        if (isset($cfg['max_nroi']) && is_numeric($cfg['max_nroi']) && $cost > 0) {
+            $k = $margin - $ads / 100;
+            if ($k > 0) {
+                $f = ($cost * (1 + (float) $cfg['max_nroi'] / 100) + $ship) / $k;
+                $ceil = $ceil === null ? $f : min($ceil, $f);
+            }
+        }
+
+        return $ceil;
+    }
+
+    /** The rule's price with no Std Prc ceiling (Amazon version, running on its own). null = no change from the live Price. */
+    public static function noCeiling(float $price, float $live): ?float
+    {
+        $price = round($price, 2);
+
+        return abs($price - $live) < 0.005 ? null : $price;
     }
 
     private static function band(mixed $v, float $default, float $max): float

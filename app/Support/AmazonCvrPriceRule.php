@@ -31,6 +31,26 @@ class AmazonCvrPriceRule
         // No lifetime CVR (no sessions): it starts from LT O CVR = 0%.
         $lto = $sess <= 0 ? 0.0 : (($aL30 + $aL60) / $sess) * 100;
         $cvr = $sess30 == 0.0 ? 0.0 : ($aL30 / $sess30) * 100;
+        $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($row, $cfg, $channelAds) : null;
+        $ceil = ! empty($cfg['upper_cap']) ? self::ceilingPrice($row, $cfg, $channelAds) : null;
+
+        return self::decide($base, $cvr, $lto, $aL30, (float) ($row['price'] ?? 0), $cfg, $floor, $ceil);
+    }
+
+    /**
+     * The rule itself, shared with the eBay CVR Price Rule (App\Support\EbayCvrPriceRule): the case (pink / Down / within / Up),
+     * the price change %, then the Upper and Lower caps.
+     *
+     * @param  float  $cvr   CVR L30 in %
+     * @param  float  $lto   LT O CVR in % (0 when the SKU has none yet)
+     * @param  float  $sold  units sold in the last 30 days (0 = CVR 0%, always Down)
+     * @param  float  $live  the live Price (Down never goes above it)
+     * @param  float|null  $floor  Lower cap price (INF = a minimum that can never be reached, null = no limit)
+     * @param  float|null  $ceil   Upper cap price (null = no limit)
+     * @return array{price: float, capped: bool}|null
+     */
+    public static function decide(float $base, float $cvr, float $lto, float $sold, float $live, array $cfg, ?float $floor, ?float $ceil): ?array
+    {
         $down = self::band($cfg['down_band'] ?? null, 20.0, 99.0) / 100;
         $up = self::band($cfg['up_band'] ?? null, 20.0, 1000.0) / 100;
         $pinkRaw = $cfg['pink'] ?? null;
@@ -40,7 +60,7 @@ class AmazonCvrPriceRule
         if ($pinkOn && $cvr > $pinkAbove) {
             // Pink up arrow slab (CVR L30 above the pink target): replaces the down / within / up case.
             $case = 'pink';
-        } elseif ($aL30 <= 0) {
+        } elseif ($sold <= 0) {
             // Sold 0 (CVR L30 = 0%): always CVR Down, whatever LT O CVR is.
             $case = 'down';
         } elseif ($cvr >= 7.0 && $cvr <= 13.0) {
@@ -68,12 +88,10 @@ class AmazonCvrPriceRule
         $next = $base * (1 + $pct / 100);
         $capped = false;
         // Upper cap: a new price above the cap price is brought down to it. CVR Up / pink never LOWER the price (see below).
-        $ceil = ! empty($cfg['upper_cap']) ? self::ceilingPrice($row, $cfg, $channelAds) : null;
         if ($ceil !== null && is_finite($ceil) && $next > $ceil) {
             $next = $ceil;
             $capped = true;
         }
-        $floor = ! empty($cfg['lower_cap']) ? self::floorPrice($row, $cfg, $channelAds) : null;
         if ($floor !== null && $next < $floor) {
             $next = is_finite($floor) ? $floor : $base;
             $capped = true;
@@ -87,7 +105,6 @@ class AmazonCvrPriceRule
         // up to its floor, which made a Down SKU go up), and not above the live price either.
         if ($pct < 0) {
             $next = min($next, $base);
-            $live = (float) ($row['price'] ?? 0);
             if ($live > 0) {
                 $next = min($next, $live);
             }

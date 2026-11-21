@@ -18,11 +18,15 @@ class EbayRuleSpriceApply
      * Run after the HTTP response is sent. Rapid rule edits (the Sprc Dil modal autosaves) share one run: a change
      * that arrives while a run is going sets a flag, and the run repeats once at its end with the newest rules.
      */
-    public static function dispatch(string $channel): void
+    public static function dispatch(string $channel, bool $cvrApplyNow = false): void
     {
         $channel = strtolower(trim($channel));
         if (! in_array($channel, EbayRuleSprice::CHANNELS, true)) {
             return;
+        }
+        if ($cvrApplyNow) {
+            // Saving the CVR Price Rule: the next run takes the % off the live Price once, even when S PRC already equals it.
+            Cache::put('ebay-cvr-apply-now-'.$channel, 1, 1800);
         }
         $running = 'ebay-rule-apply-running-'.$channel;
         $again = 'ebay-rule-apply-again-'.$channel;
@@ -64,8 +68,10 @@ class EbayRuleSpriceApply
             }
             StdPrcVsDilPricer::flush();
             $deadline = microtime(true) + 120;
+            // One compounding pass per Save: the flag is consumed here, so the repeat rounds below only re-save the same prices.
+            $applyNow = (bool) Cache::pull('ebay-cvr-apply-now-'.$channel);
             do {
-                $summary = app(EbaySprcDilAutoPushService::class)->run($channel);
+                $summary = app(EbaySprcDilAutoPushService::class)->run($channel, false, null, null, $applyNow);
                 $errors = (array) ($summary['stats']['errors'] ?? []);
                 $locked = in_array('lock: already running', $errors, true);
                 if ($locked) {

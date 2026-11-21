@@ -5012,9 +5012,11 @@
                         headerTooltip: "Overall CVR over the last 60 days: (eBay L30 + eBay L31–60 units) ÷ (L30 views + views of the prior 30 days) × 100. Prior views come from the daily snapshot saved 30 days ago. Blank when that snapshot is missing.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            const lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
-                            if (!isFinite(lto)) return '<span class="text-muted">—</span>';
+                            let lto = (row.LT_O_CVR === null || row.LT_O_CVR === undefined || row.LT_O_CVR === '') ? NaN : parseFloat(row.LT_O_CVR);
                             const isParent = row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT');
+                            // CVR Price Rule (Amazon version): a SKU with no lifetime CVR starts from LT O CVR = 0%.
+                            if (!isFinite(lto) && !isParent && !row.is_parent_summary && typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2) lto = 0;
+                            if (!isFinite(lto)) return '<span class="text-muted">—</span>';
                             let tip = 'LT O CVR (last 60 days, ads + organic)';
                             if (!isParent) {
                                 const units = (parseFloat(row['eBay L30']) || 0) + (parseFloat(row['eBay L60']) || 0);
@@ -5033,18 +5035,29 @@
                         title: "CVR Δ",
                         field: "CVR_VS_LTO",
                         hozAlign: "center",
-                        width: 60,
-                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow.",
+                        width: 66,
+                        headerTooltip: "CVR 30 vs LT O CVR using the targets set in CVR Price Rule (default 20%): within the targets shows --, above the Up target the up arrow, below the Down target the down arrow. A CVR L30 between 7% and 13% never shows an up / down arrow. A pink up arrow is added when CVR L30 is above the pink target set in the CVR Price Rule modal (default 12.99%).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const t = (typeof ebayCvrRuleTrendValue === 'function') ? ebayCvrRuleTrendValue(row, null) : null;
+                            const v2 = (typeof EBAY_CVR_V2 !== 'undefined' && EBAY_CVR_V2);
+                            // CVR L30 above the pink target (CVR Price Rule modal, default 12.99%): an extra pink up arrow next to the normal arrow.
+                            let pinkUp = '';
+                            if (v2 && t !== null) {
+                                const cvr30 = parseFloat(row.SCVR) || 0;
+                                const pinkAbove = (typeof ebayCvrRulePinkAbove === 'function') ? ebayCvrRulePinkAbove() : 12.99;
+                                if (cvr30 > pinkAbove) pinkUp = '<span title="CVR L30 ' + cvr30.toFixed(1) + '% is above ' + pinkAbove + '%"><i class="fas fa-arrow-up" style="color:#e83e8c;font-size:12px;"></i></span>';
+                            }
                             if (t === null) return '<span class="text-muted">—</span>';
-                            const lto = parseFloat(row.LT_O_CVR);
+                            const ltoRaw = parseFloat(row.LT_O_CVR);
+                            const lto = isFinite(ltoRaw) ? ltoRaw : 0; // no lifetime CVR starts from 0%
                             const tip = 'CVR ' + (parseFloat(row.SCVR) || 0).toFixed(1) + '% vs LT O CVR ' + lto.toFixed(1) + '%';
                             const pcts = ebayCvrRuleBandPcts(null);
-                            if (t > 0) return '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
-                            if (t < 0) return '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
-                            return '<span title="' + tip + ' · within the CVR targets">--</span>';
+                            let main;
+                            if (t > 0) main = '<span title="' + tip + ' · more than ' + pcts.up + '% above"><i class="fas fa-arrow-up" style="color:#28a745;font-size:12px;"></i></span>';
+                            else if (t < 0) main = '<span title="' + tip + ' · more than ' + pcts.down + '% below"><i class="fas fa-arrow-down" style="color:#a00211;font-size:12px;"></i></span>';
+                            else main = '<span title="' + tip + ' · within the CVR targets">--</span>';
+                            return pinkUp ? (main + ' ' + pinkUp) : main;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const x = ebayCvrRuleTrendValue(aRow.getData(), null);

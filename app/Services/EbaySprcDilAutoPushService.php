@@ -27,7 +27,7 @@ class EbaySprcDilAutoPushService
      * @param  list<string>|null  $onlySkus
      * @return array{stats: array<string, mixed>, changes: list<array{sku:string,sprice:float}>}
      */
-    public function run(string $channel, bool $dryRun = false, ?array $onlySkus = null, ?callable $logger = null): array
+    public function run(string $channel, bool $dryRun = false, ?array $onlySkus = null, ?callable $logger = null, bool $cvrApplyNow = false): array
     {
         $channel = strtolower(trim($channel));
         if (! in_array($channel, EbayRuleSprice::CHANNELS, true)) {
@@ -61,6 +61,8 @@ class EbaySprcDilAutoPushService
             $pageAds = EbayRuleSprice::pageAdsPercent($channel);
             // The page switch decides the rule: Std prc vs dil, or Sprc Dil (Target NROI by Dil, LMP × 0.98).
             $ruleContext = EbayRuleSprice::context($channel);
+            // The CVR Price Rule was just saved: take its % off the live Price even when the saved S PRC already equals it (one more cut).
+            $ruleContext['cvr_apply_now'] = $cvrApplyNow;
             $cvrOnly = $ruleContext['rule'] === 'none' && is_array($ruleContext['cvr_price'] ?? null);
             $cvrHitSkus = [];
             if ($ruleContext['rule'] === 'none' && ! $cvrOnly) {

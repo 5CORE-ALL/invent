@@ -365,18 +365,24 @@ class EbayRuleSprice
             $cfg = is_array($context['cvr_price'] ?? null) ? $context['cvr_price'] : null;
             $std = (float) ($input['std'] ?? 0);
             $live = round((float) ($input['price'] ?? 0), 2);
-            if ($cfg === null || ! ($live > 0) || ! ((float) ($input['inv'] ?? 0) > 0) || $pricer->isClearanceRow($input)
-                || EbayCvrPriceRule::holdsLive($live, (float) ($input['saved_sprice'] ?? 0))) {
+            $amazonStyle = ! empty($cfg['amazon_style']);
+            // Saving the CVR Price Rule applies it now (context cvr_apply_now): the % comes off the live Price even when the saved
+            // S PRC already equals it. Every other run holds there, so the 10-minute catch-up never compounds.
+            $holds = EbayCvrPriceRule::holdsLive($live, (float) ($input['saved_sprice'] ?? 0)) && empty($context['cvr_apply_now']);
+            if ($cfg === null || ! ($live > 0) || ! ((float) ($input['inv'] ?? 0) > 0) || $pricer->isClearanceRow($input) || $holds) {
                 return null;
             }
-            // Compares with the live Price: the rule's % comes off it. Up stops at Std Prc (LMP-capped), Down never goes above live.
+            // Compares with the live Price: the rule's % comes off it. Down never goes above live. The Amazon version has no Std Prc
+            // ceiling (the Upper cap replaces it); the first version stops Up at Std Prc (LMP-capped).
             $stdCapped = 0.0;
             $afterLmp = $std;
-            if ($std > 0) {
+            if ($std > 0 && ! $amazonStyle) {
                 [$afterLmp, $stdCapped] = self::capChain($std, $input, $context, false);
             }
             $hit = EbayCvrPriceRule::apply($live, $input, $cfg);
-            $newPrice = $hit === null ? null : EbayCvrPriceRule::clampUp((float) $hit['price'], $live, $stdCapped);
+            $newPrice = $hit === null ? null : ($amazonStyle
+                ? EbayCvrPriceRule::noCeiling((float) $hit['price'], $live)
+                : EbayCvrPriceRule::clampUp((float) $hit['price'], $live, $stdCapped));
             if ($newPrice === null) {
                 return null;
             }
