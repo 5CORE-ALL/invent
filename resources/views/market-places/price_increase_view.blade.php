@@ -13594,15 +13594,22 @@
             if (!row) return true;
             mode = mode || pushHistoryFilterMode();
             if (mode === 'all') return true;
-            // Parent rows: bucket of the parent dot. SKU (child) rows: bucket of their OWN dot (their newest push).
-            const bucket = row.is_parent_summary === true
-                ? histBucketOfParent(row)
-                : histBucketOfDate(row.push_history_last_at);
+            // Parent rows: bucket of the parent dot. SKU rows: with parents shown they follow their parent (so a parent's
+            // totals always match the SKUs listed under it); in "SKU Only" view (no parents) they use their OWN dot.
+            let bucket;
+            if (row.is_parent_summary === true) {
+                bucket = histBucketOfParent(row);
+            } else if ($('#sku-parent-filter').val() === 'sku') {
+                bucket = histBucketOfDate(row.push_history_last_at);
+            } else {
+                phBuildIdx();
+                bucket = histBucketOfParent(phParentIdx[row.parent]);
+            }
             return !!bucket && histSelected().indexOf(bucket) !== -1;
         }
+        /** SKUs of an opened parent: ALL of them stay listed (the parent already passed the filter), so its totals add up. */
         function dropRecentPushedRows(rows) {
-            const mode = pushHistoryFilterMode();
-            return mode === 'all' ? rows : rows.filter(function(r) { return passesPushHistoryFilter(r, mode); });
+            return rows;
         }
         /** Dropdown button text: "History All 258" or the ticked colours with their counts. */
         function updateHistLabel() {
