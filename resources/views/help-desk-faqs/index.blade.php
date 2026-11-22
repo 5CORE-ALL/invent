@@ -329,17 +329,23 @@
         }
         .faq-dept-item:hover { background: #eef5ff; }
         .faq-dept-item input, .faq-dept-card-title input { margin: 0; flex-shrink: 0; }
-        .faq-dept-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        /* Standard badge grid (same look as the summary badges on the marketplace pages) */
+        .faq-dept-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.4rem; margin-bottom: 10px; }
         .faq-dept-chip {
-            cursor: pointer; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 999px;
-            font-size: 0.68rem; font-weight: 600; padding: 3px 9px; transition: background .12s ease, color .12s ease;
+            display: inline-flex !important; align-items: center; justify-content: center; text-align: center; gap: 0.3rem;
+            min-height: 42px; box-sizing: border-box; padding: 0.4rem 0.45rem !important; border-radius: 0.375rem;
+            font-size: 0.85rem !important; font-weight: 700; line-height: 1.2; color: #fff; cursor: pointer;
+            background-color: #0d6efd; border: 0; transition: filter .12s ease, transform .12s ease;
         }
-        .faq-dept-chip b { margin-left: 3px; padding: 0 6px; border-radius: 999px; background: #4f46e5; color: #fff; font-weight: 700; }
-        .faq-dept-chip.is-zero b { background: #cbd5e1; color: #475569; }
-        .faq-dept-chip:hover { background: #e0e7ff; }
-        .faq-dept-chip.is-active { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border-color: transparent; }
-        .faq-dept-chip.is-active b { background: #fff; color: #4f46e5; }
-        .faq-dept-chip-all { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+        .faq-dept-chip:hover { filter: brightness(1.1); }
+        .faq-dept-chip::before {
+            content: ''; width: 6px; height: 6px; border-radius: 50%; background: #9ca3af; flex-shrink: 0;
+        }
+        .faq-dept-chip b { font-weight: 700; margin: 0; padding: 0; background: none; color: inherit; }
+        .faq-dept-chip.is-zero { background-color: #6c757d; }
+        .faq-dept-chip.is-active { background-color: #6610f2; box-shadow: 0 0 0 2px rgba(102, 16, 242, .25); }
+        .faq-dept-chip.is-active::before { background: #22c55e; }
+        .faq-dept-chip-all, .faq-dept-chip-all.is-zero { background-color: #4c1d95; }
         .faq-dept-item .faq-dept-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         .faq-dept-count {
             flex-shrink: 0; min-width: 24px; padding: 0 7px; border-radius: 999px; text-align: center;
@@ -385,9 +391,9 @@
             </div>
             {{-- Department counts as real .badge pills (Auto Task Events reads these as its "Badges") --}}
             <div class="faq-dept-strip" id="faqDeptStrip" title="FAQs per department (click to filter)">
-                <span class="badge faq-dept-chip faq-dept-chip-all" id="faqDeptBadgeAll" role="button">All FAQs <b id="faqDeptStripTotal">0</b></span>
+                <span class="badge fs-6 p-2 faq-dept-chip faq-dept-chip-all" id="faqDeptBadgeAll" role="button">All FAQs <b id="faqDeptStripTotal">0</b></span>
                 @foreach ($departments as $dept)
-                    <span class="badge faq-dept-chip" id="faqDeptBadge_{{ $dept->id }}" data-dept-id="{{ $dept->id }}" role="button">{{ $dept->name }} <b data-dept-count="{{ $dept->id }}">0</b></span>
+                    <span class="badge fs-6 p-2 faq-dept-chip" id="faqDeptBadge_{{ $dept->id }}" data-dept-id="{{ $dept->id }}" role="button">{{ $dept->name }} <b data-dept-count="{{ $dept->id }}">0</b></span>
                 @endforeach
             </div>
 

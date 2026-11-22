@@ -102,11 +102,6 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('meetings.minutes.index') }}" class="{{ request()->routeIs('meetings.minutes.*') ? 'active' : '' }}">
-                                <i class="ri-draft-line me-2"></i>Meeting Minutes
-                            </a>
-                        </li>
-                        <li>
                             <a href="{{ route('tasks.scoreHistory') }}" class="{{ request()->routeIs('tasks.scoreHistory') ? 'active' : '' }}">
                                 <i class="ri-history-line me-2"></i>Score History
                             </a>
