@@ -431,6 +431,16 @@
             padding: 2px 6px;
             text-align: right;
         }
+        /* Typed price: green = already pushed to the channel, red = not pushed yet */
+        #ovl30ChannelsPushModal .chpush-input.chpush-pushed { color: #198754; font-weight: 700; }
+        #ovl30ChannelsPushModal .chpush-input.chpush-notpushed { color: #dc3545; font-weight: 700; }
+        #pi-pending-alert {
+            display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+            margin: 8px 12px 0; padding: 8px 14px; border-radius: 6px;
+            background: #dc3545; color: #fff; font-weight: 600; font-size: 14px;
+            box-shadow: 0 2px 8px rgba(220,53,69,.35); cursor: pointer;
+        }
+        #pi-pending-alert .btn { font-weight: 600; }
         #ovl30ChannelsPushModal .chpush-btn { padding: 2px 8px; line-height: 1.3; }
         #ovl30ChannelsPushModal .chpush-col-btn { padding: 1px 8px; line-height: 1.3; }
         #ovl30ChannelsPushModal .chpush-btn.btn-success,
@@ -2555,6 +2565,12 @@
                     <span class="summary-badge-value" id="avg-lqs-badge">-</span>
                 </span>
             </div>
+            {{-- Red alert while at least one channel price push is still pending (retried hourly, e-mailed to software5@5core.com) --}}
+            <div id="pi-pending-alert" role="alert" title="Click to see the pending pushes">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="pi-pending-alert-text"></span>
+                <button type="button" class="btn btn-sm btn-light ms-auto" id="pi-pending-view-btn">View list</button>
+            </div>
             <div class="card-body py-3">
              
                 <div class="d-flex align-items-center flex-wrap gap-2">
@@ -2830,6 +2846,32 @@
                     </div>
                     <!-- Table body -->
                     <div id="cvr-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Pending channel price pushes (red alert on this page) --}}
+    <div class="modal fade" id="piPendingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white py-2">
+                    <h6 class="modal-title mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Price pushes still pending</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="small text-muted px-3 py-2 border-bottom">
+                        These prices were not accepted by the channel. They are retried automatically every hour and
+                        software5@5core.com is e-mailed. The alert disappears when every channel is pushed.
+                    </div>
+                    <table class="table table-sm table-striped mb-0 align-middle">
+                        <thead><tr><th>SKU</th><th>Channel</th><th class="text-end">Price</th><th class="text-center">Tries</th><th>Last try</th><th>Reason</th><th></th></tr></thead>
+                        <tbody id="pi-pending-body"></tbody>
+                    </table>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-danger" id="pi-pending-retry-all"><i class="fas fa-redo me-1"></i>Retry now</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -10081,11 +10123,14 @@
                 if (goodsId) payload.goods_id = goodsId;
                 if (skuId) payload.sku_id = skuId;
             }
+            payload.channel = String(target.channel || target.marketplace || '');
             return $.ajax({
-                url: '/cvr-master-push-price',
+                // Same push as /cvr-master-push-price, but a failure is remembered: retried hourly + e-mail + red alert
+                url: '/price-push-tracked',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: payload
+                data: payload,
+                complete: function() { piPendingRefreshSoon(); }
             }).then(function(response) {
                 if (response && response.success) {
                     target.$btn.html('<i class="fas fa-check"></i>')
@@ -10760,6 +10805,10 @@
             html += '</div>';
             $('#chpush-body').html(html);
             chpushRenderedSku = String(getModalPrimarySku() || '');
+            // A price typed in the SPRICE $ box fills (and overwrites) every box once, as soon as this modal opens
+            if (chpushSameBase.x > 0 && !chpushSameBase.applied && chpushSameBase.sku === chpushRenderedSku) {
+                chpushApplySameBase();
+            }
             chpushPaint(); // restore tick / triangle / spinner of pushes that ran (or still run) in the background
         }
 
@@ -10782,6 +10831,45 @@
                 channel: String($chTr.attr('data-channel') || '')
             };
         }
+
+        // ---- SPRICE $ box (SKU modal toolbar) → every box of the Channels modal, by column rule ----
+        // Only a price the user really typed counts (the box is also prefilled with the STD price, which must not overwrite saved prices).
+        let chpushSameBase = { sku: '', x: 0, applied: false };
+
+        /** Suggested price of a Channels column for base price X (null = cannot be derived). */
+        function chpushPriceForType(type, x) {
+            const t = String(type || '').toLowerCase().trim();
+            if (t === 'b2b' || t === 'c2c') return +(x * 0.75).toFixed(2);          // 0.75 × X
+            if (t === CHPUSH_NOSHIP_GROUP.toLowerCase()) return chpushNoShipPrice(x); // 0.75 × X − Ship
+            if (t === 'high shipping') {                                              // X + Shipping Master Diff
+                const d = chpushShipDiff();
+                return d == null ? null : Math.max(0.01, +(x + d).toFixed(2));
+            }
+            return +x.toFixed(2);                                                     // B2C and the rest = X
+        }
+
+        /** Overwrite every box of the Channels modal from the typed SPRICE $ (existing saved SPRICE is replaced), then auto-save. */
+        function chpushApplySameBase() {
+            const x = chpushSameBase.x;
+            if (!(x > 0)) return;
+            $('#ovl30ChannelsPushModal .chpush-card').each(function() {
+                const v = chpushPriceForType($(this).attr('data-type'), x);
+                if (v == null) return;
+                $(this).find('.chpush-input').val(v.toFixed(2));
+            });
+            chpushSameBase.applied = true;
+            chpushPaint();
+            chpushAutoSaveSoon(700);
+        }
+
+        $(document).on('input', '#modal-sprice-same-input', function(e) {
+            if (!e.originalEvent) return; // programmatic prefill
+            const x = parseOvl30PushPrice($(this).val());
+            chpushSameBase = { sku: String(getModalPrimarySku() || ''), x: x || 0, applied: false };
+            if ($('#ovl30ChannelsPushModal').hasClass('show') && chpushRenderedSku === chpushSameBase.sku) {
+                chpushApplySameBase();
+            }
+        });
 
         // Typing a price in the first row of a column autofills the rest of that column
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
@@ -10874,6 +10962,24 @@
             chpushPaint();
         }
 
+        /** True when this channel already has `typed` as its pushed price (this session's push, or the stored last push). */
+        function chpushIsPushed(channel, typed, regEntry) {
+            if (regEntry && regEntry.state === 'ok' && regEntry.price != null && Math.abs(regEntry.price - typed) < 0.005) return true;
+            if (regEntry && regEntry.state === 'fail') return false;
+            const key = chpushKey(channel);
+            const rows = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
+            for (let i = 0; i < rows.length; i++) {
+                if (chpushKey(rows[i] && rows[i].marketplace) !== key) continue;
+                const pp = parseFloat(rows[i].pushed_price);
+                if (!isFinite(pp) || pp <= 0) return false;
+                // Temu stores the pushed BASE price, the box shows the Temu SPRICE
+                const mp = String(rows[i].marketplace || '').toLowerCase().replace(/\s+/g, '');
+                const cmp = (mp === 'temu' || mp === 'temu2' || mp === 'temu3') ? temuPushBaseFromSprice(typed) : typed;
+                return cmp != null && Math.abs(pp - cmp) < 0.005;
+            }
+            return false;
+        }
+
         /** Draw registry state onto the open Channels modal (no-op while it is closed / shows another SKU). */
         function chpushPaint() {
             const sku = chpushRenderedSku;
@@ -10884,6 +10990,11 @@
                 const ch = String($tr.attr('data-channel'));
                 const e = reg.rows[ch];
                 const $btn = $tr.find('.chpush-btn');
+                // Price text: green = pushed, red = not pushed
+                const typedNow = parseOvl30PushPrice($tr.find('.chpush-input').val());
+                $tr.find('.chpush-input')
+                    .toggleClass('chpush-pushed', typedNow != null && chpushIsPushed(ch, typedNow, e))
+                    .toggleClass('chpush-notpushed', typedNow != null && !chpushIsPushed(ch, typedNow, e));
                 if (!e) { chpushSetBtnState($btn, 'idle'); return; }
                 if (e.state === 'busy') { chpushSetBtnState($btn, 'busy'); return; }
                 // tick / triangle only stay while the typed price is still the one that was pushed
@@ -11107,6 +11218,55 @@
                 }
             });
         }
+
+        // ---- Red alert on the pricing page while any channel push is pending ----
+        let piPendingTimer = null;
+        function piPendingRefreshSoon() {
+            clearTimeout(piPendingTimer);
+            piPendingTimer = setTimeout(piPendingRefresh, 1500);
+        }
+        function piPendingRender(res) {
+            const $a = $('#pi-pending-alert');
+            const n = (res && res.count) || 0;
+            if (!n) { $a.hide(); return; }
+            $('#pi-pending-alert-text').text(n + ' channel price push' + (n > 1 ? 'es are' : ' is') + ' NOT pushed yet ('
+                + res.skus + ' SKU' + (res.skus > 1 ? 's' : '') + ') — retried every hour, alert sent to software5@5core.com');
+            $a.css('display', 'flex');
+            const $b = $('#pi-pending-body');
+            if ($b.length) {
+                $b.html((res.items || []).map(function(r) {
+                    return '<tr><td class="fw-semibold">' + chpushEsc(r.sku) + '</td><td>' + chpushEsc(r.channel) + '</td>'
+                        + '<td class="text-end">$' + Number(r.price).toFixed(2) + '</td>'
+                        + '<td class="text-center">' + (r.attempts || 0) + (r.status === 'failed' ? ' <span class="badge bg-dark">gave up</span>' : '') + '</td>'
+                        + '<td class="text-nowrap">' + chpushEsc(r.last_attempt_at || '') + '</td>'
+                        + '<td class="text-danger small">' + chpushEsc(String(r.error || 'Not pushed').slice(0, 220)) + '</td>'
+                        + '<td><button type="button" class="btn btn-sm btn-outline-danger pi-pending-retry" data-id="' + r.id + '"><i class="fas fa-redo"></i></button></td></tr>';
+                }).join(''));
+            }
+        }
+        function piPendingRefresh() {
+            return $.getJSON('/price-push-pending').done(piPendingRender);
+        }
+        function piPendingRetry(id, $btn) {
+            if ($btn) $btn.prop('disabled', true);
+            $.ajax({
+                url: '/price-push-pending/retry', method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: id ? { id: id } : {}
+            }).done(function(r) {
+                showToast('Retried ' + (r.tried || 0) + ', pushed ' + (r.ok || 0), (r.ok || 0) > 0 ? 'success' : 'error');
+            }).always(function() {
+                if ($btn) $btn.prop('disabled', false);
+                piPendingRefresh();
+            });
+        }
+        $(document).on('click', '#pi-pending-alert', function() {
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('piPendingModal')).show();
+        });
+        $(document).on('click', '.pi-pending-retry', function() { piPendingRetry($(this).data('id'), $(this)); });
+        $(document).on('click', '#pi-pending-retry-all', function() { piPendingRetry(null, $(this)); });
+        piPendingRefresh();
+        setInterval(piPendingRefresh, 60000);
 
         // Push a single channel
         $(document).on('click', '#ovl30ChannelsPushModal .chpush-btn', function(e) {

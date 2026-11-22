@@ -265,6 +265,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('veeqo-sync-billing')
             ->appendOutputTo($log);
+        // Channel prices pushed from the /price-increase modals that did not go through: re-pushed every hour,
+        // and software5@5core.com is e-mailed while any is still pending (red alert on the pricing page).
+        $schedule->command('price-push:retry-pending')
+            ->hourlyAt(15)
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->name('price-push-retry-pending')
+            ->appendOutputTo($log);
         // Clearance count + INV history (graph in every Sprc Dil modal): refreshed hourly, so the day's last run is its closing number.
         $schedule->command('clearance:snapshot --backfill=30')
             ->hourlyAt(5)

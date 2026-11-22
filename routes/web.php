@@ -4371,6 +4371,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-channel-price-chart', [CvrMasterController::class, 'getChannelPriceChartData'])->name('cvr.master.channel.price.chart');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
+    // Same push, but remembers the result: failed pushes are retried hourly, e-mailed and shown as a red alert on /price-increase
+    Route::post('/price-push-tracked', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'push'])->name('price.push.tracked');
+    Route::get('/price-push-pending', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'index'])->name('price.push.pending');
+    Route::post('/price-push-pending/retry', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'retry'])->name('price.push.pending.retry');
     Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');
     Route::get('/cvr-master-push-history', [CvrMasterController::class, 'getSkuPushHistory'])->name('cvr.master.push.history');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
