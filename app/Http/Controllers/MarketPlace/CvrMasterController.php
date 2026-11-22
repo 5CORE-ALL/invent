@@ -223,18 +223,23 @@ class CvrMasterController extends Controller
 
         // Active channels from Channel Master, grouped by type (B2C, B2B, C2C, Dropship, Wholesale, ...)
         $channelsByType = [];
+        $channelLogos = []; // channel name => logo URL (Channel Master "logo"), shown next to the channel name in the SKU modal
         try {
             $typeOrder = ['B2C' => 1, 'B2B' => 2, 'C2C' => 3, 'DROPSHIP' => 4, 'DS' => 4, 'WHOLESALE' => 5, 'HIGH SHIPPING' => 6];
             // Channels shown under the "High Shipping" column regardless of their Channel Master type.
             $highShippingChannels = ['bestbuy usa', 'purchasing power'];
+            $hasLogoCol = Schema::hasColumn('channel_master', 'logo');
             $rows = ChannelMaster::query()
                 ->where('status', 'Active')
                 ->orderBy('channel')
-                ->get(['channel', 'type']);
+                ->get($hasLogoCol ? ['channel', 'type', 'logo'] : ['channel', 'type']);
             foreach ($rows as $row) {
                 $name = trim((string) $row->channel);
                 if ($name === '') {
                     continue;
+                }
+                if ($hasLogoCol && ! empty($row->logo)) {
+                    $channelLogos[$name] = '/storage/'.ltrim((string) $row->logo, '/');
                 }
                 $type = trim((string) ($row->type ?? ''));
                 if (in_array(strtolower($name), $highShippingChannels, true)) {
@@ -259,6 +264,7 @@ class CvrMasterController extends Controller
             "mode" => $mode,
             "demo" => $demo,
             "channelsByType" => $channelsByType,
+            "channelLogos" => $channelLogos,
             "ebayTakeHomeMap" => array_merge(
                 MarketplacePercentage::ebayTakeHomeMap(),
                 MarketplacePercentage::temuTakeHomeMap()

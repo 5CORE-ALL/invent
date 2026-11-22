@@ -137,6 +137,8 @@
             line-height: 1.2;
             max-width: 220px;
         }
+        #ovl30DetailsModal .ovl30-ch-wrap { display: inline-flex; align-items: center; gap: 6px; }
+        #ovl30DetailsModal .ovl30-ch-logo { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; border-radius: 4px; background: #fff; }
         #ovl30DetailsModal .ovl30-sku-thumb {
             width: 30px; height: 30px; object-fit: contain; flex-shrink: 0;
             background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 1px; cursor: zoom-in;
@@ -2103,6 +2105,7 @@
 
     <!-- Channels by type: suggested price per channel + push (opened from the SKU modal) -->
     <script>window.PI_CHANNELS_BY_TYPE = @json($channelsByType ?? []);</script>
+    <script>window.PI_CHANNEL_LOGOS = @json($channelLogos ?? new \stdClass());</script>
     <div class="modal fade" id="ovl30ChannelsPushModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width: 96vw;">
             <div class="modal-content">
@@ -4860,7 +4863,7 @@
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
-                        <td class="${textClass}">${item.marketplace || '-'}</td>
+                        <td class="${textClass}">${chModalChannelCellHtml(item.marketplace)}</td>
                         <td class="text-center ovl30-type-cell ${textClass}">${chModalTypeLabel(item.marketplace)}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() + l30ChartDot : '-'}</td>
                         <td class="text-center">-</td>
@@ -8625,6 +8628,22 @@
                 });
             });
             return found;
+        }
+        /** Channel logo (Channel Master) by channel key, or '' when the channel has none. */
+        function chModalChannelLogo(marketplace) {
+            const logos = window.PI_CHANNEL_LOGOS || {};
+            const key = chpushKey(marketplace);
+            let url = '';
+            Object.keys(logos).forEach(function(name) { if (!url && chpushKey(name) === key) url = logos[name]; });
+            return url;
+        }
+        /** Channel column of the SKU modal: small channel logo + name. */
+        function chModalChannelCellHtml(marketplace) {
+            const name = String(marketplace || '-');
+            const logo = marketplace ? chModalChannelLogo(marketplace) : '';
+            const esc = chpushEsc(name);
+            if (!logo) return esc;
+            return '<span class="ovl30-ch-wrap"><img src="' + chpushEsc(logo) + '" alt="" class="ovl30-ch-logo" onerror="this.style.display=\'none\'">' + esc + '</span>';
         }
         /** Type column of the SKU modal: the channel's group in the Channels modal, abbreviated. */
         function chModalTypeLabel(marketplace) {
