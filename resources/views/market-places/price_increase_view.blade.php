@@ -429,6 +429,11 @@
             text-align: right;
         }
         #ovl30ChannelsPushModal .chpush-btn { padding: 2px 8px; line-height: 1.3; }
+        #ovl30ChannelsPushModal .chpush-col-btn { padding: 1px 8px; line-height: 1.3; }
+        #ovl30ChannelsPushModal .chpush-btn.btn-success,
+        #ovl30ChannelsPushModal .chpush-col-btn.btn-success { background: #198754; border-color: #198754; color: #fff; }
+        #ovl30ChannelsPushModal .chpush-btn.btn-danger,
+        #ovl30ChannelsPushModal .chpush-col-btn.btn-danger { background: #dc3545; border-color: #dc3545; color: #fff; }
         #ovl30ChannelsPushModal .chpush-unavail td:first-child { color: #9aa0a6; }
         #ovl30PushHistoryModal {
             z-index: 1080;
@@ -2155,7 +2160,7 @@
                 </div>
                 <div class="modal-body" id="chpush-body"></div>
                 <div class="modal-footer justify-content-between">
-                    <small class="text-muted">Prefilled from each channel's SPRICE. Edit a price, then push per channel or push all.</small>
+                    <small class="text-muted">Prefilled from each channel's SPRICE. Edit a price, then push per channel, per column or push all. Pushing also saves the prices for next time.</small>
                     <button type="button" id="chpush-all-btn" class="btn btn-primary">
                         <i class="fas fa-upload me-1"></i> Push All
                     </button>
@@ -10439,6 +10444,28 @@
             let html = '<div class="chpush-grid">';
             types.forEach(function(type) {
                 const names = groups[type] || [];
+                let anyPushable = false;
+                let rowsHtml = '';
+                names.forEach(function(name) {
+                    const $row = chpushFindRow(name);
+                    const $rowBtn = $row ? $row.find('.push-price-btn') : $();
+                    // Listed row with a push button, OR no row but the backend supports pushing this channel
+                    const pushable = $row ? $rowBtn.length > 0 : CHPUSH_SUPPORTED.has(chpushKey(name));
+                    if (pushable) anyPushable = true;
+                    const sprice = $row ? parseOvl30PushPrice($row.find('.editable-sprice').val()) : null;
+                    const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey(name);
+                    const why = $row
+                        ? (!pushable ? 'Price push not available for this channel' : '')
+                        : (pushable ? 'Not listed in this SKU modal — push will be attempted directly' : 'Price push is not supported for this channel');
+                    rowsHtml += '<tr class="' + (pushable ? '' : 'chpush-unavail') + '" data-channel="' + chpushEsc(name) + '" data-marketplace="' + chpushEsc(mp) + '">'
+                        + '<td>' + chpushEsc(name) + '</td>'
+                        + '<td class="text-end"><input type="number" step="0.01" min="0" class="form-control form-control-sm chpush-input ms-auto"'
+                        + ' value="' + (sprice != null ? sprice.toFixed(2) : '') + '"'
+                        + (pushable ? '' : ' title="' + chpushEsc(why) + ' — editable, but cannot be pushed"') + '></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-primary chpush-btn" data-pushable="' + (pushable ? '1' : '0') + '"'
+                        + (pushable ? ' title="' + chpushEsc(why || ('Push price to ' + name)) + '"' : ' disabled title="' + chpushEsc(why) + '"')
+                        + '><i class="fas fa-upload"></i></button></td></tr>';
+                });
                 html += '<div class="chpush-card" data-type="' + chpushEsc(type) + '">'
                     + '<div class="chpush-card-head">'
                     + '<span>' + chpushEsc(type)
@@ -10449,30 +10476,13 @@
                                 + (d != null ? ('Diff ' + (d >= 0 ? '+' : '−') + '$' + Math.abs(d).toFixed(2)) : 'Diff n/a') + '</small>';
                         })()
                         : '')
-                    + '</span><span class="badge bg-secondary">' + names.length + '</span></div>'
+                    + '</span><span class="d-flex align-items-center gap-2"><span class="badge bg-secondary">' + names.length + '</span>'
+                    + '<button type="button" class="btn btn-sm btn-primary chpush-col-btn" data-pushable="' + (anyPushable ? '1' : '0') + '"'
+                    + (anyPushable ? ' title="Push all ' + chpushEsc(type) + ' channels"' : ' disabled title="No pushable channels in this column"')
+                    + '><i class="fas fa-upload"></i></button></span></div>'
                     + '<table class="chpush-table"><thead><tr>'
                     + '<th>Channel</th><th class="text-end">Suggested Price</th><th class="text-center">Push</th>'
-                    + '</tr></thead><tbody>';
-                names.forEach(function(name) {
-                    const $row = chpushFindRow(name);
-                    const $rowBtn = $row ? $row.find('.push-price-btn') : $();
-                    // Listed row with a push button, OR no row but the backend supports pushing this channel
-                    const pushable = $row ? $rowBtn.length > 0 : CHPUSH_SUPPORTED.has(chpushKey(name));
-                    const sprice = $row ? parseOvl30PushPrice($row.find('.editable-sprice').val()) : null;
-                    const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey(name);
-                    const why = $row
-                        ? (!pushable ? 'Price push not available for this channel' : '')
-                        : (pushable ? 'Not listed in this SKU modal — push will be attempted directly' : 'Price push is not supported for this channel');
-                    html += '<tr class="' + (pushable ? '' : 'chpush-unavail') + '" data-channel="' + chpushEsc(name) + '" data-marketplace="' + chpushEsc(mp) + '">'
-                        + '<td>' + chpushEsc(name) + '</td>'
-                        + '<td class="text-end"><input type="number" step="0.01" min="0" class="form-control form-control-sm chpush-input ms-auto"'
-                        + ' value="' + (sprice != null ? sprice.toFixed(2) : '') + '"'
-                        + (pushable ? '' : ' title="' + chpushEsc(why) + ' — editable, but cannot be pushed"') + '></td>'
-                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-primary chpush-btn"'
-                        + (pushable ? ' title="' + chpushEsc(why || ('Push price to ' + name)) + '"' : ' disabled title="' + chpushEsc(why) + '"')
-                        + '><i class="fas fa-upload"></i></button></td></tr>';
-                });
-                html += '</tbody></table></div>';
+                    + '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>';
             });
             html += '</div>';
             $('#chpush-body').html(html);
@@ -10539,6 +10549,148 @@
             if (el) bootstrap.Modal.getOrCreateInstance(el).show();
         });
 
+        // Channels Master name → SKU-modal marketplace keys that /cvr-master-save-suggested-data can store
+        const CHSAVE_SUPPORTED = new Set([
+            'amazon', 'fba', 'ebay', 'ebay1', 'ebay2', 'ebay3', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'doba', 'walmart',
+            'tiktok', 'tiktok2', 'bestbuy', 'bestbuyusa', 'macy', 'macys', 'reverb', 'topdawg', 'shein', 'faire',
+            'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'shopify', 'shopifyb2c', 'sb2c', 'shopifyb2b', 'sb2b'
+        ]);
+
+        /** idle | busy | ok (green tick) | fail (red alert triangle) for a Channels-modal push button. */
+        function chpushSetBtnState($btn, state, msg) {
+            if (!$btn || !$btn.length) return;
+            const pushable = String($btn.attr('data-pushable')) === '1';
+            $btn.removeClass('btn-primary btn-success btn-danger');
+            if (state === 'busy') {
+                $btn.addClass('btn-primary').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            } else if (state === 'ok') {
+                $btn.addClass('btn-success').prop('disabled', !$btn.hasClass('chpush-col-btn'))
+                    .attr('title', msg || 'Pushed').html('<i class="fas fa-check"></i>');
+            } else if (state === 'fail') {
+                $btn.addClass('btn-danger').prop('disabled', false)
+                    .attr('title', (msg || 'Push failed') + ' — click to retry').html('<i class="fas fa-exclamation-triangle"></i>');
+            } else {
+                $btn.addClass('btn-primary').prop('disabled', !pushable).html('<i class="fas fa-upload"></i>');
+            }
+        }
+
+        /** Persist every changed channel price so it is prefilled next time (until it is changed again). */
+        function chpushSaveAllSprices() {
+            const dfd = $.Deferred();
+            const jobs = [];
+            $('#chpush-body tr[data-channel]').each(function() {
+                const $chTr = $(this);
+                const price = parseOvl30PushPrice($chTr.find('.chpush-input').val());
+                if (price == null) return;
+                const $row = chpushFindRow($chTr.attr('data-channel'));
+                if (!$row) return;
+                const mp = String($row.attr('data-marketplace') || '');
+                if (!CHSAVE_SUPPORTED.has(mp.toLowerCase())) return;
+                const current = parseOvl30PushPrice($row.find('.editable-sprice').val());
+                if (current != null && Math.abs(current - price) < 0.005) return; // already saved with this value
+                jobs.push({ $row: $row, mp: mp, price: price });
+            });
+            let idx = 0, saved = 0, failed = 0;
+            (function next() {
+                if (idx >= jobs.length) { dfd.resolve({ saved: saved, failed: failed }); return; }
+                const j = jobs[idx++];
+                saveModalSpriceForRow(j.$row, j.price, function(ok) {
+                    if (ok) {
+                        saved++;
+                        j.$row.find('.editable-sprice').val(j.price.toFixed(2)).trigger('input');
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '') === j.mp) item.sprice = j.price;
+                        });
+                    } else {
+                        failed++;
+                    }
+                    next();
+                });
+            })();
+            return dfd.promise();
+        }
+
+        /** Save every channel's price, then push the given targets one by one. */
+        function chpushPushMany(targets, $trigger, opts) {
+            opts = opts || {};
+            const origHtml = $trigger.html();
+            const isColBtn = $trigger.hasClass('chpush-col-btn');
+            if (isColBtn) chpushSetBtnState($trigger, 'busy');
+            else $trigger.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Pushing...');
+            targets.forEach(function(t) { chpushSetBtnState(t.$btn, 'busy'); });
+
+            chpushSaveAllSprices().always(function(saveRes) {
+                if (saveRes && saveRes.failed) {
+                    showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s)', 'error');
+                }
+                let idx = 0;
+                const okResults = [];
+                const errors = [];
+                (function next() {
+                    if (idx >= targets.length) {
+                        if (isColBtn) {
+                            chpushSetBtnState($trigger, errors.length ? 'fail' : 'ok',
+                                errors.length ? ('Failed: ' + errors.join(', ')) : 'All pushed');
+                        } else {
+                            $trigger.prop('disabled', false).html(origHtml);
+                        }
+                        if (okResults.length) reloadOvl30ModalAfterPush(okResults);
+                        showToast(
+                            'Pushed ' + okResults.length + '/' + targets.length + ' channel(s)'
+                                + (errors.length ? '. Failed: ' + errors.join(', ') : ''),
+                            okResults.length && !errors.length ? 'success' : 'error'
+                        );
+                        if (typeof opts.done === 'function') opts.done(okResults, errors);
+                        return;
+                    }
+                    const t = targets[idx++];
+                    pushOvl30PriceToMarketplace(t).then(function(result) {
+                        if (result.ok) {
+                            okResults.push(result);
+                            t.$btn.closest('tr').data('pushedVal', t.priceTyped);
+                            chpushSetBtnState(t.$btn, 'ok', result.message || 'Pushed');
+                        } else {
+                            errors.push(t.channel);
+                            t.$btn.closest('tr').data('pushedVal', t.priceTyped);
+                            chpushSetBtnState(t.$btn, 'fail', result.message);
+                        }
+                        next();
+                    });
+                })();
+            });
+        }
+
+        /** Build targets for every pushable channel row inside $scope with a price > 0. */
+        function chpushCollectTargets($scope) {
+            const targets = [];
+            $scope.find('tr[data-channel]').each(function() {
+                const t = chpushTargetFor($(this));
+                if (t) { t.priceTyped = t.price; targets.push(t); }
+            });
+            return targets;
+        }
+
+        // Editing a price (or autofill from another price) resets tick / triangle so it can be pushed again
+        $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
+            $('#chpush-body tr[data-channel]').each(function() {
+                const $tr = $(this);
+                const $btn = $tr.find('.chpush-btn');
+                if (!$btn.hasClass('btn-success') && !$btn.hasClass('btn-danger')) return;
+                const typed = parseOvl30PushPrice($tr.find('.chpush-input').val());
+                const pushed = $tr.data('pushedVal');
+                if (pushed == null || typed == null || Math.abs(typed - pushed) >= 0.005) {
+                    chpushSetBtnState($btn, 'idle');
+                    $tr.removeData('pushedVal');
+                }
+            });
+            $('#chpush-body .chpush-col-btn.btn-success, #chpush-body .chpush-col-btn.btn-danger').each(function() {
+                const $card = $(this).closest('.chpush-card');
+                if ($card.find('.chpush-btn[data-pushable="1"]').not('.btn-success, .btn-danger').length) {
+                    chpushSetBtnState($(this), 'idle');
+                }
+            });
+        });
+
         // Push a single channel
         $(document).on('click', '#ovl30ChannelsPushModal .chpush-btn', function(e) {
             e.preventDefault();
@@ -10553,17 +10705,41 @@
                 + ' for SKU: ' + target.sku + siblingsApplyLabel() + '?')) {
                 return;
             }
-            const origHtml = target.$btn.html();
-            target.$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            pushOvl30PriceToMarketplace(target).then(function(result) {
-                if (result.ok) {
-                    showToast(result.message || 'Price pushed', 'success');
-                    reloadOvl30ModalAfterPush([result]);
-                } else {
-                    showToast(result.message || 'Failed to push price', 'error');
-                    target.$btn.html(origHtml).prop('disabled', false);
-                }
+            target.priceTyped = target.price;
+            chpushSetBtnState(target.$btn, 'busy');
+            chpushSaveAllSprices().always(function() {
+                pushOvl30PriceToMarketplace(target).then(function(result) {
+                    if (result.ok) {
+                        $chTr.data('pushedVal', target.priceTyped);
+                        chpushSetBtnState(target.$btn, 'ok', result.message || 'Pushed');
+                        showToast(result.message || 'Price pushed', 'success');
+                        reloadOvl30ModalAfterPush([result]);
+                    } else {
+                        $chTr.data('pushedVal', target.priceTyped);
+                        chpushSetBtnState(target.$btn, 'fail', result.message);
+                        showToast(result.message || 'Failed to push price', 'error');
+                    }
+                });
             });
+        });
+
+        // Push every channel in one column
+        $(document).on('click', '#ovl30ChannelsPushModal .chpush-col-btn', function(e) {
+            e.preventDefault();
+            const $colBtn = $(this);
+            if ($colBtn.prop('disabled')) return;
+            const $card = $colBtn.closest('.chpush-card');
+            const type = String($card.attr('data-type') || '');
+            const targets = chpushCollectTargets($card);
+            if (!targets.length) {
+                showToast('No ' + type + ' channels have a pushable suggested price (> 0)', 'error');
+                return;
+            }
+            if (!confirm('Push ' + type + ' to ' + targets.length + ' channel(s)' + siblingsApplyLabel() + '?\n\n'
+                + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
+                return;
+            }
+            chpushPushMany(targets, $colBtn);
         });
 
         // Push all channels together (every channel with a pushable suggested price)
@@ -10571,11 +10747,7 @@
             e.preventDefault();
             const $allBtn = $(this);
             if ($allBtn.prop('disabled')) return;
-            const targets = [];
-            $('#chpush-body tr[data-channel]').each(function() {
-                const t = chpushTargetFor($(this));
-                if (t) targets.push(t);
-            });
+            const targets = chpushCollectTargets($('#chpush-body'));
             if (!targets.length) {
                 showToast('No channels have a pushable suggested price (> 0)', 'error');
                 return;
@@ -10584,37 +10756,7 @@
                 + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
                 return;
             }
-            const origAll = $allBtn.html();
-            $allBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Pushing...');
-            targets.forEach(function(t) { t.$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>'); });
-
-            let idx = 0;
-            const okResults = [];
-            const errors = [];
-            (function next() {
-                if (idx >= targets.length) {
-                    $allBtn.prop('disabled', false).html(origAll);
-                    if (okResults.length) {
-                        reloadOvl30ModalAfterPush(okResults);
-                    }
-                    showToast(
-                        'Pushed ' + okResults.length + '/' + targets.length + ' channel(s)'
-                            + (errors.length ? '. Failed: ' + errors.join(', ') : ''),
-                        okResults.length && !errors.length ? 'success' : 'error'
-                    );
-                    return;
-                }
-                const t = targets[idx++];
-                pushOvl30PriceToMarketplace(t).then(function(result) {
-                    if (result.ok) {
-                        okResults.push(result);
-                    } else {
-                        errors.push(t.channel);
-                        t.$btn.html('<i class="fas fa-upload"></i>').removeClass('btn-success').addClass('btn-primary').prop('disabled', false);
-                    }
-                    next();
-                });
-            })();
+            chpushPushMany(targets, $allBtn);
         });
 
         // ==================== LMP COMPETITORS MODAL ====================
