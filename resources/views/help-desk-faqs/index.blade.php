@@ -208,7 +208,34 @@
             .fd-grid-3, .fd-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
-        #faqColumnsMenu .form-check { white-space: nowrap; }
+        /* ── Dept filter panel ──────────────────────────────────────── */
+        .faq-dept-panel {
+            width: min(760px, calc(100vw - 48px));
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+        }
+        .faq-dept-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+        .faq-dept-toolbar input { flex: 1 1 auto; }
+        .faq-dept-hint { font-size: 0.72rem; margin-bottom: 8px; }
+        .faq-dept-card { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 8px; }
+        .faq-dept-card-title {
+            display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 2px 4px 6px;
+            border-bottom: 1px solid #dee2e6; cursor: pointer; user-select: none;
+            font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #495057;
+        }
+        .faq-dept-list {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 2px 10px; max-height: 340px; overflow-y: auto;
+        }
+        .faq-dept-item {
+            display: flex; align-items: center; gap: 8px; margin: 0; padding: 4px 6px;
+            border-radius: 6px; cursor: pointer; font-size: 0.82rem; white-space: nowrap;
+        }
+        .faq-dept-item:hover { background: #eef5ff; }
+        .faq-dept-item input, .faq-dept-card-title input { margin: 0; flex-shrink: 0; }
+        .faq-dept-item.is-checked { background: #dbe7ff; box-shadow: inset 0 0 0 1px #6ea8fe; }
+        .faq-dept-none { grid-column: 1 / -1; padding: 6px; font-size: 0.78rem; }
     </style>
 @endsection
 
@@ -237,35 +264,49 @@
                 <input type="text" id="faqFilterAnswers" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="answers" placeholder="Search Answer/Solutions...">
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 w-100">
-                {{-- Dept dropdown --}}
-                <div class="dropdown" style="width: 100px; flex-shrink: 0;">
-                    <button class="btn btn-light border dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center faq-top-btn"
-                        type="button" id="faqDeptFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                        <span><span id="faqDeptFilterLabel">All</span></span>
+                {{-- Dept filter: wide panel with quick search + multi-column list --}}
+                <div class="dropdown" style="flex-shrink: 0;">
+                    <button class="btn btn-light border dropdown-toggle text-start d-flex justify-content-between align-items-center faq-top-btn"
+                        type="button" id="faqDeptFilterBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Filter by department">
+                        <span>Dept: <span id="faqDeptFilterLabel">All</span></span>
                     </button>
-                    <div class="dropdown-menu p-2" style="max-height: 320px; overflow-y: auto; min-width: 240px;">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
-                            <label class="form-check-label fw-semibold" for="faqDeptFilterAll">All</label>
+                    <div class="dropdown-menu faq-dept-panel p-3" id="faqDeptPanel">
+                        <div class="faq-dept-toolbar">
+                            <input type="search" id="faqDeptSearch" class="form-control form-control-sm" placeholder="Quick search departments..." autocomplete="off">
+                            <button type="button" id="faqDeptClear" class="btn btn-sm btn-outline-secondary">Clear</button>
+                            <button type="button" id="faqDeptClose" class="btn btn-sm btn-success">Save &amp; Close</button>
                         </div>
-                        <hr class="my-1">
-                        @foreach ($departments as $dept)
-                            <div class="form-check">
-                                <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
-                                <label class="form-check-label" for="faqDeptFilter_{{ $dept->id }}">{{ $dept->name }}</label>
+                        <div class="faq-dept-hint text-muted"><span id="faqDeptSummary">Showing all departments.</span> Tick one or more departments to filter the table.</div>
+                        <div class="faq-dept-card">
+                            <label class="faq-dept-card-title">
+                                <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
+                                <span>All departments</span>
+                                <small id="faqDeptCountSmall" class="ms-auto text-muted"></small>
+                            </label>
+                            <div class="faq-dept-list">
+                                @foreach ($departments as $dept)
+                                    <label class="faq-dept-item" data-name="{{ strtolower($dept->name) }}" for="faqDeptFilter_{{ $dept->id }}">
+                                        <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
+                                        <span>{{ $dept->name }}</span>
+                                    </label>
+                                @endforeach
+                                <div class="faq-dept-none text-muted" style="display:none;">No department found</div>
                             </div>
-                        @endforeach
+                        </div>
                     </div>
                 </div>
                 {{-- Count badge --}}
                 <span id="faqCountBadge" class="btn btn-soft-primary btn-sm faq-top-btn" style="cursor:default; flex-shrink:0;">Count: 0</span>
                 <span id="faqSelectedBadge" class="btn btn-primary btn-sm faq-top-btn" style="display:none; cursor:default; flex-shrink:0;">0 selected</span>
-                {{-- Column visibility --}}
+                {{-- Column manager (shared Tabulator "Columns" panel) --}}
                 <div class="dropdown" style="flex-shrink:0;">
-                    <button class="btn btn-soft-secondary btn-sm faq-top-btn" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Show / hide columns">
+                    <button class="btn btn-soft-secondary btn-sm faq-top-btn" type="button" id="columnVisibilityDropdown"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Columns">
                         <i class="ri-layout-column-line"></i>
                     </button>
-                    <div class="dropdown-menu dropdown-menu-end p-2" id="faqColumnsMenu" style="max-height: 360px; overflow-y: auto; min-width: 200px;"></div>
+                    <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
+                        <!-- Populated by partials/tabulator-column-manager -->
+                    </ul>
                 </div>
                 <button type="button" id="faqExportBtn" class="btn btn-soft-success btn-sm faq-top-btn" style="flex-shrink:0;" title="Export CSV (current filter)">
                     <i class="ri-file-download-line"></i>
@@ -1281,8 +1322,6 @@
                 selectableRows: 'highlight',
                 selectableRowsPersistence: true,
                 movableColumns: true,
-                persistence: { columns: true },
-                persistenceID: 'helpDeskFaqsGrid',
                 placeholder: 'No FAQs match your search.'
             });
 
@@ -1340,8 +1379,16 @@
                 colQueries = next;
                 var sel = selectedDepts();
                 if (deptFilterLabel) {
-                    deptFilterLabel.textContent = sel.length === 0 ? 'All' : (sel.length + ' department' + (sel.length > 1 ? 's' : ''));
+                    deptFilterLabel.textContent = sel.length === 0 ? 'All' : (sel.length + ' selected');
                 }
+                var summary = document.getElementById('faqDeptSummary');
+                if (summary) summary.textContent = sel.length === 0 ? 'Showing all departments.' : (sel.length + ' department' + (sel.length > 1 ? 's' : '') + ' selected.');
+                var small = document.getElementById('faqDeptCountSmall');
+                if (small) small.textContent = sel.length ? (sel.length + ' / ' + deptFilterBoxes.length) : (deptFilterBoxes.length + ' total');
+                deptFilterBoxes.forEach(function(cb) {
+                    var item = cb.closest('.faq-dept-item');
+                    if (item) item.classList.toggle('is-checked', cb.checked);
+                });
                 if (!tableReady) return;
                 table.setFilter(rowFilter);
                 if (changed) reformatRows();
@@ -1359,9 +1406,42 @@
                 });
             });
 
+            // Dept panel: quick search, Clear, Save & Close
+            var deptSearch = document.getElementById('faqDeptSearch');
+            if (deptSearch) {
+                deptSearch.addEventListener('input', function() {
+                    var q = deptSearch.value.trim().toLowerCase();
+                    var shown = 0;
+                    document.querySelectorAll('#faqDeptPanel .faq-dept-item').forEach(function(it) {
+                        var ok = !q || (it.getAttribute('data-name') || '').indexOf(q) !== -1;
+                        it.style.display = ok ? '' : 'none';
+                        if (ok) shown++;
+                    });
+                    var none = document.querySelector('#faqDeptPanel .faq-dept-none');
+                    if (none) none.style.display = shown ? 'none' : '';
+                });
+            }
+            var deptClearBtn = document.getElementById('faqDeptClear');
+            if (deptClearBtn) {
+                deptClearBtn.addEventListener('click', function() {
+                    deptFilterBoxes.forEach(function(cb) { cb.checked = false; });
+                    if (deptFilterAll) deptFilterAll.checked = true;
+                    if (deptSearch) { deptSearch.value = ''; deptSearch.dispatchEvent(new Event('input')); }
+                    applyFilters();
+                });
+            }
+            var deptCloseBtn = document.getElementById('faqDeptClose');
+            if (deptCloseBtn) {
+                deptCloseBtn.addEventListener('click', function() {
+                    var tg = document.getElementById('faqDeptFilterBtn');
+                    if (tg && window.bootstrap) bootstrap.Dropdown.getOrCreateInstance(tg).hide();
+                });
+            }
+
             if (deptFilterAll) {
                 deptFilterAll.addEventListener('change', function() {
                     if (this.checked) deptFilterBoxes.forEach(function(cb) { cb.checked = false; });
+                    else if (selectedDepts().length === 0) this.checked = true; // nothing else picked: stay on "All"
                     applyFilters();
                 });
             }
@@ -1393,7 +1473,7 @@
             table.on('tableBuilt', function() {
                 tableReady = true;
                 applyFilters();
-                buildColumnsMenu();
+                applyColumnVisibilityFromServer(); // saved layout + builds the Columns panel
                 refreshSelection();
             });
             table.on('dataLoaded', function() { updateCount(); });
@@ -1472,30 +1552,28 @@
                 });
             });
 
-            // ───────────────────────── column visibility + export ─────────────────────────
-            function buildColumnsMenu() {
-                var menu = document.getElementById('faqColumnsMenu');
-                if (!menu) return;
-                menu.innerHTML = '';
-                table.getColumns().forEach(function(c) {
-                    var def = c.getDefinition();
-                    if (!def.label || def.field === '_select') return;
-                    var id = 'faqColToggle_' + def.field;
-                    var wrap = document.createElement('div');
-                    wrap.className = 'form-check';
-                    var cb = document.createElement('input');
-                    cb.type = 'checkbox'; cb.className = 'form-check-input'; cb.id = id;
-                    cb.checked = c.isVisible();
-                    cb.addEventListener('change', function() {
-                        if (cb.checked) c.show(); else c.hide();
-                        table.redraw(true);
-                    });
-                    var lb = document.createElement('label');
-                    lb.className = 'form-check-label'; lb.setAttribute('for', id); lb.textContent = def.label;
-                    wrap.appendChild(cb); wrap.appendChild(lb);
-                    menu.appendChild(wrap);
-                });
-            }
+            // ───────────────────────── Columns panel (shared with the other Tabulator pages) ─────────────────────────
+            var tcmConfig = {
+                channel: 'help_desk_faqs',
+                groups: [
+                    { key: 'basic', label: 'Basic' },
+                    { key: 'resources', label: 'Resources' },
+                    { key: 'details', label: 'Details' },
+                    { key: 'other', label: 'Other' }
+                ],
+                fallbackGroup: 'other',
+                skipFields: ['_select'],
+                showAll: true
+            };
+            var tcmHooks = {
+                classify: function(field) {
+                    if (['group_name', 'faq', 'answers', '_view', 'dept_label'].indexOf(field) !== -1) return 'basic';
+                    if (['link', 'link2', 'sop', 'video'].indexOf(field) !== -1) return 'resources';
+                    if (['type_variant', 'what', 'action', 'plus_action', 'ca', 'messages'].indexOf(field) !== -1) return 'details';
+                    return 'other';
+                }
+            };
+            @include('partials.tabulator-column-manager')
 
             var exportBtn = document.getElementById('faqExportBtn');
             if (exportBtn) {
