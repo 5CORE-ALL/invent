@@ -311,7 +311,6 @@
             const done = function () {
                 btn.classList.add('is-copied');
                 btn.innerHTML = '<i class="fas fa-check"></i>';
-                lqsNotify('Copied ' + sku, 'success');
                 setTimeout(function () {
                     btn.classList.remove('is-copied');
                     btn.innerHTML = '<i class="fas fa-copy"></i>';
