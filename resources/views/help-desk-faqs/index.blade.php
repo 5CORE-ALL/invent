@@ -427,9 +427,6 @@
                     <i class="ri-send-plane-line"></i>
                 </button>
                 @if ($canEditFaq)
-                    <button type="button" id="faqBulkEditBtn" class="btn btn-soft-warning btn-sm text-dark faq-top-btn flex-fill" disabled title="Bulk Edit">
-                        <i class="ri-quill-pen-line"></i><span id="faqBulkEditCount"></span>
-                    </button>
                     <button type="button" class="btn btn-soft-primary btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqBulkModal" title="Bulk Import">
                         <i class="ri-upload-2-line"></i>
                     </button>
@@ -437,9 +434,6 @@
                         <i class="ri-add-line"></i>
                     </button>
                 @endif
-                <button type="button" class="btn btn-soft-dark btn-sm faq-top-btn flex-fill" data-bs-toggle="modal" data-bs-target="#faqGuruModal" title="Guru">
-                    <i class="ri-user-star-line"></i>
-                </button>
                 <a href="{{ route('help-desk-faqs.archived') }}" class="btn btn-soft-secondary btn-sm faq-top-btn d-flex align-items-center justify-content-center" title="Archived FAQs" style="flex-shrink:0;">
                     <i class="ri-archive-line"></i>
                 </a>
@@ -580,77 +574,6 @@
                     <button type="submit" class="btn btn-primary">Import</button>
                 </div>
             </form>
-        </div>
-    </div>
-
-    {{-- Guru Users Modal --}}
-    <div class="modal fade" id="faqGuruModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="ri-user-star-line"></i> Guru Users</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted">Guru users can <strong>add and edit</strong> all data in this sheet (no delete). Managed by <code>president@5core.com</code>, <code>software5@5core.com</code> and <code>mgr-advertisement@5core.com</code>.</p>
-
-                    @if ($isGuruManager)
-                        <form action="{{ route('help-desk-faqs.gurus.store') }}" method="POST" class="row g-2 align-items-end mb-3">
-                            @csrf
-                            <div class="col-md-5">
-                                <label class="form-label">Name</label>
-                                <input type="text" name="name" class="form-control" placeholder="User name">
-                            </div>
-                            <div class="col-md-5">
-                                <label class="form-label">Email <span class="text-danger">*</span></label>
-                                <input type="email" name="email" class="form-control" placeholder="user@5core.com" required>
-                            </div>
-                            <div class="col-md-2">
-                                <button type="submit" class="btn btn-primary w-100">Add</button>
-                            </div>
-                        </form>
-                    @else
-                        <div class="alert alert-info">You can view the Guru list. Only managers can add or remove Guru users.</div>
-                    @endif
-
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    @if ($isGuruManager)<th class="text-end" style="width: 90px;">Action</th>@endif
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @forelse ($gurus as $guru)
-                                    <tr>
-                                        <td>{{ $guru->name ?: '—' }}</td>
-                                        <td>{{ $guru->email }}</td>
-                                        @if ($isGuruManager)
-                                            <td class="text-end">
-                                                <form action="{{ route('help-desk-faqs.gurus.destroy', $guru->id) }}" method="POST"
-                                                    onsubmit="return confirm('Remove this Guru user?');">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-soft-danger"><i class="ri-delete-bin-line"></i></button>
-                                                </form>
-                                            </td>
-                                        @endif
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="{{ $isGuruManager ? 3 : 2 }}" class="text-center text-muted py-3">No Guru users yet.</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
         </div>
     </div>
 
