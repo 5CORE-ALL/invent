@@ -660,7 +660,7 @@
                         <i class="fas fa-equals"></i> Match Price
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="newtemuone-clear-sprice-btn"
-                        title="Clear the saved S PRC of every SKU, including hand-set / matched ones. The Dil / Std rules fill it again.">
+                        title="Clear the saved S PRC of the selected SKUs (every SKU when none is selected), including hand-set / matched ones. The Dil / Std rules fill it again.">
                         <i class="fas fa-eraser"></i> Clear S PRC
                     </button>
                     @include('partials.price-gt-lmp-badge-script')
@@ -4139,21 +4139,33 @@
     }
     $(document).on('click', '#newtemuone-match-price-btn', function() { ntoOpenMatchPriceModal(); });
 
-    /** Clear the saved S PRC of every SKU (hand-set / matched ones too). The rules fill S PRC again. */
+    /**
+     * Clear the saved S PRC (hand-set / matched ones too). The rules fill S PRC again.
+     * Ticked rows only when some are ticked; every SKU when none is ticked (or all of them are).
+     */
     async function ntoClearAllSprice() {
         const wipe = [];
         const wipeRows = [];
         let manual = 0;
-        chPromoEachTableRow(function(row, d) {
+        const picked = ((table && typeof table.getSelectedRows === 'function') ? table.getSelectedRows() : []).filter(function(row) {
+            return chPromoIsChildRow(row.getData() || {});
+        });
+        const add = function(row, d) {
             if (!chPromoIsChildRow(d)) return;
             const sku = chPromoSku(d);
             if (!sku) return;
             if (d.nto_manual_sprice) manual++;
             wipe.push({ sku: sku, sprice: 0 });
             wipeRows.push(row);
-        });
+        };
+        if (picked.length) {
+            picked.forEach(function(row) { add(row, row.getData() || {}); });
+        } else {
+            chPromoEachTableRow(function(row, d) { add(row, d); });
+        }
+        const scope = picked.length ? 'the ' + wipe.length.toLocaleString() + ' selected' : 'all ' + wipe.length.toLocaleString();
         if (!wipe.length) { showToast('No SKUs to clear', 'info'); return; }
-        if (!confirm('Clear the saved S PRC of ' + wipe.length.toLocaleString() + ' SKU(s)'
+        if (!confirm('Clear the saved S PRC of ' + scope + ' SKU(s)'
             + (manual ? ', including ' + manual.toLocaleString() + ' set by hand / matched' : '')
             + '?\n\nThe Dil / Std rules fill S PRC again. Nothing is pushed to Temu.')) return;
         const btn = document.getElementById('newtemuone-clear-sprice-btn');
@@ -4172,7 +4184,7 @@
             ntoRepaintNow();
             if ($('#ntoPriceAlertModal').hasClass('show')) ntoPaRender();
             if ($('#ntoMatchPriceModal').hasClass('show')) ntoMpRender();
-            showToast('S PRC cleared on ' + wipe.length.toLocaleString() + ' SKU(s)', 'success');
+            showToast('S PRC cleared on ' + wipe.length.toLocaleString() + ' ' + (picked.length ? 'selected ' : '') + 'SKU(s)', 'success');
         } catch (err) {
             showToast('Clear failed: ' + ((err && err.statusText) || (err && err.message) || 'error') + '. Reload the page to see what was saved.', 'error');
         } finally {
