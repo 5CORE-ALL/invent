@@ -244,6 +244,43 @@
         .fh-empty { text-align: center; color: #94a3b8; padding: 28px 0; }
         .fh-empty i { font-size: 2.2rem; display: block; margin-bottom: 4px; }
 
+        /* ── Add / Edit FAQ form (next-gen, one-screen layout) ──────── */
+        .faq-edit-modal .modal-body { padding: 14px 18px 6px; }
+        .faq-edit-modal .modal-dialog { max-width: min(1140px, calc(100vw - 24px)); }
+        .fe-section {
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 10px 14px 12px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .fe-section-title {
+            display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6366f1;
+        }
+        .fe-section-title i { font-size: 1rem; }
+        .fe-label { display: block; margin-bottom: 2px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; }
+        .fe-form .form-control { border-radius: 9px; border-color: #dbe0ea; font-size: 0.82rem; }
+        .fe-form .form-control:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); }
+        .fe-form textarea.form-control { resize: vertical; min-height: 0; }
+
+        .fe-chip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+        .fe-chip {
+            position: relative; display: flex; align-items: center; justify-content: center; margin: 0; padding: 4px 6px; cursor: pointer;
+            border: 1px solid #dbe0ea; border-radius: 999px; background: #f8fafc; color: #475569;
+            font-size: 0.74rem; font-weight: 600; text-align: center; user-select: none;
+            transition: background .12s ease, border-color .12s ease, color .12s ease, transform .12s ease;
+        }
+        .fe-chip:hover { border-color: #a5b4fc; background: #eef2ff; }
+        .fe-chip input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+        .fe-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fe-chip:has(input:checked) {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6); border-color: transparent; color: #fff;
+            box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+        }
+        .fe-chip:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+        .fe-chip-all { width: 100%; }
+        .fe-chip-all:has(input:checked) { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
+        .fe-save { border-radius: 10px; padding: 6px 22px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+        @media (max-width: 575px) { .fe-chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
         /* ── Dept filter panel ──────────────────────────────────────── */
         .faq-dept-panel {
             width: min(760px, calc(100vw - 48px));
@@ -375,20 +412,24 @@
     </div>
 
     {{-- Create Modal --}}
-    <div class="modal fade" id="faqCreateModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal fade faq-detail-modal faq-edit-modal" id="faqCreateModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.store') }}" method="POST" class="modal-content">
                 @csrf
-                <div class="modal-header">
-                    <h5 class="modal-title">Add FAQ</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="fd-header">
+                    <div class="fd-header-icon"><i class="ri-add-circle-line" style="font-size:1.6rem;color:#4f46e5;"></i></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fd-eyebrow">New entry</div>
+                        <div class="fh-title">Add FAQ</div>
+                    </div>
+                    <button type="button" class="fd-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="modal-body">
                     @include('help-desk-faqs.partials.form', ['departments' => $departments])
                 </div>
-                <div class="modal-footer">
+                <div class="fd-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save FAQ</button>
+                    <button type="submit" class="btn btn-primary fe-save"><i class="ri-save-line"></i> Save FAQ</button>
                 </div>
             </form>
         </div>
@@ -445,21 +486,25 @@
     </div>
 
     {{-- Edit Modal --}}
-    <div class="modal fade" id="faqEditModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal fade faq-detail-modal faq-edit-modal" id="faqEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
             <form action="{{ route('help-desk-faqs.index') }}" method="POST" class="modal-content" id="faqEditForm">
                 @csrf
                 @method('PUT')
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit FAQ</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="fd-header">
+                    <div class="fd-header-icon"><i class="ri-edit-2-line" style="font-size:1.6rem;color:#4f46e5;"></i></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fd-eyebrow">Editing</div>
+                        <div class="fh-title">Edit FAQ</div>
+                    </div>
+                    <button type="button" class="fd-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="modal-body">
                     @include('help-desk-faqs.partials.form', ['departments' => $departments, 'edit' => true])
                 </div>
-                <div class="modal-footer">
+                <div class="fd-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Update FAQ</button>
+                    <button type="submit" class="btn btn-primary fe-save"><i class="ri-save-line"></i> Update FAQ</button>
                 </div>
             </form>
         </div>
