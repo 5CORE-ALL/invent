@@ -9,6 +9,7 @@ use App\Http\Controllers\Sales\AlibabaSalesController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Models\AlibabaSheetPrice;
 use App\Models\FbMarketplacePriceSoldData;
+use App\Models\FBMarketplaceDataView;
 use App\Models\InstagramPricing;
 use App\Models\MarketplacePercentage;
 use App\Models\MercariDailyData;
@@ -142,6 +143,7 @@ class PricingMasterExtraChannels
             'fb_price' => self::fbPrices(),
             'fb_l30' => self::safeSales(static fn () => FacebookMarketplaceController::l30MetricsBySku()),
             'fb_latest' => self::safeSales(static fn () => FacebookMarketplaceController::latestSoldPriceBySku()),
+            'fb_sprice' => self::jsonSpriceMap(FBMarketplaceDataView::class, 'fb_marketplace_data_views', 'SPRICE'),
             'pls_margin' => MarketplacePercentage::takeHomeDecimal('PLS', 'Pls'),
             'pls' => self::plsBySku(),
             'pls_sprice' => self::jsonSpriceMap(PLSDataView::class, 'pls_data_views', 'sprice'),
@@ -270,8 +272,10 @@ class PricingMasterExtraChannels
         $l30 = (int) (is_array($l30Row) ? ($l30Row['qty'] ?? 0) : 0);
         $margin = (float) $lookups['fb_margin'];
         $profit = self::marginProfit($price, $lp, 0.0, $margin);
+        $sprice = (float) ($lookups['fb_sprice'][$key] ?? $lookups['fb_sprice'][$keyNs] ?? 0);
+        $suggested = $sprice > 0 ? self::marginProfit($sprice, $lp, 0.0, $margin) : ['gpft' => 0.0, 'groi' => 0.0];
 
-        return self::blank('FB Marketplace', $price, $uploaded > 0 ? $uploaded : $price, $l30, 0, $profit, $margin, 0.0, 0.0, ['gpft' => 0.0, 'groi' => 0.0]);
+        return self::blank('FB Marketplace', $price, $uploaded > 0 ? $uploaded : $price, $l30, 0, $profit, $margin, 0.0, $sprice, $suggested);
     }
 
     /**

@@ -9827,9 +9827,10 @@
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
-            // Temu / Temu2: push base = inverse of Temu Price
+            const mpKeyNoSpace = mpLower.replace(/\s+/g, '');
+            // Temu / Temu2 / Temu3: push base = inverse of Temu Price
             let pushPrice = price;
-            if (mpLower === 'temu' || mpLower === 'temu2') {
+            if (mpLower === 'temu' || mpLower === 'temu2' || mpKeyNoSpace === 'temu3') {
                 const converted = temuPushBaseFromSprice(price);
                 if (converted == null) {
                     return $.Deferred().resolve({
@@ -9872,6 +9873,7 @@
                         .prop('disabled', true);
                     return {
                         ok: true,
+                        savedOnly: !!response.saved_only,
                         marketplace: target.marketplace,
                         message: response.message,
                         price: pushPrice,
@@ -9907,7 +9909,7 @@
             $tr.attr('data-price', basePrice);
 
             // Price cell: Temu/Temu2 Full Price from pushed base — same as /temu-decrease
-            const isTemu = (mpLower === 'temu' || mpLower === 'temu2');
+            const isTemu = (mpLower === 'temu' || mpLower === 'temu2' || mpLower.replace(/\s+/g, '') === 'temu3');
             const displayPrice = (isTemu && basePrice > 0)
                 ? +temuFullPriceFromBase(basePrice).toFixed(2)
                 : basePrice;
@@ -10369,14 +10371,17 @@
         // Channel Master name → key used by the SKU modal rows (item.marketplace, lowercased, no spaces)
         const CHPUSH_ALIASES = {
             bestbuyusa: 'bestbuy', macys: 'macy', purchasingpower: 'ppower',
-            ebay: 'ebay1', ebaytwo: 'ebay2', ebaythree: 'ebay3', tiktokshop: 'tiktok'
+            ebay: 'ebay1', ebaytwo: 'ebay2', ebaythree: 'ebay3', tiktokshop: 'tiktok',
+            business5coreb2b: 'sb2b' // "Business 5 Core (B2B)" is the Shopify B2B store
         };
 
         // Marketplace keys accepted by /cvr-master-push-price (pushPriceToAmazon)
         const CHPUSH_SUPPORTED = new Set([
             'amazon', 'doba', 'walmart', 'shopify', 'sb2c', 'sb2b', 'pls', 'reverb', 'fba',
             'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'macy', 'ppower', 'wayfair', 'topdawg', 'faire',
-            'temu', 'temu2', 'tiktok', 'tiktok2', 'aliexpress', 'shein'
+            'temu', 'temu2', 'tiktok', 'tiktok2', 'aliexpress', 'shein', 'alibaba', 'newegg',
+            // no price API: the push saves the price only (sheet / channel pricing store)
+            'temu3', 'vinted', 'instagramshop', 'depop', 'mercariwship', 'mercariwoship', 'fbmarketplace'
         ]);
 
         function chpushKey(name) {
@@ -10449,14 +10454,15 @@
                 names.forEach(function(name) {
                     const $row = chpushFindRow(name);
                     const $rowBtn = $row ? $row.find('.push-price-btn') : $();
-                    // Listed row with a push button, OR no row but the backend supports pushing this channel
-                    const pushable = $row ? $rowBtn.length > 0 : CHPUSH_SUPPORTED.has(chpushKey(name));
+                    // Every channel the backend can push is pushable here — even when the SKU modal has no push button
+                    // for it (e.g. not listed yet): the push is attempted and a failure shows the red triangle + reason.
+                    const pushable = CHPUSH_SUPPORTED.has(chpushKey(name));
                     if (pushable) anyPushable = true;
                     const sprice = $row ? parseOvl30PushPrice($row.find('.editable-sprice').val()) : null;
                     const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey(name);
-                    const why = $row
-                        ? (!pushable ? 'Price push not available for this channel' : '')
-                        : (pushable ? 'Not listed in this SKU modal — push will be attempted directly' : 'Price push is not supported for this channel');
+                    const why = !pushable
+                        ? 'Price push is not supported for this channel'
+                        : (($row && $rowBtn.length > 0) ? '' : 'Not listed for this SKU — push will be attempted and may fail');
                     rowsHtml += '<tr class="' + (pushable ? '' : 'chpush-unavail') + '" data-channel="' + chpushEsc(name) + '" data-marketplace="' + chpushEsc(mp) + '">'
                         + '<td>' + chpushEsc(name) + '</td>'
                         + '<td class="text-end"><input type="number" step="0.01" min="0" class="form-control form-control-sm chpush-input ms-auto"'
@@ -10626,6 +10632,8 @@
                 let idx = 0;
                 const okResults = [];
                 const errors = [];
+                const errorDetails = [];
+                const savedOnlyNames = [];
                 (function next() {
                     if (idx >= targets.length) {
                         if (isColBtn) {
@@ -10636,8 +10644,9 @@
                         }
                         if (okResults.length) reloadOvl30ModalAfterPush(okResults);
                         showToast(
-                            'Pushed ' + okResults.length + '/' + targets.length + ' channel(s)'
-                                + (errors.length ? '. Failed: ' + errors.join(', ') : ''),
+                            'Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + targets.length + ' channel(s)'
+                                + (savedOnlyNames.length ? ('. Saved only (no API, not pushed): ' + savedOnlyNames.join(', ')) : '')
+                                + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''),
                             okResults.length && !errors.length ? 'success' : 'error'
                         );
                         if (typeof opts.done === 'function') opts.done(okResults, errors);
@@ -10648,9 +10657,11 @@
                         if (result.ok) {
                             okResults.push(result);
                             t.$btn.closest('tr').data('pushedVal', t.priceTyped);
-                            chpushSetBtnState(t.$btn, 'ok', result.message || 'Pushed');
+                            if (result.savedOnly) savedOnlyNames.push(t.channel);
+                            chpushSetBtnState(t.$btn, 'ok', result.savedOnly ? ('Saved, not pushed — ' + (result.message || '')) : (result.message || 'Pushed'));
                         } else {
                             errors.push(t.channel);
+                            errorDetails.push(t.channel + ' — ' + String(result.message || 'failed').slice(0, 140));
                             t.$btn.closest('tr').data('pushedVal', t.priceTyped);
                             chpushSetBtnState(t.$btn, 'fail', result.message);
                         }
@@ -10711,8 +10722,8 @@
                 pushOvl30PriceToMarketplace(target).then(function(result) {
                     if (result.ok) {
                         $chTr.data('pushedVal', target.priceTyped);
-                        chpushSetBtnState(target.$btn, 'ok', result.message || 'Pushed');
-                        showToast(result.message || 'Price pushed', 'success');
+                        chpushSetBtnState(target.$btn, 'ok', result.savedOnly ? ('Saved, not pushed — ' + (result.message || '')) : (result.message || 'Pushed'));
+                        showToast(result.message || (result.savedOnly ? 'Saved (not pushed)' : 'Price pushed'), 'success');
                         reloadOvl30ModalAfterPush([result]);
                     } else {
                         $chTr.data('pushedVal', target.priceTyped);
