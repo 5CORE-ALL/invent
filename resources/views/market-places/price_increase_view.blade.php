@@ -208,6 +208,9 @@
             color: #475569;
             white-space: nowrap;
         }
+        #ovl30DetailsModal .ovl30-tool-group .spm-wrap { display: none; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #cbd5e1; flex-wrap: nowrap; white-space: nowrap; }
+        #ovl30DetailsModal .ovl30-tool-group .spm-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 7px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 12px; font-weight: 700; }
+        #ovl30DetailsModal .ovl30-tool-group .spm-lbl { font-size: 10px; font-weight: 700; color: #64748b; }
         #ovl30DetailsModal .ovl30-tool-group .form-control {
             height: 28px;
             font-size: 12px;
@@ -1894,7 +1897,7 @@
                             title="Apply SPRICE (saves the live preview)" aria-label="Apply SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
-                        <span id="modal-bulk-sprice-metrics" class="small" style="display:none;white-space:nowrap;"></span>
+                        <span id="modal-bulk-sprice-metrics" class="spm-wrap"></span>
                     </div>
                     <div class="ovl30-tool-group"
                         title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
@@ -1927,24 +1930,24 @@
                         </label>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Add this $ to SPRICE. When STD PRC also has a value, both work together: SPRICE = STD PRC + this $ (channel rules). Alone: adds to current SPRICE/Price on selected channels.">
+                        title="Add this $ to the current SPRICE of the selected channels (STD PRC is not added).">
                         <label for="modal-sprice-bump-input">+$ SPRICE</label>
                         <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
                             placeholder="1" step="0.01" style="width: 58px;"
-                            title="With STD PRC filled: SPRICE = STD + this $. Alone: add $ to current SPRICE on selected channels.">
+                            title="Add $ to the current SPRICE on selected channels.">
                         <button type="button" id="modal-apply-sprice-bump-btn" class="btn btn-sm btn-outline-primary"
-                            title="Apply +$ (sums with STD PRC when both filled)" aria-label="Apply SPRICE increase">
+                            title="Apply +$ to the current SPRICE of the selected channels" aria-label="Apply SPRICE increase">
                             <i class="fas fa-check"></i>
                         </button>
                     </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
-                        title="STD PRC for all marketplaces. When +$ SPRICE also has a value, both work together: SPRICE = STD PRC + +$ (channel rules).">
+                        title="STD PRC for all marketplaces.">
                         <label for="modal-std-sp-input">STD PRC</label>
                         <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
                             placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
-                            title="STD PRC — with +$ SPRICE filled, Apply uses STD + +$ as SPRICE.">
+                            title="STD PRC — Apply uses STD PRC as SPRICE (channel rules).">
                         <button type="button" id="modal-apply-std-prc-btn" class="btn btn-sm btn-success"
-                            title="Save STD PRC and apply SPRICE (STD + +$ when both filled)"
+                            title="Save STD PRC and apply it as SPRICE (channel rules)"
                             aria-label="Apply STD PRC">
                             <i class="fas fa-check"></i>
                         </button>
@@ -1960,7 +1963,7 @@
                             title="Apply SPRICE $ (saves the live preview)" aria-label="Apply same SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
-                        <span id="modal-same-sprice-metrics" class="small" style="display:none;white-space:nowrap;"></span>
+                        <span id="modal-same-sprice-metrics" class="spm-wrap"></span>
                     </div>
                     <div class="ovl30-tool-group"
                         title="CPN $: dollar off SPRICE — check channel(s) first.">
@@ -7410,8 +7413,9 @@
         function getModalStdPlusBumpCombo() {
             const std = readModalStdPrcAmount();
             if (!(std > 0)) return null;
-            const bump = readModalSpriceBumpAmount();
-            const applyBase = Math.max(0.01, +(std + bump).toFixed(2));
+            // The +$ SPRICE box is never added to STD PRC
+            const bump = 0;
+            const applyBase = Math.max(0.01, +std.toFixed(2));
             return { std: std, bump: bump, applyBase: applyBase };
         }
 
@@ -8741,15 +8745,16 @@
                 lines.push(String($tr.attr('data-marketplace') || '') + ': $' + (parseFloat($tr.find('.editable-sprice').val()) || 0).toFixed(2)
                     + ' → ' + parts.join(', '));
             });
+            // One small bordered box per metric, inside the same SPRICE box (not loose text)
             const html = defs.map(function(d, i) {
                 const val = sums[i].c
                     ? '<span style="' + styleForCellColor(d.color(sums[i].s / sums[i].c)) + '">' + Math.round(sums[i].s / sums[i].c) + '%</span>'
                     : '<span class="text-muted">-</span>';
-                return '<span class="text-muted">' + d.label + '</span> ' + val;
-            }).join(' · ');
+                return '<span class="spm-chip"><span class="spm-lbl">' + d.label + '</span>' + val + '</span>';
+            }).join('');
             $out.html(html)
                 .attr('title', (headNote || '') + (rows.length > 1 ? 'Average of ' + rows.length + ' channels\n' : '') + lines.join('\n'))
-                .show();
+                .css('display', 'inline-flex');
         }
         function makeSpricePreview(cfg) {
             let rowsState = []; // [{ $tr, orig }]
@@ -8859,7 +8864,7 @@
         })();
 
         // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
-        // When STD PRC also has a value: both work together → SPRICE = STD + bump (then channel rules)
+        // Adds the $ to the current SPRICE of the selected channels (STD PRC is NOT added)
         function applyModalSpriceBump() {
             const rawInput = $('#modal-sprice-bump-input').val();
             const bump = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -8869,64 +8874,7 @@
                 return;
             }
 
-            // Both filled → sum STD + bump and apply as SPRICE (same as STD Apply check)
-            const combo = getModalStdPlusBumpCombo();
-            if (combo && combo.std > 0) {
-                const sku = getModalPrimarySku();
-                if (!sku || String(sku).indexOf('PARENT') !== -1) {
-                    showToast('Open a SKU first', 'error');
-                    return;
-                }
-                const bumpLabel = (bump > 0 ? '+' : '') + '$' + Math.abs(bump).toFixed(2);
-                const comboMsg = 'STD $' + combo.std.toFixed(2) + ' ' + bumpLabel
-                    + ' = $' + combo.applyBase.toFixed(2)
-                    + ' → SPRICE (channel rules)'
-                    + siblingsApplyLabel() + '?';
-                if (!confirm(comboMsg)) return;
-
-                const $btn = $('#modal-apply-sprice-bump-btn');
-                const origHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-                // Save STD PRC, then apply SPRICE = STD + bump
-                $.ajax({
-                    url: '/save-amazon-sprice',
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                    },
-                    data: {
-                        sku: sku,
-                        sprice: combo.std,
-                        is_standard_price: 1,
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(response) {
-                        const saved = parseFloat(response.data || response.STANDARD_PRICE || combo.std) || combo.std;
-                        setModalSharedStandardPrice(saved);
-                        if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
-                            applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
-                        }
-                        refreshModalStdPrcCells(saved);
-                        syncModalToolbarSpInput(saved);
-                        const spriceBase = Math.max(0.01, +(saved + bump).toFixed(2));
-                        applyStdPriceToModalSpriceInputs(spriceBase, {
-                            silent: false,
-                            skipConfirm: true,
-                            comboLabel: 'STD $' + saved.toFixed(2) + ' + $' + bump.toFixed(2)
-                                + ' = $' + spriceBase.toFixed(2)
-                        });
-                    },
-                    error: function() {
-                        showToast('Failed to save STD PRC', 'error');
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false).html(origHtml);
-                    }
-                });
-                return;
-            }
-
+            // +$ only adds to each channel's current SPRICE — STD PRC is never added in here.
             if (modalSelectedChannels.size === 0) {
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
