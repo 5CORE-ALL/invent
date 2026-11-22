@@ -831,7 +831,7 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (21–25) — CPN/DSC after STD via class */
+        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (18–22) */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
@@ -848,16 +848,16 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
@@ -874,12 +874,12 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(26),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(26),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(27),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(28),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(28) {
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25) {
             text-align: center !important;
         }
         #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
@@ -2017,9 +2017,6 @@
                                         </button>
                                     </th>
                                     <th class="ovl30-std-prc-th" title="Standard Price (SP) — one value for all marketplaces on this SKU (amazon_data_view.STANDARD_PRICE). Editable on any channel row."><span>STD PRC</span></th>
-                                    <th class="ovl30-cpn-th" title="CPN $ — enter dollar amount less; Enter applies this channel only"><span>CPN $</span></th>
-                                    <th class="ovl30-cpn-pct-th" title="CPN % — enter percent less; Enter applies this channel only"><span>CPN %</span></th>
-                                    <th class="ovl30-dsc-th" title="DSC — dollar only off each channel SPRICE (e.g. 1 = $1 off). No %."><span>DSC</span></th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -2074,18 +2071,6 @@
                                     <th></th>
                                     <th></th>
                                     <th class="ovl30-std-prc-th"></th>
-                                    <th class="ovl30-cpn-th text-center">
-                                        <input type="text" id="modal-cpn-dollar-header-input" class="form-control form-control-sm text-end"
-                                            placeholder="$" title="CPN $ seed for checked channels">
-                                    </th>
-                                    <th class="ovl30-cpn-pct-th text-center">
-                                        <input type="text" id="modal-cpn-pct-header-input" class="form-control form-control-sm text-end"
-                                            placeholder="%" title="CPN % seed for checked channels">
-                                    </th>
-                                    <th class="ovl30-dsc-th text-center">
-                                        <input type="text" id="modal-dsc-header-input" class="form-control form-control-sm text-end editable-dsc"
-                                            placeholder="$1" title="DSC $ off each channel’s own SPRICE — dollar only">
-                                    </th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
                                     <th class="text-end" id="modal-avg-snroi">0%</th>
@@ -2099,7 +2084,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="28" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="25" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -3729,7 +3714,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="28" class="text-center text-muted py-4">
+                    <td colspan="25" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3740,7 +3725,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="28" class="text-center text-muted py-4">
+                    <td colspan="25" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3750,7 +3735,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="28" class="text-center text-danger py-4">
+                    <td colspan="25" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -4996,44 +4981,6 @@
                                     + '<input type="number" class="form-control form-control-sm editable-std-prc" '
                                     + 'value="' + valAttr + '" step="0.01" min="0" '
                                     + 'placeholder="" title="Standard Price (STD PRC) — same SP for all marketplaces">'
-                                    + '</span>';
-                            })()}
-                        </td>
-                        <td class="text-center ovl30-cpn-dollar-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
-                                const v = String((modalCpnDollarByChannel && modalCpnDollarByChannel[mpKey]) || '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-cpn-dollar-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-cpn-dollar" '
-                                    + 'value="' + v + '" placeholder="$" '
-                                    + 'title="CPN $ — type amount; auto-saves ($ less on this channel SPRICE)">'
-                                    + '</span>';
-                            })()}
-                        </td>
-                        <td class="text-center ovl30-cpn-pct-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
-                                const v = String((modalCpnPctByChannel && modalCpnPctByChannel[mpKey]) || '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-cpn-pct-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-cpn-pct" '
-                                    + 'value="' + v + '" placeholder="%" '
-                                    + 'title="CPN % — type percent; auto-saves (% less on this channel SPRICE)">'
-                                    + '</span>';
-                            })()}
-                        </td>
-                        <td class="text-center ovl30-dsc-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const dscVal = String(typeof modalDscRaw !== 'undefined' ? modalDscRaw : '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-dsc-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-dsc" '
-                                    + 'value="' + dscVal + '" placeholder="$1" '
-                                    + 'title="DSC: dollar only — e.g. 1 = $1 off this channel SPRICE (no %)">'
                                     + '</span>';
                             })()}
                         </td>
