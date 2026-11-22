@@ -428,6 +428,7 @@ class MeetingController extends Controller
                 'meet_url' => $p->meeting->hasMeetLink() ? $p->meeting->google_meet_url : null,
                 'google' => $p->meeting->isGoogleMeet(),
                 'details_url' => route('meetings.show', $p->meeting_id),
+                'can_manage' => $this->canManage($p->meeting, Auth::user()),
                 'rsvp_url' => route('meetings.rsvp', $p->meeting_id),
                 'room_url' => $p->meeting->isGoogleMeet() ? route('meetings.show', $p->meeting_id) : route('meetings.room', $p->meeting_id),
             ])->values(),

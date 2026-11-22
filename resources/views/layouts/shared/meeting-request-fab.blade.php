@@ -889,6 +889,29 @@
             }).catch(function () { if (!silent) box.innerHTML = '<div class="text-danger">Could not load reschedules.</div>'; });
         }
 
+        // Shown when someone marks a meeting completed: "Generate task" (opens the meeting's Tasks tab afterwards) or "No task".
+        // Only the host / task admins can assign tasks, so for anyone else it is a plain confirmation.
+        function askTaskChoice(resEl, title, onChoice, canTask) {
+            if (canTask === false) {
+                if (confirm('Mark "' + title + '" as completed?')) onChoice(false);
+                return;
+            }
+            resEl.innerHTML = '<div class="border rounded p-2 bg-light">'
+                + '<div class="fw-semibold mb-2">Mark &ldquo;' + esc(title) + '&rdquo; as completed. Generate a task from this meeting?</div>'
+                + '<button type="button" class="btn btn-sm btn-primary me-1" data-tc="task"><i class="ri-task-line"></i> Generate task</button>'
+                + '<button type="button" class="btn btn-sm btn-outline-secondary me-1" data-tc="none">No task</button>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted" data-tc="cancel">Cancel</button></div>';
+            resEl.querySelectorAll('[data-tc]').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var c = b.getAttribute('data-tc');
+                    if (c === 'cancel') { resEl.innerHTML = ''; return; }
+                    resEl.innerHTML = '';
+                    onChoice(c === 'task');
+                });
+            });
+        }
+        function goToTasks(url) { if (url) window.location.href = url + '#tab-tasks'; }
+
         function loadSent(silent) {
             var box = $('mrqSentList'), done = sentFilter === 'completed', reqFilter = sentFilter;
             if (!silent) box.innerHTML = '<div class="text-muted">Loading…</div>';
@@ -944,20 +967,22 @@
                     if (rbtn) rbtn.addEventListener('click', function () { toggleReschedule(div, m); });
                     var cbtn = div.querySelector('[data-complete]');
                     if (cbtn) cbtn.addEventListener('click', function () {
-                        if (!confirm('Mark "' + m.title + '" as completed? It will be archived (Archived tab).')) return;
                         var res = div.querySelector('[data-result]');
-                        cbtn.disabled = true;
-                        call('POST', m.end_url).then(function (r) {
-                            if (!r.ok || !(r.data && r.data.ok)) {
+                        askTaskChoice(res, m.title, function (withTask) {
+                            cbtn.disabled = true;
+                            call('POST', m.end_url).then(function (r) {
+                                if (!r.ok || !(r.data && r.data.ok)) {
+                                    cbtn.disabled = false;
+                                    res.innerHTML = '<span class="text-danger">' + esc((r.data && r.data.message) || 'Could not mark as completed.') + '</span>';
+                                    return;
+                                }
+                                res.innerHTML = '<span class="text-primary fw-semibold"><i class="ri-check-double-line"></i> Marked as completed.</span>';
+                                if (withTask) { setTimeout(function () { goToTasks(m.details_url || m.room_url); }, 500); return; }
+                                setTimeout(function () { sentSig = ''; loadSent(); }, 800);
+                            }).catch(function () {
                                 cbtn.disabled = false;
-                                res.innerHTML = '<span class="text-danger">' + esc((r.data && r.data.message) || 'Could not mark as completed.') + '</span>';
-                                return;
-                            }
-                            res.innerHTML = '<span class="text-primary fw-semibold"><i class="ri-check-double-line"></i> Marked as completed.</span>';
-                            setTimeout(function () { sentSig = ''; loadSent(); }, 800);
-                        }).catch(function () {
-                            cbtn.disabled = false;
-                            res.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>';
+                                res.innerHTML = '<span class="text-danger">Network problem. Please try again.</span>';
+                            });
                         });
                     });
                     box.appendChild(div);
@@ -1102,9 +1127,8 @@
                 var tip = label.replace(/<[^>]*>/g, '').trim(), ic = label.match(/<i[^>]*><\/i>/);
                 b.innerHTML = ic ? ic[0] : label; b.title = tip; b.setAttribute('aria-label', tip);
                 b.addEventListener('click', fn); actions.appendChild(b); return b; }
-            function answer(resp) {
+            function answer(resp, withTask) {
                 if (resp === 'declined' && !confirm('Decline "' + r.title + '"? The host will see that you declined.')) return;
-                if (resp === 'completed' && !confirm('Mark "' + r.title + '" as completed? It will be removed from your requests and the host will see it as completed.')) return;
                 actions.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
                 call('POST', r.rsvp_url, { response: resp }).then(function (res) {
                     if (!res.ok || !res.data.ok) {
@@ -1121,6 +1145,7 @@
                             + (r.google || res.data.live ? '' : '<div class="text-muted mt-1">Not started yet — you can join once the host starts it.</div>');
                     } else if (resp === 'completed') {
                         result.innerHTML = '<span class="text-primary fw-semibold"><i class="ri-check-double-line"></i> Marked as completed.</span>';
+                        if (withTask) { setTimeout(function () { goToTasks(r.details_url || r.room_url); }, 500); return; }
                         setTimeout(function () { div.style.transition = 'opacity .4s ease'; div.style.opacity = '0'; setTimeout(function () { div.remove(); if (!$('mrqInboxList').children.length) loadInbox(); }, 400); }, 1200);
                     } else {
                         result.innerHTML = '<span class="text-secondary"><i class="ri-close-circle-fill"></i> You declined.</span>';
@@ -1138,7 +1163,9 @@
             } else {
                 btn('<i class="ri-vidicon-line"></i> ' + (r.google ? 'Meeting details' : 'Join meeting'), 'btn-primary', function () { window.location.href = r.room_url; });
             }
-            btn('<i class="ri-check-double-line"></i> Completed', 'btn-outline-primary', function () { answer('completed'); });
+            btn('<i class="ri-check-double-line"></i> Completed', 'btn-outline-primary', function () {
+                askTaskChoice(result, r.title, function (withTask) { answer('completed', withTask); }, !!r.can_manage);
+            });
             if (r.postpone_url) {
                 var rs = document.createElement('button'); rs.type = 'button'; rs.className = 'btn btn-sm mrq-ico mrq-rs btn-outline-info';
                 rs.textContent = 'RS'; rs.title = 'Reschedule'; rs.setAttribute('aria-label', 'Reschedule');
