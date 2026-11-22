@@ -3731,6 +3731,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/messages/{message}/archive', 'archiveMessage')->whereNumber('message')->name('chat.messages.archive');
         Route::post('/chat/messages/{message}/unarchive', 'unarchiveMessage')->whereNumber('message')->name('chat.messages.unarchive');
         Route::post('/chat/messages/{message}/task', 'createTask')->whereNumber('message')->name('chat.messages.task');
+        Route::post('/chat/channels/{channel}/close-task', 'closeTask')->whereNumber('channel')->name('chat.channels.close-task');
         Route::post('/chat/channels/{channel}/read', 'markRead')->whereNumber('channel')->name('chat.channels.read');
         Route::post('/chat/channels/{channel}/pin', 'pinChannel')->whereNumber('channel')->name('chat.channels.pin');
         Route::post('/chat/channels/{channel}/members', 'members')->whereNumber('channel')->name('chat.channels.members');

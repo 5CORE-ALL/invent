@@ -1091,6 +1091,50 @@ class ChatController extends Controller
         ]);
     }
 
+    /**
+     * Close (mark Done) the task behind a task chat once the discussion is finished.
+     * Goes through TaskController::updateStatus so Done effects (completion date,
+     * notifications, archiving of self-assigned tasks) match the Tasks page.
+     */
+    public function closeTask(Request $request, int $channel): JsonResponse
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+        $room = ChatWorkspace::memberOrFail($user, $channel);
+        abort_unless($room->isTask() && $room->task_id, 422, 'This chat is not linked to a task.');
+
+        $task = Task::query()->find($room->task_id);
+        if (! $task) {
+            return response()->json(['ok' => false, 'message' => 'The task for this chat no longer exists.'], 404);
+        }
+        if (in_array((string) $task->status, ['Done', 'Archived'], true)) {
+            return response()->json(['ok' => true, 'task_status' => $task->status, 'already_closed' => true]);
+        }
+        if (! ChatWorkspace::canCloseTask($user, $task)) {
+            return response()->json(['ok' => false, 'message' => 'Only the assignor or assignee can close this task.'], 403);
+        }
+
+        $sub = Request::create('/tasks/'.$task->id.'/update-status', 'POST', ['status' => 'Done']);
+        $sub->headers->set('Accept', 'application/json');
+        $sub->setUserResolver(fn () => $user);
+        $result = app(TaskController::class)->updateStatus($sub, $task->id);
+        $payload = $result->getData(true);
+        if (! ($payload['success'] ?? false)) {
+            return response()->json(['ok' => false, 'message' => $payload['message'] ?? 'Could not close the task.'], $result->getStatusCode() ?: 422);
+        }
+
+        ChatWorkspace::postSystemNotice($room, $user->name.' closed task #'.$task->id.' — marked Done.', 'task');
+        ChatAudit::record($user, 'task.closed_from_chat', 'task', (int) $task->id, (int) $room->id, []);
+
+        $fresh = Task::query()->find($task->id);
+
+        return response()->json([
+            'ok' => true,
+            'task_status' => $fresh?->status ?? 'Done',
+            'message' => $payload['message'] ?? 'Task closed.',
+        ]);
+    }
+
     public function healthEvent(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -1214,6 +1258,7 @@ class ChatController extends Controller
             ->where('user_id', $user->id)
             ->first();
         $roster = ChatWorkspace::memberRoster($channel);
+        $linkedTask = $channel->isTask() && $channel->task_id ? Task::query()->find($channel->task_id) : null;
 
         return [
             'id' => (int) $channel->id,
@@ -1236,6 +1281,10 @@ class ChatController extends Controller
             'can_edit' => ChatWorkspace::canEditChannel($user, $channel),
             'archived' => (bool) $channel->is_archived,
             'pinned' => (bool) ($member && Schema::hasColumn('chat_channel_members', 'pinned_at') && $member->pinned_at),
+            'task_id' => $channel->isTask() ? (int) $channel->task_id : null,
+            'task_status' => $linkedTask?->status,
+            'can_close_task' => $channel->isTask() && ! $channel->is_archived
+                && ChatWorkspace::canCloseTask($user, $linkedTask),
         ];
     }
 

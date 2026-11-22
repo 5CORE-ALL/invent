@@ -333,6 +333,22 @@ class ChatWorkspace
     }
 
     /**
+     * Whether the viewer may close (mark Done) the task behind a task chat.
+     * Uses the same rule as the Tasks page status change: assignor, assignee or task admin.
+     */
+    public static function canCloseTask(?User $user, ?Task $task): bool
+    {
+        if (! $user || ! $task || $task->trashed()) {
+            return false;
+        }
+        if (in_array((string) $task->status, ['Done', 'Archived'], true)) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\Gate::forUser($user)->allows('updateStatus', $task);
+    }
+
+    /**
      * One discussion channel per task: the opener plus the task's assignor and assignee(s).
      * Membership is re-synced on every open so reassigned people get access.
      */
@@ -746,9 +762,11 @@ class ChatWorkspace
         $presence = ChatPresence::map($peerIds);
 
         $taskGroups = [];
+        $taskModels = collect();
         $taskIds = $channels->where('type', 'task')->pluck('task_id')->filter()->unique()->values()->all();
         if ($taskIds !== []) {
-            $taskGroups = Task::query()->whereIn('id', $taskIds)->pluck('group', 'id')->all();
+            $taskModels = Task::query()->whereIn('id', $taskIds)->get()->keyBy('id');
+            $taskGroups = $taskModels->pluck('group', 'id')->all();
         }
 
         $out = [];
@@ -801,6 +819,9 @@ class ChatWorkspace
                 'pinned' => isset($pinnedLookup[(int) $channel->id]),
                 'task_id' => $channel->isTask() ? (int) $channel->task_id : null,
                 'task_url' => $channel->isTask() && $channel->task_id ? url('/tasks?highlight='.(int) $channel->task_id) : null,
+                'task_status' => $channel->isTask() ? ($taskModels->get($channel->task_id)?->status) : null,
+                'can_close_task' => $channel->isTask() && ! $channel->is_archived
+                    && self::canCloseTask($user, $taskModels->get($channel->task_id)),
             ];
         }
 

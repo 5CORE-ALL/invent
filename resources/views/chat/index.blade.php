@@ -364,6 +364,11 @@
         .slack-head__tools .slack-tool-count { font-size: 11px; font-weight: 700; }
         .slack-head__tools select { width: 52px; height: 30px; padding: 0 4px; overflow: hidden; text-overflow: clip; }
         .slack-head__tools .is-danger { color: #e01e5a; border-color: #f3c6d0; }
+        .slack-head__tools .is-success { color: #1a7f37; border-color: #b7e1c1; background: #f1fbf4; }
+        .slack-head__tools .is-success span { font-size: 12px; font-weight: 700; }
+        .slack-head__tools .is-success:hover { background: #dff5e5; }
+        .slack-head__tools .is-success:disabled { opacity: .6; cursor: wait; }
+        .slack-head__tools .slack-task-closed { font-size: 12px; font-weight: 700; color: #1a7f37; padding: 0 6px; }
         .slack-head__tools .is-pinned { color: #d32f2f; border-color: #ef9a9a; font-weight: 800; }
         .slack-people-search { margin-bottom: 12px; }
         .slack-people-grid {
@@ -624,6 +629,7 @@
                     </div>
                 </div>
                 <div class="slack-head__tools">
+                    <button type="button" id="slackCloseTaskBtn" class="is-success" title="Chat completed? Mark the task Done" aria-label="Close task" hidden><i class="ri-checkbox-circle-line"></i><span>Close task</span></button>
                     <button type="button" id="slackPinRoomBtn" title="Pin" aria-label="Pin" hidden><i class="ri-pushpin-line"></i></button>
                     <button type="button" id="slackSearchOpen" title="Search" aria-label="Search"><i class="ri-search-line"></i></button>
                     <button type="button" id="slackMarkReadBtn" title="Mark as read" aria-label="Mark as read"><i class="ri-check-double-line"></i></button>
@@ -1659,6 +1665,12 @@
             delBtn.title = (ch && ch.type === 'group') ? 'Delete group' : ((ch && (ch.type === 'dm' || ch.type === 'task')) ? 'Delete chat' : 'Delete channel');
             delBtn.setAttribute('aria-label', delBtn.title);
         }
+        const closeTaskBtn = document.getElementById('slackCloseTaskBtn');
+        if (closeTaskBtn) {
+            const canClose = !!(ch && ch.type === 'task' && !archived && (src.can_close_task != null ? src.can_close_task : ch.can_close_task));
+            closeTaskBtn.hidden = !canClose;
+            closeTaskBtn.disabled = false;
+        }
         const pinRoomBtn = document.getElementById('slackPinRoomBtn');
         if (pinRoomBtn) {
             const pinned = !!(ch && (src.pinned || ch.pinned));
@@ -2573,6 +2585,27 @@
         } catch (ex) {
             err.textContent = ex.message || 'Could not save.';
             err.hidden = false;
+        }
+    });
+    document.getElementById('slackCloseTaskBtn').addEventListener('click', async function () {
+        const btn = this;
+        const ch = channels.find(function (c) { return c.id === activeId; });
+        if (!ch || ch.type !== 'task') return;
+        if (!confirm('Is this chat completed? This will mark the task as Done.')) return;
+        btn.disabled = true;
+        try {
+            const data = await api('/chat/channels/' + ch.id + '/close-task', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: '{}'
+            });
+            ch.can_close_task = false;
+            ch.task_status = data.task_status || 'Done';
+            setHead(ch, Object.assign({}, ch, { can_close_task: false }));
+            if (typeof tick === 'function') { try { tick(); } catch (e) {} } // pulls in the "task closed" notice
+        } catch (err) {
+            btn.disabled = false;
+            alert(err.message || 'Could not close the task.');
         }
     });
     document.getElementById('slackDeleteRoomBtn').addEventListener('click', async function () {
