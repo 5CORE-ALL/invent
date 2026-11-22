@@ -10399,7 +10399,25 @@
         }
 
         function renderChannelsPushModal() {
-            const groups = window.PI_CHANNELS_BY_TYPE || {};
+            // In this modal Dropship (DS) channels live under B2B and the DS column is hidden.
+            const groups = {};
+            const srcGroups = window.PI_CHANNELS_BY_TYPE || {};
+            // Per-channel overrides (by normalized name) and whole-type moves for this modal:
+            //   Alibaba → B2B, Dropship → B2B, Sheets (Mercari, Vinted) → C2C
+            const channelOverride = { alibaba: 'B2B' };
+            const typeMoves = { dropship: 'B2B', ds: 'B2B', sheets: 'C2C' };
+            Object.keys(srcGroups).forEach(function(t) {
+                (srcGroups[t] || []).forEach(function(name) {
+                    const nameKey = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const target = channelOverride[nameKey] || typeMoves[String(t).toLowerCase().trim()] || t;
+                    (groups[target] = groups[target] || []).push(name);
+                });
+            });
+            ['B2B', 'C2C'].forEach(function(t) {
+                if (groups[t]) {
+                    groups[t].sort(function(a, b) { return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }); });
+                }
+            });
             const types = Object.keys(groups);
             $('#chpush-sku').text(getModalPrimarySku() || '');
             if (!types.length) {
@@ -10409,7 +10427,7 @@
             let html = '<div class="chpush-grid">';
             types.forEach(function(type) {
                 const names = groups[type] || [];
-                html += '<div class="chpush-card">'
+                html += '<div class="chpush-card" data-type="' + chpushEsc(type) + '">'
                     + '<div class="chpush-card-head">'
                     + '<span>' + chpushEsc(type) + '</span><span class="badge bg-secondary">' + names.length + '</span></div>'
                     + '<table class="chpush-table"><thead><tr>'
@@ -10462,6 +10480,16 @@
 
         // Typing a price in the first row of a column autofills the rest of that column
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
+            // Aliexpress = X  →  every B2B channel = 0.75 × X
+            const channel = String($(this).closest('tr').attr('data-channel') || '');
+            if (chpushKey(channel) === 'aliexpress') {
+                const x = parseFloat($(this).val());
+                const b2bVal = (isFinite(x) && x > 0) ? (x * 0.75).toFixed(2) : '';
+                $('#ovl30ChannelsPushModal .chpush-card').filter(function() {
+                    return String($(this).attr('data-type') || '').toLowerCase() === 'b2b';
+                }).find('.chpush-input').val(b2bVal);
+            }
+
             const $inputs = $(this).closest('table').find('.chpush-input');
             if (!$inputs.length || !$inputs.first().is(this)) return;
             const v = $(this).val();
