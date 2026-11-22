@@ -1132,11 +1132,12 @@
             right: 0;
             left: auto;
             margin: 0;
-            width: 48vw;
-            max-width: 48vw;
-            min-width: 520px;
-            height: 100vh;
-            max-height: 100vh;
+            width: 72vw;      /* 1.5 × the old 48vw */
+            max-width: 72vw;
+            min-width: 780px;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            bottom: 0;
             transform: none;
         }
         @media (max-width: 768px) {
@@ -1154,7 +1155,7 @@
             transform: translateX(0);
         }
         #lmpModal .modal-content {
-            height: 100%;
+            height: 100vh;
             max-height: 100vh;
             border-radius: 0;
             border: none;
@@ -1190,6 +1191,17 @@
             height: 28px !important;
             width: 28px !important;
         }
+        /* Channel icon + competitor product image columns (before Price) */
+        #lmpModal .table td.lmp-ch-cell,
+        #lmpModal .table td.lmp-img-cell { text-align: center; padding: 0.2rem; }
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon { width: 28px; height: 28px; font-size: 14px; margin: 0; }
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon.aliexpress,
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon.tiktok,
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon.bestbuy,
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon.macy,
+        #lmpModal .table td.lmp-ch-cell .lmp-channel-icon.reverb { font-size: 11px; }
+        #lmpModal .table img.lmp-prod-img { width: 56px; height: 56px; object-fit: contain; background: #fff; border-radius: 4px; border: 1px solid #e2e8f0; }
+        #lmpModal .lmp-our-img { width: 46px; height: 46px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; margin-right: 10px; flex-shrink: 0; }
         #lmpModal .lmp-channel-filters {
             display: flex;
             flex-wrap: wrap;
@@ -2243,6 +2255,7 @@
         <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
+                    <img id="lmpOurImage" class="lmp-our-img" alt="" style="display:none;" onerror="this.style.display='none'">
                     <h5 class="modal-title mb-0">
                         <i class="fa fa-shopping-cart me-1"></i> LMP: <span id="lmpSku"></span>
                     </h5>
@@ -10992,6 +11005,16 @@
             const refreshFromApi = !!options.refresh;
             resetLmpEditState();
             $('#lmpSku').text(sku);
+            (function() {
+                // Our product image, top-left of the drawer
+                let img = '';
+                try {
+                    img = (getLmpOurListing(sku, 'amazon') || {}).image || (getLmpOurListing(sku, 'ebay') || {}).image || '';
+                } catch (e) { img = ''; }
+                if (!img && String(getModalPrimarySku() || '') === String(sku)) img = $('#modal-product-image').attr('src') || '';
+                const $oi = $('#lmpOurImage');
+                if (img) $oi.attr('src', img).show(); else $oi.hide().removeAttr('src');
+            })();
             if (marketplace === 'macys' || marketplace === 'bestbuyusa') {
                 marketplace = marketplace === 'macys' ? 'macy' : 'bestbuy';
             }
@@ -11802,14 +11825,13 @@
             const price = parseFloat(our.price) || 0;
             if (!(price > 0)) return '';
             const thumb = our.image
-                ? '<img src="' + String(our.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
-                : '';
+                ? '<img src="' + String(our.image).replace(/"/g, '&quot;') + '" alt="" class="lmp-prod-img" onerror="this.style.display=\'none\'">'
+                : '<span class="text-muted">-</span>';
             const linkHtml = our.link
                 ? ' <a href="' + String(our.link).replace(/"/g, '&quot;') + '" target="_blank" class="text-primary ms-1" title="Open our listing"><i class="fa fa-external-link"></i></a>'
                 : '';
             const chIcon = lmpChannelIconHtml(our.channel || 'ebay');
             const priceCell = '<div class="d-flex align-items-center">'
-                + thumb + chIcon
                 + '<span class="lmp-five-core-price">$' + price.toFixed(2) + '</span>'
                 + ' <span class="badge bg-primary ms-1">Ours</span>'
                 + linkHtml
@@ -11821,6 +11843,8 @@
             return '<tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">'
                 + '<td class="text-center text-muted small">—</td>'
                 + '<td class="text-center text-muted small">—</td>'
+                + '<td class="lmp-ch-cell">' + chIcon + '</td>'
+                + '<td class="lmp-img-cell">' + thumb + '</td>'
                 + '<td>' + priceCell + '</td>'
                 + '<td class="text-center">' + rr.ratingCell + '</td>'
                 + '<td class="text-center">' + rr.reviewsCell + '</td>'
@@ -12010,6 +12034,8 @@
                 + '<input type="checkbox" class="form-check-input" id="lmp-select-all-cb" title="Select all">'
                 + '</th>'
                 + '<th>#</th>'
+                + '<th class="text-center" title="Channel">Ch</th>'
+                + '<th class="text-center" title="Competitor product image">Image</th>'
                 + '<th>Price</th>'
                 + '<th title="Amz competitor star rating (SerpApi / Jungle Scout for Ours)">Rating</th>'
                 + '<th title="Amz review count">Reviews</th>'
@@ -12037,14 +12063,12 @@
                 const lowest = channelLowest[row.channel];
                 const isLowest = !row.ignored && lowest != null && Math.abs(rankVal - lowest) < 0.01;
                 const thumb = row.image
-                    ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
-                    : '';
+                    ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="lmp-prod-img" onerror="this.style.display=\'none\'">'
+                    : '<span class="text-muted">-</span>';
                 const linkHtml = row.link
                     ? ' <a href="' + String(row.link).replace(/"/g, '&quot;') + '" target="_blank" class="text-primary ms-1" title="Open product"><i class="fa fa-external-link"></i></a>'
                     : '';
                 const priceCell = '<div class="d-flex align-items-center">'
-                    + thumb
-                    + lmpChannelIconHtml(row.channel)
                     + (isLowest ? '<i class="fa fa-trophy text-success me-1"></i>' : '')
                     + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
                     + linkHtml
@@ -12112,6 +12136,8 @@
                 html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
                     + '<td class="text-center align-middle">' + selectCb + '</td>'
                     + '<td>' + sn + '</td>'
+                    + '<td class="lmp-ch-cell">' + lmpChannelIconHtml(row.channel) + '</td>'
+                    + '<td class="lmp-img-cell">' + thumb + '</td>'
                     + '<td>' + priceCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'
