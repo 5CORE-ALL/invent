@@ -208,6 +208,42 @@
             .fd-grid-3, .fd-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
+        /* ── History timeline (inside .faq-detail-modal) ───────────── */
+        .fh-title { font-size: 1.15rem; font-weight: 700; line-height: 1.2; }
+        .fh-count { font-size: 0.72rem; font-weight: 600; background: rgba(255,255,255,0.22); padding: 2px 10px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+        .fh-timeline { position: relative; padding: 4px 0 4px 6px; }
+        .fh-timeline::before { content: ''; position: absolute; left: 21px; top: 10px; bottom: 10px; width: 2px; background: linear-gradient(#c7d2fe, #e5e7eb); border-radius: 2px; }
+        .fh-item { position: relative; display: flex; gap: 14px; margin-bottom: 14px; }
+        .fh-item:last-child { margin-bottom: 0; }
+        .fh-dot {
+            position: relative; z-index: 1; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem;
+            box-shadow: 0 0 0 4px #f8fafc; background: #6366f1;
+        }
+        .fh-added .fh-dot { background: linear-gradient(135deg, #10b981, #059669); }
+        .fh-edited .fh-dot { background: linear-gradient(135deg, #f59e0b, #f97316); }
+        .fh-card {
+            flex: 1 1 auto; min-width: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+            padding: 10px 14px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .fh-card:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(79,70,229,0.12); }
+        .fh-row { display: flex; align-items: center; gap: 12px; }
+        .fh-avatar {
+            flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; color: #4338ca; background: #e0e7ff;
+        }
+        .fh-who { flex: 1 1 auto; min-width: 0; }
+        .fh-email { font-size: 0.85rem; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fh-badge { display: inline-block; margin-top: 2px; padding: 1px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .fh-added .fh-badge { background: #d1fae5; color: #047857; }
+        .fh-edited .fh-badge { background: #fef3c7; color: #b45309; }
+        .fh-when { text-align: right; flex-shrink: 0; }
+        .fh-date { font-size: 0.82rem; font-weight: 700; color: #0f172a; letter-spacing: 0.02em; }
+        .fh-time { font-size: 0.74rem; color: #64748b; margin-top: 2px; }
+        .fh-time small { font-weight: 700; }
+        .fh-empty { text-align: center; color: #94a3b8; padding: 28px 0; }
+        .fh-empty i { font-size: 2.2rem; display: block; margin-bottom: 4px; }
+
         /* ── Dept filter panel ──────────────────────────────────────── */
         .faq-dept-panel {
             width: min(760px, calc(100vw - 48px));
@@ -262,7 +298,7 @@
                 <input type="text" id="faqFilterGroup" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="group_name" placeholder="Search Group...">
                 <input type="text" id="faqFilterFaq" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="faq" placeholder="Search FAQ/FFP/Issues...">
                 <input type="text" id="faqFilterAnswers" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="answers" placeholder="Search Answer/Solutions...">
-            </div>
+                </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 w-100">
                 {{-- Dept filter: wide panel with quick search + multi-column list --}}
                 <div class="dropdown" style="flex-shrink: 0;">
@@ -284,12 +320,12 @@
                                 <small id="faqDeptCountSmall" class="ms-auto text-muted"></small>
                             </label>
                             <div class="faq-dept-list">
-                                @foreach ($departments as $dept)
+                        @foreach ($departments as $dept)
                                     <label class="faq-dept-item" data-name="{{ strtolower($dept->name) }}" for="faqDeptFilter_{{ $dept->id }}">
-                                        <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
+                                <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
                                         <span>{{ $dept->name }}</span>
                                     </label>
-                                @endforeach
+                        @endforeach
                                 <div class="faq-dept-none text-muted" style="display:none;">No department found</div>
                             </div>
                         </div>
@@ -678,7 +714,7 @@
                     <div class="flex-grow-1 min-w-0">
                         <div class="fd-eyebrow">FAQ Details</div>
                         <span class="fd-chip"><i class="ri-folder-3-line"></i><span id="view_group"></span></span>
-                    </div>
+                </div>
                     <button type="button" class="fd-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                 </div>
 
@@ -700,15 +736,15 @@
                         <div class="fd-meta fd-item">
                             <div class="fd-label"><i class="ri-building-line"></i> Dept</div>
                             <div id="view_dept" class="fd-text"></div>
-                        </div>
+                    </div>
                         <div class="fd-meta fd-item">
                             <div class="fd-label"><img src="{{ asset('images/variant-icon.png') }}" alt=""> Type / Variant</div>
                             <div id="view_type_variant" class="fd-text"></div>
-                        </div>
+                    </div>
                         <div class="fd-meta fd-item">
                             <div class="fd-label"><img src="{{ asset('images/what-icon.png') }}" alt=""> What</div>
                             <div id="view_what" class="fd-text"></div>
-                        </div>
+                    </div>
                     </div>
 
                     {{-- Resources --}}
@@ -755,7 +791,7 @@
                             <button type="button" id="view_messages_copy" class="fd-copy" title="Copy message" style="display:none;">
                                 <i class="ri-file-copy-line"></i> Copy
                             </button>
-                        </div>
+                </div>
                         <div id="view_messages" class="fd-text"></div>
                     </section>
                 </div>
@@ -822,26 +858,21 @@
     </div>
 
     {{-- Guru History Modal --}}
-    <div class="modal fade" id="faqGuruHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade faq-detail-modal" id="faqGuruHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="ri-history-line"></i> Add / Edit History</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="fd-header">
+                    <div class="fd-header-icon"><i class="ri-history-line" style="font-size:1.6rem;color:#4f46e5;"></i></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fd-eyebrow">Activity</div>
+                        <div class="fh-title">Add / Edit History <span class="fh-count" id="faqGuruHistoryCount"></span></div>
+                    </div>
+                    <button type="button" class="fd-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                 </div>
                 <div class="modal-body">
-                    <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>User</th>
-                                <th>Action</th>
-                                <th>Date &amp; Time</th>
-                            </tr>
-                        </thead>
-                        <tbody id="faqGuruHistoryBody"></tbody>
-                    </table>
+                    <div id="faqGuruHistoryList" class="fh-timeline"></div>
                 </div>
-                <div class="modal-footer">
+                <div class="fd-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1073,8 +1104,8 @@
                 setViewText('view_ca', d.ca);
                 setViewText('view_plus_action', d.plus_action);
                 setViewText('view_messages', d.messages);
-                var copyBtn = document.getElementById('view_messages_copy');
-                if (copyBtn) {
+                    var copyBtn = document.getElementById('view_messages_copy');
+                    if (copyBtn) {
                     if (hasText(d.messages)) { copyBtn.style.display = 'inline-flex'; copyBtn.setAttribute('data-copy', d.messages); }
                     else { copyBtn.style.display = 'none'; copyBtn.removeAttribute('data-copy'); }
                 }
@@ -1088,12 +1119,12 @@
                     var icon = this.querySelector('i');
                     var done = function() {
                         if (!icon) return;
-                        icon.classList.remove('ri-file-copy-line');
-                        icon.classList.add('ri-check-line', 'text-success');
-                        setTimeout(function() {
-                            icon.classList.remove('ri-check-line', 'text-success');
-                            icon.classList.add('ri-file-copy-line');
-                        }, 1500);
+                            icon.classList.remove('ri-file-copy-line');
+                            icon.classList.add('ri-check-line', 'text-success');
+                            setTimeout(function() {
+                                icon.classList.remove('ri-check-line', 'text-success');
+                                icon.classList.add('ri-file-copy-line');
+                            }, 1500);
                     };
                     if (navigator.clipboard && navigator.clipboard.writeText) {
                         navigator.clipboard.writeText(text).then(done).catch(function() {});
@@ -1115,14 +1146,30 @@
             }
 
             function openHistory(d) {
-                var body = document.getElementById('faqGuruHistoryBody');
-                var hist = d.history || [];
-                if (!body) return;
+                var list = document.getElementById('faqGuruHistoryList');
+                var hist = (d.history || []).slice().reverse(); // newest first
+                if (!list) return;
+                var countEl = document.getElementById('faqGuruHistoryCount');
+                if (countEl) countEl.textContent = hist.length ? hist.length + (hist.length === 1 ? ' entry' : ' entries') : '';
                 if (!hist.length) {
-                    body.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No history recorded.</td></tr>';
+                    list.innerHTML = '<div class="fh-empty"><i class="ri-inbox-line"></i><div>No history recorded.</div></div>';
                 } else {
-                    body.innerHTML = hist.map(function(h) {
-                        return '<tr><td>' + esc(h.email || '\u2014') + '</td><td>' + esc(h.action || '') + '</td><td>' + esc(h.at || '') + '</td></tr>';
+                    list.innerHTML = hist.map(function(h) {
+                        var email = h.email || '\u2014';
+                        var action = String(h.action || '');
+                        var kind = /^added/i.test(action) ? 'added' : 'edited';
+                        var when = String(h.at_display || h.at || '');
+                        return '<div class="fh-item fh-' + kind + '">' +
+                            '<div class="fh-dot"><i class="' + (kind === 'added' ? 'ri-add-line' : 'ri-pencil-line') + '"></i></div>' +
+                            '<div class="fh-card">' +
+                                '<div class="fh-row">' +
+                                    '<span class="fh-avatar">' + esc(email.charAt(0).toUpperCase()) + '</span>' +
+                                    '<div class="fh-who"><div class="fh-email">' + esc(email) + '</div>' +
+                                    '<span class="fh-badge">' + esc(action || '\u2014') + '</span></div>' +
+                                    '<div class="fh-when"><div class="fh-date">' + esc(when) + '</div></div>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>';
                     }).join('');
                 }
                 new bootstrap.Modal(document.getElementById('faqGuruHistoryModal')).show();
@@ -1474,8 +1521,8 @@
                 tableReady = true;
                 applyFilters();
                 applyColumnVisibilityFromServer(); // saved layout + builds the Columns panel
-                refreshSelection();
-            });
+                    refreshSelection();
+                });
             table.on('dataLoaded', function() { updateCount(); });
             table.on('dataFiltered', function() { updateCount(); });
             table.on('rowSelectionChanged', function() { refreshSelection(); });
@@ -1534,22 +1581,22 @@
                     new bootstrap.Modal(bulkEditModalEl).show();
                 });
             }
-            bulkEditForm.addEventListener('submit', function(e) {
-                var ids = selectedIds();
-                if (ids.length === 0) {
-                    e.preventDefault();
-                    alert('Please select at least one row first.');
-                    return;
-                }
+                bulkEditForm.addEventListener('submit', function(e) {
+                    var ids = selectedIds();
+                    if (ids.length === 0) {
+                        e.preventDefault();
+                        alert('Please select at least one row first.');
+                        return;
+                    }
                 fillBulkIds(ids);
                 if (bulkEditForm.querySelectorAll('.bulk-apply:checked').length === 0) {
-                    e.preventDefault();
-                    alert('Edit at least one field to update.');
-                    return;
-                }
-                bulkEditForm.querySelectorAll('.bulk-field, .bulk-field-wrap input').forEach(function(el) {
-                    el.disabled = false;
-                });
+                        e.preventDefault();
+                        alert('Edit at least one field to update.');
+                        return;
+                    }
+                    bulkEditForm.querySelectorAll('.bulk-field, .bulk-field-wrap input').forEach(function(el) {
+                        el.disabled = false;
+                    });
             });
 
             // ───────────────────────── Columns panel (shared with the other Tabulator pages) ─────────────────────────

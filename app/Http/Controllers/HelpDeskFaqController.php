@@ -38,6 +38,32 @@ class HelpDeskFaqController extends Controller
         return true;
     }
 
+    /**
+     * History entries with a display time in Ohio (US Eastern) time, e.g. "10 NOV 26, 12:25 PM".
+     * Timestamps are stored in the app timezone, so they are converted from it.
+     */
+    private function formatHistory($history): array
+    {
+        return array_map(function ($h) {
+            $h = is_array($h) ? $h : [];
+            $display = (string) ($h['at'] ?? '');
+            if ($display !== '') {
+                try {
+                    $display = strtoupper(
+                        \Carbon\Carbon::parse($display, config('app.timezone'))
+                            ->timezone('America/New_York')
+                            ->format('j M y, g:i A')
+                    );
+                } catch (\Throwable $e) {
+                    // keep the raw value
+                }
+            }
+            $h['at_display'] = $display;
+
+            return $h;
+        }, is_array($history) ? array_values($history) : []);
+    }
+
     private function appendHistory(?array $history, string $email, string $action): array
     {
         $history = is_array($history) ? $history : [];
@@ -110,7 +136,7 @@ class HelpDeskFaqController extends Controller
                 'ca' => $clean($faq->ca),
                 'plus_action' => $clean($faq->plus_action),
                 'messages' => $clean($faq->messages),
-                'history' => is_array($faq->edit_history) ? $faq->edit_history : [],
+                'history' => $this->formatHistory($faq->edit_history),
                 'created_by_email' => $faq->created_by_email,
                 'updated_by_email' => $faq->updated_by_email,
             ];
