@@ -10367,6 +10367,13 @@
             ebay: 'ebay1', ebaytwo: 'ebay2', ebaythree: 'ebay3', tiktokshop: 'tiktok'
         };
 
+        // Marketplace keys accepted by /cvr-master-push-price (pushPriceToAmazon)
+        const CHPUSH_SUPPORTED = new Set([
+            'amazon', 'doba', 'walmart', 'shopify', 'sb2c', 'sb2b', 'pls', 'reverb', 'fba',
+            'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'macy', 'ppower', 'wayfair', 'topdawg', 'faire',
+            'temu', 'temu2', 'tiktok', 'tiktok2', 'aliexpress', 'shein'
+        ]);
+
         function chpushKey(name) {
             const k = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             return CHPUSH_ALIASES[k] || k;
@@ -10411,17 +10418,20 @@
                 names.forEach(function(name) {
                     const $row = chpushFindRow(name);
                     const $rowBtn = $row ? $row.find('.push-price-btn') : $();
-                    const pushable = !!($row && $rowBtn.length);
+                    // Listed row with a push button, OR no row but the backend supports pushing this channel
+                    const pushable = $row ? $rowBtn.length > 0 : CHPUSH_SUPPORTED.has(chpushKey(name));
                     const sprice = $row ? parseOvl30PushPrice($row.find('.editable-sprice').val()) : null;
-                    const mp = $row ? String($row.attr('data-marketplace') || '') : '';
-                    const why = !$row ? 'Not available for this SKU' : (!pushable ? 'Price push not available for this channel' : '');
+                    const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey(name);
+                    const why = $row
+                        ? (!pushable ? 'Price push not available for this channel' : '')
+                        : (pushable ? 'Not listed in this SKU modal — push will be attempted directly' : 'Price push is not supported for this channel');
                     html += '<tr class="' + (pushable ? '' : 'chpush-unavail') + '" data-channel="' + chpushEsc(name) + '" data-marketplace="' + chpushEsc(mp) + '">'
                         + '<td>' + chpushEsc(name) + '</td>'
                         + '<td class="text-end"><input type="number" step="0.01" min="0" class="form-control form-control-sm chpush-input ms-auto"'
                         + ' value="' + (sprice != null ? sprice.toFixed(2) : '') + '"'
-                        + (pushable ? '' : ' disabled title="' + chpushEsc(why) + '"') + '></td>'
+                        + (pushable ? '' : ' title="' + chpushEsc(why) + ' — editable, but cannot be pushed"') + '></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-primary chpush-btn"'
-                        + (pushable ? ' title="Push price to ' + chpushEsc(name) + '"' : ' disabled title="' + chpushEsc(why) + '"')
+                        + (pushable ? ' title="' + chpushEsc(why || ('Push price to ' + name)) + '"' : ' disabled title="' + chpushEsc(why) + '"')
                         + '><i class="fas fa-upload"></i></button></td></tr>';
                 });
                 html += '</tbody></table></div>';
@@ -10434,24 +10444,25 @@
         function chpushTargetFor($chTr) {
             const $btn = $chTr.find('.chpush-btn');
             if (!$btn.length || $btn.prop('disabled')) return null;
-            const $row = chpushFindRow($chTr.attr('data-channel'));
-            if (!$row) return null;
+            const $row = chpushFindRow($chTr.attr('data-channel')); // null when the SKU has no row for this channel
             const price = parseOvl30PushPrice($chTr.find('.chpush-input').val());
-            const sku = getModalPrimarySku() || String($row.attr('data-sku') || '');
+            const sku = getModalPrimarySku() || ($row ? String($row.attr('data-sku') || '') : '');
             if (price == null || !sku || sku.toUpperCase() === 'NOT LISTED') return null;
             return {
                 sku: sku,
-                marketplace: String($row.attr('data-marketplace') || ''),
+                marketplace: $row
+                    ? String($row.attr('data-marketplace') || '')
+                    : String($chTr.attr('data-marketplace') || ''),
                 price: price,
                 $btn: $btn,
-                $tr: $row,
+                $tr: $row || $(),
                 channel: String($chTr.attr('data-channel') || '')
             };
         }
 
-        // Typing a price in the first (available) row of a column autofills the rest of that column
+        // Typing a price in the first row of a column autofills the rest of that column
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
-            const $inputs = $(this).closest('table').find('.chpush-input:not(:disabled)');
+            const $inputs = $(this).closest('table').find('.chpush-input');
             if (!$inputs.length || !$inputs.first().is(this)) return;
             const v = $(this).val();
             $inputs.not(this).val(v);
