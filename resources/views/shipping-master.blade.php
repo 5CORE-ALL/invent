@@ -1160,7 +1160,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="ship_diff" data-col-label="Diff" class="shipping-rate-header" title="Diff = Ship − Ship BB">
+                                    <th data-col-key="ship_diff" data-col-label="Diff" class="shipping-rate-header" title="Diff = Ship BB − Ship">
                                         <div class="th-vertical-label">Diff</div>
                                     </th>
                                     <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="Total Temu ship = Temu ship + O-Size Charge">
@@ -2098,7 +2098,7 @@
                 return parseChargeAmount(base) + oSize;
             }
 
-            /** Diff = Ship − Ship BB. Returns null when either side is blank/non-numeric. */
+            /** Diff = Ship BB − Ship. Returns null when either side is blank/non-numeric. */
             function calcShipDiff(ship, shipBb) {
                 const toNum = (v) => {
                     if (v === null || v === undefined || v === '') return null;
@@ -2108,7 +2108,7 @@
                 const s = toNum(ship);
                 const b = toNum(shipBb);
                 if (s === null || b === null) return null;
-                return Math.round((s - b) * 100) / 100;
+                return Math.round((b - s) * 100) / 100;
             }
 
             function shipBbTooltip(item, isParentRow) {
@@ -2848,7 +2848,7 @@
                     }
                     row.appendChild(shipBbPmCell);
 
-                    // Diff = Ship − Ship BB (uses the values shown in those two columns)
+                    // Diff = Ship BB − Ship (uses the values shown in those two columns)
                     const shipDiffCell = document.createElement('td');
                     shipDiffCell.className = 'text-center shipping-rate-cell shipping-ship-diff-col';
                     const shipDiffVal = calcShipDiff(
