@@ -224,7 +224,7 @@ class CvrMasterController extends Controller
         // Active channels from Channel Master, grouped by type (B2C, B2B, C2C, Dropship, Wholesale, ...)
         $channelsByType = [];
         try {
-            $typeOrder = ['B2C' => 1, 'B2B' => 2, 'C2C' => 3, 'DROPSHIP' => 4, 'DS' => 4, 'WHOLESALE' => 5, 'HIGH SHIPPING' => 6];
+            $typeOrder = ['B2C' => 1, 'B2B' => 2, 'C2C' => 3, 'DROPSHIP' => 4, 'DS' => 4, 'WHOLESALE' => 5, 'HIGH SHIPPING' => 6, 'SHEETS' => 7];
             // Channels shown under the "High Shipping" column regardless of their Channel Master type.
             $highShippingChannels = ['bestbuy usa', 'purchasing power'];
             $rows = ChannelMaster::query()
@@ -239,6 +239,9 @@ class CvrMasterController extends Controller
                 $type = trim((string) ($row->type ?? ''));
                 if (in_array(strtolower($name), $highShippingChannels, true)) {
                     $type = 'High Shipping';
+                } elseif (str_contains(strtolower($name), 'mercari') || strtolower($name) === 'vinted') {
+                    // Mercari (w/wo ship) and Vinted are sheet-based channels
+                    $type = 'Sheets';
                 }
                 $channelsByType[$type !== '' ? $type : 'Other'][] = $name;
             }
