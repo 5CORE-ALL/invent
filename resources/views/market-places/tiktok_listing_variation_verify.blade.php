@@ -126,16 +126,16 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="tiktok-stat-badge tiktok-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="tiktok-lvv-badge-parents">0</span></span>
                             <span class="tiktok-stat-badge tiktok-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="tiktok-lvv-badge-children">0</span></span>
-                            <span class="tiktok-stat-badge tiktok-stat-badge--listed" title="eBay listings cache (tiktok_products)">LISTED:<span id="tiktok-lvv-badge-listed">0</span></span>
+                            <span class="tiktok-stat-badge tiktok-stat-badge--listed" title="Live TikTok 1 listings (SKUs on active TikTok products)">LISTED:<span id="tiktok-lvv-badge-listed">0</span></span>
                             <span class="tiktok-stat-badge tiktok-stat-badge--mismatch" id="tiktok-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="tiktok-lvv-badge-mismatch">0</span></span>
-                            <span class="tiktok-stat-badge tiktok-stat-badge--mismatch-inv" id="tiktok-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="tiktok-lvv-badge-mismatch-inv">0</span></span>
+                            <span class="tiktok-stat-badge tiktok-stat-badge--mismatch-inv" id="tiktok-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents where a missing SKU has Shopify INV &gt; 0 (stock we are not selling on TikTok 1)">MISMATCH INV&gt;0:<span id="tiktok-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="tiktok-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="tiktok-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
                         <button type="button" id="tiktok-lvv-refresh-btn" class="btn btn-sm btn-outline-primary tiktok-raw-icon-btn" title="Refresh" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="tiktok-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull TikTok listings (inventory report)">
+                        <button type="button" id="tiktok-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Fetch the current live listings from TikTok 1 and refresh this page">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
                         <button type="button" id="tiktok-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
@@ -161,9 +161,9 @@
                             </div>
                             <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
                                 <span class="tiktok-lvv-sku-chip tiktok-lvv-sku-chip--missing">Missing</span>
-                                <span class="text-muted">in CP Master, not on parent listing</span>
+                                <span class="text-muted">in CP Master, not live on TikTok 1</span>
                                 <span class="tiktok-lvv-sku-chip tiktok-lvv-sku-chip--extra">Excess</span>
-                                <span class="text-muted">on parent listing, not in CP Master</span>
+                                <span class="text-muted">on the parent's TikTok product, not in CP Master</span>
                             </div>
                         </div>
                     </div>
@@ -255,7 +255,8 @@
             if (listedFilter === 'mismatch') {
                 tiktokLvvTable.addFilter(d => d.match_status === false);
             } else if (listedFilter === 'mismatch_inv') {
-                tiktokLvvTable.addFilter(d => d.match_status === false && (parseFloat(d.INV) || 0) > 0);
+                // Stock on the SKUs that are really missing from TikTok 1 (not the parent's total stock).
+                tiktokLvvTable.addFilter(d => d.match_status === false && (parseFloat(d.missing_inv) || 0) > 0);
             } else if (listedFilter === 'match') {
                 tiktokLvvTable.addFilter(d => d.match_status === true);
             }
@@ -345,6 +346,7 @@
                 return {
                     'Parent': d.parent || '',
                     'INV': d.INV ?? 0,
+                    'Missing INV': d.missing_inv ?? 0,
                     'Required': d.child_sku_required_label ?? '',
                     'Parent Vs Listed SKU': d.child_sku_available_label || '',
                     'Listed Count': d.child_sku_available_count ?? '',
@@ -359,8 +361,8 @@
 
             const ws = XLSX.utils.json_to_sheet(exportData);
             ws['!cols'] = [
-                { wch: 22 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 14 },
-                { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, { wch: 12 },
+                { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 18 }, { wch: 22 }, { wch: 12 },
+                { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, { wch: 12 },
             ];
 
             const wb = XLSX.utils.book_new();
@@ -438,6 +440,21 @@
                             const value = parseFloat(cell.getValue());
                             if (!isFinite(value)) return tiktokLvvDash(null);
                             return `<span class="fw-semibold">${Math.round(value)}</span>`;
+                        }
+                    },
+                    {
+                        title: 'Missing INV',
+                        field: 'missing_inv',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 90,
+                        minWidth: 80,
+                        headerTooltip: 'Shopify INV of the SKUs that are missing from TikTok 1',
+                        formatter: function (cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (!isFinite(value) || value <= 0) return tiktokLvvDash(null);
+                            return `<span class="fw-semibold tiktok-lvv-avail-no">${Math.round(value)}</span>`;
                         }
                     },
                     {
@@ -530,7 +547,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Pull all merchant listings from TikTok 1 API (sync:tiktok-api-data)?\n\nThis runs sync:tiktok-api-data and may take a few minutes.')) {
+                if (!confirm('Fetch the current live listings from TikTok 1?\n\nSKUs TikTok no longer lists are marked inactive here. Stock, views and reviews are not touched. It takes about a minute.')) {
                     return;
                 }
 

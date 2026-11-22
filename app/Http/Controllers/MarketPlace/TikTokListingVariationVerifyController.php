@@ -6,21 +6,32 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TikTokProduct;
+use App\Support\Marketplace\MarketplaceListingPresence;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class TikTokListingVariationVerifyController extends Controller
 {
+    private const LAST_PULL_CACHE_KEY = 'tiktok_lvv_last_pull_at';
+
+    /** Statuses that mean TikTok no longer has the product live (a row in these states is not a current listing). */
+    private const NOT_LIVE_STATUSES = ['inactive', 'seller_deactivated', 'platform_deactivated', 'freeze', 'suspended'];
+
     public function index()
     {
         return view('market-places.tiktok_listing_variation_verify');
     }
 
     /**
-     * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not on the parent TikTok listing (product_id group).
-     * Extra   = SKU on the parent TikTok listing that is not a CP Master child.
+     * Parent rows (with their child rows). Every CP Master child is required: there is no NR here, all SKUs are REQ.
+     *
+     * Missing = a CP Master child that is not a live TikTok 1 listing anywhere (it is checked against all live
+     *           listings, so a SKU sitting on another TikTok product of the same parent is not reported as missing).
+     * Excess  = a SKU on a TikTok product that holds this parent's SKUs, which is not a CP Master child.
+     * Only live listings count: rows TikTok no longer lists (inactive) and rows without a product_id are ignored.
      */
     public function data(Request $request)
     {
@@ -38,12 +49,11 @@ class TikTokListingVariationVerifyController extends Controller
             ->map(function ($pm) use ($listedSkuSet) {
                 $parent = trim((string) ($pm->parent ?? ''));
                 $sku = trim((string) ($pm->sku ?? ''));
-                $available = $this->isSkuListed($sku, $listedSkuSet);
 
                 return [
                     'parent' => $parent,
                     'sku' => $sku,
-                    'child_sku_available' => $available,
+                    'child_sku_available' => $this->isSkuListed($sku, $listedSkuSet),
                 ];
             })
             ->values()
@@ -61,14 +71,14 @@ class TikTokListingVariationVerifyController extends Controller
         foreach ($parentGroups as $parentKey => $children) {
             $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet);
 
-            $requiredCount = count($children);
+            $requiredCount = $diff['required_count'];
             $availableCount = $diff['available_count'];
             $missingSkus = $diff['missing_skus'];
             $extraSkus = $diff['extra_skus'];
             $known = $diff['known'];
 
             $parentMatch = $known
-                ? ($availableCount === $requiredCount && count($extraSkus) === 0)
+                ? (count($missingSkus) === 0 && count($extraSkus) === 0)
                 : null;
 
             $label = '—';
@@ -79,31 +89,27 @@ class TikTokListingVariationVerifyController extends Controller
                 }
             }
 
-
-
             $inv = 0.0;
             foreach ($children as $child) {
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku'] ?? '');
-                if ($norm !== '' && isset($invByNorm[$norm])) {
-                    $inv += $invByNorm[$norm];
-                }
+                $inv += $this->invFor($child['sku'] ?? '', $invByNorm);
+            }
+
+            // Stock sitting on the SKUs that are really missing: this is what "MISMATCH INV>0" counts.
+            $missingInv = 0.0;
+            foreach ($missingSkus as $missingSku) {
+                $missingInv += $this->invFor($missingSku, $invByNorm);
             }
 
             $childPayload = [];
             foreach ($children as $child) {
                 $listed = $child['child_sku_available'];
-                $childInv = 0;
-                if (isset($invByNorm) && is_array($invByNorm)) {
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku'] ?? '');
-                    if ($norm !== '' && isset($invByNorm[$norm])) {
-                        $childInv = (int) round($invByNorm[$norm]);
-                    }
-                }
+                $childInv = (int) round($this->invFor($child['sku'] ?? '', $invByNorm));
                 $childPayload[] = [
                     'parent' => $parentKey,
                     'sku' => $child['sku'],
                     'is_parent' => false,
                     'INV' => $childInv,
+                    'missing_inv' => ($listed === false) ? $childInv : 0,
                     'child_sku_required' => 1,
                     'child_sku_required_label' => '1',
                     'child_sku_available' => $listed,
@@ -118,18 +124,12 @@ class TikTokListingVariationVerifyController extends Controller
                 ];
             }
             foreach ($extraSkus as $extraSku) {
-                $extraInv = 0;
-                if (isset($invByNorm) && is_array($invByNorm)) {
-                    $norm = ShopifySku::normalizeSkuForShopifyLookup($extraSku);
-                    if ($norm !== '' && isset($invByNorm[$norm])) {
-                        $extraInv = (int) round($invByNorm[$norm]);
-                    }
-                }
                 $childPayload[] = [
                     'parent' => $parentKey,
                     'sku' => $extraSku,
                     'is_parent' => false,
-                    'INV' => $extraInv,
+                    'INV' => (int) round($this->invFor($extraSku, $invByNorm)),
+                    'missing_inv' => 0,
                     'child_sku_required' => 0,
                     'child_sku_required_label' => '0',
                     'child_sku_available' => false,
@@ -149,6 +149,7 @@ class TikTokListingVariationVerifyController extends Controller
                 'is_parent' => true,
                 '_children' => $childPayload,
                 'INV' => (int) round($inv),
+                'missing_inv' => (int) round($missingInv),
                 'child_sku_required' => $requiredCount,
                 'child_sku_required_label' => (string) $requiredCount,
                 'child_sku_available' => $parentMatch,
@@ -166,42 +167,57 @@ class TikTokListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
-                'last_pulled_at' => TikTokProduct::query()->max('updated_at'),
-                'has_listings_cache' => TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => $listedSkuSet['live_count'],
+                'last_pulled_at' => Cache::get(self::LAST_PULL_CACHE_KEY),
+                'has_listings_cache' => ! $listedSkuSet['empty'],
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
-                'mismatch_inv_gt0_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false && (float) ($r['INV'] ?? 0) > 0)),
+                'mismatch_inv_gt0_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false && (float) ($r['missing_inv'] ?? 0) > 0)),
                 'required_child_count' => count($childRows),
                 'required_refreshed_at' => now()->toDateTimeString(),
             ],
         ]);
     }
 
+    /**
+     * Fetch the current live listings from TikTok 1 (live products only, one call per 100 products) and bring
+     * tiktok_products in line: listed SKUs get their product_id, SKUs TikTok no longer lists become inactive.
+     */
     public function pullListings(Request $request)
     {
         try {
-            set_time_limit(3600);
+            set_time_limit(900);
 
-            $exitCode = Artisan::call('sync:tiktok-api-data');
+            $exitCode = Artisan::call('sync:tiktok-api-data', ['--listings-only' => true]);
             $output = trim(Artisan::output());
 
             if ($exitCode !== 0) {
                 return response()->json([
                     'status' => 422,
                     'message' => $output !== ''
-                        ? $output
+                        ? $this->lastLines($output, 6)
                         : 'Failed to pull TikTok 1 listings (exit code ' . $exitCode . ').',
                 ], 422);
             }
 
-            $count = (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $now = now()->toDateTimeString();
+            Cache::forever(self::LAST_PULL_CACHE_KEY, $now);
+
+            $lookup = $this->buildListedSkuLookup();
+            $summary = '';
+            if (preg_match('/Live listings synced:[^\r\n]*/u', $output, $m)) {
+                $summary = trim(str_replace('✅', '', $m[0]));
+            }
+            $inactive = '';
+            if (preg_match('/Marked inactive[^\r\n]*/u', $output, $m)) {
+                $inactive = ' ' . trim($m[0]);
+            }
 
             return response()->json([
                 'status' => 200,
-                'message' => "Pulled TikTok 1 listings. {$count} SKUs in tiktok_products. Parent Vs Listed SKU updated.",
-                'count' => $count,
-                'last_pulled_at' => TikTokProduct::query()->max('updated_at'),
+                'message' => 'Pulled the current TikTok 1 listings. ' . ($summary !== '' ? $summary . '.' : $lookup['live_count'] . ' live SKUs.') . $inactive,
+                'count' => $lookup['live_count'],
+                'last_pulled_at' => $now,
             ]);
         } catch (\Throwable $e) {
             Log::error('TikTok Listing Variation Verify: pull listings failed', [
@@ -215,19 +231,31 @@ class TikTokListingVariationVerifyController extends Controller
         }
     }
 
+    private function lastLines(string $text, int $count): string
+    {
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/u', $text) ?: []), static fn ($l) => $l !== ''));
+
+        return implode("\n", array_slice($lines, -$count));
+    }
+
+    private function invFor(string $sku, array $invByNorm): float
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        if ($norm !== '' && isset($invByNorm[$norm])) {
+            return (float) $invByNorm[$norm];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+
+        return ($compact !== '' && isset($invByNorm['#'.$compact])) ? (float) $invByNorm['#'.$compact] : 0.0;
+    }
+
     /**
-     * Compare CP Master children to SKUs on the parent TikTok listing (shared product_id).
+     * Compare the CP Master children of a parent with the live TikTok listings.
      *
      * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool}>  $children
-     * @param  array{
-     *   set: array<string, true>,
-     *   empty: bool,
-     *   sku_to_product_id: array<string, string>,
-     *   product_id_to_skus: array<string, list<string>>,
-     *   parent_to_product_id: array<string, string>
-     * }  $lookup
      * @return array{
      *   known: bool,
+     *   required_count: int,
      *   available_count: int,
      *   missing_skus: list<string>,
      *   extra_skus: list<string>
@@ -236,91 +264,66 @@ class TikTokListingVariationVerifyController extends Controller
     private function diffParentListing(string $parentKey, array $children, array $lookup): array
     {
         $requiredNormToSku = [];
+        $requiredCompact = [];
         foreach ($children as $child) {
             $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
+                $requiredCompact[ShopifySku::compactSkuForLookup($child['sku'])] = true;
             }
         }
 
         if ($lookup['empty']) {
             return [
                 'known' => false,
+                'required_count' => count($requiredNormToSku),
                 'available_count' => 0,
                 'missing_skus' => [],
                 'extra_skus' => [],
             ];
         }
 
-        // Prefer a PARENT-row product_id; else most common product_id among listed children.
-        $productId = null;
-        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
-        if ($parentNorm !== '' && isset($lookup['parent_to_product_id'][$parentNorm])) {
-            $productId = $lookup['parent_to_product_id'][$parentNorm];
-        } else {
-            $productIdCounts = [];
-            foreach ($requiredNormToSku as $norm => $_sku) {
-                if (! isset($lookup['sku_to_product_id'][$norm])) {
-                    continue;
-                }
-                $candidate = $lookup['sku_to_product_id'][$norm];
-                $productIdCounts[$candidate] = ($productIdCounts[$candidate] ?? 0) + 1;
-            }
-            if ($productIdCounts !== []) {
-                arsort($productIdCounts);
-                $productId = (string) array_key_first($productIdCounts);
-            }
-        }
-
-        // No shared listing found — fall back to flat listed-SKU check (missing only).
-        if ($productId === null || $productId === '') {
-            $availableCount = 0;
-            $missingSkus = [];
-            foreach ($requiredNormToSku as $norm => $sku) {
-                if (isset($lookup['set'][$norm])) {
-                    $availableCount++;
-                } else {
-                    $missingSkus[] = $sku;
-                }
-            }
-
-            return [
-                'known' => true,
-                'available_count' => $availableCount,
-                'missing_skus' => $missingSkus,
-                'extra_skus' => [],
-            ];
-        }
-
-        $listedOnParent = [];
-        foreach ($lookup['product_id_to_skus'][$productId] ?? [] as $listedSku) {
-            $trimmed = trim((string) $listedSku);
-            if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed) || ! $this->looksLikeSku($trimmed)) {
-                continue;
-            }
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($trimmed);
-            if ($norm === '') {
-                continue;
-            }
-            if (! isset($listedOnParent[$norm])) {
-                $listedOnParent[$norm] = $trimmed;
-            }
-        }
-
+        // Missing: not a live listing anywhere on TikTok 1.
         $availableCount = 0;
         $missingSkus = [];
+        $productIds = [];
         foreach ($requiredNormToSku as $norm => $sku) {
-            if (isset($listedOnParent[$norm])) {
-                $availableCount++;
-            } else {
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            $listed = isset($lookup['set'][$norm]) || ($compact !== '' && isset($lookup['compact_set'][$compact]));
+            if (! $listed) {
                 $missingSkus[] = $sku;
+
+                continue;
+            }
+            $availableCount++;
+            $pid = $lookup['sku_to_product_id'][$norm] ?? ($lookup['compact_to_product_id'][$compact] ?? null);
+            if ($pid !== null && $pid !== '') {
+                $productIds[$pid] = true;
             }
         }
 
+        // The TikTok parent row (PARENT <name>) belongs to the same listing even when no child is listed on it.
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
+        if ($parentNorm !== '' && isset($lookup['parent_to_product_id'][$parentNorm])) {
+            $productIds[$lookup['parent_to_product_id'][$parentNorm]] = true;
+        }
+
+        // Excess: on a TikTok product that holds this parent's SKUs, but not a CP Master child.
         $extraSkus = [];
-        foreach ($listedOnParent as $norm => $sku) {
-            if (! isset($requiredNormToSku[$norm])) {
-                $extraSkus[] = $sku;
+        $seenExtra = [];
+        foreach (array_keys($productIds) as $productId) {
+            foreach ($lookup['product_id_to_skus'][$productId] ?? [] as $listedSku) {
+                $trimmed = trim((string) $listedSku);
+                if ($trimmed === '' || preg_match('/^PARENT[\s\-_]+/i', $trimmed) || ! $this->looksLikeSku($trimmed)) {
+                    continue;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($trimmed);
+                $compact = ShopifySku::compactSkuForLookup($trimmed);
+                if ($norm === '' || isset($requiredNormToSku[$norm]) || isset($requiredCompact[$compact]) || isset($seenExtra[$norm])) {
+                    continue;
+                }
+                $seenExtra[$norm] = true;
+                $extraSkus[] = $trimmed;
             }
         }
 
@@ -329,17 +332,33 @@ class TikTokListingVariationVerifyController extends Controller
 
         return [
             'known' => true,
+            'required_count' => count($requiredNormToSku),
             'available_count' => $availableCount,
             'missing_skus' => $missingSkus,
             'extra_skus' => $extraSkus,
         ];
     }
 
+    private function isLiveStatus(?string $status): bool
+    {
+        $status = str_replace([' ', '-'], '_', strtolower(trim((string) $status)));
+        if ($status === '') {
+            return true;
+        }
+
+        return ! in_array($status, self::NOT_LIVE_STATUSES, true) && ! MarketplaceListingPresence::isAbsent($status);
+    }
+
     /**
+     * Live TikTok 1 listings only: a row with a product_id whose status is not inactive / deleted.
+     *
      * @return array{
      *   set: array<string, true>,
+     *   compact_set: array<string, true>,
      *   empty: bool,
+     *   live_count: int,
      *   sku_to_product_id: array<string, string>,
+     *   compact_to_product_id: array<string, string>,
      *   product_id_to_skus: array<string, list<string>>,
      *   parent_to_product_id: array<string, string>
      * }
@@ -347,58 +366,72 @@ class TikTokListingVariationVerifyController extends Controller
     private function buildListedSkuLookup(): array
     {
         $set = [];
+        $compactSet = [];
         $skuToProductId = [];
+        $compactToProductId = [];
         $productIdToSkus = [];
         $parentToProductId = [];
+        $live = 0;
+
+        $columns = ['sku', 'product_id'];
+        $hasStatus = Schema::hasColumn((new TikTokProduct)->getTable(), 'listing_status');
+        if ($hasStatus) {
+            $columns[] = 'listing_status';
+        }
 
         $rows = TikTokProduct::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->get(['sku', 'product_id']);
+            ->get($columns);
 
         foreach ($rows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
-            if ($sku === '') {
+            $productId = trim((string) ($row->product_id ?? ''));
+            if ($sku === '' || $productId === '') {
+                continue;
+            }
+            if ($hasStatus && ! $this->isLiveStatus((string) ($row->listing_status ?? ''))) {
                 continue;
             }
 
-            $productId = trim((string) ($row->product_id ?? ''));
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $live++;
+            $productIdToSkus[$productId][] = $sku;
 
-            if ($norm !== '') {
-                $set[$norm] = true;
-                if ($productId !== '' && ! isset($skuToProductId[$norm])) {
-                    $skuToProductId[$norm] = $productId;
+            if (preg_match('/^PARENT[\s\-_]+(.+)$/i', $sku, $m)) {
+                $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
+                if ($parentNorm !== '' && ! isset($parentToProductId[$parentNorm])) {
+                    $parentToProductId[$parentNorm] = $productId;
                 }
+
+                continue;
             }
 
-            if ($productId !== '') {
-                $productIdToSkus[$productId][] = $sku;
-
-                if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
-                    $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
-                    if ($parentNorm !== '' && ! isset($parentToProductId[$parentNorm])) {
-                        $parentToProductId[$parentNorm] = $productId;
-                    }
-                }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $set[$norm] = true;
+                $skuToProductId[$norm] ??= $productId;
+            }
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '') {
+                $compactSet[$compact] = true;
+                $compactToProductId[$compact] ??= $productId;
             }
         }
 
         return [
             'set' => $set,
+            'compact_set' => $compactSet,
             'empty' => empty($set),
+            'live_count' => $live,
             'sku_to_product_id' => $skuToProductId,
+            'compact_to_product_id' => $compactToProductId,
             'product_id_to_skus' => $productIdToSkus,
             'parent_to_product_id' => $parentToProductId,
         ];
     }
 
     /**
-     * @param  array{set: array<string, true>, empty: bool}  $lookup
-     */
-
-    /**
-     * Shopify stock on hand keyed by normalized SKU.
+     * Shopify stock on hand keyed by normalized SKU (and by "#" + compact SKU for spacing differences).
      *
      * @return array<string, float>
      */
@@ -412,11 +445,16 @@ class TikTokListingVariationVerifyController extends Controller
             ->get(['sku', 'inv']);
 
         foreach ($rows as $row) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+            $sku = (string) ($row->sku ?? '');
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm === '' || isset($map[$norm])) {
                 continue;
             }
             $map[$norm] = (float) ($row->inv ?? 0);
+            $compact = ShopifySku::compactSkuForLookup($sku);
+            if ($compact !== '' && ! isset($map['#'.$compact])) {
+                $map['#'.$compact] = $map[$norm];
+            }
         }
 
         return $map;
@@ -432,8 +470,12 @@ class TikTokListingVariationVerifyController extends Controller
         if ($norm === '') {
             return false;
         }
+        if (isset($lookup['set'][$norm])) {
+            return true;
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
 
-        return isset($lookup['set'][$norm]);
+        return $compact !== '' && isset($lookup['compact_set'][$compact]);
     }
 
     /**

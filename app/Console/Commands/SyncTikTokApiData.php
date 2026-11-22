@@ -23,6 +23,7 @@ class SyncTikTokApiData extends Command
     protected $signature = 'sync:tiktok-api-data
         {--channel=tiktok : tiktok (shop 1 → tiktok_products) or tiktok2 (shop 2 → tiktok_products_two)}
         {--products-only : Sync products + inventory only (skip analytics/reviews — faster sku_id backfill)}
+        {--listings-only : Read the live listings only (one call per 100 products), refresh product_id/sku_id and mark SKUs TikTok no longer lists as inactive}
         {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
@@ -137,6 +138,17 @@ class SyncTikTokApiData extends Command
         $this->info('✓ Target table: ' . ($channel === 'tiktok2' ? 'tiktok_products_two' : 'tiktok_products'));
 
         $this->info("Starting {$label} API data sync...");
+
+        if ($this->option('listings-only')) {
+            try {
+                return $this->syncListingsOnly();
+            } catch (\Throwable $e) {
+                $this->error('Failed to sync '.$label.' listings: '.$e->getMessage());
+                Log::error('TikTok listings-only sync error', ['channel' => $this->channel, 'error' => $e->getMessage()]);
+
+                return 1;
+            }
+        }
 
         try {
             // Fetch all product data
@@ -274,6 +286,88 @@ class SyncTikTokApiData extends Command
             ]);
             return 1;
         }
+    }
+
+    /**
+     * Live listings only: every ACTIVATE product from TikTok becomes (or stays) an active row with its product_id,
+     * and every SKU TikTok no longer lists is marked inactive. Nothing else (stock, views, reviews) is touched.
+     */
+    protected function syncListingsOnly(): int
+    {
+        $this->info('Fetching live listings from TikTok (--listings-only)...');
+        $products = $this->tiktokService->getAllProducts(1);
+        if (empty($products)) {
+            $this->error('TikTok returned no live products. Nothing was changed.');
+
+            return 1;
+        }
+
+        $this->processProducts($products);
+
+        $seen = [];
+        foreach ($products as $product) {
+            foreach ($this->expandProductSkuRows((array) $product) as $row) {
+                $key = strtoupper(trim((string) $row['sku']));
+                if ($key !== '') {
+                    $seen[$key] = true;
+                }
+            }
+        }
+
+        // The fetch stops silently on an API error; then the list is incomplete and nothing may be deactivated.
+        $last = $this->tiktokService->getLastResponse();
+        if (is_array($last) && isset($last['code']) && (int) $last['code'] !== 0) {
+            $this->warn('The last TikTok page returned an error (code '.$last['code'].'), so the list may be incomplete. No SKU was marked inactive.');
+        } else {
+            $this->deactivateUnseen($seen);
+        }
+
+        try {
+            if ($this->channel === 'tiktok2') {
+                app(\App\Services\MarketplaceManager\TikTok2LiveListingsService::class)->clearCache();
+            } else {
+                app(\App\Services\MarketplaceManager\TikTokLiveListingsService::class)->clearCache();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok live listings cache clear failed after listings-only sync', ['error' => $e->getMessage()]);
+        }
+
+        $this->info('✅ Live listings synced: '.count($seen).' SKUs on '.count($products).' TikTok products.');
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, true>  $seen  upper-case SKUs TikTok listed in this run
+     */
+    protected function deactivateUnseen(array $seen): void
+    {
+        $table = (new $this->productModel)->getTable();
+        if (! \Illuminate\Support\Facades\Schema::hasColumn($table, 'listing_status')) {
+            $this->warn('No listing_status column; stale SKUs were not marked inactive.');
+
+            return;
+        }
+
+        $stale = [];
+        \Illuminate\Support\Facades\DB::table($table)
+            ->where(function ($q) {
+                $q->whereNull('listing_status')->orWhereIn('listing_status', ['active', 'activate', 'live']);
+            })
+            ->orderBy('id')
+            ->select(['id', 'sku'])
+            ->chunk(1000, function ($rows) use (&$stale, $seen) {
+                foreach ($rows as $row) {
+                    if (! isset($seen[strtoupper(trim((string) $row->sku))])) {
+                        $stale[] = (int) $row->id;
+                    }
+                }
+            });
+
+        foreach (array_chunk($stale, 500) as $ids) {
+            \Illuminate\Support\Facades\DB::table($table)->whereIn('id', $ids)->update(['listing_status' => 'inactive']);
+        }
+        $this->info('Marked inactive (no longer listed on TikTok): '.count($stale));
     }
 
     /**
