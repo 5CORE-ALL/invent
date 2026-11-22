@@ -4369,6 +4369,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-amazon-sprice-table', [CvrMasterController::class, 'getAmazonSpriceTableData'])->name('cvr.master.amazon.sprice.table');
     Route::get('/cvr-master-chart-data', [CvrMasterController::class, 'getPricingMasterChartData'])->name('cvr.master.chart.data');
     Route::get('/cvr-master-channel-price-chart', [CvrMasterController::class, 'getChannelPriceChartData'])->name('cvr.master.channel.price.chart');
+    Route::get('/cvr-master-channel-l30-chart', [CvrMasterController::class, 'getChannelL30ChartData'])->name('cvr.master.channel.l30.chart');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     // Same push, but remembers the result: failed pushes are retried hourly, e-mailed and shown as a red alert on /price-increase

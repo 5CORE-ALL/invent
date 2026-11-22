@@ -2070,7 +2070,13 @@
                                 </tr>
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; max-width: 36px; max-height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
-                                    <th class="text-end" id="modal-total-l30">0</th>
+                                    <th class="text-end">
+                                        <span id="modal-total-l30">0</span>
+                                        <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-l30-chart-dot"
+                                            data-metric="ov_l30" data-sku="" data-current-value=""
+                                            style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;"
+                                            title="View L30 history (Rolling L30)"></i>
+                                    </th>
                                     <th class="text-center">
                                         <span class="missing-l-dot" data-sku=""
                                             style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;cursor:pointer;border:1px solid #a00211;"
@@ -3582,7 +3588,7 @@
             const chartSku = String(sku || '').trim();
             const isParentSku = chartSku.toUpperCase().indexOf('PARENT ') === 0;
             const chartParent = isParentSku ? chartSku.replace(/^PARENT\s+/i, '').trim() : '';
-            $('#modal-price-chart-dot, #modal-cvr-chart-dot')
+            $('#modal-price-chart-dot, #modal-cvr-chart-dot, #modal-l30-chart-dot')
                 .attr('data-sku', chartSku)
                 .attr('data-parent', chartParent);
             $('#modal-header-inv-badge, #modal-header-l30-badge, #modal-header-dil-badge')
@@ -4899,6 +4905,16 @@
                         + ' title="View CVR history (Rolling L30)"></i>'
                     : '';
 
+                // L30 history dot — per-channel L30 over the last days
+                const l30ChartDot = (isListed && chartSkuEsc && chartMpEsc)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="channel_l30"'
+                        + ' data-sku="' + chartSkuEsc
+                        + '" data-marketplace="' + chartMpEsc
+                        + '" data-current-value="' + l30 + '"'
+                        + ' style="cursor:pointer;color:#28a745;font-size:8px;vertical-align:middle;"'
+                        + ' title="View ' + chartMpEsc + ' L30 history (Rolling L30)"></i>'
+                    : '';
+
                 const priceCellHtml = !isListed
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
@@ -4933,7 +4949,7 @@
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() + l30ChartDot : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
@@ -5150,6 +5166,7 @@
             $('#modal-total-price').text('$' + avgPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
             $('#modal-total-l30').text(totalL30.toLocaleString());
+            $('#modal-l30-chart-dot').attr('data-current-value', totalL30);
             
             // Update header L30 to match the calculated total from breakdown (fixes L30 diff issue)
             $('#modal-header-l30').text(totalL30.toLocaleString());
@@ -14872,7 +14889,7 @@
         let currentPricingChartMarketplace = '';
         let currentPricingChartCurrentPrice = null;
         let currentPricingChartCurrentValue = null;
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', channel_price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', channel_l30: 'L30', price: 'Price', channel_price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
 
         /**
@@ -14960,6 +14977,31 @@
                 $('#pricingMasterChartRangeSelect').val('30');
                 $('#pricingMasterChartModalTitle').text(
                     'Price Increase - ' + sku + ' - ' + marketplace + ' Price (Rolling ' + pricingChartRangeLabel(30) + ')'
+                );
+                $('#pricingMasterChartContainer').hide();
+                $('#pricingMasterChartNoData').hide();
+                $('#pricingMasterChartLoading').show();
+                showPricingMasterChartModal();
+                return;
+            }
+
+            // Per-channel L30 dot → channel-specific L30 history
+            if (metric === 'channel_l30') {
+                if (!sku) { showToast('SKU not found for chart', 'error'); return; }
+                if (!marketplace) { showToast('Marketplace not found for L30 chart', 'error'); return; }
+                currentPricingChartSource = 'channel_l30';
+                currentPricingChartMetric = 'channel_l30';
+                currentPricingChartSku = sku;
+                currentPricingChartParent = '';
+                currentPricingChartAggregate = false;
+                currentPricingChartMarketplace = marketplace;
+                currentPricingChartCurrentPrice = null;
+                const cvRaw = parseFloat($el.attr('data-current-value'));
+                currentPricingChartCurrentValue = isFinite(cvRaw) ? cvRaw : null;
+                currentPricingChartDays = 30;
+                $('#pricingMasterChartRangeSelect').val('30');
+                $('#pricingMasterChartModalTitle').text(
+                    'Price Increase - ' + sku + ' - ' + marketplace + ' L30 (Rolling ' + pricingChartRangeLabel(30) + ')'
                 );
                 $('#pricingMasterChartContainer').hide();
                 $('#pricingMasterChartNoData').hide();
@@ -15058,6 +15100,37 @@
                             });
                             $('#pricingMasterChartContainer').show();
                             renderPricingMasterChart(mapped);
+                        } else {
+                            $('#pricingMasterChartNoData').show();
+                        }
+                    },
+                    error: function() {
+                        $('#pricingMasterChartLoading').hide();
+                        $('#pricingMasterChartNoData').show();
+                    }
+                });
+                return;
+            }
+
+            // Per-channel L30 history (OV L30 modal L30 column dots)
+            if (currentPricingChartSource === 'channel_l30') {
+                const l30Payload = {
+                    sku: currentPricingChartSku,
+                    marketplace: currentPricingChartMarketplace,
+                    days: currentPricingChartDays
+                };
+                if (currentPricingChartCurrentValue != null) {
+                    l30Payload.current_value = currentPricingChartCurrentValue;
+                }
+                $.ajax({
+                    url: '/cvr-master-channel-l30-chart',
+                    method: 'GET',
+                    data: l30Payload,
+                    success: function(response) {
+                        $('#pricingMasterChartLoading').hide();
+                        if (response.success && response.data && response.data.length > 0) {
+                            $('#pricingMasterChartContainer').show();
+                            renderPricingMasterChart(response.data);
                         } else {
                             $('#pricingMasterChartNoData').show();
                         }

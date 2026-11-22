@@ -6410,6 +6410,8 @@ class CvrMasterController extends Controller
 
             Log::info('Total marketplaces: ' . count($breakdownData));
 
+            $this->snapshotChannelL30($breakdownData, $fullSku);
+
             return response()->json($breakdownData);
             
         } catch (\Exception $e) {
@@ -6684,6 +6686,176 @@ class CvrMasterController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Channel key used by the history tables / charts ("Mercari w Ship" -> "mercariwship", "Ebay" -> "ebay1" ...).
+     */
+    private function channelHistoryKey(string $marketplace): string
+    {
+        $key = strtolower(preg_replace('/\s+/', '', $marketplace));
+
+        return match ($key) {
+            'ebay', 'ebayone' => 'ebay1',
+            'ebaytwo' => 'ebay2',
+            'ebaythree' => 'ebay3',
+            'macys' => 'macy',
+            'bestbuyusa' => 'bestbuy',
+            'shopifyb2c', 'sb2c' => 'shopify',
+            'shopifyb2b' => 'sb2b',
+            'purchasingpower', 'purchase' => 'ppower',
+            default => $key,
+        };
+    }
+
+    /**
+     * Remember today's L30 for every channel row of the breakdown (one row per SKU / channel / day),
+     * so the L30 history dot has a real series for every channel — not only those with a daily table.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function snapshotChannelL30(array $rows, string $sku): void
+    {
+        try {
+            if (! Schema::hasTable('channel_l30_histories')) {
+                return;
+            }
+            $skuStore = strtoupper(trim($sku));
+            $today = now('America/Los_Angeles')->toDateString();
+            $now = now();
+            $payload = [];
+            foreach ($rows as $row) {
+                $listed = ! (($row['is_listed'] ?? true) === false || ($row['is_listed'] ?? true) === 0);
+                $mp = $this->channelHistoryKey((string) ($row['marketplace'] ?? ''));
+                if ($mp === '' || ! $listed) {
+                    continue;
+                }
+                $payload[$mp] = [
+                    'sku' => $skuStore,
+                    'marketplace' => $mp,
+                    'record_date' => $today,
+                    'l30' => max(0, (int) ($row['l30'] ?? 0)),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+            if ($payload) {
+                DB::table('channel_l30_histories')->upsert(
+                    array_values($payload),
+                    ['sku', 'marketplace', 'record_date'],
+                    ['l30', 'updated_at']
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('snapshotChannelL30 failed for ' . $sku . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Per-channel L30 history for the L30 dot in the SKU modal.
+     * Daily series come from the channel's own SKU daily table when it has one (older days),
+     * and from channel_l30_histories (written on every modal load) for every channel.
+     */
+    public function getChannelL30ChartData(Request $request)
+    {
+        $sku = preg_replace('/\s+/', ' ', trim((string) $request->input('sku', '')));
+        $mp = $this->channelHistoryKey((string) $request->input('marketplace', ''));
+        $days = (int) $request->input('days', 30);
+        $current = $request->input('current_value');
+
+        if ($sku === '' || $mp === '') {
+            return response()->json(['success' => false, 'message' => 'SKU and marketplace are required'], 400);
+        }
+        if ($days > 0 && $days < 7) {
+            $days = 7;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->toDateString();
+        $start = $days > 0 ? now($tz)->subDays($days)->toDateString() : null;
+        $skuUpper = strtoupper(trim($sku));
+        $byDate = [];
+
+        // [table, channel filter, json keys / columns that hold the L30 units]
+        $source = match ($mp) {
+            'ebay1' => ['ebay_sku_daily_data', null, ['ebay_l30']],
+            'ebay2' => ['ebay2_sku_daily_data', null, ['ebay_l30']],
+            'ebay3' => ['ebay3_sku_daily_data', null, ['ebay_l30']],
+            'tiktok' => ['tiktok_sku_daily_data', 'tiktok', ['tt_l30']],
+            'temu' => ['temu_sku_daily_data', null, ['temu_l30']],
+            'reverb' => ['reverb_sku_daily_data', null, ['rv_l30']],
+            'fba' => ['fba_sku_daily_data', null, ['l30_units']],
+            default => null,
+        };
+
+        try {
+            if ($source && Schema::hasTable($source[0])) {
+                [$table, $channel, $keys] = $source;
+                $q = DB::table($table)
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                    ->where('record_date', '<=', $end)
+                    ->orderBy('record_date', 'asc');
+                if ($start) {
+                    $q->where('record_date', '>=', $start);
+                }
+                if ($channel !== null && Schema::hasColumn($table, 'channel')) {
+                    $q->where('channel', $channel);
+                }
+                foreach ($q->get() as $record) {
+                    $json = is_array($record->daily_data ?? null)
+                        ? $record->daily_data
+                        : (json_decode((string) ($record->daily_data ?? ''), true) ?: []);
+                    $val = null;
+                    foreach ($keys as $k) {
+                        if (isset($json[$k]) && is_numeric($json[$k])) {
+                            $val = (float) $json[$k];
+                            break;
+                        }
+                        if (isset($record->{$k}) && is_numeric($record->{$k})) {
+                            $val = (float) $record->{$k};
+                            break;
+                        }
+                    }
+                    if ($val !== null) {
+                        $byDate[Carbon::parse($record->record_date)->toDateString()] = $val;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('channel L30 daily table read failed: ' . $e->getMessage());
+        }
+
+        // Snapshots written by the modal (override daily-table values for the same day)
+        if (Schema::hasTable('channel_l30_histories')) {
+            $q = DB::table('channel_l30_histories')
+                ->where('sku', $skuUpper)
+                ->where('marketplace', $mp)
+                ->where('record_date', '<=', $end)
+                ->orderBy('record_date', 'asc');
+            if ($start) {
+                $q->where('record_date', '>=', $start);
+            }
+            foreach ($q->get(['record_date', 'l30']) as $r) {
+                $byDate[Carbon::parse($r->record_date)->toDateString()] = (float) $r->l30;
+            }
+        }
+
+        // Today = the value shown in the cell
+        if (is_numeric($current)) {
+            $byDate[now($tz)->toDateString()] = (float) $current;
+        }
+
+        if (empty($byDate)) {
+            return response()->json(['success' => true, 'data' => [], 'marketplace' => $mp, 'metric' => 'channel_l30']);
+        }
+
+        return response()->json([
+            'success' => true,
+            // Real data points only; days we never recorded stay empty instead of inventing a flat line
+            'data' => $this->fillDailyChartSeries($byDate, $days, false),
+            'marketplace' => $mp,
+            'metric' => 'channel_l30',
+        ]);
     }
 
     /**
