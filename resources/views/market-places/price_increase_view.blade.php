@@ -10481,19 +10481,27 @@
         // Typing a price in the first row of a column autofills the rest of that column
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
             // Aliexpress = X  →  every B2B channel = 0.75 × X
+            const typeInputs = function(type) {
+                return $('#ovl30ChannelsPushModal .chpush-card').filter(function() {
+                    return String($(this).attr('data-type') || '').toLowerCase() === type;
+                }).find('.chpush-input');
+            };
             const channel = String($(this).closest('tr').attr('data-channel') || '');
             if (chpushKey(channel) === 'aliexpress') {
                 const x = parseFloat($(this).val());
                 const b2bVal = (isFinite(x) && x > 0) ? (x * 0.75).toFixed(2) : '';
-                $('#ovl30ChannelsPushModal .chpush-card').filter(function() {
-                    return String($(this).attr('data-type') || '').toLowerCase() === 'b2b';
-                }).find('.chpush-input').val(b2bVal);
+                typeInputs('b2b').val(b2bVal);
+                typeInputs('c2c').val(b2bVal); // C2C follows the B2B price
             }
 
             const $inputs = $(this).closest('table').find('.chpush-input');
             if (!$inputs.length || !$inputs.first().is(this)) return;
             const v = $(this).val();
             $inputs.not(this).val(v);
+            // Typing the B2B column price also autofills C2C with the same price
+            if (String($(this).closest('.chpush-card').attr('data-type') || '').toLowerCase() === 'b2b') {
+                typeInputs('c2c').val(v);
+            }
         });
 
         $(document).on('click', '#modal-channels-push-btn', function(e) {
