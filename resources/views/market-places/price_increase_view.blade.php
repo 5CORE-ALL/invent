@@ -8641,16 +8641,14 @@
                 $('#modal-bulk-sprice-input').focus();
                 return;
             }
-            if (modalSelectedChannels.size === 0) {
-                showToast('Please select at least one channel (checkbox)', 'error');
-                return;
-            }
+            // No channel ticked → every editable channel (same as the SPRICE $ box)
             const $rows = collectModalTargetRows({
                 alwaysIncludeDoba: true,
-                alwaysIncludeStdRuleChannels: true
+                alwaysIncludeStdRuleChannels: true,
+                includeAllEditableWhenNoneSelected: true
             });
             if (!$rows.length) {
-                showToast('No editable SPRICE rows selected', 'error');
+                showToast('No editable SPRICE rows', 'error');
                 return;
             }
 
@@ -8723,6 +8721,36 @@
             const v = parseFloat(String($tr.find(sel).first().text()).replace('%', ''));
             return isFinite(v) ? v : null;
         }
+        /** Average GPFT / GROI / NPFT / NROI of the given modal rows, read from the table cells (what you see). */
+        function renderSpriceMetrics($out, rows, headNote) {
+            const defs = [
+                { label: 'GPFT', sel: '.calculated-sgpft', color: getSgpftSpftColor },
+                { label: 'GROI', sel: '.calculated-sroi', color: getSgroiColor },
+                { label: 'NPFT', sel: '.calculated-spft', color: getSgpftSpftColor },
+                { label: 'NROI', sel: '.calculated-snroi', color: getSroiColor }
+            ];
+            const sums = defs.map(function() { return { s: 0, c: 0 }; });
+            const lines = [];
+            rows.forEach(function($tr) {
+                const parts = [];
+                defs.forEach(function(d, i) {
+                    const v = bulkSpriceMetricNum($tr, d.sel);
+                    if (v !== null) { sums[i].s += v; sums[i].c++; }
+                    parts.push(d.label + ' ' + (v !== null ? Math.round(v) + '%' : '-'));
+                });
+                lines.push(String($tr.attr('data-marketplace') || '') + ': $' + (parseFloat($tr.find('.editable-sprice').val()) || 0).toFixed(2)
+                    + ' → ' + parts.join(', '));
+            });
+            const html = defs.map(function(d, i) {
+                const val = sums[i].c
+                    ? '<span style="' + styleForCellColor(d.color(sums[i].s / sums[i].c)) + '">' + Math.round(sums[i].s / sums[i].c) + '%</span>'
+                    : '<span class="text-muted">-</span>';
+                return '<span class="text-muted">' + d.label + '</span> ' + val;
+            }).join(' · ');
+            $out.html(html)
+                .attr('title', (headNote || '') + (rows.length > 1 ? 'Average of ' + rows.length + ' channels\n' : '') + lines.join('\n'))
+                .show();
+        }
         function makeSpricePreview(cfg) {
             let rowsState = []; // [{ $tr, orig }]
             let timer = null;
@@ -8739,7 +8767,13 @@
                 const base = parseFloat(String(raw == null ? '' : raw).replace(/[$,\s]/g, '').replace(',', '.'));
                 if (!isFinite(base) || !(base > 0)) {
                     restore(null);
-                    $out.hide().empty();
+                    if (cfg.summaryWhenEmpty) {
+                        const $cur = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
+                        if ($cur.length) renderSpriceMetrics($out, $cur, (modalSelectedChannels.size ? 'Ticked channels' : 'All editable channels') + ' — current values\n');
+                        else $out.hide().empty();
+                    } else {
+                        $out.hide().empty();
+                    }
                     return;
                 }
                 if (cfg.requireSelection && modalSelectedChannels.size === 0) {
@@ -8749,31 +8783,14 @@
                 }
                 const rows = collectModalTargetRows(cfg.rowsOpts);
                 restore(rows.map(function($tr) { return $tr[0]; }));
-                let sumN = 0, cntN = 0, sumP = 0, cntP = 0;
-                const lines = [];
                 rows.forEach(function($tr) {
                     const $inp = $tr.find('.editable-sprice');
                     if (!rowsState.some(function(p) { return p.$tr[0] === $tr[0]; })) {
                         rowsState.push({ $tr: $tr, orig: $inp.val() });
                     }
-                    const newPrice = adjustAppliedSpriceForChannel(base, $tr);
-                    $inp.val(newPrice.toFixed(2)).trigger('input');
-                    const n = bulkSpriceMetricNum($tr, '.calculated-snroi');
-                    const p = bulkSpriceMetricNum($tr, '.calculated-spft');
-                    if (n !== null) { sumN += n; cntN++; }
-                    if (p !== null) { sumP += p; cntP++; }
-                    lines.push(String($tr.attr('data-marketplace') || '') + ' $' + newPrice.toFixed(2)
-                        + ' → NROI ' + (n !== null ? Math.round(n) + '%' : '-') + ', NPFT ' + (p !== null ? Math.round(p) + '%' : '-'));
+                    $inp.val(adjustAppliedSpriceForChannel(base, $tr).toFixed(2)).trigger('input');
                 });
-                const fmt = function(sum, cnt, colorFn) {
-                    if (!cnt) return '<span class="text-muted">-</span>';
-                    const avg = sum / cnt;
-                    return '<span style="' + styleForCellColor(colorFn(avg)) + '">' + Math.round(avg) + '%</span>';
-                };
-                $out.html('NROI ' + fmt(sumN, cntN, getSroiColor) + ' · NPFT ' + fmt(sumP, cntP, getSgpftSpftColor))
-                    .attr('title', (rows.length > 1 ? 'Average of ' + rows.length + ' channels (preview, not saved until ✓)\n' : 'Preview, not saved until ✓\n')
-                        + lines.join('\n'))
-                    .show();
+                renderSpriceMetrics($out, rows, 'Preview, not saved until ✓\n');
             }
             function schedule(ms) {
                 clearTimeout(timer);
@@ -8793,8 +8810,8 @@
         }
         const bulkSpritePv = makeSpricePreview({
             input: '#modal-bulk-sprice-input', out: '#modal-bulk-sprice-metrics',
-            requireSelection: true,
-            rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true }
+            requireSelection: false, summaryWhenEmpty: true,
+            rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true }
         });
         // "SPRICE $" box: same rules; every editable channel when none is ticked (same as its ✓ button)
         const samePricePv = makeSpricePreview({
@@ -8816,6 +8833,30 @@
         $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
             spricePreviews.forEach(function(pv) { pv.reset(); });
         });
+        // Keep the GPFT / GROI / NPFT / NROI readout current: any SPRICE edit (ROI% / GPFT% targets, ✓ apply, manual)
+        // and every table render refresh it.
+        let spriceSummaryTimer = null;
+        function refreshSpriceSummarySoon() {
+            clearTimeout(spriceSummaryTimer);
+            spriceSummaryTimer = setTimeout(function() {
+                if (!$('#ovl30DetailsModal').hasClass('show')) return;
+                if (String($('#modal-bulk-sprice-input').val() || '') !== '') {
+                    // a typed value: the preview readout already reflects the table cells
+                    const rows = collectModalTargetRows({ alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true });
+                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview, not saved until ✓\n');
+                    return;
+                }
+                bulkSpritePv.schedule(0);
+            }, 200);
+        }
+        $(document).on('input', '#ovl30DetailsTableBody .editable-sprice', refreshSpriceSummarySoon);
+        $(document).on('change', '.ovl30-prc-row-cb, #ovl30-select-all-cb', refreshSpriceSummarySoon);
+        (function() {
+            const tb = document.getElementById('ovl30DetailsTableBody');
+            if (tb && window.MutationObserver) {
+                new MutationObserver(refreshSpriceSummarySoon).observe(tb, { childList: true });
+            }
+        })();
 
         // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
         // When STD PRC also has a value: both work together → SPRICE = STD + bump (then channel rules)
@@ -9325,13 +9366,10 @@
         }
 
         function applyModalTargetBackSolve(computeFn, labelPrefix) {
-            if (modalSelectedChannels.size === 0) {
-                showToast('Please select at least one channel (checkbox)', 'error');
-                return;
-            }
-            const $rows = collectModalTargetRows();
+            // No channel ticked → every editable channel
+            const $rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
             if (!$rows.length) {
-                showToast('No editable SPRICE rows selected', 'error');
+                showToast('No editable SPRICE rows', 'error');
                 return;
             }
             if (!confirm(labelPrefix + ' — set SPRICE on ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
