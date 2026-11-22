@@ -137,6 +137,16 @@
             line-height: 1.2;
             max-width: 220px;
         }
+        #ovl30DetailsModal .ovl30-sku-thumb {
+            width: 30px; height: 30px; object-fit: contain; flex-shrink: 0;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 1px; cursor: zoom-in;
+        }
+        #ovl30SkuThumbPreview {
+            position: fixed; z-index: 3000; display: none; pointer-events: none;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .35);
+        }
+        #ovl30SkuThumbPreview img { display: block; max-width: 340px; max-height: 340px; object-fit: contain; }
         #ovl30DetailsModal .ovl30-sku-play-group .btn.rounded-circle {
             width: 30px;
             height: 30px;
@@ -360,7 +370,6 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-icon { width: 34px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-sprice { width: 72px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-push { width: 36px; }
-        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-by { width: 36px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-history { width: 52px; }
         .ovl30-history-btn {
             border: none;
@@ -461,8 +470,7 @@
         #ovl30DetailsModal #ovl30DetailsTable th.ovl30-sprice-suggest-th,
         #ovl30DetailsModal #ovl30DetailsTable th.ovl30-bulk-push-th,
         #ovl30DetailsModal #ovl30DetailsTable td.ovl30-push-cell,
-        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-link-cell,
-        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-by-cell {
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-link-cell {
             text-align: center !important;
             vertical-align: middle !important;
             padding-left: 2px !important;
@@ -827,13 +835,11 @@
             text-align: left !important;
             padding-left: 8px !important;
         }
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(2),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (17–21) */
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
+        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (16–20) */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(6),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(7),
@@ -846,12 +852,14 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(10),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
@@ -861,27 +869,23 @@
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
-        /* Center: Miss, Link, Check, Suggest, STD, Push, By, Hist */
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
+        /* Center: Miss, Link, Check, Suggest, STD, Push, Hist */
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(14) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(14) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
         }
@@ -1817,6 +1821,7 @@
                     <div class="modal-title d-flex align-items-center justify-content-between w-100 gap-2 flex-wrap pe-2">
                         <div class="d-flex align-items-center gap-2 min-w-0">
                             <i class="fas fa-layer-group text-primary"></i>
+                            <img id="modalSkuThumb" class="ovl30-sku-thumb" alt="" style="display:none;" onerror="this.style.display='none'">
                             <span id="modalSkuName" class="ovl30-header-sku text-truncate">SKU</span>
                             <div class="btn-group align-items-center ovl30-sku-play-group" role="group"
                                 aria-label="Sibling SKU playback" title="Walk child SKUs under the same parent (respects current table filters)">
@@ -1975,6 +1980,7 @@
                         <table class="table table-bordered table-hover mb-0" id="ovl30DetailsTable">
                             <colgroup>
                                 <col class="ovl30-col-channel">
+                                <col class="ovl30-col-type">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-price">
@@ -1988,23 +1994,18 @@
                                 <col class="ovl30-col-lmp">
                                 <col class="ovl30-col-link">
                                 <col class="ovl30-col-check">
-                                <col class="ovl30-col-icon">
-                                <col class="ovl30-col-std-prc">
-                                <col class="ovl30-col-cpn">
-                                <col class="ovl30-col-cpn-pct">
-                                <col class="ovl30-col-dsc">
                                 <col class="ovl30-col-sprice">
-                                <col class="ovl30-col-num">
-                                <col class="ovl30-col-num">
-                                <col class="ovl30-col-num">
-                                <col class="ovl30-col-num">
                                 <col class="ovl30-col-push">
-                                <col class="ovl30-col-by">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
                                 <col class="ovl30-col-history">
                             </colgroup>
                             <thead>
                                 <tr class="modal-vertical-header">
                                     <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Marketplace"><span>Channel</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-type-th" title="Channel type — same grouping as the Channels modal (B2C, B2B, B2B W/o = B2B without ship, C2C, Hs = High Shipping)"><span>Type</span></th>
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -2021,23 +2022,22 @@
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
                                         <input type="checkbox" id="ovl30-select-all-cb" title="Select as per filter">
                                     </th>
-                                    <th class="ovl30-std-prc-th" title="Standard Price (SP) — one value for all marketplaces on this SKU (amazon_data_view.STANDARD_PRICE). Editable on any channel row."><span>STD PRC</span></th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="SGPFT%"><span>SGPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="SPFT%"><span>SPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-bulk-push-th" title="Bulk push SPRICE to selected / visible marketplaces">
                                         <button type="button" class="btn btn-sm btn-primary ovl30-bulk-push-btn" id="ovl30-bulk-push-btn"
                                             title="Bulk Push — pushes SPRICE marketplace-wise (selected channels, or all visible if none selected)">
                                             <i class="fas fa-upload"></i>
                                         </button>
                                     </th>
-                                    <th title="Last pushed by"><span>By</span></th>
+                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="SGPFT%"><span>SGPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="SPFT%"><span>SPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Push history — date, price, user for this marketplace"><span>Hist</span></th>
                                 </tr>
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; max-width: 36px; max-height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
+                                    <th></th>
                                     <th class="text-end">
                                         <span id="modal-total-l30">0</span>
                                         <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-l30-chart-dot"
@@ -2074,21 +2074,19 @@
                                     <th></th>
                                     <th></th>
                                     <th></th>
-                                    <th class="ovl30-std-prc-th"></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
+                                    <th></th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
                                     <th class="text-end" id="modal-avg-snroi">0%</th>
                                     <th class="text-end" id="modal-avg-sgpft">0%</th>
                                     <th class="text-end" id="modal-avg-spft">0%</th>
-                                    <th></th>
-                                    <th></th>
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="24" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="23" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2140,21 +2138,6 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-2">
-                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
-                        <label class="small text-muted mb-0 d-flex align-items-center gap-1" for="ovl30PushHistoryDays">
-                            Days
-                            <select id="ovl30PushHistoryDays" class="form-select form-select-sm" style="width:auto;min-width:7rem;">
-                                <option value="1">Today</option>
-                                <option value="7" selected>Last 7 days</option>
-                                <option value="30">Last 30 days</option>
-                                <option value="90">Last 90 days</option>
-                                <option value="0">All</option>
-                            </select>
-                        </label>
-                        <span class="small text-muted" id="ovl30PushHistoryHint" title="Same-day rows where History date = SPRICE edit date = Push date are hidden">
-                            Same-day edit+push rows hidden
-                        </span>
-                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered table-hover mb-0">
                             <thead class="table-light">
@@ -3473,6 +3456,34 @@
             );
         }
 
+        /** Small SKU picture left of the SKU text in the modal header; hover shows it full size. */
+        function setModalSkuThumb(sku, imagePath) {
+            let src = String(imagePath || '').trim();
+            if (!src) {
+                try {
+                    const norm = String(sku || '').trim().toUpperCase();
+                    const rows = (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? table.getData() : [];
+                    const hit = rows.find(function(r) { return String(r.sku || '').trim().toUpperCase() === norm && r.image_path; });
+                    if (hit) src = String(hit.image_path);
+                } catch (e) { /* ignore */ }
+            }
+            const $t = $('#modalSkuThumb');
+            if (!src) { $t.hide().removeAttr('src'); return; }
+            $t.attr('src', src).attr('alt', sku || '').show();
+        }
+        (function() {
+            const $pv = $('<div id="ovl30SkuThumbPreview"><img alt=""></div>').appendTo('body');
+            $(document).on('mouseenter', '#modalSkuThumb', function() {
+                const src = $(this).attr('src');
+                if (!src) return;
+                $pv.find('img').attr('src', src);
+                const r = this.getBoundingClientRect();
+                $pv.css({ display: 'block', left: Math.max(8, r.left), top: r.bottom + 8 });
+            });
+            $(document).on('mouseleave', '#modalSkuThumb', function() { $pv.hide(); });
+            $('#ovl30DetailsModal').on('hidden.bs.modal', function() { $pv.hide(); });
+        })();
+
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil, opts) {
             opts = opts || {};
             ovl30ModalClosedByUser = false;
@@ -3485,6 +3496,13 @@
             }
 
             $('#modalSkuName').text(sku);
+            setModalSkuThumb(sku, imagePath);
+            // New SKU: drop the previous SKU's typed SPRICE $ (it is refilled from this SKU's saved price once the data is in)
+            clearTimeout(sameAutoTimer);
+            samePriceDirty = false;
+            samePricePv.clear();
+            $('#modal-sprice-same-input').val('');
+            $('#modal-same-sprice-metrics').hide().empty();
             // Wire totals-row Price / CVR chart dots + header INV/L30/Dil badges to this SKU
             const chartSku = String(sku || '').trim();
             const isParentSku = chartSku.toUpperCase().indexOf('PARENT ') === 0;
@@ -3654,7 +3672,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-muted py-4">
+                    <td colspan="23" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3665,7 +3683,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-muted py-4">
+                    <td colspan="23" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3675,7 +3693,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-danger py-4">
+                    <td colspan="23" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -4293,11 +4311,12 @@
         }
 
         // v2: invalidate old vertical-header widths that break horizontal alignment
-        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths_v3';
+        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths_v6';
         let ovl30ManualColWidths = false;
         try {
             localStorage.removeItem('priceIncrease_ovl30_col_widths');
             localStorage.removeItem('priceIncrease_ovl30_col_widths_v2');
+            localStorage.removeItem('priceIncrease_ovl30_col_widths_v3');
         } catch (e) {}
 
         function loadOvl30SavedColWidths() {
@@ -4823,13 +4842,6 @@
                             : '') +
                       '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
-                const pushedByTip = item.pushed_by
-                    ? String(item.pushed_by + (item.pushed_at ? ' ' + item.pushed_at : '')).replace(/"/g, '&quot;')
-                    : '';
-                const pushedByCell = item.pushed_by
-                    ? '<span class="pushed-by-dot" title="' + pushedByTip + '" aria-label="' + pushedByTip + '"></span>'
-                    : '<span class="text-muted">-</span>';
-
                 const pushHistory = Array.isArray(item.push_history) ? item.push_history : [];
                 const histCount = pushHistory.length;
                 const histTitle = histCount
@@ -4849,6 +4861,7 @@
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
+                        <td class="text-center ovl30-type-cell ${textClass}">${chModalTypeLabel(item.marketplace)}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() + l30ChartDot : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
@@ -4903,25 +4916,6 @@
                                     + ' title="Select channel">'
                                 : ''}
                         </td>
-                        <td class="text-center ovl30-std-prc-cell ${textClass}">
-                            ${(() => {
-                                // STD PRC = shared SKU STANDARD_PRICE on every listed marketplace
-                                if (!isListed && !forceEditableStdRule) return '-';
-                                const std = parseFloat(item.standard_price) || 0;
-                                const skuEsc = String(getModalPrimarySku() || item.sku || '')
-                                    .replace(/"/g, '&quot;');
-                                const dot = std > 0
-                                    ? priceIncreaseSpChangeDotHtml(std, price, skuEsc)
-                                    : '';
-                                const valAttr = std > 0 ? std.toFixed(2) : '';
-                                return '<span class="ovl30-std-prc-wrap">'
-                                    + dot
-                                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
-                                    + 'value="' + valAttr + '" step="0.01" min="0" '
-                                    + 'placeholder="" title="Standard Price (STD PRC) — same SP for all marketplaces">'
-                                    + '</span>';
-                            })()}
-                        </td>
                         <td class="text-end ovl30-sprice-cell ${textClass}">
                             ${(() => {
                                 const lmpVal = parseFloat(item.lmp_price) || 0;
@@ -4943,6 +4937,18 @@
                                 return '-';
                             })()}
                         </td>
+                        <td class="text-center ovl30-push-cell ${textClass}">
+                            ${canPushPrice ? 
+                                '<button class="btn btn-sm btn-primary push-price-btn" ' +
+                                'data-sku="' + item.sku + '" ' +
+                                'data-marketplace="' + item.marketplace + '" ' +
+                                (hasPushableSprice ? '' : 'disabled ') +
+                                'title="' + (hasPushableSprice
+                                    ? ('Push price to ' + item.marketplace)
+                                    : 'Enter a SPRICE greater than 0 to push') + '">' +
+                                '<i class="fas fa-upload"></i></button>' 
+                                : '-'}
+                        </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-sroi" style="${(sroiStyle || styleForCellColor(sroiColor))}">${Math.round(sroi)}%</span>
                         </td>
@@ -4957,19 +4963,6 @@
                         <td class="text-end ${textClass}">
                             <span class="calculated-spft" style="${(spftStyle || styleForCellColor(spftColor))}">${Math.round(spft)}%</span>
                         </td>
-                        <td class="text-center ovl30-push-cell ${textClass}">
-                            ${canPushPrice ? 
-                                '<button class="btn btn-sm btn-primary push-price-btn" ' +
-                                'data-sku="' + item.sku + '" ' +
-                                'data-marketplace="' + item.marketplace + '" ' +
-                                (hasPushableSprice ? '' : 'disabled ') +
-                                'title="' + (hasPushableSprice
-                                    ? ('Push price to ' + item.marketplace)
-                                    : 'Enter a SPRICE greater than 0 to push') + '">' +
-                                '<i class="fas fa-upload"></i></button>' 
-                                : '-'}
-                        </td>
-                        <td class="text-center ovl30-by-cell ${textClass}">${pushedByCell}</td>
                         <td class="text-center ovl30-history-cell ${textClass}">${historyCell}</td>
                     </tr>
                 `;
@@ -5047,6 +5040,7 @@
             $('#modal-avg-sroi').html(`<span style="${(sroiStyleTotal || styleForCellColor(sroiColorTotal))}">${Math.round(avgSROI)}%</span>`);
             $('#modal-avg-snroi').html(`<span style="${styleForCellColor(nroiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
             syncModalToolbarSpInput();
+            syncSameSpriceBoxFromSaved(); // SPRICE $ box = the saved price; profit badges always visible
             // Prefer SP from Sku Link LMP siblings (shared group value)
             loadModalToolbarSpFromSkuLinkGroup(getModalPrimarySku());
             updateOvl30SortIcons();
@@ -5103,14 +5097,12 @@
                 .done(function(res) {
                     const std = parseFloat(res && res.standard_price);
                     if (!isFinite(std) || std <= 0) return;
+                    if (String(getModalPrimarySku() || '') !== sku) return; // modal moved on to another SKU
                     setModalSharedStandardPrice(std);
                     syncModalToolbarSpInput(std);
                     refreshModalStdPrcCells(std);
                     // Prefill Same-$ SPRICE box from shared sibling SP (user can still edit)
-                    const $same = $('#modal-sprice-same-input');
-                    if ($same.length && !$same.is(':focus') && String($same.val() || '').trim() === '') {
-                        $same.val(std.toFixed(2));
-                    }
+                    syncSameSpriceBoxFromSaved();
                 });
         }
 
@@ -5140,6 +5132,19 @@
         // Back-compat alias
         function refreshModalAmazonStdPrcCells(saved) {
             refreshModalStdPrcCells(saved);
+        }
+
+        /** Hist dot colour by age of a push date (YYYY-MM-DD): green <= 7 days, yellow 8-14, red > 14. Same rule parent and child rows. */
+        function histAgeDotHtml(dateStr, title) {
+            const d = String(dateStr || '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+            const p = d.split('-');
+            const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+            const days = Math.max(0, Math.round((t0 - new Date(+p[0], +p[1] - 1, +p[2])) / 86400000));
+            const color = days <= 7 ? '#28a745' : (days <= 14 ? '#ffc107' : '#dc3545');
+            const label = days <= 7 ? 'within 7 days' : (days <= 14 ? '7–14 days ago' : 'over 14 days ago');
+            return '<i class="fas fa-circle" style="color:' + color + ';font-size:10px;vertical-align:middle;" '
+                + 'title="' + String(title || 'Last push').replace(/"/g, '&quot;') + ' ' + d + ' (' + days + ' day(s) ago, ' + label + ')"></i>';
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -5318,7 +5323,7 @@
                     field: "push_history_count",
                     headerSort: false,
                     hozAlign: "center",
-                    minWidth: 52,
+                    minWidth: 68,
                     headerTooltip: "Push history — date, marketplace, price, user",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -5332,13 +5337,7 @@
                                     ? '<span class="text-muted small" title="Push history on ' + done + ' of ' + total + ' child SKU(s)">' + done + '/' + total + '</span>'
                                     : '';
                             }
-                            const p = oldest.split('-');
-                            const t0 = new Date(); t0.setHours(0, 0, 0, 0);
-                            const days = Math.max(0, Math.round((t0 - new Date(+p[0], +p[1] - 1, +p[2])) / 86400000));
-                            const color = days <= 7 ? '#28a745' : (days <= 14 ? '#ffc107' : '#dc3545');
-                            const label = days <= 7 ? 'within 7 days' : (days <= 14 ? '7–14 days ago' : 'over 14 days ago');
-                            return '<i class="fas fa-circle" style="color:' + color + ';font-size:10px;vertical-align:middle;" '
-                                + 'title="All ' + total + ' child SKU(s) pushed — oldest last push ' + oldest + ' (' + days + ' day(s) ago, ' + label + ')"></i>';
+                            return histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push');
                         }
                         const sku = rowData.sku || '';
                         const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
@@ -5346,7 +5345,8 @@
                             ? (histCount + ' push record(s) — click to view')
                             : 'Push history — click to view';
                         const skuEsc = String(sku).replace(/"/g, '&quot;');
-                        return '<button type="button" class="ovl30-history-btn outer-push-history-btn'
+                        const childDot = histAgeDotHtml(rowData.push_history_last_at, 'Last push');
+                        return (childDot ? childDot + ' ' : '') + '<button type="button" class="ovl30-history-btn outer-push-history-btn'
                             + (histCount ? ' has-history' : '')
                             + '" data-sku="' + skuEsc + '"'
                             + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
@@ -5595,9 +5595,9 @@
                     title: "LMP by Channel",
                     field: "lmp_channels",
                     headerSort: false,
-                    hozAlign: "left",
-                    minWidth: 190,
-                    headerTooltip: "Lowest marketplace price per competitor channel (same numbers as the LMP drawer). Click a price to open that channel in the drawer. Parent rows show the average of the children.",
+                    hozAlign: "center",
+                    minWidth: 110,
+                    headerTooltip: "Lowest marketplace price across all competitor channels (hover for each channel). Click to open the main LMP drawer. Parent rows show the lowest of the children averages.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const isParent = d.is_parent_summary === true;
@@ -5612,20 +5612,22 @@
                             { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',   style: 'background:#fb7701;color:#fff;' },
                             { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TT',     style: 'background:#111;color:#fff;' }
                         ];
-                        const parts = [];
+                        // Only the LOWEST channel LMP is shown; the tooltip lists every channel
+                        let low = null;
+                        const all = [];
                         chans.forEach(function(c) {
                             const v = parseFloat(d[c.f]);
                             if (!isFinite(v) || !(v > 0)) return;
-                            const txt = c.label + ' $' + v.toFixed(2);
-                            const badge = '<span class="badge" style="font-weight:600;margin:1px 2px 1px 0;' + c.style + '"'
-                                + (isParent ? ' title="Average of child ' + c.label + ' LMPs"' : '') + '>' + txt + '</span>';
-                            parts.push(isParent
-                                ? badge
-                                : '<a href="#" class="lmp-price-link" data-sku="' + skuAttr + '" data-marketplace="' + c.mp
-                                    + '" style="text-decoration:none;" title="Open ' + c.label + ' LMP">' + badge + '</a>');
+                            all.push(c.label + ' $' + v.toFixed(2));
+                            if (!low || v < low.v) low = { c: c, v: v };
                         });
-                        if (!parts.length) return '<span class="text-muted">-</span>';
-                        return '<div style="white-space:normal;line-height:1.25;">' + parts.join('') + '</div>';
+                        if (!low) return '<span class="text-muted">-</span>';
+                        const tip = (isParent ? 'Average of child LMPs — lowest: ' : 'Lowest LMP — click to open the LMP drawer\n') + all.join(' · ');
+                        const badge = '<span class="badge" style="font-weight:600;' + low.c.style + '" title="' + tip.replace(/"/g, '&quot;') + '">'
+                            + low.c.label + ' $' + low.v.toFixed(2) + '</span>';
+                        if (isParent) return badge;
+                        return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" style="text-decoration:none;" title="'
+                            + tip.replace(/"/g, '&quot;') + '">' + badge + '</a>';
                     }
                 },
                 {
@@ -8626,6 +8628,17 @@
             });
             return found;
         }
+        /** Type column of the SKU modal: the channel's group in the Channels modal, abbreviated. */
+        function chModalTypeLabel(marketplace) {
+            const group = chModalGroupOfKey(chpushKey(marketplace));
+            if (!group) return '<span class="text-muted">-</span>';
+            const g = String(group).toLowerCase().trim();
+            let label = String(group);
+            if (g === CHPUSH_NOSHIP_GROUP.toLowerCase()) label = 'B2B W/o';
+            else if (g === 'high shipping') label = 'Hs';
+            return '<span class="badge bg-light text-dark border" style="font-weight:600;" title="' + chpushEsc(group) + '">'
+                + chpushEsc(label) + '</span>';
+        }
         function chBulkSpriceFor(base, $tr) {
             const x = Math.max(0.01, +Number(base).toFixed(2));
             const group = String(chModalGroupOfKey(chpushKey($tr && $tr.attr('data-marketplace'))) || '').toLowerCase().trim();
@@ -8815,7 +8828,9 @@
                     restore(null);
                     if (cfg.summaryWhenEmpty) {
                         const $cur = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
-                        if ($cur.length || spriceAmazonRow().length) renderSpriceMetrics($out, $cur, 'Current values\n');
+                        const fb = cfg.fallbackPrice ? (parseFloat(cfg.fallbackPrice()) || 0) : 0;
+                        // With a fallback price the badges are ALWAYS visible (saved values; "-" when nothing is saved yet)
+                        if (cfg.fallbackPrice || $cur.length || spriceAmazonRow().length) renderSpriceMetrics($out, $cur, 'Saved values\n', fb);
                         else $out.hide().empty();
                     } else {
                         $out.hide().empty();
@@ -8853,7 +8868,7 @@
                     $(cfg.input).val('');
                     $(cfg.out).hide().empty();
                 },
-                active: function() { return String($(cfg.input).val() || '') !== ''; }
+                active: function() { return cfg.isActive ? !!cfg.isActive() : String($(cfg.input).val() || '') !== ''; }
             };
         }
         const bulkSpritePv = makeSpricePreview({
@@ -8862,9 +8877,37 @@
             rowsOpts: { includeAllEditableWhenNoneSelected: true }
         });
         // "SPRICE $" box: same rules; every editable channel when none is ticked (same as its ✓ button)
+        // True only while the user's own typed value is in the box (a value prefilled from the saved price is NOT a preview)
+        let samePriceDirty = false;
+        /** The saved price shown in the SPRICE $ box: STD PRC, else Amazon's saved SPRICE, else any channel's. */
+        function getSavedSameSprice() {
+            const std = getModalSharedStandardPrice();
+            if (std > 0) return std;
+            const items = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
+            for (let pass = 0; pass < 2; pass++) {
+                for (let i = 0; i < items.length; i++) {
+                    const isAmazon = String(items[i].marketplace || '').toLowerCase() === 'amazon';
+                    if ((pass === 0) !== isAmazon) continue;
+                    const n = parseFloat(items[i].sprice);
+                    if (isFinite(n) && n > 0) return n;
+                }
+            }
+            return 0;
+        }
+        /** Put the saved price in the SPRICE $ box (never over something the user is typing) and refresh the profit badges. */
+        function syncSameSpriceBoxFromSaved() {
+            const $same = $('#modal-sprice-same-input');
+            if (!$same.length || $same.is(':focus') || samePriceDirty) { refreshSpriceSummarySoon(); return; }
+            const v = getSavedSameSprice();
+            $same.val(v > 0 ? v.toFixed(2) : '');
+            refreshSpriceSummarySoon();
+        }
         const samePricePv = makeSpricePreview({
             input: '#modal-sprice-same-input', out: '#modal-same-sprice-metrics',
             requireSelection: false,
+            summaryWhenEmpty: true,
+            fallbackPrice: getSavedSameSprice,
+            isActive: function() { return samePriceDirty && String($('#modal-sprice-same-input').val() || '') !== ''; },
             rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true }
         });
         const spricePreviews = [bulkSpritePv, samePricePv];
@@ -8879,6 +8922,7 @@
         });
         // Closing the modal drops the unsaved preview
         $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
+            samePriceDirty = false;
             spricePreviews.forEach(function(pv) { pv.reset(); });
         });
         // Keep the GPFT / GROI / NPFT / NROI readout current: any SPRICE edit (ROI% / GPFT% targets, ✓ apply, manual)
@@ -8888,14 +8932,11 @@
             clearTimeout(spriceSummaryTimer);
             spriceSummaryTimer = setTimeout(function() {
                 if (!$('#ovl30DetailsModal').hasClass('show')) return;
-                if (String($('#modal-bulk-sprice-input').val() || '') !== '') {
-                    // a typed value: the preview readout already reflects the table cells
-                    const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
-                    const typed = parseFloat(String($('#modal-bulk-sprice-input').val()).replace(/[$,\s]/g, '')) || 0;
-                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview — saved automatically\n', typed);
-                    return;
-                }
-                bulkSpritePv.schedule(0);
+                // The user's typed price has its own live preview (it draws the badges itself)
+                if (samePricePv.active()) return;
+                // Otherwise the 4 profit badges ALWAYS show the saved price (Amazon's saved SPRICE, else STD PRC)
+                const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
+                renderSpriceMetrics($('#modal-same-sprice-metrics'), rows, 'Saved values\n', getSavedSameSprice());
             }, 200);
         }
         $(document).on('input', '#ovl30DetailsTableBody .editable-sprice', refreshSpriceSummarySoon);
@@ -9561,7 +9602,7 @@
             const displayPrice = (isTemu && basePrice > 0)
                 ? +temuFullPriceFromBase(basePrice).toFixed(2)
                 : basePrice;
-            const $priceTd = $tr.children('td').eq(3);
+            const $priceTd = $tr.children('td').eq(4);
             const tip = isTemu
                 ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Full Price (Base × 1.1364). Pushed base: $' + basePrice.toFixed(2))
                 : '';
@@ -9571,12 +9612,8 @@
                 + displayPrice.toFixed(2) + '</span>' + (existingDot ? (' ' + existingDot) : '')
             );
 
-            // Pushed By column (second-to-last); History is last
             const nowLabel = 'Just now';
             const $tds = $tr.children('td');
-            $tds.filter('.ovl30-by-cell').html(
-                '<span class="pushed-by-dot" title="Pushed ' + nowLabel + '" aria-label="Pushed"></span>'
-            );
 
             // Keep in-memory modal data in sync + prepend history entry
             const userName = (window.__authUserName || 'You');
@@ -9707,7 +9744,7 @@
         function renderOvl30PushHistoryRows(history, fallbackMarketplace) {
             const mp = String(fallbackMarketplace || '');
             if (!history || !history.length) {
-                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history for this range</td></tr>';
+                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history</td></tr>';
             }
             let html = '';
             history.forEach(function(h) {
@@ -9724,17 +9761,10 @@
             return html;
         }
 
+        /** Every push record (newest first) — no day range, nothing hidden. */
         function refreshOvl30PushHistoryBody() {
-            const days = parseInt($('#ovl30PushHistoryDays').val(), 10);
-            const filtered = filterOvl30PushHistory(ovl30PushHistoryState.history, {
-                days: isFinite(days) ? days : 0,
-                pushedAtIso: ovl30PushHistoryState.pushedAtIso,
-                spriceEditedAt: ovl30PushHistoryState.spriceEditedAt,
-                pushedPrice: ovl30PushHistoryState.pushedPrice,
-                fallbackMarketplace: ovl30PushHistoryState.marketplaceLabel,
-            });
             $('#ovl30PushHistoryBody').html(
-                renderOvl30PushHistoryRows(filtered, ovl30PushHistoryState.marketplaceLabel)
+                renderOvl30PushHistoryRows(ovl30PushHistoryState.history, ovl30PushHistoryState.marketplaceLabel)
             );
         }
 
@@ -9754,10 +9784,6 @@
             const el = document.getElementById('ovl30PushHistoryModal');
             if (el) bootstrap.Modal.getOrCreateInstance(el).show();
         }
-
-        $(document).on('change', '#ovl30PushHistoryDays', function() {
-            refreshOvl30PushHistoryBody();
-        });
 
         function openOvl30PushHistory(marketplace) {
             const mp = String(marketplace || '');
@@ -9807,7 +9833,13 @@
                                     return String((r.getData() || {}).sku || '') === skuKey;
                                 })
                                 : null;
-                            if (row) row.update({ push_history_count: count });
+                            if (row) {
+                                const upd = { push_history_count: count };
+                                let newest = '';
+                                history.forEach(function(h) { const d = String((h && h.at) || '').slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > newest) newest = d; });
+                                if (newest) upd.push_history_last_at = newest;
+                                row.update(upd);
+                            }
                         } catch (e) { /* ignore */ }
                     }
                 },
@@ -9849,7 +9881,7 @@
             if (!$tr.length) return;
             const sku = getModalPrimarySku() || '';
             const skuAttr = String(sku).replace(/"/g, '&quot;');
-            const $lmpTd = $tr.children('td').eq(11); // LMP column
+            const $lmpTd = $tr.children('td').eq(13); // LMP column (14th, after the Type column)
             if (!(lmpPrice > 0)) {
                 $lmpTd.html(
                     '<a href="#" class="lmp-add-btn" data-sku="' + skuAttr + '" data-marketplace="' + linkMp
@@ -10273,6 +10305,8 @@
             if (!(x > 0) || !sku || sku.toUpperCase() === 'NOT LISTED' || sku.indexOf('PARENT') !== -1) return;
             if ((chpushRunning[sku] || 0) > 0 || $('#ovl30ChannelsPushModal').hasClass('show')) return; // a push / the Channels modal handles it
             if (sameAutoSaving) { sameAutoTimer = setTimeout(saveSameSpriceAlways, 600); return; }
+            // The typed price is also stored as the SKU's STD PRC so it is still there when the modal is reopened
+            if (Math.abs(getModalSharedStandardPrice() - x) >= 0.005) saveTypedPriceAsStd(sku, +x.toFixed(2));
             // Put the saved SPRICEs back under the live preview so "changed?" compares against real saved values
             samePricePv.restore();
             bulkSpritePv.restore();
@@ -10296,6 +10330,7 @@
 
         $(document).on('input', '#modal-sprice-same-input', function(e) {
             if (!e.originalEvent) return; // programmatic prefill
+            samePriceDirty = true; // the user's own value from here on (never overwritten by the saved-price prefill)
             clearTimeout(sameAutoTimer);
             sameAutoTimer = setTimeout(saveSameSpriceAlways, 1000);
             const x = parseOvl30PushPrice($(this).val());
@@ -10597,6 +10632,7 @@
                         }
                         chpushPaint();
                         if (okResults.length) reloadOvl30ModalAfterPush(okResults);
+                        if (String(getModalPrimarySku() || '') === sku) syncSameSpriceBoxFromSaved(); // SPRICE $ box + badges show what was saved
                         const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
                         const prefix = modalOpen ? '' : (sku + ': ');
                         const msg = jobTargets.length === 1
@@ -13440,8 +13476,14 @@
             const done = parseInt(p.push_history_children_done, 10) || 0;
             const oldest = String(p.push_history_oldest_at || '').slice(0, 10);
             if (!total || done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) return null;
-            if (oldest >= ovl30HistoryDaysAgoKey(7)) return 'green';
-            if (oldest >= ovl30HistoryDaysAgoKey(14)) return 'yellow';
+            return histBucketOfDate(oldest);
+        }
+        /** green | yellow | red for a push date (YYYY-MM-DD) — same thresholds as the dot colours. */
+        function histBucketOfDate(d) {
+            d = String(d || '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+            if (d >= ovl30HistoryDaysAgoKey(7)) return 'green';
+            if (d >= ovl30HistoryDaysAgoKey(14)) return 'yellow';
             return 'red';
         }
         /** 'all' = nothing hidden; 'buckets' = only the ticked colours. */
@@ -13470,9 +13512,10 @@
             if (!row) return true;
             mode = mode || pushHistoryFilterMode();
             if (mode === 'all') return true;
-            // A parent row and all its SKU rows share the parent's bucket
-            phBuildIdx();
-            const bucket = histBucketOfParent(row.is_parent_summary === true ? row : phParentIdx[row.parent]);
+            // Parent rows: bucket of the parent dot. SKU (child) rows: bucket of their OWN dot (their newest push).
+            const bucket = row.is_parent_summary === true
+                ? histBucketOfParent(row)
+                : histBucketOfDate(row.push_history_last_at);
             return !!bucket && histSelected().indexOf(bucket) !== -1;
         }
         function dropRecentPushedRows(rows) {
