@@ -9063,8 +9063,9 @@
         function applyModalSpriceBump() {
             const rawInput = $('#modal-sprice-bump-input').val();
             const bump = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
-            if (rawInput === '' || rawInput == null || !isFinite(bump) || bump === 0) {
-                showToast('Enter a $ amount to add (e.g. 1 or 2)', 'error');
+            // 0 is allowed: SPRICE stays as it is, and with "Siblings" ticked every sibling SKU gets this SKU's SPRICE
+            if (rawInput === '' || rawInput == null || !isFinite(bump)) {
+                showToast('Enter a $ amount to add (0, 1, 2 …)', 'error');
                 $('#modal-sprice-bump-input').focus();
                 return;
             }
