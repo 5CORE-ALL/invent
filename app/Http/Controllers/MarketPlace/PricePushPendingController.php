@@ -147,6 +147,8 @@ class PricePushPendingController extends Controller
         }
         $rows = $q->orderByDesc('last_attempt_at')->limit(300)->get();
 
+        $actions = $svc->actionsFor($rows);
+
         return response()->json([
             'count' => $rows->count(),
             'skus' => $rows->pluck('sku')->unique()->count(),
@@ -161,6 +163,8 @@ class PricePushPendingController extends Controller
                 'error' => $r->last_error,
                 'last_attempt_at' => optional($r->last_attempt_at)->format('Y-m-d H:i'),
                 'requested_by' => $r->requested_by,
+                'action' => $actions[$r->id]['action'] ?? 'awaited',
+                'action_note' => $actions[$r->id]['note'] ?? '',
             ])->values(),
         ]);
     }

@@ -131,6 +131,45 @@ class PricePushPendingService
         }
     }
 
+    /**
+     * "Action" column of the not-updated list: id => ['action' => 'done'|'awaited', 'note' => ...].
+     * Listing not found → the task for Sneha (create / link the listing): Done once that task is Done / Archived, else Awaited.
+     * Every other failure (API limit, not listed on a channel, timeout …) → Awaited: the hourly automatic retry is the action.
+     */
+    public function actionsFor($rows): array
+    {
+        $out = [];
+        $markers = [];
+        foreach ($rows as $r) {
+            $out[$r->id] = ['action' => 'awaited', 'note' => $r->status === 'failed' ? 'Gave up — push it manually' : 'Automatic retry every hour'];
+            if (self::isListingNotFound((string) $r->last_error)) {
+                $markers[$r->id] = 'listing-nf-' . md5(strtoupper($r->sku) . '|' . $r->marketplace);
+                $out[$r->id]['note'] = 'Waiting for the listing task (' . self::TASK_ASSIGNEE_NAME . ')';
+            }
+        }
+        if ($markers) {
+            try {
+                if (Schema::hasTable('tasks')) {
+                    $tasks = Task::withTrashed()->whereIn('link8', array_values($markers))->orderBy('created_at')->get(['link8', 'status', 'deleted_at']);
+                    $byMarker = [];
+                    foreach ($tasks as $t) {
+                        $byMarker[$t->link8] = $t; // latest task wins
+                    }
+                    foreach ($markers as $id => $marker) {
+                        $t = $byMarker[$marker] ?? null;
+                        if ($t && in_array((string) $t->status, ['Done', 'Archived'], true)) {
+                            $out[$id] = ['action' => 'done', 'note' => 'Listing task ' . $t->status . ' (' . self::TASK_ASSIGNEE_NAME . ') — the next retry will push it'];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('PricePushPending actionsFor failed: ' . $e->getMessage());
+            }
+        }
+
+        return $out;
+    }
+
     public static function key(string $marketplace): string
     {
         return preg_replace('/\s+/', '', strtolower(trim($marketplace)));

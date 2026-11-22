@@ -926,6 +926,10 @@ class CvrMasterController extends Controller
             $temuDataViewBySku = $temuDataViewRows->keyBy('sku');
             $temuDataViewBySkuUpper = $temuDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
 
+            // SPRICE of the /price-increase modal ("SPRICE $" box): Amazon's saved SPRICE, else the first channel that has one.
+            // The Amz SPRICE column + its SGPFT / SGROI / SPFT / SNROI follow it, so the table matches the modal.
+            $modalSpriceFallbackBySku = $this->loadModalSpriceFallbackBySku($skus);
+
             // Channels whose last price push did NOT go through (pending retry / gave up), counted per SKU — shown in red in the Hist column
             $pushFailedBySku = [];
             try {
@@ -2832,6 +2836,17 @@ class CvrMasterController extends Controller
                     if (isset($avVal['SPFT'])) $amazonSpft = round(floatval($avVal['SPFT']), 2);
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
                 }
+                // Amazon has no SPRICE → same as the modal's SPRICE $ box: the first channel with a saved SPRICE
+                $amazonSpriceFrom = null;
+                if (($amazonSprice === null || $amazonSprice <= 0)) {
+                    $fb = $modalSpriceFallbackBySku[strtoupper(trim((string) $sku))] ?? null;
+                    if ($fb) {
+                        $amazonSprice = $fb['price'];
+                        $amazonSpriceFrom = $fb['channel'];
+                        // stale Amazon metrics (if any) must not be shown for a price that came from another channel
+                        $amazonSgpft = $amazonSpft = $amazonSroi = $amazonSnroi = null;
+                    }
+                }
                 // Live SGPFT / SGROI / SPFT / SNROI from SPRICE using Amazon channel Ads%
                 // (same as /amazon-tabulator-view + /price-increase Sprice modal)
                 if ($amazonSprice !== null && $amazonSprice > 0) {
@@ -3082,6 +3097,7 @@ class CvrMasterController extends Controller
                     "ebay1_price" => $ebay1Price > 0 ? round($ebay1Price, 2) : null,
                     "ebay1_item_id" => $ebay1Metric ? ($ebay1Metric->item_id ?? null) : null,
                     "amazon_sprice" => $amazonSprice,
+                    "amazon_sprice_from" => $amazonSpriceFrom,
                     "amazon_standard_price" => $amazonStandardPrice,
                     "amazon_sgpft" => $amazonSgpft,
                     "amazon_spft" => $amazonSpft,
@@ -6287,6 +6303,43 @@ class CvrMasterController extends Controller
             $temuLmpPrice = $resolveTemuLmpPrice($fullSku);
             $tiktokLmpPrice = $resolveTiktokLmpPrice($fullSku);
 
+            // Buyer / Seller links that nobody saved on the channel's listing page: build them from the listing id the
+            // app already knows (ASIN, eBay item id, Temu goods id). A saved link always wins; built ones are flagged *_auto.
+            $autoLinkIds = [
+                'amazon' => $amazonData->asin ?? null,
+                'fba' => $amazonData->asin ?? null,
+                'ebay1' => $ebayData->item_id ?? null,
+                'ebay2' => $ebay2Data->item_id ?? null,
+                'ebay3' => $ebay3Data->item_id ?? null,
+            ];
+            foreach ($breakdownData as &$linkRow) {
+                $lk = strtolower(trim((string) ($linkRow['marketplace'] ?? '')));
+                $id = $autoLinkIds[$lk] ?? (in_array($lk, ['temu', 'temu2'], true) ? ($linkRow['goods_id'] ?? null) : null);
+                $id = trim((string) $id);
+                if ($id === '' || ! preg_match('/^[A-Za-z0-9._-]+$/', $id)) {
+                    continue;
+                }
+                if ($lk === 'amazon' || $lk === 'fba') {
+                    $buyer = 'https://www.amazon.com/dp/' . $id;
+                    $seller = 'https://sellercentral.amazon.com/myinventory/inventory?fulfilledBy=all&page=1&pageSize=25&searchField=all&searchTerm=' . $id . '&status=all';
+                } elseif (in_array($lk, ['ebay1', 'ebay2', 'ebay3'], true)) {
+                    $buyer = 'https://www.ebay.com/itm/' . $id;
+                    $seller = 'https://www.ebay.com/sh/lst/active?keyword=' . $id . '&action=search';
+                } else { // Temu / Temu2
+                    $buyer = 'https://www.temu.com/goods.html?_bg_fs=1&goods_id=' . $id;
+                    $seller = 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' . $id;
+                }
+                if (empty($linkRow['buyer_link'])) {
+                    $linkRow['buyer_link'] = $buyer;
+                    $linkRow['buyer_link_auto'] = true;
+                }
+                if (empty($linkRow['seller_link'])) {
+                    $linkRow['seller_link'] = $seller;
+                    $linkRow['seller_link_auto'] = true;
+                }
+            }
+            unset($linkRow);
+
             foreach ($breakdownData as &$row) {
                 $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
                 $gpftPct = (float) ($row['gpft'] ?? 0);
@@ -8757,6 +8810,91 @@ class CvrMasterController extends Controller
      * Temu / Temu2: siblings get both channels (same as primary Temu↔Temu2 cross-apply).
      * Ebay1 / Ebay2 / Ebay3: siblings get all three channels.
      */
+    /**
+     * SKU (UPPER) => ['price' => x, 'channel' => 'eBay1'] : the first saved channel SPRICE of each SKU, in a fixed order
+     * (consumer channels first, B2B-style channels last). Used when Amazon has no SPRICE of its own, exactly like the
+     * modal's "SPRICE $" box (Amazon's, else any channel's).
+     */
+    private function loadModalSpriceFallbackBySku(array $skus): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(fn ($s) => trim((string) $s), $skus))));
+        if (! $skus) {
+            return [];
+        }
+        // [label, model, column, keys that hold the SPRICE]
+        $sources = [
+            ['eBay1', EbayDataView::class, 'value', ['SPRICE']],
+            ['eBay2', EbayTwoDataView::class, 'value', ['SPRICE']],
+            ['eBay3', EbayThreeDataView::class, 'value', ['SPRICE']],
+            ['Temu', TemuDataView::class, 'value', ['sprice', 'SPRICE']],
+            ['Temu2', Temu2DataView::class, 'value', ['sprice', 'SPRICE']],
+            ['Walmart', WalmartDataView::class, 'value', ['sprice']],
+            ['TikTok', TiktokShopDataView::class, 'value', ['SPRICE']],
+            ['TikTok 2', TiktokTwoShopDataView::class, 'value', ['SPRICE']],
+            ['Shopify B2C', Shopifyb2cDataView::class, 'value', ['SPRICE']],
+            ['Doba', DobaDataView::class, 'value', ['SPRICE']],
+            ['BestBuy', BestbuyUSADataView::class, 'value', ['SPRICE']],
+            ['Macy', MacyDataView::class, 'value', ['SPRICE']],
+            ['Reverb', ReverbViewData::class, 'values', ['SPRICE']],
+            ['Shein', \App\Models\SheinDataView::class, 'value', ['SPRICE']],
+            ['AliExpress', AliexpressDataView::class, 'value', ['SPRICE']],
+            ['Faire', FaireDataView::class, 'value', ['SPRICE']],
+            ['Purchasing Power', PurchasingPowerDataView::class, 'value', ['SPRICE']],
+            ['TopDawg', TopDawgDataView::class, 'value', ['sprice']],
+            ['Shopify B2B', ShopifyB2BDataView::class, 'value', ['SPRICE']],
+        ];
+        $out = [];
+        foreach ($sources as [$label, $model, $col, $keys]) {
+            try {
+                if (! class_exists($model)) {
+                    continue;
+                }
+                $table = (new $model())->getTable();
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
+                foreach (array_chunk($skus, 800) as $chunk) {
+                    foreach ($model::whereIn('sku', $chunk)->get(['sku', $col]) as $row) {
+                        $key = strtoupper(trim((string) $row->sku));
+                        if ($key === '' || isset($out[$key])) {
+                            continue;
+                        }
+                        $v = $row->{$col};
+                        $v = is_array($v) ? $v : (is_string($v) ? json_decode($v, true) : []);
+                        if (! is_array($v)) {
+                            continue;
+                        }
+                        foreach ($keys as $k) {
+                            if (isset($v[$k]) && is_numeric($v[$k]) && (float) $v[$k] > 0) {
+                                $out[$key] = ['price' => round((float) $v[$k], 2), 'channel' => $label];
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR modal SPRICE fallback: ' . $label . ' skipped — ' . $e->getMessage());
+            }
+        }
+        // B2B / CJdropshipping (stored in channel_sprices)
+        try {
+            if (Schema::hasTable('channel_sprices')) {
+                foreach (array_chunk($skus, 800) as $chunk) {
+                    foreach (\App\Models\ChannelSprice::whereIn('sku', $chunk)->where('sprice', '>', 0)->orderBy('id')->get(['sku', 'channel', 'sprice']) as $row) {
+                        $key = strtoupper(trim((string) $row->sku));
+                        if ($key !== '' && ! isset($out[$key])) {
+                            $out[$key] = ['price' => round((float) $row->sprice, 2), 'channel' => (string) $row->channel];
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('CVR modal SPRICE fallback: channel_sprices skipped — ' . $e->getMessage());
+        }
+
+        return $out;
+    }
+
     /** "+$ SPRICE" amount added to the siblings' price (0 when empty / invalid / negative). */
     private function siblingsAddAmount(Request $request): float
     {
