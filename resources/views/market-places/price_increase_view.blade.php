@@ -1049,6 +1049,12 @@
             line-height: 1;
         }
         
+        .hist-blocks { display: inline-flex; gap: 6px; align-items: center; }
+        .hist-block { display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 3px 9px; border: 1px solid #ced4da;
+            border-radius: 6px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; }
+        .hist-block:has(input:checked) { border-color: #0d6efd; background: #e7f0ff; }
+        .hist-block input { margin: 0; cursor: pointer; }
+        .hist-block .hist-count { font-weight: 700; color: #495057; }
         .push-price-btn:disabled {
             cursor: not-allowed;
             opacity: 0.7;
@@ -2691,15 +2697,16 @@
                     </button>
 
                     <!-- Push history (Hist column): default shows everything; hiding recent pushes is opt-in -->
-                    <select id="push-history-filter" class="form-select form-select-sm" style="width: auto; min-width: 190px;"
-                        title="Filter SKUs by their newest push date (Hist column)">
-                        <option value="all">Hist — All</option>
-                        <option value="hidegreen" selected>Hist — Hide green dots</option>
-                        <option value="hide7">Hist — Hide pushed &lt; 7d</option>
-                        <option value="recent">Hist — Pushed &lt; 7d only</option>
-                        <option value="old">Hist — Pushed 7d+ ago</option>
-                        <option value="none">Hist — Never pushed</option>
-                    </select>
+                    <div id="push-history-blocks" class="hist-blocks" title="Parent push history (Hist dot) — tick one or more">
+                        <label class="hist-block" title="Every parent — nothing hidden"><input type="checkbox" value="all" class="form-check-input">
+                            <span>History All</span> <b class="hist-count" data-count="all">0</b></label>
+                        <label class="hist-block" title="All children pushed; oldest last push 7 days ago or less"><input type="checkbox" value="green" class="form-check-input" checked>
+                            <i class="fas fa-circle" style="color:#28a745"></i> <span>&le; 7d</span> <b class="hist-count" data-count="green">0</b></label>
+                        <label class="hist-block" title="All children pushed; oldest last push 8–14 days ago"><input type="checkbox" value="yellow" class="form-check-input">
+                            <i class="fas fa-circle" style="color:#ffc107"></i> <span>7–14d</span> <b class="hist-count" data-count="yellow">0</b></label>
+                        <label class="hist-block" title="All children pushed; oldest last push more than 14 days ago"><input type="checkbox" value="red" class="form-check-input" checked>
+                            <i class="fas fa-circle" style="color:#dc3545"></i> <span>&gt; 14d</span> <b class="hist-count" data-count="red">0</b></label>
+                    </div>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
                         <i class="fas fa-times-circle"></i> Remove Filter
@@ -13907,14 +13914,33 @@
             });
         });
 
-        // SKU rows whose newest push (Hist column) is less than 7 days old are hidden automatically.
-        function isRecentPushedRow(row) {
-            if (!row || row.is_parent_summary === true) return false;
-            const day = String(row.push_history_last_at || '').slice(0, 10);
-            return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= ovl30HistoryDaysAgoKey(6); // today + previous 6 days
+        // ---- Hist blocks: All | ≤7d green | 8–14d yellow | >14d red (multi-select checkboxes) ----
+        // Buckets are decided per PARENT (its dot): every child pushed → age of the oldest child's newest push.
+        // Parents without a dot (some child never pushed) only show under "All".
+        const HIST_BUCKETS = ['green', 'yellow', 'red'];
+        const HIST_DEFAULT = ['green', 'red'];
+        function histSelected() {
+            return $('#push-history-blocks input:checked').map(function() { return this.value; }).get();
         }
-        /** Hist filter modes: all (default, nothing hidden) | hide7 | recent | old | none. Parent summary rows always pass. */
-        function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'all'; }
+        function histSetSelected(list) {
+            $('#push-history-blocks input').each(function() { this.checked = list.indexOf(this.value) !== -1; });
+        }
+        /** green | yellow | red for a parent summary row, or null when it has no dot. */
+        function histBucketOfParent(p) {
+            if (!p) return null;
+            const total = parseInt(p.push_history_children, 10) || 0;
+            const done = parseInt(p.push_history_children_done, 10) || 0;
+            const oldest = String(p.push_history_oldest_at || '').slice(0, 10);
+            if (!total || done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) return null;
+            if (oldest >= ovl30HistoryDaysAgoKey(7)) return 'green';
+            if (oldest >= ovl30HistoryDaysAgoKey(14)) return 'yellow';
+            return 'red';
+        }
+        /** 'all' = nothing hidden; 'buckets' = only the ticked colours. */
+        function pushHistoryFilterMode() {
+            const sel = histSelected();
+            return (!sel.length || sel.indexOf('all') !== -1) ? 'all' : 'buckets';
+        }
         // parent name -> SKU rows (rebuilt whenever fullDataset is replaced)
         let phChildIdx = null, phParentIdx = null, phChildIdxSrc = null;
         function phBuildIdx() {
@@ -13932,46 +13958,32 @@
             phBuildIdx();
             return phChildIdx[parent] || [];
         }
-        /** Parent whose Hist dot is green: every child has push history and the oldest newest-push is within 7 days. */
-        function isGreenParentRow(parentRow) {
-            if (!parentRow) return false;
-            const total = parseInt(parentRow.push_history_children, 10) || 0;
-            const done = parseInt(parentRow.push_history_children_done, 10) || 0;
-            const oldest = String(parentRow.push_history_oldest_at || '').slice(0, 10);
-            return total > 0 && done === total && /^\d{4}-\d{2}-\d{2}$/.test(oldest) && oldest >= ovl30HistoryDaysAgoKey(7);
-        }
         function passesPushHistoryFilter(row, mode) {
             if (!row) return true;
             mode = mode || pushHistoryFilterMode();
             if (mode === 'all') return true;
-            if (mode === 'hidegreen') {
-                // Green parent (all children pushed, oldest within 7 days): hide the parent row and all its SKU rows
-                phBuildIdx();
-                return !isGreenParentRow(row.is_parent_summary === true ? row : phParentIdx[row.parent]);
-            }
-            if (row.is_parent_summary === true) {
-                // Parent row is hidden too when none of its SKUs pass (e.g. all pushed < 7 days ago)
-                const kids = phChildrenOf(row.parent);
-                return !kids.length || kids.some(function(k) { return passesPushHistoryFilter(k, mode); });
-            }
-            const hasHist = /^\d{4}-\d{2}-\d{2}/.test(String(row.push_history_last_at || '')) || (parseInt(row.push_history_count, 10) || 0) > 0;
-            const recent = isRecentPushedRow(row);
-            if (mode === 'recent') return recent;
-            if (mode === 'old') return hasHist && !recent;
-            if (mode === 'none') return !hasHist;
-            return !recent; // hide7
+            // A parent row and all its SKU rows share the parent's bucket
+            phBuildIdx();
+            const bucket = histBucketOfParent(row.is_parent_summary === true ? row : phParentIdx[row.parent]);
+            return !!bucket && histSelected().indexOf(bucket) !== -1;
         }
         function dropRecentPushedRows(rows) {
             const mode = pushHistoryFilterMode();
             return mode === 'all' ? rows : rows.filter(function(r) { return passesPushHistoryFilter(r, mode); });
         }
+        /** Counts (parents) on the four blocks. */
         function updateRecentPushedToggle() {
-            const rows = (fullDataset || []).filter(function(r) { return r.is_parent_summary !== true; });
-            const n = rows.filter(isRecentPushedRow).length;
-            $('#push-history-filter option[value="hide7"]').text('Hist — Hide pushed < 7d' + (n ? ' (' + n + ' hidden)' : ''));
-            $('#push-history-filter option[value="recent"]').text('Hist — Pushed < 7d only' + (n ? ' (' + n + ')' : ''));
+            const parents = (fullDataset || []).filter(function(r) { return r.is_parent_summary === true; });
+            const c = { all: parents.length, green: 0, yellow: 0, red: 0 };
+            parents.forEach(function(p) { const b = histBucketOfParent(p); if (b) c[b]++; });
+            Object.keys(c).forEach(function(k) { $('#push-history-blocks .hist-count[data-count="' + k + '"]').text(c[k]); });
         }
-        $(document).on('change', '#push-history-filter', function() {
+        $(document).on('change', '#push-history-blocks input', function() {
+            let sel = histSelected();
+            if (this.value === 'all' && this.checked) sel = ['all'];                 // All → clears the colours
+            else if (this.value !== 'all') sel = sel.filter(function(v) { return v !== 'all'; }); // a colour → clears All
+            if (!sel.length) sel = ['all'];                                          // nothing ticked = everything
+            histSetSelected(sel);
             applyFilters();
         });
 
@@ -14545,7 +14557,7 @@
             $allNpft.addClass('active');
             $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
-            $('#push-history-filter').val('all');
+            histSetSelected(['all']);
             applyFilters();
         });
 
