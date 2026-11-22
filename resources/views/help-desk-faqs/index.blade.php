@@ -1109,6 +1109,23 @@
                 return String(rowValue == null ? '' : rowValue).toLowerCase().indexOf(q) !== -1;
             }
 
+            // Sorters for the icon-only columns (they have no text value of their own).
+            var DETAIL_FIELDS = ['type_variant', 'what', 'link', 'link2', 'sop', 'video', 'action', 'ca', 'plus_action', 'messages'];
+            function overviewSorter(a, b, aRow, bRow) { // how many detail fields are filled in
+                var count = function(r) {
+                    var d = r.getData();
+                    return DETAIL_FIELDS.reduce(function(n, f) { return n + (hasText(d[f]) ? 1 : 0); }, 0);
+                };
+                return count(aRow) - count(bRow);
+            }
+            function ctrlSorter(a, b, aRow, bRow) { // record order (id)
+                return (aRow.getData().id || 0) - (bRow.getData().id || 0);
+            }
+            function guruSorter(a, b, aRow, bRow) { // number of history entries
+                var n = function(r) { return (r.getData().history || []).length; };
+                return n(aRow) - n(bRow);
+            }
+
             var columns = [
                 {
                     title: '', field: '_select', label: 'Select', width: 40, minWidth: 40, frozen: true,
@@ -1145,7 +1162,7 @@
                 }),
                 iconColumn('_view', 'Overview', headerImg(IMG.magnifier, 'Overview', 30),
                     function() { return iconBtn('faq-view-btn text-dark', IMG.magnifier, 'View', 'View', 32); },
-                    { headerSort: false, download: false,
+                    { download: false, sorter: overviewSorter,
                       cellClick: function(e, cell) { openView(rowData(cell)); } }),
                 col({
                     title: 'Dept', label: 'Dept', field: 'dept_label', minWidth: 100, width: 120,
@@ -1211,7 +1228,7 @@
                     } }),
                 col({
                     title: 'CTRL', label: 'CTRL', field: '_ctrl', width: 90, minWidth: 80,
-                    headerSort: false, download: false,
+                    sorter: ctrlSorter, download: false,
                     formatter: function() {
                         var html = '<div class="d-flex justify-content-center align-items-center gap-2 flex-nowrap">';
                         if (CAN_EDIT) html += '<button type="button" class="btn btn-sm btn-link p-0 text-secondary faq-edit-btn" title="Edit"><i class="ri-edit-line fs-5"></i></button>';
@@ -1226,7 +1243,7 @@
                 }),
                 col({
                     title: 'Guru', label: 'Guru', field: '_guru', width: 64, minWidth: 54,
-                    headerTooltip: 'Add/Edit history', headerSort: false, download: false,
+                    headerTooltip: 'Add/Edit history', sorter: guruSorter, download: false,
                     formatter: function(cell) {
                         var d = rowData(cell);
                         if ((d.history && d.history.length) || d.created_by_email) {
