@@ -3657,6 +3657,58 @@
         return temuSkuCollator.compare(skuA, skuB);
     }
 
+    // Temu Price above the LMP or above the same SKU's price on Amazon / eBay 1-3 / TikTok 1-2 is a pricing issue:
+    // a red triangle goes on Temu Price and on every price Temu is out of line with; hover shows the issue.
+    const NTO_TEMU_ALERT_FIELDS = {
+        amz_prc: 'Amazon', ebay1_prc: 'eBay 1', ebay2_prc: 'eBay 2', ebay3_prc: 'eBay 3',
+        tiktok1_prc: 'TikTok 1', tiktok2_prc: 'TikTok 2'
+    };
+    function ntoTemuLivePrice(row) {
+        return parseFloat(row && (row.t_price || row.temu_price)) || 0;
+    }
+    /** Every price this SKU's Temu Price is higher than: [{key, label, price}]. Parent (averaged) rows only check the LMP. */
+    function ntoTemuPriceIssues(row) {
+        const out = [];
+        if (!row || row.is_parent_summary) return out;
+        const temu = ntoTemuLivePrice(row);
+        if (!(temu > 0)) return out;
+        const lmp = temuBadgeLmpValue(row);
+        if (lmp > 0 && temu - lmp > 0.005) {
+            // Compared on the same basis the old Price triangle used (row.lmp, the LMP in Temu recovery terms).
+            const raw = parseFloat(row.lmp_raw) || 0;
+            out.push({
+                key: 'lmp', label: 'LMP', price: lmp,
+                note: (raw > 0 && Math.abs(raw - lmp) > 0.005) ? ' (LMP column $' + raw.toFixed(2) + ' = $' + lmp.toFixed(2) + ' in Temu recovery terms)' : ''
+            });
+        }
+        if (row._nto_agg) return out;
+        Object.keys(NTO_TEMU_ALERT_FIELDS).forEach(function(f) {
+            const p = parseFloat(row[f]) || 0;
+            if (p > 0 && temu - p > 0.005) out.push({ key: f, label: NTO_TEMU_ALERT_FIELDS[f] + ' price', price: p });
+        });
+        return out;
+    }
+    function ntoTemuAlertTri(title) {
+        return ' <i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;cursor:help;" title="'
+            + String(title).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;') + '"></i>';
+    }
+    /** Triangle for the Temu Price cell: lists every price Temu is higher than. */
+    function ntoTemuPriceAlertHtml(row) {
+        const issues = ntoTemuPriceIssues(row);
+        if (!issues.length) return '';
+        const temu = ntoTemuLivePrice(row);
+        return ntoTemuAlertTri(issues.map(function(i) {
+            return 'Temu price $' + temu.toFixed(2) + ' is higher than ' + i.label + ' $' + i.price.toFixed(2) + (i.note || '');
+        }).join('\n'));
+    }
+    /** Triangle for the price cell Temu is out of line with (key = 'lmp' or a *_prc field). */
+    function ntoTemuAffectedAlertHtml(row, key) {
+        const hit = ntoTemuPriceIssues(row).filter(function(i) { return i.key === key; })[0];
+        if (!hit) return '';
+        return ntoTemuAlertTri('Temu price $' + ntoTemuLivePrice(row).toFixed(2) + ' is higher than this '
+            + hit.label + ' $' + hit.price.toFixed(2) + (hit.note || ''));
+    }
+
     // Live price of the same SKU on the other marketplaces (server: NewTemuoneController::attachMarketplacePrices),
     // shown exactly as each marketplace's own page shows its current price.
     function ntoMarketPrcColumns() {
@@ -3683,7 +3735,7 @@
                     if (row.is_parent_summary) return '';
                     const v = parseFloat(cell.getValue());
                     if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
-                    return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>';
+                    return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>' + ntoTemuAffectedAlertHtml(row, def[0]);
                 }
             };
         });
@@ -4065,8 +4117,8 @@
                             : ('Temu Price = Base ÷ 0.88 → $' + base.toFixed(2) + ' ÷ 0.88 = $' + tPrice.toFixed(2) + ' (S R prc $30 or more, no $2.99)');
                         const live = parseFloat(row.temu_price || tPrice) || tPrice;
                         const lmp = temuBadgeLmpValue(row);
-                        const redTri = (window.PriceGtLmpBadge
-                            ? PriceGtLmpBadge.triangleHtml(live, lmp) : '');
+                        // Red = Temu Price is above the LMP or above Amazon / eBay 1-3 / TikTok 1-2 (hover lists which).
+                        const redTri = ntoTemuPriceAlertHtml(row);
                         const purpleTri = (window.PriceLt80LmpBadge
                             ? PriceLt80LmpBadge.triangleHtml(live, lmp) : '');
                         return '<span style="font-weight: 600;">$' + tPrice.toFixed(2) + '</span>'
@@ -4272,7 +4324,7 @@
                             : 'Click to add LMP';
                         return '<span class="lmp-display" title="' + title.replace(/"/g, '&quot;') + '">'
                             + (display !== '-' ? display : '<span style="color: #999;">-</span>')
-                            + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + sku + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
+                            + '</span>' + ntoTemuAffectedAlertHtml(row, 'lmp') + ' <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + sku + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                     },
                     cellClick: function(e, cell) {
                         if (e.target.closest('.lmp-eye-btn')) {
