@@ -7865,6 +7865,35 @@ class CvrMasterController extends Controller
             // Channels without a price API (Depop, Vinted, Instagram Shop, Mercari, FB Marketplace): SPRICE is saved on the
             // channel's own store (e.g. depop_pricing.sprice) so /depop/pricing and this page show the same value.
             $saveOnlyKey = preg_replace('/[^a-z0-9]/', '', $marketplace);
+            if ($saveOnlyKey === 'newegg') {
+                // Same save as /newegg-pricing-view (newegg_data_views.value.SPRICE + SPFT/SROI, raised to the Amazon floor)
+                try {
+                    $neReq = Request::create('/newegg-pricing-save-sprice', 'POST', [
+                        'sku' => (string) $fullSku,
+                        'sprice' => round((float) $request->input('sprice', 0), 2) > 0 ? round((float) $request->input('sprice', 0), 2) : '',
+                    ]);
+                    $neBody = app(NeweggPricingController::class)->saveSprice($neReq)->getData(true);
+                } catch (\Throwable $e) {
+                    $neBody = ['success' => false, 'error' => $e->getMessage()];
+                }
+                if (empty($neBody['success'])) {
+                    return response()->json(['success' => false, 'message' => 'Could not save price for Newegg: ' . ($neBody['error'] ?? 'failed')], 500);
+                }
+                $neSaved = isset($neBody['sprice']) && is_numeric($neBody['sprice']) ? (float) $neBody['sprice'] : 0.0;
+                $neAsked = round((float) $request->input('sprice', 0), 2);
+
+                return response()->json([
+                    'success' => true,
+                    'saved_only' => true,
+                    'sprice' => $neSaved > 0 ? $neSaved : null,
+                    'sgpft_percent' => $neBody['sgpft_percent'] ?? null,
+                    'sroi_percent' => $neBody['sroi_percent'] ?? null,
+                    'message' => $neSaved > 0
+                        ? ('Saved $' . number_format($neSaved, 2) . ' for Newegg (same as /newegg-pricing-view)'
+                            . (abs($neSaved - $neAsked) >= 0.005 ? ' — raised from $' . number_format($neAsked, 2) . ' to the Amazon floor' : ''))
+                        : 'Cleared SPRICE for Newegg',
+                ]);
+            }
             if ($saveOnlyKey === 'pls') {
                 // Same store as /pls-pricing (pls_data_views.value.sprice)
                 return $this->savePlsSpriceFromMaster((string) $fullSku, round((float) $request->input('sprice', 0), 2), (float) $request->input('sgpft', 0), (float) $request->input('sroi', 0));

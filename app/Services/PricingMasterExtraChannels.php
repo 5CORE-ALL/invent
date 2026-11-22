@@ -515,7 +515,7 @@ class PricingMasterExtraChannels
      * @param  class-string  $model
      * @return array<string, float>
      */
-    private static function jsonSpriceMap(string $model, string $table, string $keyName): array
+    private static function jsonSpriceMap(string $model, string $table, string $keyName, bool $strict = false): array
     {
         $out = [];
         try {
@@ -528,7 +528,7 @@ class PricingMasterExtraChannels
                     continue;
                 }
                 $val = is_array($row->value) ? $row->value : (json_decode((string) ($row->value ?? ''), true) ?: []);
-                $stored = $val[$keyName] ?? $val['SPRICE'] ?? $val['sprice'] ?? null;
+                $stored = $strict ? ($val[$keyName] ?? null) : ($val[$keyName] ?? $val['SPRICE'] ?? $val['sprice'] ?? null);
                 if (is_numeric($stored) && (float) $stored > 0) {
                     $out[$key] = (float) $stored;
                     $out[str_replace(' ', '', $key)] = (float) $stored;
@@ -917,7 +917,8 @@ class PricingMasterExtraChannels
      */
     private static function neweggSprice(): array
     {
-        return self::jsonSpriceMap(NeweggDataView::class, 'newegg_data_views', 'SPRICE');
+        // /newegg-pricing-view reads value.SPRICE only (a stray lowercase `sprice` must not resurrect a cleared price)
+        return self::jsonSpriceMap(NeweggDataView::class, 'newegg_data_views', 'SPRICE', true);
     }
 
     /**
