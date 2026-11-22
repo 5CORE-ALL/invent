@@ -5651,7 +5651,8 @@ class CvrMasterController extends Controller
             $depopGpftBd = DepopController::gpftPercent($depopPriceBd, $lp, $depopMarginBd);
             $depopSgpftBd = $depopSpriceBd > 0 ? DepopController::gpftPercent($depopSpriceBd, $lp, $depopMarginBd) : 0;
             $depopSroiBd = $depopSpriceBd > 0 ? DepopController::groiPercent($depopSpriceBd, $lp, $depopMarginBd) : 0;
-            $hasDepopData = $depopPriceBd > 0 || $depopL30Bd > 0;
+            // A saved SPRICE alone makes the row editable (SKUs with no list price / L30 yet were shown as "Not Listed" and hid it)
+            $hasDepopData = $depopPriceBd > 0 || $depopL30Bd > 0 || $depopSpriceBd > 0;
             $breakdownData[] = [
                 'marketplace' => 'Depop',
                 'sku' => $hasDepopData ? $fullSku : 'Not Listed',
@@ -7861,6 +7862,13 @@ class CvrMasterController extends Controller
                 ->first();
             $fullSku = $productMaster ? $productMaster->sku : $sku;
 
+            // Channels without a price API (Depop, Vinted, Instagram Shop, Mercari, FB Marketplace): SPRICE is saved on the
+            // channel's own store (e.g. depop_pricing.sprice) so /depop/pricing and this page show the same value.
+            $saveOnlyKey = preg_replace('/[^a-z0-9]/', '', $marketplace);
+            if (in_array($saveOnlyKey, ['depop', 'vinted', 'instagramshop', 'mercariwship', 'mercariwoship', 'fbmarketplace'], true)) {
+                return $this->saveOnlyChannelSprice($saveOnlyKey, (string) $fullSku, round((float) $request->input('sprice', 0), 2));
+            }
+
             if ($marketplace === 'amazon') {
                 // Use Amazon datasheet: prefer SKU as stored in amazon_datsheets for consistency
                 $amazonData = AmazonDatasheet::where('sku', $fullSku)->first();
@@ -8770,9 +8778,9 @@ class CvrMasterController extends Controller
                 $model = ['vinted' => \App\Models\VintedPricing::class, 'instagramshop' => \App\Models\InstagramPricing::class, 'depop' => \App\Models\DepopPricing::class][$key];
                 $row = $model::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first();
                 if ($row) {
-                    $row->sprice = $price;
+                    $row->sprice = $price > 0 ? $price : null; // 0 / empty clears the saved SPRICE
                     $row->save();
-                } else {
+                } elseif ($price > 0) {
                     $model::query()->create(['sku' => trim($sku), 'sprice' => $price]);
                 }
             } else {
@@ -8783,16 +8791,38 @@ class CvrMasterController extends Controller
                 ][$key];
                 $row = $model::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first() ?: new $model(['sku' => trim($sku)]);
                 $value = is_array($row->value) ? $row->value : [];
-                $value['SPRICE'] = $price;
+                if ($price > 0) {
+                    $value['SPRICE'] = $price;
+                } else {
+                    unset($value['SPRICE']); // 0 / empty clears the saved SPRICE
+                }
                 $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
                 $row->value = $value;
+                // The channel's analytics page (/mercari-*-tabulator-view, /fb-marketplace-tabulator-view) reads the
+                // listing-status `sprice` first — keep it in step so both pages show the same price.
+                $statusModel = [
+                    'mercariwship' => \App\Models\MercariWShipListingStatus::class,
+                    'mercariwoship' => \App\Models\MercariWoShipListingStatus::class,
+                    'fbmarketplace' => \App\Models\FBMarketplaceListingStatus::class,
+                ][$key];
+                $status = $statusModel::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first() ?: new $statusModel(['sku' => trim($sku)]);
+                $statusVal = is_array($status->value) ? $status->value : (json_decode((string) ($status->value ?? ''), true) ?: []);
+                if ($price > 0) {
+                    $statusVal['sprice'] = $price;
+                } else {
+                    unset($statusVal['sprice']);
+                }
+                $status->value = $statusVal;
+                $status->save();
                 $row->save();
             }
 
             return response()->json([
                 'success' => true,
                 'saved_only' => true,
-                'message' => "Saved \$" . number_format($price, 2) . " for {$label} — not pushed (no price API for this channel)",
+                'message' => $price > 0
+                    ? "Saved \$" . number_format($price, 2) . " for {$label} — not pushed (no price API for this channel)"
+                    : "Cleared SPRICE for {$label}",
             ]);
         } catch (\Throwable $e) {
             Log::error("CVR Master - {$label} save-only failed", ['sku' => $sku, 'error' => $e->getMessage()]);

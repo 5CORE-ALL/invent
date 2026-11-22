@@ -10913,7 +10913,10 @@
         const CHSAVE_SUPPORTED = new Set([
             'amazon', 'fba', 'ebay', 'ebay1', 'ebay2', 'ebay3', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'doba', 'walmart',
             'tiktok', 'tiktok2', 'bestbuy', 'bestbuyusa', 'macy', 'macys', 'reverb', 'topdawg', 'shein', 'faire',
-            'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'shopify', 'shopifyb2c', 'sb2c', 'shopifyb2b', 'sb2b'
+            'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'shopify', 'shopifyb2c', 'sb2c', 'shopifyb2b', 'sb2b',
+            // no price API — SPRICE is saved on the channel's own store (e.g. depop_pricing)
+            'depop', 'vinted', 'instagramshop', 'instagram shop', 'mercariwship', 'mercari w ship', 'mercariwoship',
+            'mercari w/o ship', 'fbmarketplace', 'fb marketplace'
         ]);
 
         /** idle | busy | ok (green tick) | fail (red alert triangle) for a Channels-modal push button. */

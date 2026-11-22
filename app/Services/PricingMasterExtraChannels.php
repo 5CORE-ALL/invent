@@ -10,6 +10,9 @@ use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Models\AlibabaSheetPrice;
 use App\Models\FbMarketplacePriceSoldData;
 use App\Models\FBMarketplaceDataView;
+use App\Models\FBMarketplaceListingStatus;
+use App\Models\MercariWoShipListingStatus;
+use App\Models\MercariWShipListingStatus;
 use App\Models\InstagramPricing;
 use App\Models\MarketplacePercentage;
 use App\Models\MercariDailyData;
@@ -79,7 +82,8 @@ class PricingMasterExtraChannels
     {
         $price = (float) ($extra['price'] ?? 0);
         $l30 = (int) ($extra['l30'] ?? 0);
-        $listed = $price > 0 || $l30 > 0;
+        // a saved SPRICE alone keeps the row editable (otherwise it showed as "Not Listed" and the saved price was hidden)
+        $listed = $price > 0 || $l30 > 0 || (float) ($extra['sprice'] ?? 0) > 0;
 
         return [
             'marketplace' => $extra['marketplace'],
@@ -133,17 +137,19 @@ class PricingMasterExtraChannels
             'alibaba_l30' => self::alibabaL30(),
             'mercari_w_margin' => self::percentFactor('MercariWShip'),
             'mercari_w_price' => self::priceColumnMap(MercariWShipPriceSoldData::class, 'mercari_wship_price_sold_data'),
-            'mercari_w_sprice' => self::jsonSpriceMap(MercariWShipDataView::class, 'mercari_w_ship_data_views', 'SPRICE'),
+            // Same source as /mercari-with-ship-tabulator-view: listing status sprice first, then data view SPRICE
+            'mercari_w_sprice' => self::analyticsSpriceMap(MercariWShipListingStatus::class, 'mercari_w_ship_listing_statuses', MercariWShipDataView::class, 'mercari_w_ship_data_views'),
             'mercari_wo_margin' => self::percentFactor('MercariWoShip'),
             'mercari_wo_price' => self::priceColumnMap(MercariWoShipPriceSoldData::class, 'mercari_woship_price_sold_data'),
-            'mercari_wo_sprice' => self::jsonSpriceMap(MercariWoShipDataView::class, 'mercari_wo_ship_data_views', 'SPRICE'),
+            'mercari_wo_sprice' => self::analyticsSpriceMap(MercariWoShipListingStatus::class, 'mercari_wo_ship_listing_statuses', MercariWoShipDataView::class, 'mercari_wo_ship_data_views'),
             'mercari_w_l30' => [],
             'mercari_wo_l30' => [],
             'fb_margin' => self::fbMargin(),
             'fb_price' => self::fbPrices(),
             'fb_l30' => self::safeSales(static fn () => FacebookMarketplaceController::l30MetricsBySku()),
             'fb_latest' => self::safeSales(static fn () => FacebookMarketplaceController::latestSoldPriceBySku()),
-            'fb_sprice' => self::jsonSpriceMap(FBMarketplaceDataView::class, 'fb_marketplace_data_views', 'SPRICE'),
+            // Same source as /fb-marketplace-tabulator-view: fb_marketplace_listing_statuses.value.sprice (data view SPRICE as fallback)
+            'fb_sprice' => self::analyticsSpriceMap(FBMarketplaceListingStatus::class, 'fb_marketplace_listing_statuses', FBMarketplaceDataView::class, 'fb_marketplace_data_views'),
             'pls_margin' => MarketplacePercentage::takeHomeDecimal('PLS', 'Pls'),
             'pls' => self::plsBySku(),
             'pls_sprice' => self::jsonSpriceMap(PLSDataView::class, 'pls_data_views', 'sprice'),
@@ -463,6 +469,23 @@ class PricingMasterExtraChannels
             }
         } catch (\Throwable $e) {
             Log::warning('Master Analytics '.$table.' skipped: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
+    /**
+     * SPRICE as the channel's analytics page shows it: listing-status `sprice` wins, data-view SPRICE is the fallback.
+     *
+     * @param  class-string  $statusModel
+     * @param  class-string  $viewModel
+     * @return array<string, float>
+     */
+    private static function analyticsSpriceMap(string $statusModel, string $statusTable, string $viewModel, string $viewTable): array
+    {
+        $out = self::jsonSpriceMap($viewModel, $viewTable, 'SPRICE');
+        foreach (self::jsonSpriceMap($statusModel, $statusTable, 'sprice') as $k => $v) {
+            $out[$k] = $v;
         }
 
         return $out;
