@@ -3740,10 +3740,14 @@
         });
         const rows = ntoActiveDataRows();
         const lines = [headers.map(temuCsvEscape).join(',')];
-        rows.forEach(function(row) {
+        temuClearCapMemo(); // prices are worked out fresh from the rules that are ON now
+        rows.forEach(function(sheetRow) {
+            // PARENT rows show S PRC, S R prc, S Base Prc, Sprc Dil and the S profit columns from the averaged SKU-like
+            // row (the grid does the same): reading them off the raw parent row left every one of them empty.
+            const row = (sheetRow && sheetRow.is_parent_summary && typeof ntoParentAgg === 'function') ? ntoParentAgg(sheetRow) : sheetRow;
             lines.push(cols.map(function(col) {
                 const field = col.getDefinition().field;
-                let v = row[field];
+                let v = sheetRow[field];
                 if (field === 'links_column') {
                     v = [row['B Link'] || '', row['S Link'] || ''].filter(Boolean).join(' | ');
                 } else if (field === 'cpn_pct') {
@@ -3751,6 +3755,9 @@
                 } else if (field === 'sprice') {
                     const s = temuDisplayedSprice(row);
                     v = s > 0 ? s : '';
+                } else if (field === 'SPRC_DIL') {
+                    const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(row) : null;
+                    v = (meta && meta.sprc > 0) ? +Number(meta.sprc).toFixed(2) : '';
                 } else if (field === 's_recovery') {
                     const s = temuDisplayedSprice(row);
                     v = s > 0 ? +temuSRecovery(s).toFixed(2) : '';
