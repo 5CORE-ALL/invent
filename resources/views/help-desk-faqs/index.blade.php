@@ -97,6 +97,117 @@
         .faq-hover-zoom { transition: transform 0.2s ease; cursor: pointer; }
         .faq-hover-zoom:hover { transform: scale(2); }
 
+        /* ── FAQ Details modal (next-gen) ───────────────────────────── */
+        .faq-detail-modal .modal-content {
+            border: 0;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+            background: #f8fafc;
+        }
+        .faq-detail-modal .modal-body { padding: 18px 22px 8px; }
+        .faq-detail-modal .min-w-0 { min-width: 0; }
+        .fd-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px 20px;
+            color: #fff;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #0ea5e9 100%);
+        }
+        .fd-header-icon {
+            width: 46px; height: 46px; border-radius: 14px;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+            flex-shrink: 0;
+        }
+        .fd-header-icon img { height: 30px; width: auto; object-fit: contain; }
+        .fd-eyebrow { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; font-weight: 600; }
+        .fd-chip {
+            display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+            margin-top: 4px; padding: 3px 12px; border-radius: 999px;
+            background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(6px);
+            font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.02em;
+        }
+        .fd-chip .text-muted { color: rgba(255, 255, 255, 0.8) !important; }
+        .fd-close {
+            border: 0; width: 34px; height: 34px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 1.3rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: background .15s ease, transform .15s ease;
+        }
+        .fd-close:hover { background: rgba(255, 255, 255, 0.32); transform: rotate(90deg); }
+
+        .fd-card, .fd-meta, .fd-pill {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .fd-card { padding: 14px 16px; margin-bottom: 14px; position: relative; }
+        .fd-card::before {
+            content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px;
+            border-radius: 0 4px 4px 0; background: #cbd5e1;
+        }
+        .fd-question { background: linear-gradient(180deg, #fffbeb, #fff); }
+        .fd-question::before { background: #f59e0b; }
+        .fd-answer { background: linear-gradient(180deg, #ecfdf5, #fff); }
+        .fd-answer::before { background: #10b981; }
+        .fd-action::before { background: #ef4444; }
+        .fd-ca::before { background: #ec4899; }
+        .fd-plus::before { background: #f97316; }
+        .fd-messages { background: linear-gradient(180deg, #eff6ff, #fff); }
+        .fd-messages::before { background: #3b82f6; }
+
+        .fd-label {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+            color: #64748b; margin-bottom: 6px;
+        }
+        .fd-label i { font-size: 0.95rem; }
+        .fd-label img { height: 18px; width: auto; object-fit: contain; }
+        .fd-text { color: #0f172a; font-size: 0.92rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+        .fd-text-lg { font-size: 1.05rem; font-weight: 600; }
+        .fd-text.text-muted { color: #94a3b8 !important; }
+
+        .fd-grid { display: grid; gap: 12px; margin-bottom: 14px; }
+        .fd-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .fd-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .fd-grid .fd-card { margin-bottom: 0; }
+        .fd-meta { padding: 12px 14px; }
+        .fd-section-title {
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+            color: #94a3b8; margin: 4px 2px 8px;
+        }
+        .fd-pill { display: flex; align-items: center; gap: 10px; padding: 10px 12px; transition: transform .15s ease, box-shadow .15s ease; }
+        .fd-pill img { height: 28px; width: 28px; object-fit: contain; flex-shrink: 0; }
+        .fd-pill-body { min-width: 0; }
+        .fd-pill-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
+        .fd-pill-value { font-size: 0.82rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fd-pill-value a { color: #4f46e5; text-decoration: none; }
+        .fd-pill-value a:hover { text-decoration: underline; }
+        .fd-pill:not(.fd-empty):hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(79, 70, 229, 0.15); }
+        .fd-pill.fd-empty { opacity: 0.5; background: #f1f5f9; box-shadow: none; }
+        .fd-meta.fd-empty .fd-text { color: #94a3b8; }
+        .fd-item.fd-hide-empty.fd-empty { display: none; }
+        .fd-actions:not(:has(.fd-item:not(.fd-empty))) { display: none; }
+
+        .fd-copy {
+            border: 0; border-radius: 999px; padding: 4px 12px; font-size: 0.78rem; font-weight: 600;
+            background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; gap: 4px;
+            transition: background .15s ease;
+        }
+        .fd-copy:hover { background: #bfdbfe; }
+        .fd-footer {
+            display: flex; justify-content: flex-end; padding: 12px 22px 16px; background: #f8fafc;
+        }
+        .fd-footer .btn { border-radius: 10px; padding: 6px 22px; font-weight: 600; }
+
+        @media (max-width: 767px) {
+            .fd-grid-3, .fd-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
         #faqColumnsMenu .form-check { white-space: nowrap; }
     </style>
 @endsection
@@ -518,68 +629,97 @@
     </div>
 
     {{-- FAQ View (read-only) Modal --}}
-    <div class="modal fade" id="faqViewModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal fade faq-detail-modal" id="faqViewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><img src="{{ asset('images/magnifier-icon.png') }}" alt="" style="height: 24px; width: auto; object-fit: contain; vertical-align: text-bottom;"> FAQ Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="fd-header">
+                    <div class="fd-header-icon"><img src="{{ asset('images/magnifier-icon.png') }}" alt=""></div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="fd-eyebrow">FAQ Details</div>
+                        <span class="fd-chip"><i class="ri-folder-3-line"></i><span id="view_group"></span></span>
+                    </div>
+                    <button type="button" class="fd-close" data-bs-dismiss="modal" aria-label="Close"><i class="ri-close-line"></i></button>
                 </div>
+
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <span class="fw-bold text-uppercase small text-muted">Group:</span>
-                        <span id="view_group"></span>
+                    {{-- Question --}}
+                    <section class="fd-card fd-question">
+                        <div class="fd-label"><i class="ri-question-line"></i> Question</div>
+                        <div id="view_faq" class="fd-text fd-text-lg"></div>
+                    </section>
+
+                    {{-- Answer --}}
+                    <section class="fd-card fd-answer">
+                        <div class="fd-label"><i class="ri-checkbox-circle-line"></i> Answer</div>
+                        <div id="view_answers" class="fd-text"></div>
+                    </section>
+
+                    {{-- Meta --}}
+                    <div class="fd-grid fd-grid-3">
+                        <div class="fd-meta fd-item">
+                            <div class="fd-label"><i class="ri-building-line"></i> Dept</div>
+                            <div id="view_dept" class="fd-text"></div>
+                        </div>
+                        <div class="fd-meta fd-item">
+                            <div class="fd-label"><img src="{{ asset('images/variant-icon.png') }}" alt=""> Type / Variant</div>
+                            <div id="view_type_variant" class="fd-text"></div>
+                        </div>
+                        <div class="fd-meta fd-item">
+                            <div class="fd-label"><img src="{{ asset('images/what-icon.png') }}" alt=""> What</div>
+                            <div id="view_what" class="fd-text"></div>
+                        </div>
                     </div>
-                    <div class="p-3 mb-3 rounded border" style="background-color: #fff3cd; width: 100%;">
-                        <div class="fw-bold text-uppercase small text-muted mb-1">FAQ</div>
-                        <div id="view_faq" class="fw-semibold"></div>
+
+                    {{-- Resources --}}
+                    <div class="fd-section-title">Resources</div>
+                    <div class="fd-grid fd-grid-4">
+                        <div class="fd-pill fd-item">
+                            <img src="{{ asset('images/link-icon.png') }}" alt="">
+                            <div class="fd-pill-body"><div class="fd-pill-label">Link</div><div id="view_link" class="fd-pill-value"></div></div>
+                        </div>
+                        <div class="fd-pill fd-item">
+                            <img src="{{ asset('images/link-icon.png') }}" alt="">
+                            <div class="fd-pill-body"><div class="fd-pill-label">Link 2</div><div id="view_link2" class="fd-pill-value"></div></div>
+                        </div>
+                        <div class="fd-pill fd-item">
+                            <img src="{{ asset('assets/images/task-sop-icon.png') }}" alt="">
+                            <div class="fd-pill-body"><div class="fd-pill-label">SOP</div><div id="view_sop" class="fd-pill-value"></div></div>
+                        </div>
+                        <div class="fd-pill fd-item">
+                            <img src="{{ asset('assets/images/task-video-icon.png') }}" alt="">
+                            <div class="fd-pill-body"><div class="fd-pill-label">Video</div><div id="view_video" class="fd-pill-value"></div></div>
+                        </div>
                     </div>
-                    <div class="p-3 mb-3 rounded border" style="background-color: #d1e7dd; width: 100%;">
-                        <div class="fw-bold text-uppercase small text-muted mb-1">Answers</div>
-                        <div id="view_answers"></div>
+
+                    {{-- Actions --}}
+                    <div class="fd-grid fd-grid-3 fd-actions">
+                        <section class="fd-card fd-action fd-item fd-hide-empty">
+                            <div class="fd-label"><img src="{{ asset('images/action-comic.png') }}" alt=""> Action</div>
+                            <div id="view_action" class="fd-text"></div>
+                        </section>
+                        <section class="fd-card fd-ca fd-item fd-hide-empty">
+                            <div class="fd-label"><img src="{{ asset('images/action-icon.png') }}" alt=""> Corrective Action</div>
+                            <div id="view_ca" class="fd-text"></div>
+                        </section>
+                        <section class="fd-card fd-plus fd-item fd-hide-empty">
+                            <div class="fd-label"><img src="{{ asset('images/action-comic.png') }}" alt=""> + Action</div>
+                            <div id="view_plus_action" class="fd-text"></div>
+                        </section>
                     </div>
-                    @php($viewIcon = fn($src, $h = 20) => '<img src="' . asset($src) . '" alt="" style="height:' . $h . 'px;width:auto;object-fit:contain;vertical-align:text-bottom;" class="me-2">')
-                    <dl class="row mb-0">
-                        <dt class="col-sm-3"><i class="ri-building-line me-2"></i>Dept</dt>
-                        <dd class="col-sm-9" id="view_dept"></dd>
 
-                        <dt class="col-sm-3">Type/Variant</dt>
-                        <dd class="col-sm-9" id="view_type_variant"></dd>
-
-                        <dt class="col-sm-3">What</dt>
-                        <dd class="col-sm-9" id="view_what"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/link-icon.png') !!}Link</dt>
-                        <dd class="col-sm-9" id="view_link"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/link-icon.png') !!}Link 2</dt>
-                        <dd class="col-sm-9" id="view_link2"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('assets/images/task-sop-icon.png') !!}SOP</dt>
-                        <dd class="col-sm-9" id="view_sop"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('assets/images/task-video-icon.png') !!}Video</dt>
-                        <dd class="col-sm-9" id="view_video"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/action-comic.png', 22) !!}Action</dt>
-                        <dd class="col-sm-9" id="view_action"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/action-icon.png') !!}CA (Corrective Action)</dt>
-                        <dd class="col-sm-9" id="view_ca"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/action-comic.png', 22) !!}+ Action</dt>
-                        <dd class="col-sm-9" id="view_plus_action"></dd>
-
-                        <dt class="col-sm-3">{!! $viewIcon('images/message-icon.png') !!}Messages</dt>
-                        <dd class="col-sm-9">
-                            <span id="view_messages"></span>
-                            <button type="button" id="view_messages_copy" class="btn btn-sm btn-link p-0 ms-2 align-baseline" title="Copy message" style="display:none;">
-                                <i class="ri-file-copy-line"></i>
+                    {{-- Messages --}}
+                    <section class="fd-card fd-messages fd-item fd-hide-empty">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <div class="fd-label mb-0"><img src="{{ asset('images/message-icon.png') }}" alt=""> Message</div>
+                            <button type="button" id="view_messages_copy" class="fd-copy" title="Copy message" style="display:none;">
+                                <i class="ri-file-copy-line"></i> Copy
                             </button>
-                        </dd>
-                    </dl>
+                        </div>
+                        <div id="view_messages" class="fd-text"></div>
+                    </section>
                 </div>
-                <div class="modal-footer">
+
+                <div class="fd-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -852,6 +992,12 @@
                 if (!el) return;
                 if (hasText(value)) { el.textContent = value; el.classList.remove('text-muted'); }
                 else { el.textContent = '\u2014'; el.classList.add('text-muted'); }
+                markEmpty(el, !hasText(value));
+            }
+            // Toggle the empty state on the surrounding detail card / pill.
+            function markEmpty(el, empty) {
+                var item = el.closest('.fd-item');
+                if (item) item.classList.toggle('fd-empty', empty);
             }
             function setViewLink(id, value, label) {
                 var el = document.getElementById(id);
@@ -862,9 +1008,11 @@
                     a.href = value; a.target = '_blank'; a.rel = 'noopener'; a.textContent = label || value;
                     el.appendChild(a);
                     el.classList.remove('text-muted');
+                    markEmpty(el, false);
                 } else {
                     el.textContent = '\u2014';
                     el.classList.add('text-muted');
+                    markEmpty(el, true);
                 }
             }
             function deptLabelFor(d) { return d.dept_label || '\u2014'; }
@@ -886,7 +1034,7 @@
                 setViewText('view_messages', d.messages);
                 var copyBtn = document.getElementById('view_messages_copy');
                 if (copyBtn) {
-                    if (hasText(d.messages)) { copyBtn.style.display = ''; copyBtn.setAttribute('data-copy', d.messages); }
+                    if (hasText(d.messages)) { copyBtn.style.display = 'inline-flex'; copyBtn.setAttribute('data-copy', d.messages); }
                     else { copyBtn.style.display = 'none'; copyBtn.removeAttribute('data-copy'); }
                 }
                 new bootstrap.Modal(viewModalEl).show();
