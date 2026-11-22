@@ -26,7 +26,10 @@ use App\Models\NeweggPricing;
 use App\Models\PLSDataView;
 use App\Models\PLSProduct;
 use App\Models\ProductMaster;
+use App\Models\Temu3DataView;
 use App\Models\Temu3Metric;
+use App\Models\AlibabaPricingPrice;
+use App\Models\ChannelSprice;
 use App\Models\VintedPricing;
 use App\Models\WalmartPricingSales;
 use App\Models\WayfairDailyData;
@@ -135,6 +138,11 @@ class PricingMasterExtraChannels
             'alibaba_margin' => MarketplacePercentage::takeHomeDecimalOrDefault(0.95, 'Alibaba'),
             'alibaba_price' => self::alibabaPrices(),
             'alibaba_l30' => self::alibabaL30(),
+            // /alibaba-analytics S PRC (alibaba_pricing_prices.sprice)
+            'alibaba_sprice' => self::alibabaSprices(),
+            // /temu3-pricing SPRICE (temu3_data_view.value.SPRICE)
+            'temu3_sprice' => self::jsonSpriceMap(Temu3DataView::class, 'temu3_data_view', 'SPRICE'),
+            'channel_sprices' => self::channelSprices(),
             'mercari_w_margin' => self::percentFactor('MercariWShip'),
             'mercari_w_price' => self::priceColumnMap(MercariWShipPriceSoldData::class, 'mercari_wship_price_sold_data'),
             // Same source as /mercari-with-ship-tabulator-view: listing status sprice first, then data view SPRICE
@@ -230,7 +238,10 @@ class PricingMasterExtraChannels
             ? (($price * $margin - $lp - $temuShip) / $lp) * 100
             : 0.0;
 
-        return self::blank('Temu 3', $price, $base, $l30, $views, ['gpft' => round($gpft, 2), 'groi' => round($groi, 2)], $margin, $temuShip, 0.0, ['gpft' => 0.0, 'groi' => 0.0]);
+        $sprice = (float) ($lookups['temu3_sprice'][$key] ?? 0);
+        $suggested = $sprice > 0 ? self::marginProfit($sprice, $lp, $temuShip, $margin) : ['gpft' => 0.0, 'groi' => 0.0];
+
+        return self::blank('Temu 3', $price, $base, $l30, $views, ['gpft' => round($gpft, 2), 'groi' => round($groi, 2)], $margin, $temuShip, $sprice, $suggested);
     }
 
     /**
@@ -245,7 +256,73 @@ class PricingMasterExtraChannels
         $margin = (float) $lookups['alibaba_margin'];
         $profit = self::marginProfit($price, $lp, 0.0, $margin);
 
-        return self::blank('Alibaba', $price, $price, $l30, null, $profit, $margin, 0.0, 0.0, ['gpft' => 0.0, 'groi' => 0.0]);
+        $sprice = (float) ($lookups['alibaba_sprice'][$key] ?? $lookups['alibaba_sprice'][$stripped] ?? 0);
+        $suggested = $sprice > 0 ? self::marginProfit($sprice, $lp, 0.0, $margin) : ['gpft' => 0.0, 'groi' => 0.0];
+
+        return self::blank('Alibaba', $price, $price, $l30, null, $profit, $margin, 0.0, $sprice, $suggested);
+    }
+
+    /**
+     * Rows for channels that only have a saved SPRICE (no price page, no sales): CJdropshipping, B2B.
+     * Used by the SKU modal breakdown only, so the main-page aggregates are unaffected.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function savedOnlyRowsFor(string $sku, float $lp): array
+    {
+        $lookups = self::lookups();
+        $key = self::upper($sku);
+        $rows = [];
+        foreach (['CJdropshipping' => 'cjdropshipping', 'B2B' => 'b2b'] as $label => $channel) {
+            $sprice = (float) ($lookups['channel_sprices'][$channel][$key] ?? 0);
+            $margin = 1.0;
+            $suggested = $sprice > 0 ? self::marginProfit($sprice, $lp, 0.0, $margin) : ['gpft' => 0.0, 'groi' => 0.0];
+            $rows[] = self::blank($label, 0.0, 0.0, 0, null, ['gpft' => 0.0, 'groi' => 0.0], $margin, 0.0, $sprice, $suggested);
+        }
+
+        return $rows;
+    }
+
+    /** @return array<string, float> */
+    private static function alibabaSprices(): array
+    {
+        $out = [];
+        try {
+            if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice')) {
+                return [];
+            }
+            foreach (AlibabaPricingPrice::query()->whereNotNull('sprice')->get(['sku', 'sprice']) as $row) {
+                $k = self::upper((string) $row->sku);
+                if ($k !== '' && (float) $row->sprice > 0) {
+                    $out[$k] = (float) $row->sprice;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Master Analytics Alibaba SPRICE skipped: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, array<string, float>> channel => SKU => SPRICE */
+    private static function channelSprices(): array
+    {
+        $out = [];
+        try {
+            if (! Schema::hasTable('channel_sprices')) {
+                return [];
+            }
+            foreach (ChannelSprice::query()->get(['sku', 'channel', 'sprice']) as $row) {
+                $k = self::upper((string) $row->sku);
+                if ($k !== '' && (float) $row->sprice > 0) {
+                    $out[(string) $row->channel][$k] = (float) $row->sprice;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Master Analytics channel_sprices skipped: '.$e->getMessage());
+        }
+
+        return $out;
     }
 
     /**

@@ -10705,6 +10705,26 @@
             return Math.max(0.01, +((x * 0.75) - chpushShipAmount()).toFixed(2));
         }
 
+        /**
+         * Saved SPRICE of a channel as the master shows it: the SKU-modal row's SPRICE box, else the row data itself.
+         * Channels with their own analytics page (Depop, Vinted, FB Marketplace, Mercari, PLS, Newegg, Wayfair ...) have no
+         * SPRICE box in the SKU modal, but their saved SPRICE (read from that page's table) is in the row data.
+         */
+        function chpushSavedSprice(channelName, $row) {
+            if ($row && $row.length) {
+                const v = parseOvl30PushPrice($row.find('.editable-sprice').val());
+                if (v != null) return v;
+            }
+            const key = chpushKey(channelName);
+            const rows = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
+            for (let i = 0; i < rows.length; i++) {
+                if (chpushKey(rows[i] && rows[i].marketplace) !== key) continue;
+                const sp = parseFloat(rows[i].sprice);
+                if (isFinite(sp) && sp > 0) return +sp.toFixed(2);
+            }
+            return null;
+        }
+
         /** SKU-modal table row for a Channel Master channel (or null when this SKU has no such row). */
         function chpushFindRow(channelName) {
             const key = chpushKey(channelName);
@@ -10763,7 +10783,7 @@
                     // for it (e.g. not listed yet): the push is attempted and a failure shows the red triangle + reason.
                     const pushable = CHPUSH_SUPPORTED.has(chpushKey(name));
                     if (pushable) anyPushable = true;
-                    const sprice = $row ? parseOvl30PushPrice($row.find('.editable-sprice').val()) : null;
+                    const sprice = chpushSavedSprice(name, $row);
                     const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey(name);
                     const why = !pushable
                         ? 'Price push is not supported for this channel'
@@ -10915,7 +10935,7 @@
             'tiktok', 'tiktok2', 'bestbuy', 'bestbuyusa', 'macy', 'macys', 'reverb', 'topdawg', 'shein', 'faire',
             'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'shopify', 'shopifyb2c', 'sb2c', 'shopifyb2b', 'sb2b',
             // no price API — SPRICE is saved on the channel's own store (e.g. depop_pricing)
-            'pls', 'newegg', 'depop', 'vinted', 'instagramshop', 'instagram shop', 'mercariwship', 'mercari w ship', 'mercariwoship',
+            'pls', 'newegg', 'wayfair', 'temu3', 'temu 3', 'alibaba', 'cjdropshipping', 'b2b', 'depop', 'vinted', 'instagramshop', 'instagram shop', 'mercariwship', 'mercari w ship', 'mercariwoship',
             'mercari w/o ship', 'fbmarketplace', 'fb marketplace'
         ]);
 
@@ -11056,10 +11076,10 @@
                 const price = parseOvl30PushPrice($chTr.find('.chpush-input').val());
                 if (price == null) return;
                 const $row = chpushFindRow($chTr.attr('data-channel'));
-                if (!$row) return;
-                const mp = String($row.attr('data-marketplace') || '');
+                // No SKU-modal row for this channel: save by the channel's own key (every input must be stored)
+                const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey($chTr.attr('data-channel'));
                 if (!CHSAVE_SUPPORTED.has(mp.toLowerCase())) return;
-                const current = parseOvl30PushPrice($row.find('.editable-sprice').val());
+                const current = chpushSavedSprice($chTr.attr('data-channel'), $row);
                 if (current != null && Math.abs(current - price) < 0.005) return; // already saved with this value
                 jobs.push({ $row: $row, mp: mp, price: price });
             });
@@ -11073,6 +11093,16 @@
             (function next() {
                 if (idx >= jobs.length) { dfd.resolve({ saved: saved, failed: failed }); return; }
                 const j = jobs[idx++];
+                if (!j.$row) {
+                    // Channel without a SKU-modal row: store the price straight through the save endpoint
+                    $.ajax({
+                        url: '/cvr-master-save-suggested-data', method: 'POST',
+                        data: { sku: sku, marketplace: j.mp, sprice: j.price, apply_siblings: 0, _token: '{{ csrf_token() }}' }
+                    }).done(function(res) {
+                        if (res && res.success === false) failed++; else saved++;
+                    }).fail(function() { failed++; }).always(next);
+                    return;
+                }
                 saveModalSpriceForRow(j.$row, j.price, function(ok) {
                     if (ok) {
                         saved++;

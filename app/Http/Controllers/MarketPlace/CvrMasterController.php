@@ -4279,7 +4279,12 @@ class CvrMasterController extends Controller
             $ebay2AD = (float) app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->tabulatorChannelAdsPercent();
             $ebay2NPFT = round($ebay2GPFT - $ebay2AD, 2);
             
+            // A saved SPRICE is read even when the SKU has no eBay 2 listing row (it was saved from the Channels modal)
             $ebay2DataView = $ebay2Data ? EbayTwoDataView::where('sku', $ebay2Data->sku)->first() : null;
+            if (!$ebay2DataView) {
+                $ebay2DataView = EbayTwoDataView::where('sku', $fullSku)->first()
+                    ?? EbayTwoDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $fullSku))])->first();
+            }
             $ebay2Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             if ($ebay2DataView) {
                 $val = is_array($ebay2DataView->value) ? $ebay2DataView->value : json_decode($ebay2DataView->value, true);
@@ -4310,7 +4315,7 @@ class CvrMasterController extends Controller
                 'ad' => $ebay2AD,
                 'tacos_ch' => $ebay2AD,
                 'npft' => $ebay2NPFT,
-                'is_listed' => $ebay2Data ? true : false,
+                'is_listed' => ($ebay2Data || ($ebay2Suggested['sprice'] ?? 0) > 0) ? true : false,
                 'sprice' => $ebay2Suggested['sprice'],
                 'sgpft' => $ebay2Suggested['sgpft'],
                 'sroi' => $ebay2Suggested['sroi'],
@@ -4346,6 +4351,11 @@ class CvrMasterController extends Controller
                 $ebay3DataView = EbayThreeDataView::where('sku', $ebay3ListedSku)->first()
                     ?? EbayThreeDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($ebay3ListedSku))])->first()
                     ?? EbayThreeDataView::where('sku', $fullSku)->first();
+            }
+            // A saved SPRICE is read even when the SKU has no eBay 3 listing row (it was saved from the Channels modal)
+            if (!$ebay3DataView) {
+                $ebay3DataView = EbayThreeDataView::where('sku', $fullSku)->first()
+                    ?? EbayThreeDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $fullSku))])->first();
             }
             $ebay3Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             $ebay3PushedBy = null;
@@ -4388,7 +4398,7 @@ class CvrMasterController extends Controller
                 'ad' => $ebay3AD,
                 'tacos_ch' => $ebay3AD,
                 'npft' => $ebay3NPFT,
-                'is_listed' => $ebay3Data ? true : false,
+                'is_listed' => ($ebay3Data || ($ebay3Suggested['sprice'] ?? 0) > 0) ? true : false,
                 'sprice' => $ebay3Suggested['sprice'],
                 'sgpft' => $ebay3Suggested['sgpft'],
                 'sroi' => $ebay3Suggested['sroi'],
@@ -5679,6 +5689,10 @@ class CvrMasterController extends Controller
 
             foreach (PricingMasterExtraChannels::rowsFor((string) $fullSku, (float) $lp, (float) $ship, (float) $temuShip) as $extraChannelRow) {
                 $breakdownData[] = PricingMasterExtraChannels::breakdownRow($extraChannelRow, (string) $fullSku, (float) $lp);
+            }
+            // CJdropshipping / B2B: no price page — their SPRICE is the only thing stored (channel_sprices)
+            foreach (PricingMasterExtraChannels::savedOnlyRowsFor((string) $fullSku, (float) $lp) as $savedOnlyRow) {
+                $breakdownData[] = PricingMasterExtraChannels::breakdownRow($savedOnlyRow, (string) $fullSku, (float) $lp);
             }
 
             // Add AliExpress
@@ -7865,6 +7879,10 @@ class CvrMasterController extends Controller
             // Channels without a price API (Depop, Vinted, Instagram Shop, Mercari, FB Marketplace): SPRICE is saved on the
             // channel's own store (e.g. depop_pricing.sprice) so /depop/pricing and this page show the same value.
             $saveOnlyKey = preg_replace('/[^a-z0-9]/', '', $marketplace);
+            // Channels that have their own analytics / pricing page: use exactly that page's save, so both pages share one value.
+            if (in_array($saveOnlyKey, ['wayfair', 'temu3', 'alibaba', 'cjdropshipping', 'b2b'], true)) {
+                return $this->saveChannelSpriceLikeItsPage($saveOnlyKey, (string) $fullSku, round((float) $request->input('sprice', 0), 2));
+            }
             if ($saveOnlyKey === 'newegg') {
                 // Same save as /newegg-pricing-view (newegg_data_views.value.SPRICE + SPFT/SROI, raised to the Amazon floor)
                 try {
@@ -8791,6 +8809,54 @@ class CvrMasterController extends Controller
                 'success' => false,
                 'message' => "{$label} API error: " . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Wayfair / Temu 3 / Alibaba save through their own page's endpoint (same store, same rules);
+     * CJdropshipping and B2B have no page, so their SPRICE lives in channel_sprices.
+     */
+    private function saveChannelSpriceLikeItsPage(string $key, string $sku, float $price): JsonResponse
+    {
+        $labels = ['wayfair' => 'Wayfair', 'temu3' => 'Temu 3', 'alibaba' => 'Alibaba', 'cjdropshipping' => 'CJdropshipping', 'b2b' => 'B2B'];
+        $label = $labels[$key] ?? $key;
+        try {
+            if ($key === 'wayfair') {
+                $body = app(WayfairController::class)->saveWayfairSpriceUpdates(
+                    Request::create('/wayfair/pricing-save-sprice', 'POST', ['updates' => [['sku' => $sku, 'sprice' => $price]]])
+                )->getData(true);
+            } elseif ($key === 'temu3') {
+                $body = app(Temu3Controller::class)->saveTemu3Sprice(
+                    Request::create('/temu3-pricing/save-sprice', 'POST', ['sku' => $sku, 'sprice' => $price > 0 ? $price : 0])
+                )->getData(true);
+            } elseif ($key === 'alibaba') {
+                $body = app(AlibabaAnalyticsController::class)->saveSprice(
+                    Request::create('/alibaba-analytics/save-sprice', 'POST', ['updates' => [['sku' => $sku, 'sprice' => $price > 0 ? $price : null]]])
+                )->getData(true);
+            } else {
+                if (! Schema::hasTable('channel_sprices')) {
+                    return response()->json(['success' => false, 'message' => "Could not save price for {$label}: run php artisan migrate (channel_sprices)"], 503);
+                }
+                if ($price > 0) {
+                    \App\Models\ChannelSprice::updateOrCreate(['sku' => trim($sku), 'channel' => $key], ['sprice' => $price]);
+                } else {
+                    \App\Models\ChannelSprice::where('sku', trim($sku))->where('channel', $key)->delete();
+                }
+                $body = ['success' => true];
+            }
+            if (empty($body['success'])) {
+                return response()->json(['success' => false, 'message' => "Could not save price for {$label}: " . ($body['message'] ?? $body['error'] ?? 'failed')], 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'saved_only' => true,
+                'message' => $price > 0 ? ('Saved $' . number_format($price, 2) . " for {$label}") : "Cleared SPRICE for {$label}",
+            ]);
+        } catch (\Throwable $e) {
+            Log::error("CVR Master - {$label} SPRICE save failed", ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => "Could not save price for {$label}: " . $e->getMessage()], 500);
         }
     }
 
