@@ -371,10 +371,65 @@
         .ovl30-history-btn:hover { color: #3d7f83; }
         .ovl30-history-btn.has-history { color: #0d6efd; }
         #ovl30ChannelsPushModal { z-index: 1080; }
-        #ovl30ChannelsPushModal .chpush-table th { font-size: 11px; background: #f1f3f9; white-space: nowrap; }
-        #ovl30ChannelsPushModal .chpush-table td { vertical-align: middle; font-size: 12px; padding: 4px 6px; }
-        #ovl30ChannelsPushModal .chpush-input { width: 84px; height: 28px; text-align: right; }
-        #ovl30ChannelsPushModal .chpush-unavail { opacity: .55; }
+        #ovl30ChannelsPushModal .chpush-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+            gap: 12px;
+            align-items: start;
+        }
+        #ovl30ChannelsPushModal .chpush-card {
+            min-width: 0;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #fff;
+        }
+        #ovl30ChannelsPushModal .chpush-card-head {
+            padding: 8px 12px;
+            background: #f1f3f9;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #ovl30ChannelsPushModal .chpush-table {
+            width: 100%;
+            table-layout: fixed;
+            margin: 0;
+            border-collapse: collapse;
+        }
+        #ovl30ChannelsPushModal .chpush-table th {
+            font-size: 11px;
+            background: #fafbfe;
+            color: #475569;
+            padding: 5px 6px;
+            border-bottom: 1px solid #e5e7eb;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #ovl30ChannelsPushModal .chpush-table td {
+            vertical-align: middle;
+            font-size: 12px;
+            padding: 4px 6px;
+            border-bottom: 1px solid #f1f3f5;
+            word-break: break-word;
+        }
+        #ovl30ChannelsPushModal .chpush-table tr:last-child td { border-bottom: 0; }
+        #ovl30ChannelsPushModal .chpush-table th:nth-child(2),
+        #ovl30ChannelsPushModal .chpush-table td:nth-child(2) { width: 84px; }
+        #ovl30ChannelsPushModal .chpush-table th:nth-child(3),
+        #ovl30ChannelsPushModal .chpush-table td:nth-child(3) { width: 44px; text-align: center; }
+        #ovl30ChannelsPushModal .chpush-input {
+            width: 100%;
+            min-width: 0;
+            height: 26px;
+            padding: 2px 6px;
+            text-align: right;
+        }
+        #ovl30ChannelsPushModal .chpush-btn { padding: 2px 8px; line-height: 1.3; }
+        #ovl30ChannelsPushModal .chpush-unavail td:first-child { color: #9aa0a6; }
         #ovl30PushHistoryModal {
             z-index: 1080;
         }
@@ -10344,13 +10399,13 @@
                 $('#chpush-body').html('<div class="text-muted text-center py-3">No channels found.</div>');
                 return;
             }
-            let html = '<div class="row g-3 row-cols-1 row-cols-md-2 row-cols-xl-6">';
+            let html = '<div class="chpush-grid">';
             types.forEach(function(type) {
                 const names = groups[type] || [];
-                html += '<div class="col"><div class="border rounded h-100">'
-                    + '<div class="px-3 py-2 bg-light border-bottom fw-bold d-flex justify-content-between">'
+                html += '<div class="chpush-card">'
+                    + '<div class="chpush-card-head">'
                     + '<span>' + chpushEsc(type) + '</span><span class="badge bg-secondary">' + names.length + '</span></div>'
-                    + '<table class="table table-sm table-bordered mb-0 chpush-table"><thead><tr>'
+                    + '<table class="chpush-table"><thead><tr>'
                     + '<th>Channel</th><th class="text-end">Suggested Price</th><th class="text-center">Push</th>'
                     + '</tr></thead><tbody>';
                 names.forEach(function(name) {
@@ -10369,7 +10424,7 @@
                         + (pushable ? ' title="Push price to ' + chpushEsc(name) + '"' : ' disabled title="' + chpushEsc(why) + '"')
                         + '><i class="fas fa-upload"></i></button></td></tr>';
                 });
-                html += '</tbody></table></div></div>';
+                html += '</tbody></table></div>';
             });
             html += '</div>';
             $('#chpush-body').html(html);
@@ -10393,6 +10448,14 @@
                 channel: String($chTr.attr('data-channel') || '')
             };
         }
+
+        // Typing a price in the first (available) row of a column autofills the rest of that column
+        $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
+            const $inputs = $(this).closest('table').find('.chpush-input:not(:disabled)');
+            if (!$inputs.length || !$inputs.first().is(this)) return;
+            const v = $(this).val();
+            $inputs.not(this).val(v);
+        });
 
         $(document).on('click', '#modal-channels-push-btn', function(e) {
             e.preventDefault();
