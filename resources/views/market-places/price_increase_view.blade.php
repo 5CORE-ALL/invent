@@ -8504,6 +8504,10 @@
 
         // ==================== BULK SPRICE ====================
         // From STD PRC: Doba ×0.75; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase/PPower = (STD×1.15)−Ship
+        /** Doba prices are never pushed in bulk / automatically (saved only). */
+        function isDobaNoPush(mp) {
+            return String(mp || '').toLowerCase().replace(/[^a-z0-9]/g, '').indexOf('doba') === 0;
+        }
         function isDobaChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'doba';
         }
@@ -9006,6 +9010,7 @@
                 const $pb = $tr.find('.push-price-btn');
                 if (!$pb.length || $pb.prop('disabled')) return;
                 const mp = String($pb.data('marketplace') || $tr.attr('data-marketplace') || '');
+                if (isDobaNoPush(mp)) return; // Doba: saved only, never pushed here
                 const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
                 if (price == null || !sku || !mp || sku.toUpperCase() === 'NOT LISTED') return;
                 targets.push({ sku: sku, marketplace: mp, price: price, $btn: $pb, $tr: $tr, applySiblings: applySiblings ? 1 : 0 });
@@ -9085,16 +9090,7 @@
             const withSiblings = isModalSiblingsApply();
 
             function runSame() {
-                if (!confirm(
-                    'Apply from STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
-                    + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                    + '\nTopDawg / Faire / SB2B = (STD × marketplace%) − Ship'
-                    + '\nPurchase = (STD × 1.15) − Ship'
-                    + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
-                    + siblingsApplyLabel()
-                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same per-channel SPRICE.' : '')
-                    + '\n\nThe prices are SAVED, then PUSHED live to every channel that supports push.'
-                )) return;
+                // No confirm dialog: the ✓ applies, saves and pushes straight away
 
                 samePricePv.clear(); // previewed values are being saved now — do not restore them
                 bulkSpritePv.clear();
@@ -9962,6 +9958,7 @@
                 const $btn = $tr.find('.push-price-btn');
                 if (!$btn.length || $btn.prop('disabled')) return;
                 const mp = String($btn.data('marketplace') || $tr.attr('data-marketplace') || '');
+                if (isDobaNoPush(mp)) return; // Doba: never pushed in bulk
                 if (onlySelected && modalSelectedChannels.size > 0 && !modalSelectedChannels.has(mp)) return;
                 const sku = primarySku || String($btn.attr('data-sku') || $tr.attr('data-sku') || '');
                 const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
@@ -10960,6 +10957,7 @@
         function chpushCollectTargets($scope) {
             const targets = [];
             $scope.find('tr[data-channel]').each(function() {
+                if (isDobaNoPush($(this).attr('data-channel'))) return; // Doba: column / Push All never push it
                 const t = chpushTargetFor($(this));
                 if (t) targets.push(t);
             });
