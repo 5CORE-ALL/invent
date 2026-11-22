@@ -1487,6 +1487,9 @@
                                         <a href="{{ route('listing.amazon') }}">Listing Amz</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('amz.item.data') }}">Amz Data</a>
+                                    </li>
+                                    <li>
 
                                         <a href="{{ url('/amazon-tabulator-view') }}">Analytics Amz
                                         </a>

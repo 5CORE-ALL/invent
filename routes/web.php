@@ -5162,6 +5162,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     ] as $temuPath => $temuMethod) {
         Route::post('/temu1-item-data'.$temuPath, [\App\Http\Controllers\MarketPlace\Temu1DataController::class, $temuMethod])->name('temu1.item.data.post'.str_replace('/', '.', $temuPath));
     }
+    // Amz Data: the same page for Amazon (categories are product types, columns are the fields Amazon defines for each type).
+    foreach ([
+        '' => 'index', '/rows' => 'rows', '/column-options' => 'columnOptions', '/ebay-categories' => 'ebayCategories',
+        '/missing-history' => 'missingHistory', '/category-field-targets' => 'categoryFieldTargets',
+    ] as $amzPath => $amzMethod) {
+        Route::get('/amz-data'.$amzPath, [\App\Http\Controllers\MarketPlace\Amz1DataController::class, $amzMethod])->name('amz.item.data'.str_replace('/', '.', $amzPath));
+    }
+    foreach ([
+        '/add-column' => 'addColumn', '/push' => 'pushSpecifics', '/pull' => 'pullFromAmazon', '/load-attributes' => 'loadAttributes', '/cell-styles' => 'saveCellStyles',
+        '/change-category' => 'changeCategory', '/missing-history' => 'saveMissingHistory', '/auto-push' => 'setAutoPush',
+        '/nr-req' => 'saveNrReq', '/save-source' => 'saveSource', '/edit-column' => 'editColumn',
+        '/column-groups' => 'saveColumnGroups', '/delete-specific' => 'deleteSpecific',
+    ] as $amzPath => $amzMethod) {
+        Route::post('/amz-data'.$amzPath, [\App\Http\Controllers\MarketPlace\Amz1DataController::class, $amzMethod])->name('amz.item.data.post'.str_replace('/', '.', $amzPath));
+    }
     Route::get('/description-for-html', [DescriptionForHtmlController::class, 'index'])->name('description.for.html');
     Route::get('/description-for-html-data', [DescriptionForHtmlController::class, 'getData'])->name('description.for.html.data');
     Route::post('/description-for-html/save', [DescriptionForHtmlController::class, 'save'])->name('description.for.html.save');

@@ -1,9 +1,12 @@
 @php
     $ebayCfg = $ebayCfg ?? ['key' => 'ebay1', 'label' => 'eBay 1', 'base' => '/ebay1-data', 'main' => true];
     $ebayNo = (int) substr($ebayCfg['key'], -1);
-    // Same page for Temu: wording and column heads come from the controller cfg (channel = temu).
-    $isTemu = ($ebayCfg['channel'] ?? 'ebay') === 'temu';
+    // Same page for Temu and Amazon: wording and column heads come from the controller cfg (channel = temu / amazon).
+    // $isTemu is true for every channel that shows the marketplace's own categories and fields (Temu, Amazon).
+    $isAmazon = ($ebayCfg['channel'] ?? 'ebay') === 'amazon';
+    $isTemu = $isAmazon || ($ebayCfg['channel'] ?? 'ebay') === 'temu';
     $siteName = $ebayCfg['site'] ?? 'eBay';
+    $idPattern = $ebayCfg['id_regex'] ?? ($isTemu ? '^\d{6,20}$' : '^\d{9,15}$');
     $pageName = $ebayCfg['page'] ?? ('Ebay'.$ebayNo.' Data');
 @endphp
 @extends('layouts.vertical', ['title' => $pageName, 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
@@ -242,7 +245,7 @@
 @section('content')
     @include('layouts.shared/page-title', [
         'page_title' => $pageName,
-        'sub_title' => 'Every '.$ebayCfg['label'].' listing row, category wise'.($isTemu ? ' (category and item specifics as Temu holds them)' : ($ebayCfg['main'] ? ' (main page: changes here also go to eBay 2 and eBay 3)' : ' (follows the eBay 1 page)')),
+        'sub_title' => 'Every '.$ebayCfg['label'].' listing row, category wise'.($isTemu ? ($isAmazon ? ' (product types and item specifics as Amazon holds them)' : ' (category and item specifics as Temu holds them)') : ($ebayCfg['main'] ? ' (main page: changes here also go to eBay 2 and eBay 3)' : ' (follows the eBay 1 page)')),
     ])
 
     <div class="row">
@@ -316,14 +319,14 @@
                         <button type="button" class="btn btn-sm btn-secondary" id="e1dHdrBtn" title="Edit Column Header: rename the header of any column of this table" aria-label="Edit Column Header">
                             <i class="fas fa-heading"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another {{ $siteName }} category, picked from every {{ $siteName }} category{{ $isTemu ? ' (changed in the app; the live Temu product keeps its category)' : '' }}" aria-label="Change Category">
+                        <button type="button" class="btn btn-sm btn-dark" id="e1dCatBtn" title="Change Category: move the ticked rows (or the open tab) to another {{ $siteName }} category, picked from every {{ $siteName }} category{{ $isTemu ? ' (changed in the app; the live '.$siteName.' listing keeps its category)' : '' }}" aria-label="Change Category">
                             <i class="fas fa-tags"></i>
                         </button>
                         @if ($isTemu)
-                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPull" title="Pull from Temu: read the category and the item specifics of the ticked rows (or of the open tab) from the live Temu 1 products, exactly as Temu holds them">
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dPull" title="Pull from {{ $siteName }}: read the {{ $isAmazon ? 'product type' : 'category' }} and the item specifics of the ticked rows (or of the open tab) from the live {{ $isAmazon ? 'Amazon listings' : 'Temu 1 products' }}, exactly as {{ $siteName }} holds them">
                                 <i class="fas fa-cloud-download-alt"></i> Pull
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dAllFields" title="One time: fetch the fields Temu defines for every category the SKUs are in, and save the columns in the app">
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="e1dAllFields" title="One time: fetch the fields {{ $siteName }} defines for every {{ $isAmazon ? 'product type' : 'category' }} the SKUs are in, and save the columns in the app">
                                 <i class="fas fa-columns"></i> All fields
                             </button>
                         @else
@@ -338,7 +341,7 @@
                                 <a class="btn btn-outline-secondary {{ $ebayNo === 3 ? 'active' : '' }}" href="/ebay3-item-data">eBay 3</a>
                             </span>
                         @endif
-                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab{{ $isTemu ? ' in the app (Temu is not changed)' : ', here and on the live '.$ebayCfg['label'].' listings' }}" aria-label="Delete Column" disabled>
+                        <button type="button" class="btn btn-sm btn-danger" id="e1dDelCol" title="Delete Column: delete one item-specific column of the open category tab{{ $isTemu ? ' in the app ('.$siteName.' is not changed)' : ', here and on the live '.$ebayCfg['label'].' listings' }}" aria-label="Delete Column" disabled>
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         <div class="e1g-wrap" id="e1gWrap">
@@ -503,8 +506,12 @@
 
             const E1_BASE = @json($ebayCfg['base']);
             const E1_MAIN = @json((bool) $ebayCfg['main']);
-            // Channel wording and column heads (Temu uses its own names; the row keys stay the same).
+            // Channel wording and column heads (Temu and Amazon use their own names; the row keys stay the same).
+            // E1_TEMU is true for every channel that shows the marketplace's own categories and fields (Temu, Amazon).
             const E1_TEMU = @json($isTemu);
+            const E1_AMAZON = @json($isAmazon);
+            const E1_CAT_WORD = E1_AMAZON ? 'product type' : 'category';
+            const E1_ITEM_WORD = E1_AMAZON ? 'listing' : 'product';
             const E1_SITE = @json($siteName);
             const E1_TITLE_NAME = @json($ebayCfg['title_name'] ?? 'eBay title');
             const E1_PRICE_NAME = @json($ebayCfg['price_name'] ?? 'Price');
@@ -513,7 +520,7 @@
             const E1_ITEM_URL_SUFFIX = @json($ebayCfg['item_url_suffix'] ?? '');
             const E1_COL_TITLES = @json((object) ($ebayCfg['col_titles'] ?? []));
             const E1_COL_HIDE = @json($ebayCfg['hide'] ?? []);
-            const E1_ID_RE = E1_TEMU ? /^\d{6,20}$/ : /^\d{9,15}$/;
+            const E1_ID_RE = new RegExp(@json($idPattern));
             const E1_TITLE_KEY = String(E1_TITLE_NAME).toLowerCase().replace(/[^a-z0-9]+/g, '');
             const E1_PRICE_KEY = String(E1_PRICE_NAME).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
@@ -659,6 +666,14 @@
                 return /parent/i.test(sku);
             }
 
+            // Products whose SKU is the parent name stay on the page (GSS UKU, MS MOB).
+            // They stay out of the missing counts, which is how this page read before those rows were shown.
+            function countsTowardMissing(row) {
+                const sku = String(row.sku || '').trim();
+                const parent = String(row.parent || '').trim();
+                return parent === '' || sku.toLowerCase() !== parent.toLowerCase();
+            }
+
             function inStock(row) {
                 return Number(row.inv) > 0;
             }
@@ -776,8 +791,9 @@
                     if (c.field && !E1_NO_MISS.has(c.field) && !hiddenFields.has(c.field)) baseFields.push(c.field);
                 });
                 const byTab = new Map();
-                byTab.set(ALL, { rows: rows, fields: new Set(baseFields) });
-                rows.forEach(function (row) {
+                const counted = rows.filter(countsTowardMissing);
+                byTab.set(ALL, { rows: counted, fields: new Set(baseFields) });
+                counted.forEach(function (row) {
                     const key = catKey(row);
                     if (!byTab.has(key)) byTab.set(key, { rows: [], fields: new Set(baseFields) });
                     const tab = byTab.get(key);
@@ -941,8 +957,8 @@
                 catChoice = null;
                 catBusy = false;
                 document.getElementById('e1dCatIntro').textContent = scope.selected
-                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The category is changed in the app only; the live Temu product keeps its category.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.')
-                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The category is changed in the app only; the live Temu product keeps its category.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.');
+                    ? 'The ' + catRows.length + ' ticked row' + (catRows.length === 1 ? '' : 's') + '. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The ' + E1_CAT_WORD + ' is changed in the app only; the live ' + E1_SITE + ' ' + E1_ITEM_WORD + ' keeps its ' + E1_CAT_WORD + '.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.')
+                    : 'No row is ticked, so every SKU of the open tab (' + catRows.length + ') is listed. Un-tick any SKU to leave it as it is. ' + (E1_TEMU ? 'The ' + E1_CAT_WORD + ' is changed in the app only; the live ' + E1_SITE + ' ' + E1_ITEM_WORD + ' keeps its ' + E1_CAT_WORD + '.' : 'The category is changed on the live {{ $ebayCfg['label'] }} listing too.');
                 document.getElementById('e1dCatSearch').value = '';
                 document.getElementById('e1dCatHint').innerHTML = '';
                 renderCatSkus();
@@ -956,7 +972,7 @@
                 const hint = document.getElementById('e1dCatHint');
                 const skus = Array.from(catPicked);
                 if (!window.confirm('Move ' + skus.length + ' SKU' + (skus.length === 1 ? '' : 's') + ' to "' + catChoice.path + '"?\n\n' + (E1_TEMU
-                    ? 'This changes the category in the app only (the tab and its columns). The live Temu product keeps its category, and a later Pull restores the category Temu has.'
+                    ? 'This changes the ' + E1_CAT_WORD + ' in the app only (the tab and its columns). The live ' + E1_SITE + ' ' + E1_ITEM_WORD + ' keeps its ' + E1_CAT_WORD + ', and a later Pull restores the ' + E1_CAT_WORD + ' ' + E1_SITE + ' has.'
                     : 'SKUs with a live {{ $ebayCfg['label'] }} listing are changed on {{ $ebayCfg['label'] }} too. A SKU eBay rejects stays unchanged.'))) return;
                 catBusy = true;
                 syncCatState();
@@ -1179,7 +1195,7 @@
                 if (!table || !tableReady) return;
                 // Every row of the open tab counts, listed or not: search, listing-state, REQ/NRL and stock filters
                 // do not hide the rows of missing listings from the count.
-                const data = rows.filter(passesTab);
+                const data = rows.filter(passesTab).filter(countsTowardMissing);
                 table.getColumns().forEach(function (col) {
                     const field = col.getField();
                     const el = col.getElement();
@@ -1502,7 +1518,11 @@
                 const where = scope.selected
                     ? todo.length + ' selected SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                const confirmText = E1_TEMU
+                const confirmText = E1_AMAZON
+                    ? (scope.selected
+                        ? 'Push ' + where + ' to the live Amazon listings?\n\nThe item specifics of these ticked rows are sent to Amazon, together with an edited Amazon title. Amazon may reject a value that is not in its own list; the answer is shown per SKU. Blank values are not sent. The price is not sent from this page.'
+                        : 'Push ' + where + ' to the live Amazon listings?\n\nOnly edited Amazon titles are sent. Item specifics are sent only for ticked rows: tick the SKUs first to send them.')
+                    : E1_TEMU
                     ? (scope.selected
                         ? 'Push ' + where + ' to the live Temu 1 products?\n\nITEM SPECIFICS (TEST): the item specifics of these ticked rows are sent to Temu, together with an edited product name and an edited base price. Temu may reject a value that is not in its own list; the answer is shown per SKU. Blank values are not sent.'
                         : 'Push ' + where + ' to the live Temu 1 products?\n\nOnly edited product names and edited base prices are sent. Item specifics are a test: tick the SKUs first to send them.')
@@ -1562,13 +1582,13 @@
                 const base = selected.length ? selected : rows.filter(passesTab);
                 const todo = base.filter(function (row) { return E1_ID_RE.test(String(row.item_id || '').trim()) && !isParentRow(row); });
                 if (!todo.length) {
-                    rowToast('Nothing to pull: no listed SKU with a Temu goods ID here.', false);
+                    rowToast('Nothing to pull: no listed SKU with ' + (E1_AMAZON ? 'an Amazon ASIN' : 'a Temu goods ID') + ' here.', false);
                     return;
                 }
                 const where = selected.length
                     ? todo.length + ' ticked SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
-                if (!window.confirm('Pull the category and item specifics of ' + where + ' from Temu?\n\nThe columns of each category are the attributes Temu defines for it, and the values are the ones on the live product. Edited cells that are not pushed yet are kept. It takes about a second per SKU; you can keep working.')) return;
+                if (!window.confirm('Pull the ' + E1_CAT_WORD + ' and item specifics of ' + where + ' from ' + E1_SITE + '?\n\nThe columns of each ' + E1_CAT_WORD + ' are the attributes ' + E1_SITE + ' defines for it, and the values are the ones on the live ' + E1_ITEM_WORD + '. Edited cells that are not pushed yet are kept. It takes about a second per SKU; you can keep working.')) return;
                 const btn = document.getElementById('e1dPull');
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 pullRunning = true;
@@ -1578,7 +1598,7 @@
                 const size = 4;
                 for (let i = 0; i < todo.length; i += size) {
                     const part = todo.slice(i, i + size).map(function (row) { return row.sku; });
-                    jobShow('Pulling from Temu…', todo.length, ok, bad, true, problems);
+                    jobShow('Pulling from ' + E1_SITE + '…', todo.length, ok, bad, true, problems);
                     try {
                         const res = await fetch(E1_BASE + '/pull', {
                             method: 'POST',
@@ -1599,7 +1619,7 @@
                 }
                 pullRunning = false;
                 btn.disabled = false;
-                jobShow('Pulled from Temu: ' + ok + ' of ' + todo.length, todo.length, ok, bad, false, problems);
+                jobShow('Pulled from ' + E1_SITE + ': ' + ok + ' of ' + todo.length, todo.length, ok, bad, false, problems);
                 await loadData();
             }
 
@@ -1750,7 +1770,9 @@
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 if (turnOn) {
                     const waiting = autoItems(true).length;
-                    if (!window.confirm('Turn Auto Push ON?\n' + (E1_TEMU
+                    if (!window.confirm('Turn Auto Push ON?\n' + (E1_AMAZON
+                        ? 'On Amazon, Auto Push sends edited Amazon titles only (' + waiting + ' waiting now). Item specifics are never auto pushed: tick the SKUs and press Push.'
+                        : E1_TEMU
                         ? 'On Temu 1, Auto Push sends edited product names and base prices only (' + waiting + ' waiting now). Item specifics are a test and are never auto pushed: tick the SKUs and press Push.'
                         : waiting
                         ? waiting + ' SKU' + (waiting === 1 ? ' has' : 's have') + ' edited or autofilled cells that are not on {{ $ebayCfg['label'] }} yet. Only those cells are pushed to the live listings now, and every later edit is pushed by itself.'
@@ -1895,7 +1917,7 @@
                 const btn = document.getElementById('e1dDelCol');
                 if (!btn) return;
                 btn.disabled = false;
-                btn.title = E1_TEMU ? 'Hide a page column, or delete an item-specific column of the open tab in the app (Temu is not changed)' : 'Hide a page column such as L7, or delete an item-specific column here and on the live {{ $ebayCfg['label'] }} listings';
+                btn.title = E1_TEMU ? 'Hide a page column, or delete an item-specific column of the open tab in the app (' + E1_SITE + ' is not changed)' : 'Hide a page column such as L7, or delete an item-specific column here and on the live {{ $ebayCfg['label'] }} listings';
             }
 
             // Columns ticked in the Delete Column window.
@@ -1929,7 +1951,7 @@
                     const label = specPicked.length === 1 ? '<strong>' + esc(specPicked[0]) + '</strong>' : '<strong>' + specPicked.length + ' columns</strong>';
                     parts.push(n === 0
                         ? 'No SKU in this category has ' + label + '. ' + (specPicked.length === 1 ? 'The column is' : 'The columns are') + ' only removed from this tab.'
-                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: ' + (E1_TEMU ? 'in the app only (Temu is not changed; a later Pull brings back the attributes Temu has for the category)' : 'on the live {{ $ebayCfg['label'] }} listing where there is one, and always in the app') + '. It cannot be undone here.');
+                        : 'This removes ' + label + ' from <strong>' + n + '</strong> SKU' + (n === 1 ? '' : 's') + ' in this category: ' + (E1_TEMU ? 'in the app only (' + E1_SITE + ' is not changed; a later Pull brings back the attributes ' + E1_SITE + ' has for the ' + E1_CAT_WORD + ')' : 'on the live {{ $ebayCfg['label'] }} listing where there is one, and always in the app') + '. It cannot be undone here.');
                 }
                 document.getElementById('e1dDelWarn').innerHTML = parts.join(' ');
                 const go = document.getElementById('e1dDelGo');
@@ -2078,7 +2100,7 @@
                 const question = (pageNote ? pageNote + ' on this page?' : '')
                     + (specPicked.length
                         ? (pageNote ? '\n\n' : '') + (todo.length
-                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (' + (E1_TEMU ? 'in the app only, Temu is not changed' : 'live {{ $ebayCfg['label'] }} listing where there is one, and the app') + ')?'
+                            ? 'Delete ' + label + ' from ' + todo.length + ' SKUs (' + (E1_TEMU ? 'in the app only, ' + E1_SITE + ' is not changed' : 'live {{ $ebayCfg['label'] }} listing where there is one, and the app') + ')?'
                             : 'Remove ' + label + ' from this tab?')
                         : '');
                 if (!window.confirm(question)) return;
@@ -3974,7 +3996,7 @@
                     restyleVisible();
                     autoPushSoon();
                     // Temu: the attribute list of every category not loaded yet is fetched in the background.
-                    if (E1_TEMU) loadTemuAttributes(Array.isArray(json.temu_pending) ? json.temu_pending : []);
+                    if (E1_TEMU) loadTemuAttributes(Array.isArray(json.attr_pending) ? json.attr_pending : (Array.isArray(json.temu_pending) ? json.temu_pending : []));
                 } catch (e) {
                     placeholder.innerHTML = '<span class="e1d-badge nrl">' + esc(e.message || 'Failed to load') + '</span>';
                 }
@@ -3995,7 +4017,7 @@
                 const size = 3;
                 for (let i = 0; i < ids.length; i += size) {
                     const part = ids.slice(i, i + size);
-                    status.textContent = 'Loading Temu attributes ' + Math.min(i + size, ids.length) + ' / ' + ids.length + '…';
+                    status.textContent = 'Loading ' + E1_SITE + ' attributes ' + Math.min(i + size, ids.length) + ' / ' + ids.length + '…';
                     try {
                         const res = await fetch(E1_BASE + '/load-attributes', {
                             method: 'POST',
@@ -4016,15 +4038,15 @@
                     }
                 }
                 attrLoading = false;
-                status.textContent = 'Temu attributes: ' + done + ' of ' + ids.length + ' categories loaded' + (bad ? ', ' + bad + ' could not be read' : '') + '.';
-                if (bad) jobShow('Temu attributes: ' + bad + ' categor' + (bad === 1 ? 'y' : 'ies') + ' could not be read', ids.length, done, bad, false, problems);
+                status.textContent = E1_SITE + ' attributes: ' + done + ' of ' + ids.length + (E1_AMAZON ? ' product types' : ' categories') + ' loaded' + (bad ? ', ' + bad + ' could not be read' : '') + '.';
+                if (bad) jobShow(E1_SITE + ' attributes: ' + bad + (E1_AMAZON ? ' product type' + (bad === 1 ? '' : 's') : ' categor' + (bad === 1 ? 'y' : 'ies')) + ' could not be read', ids.length, done, bad, false, problems);
                 if (done) await loadData();
             }
 
             // One time: fetch the fields of every category the SKUs are in and save the columns in the app.
             async function runAllFields() {
                 if (allFieldsRunning) return;
-                if (!window.confirm('Fetch the fields of every Temu 1 category and save the columns in the app?\n\nIt reads each category from Temu once and keeps the columns, so every SKU of that category shows them. Nothing is changed on Temu. It takes about a second per category.')) return;
+                if (!window.confirm('Fetch the fields of every ' + (E1_AMAZON ? 'Amazon product type' : 'Temu 1 category') + ' and save the columns in the app?\n\nIt reads each ' + E1_CAT_WORD + ' from ' + E1_SITE + ' once and keeps the columns, so every SKU of that ' + E1_CAT_WORD + ' shows them. Nothing is changed on ' + E1_SITE + '. It takes about a second per ' + E1_CAT_WORD + '.')) return;
                 const btn = document.getElementById('e1dAllFields');
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                 allFieldsRunning = true;
@@ -4036,7 +4058,7 @@
                     if (!listRes.ok || list.success === false) throw new Error(list.message || 'Could not read the categories');
                     const cats = Array.isArray(list.categories) ? list.categories : [];
                     if (!cats.length) {
-                        rowToast('No category to fetch yet. Pull a SKU first, so its Temu category is known.', false);
+                        rowToast('No ' + E1_CAT_WORD + ' to fetch yet. Pull a SKU first, so its ' + E1_SITE + ' ' + E1_CAT_WORD + ' is known.', false);
                         return;
                     }
                     let done = 0, bad = 0, columns = 0;
