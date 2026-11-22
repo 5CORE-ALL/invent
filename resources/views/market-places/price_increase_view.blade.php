@@ -2693,7 +2693,8 @@
                     <!-- Push history (Hist column): default shows everything; hiding recent pushes is opt-in -->
                     <select id="push-history-filter" class="form-select form-select-sm" style="width: auto; min-width: 190px;"
                         title="Filter SKUs by their newest push date (Hist column)">
-                        <option value="all" selected>Hist — All</option>
+                        <option value="all">Hist — All</option>
+                        <option value="hidegreen" selected>Hist — Hide green dots</option>
                         <option value="hide7">Hist — Hide pushed &lt; 7d</option>
                         <option value="recent">Hist — Pushed &lt; 7d only</option>
                         <option value="old">Hist — Pushed 7d+ ago</option>
@@ -13915,22 +13916,39 @@
         /** Hist filter modes: all (default, nothing hidden) | hide7 | recent | old | none. Parent summary rows always pass. */
         function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'all'; }
         // parent name -> SKU rows (rebuilt whenever fullDataset is replaced)
-        let phChildIdx = null, phChildIdxSrc = null;
-        function phChildrenOf(parent) {
+        let phChildIdx = null, phParentIdx = null, phChildIdxSrc = null;
+        function phBuildIdx() {
             if (phChildIdxSrc !== fullDataset) {
                 phChildIdx = {};
+                phParentIdx = {};
                 (fullDataset || []).forEach(function(r) {
-                    if (r.is_parent_summary === true) return;
+                    if (r.is_parent_summary === true) { phParentIdx[r.parent] = r; return; }
                     (phChildIdx[r.parent] = phChildIdx[r.parent] || []).push(r);
                 });
                 phChildIdxSrc = fullDataset;
             }
+        }
+        function phChildrenOf(parent) {
+            phBuildIdx();
             return phChildIdx[parent] || [];
+        }
+        /** Parent whose Hist dot is green: every child has push history and the oldest newest-push is within 7 days. */
+        function isGreenParentRow(parentRow) {
+            if (!parentRow) return false;
+            const total = parseInt(parentRow.push_history_children, 10) || 0;
+            const done = parseInt(parentRow.push_history_children_done, 10) || 0;
+            const oldest = String(parentRow.push_history_oldest_at || '').slice(0, 10);
+            return total > 0 && done === total && /^\d{4}-\d{2}-\d{2}$/.test(oldest) && oldest >= ovl30HistoryDaysAgoKey(7);
         }
         function passesPushHistoryFilter(row, mode) {
             if (!row) return true;
             mode = mode || pushHistoryFilterMode();
             if (mode === 'all') return true;
+            if (mode === 'hidegreen') {
+                // Green parent (all children pushed, oldest within 7 days): hide the parent row and all its SKU rows
+                phBuildIdx();
+                return !isGreenParentRow(row.is_parent_summary === true ? row : phParentIdx[row.parent]);
+            }
             if (row.is_parent_summary === true) {
                 // Parent row is hidden too when none of its SKUs pass (e.g. all pushed < 7 days ago)
                 const kids = phChildrenOf(row.parent);
