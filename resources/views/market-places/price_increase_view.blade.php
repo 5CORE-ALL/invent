@@ -2146,7 +2146,8 @@
                 </div>
                 <div class="modal-body" id="chpush-body"></div>
                 <div class="modal-footer justify-content-between">
-                    <small class="text-muted">Prefilled from each channel's SPRICE. Edit a price, then push per channel, per column or push all. Pushing also saves the prices for next time.</small>
+                    <small class="text-muted">Prefilled from each channel's saved SPRICE. Prices you type are saved automatically (not pushed) — push per channel, per column or push all to send them live. Blank = no saved price yet (or the channel has no row for this SKU).</small>
+                    <small id="chpush-save-note" class="ms-2 fw-semibold text-success"></small>
                     <button type="button" id="chpush-all-btn" class="btn btn-primary">
                         <i class="fas fa-upload me-1"></i> Push All
                     </button>
@@ -11077,7 +11078,35 @@
         // Editing a price (or autofill from another price) resets tick / triangle so it can be pushed again
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
             chpushPaint();
+            chpushAutoSaveSoon(900); // typed / autofilled prices are saved without pushing
         });
+
+        // ---- Auto-save: every edited channel price is stored as that channel's SPRICE (no push) ----
+        let chpushAutoSaveTimer = null;
+        let chpushAutoSaving = false;
+        function chpushAutoSaveSoon(ms) {
+            clearTimeout(chpushAutoSaveTimer);
+            chpushAutoSaveTimer = setTimeout(chpushAutoSaveNow, ms || 900);
+        }
+        function chpushAutoSaveNow() {
+            if (chpushAutoSaving) { chpushAutoSaveSoon(500); return; }
+            const sku = String(chpushRenderedSku || '');
+            if (!sku || sku !== String(getModalPrimarySku() || '') || !$('#ovl30ChannelsPushModal').hasClass('show')) return;
+            const jobs = chpushCollectSaveJobs();
+            if (!jobs.length) return;
+            const $note = $('#chpush-save-note');
+            chpushAutoSaving = true;
+            $note.removeClass('text-danger').addClass('text-success').text('Saving…');
+            chpushRunSaves(sku, jobs, 0).always(function(res) {
+                chpushAutoSaving = false;
+                if (res && res.failed) {
+                    $note.removeClass('text-success').addClass('text-danger').text('Could not save ' + res.failed + ' price(s)');
+                } else {
+                    $note.text('Saved ' + ((res && res.saved) || 0) + ' price(s)');
+                    setTimeout(function() { if (!chpushAutoSaving) $note.text(''); }, 4000);
+                }
+            });
+        }
 
         // Push a single channel
         $(document).on('click', '#ovl30ChannelsPushModal .chpush-btn', function(e) {
