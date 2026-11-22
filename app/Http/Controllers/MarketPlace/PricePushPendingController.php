@@ -144,12 +144,21 @@ class PricePushPendingController extends Controller
     }
 
     /** Outstanding (pending / gave up) pushes — drives the red alert on the pricing page. */
-    public function index(PricePushPendingService $svc)
+    public function index(Request $request, PricePushPendingService $svc)
     {
         if (! $svc->available()) {
             return response()->json(['count' => 0, 'skus' => 0, 'items' => []]);
         }
-        $rows = PricePushPending::outstanding()->orderByDesc('last_attempt_at')->limit(300)->get();
+        $q = PricePushPending::outstanding();
+        // ?sku=A  or  ?skus[]=A&skus[]=B  → only those SKUs (Hist column: "channels not updated" of a SKU / parent)
+        $only = array_filter(array_map(
+            fn ($s) => strtoupper(trim((string) $s)),
+            array_merge((array) $request->query('skus', []), $request->filled('sku') ? [$request->query('sku')] : [])
+        ));
+        if ($only) {
+            $q->whereIn('sku', array_values(array_unique($only)));
+        }
+        $rows = $q->orderByDesc('last_attempt_at')->limit(300)->get();
 
         return response()->json([
             'count' => $rows->count(),

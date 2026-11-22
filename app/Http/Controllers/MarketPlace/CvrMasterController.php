@@ -926,6 +926,20 @@ class CvrMasterController extends Controller
             $temuDataViewBySku = $temuDataViewRows->keyBy('sku');
             $temuDataViewBySkuUpper = $temuDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
 
+            // Channels whose last price push did NOT go through (pending retry / gave up), counted per SKU — shown in red in the Hist column
+            $pushFailedBySku = [];
+            try {
+                if (Schema::hasTable('price_push_pendings')) {
+                    $pushFailedBySku = \App\Models\PricePushPending::outstanding()
+                        ->selectRaw('sku, COUNT(*) as c')
+                        ->groupBy('sku')
+                        ->pluck('c', 'sku')
+                        ->all();
+                }
+            } catch (\Throwable $e) {
+                $pushFailedBySku = [];
+            }
+
             Log::info('CVR Master - Walmart Data fetched', [
                 'price_data' => $walmartPriceData->count(),
                 'views_data' => $walmartViewsData->count(),
@@ -3140,6 +3154,7 @@ class CvrMasterController extends Controller
                     "missing_l" => $missingL,
                     "push_history_count" => $pushHistoryCount,
                     "push_history_last_at" => $pushHistoryLastAt,
+                    "push_failed_count" => (int) ($pushFailedBySku[strtoupper(trim((string) $sku))] ?? 0),
                     "label" => $labelType,
                     "label_qty" => $scalarShip($values, 'label_qty'),
                     "wt_act" => $scalarShip($values, 'wt_act'),
@@ -3328,6 +3343,7 @@ class CvrMasterController extends Controller
                     'is_parent_summary' => true,
                     'push_history_count' => 0,
                     // Hist dot on the parent: set only when EVERY child has push history; date = the oldest child's newest push
+                    'push_failed_count' => (int) $rows->sum('push_failed_count'),
                     'push_history_children' => $rows->count(),
                     'push_history_children_done' => $rows->filter(fn ($r) => !empty($r->push_history_last_at))->count(),
                     'push_history_oldest_at' => ($rows->count() > 0 && $rows->every(fn ($r) => !empty($r->push_history_last_at)))

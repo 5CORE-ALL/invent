@@ -2128,6 +2128,45 @@
         </div>
     </div>
 
+    <!-- Channels NOT updated for a SKU (red count in the Hist column) -->
+    <div class="modal fade" id="piSkuFailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#dc3545;color:#fff;">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Channels not updated — <span id="piSkuFailTitle"></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="piskufail-sku-col">SKU</th>
+                                    <th>Channel</th>
+                                    <th class="text-end">Price</th>
+                                    <th class="text-center">Tries</th>
+                                    <th>Last try</th>
+                                    <th>Reason</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="piSkuFailBody">
+                                <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <small class="text-muted me-auto">Failed pushes are retried every hour automatically.</small>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- OV L30 Push History (per marketplace) -->
     <div class="modal fade" id="ovl30PushHistoryModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
@@ -4795,7 +4834,13 @@
                     'reverb', 'fba', 'topdawg', 'temu', 'temu2',
                     'tiktok', 'tiktok1', 'tiktok2', 'tiktok 2',
                 ];
-                const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
+                // Every channel /cvr-master-push-price accepts gets a push button (API push, or "save only" for channels without
+                // a price API: Temu 3, Vinted, Depop, Instagram Shop, Mercari, FB Marketplace). Keys compared without spaces / symbols.
+                const pushKeyNorm = String(item.marketplace || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const extraPushable = ['wayfair', 'temu3', 'alibaba', 'newegg', 'pls', 'depop', 'vinted', 'instagramshop',
+                    'mercariwship', 'mercariwoship', 'fbmarketplace', 'bestbuyusa', 'macys', 'tiktokshop'];
+                const canPushPrice = (pushableChannels.includes((item.marketplace || '').toLowerCase())
+                    || pushableChannels.includes(pushKeyNorm) || extraPushable.includes(pushKeyNorm)) && isListed;
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
 
                 // Price in red when LMP is available and LMP < Price
@@ -5145,6 +5190,15 @@
             refreshModalStdPrcCells(saved);
         }
 
+        /** Red number = channels whose last price push did NOT go through for this SKU (parent: all its child SKUs). Click → reasons. */
+        function histFailBadgeHtml(n, sku, parent) {
+            if (!(n > 0)) return '';
+            const esc = function(s) { return String(s).replace(/"/g, '&quot;'); };
+            return ' <span class="pi-skufail-btn" data-sku="' + esc(sku) + '" data-parent="' + esc(parent) + '" '
+                + 'style="color:#dc3545;font-weight:700;font-size:12px;cursor:pointer;display:inline-block;padding:0 3px;" '
+                + 'title="' + n + ' channel(s) NOT updated' + (parent ? ' (all child SKUs)' : '') + ' — click to see which and why">' + n + '</span>';
+        }
+
         // "pushed/ALL" shown beside the Hist header: SKUs with a push date / all SKUs (parent summary rows not counted)
         let histHeaderCountText = '';
         function updateHistHeaderCount() {
@@ -5361,21 +5415,24 @@
                             const total = parseInt(rowData.push_history_children, 10) || 0;
                             const done = parseInt(rowData.push_history_children_done, 10) || 0;
                             const oldest = String(rowData.push_history_oldest_at || '').slice(0, 10);
-                            if (!total) return '';
-                            const cnt = ' <span class="text-muted small" title="Push history on ' + done + ' of ' + total + ' child SKU(s)">' + done + '/' + total + '</span>';
-                            if (done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) return cnt;
-                            return histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push') + cnt;
+                            const parentDot = (total && done >= total && /^\d{4}-\d{2}-\d{2}$/.test(oldest))
+                                ? histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push')
+                                : '';
+                            const parentFail = histFailBadgeHtml(parseInt(rowData.push_failed_count, 10) || 0, '', rowData.parent || '');
+                            return parentDot + parentFail;
                         }
-                        // Child: the dot only (click it to open the SKU's push history)
+                        // Child: the dot (click → push history) + in RED how many channels were NOT updated (click → channels + reason)
                         const skuEsc = String(rowData.sku || '').replace(/"/g, '&quot;');
                         const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
                         let dot = histAgeDotHtml(rowData.push_history_last_at, 'Last push');
                         if (!dot && histCount > 0) {
                             dot = '<i class="fas fa-circle" style="color:#adb5bd;font-size:10px;vertical-align:middle;" title="Pushed (no Amazon / Temu push date)"></i>';
                         }
-                        if (!dot) return '';
-                        return '<span class="outer-push-history-btn" data-sku="' + skuEsc + '" style="cursor:pointer;display:inline-block;padding:0 6px;" '
-                            + 'title="' + (histCount ? (histCount + ' push record(s) — click to view') : 'Push history — click to view') + '">' + dot + '</span>';
+                        const dotHtml = dot
+                            ? '<span class="outer-push-history-btn" data-sku="' + skuEsc + '" style="cursor:pointer;display:inline-block;padding:0 4px;" '
+                                + 'title="' + (histCount ? (histCount + ' push record(s) — click to view') : 'Push history — click to view') + '">' + dot + '</span>'
+                            : '';
+                        return dotHtml + histFailBadgeHtml(parseInt(rowData.push_failed_count, 10) || 0, rowData.sku || '', '');
                     }
                 },
                 {
@@ -10352,9 +10409,25 @@
             html += '</div>';
             $('#chpush-body').html(html);
             chpushRenderedSku = String(getModalPrimarySku() || '');
-            // A price typed in the SPRICE $ box fills (and overwrites) every box once, as soon as this modal opens
-            if (chpushSameBase.x > 0 && !chpushSameBase.applied && chpushSameBase.sku === chpushRenderedSku) {
+            const regBoxes = chpushReg(chpushRenderedSku).boxes;
+            if ((chpushRunning[chpushRenderedSku] || 0) > 0 && regBoxes) {
+                // A push of this SKU is running: show exactly what that push was started with. Re-reading the saved prices now
+                // would show a mix (channels already saved = new price, the rest = old price) while the saves are still going.
+                $('#chpush-body tr[data-channel]').each(function() {
+                    const v = regBoxes[String($(this).attr('data-channel'))];
+                    if (v != null) $(this).find('.chpush-input').val(v);
+                });
+            } else if (chpushSameBase.x > 0 && !chpushSameBase.applied && chpushSameBase.sku === chpushRenderedSku) {
+                // A price typed in the SPRICE $ box fills (and overwrites) every box once, as soon as this modal opens
                 chpushApplySameBase();
+            } else {
+                // Otherwise every box follows the SPRICE $ box by its column rule (B2C = X, B2B / C2C = 0.75 × X, B2B w/o ship = 0.75 × X − Ship,
+                // High Shipping = X + Diff, Doba −25%). Shown only — nothing is saved until you push or type.
+                const boxX = parseOvl30PushPrice($('#modal-sprice-same-input').val());
+                if (boxX > 0) {
+                    chpushSameBase = { sku: chpushRenderedSku, x: boxX, applied: false };
+                    chpushApplySameBase({ save: false });
+                }
             }
             chpushPaint(); // restore tick / triangle / spinner of pushes that ran (or still run) in the background
         }
@@ -10396,7 +10469,7 @@
         }
 
         /** Overwrite every box of the Channels modal from the typed SPRICE $ (existing saved SPRICE is replaced), then auto-save. */
-        function chpushApplySameBase() {
+        function chpushApplySameBase(opts) {
             const x = chpushSameBase.x;
             if (!(x > 0)) return;
             $('#ovl30ChannelsPushModal .chpush-card').each(function() {
@@ -10404,9 +10477,15 @@
                 if (v == null) return;
                 $(this).find('.chpush-input').val(v.toFixed(2));
             });
+            // Doba always follows its own −25% rule (same as the SPRICE ✓ / auto-save paths)
+            $('#chpush-body tr[data-channel]').each(function() {
+                if (chpushKey($(this).attr('data-channel')) === 'doba') {
+                    $(this).find('.chpush-input').val(sprice25OffFromBase(x).toFixed(2));
+                }
+            });
             chpushSameBase.applied = true;
             chpushPaint();
-            chpushAutoSaveSoon(700);
+            if (!opts || opts.save !== false) chpushAutoSaveSoon(700);
         }
 
         // ---- SPRICE $ box: the typed price is ALWAYS saved (no push) — every channel by its column rule, Doba −25% ----
@@ -10665,7 +10744,15 @@
                         url: '/cvr-master-save-suggested-data', method: 'POST',
                         data: { sku: sku, marketplace: j.mp, sprice: j.price, apply_siblings: 0, _token: '{{ csrf_token() }}' }
                     }).done(function(res) {
-                        if (res && res.success === false) failed++; else saved++;
+                        if (res && res.success === false) { failed++; return; }
+                        saved++;
+                        // keep the modal's own data in step, otherwise reopening the Channels modal shows the OLD saved price
+                        if (String(getModalPrimarySku() || '') === sku) {
+                            const k = chpushKey(j.mp);
+                            ovl30ModalData.forEach(function(item) {
+                                if (chpushKey(item && item.marketplace) === k) item.sprice = j.price;
+                            });
+                        }
                     }).fail(function() { failed++; }).always(next);
                     return;
                 }
@@ -10706,6 +10793,13 @@
                 };
             });
 
+            // Remember every box as it is NOW — the Channels modal can be closed / reopened while the saves + pushes run
+            const boxSnap = {};
+            $('#chpush-body tr[data-channel]').each(function() {
+                boxSnap[String($(this).attr('data-channel'))] = $(this).find('.chpush-input').val();
+            });
+            if (Object.keys(boxSnap).length) chpushReg(sku).boxes = boxSnap;
+
             chpushRunning[sku] = (chpushRunning[sku] || 0) + 1;
             chpushBg.jobs++;
             chpushBg.sending++;
@@ -10733,6 +10827,7 @@
                 let lastMsg = '';
                 function finish() {
                     chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
+                    if (!chpushRunning[sku]) delete chpushReg(sku).boxes;
                     chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
                     if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.total = 0; }
                     chpushBgUpdate();
@@ -10742,6 +10837,7 @@
                             : { state: 'ok', msg: 'All pushed' };
                     }
                     chpushPaint();
+                    piRefreshSkuFailCount(sku); // red "channels not updated" number in the Hist column
                     if (okResults.length) reloadOvl30ModalAfterPush(okResults);
                     if (String(getModalPrimarySku() || '') === sku) syncSameSpriceBoxFromSaved(); // SPRICE $ box + badges show what was saved
                     const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
@@ -10879,6 +10975,105 @@
         $(document).on('click', '#pi-pending-alert', function() {
             bootstrap.Modal.getOrCreateInstance(document.getElementById('piPendingModal')).show();
         });
+        // ---- Hist column: red "channels not updated" count → which channels + why ----
+        let piSkuFailCtx = { sku: '', parent: '' };
+        /** last_error may be JSON ({"errors":[...]} / {"message":..}) — show the readable part. */
+        function piFailReason(raw) {
+            let s = String(raw || '').trim();
+            if (!s) return 'Not pushed';
+            try {
+                const j = JSON.parse(s);
+                if (j && Array.isArray(j.errors) && j.errors.length) s = j.errors.join('; ');
+                else if (j && (j.message || j.error)) s = String(j.message || j.error);
+            } catch (e) { /* plain text */ }
+            return s.length > 300 ? s.slice(0, 300) + '…' : s;
+        }
+        function piSkuFailSkus() {
+            if (piSkuFailCtx.sku) return [piSkuFailCtx.sku];
+            return (Array.isArray(fullDataset) ? fullDataset : []).filter(function(r) {
+                return r && r.is_parent_summary !== true && String(r.parent || '') === piSkuFailCtx.parent;
+            }).map(function(r) { return String(r.sku || ''); }).filter(Boolean);
+        }
+        /** Keep the red numbers in the table in step with the server (child row + its parent summary). */
+        function piSyncFailCounts(items) {
+            if (typeof table === 'undefined' || !table) return;
+            const per = {};
+            (items || []).forEach(function(r) { const k = String(r.sku || '').toUpperCase(); per[k] = (per[k] || 0) + 1; });
+            const asked = piSkuFailSkus();
+            const parents = {};
+            table.getRows().forEach(function(row) {
+                const d = row.getData() || {};
+                if (d.is_parent_summary === true) return;
+                const k = String(d.sku || '').toUpperCase();
+                if (asked.some(function(a) { return a.toUpperCase() === k; })) {
+                    const n = per[k] || 0;
+                    if (n !== (parseInt(d.push_failed_count, 10) || 0)) row.update({ push_failed_count: n });
+                    parents[String(d.parent || '')] = true;
+                }
+            });
+            table.getRows().forEach(function(row) {
+                const d = row.getData() || {};
+                if (d.is_parent_summary !== true || !parents[String(d.parent || '')]) return;
+                let sum = 0;
+                table.getRows().forEach(function(c) {
+                    const cd = c.getData() || {};
+                    if (cd.is_parent_summary !== true && String(cd.parent || '') === String(d.parent || '')) sum += parseInt(cd.push_failed_count, 10) || 0;
+                });
+                row.update({ push_failed_count: sum });
+            });
+        }
+        function piSkuFailLoad() {
+            const skus = piSkuFailSkus();
+            const $b = $('#piSkuFailBody');
+            if (!skus.length) { $b.html('<tr><td colspan="7" class="text-center text-muted py-3">No SKUs</td></tr>'); return; }
+            $.getJSON('/price-push-pending', { skus: skus }).done(function(res) {
+                const items = (res && res.items) || [];
+                piSyncFailCounts(items);
+                if (!items.length) {
+                    $b.html('<tr><td colspan="7" class="text-center text-success py-3"><i class="fas fa-check-circle me-1"></i>All channels are updated</td></tr>');
+                    return;
+                }
+                $b.html(items.map(function(r) {
+                    return '<tr><td class="fw-semibold text-nowrap">' + chpushEsc(r.sku) + '</td>'
+                        + '<td class="text-nowrap">' + chpushEsc(r.channel) + '</td>'
+                        + '<td class="text-end">$' + Number(r.price).toFixed(2) + '</td>'
+                        + '<td class="text-center">' + (r.attempts || 0) + (r.status === 'failed' ? ' <span class="badge bg-dark">gave up</span>' : '') + '</td>'
+                        + '<td class="text-nowrap small">' + chpushEsc(r.last_attempt_at || '') + '</td>'
+                        + '<td class="text-danger small">' + chpushEsc(piFailReason(r.error)) + '</td>'
+                        + '<td><button type="button" class="btn btn-sm btn-outline-danger pi-skufail-retry" data-id="' + r.id + '" title="Retry now"><i class="fas fa-redo"></i></button></td></tr>';
+                }).join(''));
+            }).fail(function() {
+                $b.html('<tr><td colspan="7" class="text-center text-danger py-3">Could not load the failed channels</td></tr>');
+            });
+        }
+        $(document).on('click', '.pi-skufail-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            piSkuFailCtx = { sku: String($(this).attr('data-sku') || ''), parent: String($(this).attr('data-parent') || '') };
+            $('#piSkuFailTitle').text(piSkuFailCtx.sku || ('parent ' + piSkuFailCtx.parent));
+            $('#piSkuFailBody').html('<tr><td colspan="7" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i>Loading…</td></tr>');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('piSkuFailModal')).show();
+            piSkuFailLoad();
+        });
+        $(document).on('click', '.pi-skufail-retry', function() {
+            const $btn = $(this).prop('disabled', true);
+            $.ajax({
+                url: '/price-push-pending/retry', method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { id: $btn.data('id') }
+            }).done(function(r) {
+                showToast('Retried ' + (r.tried || 0) + ', pushed ' + (r.ok || 0), (r.ok || 0) > 0 ? 'success' : 'error');
+            }).always(function() { piSkuFailLoad(); piPendingRefresh(); });
+        });
+        /** After a push job: refresh the red number of that SKU in the table. */
+        function piRefreshSkuFailCount(sku) {
+            sku = String(sku || '');
+            if (!sku) return;
+            const keep = piSkuFailCtx;
+            piSkuFailCtx = { sku: sku, parent: '' };
+            $.getJSON('/price-push-pending', { skus: [sku] }).done(function(res) { piSyncFailCounts((res && res.items) || []); })
+                .always(function() { piSkuFailCtx = keep; });
+        }
         $(document).on('click', '.pi-pending-retry', function() { piPendingRetry($(this).data('id'), $(this)); });
         $(document).on('click', '#pi-pending-retry-all', function() { piPendingRetry(null, $(this)); });
         piPendingRefresh();
