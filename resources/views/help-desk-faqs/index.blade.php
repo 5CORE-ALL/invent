@@ -208,6 +208,25 @@
             .fd-grid-3, .fd-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
 
+        /* FAQ Details: full-height drawer docked to the right (same width as before) */
+        #faqViewModal .modal-dialog {
+            margin: 0 0 0 auto;
+            max-width: 800px;
+            width: 100%;
+            height: 100%;
+            min-height: 100%;
+            align-items: stretch;
+        }
+        #faqViewModal .modal-content {
+            height: 100%;
+            max-height: 100%;
+            border-radius: 18px 0 0 18px;
+        }
+        #faqViewModal.fade .modal-dialog { transform: translateX(100%); transition: transform .3s ease-out; }
+        #faqViewModal.show .modal-dialog { transform: none; }
+        #faqViewModal .modal-body { flex: 1 1 auto; overflow-y: auto; }
+        @media (max-width: 800px) { #faqViewModal .modal-content { border-radius: 0; } }
+
         /* ── History timeline (inside .faq-detail-modal) ───────────── */
         .fh-title { font-size: 1.15rem; font-weight: 700; line-height: 1.2; }
         .fh-count { font-size: 0.72rem; font-weight: 600; background: rgba(255,255,255,0.22); padding: 2px 10px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
@@ -310,6 +329,14 @@
         }
         .faq-dept-item:hover { background: #eef5ff; }
         .faq-dept-item input, .faq-dept-card-title input { margin: 0; flex-shrink: 0; }
+        .faq-dept-item .faq-dept-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .faq-dept-count {
+            flex-shrink: 0; min-width: 24px; padding: 0 7px; border-radius: 999px; text-align: center;
+            font-size: 0.68rem; font-weight: 700; line-height: 18px; background: #e0e7ff; color: #4338ca;
+        }
+        .faq-dept-count.is-zero { background: #f1f5f9; color: #94a3b8; }
+        .faq-dept-count-all { background: #dbeafe; color: #1d4ed8; }
+        .faq-dept-item.is-checked .faq-dept-count { background: #4f46e5; color: #fff; }
         .faq-dept-item.is-checked { background: #dbe7ff; box-shadow: inset 0 0 0 1px #6ea8fe; }
         .faq-dept-none { grid-column: 1 / -1; padding: 6px; font-size: 0.78rem; }
     </style>
@@ -363,13 +390,15 @@
                             <label class="faq-dept-card-title">
                                 <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
                                 <span>All departments</span>
-                                <small id="faqDeptCountSmall" class="ms-auto text-muted"></small>
+                                <span class="faq-dept-count faq-dept-count-all ms-auto" id="faqDeptCountAll" title="FAQs matching the current search">0</span>
+                                <small id="faqDeptCountSmall" class="text-muted"></small>
                             </label>
                             <div class="faq-dept-list">
                         @foreach ($departments as $dept)
                                     <label class="faq-dept-item" data-name="{{ strtolower($dept->name) }}" for="faqDeptFilter_{{ $dept->id }}">
                                 <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
-                                        <span>{{ $dept->name }}</span>
+                                        <span class="faq-dept-name">{{ $dept->name }}</span>
+                                        <span class="faq-dept-count" data-dept-count="{{ $dept->id }}" title="FAQs tagged with this department">0</span>
                                     </label>
                         @endforeach
                                 <div class="faq-dept-none text-muted" style="display:none;">No department found</div>
@@ -1448,17 +1477,40 @@
                 }
                 return false;
             }
-            function rowFilter(d) {
+            // Everything except the Dept filter (used for the live per-department counts).
+            function passesTextFilters(d) {
                 var q = searchQuery.toLowerCase();
                 if (q !== '' && (d._hay || '').indexOf(q) === -1) return false;
                 for (var f in colQueries) {
                     if (f === '_all') continue; // handled above via searchQuery
                     if (colQueries[f] && !containsFilter(colQueries[f], d[f])) return false;
                 }
-                return rowMatchesDept(d, selectedDepts());
+                return true;
+            }
+            function rowFilter(d) {
+                return passesTextFilters(d) && rowMatchesDept(d, selectedDepts());
             }
 
+            // Per-department counts: FAQs tagged with each department, for the current search / column filters.
+            function updateDeptCounts() {
+                var counts = {}, total = 0;
+                table.getData().forEach(function(d) {
+                    if (!passesTextFilters(d)) return;
+                    total++;
+                    (d.dept || []).forEach(function(id) { counts[id] = (counts[id] || 0) + 1; });
+                });
+                document.querySelectorAll('#faqDeptPanel [data-dept-count]').forEach(function(el) {
+                    var n = counts[el.getAttribute('data-dept-count')] || 0;
+                    el.textContent = n;
+                    el.classList.toggle('is-zero', n === 0);
+                });
+                var all = document.getElementById('faqDeptCountAll');
+                if (all) all.textContent = total;
+            }
+
+
             function updateCount() {
+                updateDeptCounts();
                 if (!countBadge) return;
                 var total = table.getDataCount();
                 var active = table.getDataCount('active');
