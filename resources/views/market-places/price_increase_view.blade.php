@@ -1949,7 +1949,7 @@
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
                             title="From STD PRC. Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
-                            title="Apply SPRICE $ (saves the live preview)" aria-label="Apply same SPRICE">
+                            title="Push All — fills every channel by its column rule, then saves and pushes them (same as Channels ▸ Push All)" aria-label="Push all channels with this SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
                         <span id="modal-same-sprice-metrics" class="spm-wrap"></span>
@@ -5461,7 +5461,24 @@
                     headerTooltip: "Push history — date, marketplace, price, user",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary === true) return '';
+                        if (rowData.is_parent_summary === true) {
+                            // Dot only when every child has push history; colour = age of the OLDEST child's newest push
+                            const total = parseInt(rowData.push_history_children, 10) || 0;
+                            const done = parseInt(rowData.push_history_children_done, 10) || 0;
+                            const oldest = String(rowData.push_history_oldest_at || '').slice(0, 10);
+                            if (!total || done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) {
+                                return total
+                                    ? '<span class="text-muted small" title="Push history on ' + done + ' of ' + total + ' child SKU(s)">' + done + '/' + total + '</span>'
+                                    : '';
+                            }
+                            const p = oldest.split('-');
+                            const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+                            const days = Math.max(0, Math.round((t0 - new Date(+p[0], +p[1] - 1, +p[2])) / 86400000));
+                            const color = days <= 7 ? '#28a745' : (days <= 14 ? '#ffc107' : '#dc3545');
+                            const label = days <= 7 ? 'within 7 days' : (days <= 14 ? '7–14 days ago' : 'over 14 days ago');
+                            return '<i class="fas fa-circle" style="color:' + color + ';font-size:10px;vertical-align:middle;" '
+                                + 'title="All ' + total + ' child SKU(s) pushed — oldest last push ' + oldest + ' (' + days + ' day(s) ago, ' + label + ')"></i>';
+                        }
                         const sku = rowData.sku || '';
                         const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
                         const histTitle = histCount
@@ -8931,6 +8948,8 @@
                 schedule: schedule,
                 // The previewed values are being saved (or the modal closed): keep them, do not restore
                 clear: function() { clearTimeout(timer); rowsState = []; },
+                // Undo the preview (put the saved SPRICEs back) without touching the input box
+                restore: function() { clearTimeout(timer); restore(null); },
                 reset: function() {
                     clearTimeout(timer); rowsState = [];
                     $(cfg.input).val('');
@@ -9117,65 +9136,13 @@
             }
         });
 
-        // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
+        // ==================== SPRICE $ ✓ = Channels modal "Push All" ====================
         /**
-         * After "SPRICE $" ✓ saved the prices: push them live, one channel at a time (same call as the row Push buttons /
-         * the header bulk push). Runs on a snapshot of SKU + siblings, so it also finishes if the modal is closed.
+         * The SPRICE $ ✓ does exactly what "Push All" in the Channels modal does: the typed price fills every channel box by
+         * its column rule (B2C = X, B2B/C2C = 0.75 × X, B2B without ship = 0.75 × X − Ship, High Shipping = X + Diff), then
+         * every channel is saved and pushed in a background job (tracked: failures retried hourly, e-mailed, red alert).
+         * Doba keeps its own rule (−25%) and, like in Push All, is never pushed.
          */
-        function pushSavedRows(rows, applySiblings) {
-            const sku = String(getModalPrimarySku() || '');
-            const targets = [];
-            rows.forEach(function($tr) {
-                const $pb = $tr.find('.push-price-btn');
-                if (!$pb.length || $pb.prop('disabled')) return;
-                const mp = String($pb.data('marketplace') || $tr.attr('data-marketplace') || '');
-                if (isDobaNoPush(mp)) return; // Doba: saved only, never pushed here
-                const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
-                if (price == null || !sku || !mp || sku.toUpperCase() === 'NOT LISTED') return;
-                targets.push({ sku: sku, marketplace: mp, price: price, $btn: $pb, $tr: $tr, applySiblings: applySiblings ? 1 : 0 });
-            });
-            if (!targets.length) {
-                showToast('Saved. No channel here supports push.', 'success');
-                return;
-            }
-            targets.forEach(function(t) {
-                t.$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            });
-            let idx = 0;
-            const okResults = [];
-            const errors = [];
-            const savedOnly = [];
-            (function next() {
-                if (idx >= targets.length) {
-                    const prefix = $('#ovl30DetailsModal').hasClass('show') ? '' : (sku + ': ');
-                    const real = okResults.length - savedOnly.length;
-                    showToast(prefix + 'Pushed ' + real + '/' + targets.length + ' channel(s)'
-                        + (savedOnly.length ? ('. Saved only (no API): ' + savedOnly.join(', ')) : '')
-                        + (errors.length ? ('. Failed: ' + errors.join(' | ')) : ''),
-                        okResults.length && !errors.length ? 'success' : 'error');
-                    reloadOvl30ModalAfterPush(okResults);
-                    targets.forEach(function(t) {
-                        if (!t.$btn.hasClass('btn-success')) {
-                            t.$btn.prop('disabled', false).html('<i class="fas fa-upload"></i>')
-                                .removeClass('btn-success').addClass('btn-primary');
-                        }
-                    });
-                    return;
-                }
-                const t = targets[idx++];
-                pushOvl30PriceToMarketplace(t).then(function(result) {
-                    if (result.ok) {
-                        okResults.push(result);
-                        if (result.savedOnly) savedOnly.push(String(t.marketplace));
-                    } else {
-                        errors.push(String(t.marketplace) + ' — ' + String(result.message || 'failed').slice(0, 120));
-                    }
-                    next();
-                });
-            })();
-        }
-
-        // From STD: Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
             let samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -9193,96 +9160,50 @@
                 $('#modal-std-sp-input').focus();
                 return;
             }
-            const $rows = collectModalTargetRows({
-                alwaysIncludeDoba: true,
-                alwaysIncludeStdRuleChannels: true,
-                includeAllEditableWhenNoneSelected: true
-            });
-            if (!$rows.length) {
-                showToast('No editable SPRICE rows', 'error');
+            const sku = String(getModalPrimarySku() || '');
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') {
+                showToast('No SKU selected', 'error');
                 return;
             }
-
+            if ((chpushRunning[sku] || 0) > 0) {
+                showToast('A push for ' + sku + ' is still running', 'error');
+                return;
+            }
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
-            const reducedPrice = sprice25OffFromBase(basePrice); // Doba always −25%
-            const shipHint = getModalSharedProductShip();
-            const withSiblings = isModalSiblingsApply();
 
-            function runSame() {
-                // No confirm dialog: the ✓ applies, saves and pushes straight away
+            function runPushAll() {
+                // Previewed values were never saved: put the saved SPRICEs back so the Channels boxes start from real data
+                samePricePv.restore();
+                bulkSpritePv.restore();
 
-                samePricePv.clear(); // previewed values are being saved now — do not restore them
-                bulkSpritePv.clear();
-                const $btn = $('#modal-apply-sprice-same-btn');
-                const origHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-                let doneCount = 0;
-                let okCount = 0;
-                let siblingsOk = 0;
-
-                const savedRows = []; // rows whose SPRICE saved OK → pushed next
-                function finishIfDone() {
-                    if (doneCount !== $rows.length) return;
-                    $btn.prop('disabled', false).html(origHtml);
-                    showToast(
-                        okCount
-                            ? ('SPRICE applied to ' + okCount + ' channel(s)'
-                                + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
-                                + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Pushing…')
-                            : 'Failed to save SPRICE',
-                        okCount ? 'success' : 'error'
-                    );
-                    if (okCount) pushSavedRows(savedRows, withSiblings);
-                }
-
-                $rows.forEach(function($tr) {
-                    const mp = String($tr.attr('data-marketplace') || '');
-                    const newPrice = adjustAppliedSpriceForChannel(basePrice, $tr);
-                    const $input = $tr.find('.editable-sprice');
-                    const lp = parseFloat($tr.attr('data-lp')) || 0;
-                    const ship = parseFloat($tr.attr('data-ship')) || 0;
-                    const margin = parseFloat($tr.attr('data-margin')) || 0.80;
-                    const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
-                    const temuSugApply = isTemuMp ? temuSuggestedPercents(newPrice, margin, lp, ship, 0, String(mp).toLowerCase() === 'temu2') : null;
-                    const sgpft = newPrice > 0
-                        ? (isTemuMp ? temuSugApply.sgpft : ((newPrice * margin - ship - lp) / newPrice) * 100)
-                        : 0;
-                    const sroi = isTemuMp
-                        ? temuSugApply.sroi
-                        : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
-                    const metrics = { sgpft: sgpft, spft: isTemuMp ? temuSugApply.spft : sgpft, sroi: sroi, margin: margin };
-
-                    $input.val(newPrice.toFixed(2)).trigger('input');
-                    saveModalSpriceForRow($tr, newPrice, function(ok) {
-                        if (ok) {
-                            okCount++;
-                            savedRows.push($tr);
-                            ovl30ModalData.forEach(function(item) {
-                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
-                            });
-                        }
-
-                        if (ok && withSiblings && modalSiblingSkus.length) {
-                            applySpriceToSiblingSkus(mp, newPrice, metrics, function(sibOk) {
-                                siblingsOk = Math.max(siblingsOk, sibOk || 0);
-                                doneCount++;
-                                finishIfDone();
-                            });
-                        } else {
-                            doneCount++;
-                            finishIfDone();
-                        }
-                    }, { applySiblings: false });
+                // Fill every Channels box from the typed price (same rules as the Channels modal) — modal itself stays closed
+                chpushSameBase = { sku: sku, x: basePrice, applied: false };
+                renderChannelsPushModal();
+                $('#chpush-body tr[data-channel]').each(function() {
+                    if (chpushKey($(this).attr('data-channel')) === 'doba') {
+                        $(this).find('.chpush-input').val(sprice25OffFromBase(basePrice).toFixed(2)); // Doba always −25%
+                    }
                 });
+
+                // From here on: identical to the Push All button
+                const targets = chpushCollectTargets($('#chpush-body'));
+                if (!targets.length) {
+                    showToast('No channels have a pushable suggested price (> 0)', 'error');
+                    return;
+                }
+                if (!confirm('Push to ' + targets.length + ' channel(s)' + siblingsApplyLabel() + '?\n\n'
+                    + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
+                    return;
+                }
+                chpushStartJob(targets, {});
             }
 
-            if (withSiblings) {
-                const sku = getModalPrimarySku();
+            // Refresh the sibling list first so INV 0 siblings are included when "apply to siblings" is on
+            if (isModalSiblingsApply()) {
                 refreshModalSiblingSkus(sku);
-                setTimeout(runSame, 350);
+                setTimeout(runPushAll, 350);
             } else {
-                runSame();
+                runPushAll();
             }
         }
 

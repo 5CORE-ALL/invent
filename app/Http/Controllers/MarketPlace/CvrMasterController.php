@@ -3269,6 +3269,12 @@ class CvrMasterController extends Controller
                         ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->avg('listing_quality_score'), 1) : null,
                     'is_parent_summary' => true,
                     'push_history_count' => 0,
+                    // Hist dot on the parent: set only when EVERY child has push history; date = the oldest child's newest push
+                    'push_history_children' => $rows->count(),
+                    'push_history_children_done' => $rows->filter(fn ($r) => !empty($r->push_history_last_at))->count(),
+                    'push_history_oldest_at' => ($rows->count() > 0 && $rows->every(fn ($r) => !empty($r->push_history_last_at)))
+                        ? $rows->pluck('push_history_last_at')->min()
+                        : null,
                     'label' => null,
                     'label_qty' => null,
                     'wt_act' => null,
