@@ -329,6 +329,17 @@
         }
         .faq-dept-item:hover { background: #eef5ff; }
         .faq-dept-item input, .faq-dept-card-title input { margin: 0; flex-shrink: 0; }
+        .faq-dept-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        .faq-dept-chip {
+            cursor: pointer; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 999px;
+            font-size: 0.68rem; font-weight: 600; padding: 3px 9px; transition: background .12s ease, color .12s ease;
+        }
+        .faq-dept-chip b { margin-left: 3px; padding: 0 6px; border-radius: 999px; background: #4f46e5; color: #fff; font-weight: 700; }
+        .faq-dept-chip.is-zero b { background: #cbd5e1; color: #475569; }
+        .faq-dept-chip:hover { background: #e0e7ff; }
+        .faq-dept-chip.is-active { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border-color: transparent; }
+        .faq-dept-chip.is-active b { background: #fff; color: #4f46e5; }
+        .faq-dept-chip-all { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
         .faq-dept-item .faq-dept-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
         .faq-dept-count {
             flex-shrink: 0; min-width: 24px; padding: 0 7px; border-radius: 999px; text-align: center;
@@ -372,6 +383,14 @@
                 <input type="text" id="faqFilterFaq" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="faq" placeholder="Search FAQ/FFP/Issues...">
                 <input type="text" id="faqFilterAnswers" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="answers" placeholder="Search Answer/Solutions...">
             </div>
+            {{-- Department counts as real .badge pills (Auto Task Events reads these as its "Badges") --}}
+            <div class="faq-dept-strip" id="faqDeptStrip" title="FAQs per department (click to filter)">
+                <span class="badge faq-dept-chip faq-dept-chip-all" id="faqDeptBadgeAll" role="button">All FAQs <b id="faqDeptStripTotal">0</b></span>
+                @foreach ($departments as $dept)
+                    <span class="badge faq-dept-chip" id="faqDeptBadge_{{ $dept->id }}" data-dept-id="{{ $dept->id }}" role="button">{{ $dept->name }} <b data-dept-count="{{ $dept->id }}">0</b></span>
+                @endforeach
+            </div>
+
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 w-100">
                 {{-- Dept filter: wide panel with quick search + multi-column list --}}
                 <div class="dropdown" style="flex-shrink: 0;">
@@ -390,15 +409,13 @@
                             <label class="faq-dept-card-title">
                                 <input class="form-check-input" type="checkbox" id="faqDeptFilterAll" checked>
                                 <span>All departments</span>
-                                <span class="faq-dept-count faq-dept-count-all ms-auto" id="faqDeptCountAll" title="FAQs matching the current search">0</span>
-                                <small id="faqDeptCountSmall" class="text-muted"></small>
+                                <small id="faqDeptCountSmall" class="ms-auto text-muted"></small>
                             </label>
                             <div class="faq-dept-list">
                         @foreach ($departments as $dept)
                                     <label class="faq-dept-item" data-name="{{ strtolower($dept->name) }}" for="faqDeptFilter_{{ $dept->id }}">
                                 <input class="form-check-input faq-dept-filter" type="checkbox" value="{{ $dept->id }}" id="faqDeptFilter_{{ $dept->id }}">
                                         <span class="faq-dept-name">{{ $dept->name }}</span>
-                                        <span class="faq-dept-count" data-dept-count="{{ $dept->id }}" title="FAQs tagged with this department">0</span>
                                     </label>
                         @endforeach
                                 <div class="faq-dept-none text-muted" style="display:none;">No department found</div>
@@ -1157,9 +1174,9 @@
                 if (!list) return;
                 var countEl = document.getElementById('faqGuruHistoryCount');
                 if (countEl) countEl.textContent = hist.length ? hist.length + (hist.length === 1 ? ' entry' : ' entries') : '';
-                if (!hist.length) {
+                    if (!hist.length) {
                     list.innerHTML = '<div class="fh-empty"><i class="ri-inbox-line"></i><div>No history recorded.</div></div>';
-                } else {
+                    } else {
                     list.innerHTML = hist.map(function(h) {
                         var email = h.email || '\u2014';
                         var name = h.name || (h.email ? String(h.email).split('@')[0] : '\u2014');
@@ -1179,8 +1196,8 @@
                                 '</div>' +
                             '</div>' +
                         '</div>';
-                    }).join('');
-                }
+                        }).join('');
+                    }
                 new bootstrap.Modal(document.getElementById('faqGuruHistoryModal')).show();
             }
 
@@ -1339,7 +1356,7 @@
                     }
                 }),
                 col({
-                    title: 'Guru', label: 'Guru', field: '_guru', width: 64, minWidth: 54,
+                    title: 'User', label: 'User', field: '_guru', width: 72, minWidth: 60,
                     headerTooltip: 'Add/Edit history', sorter: guruSorter, download: false,
                     formatter: function(cell) {
                         var d = rowData(cell);
@@ -1422,11 +1439,15 @@
                     total++;
                     (d.dept || []).forEach(function(id) { counts[id] = (counts[id] || 0) + 1; });
                 });
-                document.querySelectorAll('#faqDeptPanel [data-dept-count]').forEach(function(el) {
+                document.querySelectorAll('[data-dept-count]').forEach(function(el) {
                     var n = counts[el.getAttribute('data-dept-count')] || 0;
                     el.textContent = n;
                     el.classList.toggle('is-zero', n === 0);
+                    var chip = el.closest('.faq-dept-chip');
+                    if (chip) chip.classList.toggle('is-zero', n === 0);
                 });
+                var stripTotal = document.getElementById('faqDeptStripTotal');
+                if (stripTotal) stripTotal.textContent = total;
                 var all = document.getElementById('faqDeptCountAll');
                 if (all) all.textContent = total;
             }
@@ -1469,7 +1490,11 @@
                 deptFilterBoxes.forEach(function(cb) {
                     var item = cb.closest('.faq-dept-item');
                     if (item) item.classList.toggle('is-checked', cb.checked);
+                    var chip = document.getElementById('faqDeptBadge_' + cb.value);
+                    if (chip) chip.classList.toggle('is-active', cb.checked);
                 });
+                var chipAll = document.getElementById('faqDeptBadgeAll');
+                if (chipAll) chipAll.classList.toggle('is-active', sel.length === 0);
                 if (!tableReady) return;
                 table.setFilter(rowFilter);
                 if (changed) reformatRows();
@@ -1495,6 +1520,23 @@
                     if (e.key === 'Escape') { inp.value = ''; applyFilters(); }
                 });
             });
+
+            // Dept chips under the search row: click to toggle that department in the filter.
+            var deptStrip = document.getElementById('faqDeptStrip');
+            if (deptStrip) {
+                deptStrip.addEventListener('click', function(e) {
+                    var chip = e.target.closest('.faq-dept-chip');
+                    if (!chip) return;
+                    if (chip.id === 'faqDeptBadgeAll') {
+                        deptFilterBoxes.forEach(function(cb) { cb.checked = false; });
+                    } else {
+                        var cb = document.getElementById('faqDeptFilter_' + chip.getAttribute('data-dept-id'));
+                        if (cb) cb.checked = !cb.checked;
+                    }
+                    if (deptFilterAll) deptFilterAll.checked = selectedDepts().length === 0;
+                    applyFilters();
+                });
+            }
 
             // Dept panel: quick search, Clear, Save & Close
             var deptSearch = document.getElementById('faqDeptSearch');

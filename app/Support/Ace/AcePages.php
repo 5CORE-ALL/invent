@@ -347,7 +347,7 @@ class AcePages
             $row['__id'] = strlen($id) > 48 ? substr($id, 0, 40).'~'.dechex(crc32($id)) : $id;
             // what people recognise the row by (e.g. the channel name rather than its numeric id)
             $label = $id;
-            foreach (['(Child) sku', 'sku', 'SKU', 'Sku', 'channel', 'Channel', 'name', 'Name', 'title', 'Title', 'Parent', 'parent'] as $cand) {
+            foreach (['(Child) sku', 'sku', 'SKU', 'Sku', 'channel', 'Channel', 'name', 'Name', 'title', 'Title', 'Parent', 'parent', 'faq'] as $cand) {
                 if (isset($row[$cand]) && trim((string) $row[$cand]) !== '') {
                     $label = trim((string) $row[$cand]);
                     break;

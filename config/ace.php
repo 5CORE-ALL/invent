@@ -71,6 +71,9 @@ return [
         'market-places.wayfair_pricing_view' => [],
         'market-places.zero-market-places.bestbuyUSAAnalytics' => ['url' => '/zero_bestbuyusa/view-data'],
 
+        // ---- Help Desk ----
+        'help-desk-faqs.index' => ['route' => 'help-desk-faqs.data'],
+
         // ---- Active Channels pages ----
         'market-places.variations_verify_masters' => [],
         'channels.api_vs_sheet.tabulator' => ['route' => 'api.vs.sheet.tabulator.data'],
