@@ -7,7 +7,15 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\Ebay2Metric;
+use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
+use App\Models\Temu2Metric;
+use App\Models\Temu2Pricing;
+use App\Models\Temu3Metric;
+use App\Models\Temu3Pricing;
+use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
+use App\Services\TikTokShopService;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
@@ -138,7 +146,9 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
-            $rows = $this->persistSuggestedCatalog()['rows'];
+            $rows = $this->attachMarketplaceIds(
+                $this->attachMarketplacePrices($this->persistSuggestedCatalog()['rows'])
+            );
 
             return response()->json(array_merge($rows, $this->parentSummaryRows($rows)));
         } catch (\Exception $e) {
@@ -146,6 +156,232 @@ class NewTemuoneController extends Controller
 
             return response()->json(['error' => 'Failed to fetch data'], 500);
         }
+    }
+
+    /**
+     * Listing / product id of each SKU on the other marketplaces: amz_pid (ASIN), ebay1/2/3_pid (item id),
+     * tiktok1/2_pid (product id), temu2/3_pid (goods id), shein_pid (SPU, else SKU code).
+     * When the marketplace holds an id on the PARENT row ("PARENT <parent>"), that id is used on every SKU
+     * of the parent; otherwise the SKU's own id. Empty string when there is none. Page-only.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachMarketplaceIds(array $rows): array
+    {
+        $key = static fn ($sku) => preg_replace('/\s+/u', '', strtoupper(str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $sku))));
+
+        // sku => id for one table. First non-empty id per SKU wins.
+        $load = function (string $table, string $model, string $idCol, ?string $fallbackCol = null) use ($key): array {
+            $map = [];
+            if (! $this->hasTable($table)) {
+                return $map;
+            }
+            try {
+                $cols = array_values(array_filter(['sku', $idCol, $fallbackCol]));
+                foreach ($model::query()->whereNotNull('sku')->get($cols) as $item) {
+                    $k = $key($item->sku);
+                    $id = trim((string) ($item->{$idCol} ?? ''));
+                    if ($id === '' && $fallbackCol) {
+                        $id = trim((string) ($item->{$fallbackCol} ?? ''));
+                    }
+                    if ($k !== '' && $id !== '' && ! isset($map[$k])) {
+                        $map[$k] = $id;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One id lookup failed ('.$table.'): '.$e->getMessage());
+            }
+
+            return $map;
+        };
+
+        // Temu 2 / 3: goods id on the API metrics, else on the uploaded price sheet.
+        $temuIds = function (string $table, string $model, string $sheetTable, string $sheetModel) use ($load): array {
+            $map = $load($table, $model, 'goods_id');
+            foreach ($load($sheetTable, $sheetModel, 'goods_id') as $k => $id) {
+                $map[$k] ??= $id;
+            }
+
+            return $map;
+        };
+
+        $maps = [
+            'amz_pid' => $load('amazon_datsheets', AmazonDatasheet::class, 'asin'),
+            'ebay1_pid' => $load('ebay_metrics', EbayMetric::class, 'item_id'),
+            'ebay2_pid' => $load('ebay_2_metrics', Ebay2Metric::class, 'item_id'),
+            'ebay3_pid' => $load('ebay_3_metrics', Ebay3Metric::class, 'item_id'),
+            'tiktok1_pid' => $load('tiktok_products', TikTokProduct::class, 'product_id'),
+            'tiktok2_pid' => $load('tiktok_products_two', TikTokProductTwo::class, 'product_id'),
+            'temu2_pid' => $temuIds('temu2_metrics', Temu2Metric::class, 'temu2_pricing', Temu2Pricing::class),
+            'temu3_pid' => $temuIds('temu3_metrics', Temu3Metric::class, 'temu3_pricing', Temu3Pricing::class),
+            'shein_pid' => $load('shein_metrics', \App\Models\SheinMetric::class, 'spu_name', 'shein_sku_code'),
+        ];
+
+        foreach ($rows as &$r) {
+            $parent = preg_replace('/^PARENT\s+/i', '', trim((string) ($r['Parent'] ?? $r['parent'] ?? '')));
+            $parentKey = $parent !== '' ? $key('PARENT '.$parent) : '';
+            $skuKey = $key($r['sku'] ?? '');
+            foreach ($maps as $field => $map) {
+                $r[$field] = (string) (($parentKey !== '' ? ($map[$parentKey] ?? null) : null) ?? ($map[$skuKey] ?? ''));
+            }
+        }
+        unset($r);
+
+        return $rows;
+    }
+
+    /**
+     * Live price of the same SKU on the other marketplaces, as each marketplace's own page shows it:
+     * amz_prc (amazon_datsheets), ebay1/2/3_prc (ebay_metrics / ebay_2_metrics / ebay_3_metrics), shein_prc (shein_pricing_prices),
+     * tiktok1/2_prc (tiktok_products / tiktok_products_two), temu2_prc (/new-temu2 Price) and
+     * temu3_prc (/temu3-decrease Price). 0 when the SKU has no price there. Page-only: pushes never see these.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachMarketplacePrices(array $rows): array
+    {
+        $normalizeSku = static fn ($sku) => TemuShopifySalesService::normalizeTemuSku((string) $sku);
+        $plainSku = static function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+
+            return preg_replace('/\s+/', ' ', $sku);
+        };
+        $skus = [];
+        foreach ($rows as $r) {
+            $s = trim((string) ($r['sku'] ?? ''));
+            if ($s !== '') {
+                $skus[$s] = true;
+            }
+        }
+        $skus = array_keys($skus);
+
+        // eBay 3 — ebay_3_metrics.ebay_price (eBay 1 / 2 already come with the row).
+        $ebay3 = [];
+        if ($this->hasTable('ebay_3_metrics')) {
+            try {
+                foreach (array_chunk($skus, 500) as $chunk) {
+                    $ebay3 += $this->buildPriceLookup(
+                        Ebay3Metric::whereIn('sku', $chunk)->get(['sku', 'ebay_price']),
+                        $plainSku,
+                        static fn ($row) => is_numeric($row->ebay_price ?? null) ? (float) $row->ebay_price : null
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One eBay 3 price lookup failed: '.$e->getMessage());
+            }
+        }
+
+        // Shein — shein_pricing_prices.special_offer_price (the price /shein-pricing uses for every calculation).
+        $sheinKey = static function ($sku) {
+            $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $sku));
+            $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+            return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
+        };
+        $shein = [];
+        if ($this->hasTable('shein_pricing_prices')) {
+            try {
+                foreach (\App\Models\SheinPricingPrice::query()->get(['sku', 'special_offer_price']) as $item) {
+                    $key = $sheinKey($item->sku);
+                    $price = round((float) ($item->special_offer_price ?? 0), 2);
+                    if ($key !== '' && $price > 0 && ! isset($shein[$key])) {
+                        $shein[$key] = $price;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One Shein price lookup failed: '.$e->getMessage());
+            }
+        }
+
+        // TikTok 1 / 2 — one price per SKU, live listing first. Seller SKUs can hold NBSP, so match on the normalized key.
+        $tiktokKey = static fn ($sku) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+        $tiktokPrices = function (string $table, string $model) use ($tiktokKey): array {
+            $out = [];
+            if (! $this->hasTable($table)) {
+                return $out;
+            }
+            try {
+                $live = [];
+                foreach ($model::query()->get(['sku', 'price', 'listing_status']) as $item) {
+                    $key = $tiktokKey($item->sku);
+                    $price = round((float) ($item->price ?? 0), 2);
+                    if ($key === '' || ! ($price > 0)) {
+                        continue;
+                    }
+                    $isLive = TikTokShopService::isLiveListingStatus($item->listing_status ?? '');
+                    if (! isset($out[$key]) || ($isLive && empty($live[$key]))) {
+                        $out[$key] = $price;
+                        $live[$key] = $isLive;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One TikTok price lookup failed ('.$table.'): '.$e->getMessage());
+            }
+
+            return $out;
+        };
+        $tiktok1 = $tiktokPrices('tiktok_products', TikTokProduct::class);
+        $tiktok2 = $tiktokPrices('tiktok_products_two', TikTokProductTwo::class);
+
+        // Temu 2 — /new-temu2: price sheet base wins over the API base. Temu 3 — /temu3-decrease: API base wins, sheet fills gaps.
+        $baseBySku = static function (string $metricTable, string $metricModel, string $sheetTable, string $sheetModel, bool $sheetWins) use ($normalizeSku): array {
+            $bases = [];
+            try {
+                if (Schema::hasTable($metricTable)) {
+                    foreach ($metricModel::query()->get(['sku', 'base_price']) as $m) {
+                        $k = $normalizeSku($m->sku);
+                        $b = (float) ($m->base_price ?? 0);
+                        if ($k !== '' && (! isset($bases[$k]) || ($b > 0 && $bases[$k] <= 0))) {
+                            $bases[$k] = $b;
+                        }
+                    }
+                }
+                if (Schema::hasTable($sheetTable)) {
+                    $seen = [];
+                    foreach ($sheetModel::query()->get(['sku', 'base_price']) as $s) {
+                        $k = $normalizeSku($s->sku);
+                        $b = ($s->base_price !== null && $s->base_price !== '') ? (float) $s->base_price : 0.0;
+                        if ($k === '' || isset($seen[$k]) || ! ($b > 0)) {
+                            continue;
+                        }
+                        $seen[$k] = true;
+                        if ($sheetWins || ! (($bases[$k] ?? 0) > 0)) {
+                            $bases[$k] = $b;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One '.$metricTable.' price lookup failed: '.$e->getMessage());
+            }
+
+            return $bases;
+        };
+        $temu2Bases = $this->hasTable('temu2_metrics') || $this->hasTable('temu2_pricing')
+            ? $baseBySku('temu2_metrics', Temu2Metric::class, 'temu2_pricing', Temu2Pricing::class, true) : [];
+        $temu3Bases = $this->hasTable('temu3_metrics') || $this->hasTable('temu3_pricing')
+            ? $baseBySku('temu3_metrics', Temu3Metric::class, 'temu3_pricing', Temu3Pricing::class, false) : [];
+
+        foreach ($rows as &$r) {
+            $sku = trim((string) ($r['sku'] ?? ''));
+            $r['amz_prc'] = (float) ($r['a_price'] ?? 0);
+            $r['ebay1_prc'] = (float) ($r['e_price'] ?? 0);
+            $r['ebay2_prc'] = (float) ($r['e2_price'] ?? 0);
+            $r['ebay3_prc'] = $this->lookupMappedPrice($ebay3, $sku, $plainSku);
+            $r['shein_prc'] = (float) ($shein[$sheinKey($sku)] ?? 0);
+            $r['tiktok1_prc'] = (float) ($tiktok1[$tiktokKey($sku)] ?? 0);
+            $r['tiktok2_prc'] = (float) ($tiktok2[$tiktokKey($sku)] ?? 0);
+            $nk = $normalizeSku($sku);
+            $b2 = (float) ($temu2Bases[$nk] ?? 0);
+            $b3 = (float) ($temu3Bases[$nk] ?? 0);
+            $r['temu2_prc'] = $b2 > 0 ? round(TemuShopifySalesService::computeFullTemuPrice($b2), 2) : 0.0;
+            $r['temu3_prc'] = $b3 > 0 ? TemuShopifySalesService::newTemuonePriceFromBase($b3) : 0.0;
+        }
+        unset($r);
+
+        return $rows;
     }
 
     /**

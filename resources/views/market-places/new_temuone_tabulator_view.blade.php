@@ -3414,7 +3414,7 @@
             return 'advertisement';
         }
         if (
-            /^(_select|image_path|parent|\(child\) sku|links_column|red_alert|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /^(_select|image_path|parent|\(child\) sku|links_column|red_alert|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) || /_pid$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
@@ -3655,6 +3655,83 @@
         const skuA = String((a && (a['(Child) sku'] || a.sku)) || '');
         const skuB = String((b && (b['(Child) sku'] || b.sku)) || '');
         return temuSkuCollator.compare(skuA, skuB);
+    }
+
+    // Live price of the same SKU on the other marketplaces (server: NewTemuoneController::attachMarketplacePrices),
+    // shown exactly as each marketplace's own page shows its current price.
+    function ntoMarketPrcColumns() {
+        return [
+            ['amz_prc', 'Amz Prc', 'Amazon'],
+            ['ebay1_prc', 'eBay 1 Prc', 'eBay 1'],
+            ['ebay2_prc', 'eBay 2 Prc', 'eBay 2'],
+            ['ebay3_prc', 'eBay 3 Prc', 'eBay 3'],
+            ['shein_prc', 'Shein Prc', 'Shein'],
+            ['tiktok1_prc', 'TikTok 1 Prc', 'TikTok 1'],
+            ['tiktok2_prc', 'TikTok 2 Prc', 'TikTok 2'],
+            ['temu2_prc', 'Temu 2 Prc', 'Temu 2'],
+            ['temu3_prc', 'Temu 3 Prc', 'Temu 3']
+        ].map(function(def) {
+            return {
+                title: def[1],
+                field: def[0],
+                hozAlign: 'center',
+                width: 82,
+                sorter: 'number',
+                headerTooltip: 'Current ' + def[2] + ' price of this SKU (same value as the ' + def[2] + ' page). Blank when the SKU has no price there.',
+                formatter: function(cell) {
+                    const row = cell.getRow().getData() || {};
+                    if (row.is_parent_summary) return '';
+                    const v = parseFloat(cell.getValue());
+                    if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                    return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>';
+                }
+            };
+        });
+    }
+
+    // Listing / product id of the SKU on the other marketplaces (server: NewTemuoneController::attachMarketplaceIds).
+    // A parent-level id is already put on every SKU of that parent; the PARENT row shows its first SKU's id.
+    function ntoMarketIdColumns() {
+        return [
+            ['amz_pid', 'Amz ID', 'Amazon ASIN'],
+            ['ebay1_pid', 'eBay 1 ID', 'eBay 1 item ID'],
+            ['ebay2_pid', 'eBay 2 ID', 'eBay 2 item ID'],
+            ['ebay3_pid', 'eBay 3 ID', 'eBay 3 item ID'],
+            ['shein_pid', 'Shein ID', 'Shein product (SPU) ID'],
+            ['tiktok1_pid', 'TikTok 1 ID', 'TikTok 1 product ID'],
+            ['tiktok2_pid', 'TikTok 2 ID', 'TikTok 2 product ID'],
+            ['temu2_pid', 'Temu 2 ID', 'Temu 2 goods ID'],
+            ['temu3_pid', 'Temu 3 ID', 'Temu 3 goods ID']
+        ].map(function(def) {
+            const field = def[0];
+            const valueOf = function(row) {
+                row = row || {};
+                if (row.is_parent_summary) {
+                    const first = ntoParentFirstChild.get(String(row.Parent || row.parent || '').trim());
+                    return String((first && first[field]) || '').trim();
+                }
+                return String(row[field] || '').trim();
+            };
+            return {
+                title: def[1],
+                field: field,
+                hozAlign: 'center',
+                width: 110,
+                headerSort: true,
+                sorter: 'string',
+                sorterParams: { alignEmptyValues: 'bottom' },
+                headerFilter: 'input',
+                headerFilterPlaceholder: 'Search...',
+                headerTooltip: def[2] + ' of this SKU. A parent-level ID is used on every SKU of that parent.',
+                accessorDownload: function(value, data) { return valueOf(data); },
+                formatter: function(cell) {
+                    const v = valueOf(cell.getRow().getData());
+                    if (!v) return '<span style="color: #6c757d;">—</span>';
+                    const esc = v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    return '<span title="' + esc + '" style="font-size:11.5px;">' + esc + '</span>';
+                }
+            };
+        });
     }
 
     $(document).ready(function() {
@@ -3996,6 +4073,8 @@
                             + redTri + purpleTri;
                     }
                 },
+                ...ntoMarketPrcColumns(),
+                ...ntoMarketIdColumns(),
                 {
                     title: '12% $',
                     field: 'temu_price_12',
