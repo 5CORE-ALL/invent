@@ -8388,6 +8388,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('users.add');
 
+    Route::get('/org-mails', [\App\Http\Controllers\OrgMailsController::class, 'index'])
+        ->middleware('auth')
+        ->name('org.mails');
+    Route::get('/org-mails/data', [\App\Http\Controllers\OrgMailsController::class, 'data'])
+        ->middleware('auth')
+        ->name('org.mails.data');
+
     Route::get('/indeed', [IndeedController::class, 'index'])
         ->middleware('auth')
         ->name('indeed');

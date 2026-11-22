@@ -128,7 +128,7 @@
                             <span class="tiktok-stat-badge tiktok-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="tiktok-lvv-badge-children">0</span></span>
                             <span class="tiktok-stat-badge tiktok-stat-badge--listed" title="Live TikTok 1 listings (SKUs on active TikTok products)">LISTED:<span id="tiktok-lvv-badge-listed">0</span></span>
                             <span class="tiktok-stat-badge tiktok-stat-badge--mismatch" id="tiktok-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="tiktok-lvv-badge-mismatch">0</span></span>
-                            <span class="tiktok-stat-badge tiktok-stat-badge--mismatch-inv" id="tiktok-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents where a missing SKU has Shopify INV &gt; 0 (stock we are not selling on TikTok 1)">MISMATCH INV&gt;0:<span id="tiktok-lvv-badge-mismatch-inv">0</span></span>
+                            <span class="tiktok-stat-badge tiktok-stat-badge--mismatch-inv" id="tiktok-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: parents with a SKU missing from TikTok 1 that has Shopify stock (INV &gt; 0). This is listing coverage, not the Shopify vs TikTok stock check on /map-issues.">MISSING INV&gt;0:<span id="tiktok-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="tiktok-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="tiktok-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -151,7 +151,7 @@
                                 <select id="tiktok-lvv-listed-filter" class="form-select form-select-sm tiktok-lvv-filter-select">
                                     <option value="all">All</option>
                                     <option value="mismatch" selected>Mismatch Only</option>
-                                    <option value="mismatch_inv">Mismatch INV&gt;0</option>
+                                    <option value="mismatch_inv">Missing INV&gt;0</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
@@ -450,7 +450,7 @@
                         sorter: 'number',
                         width: 90,
                         minWidth: 80,
-                        headerTooltip: 'Shopify INV of the SKUs that are missing from TikTok 1',
+                        headerTooltip: 'Shopify INV of the SKUs that are missing from TikTok 1 (not listed). Not the Shopify vs TikTok stock check on /map-issues.',
                         formatter: function (cell) {
                             const value = parseFloat(cell.getValue());
                             if (!isFinite(value) || value <= 0) return tiktokLvvDash(null);

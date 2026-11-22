@@ -3504,7 +3504,8 @@
                     || request()->routeIs('attendance.summary*')
                     || request()->routeIs('attendance.payroll*')
                     || request()->routeIs('attendance.agent')
-                    || request()->routeIs('indeed');
+                    || request()->routeIs('indeed')
+                    || request()->routeIs('org.mails');
             @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages1" aria-expanded="{{ $userMenuActive ? 'true' : 'false' }}" aria-controls="sidebarPages1"
@@ -3520,6 +3521,9 @@
                         </li>
                         <li>
                             <a href="{{ route('users.add') }}" class="{{ request()->routeIs('users.add') ? 'active' : '' }}">Add User</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('org.mails') }}" class="{{ request()->routeIs('org.mails') ? 'active' : '' }}">Org Mails</a>
                         </li>
                         @can('user.settings.manage')
                         <li>
