@@ -4375,6 +4375,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     // Same push, but remembers the result: failed pushes are retried hourly, e-mailed and shown as a red alert on /price-increase
     Route::post('/price-push-tracked', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'push'])->name('price.push.tracked');
+    // Several channels pushed on the server in the background (keeps going after a page refresh) + its progress
+    Route::post('/price-push-background', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'pushBackground'])->name('price.push.background');
+    Route::get('/price-push-status', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'status'])->name('price.push.status');
     Route::get('/price-push-pending', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'index'])->name('price.push.pending');
     Route::post('/price-push-pending/retry', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'retry'])->name('price.push.pending.retry');
     Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');

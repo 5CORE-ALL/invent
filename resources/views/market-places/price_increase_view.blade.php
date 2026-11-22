@@ -9488,14 +9488,14 @@
             });
         }
 
-        function pushOvl30PriceToMarketplace(target) {
+        /**
+         * The exact request body of one channel push (Temu base conversion, Doba self-pick, Temu ids, siblings …).
+         * Returns { skip: 'why' } when it must not be pushed, else { payload, pushPrice }.
+         */
+        function ovl30BuildPushPayload(target) {
             const price = parseOvl30PushPrice(target && target.price);
             if (price == null) {
-                return $.Deferred().resolve({
-                    ok: false,
-                    marketplace: target && target.marketplace,
-                    message: 'Skipped — price is 0 or empty'
-                }).promise();
+                return { skip: 'Skipped — price is 0 or empty' };
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
@@ -9505,11 +9505,7 @@
             if (mpLower === 'temu' || mpLower === 'temu2' || mpKeyNoSpace === 'temu3') {
                 const converted = temuPushBaseFromSprice(price);
                 if (converted == null) {
-                    return $.Deferred().resolve({
-                        ok: false,
-                        marketplace: target.marketplace,
-                        message: 'Skipped — ' + (mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base'
-                    }).promise();
+                    return { skip: 'Skipped — ' + (mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base' };
                 }
                 pushPrice = converted;
                 target.price = converted;
@@ -9521,8 +9517,7 @@
                 // Background jobs snapshot the siblings toggle when they start (target.applySiblings)
                 apply_siblings: (target.applySiblings !== undefined)
                     ? (target.applySiblings && pushPrice > 0 ? 1 : 0)
-                    : siblingsApplyPayload(pushPrice),
-                _token: '{{ csrf_token() }}'
+                    : siblingsApplyPayload(pushPrice)
             };
             // Doba: Self Pick = SPRICE − Ship (same as /doba-tabulator)
             if (mpLower === 'doba' && target.$tr && target.$tr.length) {
@@ -9531,12 +9526,106 @@
             }
             // Temu / Temu2: pass goods_id / sku_id when available
             if ((mpLower === 'temu' || mpLower === 'temu2') && target.$tr && target.$tr.length) {
-                const goodsId = target.$tr.attr('data-goods-id') || target.$btn.data('goods-id') || '';
-                const skuId = target.$tr.attr('data-sku-id') || target.$btn.data('sku-id') || '';
+                const goodsId = target.$tr.attr('data-goods-id') || (target.$btn && target.$btn.data('goods-id')) || '';
+                const skuId = target.$tr.attr('data-sku-id') || (target.$btn && target.$btn.data('sku-id')) || '';
                 if (goodsId) payload.goods_id = goodsId;
                 if (skuId) payload.sku_id = skuId;
             }
             payload.channel = String(target.channel || target.marketplace || '');
+            return { payload: payload, pushPrice: pushPrice };
+        }
+
+        /**
+         * Push targets on the SERVER in the background (POST /price-push-background): the pushes keep running when this
+         * page is refreshed or closed. This page only polls /price-push-status for the outcome.
+         * hooks: onAccepted() once the server has taken the job (refreshing is safe from then on),
+         *        onResult(index, result) for every target. Resolves with the results array (same order as targets).
+         */
+        function ovl30PushInBackground(sku, targets, hooks) {
+            hooks = hooks || {};
+            const dfd = $.Deferred();
+            const results = new Array(targets.length);
+            const items = [];
+            let accepted = false;
+            function accept() { if (!accepted) { accepted = true; if (hooks.onAccepted) hooks.onAccepted(); } }
+            function finishItem(i, result) {
+                results[i] = result;
+                if (hooks.onResult) hooks.onResult(i, result);
+            }
+            targets.forEach(function(t, i) {
+                const b = ovl30BuildPushPayload(t);
+                if (b.skip) { finishItem(i, { ok: false, marketplace: t.marketplace, message: b.skip }); return; }
+                items.push({ i: i, payload: b.payload, pushPrice: b.pushPrice });
+            });
+            if (!items.length) { accept(); dfd.resolve(results); return dfd.promise(); }
+
+            const pending = items.slice();
+            const startedAt = Date.now();
+            function poll() {
+                $.getJSON('/price-push-status', { sku: sku }).done(function(res) {
+                    const rows = (res && res.rows) || {};
+                    for (let k = pending.length - 1; k >= 0; k--) {
+                        const it = pending[k];
+                        const r = rows[String(it.payload.marketplace || '').toLowerCase().replace(/\s+/g, '')];
+                        if (!r) continue;
+                        if (r.status === 'pending' && /^Queued/i.test(String(r.error || ''))) continue; // still running
+                        const t = targets[it.i];
+                        pending.splice(k, 1);
+                        if (r.status === 'pushed') {
+                            if (t.$btn && t.$btn.length) {
+                                t.$btn.html('<i class="fas fa-check"></i>').removeClass('btn-primary').addClass('btn-success').prop('disabled', true);
+                            }
+                            finishItem(it.i, {
+                                ok: true, sku: t.sku, savedOnly: !!r.saved_only, marketplace: t.marketplace,
+                                message: r.message || '', price: it.pushPrice, $tr: t.$tr, $btn: t.$btn
+                            });
+                        } else {
+                            finishItem(it.i, { ok: false, marketplace: t.marketplace, message: r.error || r.message || 'Failed to push price' });
+                        }
+                    }
+                }).always(function() {
+                    if (!pending.length) { piPendingRefreshSoon(); dfd.resolve(results); return; }
+                    if (Date.now() - startedAt > 10 * 60 * 1000) { // stop waiting; the server keeps going / hourly retry takes over
+                        pending.forEach(function(it) {
+                            finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: 'Still running on the server — check the pending alert shortly' });
+                        });
+                        piPendingRefreshSoon();
+                        dfd.resolve(results);
+                        return;
+                    }
+                    setTimeout(poll, 1500);
+                });
+            }
+            $.ajax({
+                url: '/price-push-background', method: 'POST', dataType: 'json', contentType: 'application/json',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: JSON.stringify({ sku: sku, items: items.map(function(x) { return x.payload; }) })
+            }).done(function() {
+                accept();
+                piPendingRefreshSoon();
+                setTimeout(poll, 800);
+            }).fail(function(xhr) {
+                accept();
+                const j = xhr.responseJSON || {};
+                const msg = j.message || 'Could not start the background push';
+                items.forEach(function(it) { finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: msg }); });
+                dfd.resolve(results);
+            });
+            return dfd.promise();
+        }
+
+        function pushOvl30PriceToMarketplace(target) {
+            const built = ovl30BuildPushPayload(target);
+            if (built.skip) {
+                return $.Deferred().resolve({
+                    ok: false,
+                    marketplace: target && target.marketplace,
+                    message: built.skip
+                }).promise();
+            }
+            const payload = built.payload;
+            const pushPrice = built.pushPrice;
+            payload._token = '{{ csrf_token() }}';
             return $.ajax({
                 // Same push as /cvr-master-push-price, but a failure is remembered: retried hourly + e-mail + red alert
                 url: '/price-push-tracked',
@@ -9958,13 +10047,18 @@
             const originalHtml = btn.html();
             btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
-            pushOvl30PriceToMarketplace({
+            // Pushed by the server in the background (survives a page refresh)
+            chpushBg.sending++;
+            ovl30PushInBackground(sku, [{
                 sku: sku,
                 marketplace: marketplace,
                 price: price,
                 $btn: btn,
                 $tr: row
-            }).then(function(result) {
+            }], {
+                onAccepted: function() { chpushBg.sending = Math.max(0, chpushBg.sending - 1); }
+            }).then(function(results) {
+                const result = (results && results[0]) || { ok: false, message: 'Failed to push price' };
                 if (result.ok) {
                     showToast(result.message || 'Price pushed', 'success');
                     reloadOvl30ModalAfterPush([result]);
@@ -10011,34 +10105,16 @@
                 t.$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
             });
 
-            let idx = 0;
             let okCount = 0;
             const errors = [];
             const okResults = [];
 
-            function pushNext() {
-                if (idx >= targets.length) {
-                    $bulkBtn.prop('disabled', false).html(origHtml);
-                    if (okCount > 0) {
-                        showToast(
-                            'Pushed ' + okCount + '/' + targets.length + ' marketplace(s)'
-                                + (errors.length ? ('. Failed: ' + errors.join(', ')) : ''),
-                            errors.length ? 'error' : 'success'
-                        );
-                        reloadOvl30ModalAfterPush(okResults);
-                    } else {
-                        showToast('Bulk push failed' + (errors.length ? ': ' + errors.join(', ') : ''), 'error');
-                        targets.forEach(function(t) {
-                            if (!t.$btn.hasClass('btn-success')) {
-                                t.$btn.prop('disabled', false).html('<i class="fas fa-upload"></i>')
-                                    .removeClass('btn-success').addClass('btn-primary');
-                            }
-                        });
-                    }
-                    return;
-                }
-                const target = targets[idx++];
-                pushOvl30PriceToMarketplace(target).then(function(result) {
+            // The server pushes in the background (survives a page refresh); this page just follows the progress
+            chpushBg.sending++;
+            ovl30PushInBackground(String(getModalPrimarySku() || targets[0].sku || ''), targets, {
+                onAccepted: function() { chpushBg.sending = Math.max(0, chpushBg.sending - 1); },
+                onResult: function(i, result) {
+                    const target = targets[i];
                     if (result.ok) {
                         okCount++;
                         okResults.push(result);
@@ -10048,10 +10124,26 @@
                             .removeClass('btn-success').addClass('btn-primary')
                             .prop('disabled', false);
                     }
-                    pushNext();
-                });
-            }
-            pushNext();
+                }
+            }).always(function() {
+                $bulkBtn.prop('disabled', false).html(origHtml);
+                if (okCount > 0) {
+                    showToast(
+                        'Pushed ' + okCount + '/' + targets.length + ' marketplace(s)'
+                            + (errors.length ? ('. Failed: ' + errors.join(', ')) : ''),
+                        errors.length ? 'error' : 'success'
+                    );
+                    reloadOvl30ModalAfterPush(okResults);
+                } else {
+                    showToast('Bulk push failed' + (errors.length ? ': ' + errors.join(', ') : ''), 'error');
+                    targets.forEach(function(t) {
+                        if (!t.$btn.hasClass('btn-success')) {
+                            t.$btn.prop('disabled', false).html('<i class="fas fa-upload"></i>')
+                                .removeClass('btn-success').addClass('btn-primary');
+                        }
+                    });
+                }
+            });
         });
 
         // ==================== CHANNELS BY TYPE: SUGGESTED PRICE + PUSH ====================
@@ -10404,7 +10496,7 @@
         // snapshotted when it starts and its progress lives in this registry, not in the modal's DOM.
         const chpushRegistry = {};   // sku -> { rows: { channel: {state,msg,price} }, cols: { type: {state,msg} } }
         const chpushRunning = {};    // sku -> number of running jobs
-        const chpushBg = { jobs: 0, done: 0, total: 0, sku: '' };
+        const chpushBg = { jobs: 0, done: 0, total: 0, sku: '', sending: 0 }; // sending = jobs not yet handed to the server
         let chpushRenderedSku = '';
         const CHPUSH_ALL_HTML = '<i class="fas fa-upload me-1"></i> Push All';
 
@@ -10503,10 +10595,12 @@
                 + ' <small style="opacity:.8">(' + chpushEsc(chpushBg.sku) + ')</small>');
         }
 
+        // Only while prices are being saved / handed to the server. Once the server has the job it pushes in the
+        // background, so refreshing the page is safe.
         window.addEventListener('beforeunload', function(e) {
-            if (chpushBg.jobs > 0) {
+            if (chpushBg.sending > 0) {
                 e.preventDefault();
-                e.returnValue = 'Prices are still being pushed. Leaving now will stop the remaining pushes.';
+                e.returnValue = 'Prices are still being saved and sent to the server. Wait a moment before leaving.';
             }
         });
 
@@ -10584,6 +10678,7 @@
 
             chpushRunning[sku] = (chpushRunning[sku] || 0) + 1;
             chpushBg.jobs++;
+            chpushBg.sending++;
             chpushBg.total += jobTargets.length;
             chpushBg.sku = sku;
             chpushBgUpdate();
@@ -10601,38 +10696,38 @@
                         showToast('Doba $' + dobaSaved[0].price.toFixed(2) + ' saved in the app (not pushed)', 'success');
                     }
                 }
-                let idx = 0;
                 const okResults = [];
                 const errors = [];
                 const errorDetails = [];
                 const savedOnlyNames = [];
                 let lastMsg = '';
-                (function next() {
-                    if (idx >= jobTargets.length) {
-                        chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
-                        chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
-                        if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.total = 0; }
-                        chpushBgUpdate();
-                        if (opts.colType) {
-                            chpushReg(sku).cols[opts.colType] = errors.length
-                                ? { state: 'fail', msg: 'Failed: ' + errors.join(', ') }
-                                : { state: 'ok', msg: 'All pushed' };
-                        }
-                        chpushPaint();
-                        if (okResults.length) reloadOvl30ModalAfterPush(okResults);
-                        if (String(getModalPrimarySku() || '') === sku) syncSameSpriceBoxFromSaved(); // SPRICE $ box + badges show what was saved
-                        const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
-                        const prefix = modalOpen ? '' : (sku + ': ');
-                        const msg = jobTargets.length === 1
-                            ? (errors.length ? ('Failed: ' + errorDetails[0]) : (lastMsg || (savedOnlyNames.length ? 'Saved (not pushed)' : 'Price pushed')))
-                            : ('Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + jobTargets.length + ' channel(s)'
-                                + (savedOnlyNames.length ? ('. Saved only (no API, not pushed): ' + savedOnlyNames.join(', ')) : '')
-                                + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''));
-                        showToast(prefix + msg, okResults.length && !errors.length ? 'success' : 'error');
-                        return;
+                function finish() {
+                    chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
+                    chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
+                    if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.total = 0; }
+                    chpushBgUpdate();
+                    if (opts.colType) {
+                        chpushReg(sku).cols[opts.colType] = errors.length
+                            ? { state: 'fail', msg: 'Failed: ' + errors.join(', ') }
+                            : { state: 'ok', msg: 'All pushed' };
                     }
-                    const t = jobTargets[idx++];
-                    pushOvl30PriceToMarketplace(t).then(function(result) {
+                    chpushPaint();
+                    if (okResults.length) reloadOvl30ModalAfterPush(okResults);
+                    if (String(getModalPrimarySku() || '') === sku) syncSameSpriceBoxFromSaved(); // SPRICE $ box + badges show what was saved
+                    const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
+                    const prefix = modalOpen ? '' : (sku + ': ');
+                    const msg = jobTargets.length === 1
+                        ? (errors.length ? ('Failed: ' + errorDetails[0]) : (lastMsg || (savedOnlyNames.length ? 'Saved (not pushed)' : 'Price pushed')))
+                        : ('Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + jobTargets.length + ' channel(s)'
+                            + (savedOnlyNames.length ? ('. Saved only (no API, not pushed): ' + savedOnlyNames.join(', ')) : '')
+                            + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''));
+                    showToast(prefix + msg, okResults.length && !errors.length ? 'success' : 'error');
+                }
+                // The server pushes in the background (survives a page refresh); this page just follows the progress
+                ovl30PushInBackground(sku, jobTargets, {
+                    onAccepted: function() { chpushBg.sending = Math.max(0, chpushBg.sending - 1); },
+                    onResult: function(i, result) {
+                        const t = jobTargets[i];
                         chpushBg.done++;
                         chpushBgUpdate();
                         if (result.ok) {
@@ -10646,9 +10741,8 @@
                             errorDetails.push(t.channel + ' — ' + String(result.message || 'failed').slice(0, 140));
                             chpushSetRow(sku, t.channel, 'fail', result.message, t.priceTyped);
                         }
-                        next();
-                    });
-                })();
+                    }
+                }).always(finish);
             });
         }
 

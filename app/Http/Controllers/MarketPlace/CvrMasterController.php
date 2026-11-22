@@ -1965,6 +1965,11 @@ class CvrMasterController extends Controller
                 if (isset($shopifyData[$sku])) {
                     $shopifyItem = $shopifyData[$sku];
                     $inventory = $shopifyItem->inv ?? 0;
+                    // Shopify can report negative stock (oversold, e.g. -1): show 0 so the SKU — and the parent total, which
+                    // is the sum of its SKUs — is never pulled down by a negative number.
+                    if ($inventory < 0) {
+                        $inventory = 0;
+                    }
                     $overallL30 = $shopifyItem->quantity ?? 0;
                     // Get image from shopify if available
                     $imagePath = $shopifyItem->image_src ?? ($values["image_path"] ?? ($productMaster->image_path ?? null));

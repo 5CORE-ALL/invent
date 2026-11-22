@@ -232,7 +232,8 @@ class PricePushPendingService
         if (! $this->available()) {
             return [0, 0];
         }
-        $rows = PricePushPending::where('status', 'pending')->orderBy('last_attempt_at')->limit($limit)->get();
+        // outstanding() skips rows that are only "Queued" for a background push that is still running
+        $rows = PricePushPending::outstanding()->where('status', 'pending')->orderBy('last_attempt_at')->limit($limit)->get();
         $ok = 0;
         foreach ($rows as $row) {
             if ($this->retryRow($row)) {
