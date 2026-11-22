@@ -10645,7 +10645,7 @@
         }
 
         /** Channels where no shipping is applied in the SKU modal (ship = 0): they get their own "B2B without ship" column. */
-        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg', 'faire', 'ppower']);
+        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg', 'faire']); // Purchasing Power stays in High Shipping
         const CHPUSH_NOSHIP_GROUP = 'B2B without ship';
         /** Shipping $ of the open SKU (AliExpress row, else Amazon row); 0 when unknown. */
         function chpushShipAmount() {
