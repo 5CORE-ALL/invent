@@ -1774,6 +1774,40 @@ class CvrMasterController extends Controller
                 Log::warning('Could not fetch Temu LMP: ' . $e->getMessage());
             }
 
+            // BestBuy / Macy / Reverb / TikTok LMP — one aggregated query per channel (lowest non-ignored price per SKU),
+            // only used for the channel-wise LMP column in the list view.
+            $extraLmpLookups = ['bestbuy' => [], 'macy' => [], 'reverb' => [], 'tiktok' => []];
+            foreach ([
+                'bestbuy' => ['bestbuy_sku_competitors', 'total_price'],
+                'macy' => ['macy_sku_competitors', 'total_price'],
+                'reverb' => ['reverb_sku_competitors', 'total_price'],
+                'tiktok' => ['tiktok_sku_competitors', '(CAST(price AS DECIMAL(10,2)) + CAST(COALESCE(shipping_cost, 0) AS DECIMAL(10,2)))'],
+            ] as $lmpMp => [$lmpTable, $lmpExpr]) {
+                try {
+                    if (! Schema::hasTable($lmpTable)) {
+                        continue;
+                    }
+                    $q = DB::table($lmpTable)
+                        ->selectRaw('sku, MIN('.$lmpExpr.') as lmp')
+                        ->where('marketplace', $lmpMp)
+                        ->whereRaw($lmpExpr.' > 0');
+                    if (Schema::hasColumn($lmpTable, 'ignored')) {
+                        $q->where(function ($qq) {
+                            $qq->where('ignored', false)->orWhereNull('ignored');
+                        });
+                    }
+                    foreach ($q->groupBy('sku')->get() as $lmpRow) {
+                        $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) $lmpRow->sku)));
+                        $val = round((float) $lmpRow->lmp, 2);
+                        if ($val > 0 && (! isset($extraLmpLookups[$lmpMp][$key]) || $val < $extraLmpLookups[$lmpMp][$key])) {
+                            $extraLmpLookups[$lmpMp][$key] = $val;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Could not fetch '.$lmpMp.' LMP: '.$e->getMessage());
+                }
+            }
+
             // Fetch latest remarks for all SKUs in one query
             $latestRemarks = CvrRemark::whereIn('sku', $skus)
                 ->select('sku', 'remark', 'is_solved', 'created_at')
@@ -3075,6 +3109,10 @@ class CvrMasterController extends Controller
                     "ebay_lmp_price" => $ebayLmpPrice,
                     "google_lmp_price" => $googleLmpPrice,
                     "temu_lmp_price" => $temuLmpPrice,
+                    "bestbuy_lmp_price" => $extraLmpLookups['bestbuy'][$skuLookupKey] ?? null,
+                    "macy_lmp_price" => $extraLmpLookups['macy'][$skuLookupKey] ?? null,
+                    "reverb_lmp_price" => $extraLmpLookups['reverb'][$skuLookupKey] ?? null,
+                    "tiktok_lmp_price" => $extraLmpLookups['tiktok'][$skuLookupKey] ?? null,
                     "amazon_lmp_link" => $amazonLmpLink,
                     "ebay_lmp_link" => $ebayLmpLink,
                     "google_lmp_link" => $googleLmpLink,
@@ -3166,6 +3204,11 @@ class CvrMasterController extends Controller
                 $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $googleLmpVals = $rows->pluck('google_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $temuLmpVals = $rows->pluck('temu_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $extraParentLmp = [];
+                foreach (['bestbuy', 'macy', 'reverb', 'tiktok'] as $lmpMp) {
+                    $vals = $rows->pluck($lmpMp.'_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                    $extraParentLmp[$lmpMp.'_lmp_price'] = $vals->isNotEmpty() ? round($vals->avg(), 2) : null;
+                }
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonStandardPriceVals = $rows->pluck('amazon_standard_price')->filter(fn ($v) => $v !== null && $v > 0);
@@ -3256,6 +3299,10 @@ class CvrMasterController extends Controller
                     'ebay_lmp_price' => $ebayLmpVals->isNotEmpty() ? round($ebayLmpVals->avg(), 2) : null,
                     'google_lmp_price' => $googleLmpVals->isNotEmpty() ? round($googleLmpVals->avg(), 2) : null,
                     'temu_lmp_price' => $temuLmpVals->isNotEmpty() ? round($temuLmpVals->avg(), 2) : null,
+                    'bestbuy_lmp_price' => $extraParentLmp['bestbuy_lmp_price'],
+                    'macy_lmp_price' => $extraParentLmp['macy_lmp_price'],
+                    'reverb_lmp_price' => $extraParentLmp['reverb_lmp_price'],
+                    'tiktok_lmp_price' => $extraParentLmp['tiktok_lmp_price'],
                     'amazon_lmp_link' => null,
                     'ebay_lmp_link' => null,
                     'temu_lmp_link' => null,

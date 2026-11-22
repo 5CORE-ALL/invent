@@ -831,7 +831,7 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (18–22) */
+        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (17–21) */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
@@ -848,6 +848,8 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
@@ -855,9 +857,7 @@
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21) {
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
@@ -872,14 +872,12 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
             text-align: center !important;
         }
         #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
@@ -2011,11 +2009,6 @@
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
                                         <input type="checkbox" id="ovl30-select-all-cb" title="Select as per filter">
                                     </th>
-                                    <th class="ovl30-sprice-suggest-th" title="Auto Fill SPRICE using Dil%, CVR%, LMP &amp; Price">
-                                        <button type="button" class="btn btn-sm btn-success ovl30-sprice-suggest-btn" title="Suggest SPRICE rules">
-                                            <i class="fas fa-magic"></i>
-                                        </button>
-                                    </th>
                                     <th class="ovl30-std-prc-th" title="Standard Price (SP) — one value for all marketplaces on this SKU (amazon_data_view.STANDARD_PRICE). Editable on any channel row."><span>STD PRC</span></th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -2069,7 +2062,6 @@
                                     <th></th>
                                     <th></th>
                                     <th></th>
-                                    <th></th>
                                     <th class="ovl30-std-prc-th"></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
@@ -2084,7 +2076,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="25" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="24" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2169,71 +2161,6 @@
                 </div>
                 <div class="modal-footer py-1">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Auto Fill SPRICE – Suggest Rules Modal -->
-    <div class="modal fade" id="spriceSuggestModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header" style="background-color: #198754; color: #fff;">
-                    <h5 class="modal-title">
-                        <i class="fas fa-magic me-2"></i>Auto Fill SPRICE — <span id="spriceSuggestSku">SKU</span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2 small">
-                        <strong>Goal:</strong> Increase PFT% without losing sale opportunity.
-                        Suggestions use <strong>Dil%</strong>, channel <strong>CVR%</strong>, <strong>LMP</strong>, and current <strong>Price</strong>.
-                        Prices stay at or below LMP (when available) to protect conversion.
-                    </p>
-                    <div class="d-flex flex-wrap gap-3 mb-3 small">
-                        <span><strong>Dil%:</strong> <span id="spriceSuggestDil">-</span></span>
-                        <span><strong>SKU CVR (avg):</strong> <span id="spriceSuggestAvgCvr">-</span></span>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex align-items-center justify-content-between mb-1">
-                            <div class="fw-semibold small">Editable rules <span class="text-muted fw-normal">(saved in this browser)</span></div>
-                            <div class="d-flex gap-1">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="spriceSuggestResetRulesBtn" title="Reset to defaults">Reset</button>
-                                <button type="button" class="btn btn-outline-primary btn-sm" id="spriceSuggestRecalcBtn" title="Recalculate preview">
-                                    <i class="fas fa-sync-alt me-1"></i>Recalc
-                                </button>
-                            </div>
-                        </div>
-                        <div id="spriceSuggestRulesEditor"></div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>M</th>
-                                    <th class="text-end">Price</th>
-                                    <th class="text-end">LMP</th>
-                                    <th class="text-end">CVR%</th>
-                                    <th class="text-end">Now</th>
-                                    <th class="text-end">Suggest</th>
-                                    <th>Rule</th>
-                                    <th class="text-center">
-                                        <input type="checkbox" id="spriceSuggestSelectAll" checked title="Select all">
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="spriceSuggestPreviewBody">
-                                <tr><td colspan="8" class="text-center text-muted py-3">Open from Details to preview.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <p class="small text-muted mt-2 mb-0" id="spriceSuggestStatus"></p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success btn-sm" id="spriceSuggestApplyBtn">
-                        <i class="fas fa-fill me-1"></i>Apply &amp; Save SPRICE
-                    </button>
                 </div>
             </div>
         </div>
@@ -3714,7 +3641,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3725,7 +3652,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3735,7 +3662,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-danger py-4">
+                    <td colspan="24" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -3744,7 +3671,6 @@
 
         let ovl30ModalData = [];
         let ovl30ModalDil = 0;
-        let ovl30SpriceSuggestions = [];
         let modalPrcModeActive = false;
         let modalDecreaseModeActive = false;
         let modalIncreaseModeActive = false;
@@ -4964,7 +4890,6 @@
                                     + ' title="Select channel">'
                                 : ''}
                         </td>
-                        <td class="text-center ovl30-suggest-cell ${textClass}">-</td>
                         <td class="text-center ovl30-std-prc-cell ${textClass}">
                             ${(() => {
                                 // STD PRC = shared SKU STANDARD_PRICE on every listed marketplace
@@ -5652,6 +5577,43 @@
                         return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="amazon" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
+                },
+                {
+                    title: "LMP by Channel",
+                    field: "lmp_channels",
+                    headerSort: false,
+                    hozAlign: "left",
+                    minWidth: 190,
+                    headerTooltip: "Lowest marketplace price per competitor channel (same numbers as the LMP drawer). Click a price to open that channel in the drawer. Parent rows show the average of the children.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const isParent = d.is_parent_summary === true;
+                        const skuAttr = String(d.sku || '').replace(/"/g, '&quot;');
+                        const chans = [
+                            { f: 'amazon_lmp_price',  mp: 'amazon',  label: 'Amz',    style: 'background:transparent;color:#ff9900;border:1px solid #ff9900;' },
+                            { f: 'ebay_lmp_price',    mp: 'ebay',    label: 'eBay',   style: 'background:#0dcaf0;color:#000;' },
+                            { f: 'google_lmp_price',  mp: 'google',  label: 'Google', style: 'background:#198754;color:#fff;' },
+                            { f: 'bestbuy_lmp_price', mp: 'bestbuy', label: 'BB',     style: 'background:#0046be;color:#fff;' },
+                            { f: 'macy_lmp_price',    mp: 'macy',    label: 'Macy',   style: 'background:#e21a2c;color:#fff;' },
+                            { f: 'reverb_lmp_price',  mp: 'reverb',  label: 'Reverb', style: 'background:#d9281d;color:#fff;' },
+                            { f: 'temu_lmp_price',    mp: 'temu',    label: 'Temu',   style: 'background:#fb7701;color:#fff;' },
+                            { f: 'tiktok_lmp_price',  mp: 'tiktok',  label: 'TT',     style: 'background:#111;color:#fff;' }
+                        ];
+                        const parts = [];
+                        chans.forEach(function(c) {
+                            const v = parseFloat(d[c.f]);
+                            if (!isFinite(v) || !(v > 0)) return;
+                            const txt = c.label + ' $' + v.toFixed(2);
+                            const badge = '<span class="badge" style="font-weight:600;margin:1px 2px 1px 0;' + c.style + '"'
+                                + (isParent ? ' title="Average of child ' + c.label + ' LMPs"' : '') + '>' + txt + '</span>';
+                            parts.push(isParent
+                                ? badge
+                                : '<a href="#" class="lmp-price-link" data-sku="' + skuAttr + '" data-marketplace="' + c.mp
+                                    + '" style="text-decoration:none;" title="Open ' + c.label + ' LMP">' + badge + '</a>');
+                        });
+                        if (!parts.length) return '<span class="text-muted">-</span>';
+                        return '<div style="white-space:normal;line-height:1.25;">' + parts.join('') + '</div>';
+                    }
                 },
                 {
                     title: "Avg GROI%",
@@ -9428,504 +9390,6 @@
             }
         });
 
-        // ==================== AUTO FILL SPRICE (Dil / CVR / LMP / Price) ====================
-
-        const SPRICE_RULES_STORAGE_KEY = 'cvr_master_sprice_suggest_rules_v1';
-        const SPRICE_RULES_DEFAULT = {
-            above_lmp_mult: 0.98,
-            strong_dil_min: 30,
-            strong_cvr_min: 3,
-            strong_lmp_cap: 0.99,
-            strong_raise_pct: 5,
-            strong_max_raise_pct: 8,
-            weak_cvr_max: 3,
-            volume_lmp_mult: 0.97,
-            slow_dil_max: 10,
-            slow_weak_lmp_mult: 0.95,
-            slow_weak_price_mult: 0.95,
-            slow_strong_cvr_min: 5,
-            slow_strong_raise_pct: 3,
-            slow_strong_lmp_cap: 0.98,
-            balanced_lmp_cap: 0.98,
-            no_lmp_raise_pct: 5,
-            no_lmp_cut_pct: 5,
-            gpft_floor_pct: 20
-        };
-
-        function getDefaultSpriceRules() {
-            return Object.assign({}, SPRICE_RULES_DEFAULT);
-        }
-
-        function loadSpriceRules() {
-            try {
-                const raw = localStorage.getItem(SPRICE_RULES_STORAGE_KEY);
-                if (!raw) return getDefaultSpriceRules();
-                const parsed = JSON.parse(raw);
-                return Object.assign(getDefaultSpriceRules(), parsed || {});
-            } catch (e) {
-                return getDefaultSpriceRules();
-            }
-        }
-
-        function saveSpriceRules(rules) {
-            try {
-                localStorage.setItem(SPRICE_RULES_STORAGE_KEY, JSON.stringify(rules));
-            } catch (e) { /* ignore */ }
-        }
-
-        let ovl30SpriceRules = loadSpriceRules();
-
-        function numRule(v, fallback) {
-            const n = parseFloat(v);
-            return isFinite(n) ? n : fallback;
-        }
-
-        function readSpriceRulesFromEditor() {
-            const $ed = $('#spriceSuggestRulesEditor');
-            if (!$ed.length) return ovl30SpriceRules;
-            const d = SPRICE_RULES_DEFAULT;
-            const r = {
-                above_lmp_mult: numRule($ed.find('[name="above_lmp_mult"]').val(), d.above_lmp_mult),
-                strong_dil_min: numRule($ed.find('[name="strong_dil_min"]').val(), d.strong_dil_min),
-                strong_cvr_min: numRule($ed.find('[name="strong_cvr_min"]').val(), d.strong_cvr_min),
-                strong_lmp_cap: numRule($ed.find('[name="strong_lmp_cap"]').val(), d.strong_lmp_cap),
-                strong_raise_pct: numRule($ed.find('[name="strong_raise_pct"]').val(), d.strong_raise_pct),
-                strong_max_raise_pct: numRule($ed.find('[name="strong_max_raise_pct"]').val(), d.strong_max_raise_pct),
-                weak_cvr_max: numRule($ed.find('[name="weak_cvr_max"]').val(), d.weak_cvr_max),
-                volume_lmp_mult: numRule($ed.find('[name="volume_lmp_mult"]').val(), d.volume_lmp_mult),
-                slow_dil_max: numRule($ed.find('[name="slow_dil_max"]').val(), d.slow_dil_max),
-                slow_weak_lmp_mult: numRule($ed.find('[name="slow_weak_lmp_mult"]').val(), d.slow_weak_lmp_mult),
-                slow_weak_price_mult: numRule($ed.find('[name="slow_weak_price_mult"]').val(), d.slow_weak_price_mult),
-                slow_strong_cvr_min: numRule($ed.find('[name="slow_strong_cvr_min"]').val(), d.slow_strong_cvr_min),
-                slow_strong_raise_pct: numRule($ed.find('[name="slow_strong_raise_pct"]').val(), d.slow_strong_raise_pct),
-                slow_strong_lmp_cap: numRule($ed.find('[name="slow_strong_lmp_cap"]').val(), d.slow_strong_lmp_cap),
-                balanced_lmp_cap: numRule($ed.find('[name="balanced_lmp_cap"]').val(), d.balanced_lmp_cap),
-                no_lmp_raise_pct: numRule($ed.find('[name="no_lmp_raise_pct"]').val(), d.no_lmp_raise_pct),
-                no_lmp_cut_pct: numRule($ed.find('[name="no_lmp_cut_pct"]').val(), d.no_lmp_cut_pct),
-                gpft_floor_pct: numRule($ed.find('[name="gpft_floor_pct"]').val(), d.gpft_floor_pct)
-            };
-            ovl30SpriceRules = r;
-            saveSpriceRules(r);
-            return r;
-        }
-
-        function ruleField(name, label, value, step) {
-            return '<div class="sprice-rule-field">'
-                + '<label>' + label + '</label>'
-                + '<input type="number" class="form-control form-control-sm sprice-rule-input" name="' + name + '" '
-                + 'value="' + value + '" step="' + (step || '0.01') + '">'
-                + '</div>';
-        }
-
-        function renderSpriceRulesEditor(rules) {
-            const r = rules || ovl30SpriceRules;
-            const html = ''
-                + '<div class="sprice-rule-card">'
-                + '<h6>above lmp</h6>'
-                + '<div class="rule-desc">Price &gt; LMP → SPRICE = LMP × multiplier</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('above_lmp_mult', 'LMP multiplier', r.above_lmp_mult, '0.01')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>strong demand</h6>'
-                + '<div class="rule-desc">Dil ≥ min &amp; CVR ≥ min → raise under LMP cap (max raise %)</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('strong_dil_min', 'Dil% min', r.strong_dil_min, '1')
-                + ruleField('strong_cvr_min', 'CVR% min', r.strong_cvr_min, '0.1')
-                + ruleField('strong_lmp_cap', 'LMP cap mult', r.strong_lmp_cap, '0.01')
-                + ruleField('strong_raise_pct', 'Raise %', r.strong_raise_pct, '0.5')
-                + ruleField('strong_max_raise_pct', 'Max raise %', r.strong_max_raise_pct, '0.5')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>volume weak cvr</h6>'
-                + '<div class="rule-desc">Dil ≥ strong Dil min &amp; CVR &lt; weak max → min(Price, LMP × mult)</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('weak_cvr_max', 'CVR% max', r.weak_cvr_max, '0.1')
-                + ruleField('volume_lmp_mult', 'LMP multiplier', r.volume_lmp_mult, '0.01')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>slow weak</h6>'
-                + '<div class="rule-desc">Dil &lt; max &amp; CVR &lt; weak max → LMP × mult</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('slow_dil_max', 'Dil% max', r.slow_dil_max, '1')
-                + ruleField('slow_weak_lmp_mult', 'LMP multiplier', r.slow_weak_lmp_mult, '0.01')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>slow strong cvr</h6>'
-                + '<div class="rule-desc">Dil &lt; slow Dil max &amp; CVR ≥ min → raise %, capped at LMP × mult</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('slow_strong_cvr_min', 'CVR% min', r.slow_strong_cvr_min, '0.1')
-                + ruleField('slow_strong_raise_pct', 'Raise %', r.slow_strong_raise_pct, '0.5')
-                + ruleField('slow_strong_lmp_cap', 'LMP cap mult', r.slow_strong_lmp_cap, '0.01')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>balanced</h6>'
-                + '<div class="rule-desc">Mid Dil → keep Price, never above LMP × cap</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('balanced_lmp_cap', 'LMP cap mult', r.balanced_lmp_cap, '0.01')
-                + '</div></div>'
-
-                + '<div class="sprice-rule-card">'
-                + '<h6>no lmp + floor</h6>'
-                + '<div class="rule-desc">No LMP → Dil/CVR ±% on Price; GPFT floor when LP known</div>'
-                + '<div class="sprice-rule-grid">'
-                + ruleField('no_lmp_raise_pct', 'Raise % (strong)', r.no_lmp_raise_pct, '0.5')
-                + ruleField('no_lmp_cut_pct', 'Cut % (weak)', r.no_lmp_cut_pct, '0.5')
-                + ruleField('gpft_floor_pct', 'GPFT floor %', r.gpft_floor_pct, '1')
-                + '</div></div>';
-
-            $('#spriceSuggestRulesEditor').html(html);
-        }
-
-        function gpftFloorSprice(lp, ship, margin, targetGpft) {
-            const denom = margin - (targetGpft / 100);
-            if (!(lp > 0) || !(denom > 0)) return 0;
-            return (lp + ship) / denom;
-        }
-
-        function roundMoney(v) {
-            return Math.round((v + Number.EPSILON) * 100) / 100;
-        }
-
-        /** Suggest SPRICE using editable rule params. */
-        function suggestSpriceForChannel(ctx, rules) {
-            const R = rules || ovl30SpriceRules;
-            const price = parseFloat(ctx.price) || 0;
-            const lmp = parseFloat(ctx.lmp) || 0;
-            const dil = parseFloat(ctx.dil) || 0;
-            const cvr = parseFloat(ctx.cvr) || 0;
-            const lp = parseFloat(ctx.lp) || 0;
-            const ship = parseFloat(ctx.ship) || 0;
-            const margin = parseFloat(ctx.margin) || 0.80;
-            const floor = gpftFloorSprice(lp, ship, margin, R.gpft_floor_pct);
-
-            if (!(price > 0) && !(lmp > 0)) {
-                return { sprice: 0, ruleId: 'skip', rule: 'No Price / LMP', skip: true };
-            }
-
-            let suggested = price > 0 ? price : lmp;
-            let ruleId = 'balanced';
-            let rule = 'Hold current price';
-
-            if (lmp > 0 && price > lmp) {
-                suggested = lmp * R.above_lmp_mult;
-                ruleId = 'above_lmp';
-                rule = 'Above LMP → LMP×' + R.above_lmp_mult;
-            } else if (lmp > 0) {
-                const cap = lmp * R.strong_lmp_cap;
-                const softCap = lmp * R.balanced_lmp_cap;
-                if (dil >= R.strong_dil_min && cvr >= R.strong_cvr_min) {
-                    const raiseMult = 1 + (R.strong_raise_pct / 100);
-                    const maxRaiseMult = 1 + (R.strong_max_raise_pct / 100);
-                    suggested = Math.min(cap, Math.max(price, price * raiseMult, floor || 0));
-                    if (suggested > price * maxRaiseMult) suggested = Math.min(cap, price * maxRaiseMult);
-                    ruleId = 'strong_demand';
-                    rule = 'Strong Dil+CVR → raise under LMP×' + R.strong_lmp_cap;
-                } else if (dil >= R.strong_dil_min && cvr < R.weak_cvr_max) {
-                    suggested = Math.min(price, lmp * R.volume_lmp_mult);
-                    ruleId = 'volume_weak_cvr';
-                    rule = 'High Dil, weak CVR → LMP×' + R.volume_lmp_mult;
-                } else if (dil < R.slow_dil_max && cvr < R.weak_cvr_max) {
-                    suggested = lmp * R.slow_weak_lmp_mult;
-                    ruleId = 'slow_weak';
-                    rule = 'Slow + weak CVR → LMP×' + R.slow_weak_lmp_mult;
-                } else if (dil < R.slow_dil_max && cvr >= R.slow_strong_cvr_min) {
-                    const raiseMult = 1 + (R.slow_strong_raise_pct / 100);
-                    const slowCap = lmp * R.slow_strong_lmp_cap;
-                    suggested = Math.min(slowCap, price * raiseMult);
-                    ruleId = 'slow_strong_cvr';
-                    rule = 'Slow but converting → +' + R.slow_strong_raise_pct + '% under LMP';
-                } else {
-                    suggested = Math.min(softCap, Math.max(price, floor || price));
-                    ruleId = 'balanced';
-                    rule = 'Balanced → under LMP×' + R.balanced_lmp_cap;
-                }
-                if (suggested > softCap && ruleId !== 'strong_demand') suggested = softCap;
-                if (suggested > cap) suggested = cap;
-            } else {
-                if (dil >= R.strong_dil_min && cvr >= R.strong_cvr_min) {
-                    suggested = price * (1 + R.no_lmp_raise_pct / 100);
-                    ruleId = 'no_lmp';
-                    rule = 'No LMP, strong → +' + R.no_lmp_raise_pct + '%';
-                } else if (dil < R.slow_dil_max && cvr < R.weak_cvr_max) {
-                    suggested = price * (1 - R.no_lmp_cut_pct / 100);
-                    ruleId = 'no_lmp';
-                    rule = 'No LMP, weak → −' + R.no_lmp_cut_pct + '%';
-                } else {
-                    suggested = price;
-                    ruleId = 'no_lmp';
-                    rule = 'No LMP → keep Price';
-                }
-            }
-
-            const floorCap = lmp > 0 ? lmp * R.strong_lmp_cap : Infinity;
-            if (floor > 0 && suggested < floor && floor <= floorCap) {
-                suggested = Math.max(suggested, floor);
-                rule += ' (GPFT≥' + R.gpft_floor_pct + '% floor)';
-            }
-
-            suggested = roundMoney(Math.max(0, suggested));
-            if (!(suggested > 0)) {
-                return { sprice: 0, ruleId: 'skip', rule: 'Could not compute', skip: true };
-            }
-            return { sprice: suggested, ruleId, rule, skip: false };
-        }
-
-        function buildOvl30SpriceSuggestions(rules) {
-            const R = rules || ovl30SpriceRules;
-            const dil = ovl30ModalDil;
-            const rows = [];
-            let cvrSum = 0, cvrN = 0;
-
-            (ovl30ModalData || []).forEach(item => {
-                const isListed = item.is_listed !== false;
-                const price = parseFloat(item.price || 0);
-                if (!isListed || !(price > 0)) return;
-
-                const views = item.views == null ? null : parseFloat(item.views);
-                const l30 = parseInt(item.l30 || 0);
-                const cvr = (views != null && views > 0) ? (l30 / views) * 100 : 0;
-                if (views != null && views > 0) { cvrSum += cvr; cvrN++; }
-
-                const mp = (item.marketplace || '').toLowerCase();
-                const editableChannels = [
-                    'amazon', 'doba',
-                    'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
-                    'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
-                    'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
-                ];
-                const editable = editableChannels.includes(mp);
-
-                const result = suggestSpriceForChannel({
-                    price,
-                    lmp: parseFloat(item.lmp_price) || 0,
-                    dil,
-                    cvr,
-                    lp: parseFloat(item.lp) || 0,
-                    ship: parseFloat(item.ship) || 0,
-                    margin: parseFloat(item.margin) || 0.80
-                }, R);
-
-                rows.push({
-                    marketplace: item.marketplace,
-                    sku: item.sku,
-                    price,
-                    lmp: parseFloat(item.lmp_price) || 0,
-                    cvr,
-                    viewsMissing: views == null,
-                    currentSprice: parseFloat(item.sprice) || 0,
-                    suggested: result.sprice,
-                    rule: result.rule,
-                    ruleId: result.ruleId,
-                    skip: result.skip || !editable,
-                    editable,
-                    selected: editable && !result.skip && result.sprice > 0
-                });
-            });
-
-            return {
-                dil,
-                avgCvr: cvrN > 0 ? cvrSum / cvrN : 0,
-                rows
-            };
-        }
-
-        function refreshSpriceSuggestPreview(keepEditor) {
-            const rules = keepEditor ? readSpriceRulesFromEditor() : ovl30SpriceRules;
-            if (!keepEditor) {
-                renderSpriceRulesEditor(rules);
-            }
-            const built = buildOvl30SpriceSuggestions(rules);
-            ovl30SpriceSuggestions = built.rows;
-
-            $('#spriceSuggestSku').text($('#modalSkuName').text() || '-');
-            $('#spriceSuggestDil').text(Math.round(built.dil) + '%');
-            $('#spriceSuggestAvgCvr').text(built.avgCvr > 0 ? built.avgCvr.toFixed(1) + '%' : 'N/A');
-
-            let html = '';
-            built.rows.forEach((r, idx) => {
-                const cvrTxt = r.viewsMissing ? 'N/A' : (r.cvr > 0 ? r.cvr.toFixed(1) + '%' : '-');
-                const disabled = r.skip || !r.editable;
-                const delta = r.suggested - (r.currentSprice || r.price);
-                const deltaCls = delta > 0.01 ? 'text-success' : (delta < -0.01 ? 'text-danger' : 'text-muted');
-                html += '<tr data-idx="' + idx + '">'
-                    + '<td><strong>' + (r.marketplace || '-') + '</strong></td>'
-                    + '<td class="text-end">$' + r.price.toFixed(2) + '</td>'
-                    + '<td class="text-end">' + (r.lmp > 0 ? '$' + r.lmp.toFixed(2) : '-') + '</td>'
-                    + '<td class="text-end">' + cvrTxt + '</td>'
-                    + '<td class="text-end">' + (r.currentSprice > 0 ? '$' + r.currentSprice.toFixed(2) : '-') + '</td>'
-                    + '<td class="text-end ' + deltaCls + '"><strong>$' + (r.suggested > 0 ? r.suggested.toFixed(2) : '-') + '</strong></td>'
-                    + '<td class="small">' + (disabled && !r.editable ? 'Not editable' : r.rule) + '</td>'
-                    + '<td class="text-center"><input type="checkbox" class="sprice-suggest-row-cb" data-idx="' + idx + '" '
-                    + (r.selected ? 'checked' : '') + (disabled ? ' disabled' : '') + '></td>'
-                    + '</tr>';
-            });
-            if (!html) {
-                html = '<tr><td colspan="8" class="text-center text-muted py-3">No listed channels with price to suggest.</td></tr>';
-            }
-            $('#spriceSuggestPreviewBody').html(html);
-            $('#spriceSuggestSelectAll').prop('checked', built.rows.some(r => r.selected));
-            $('#spriceSuggestStatus').text(built.rows.filter(r => r.selected).length + ' channel(s) ready to apply.');
-        }
-
-        function renderSpriceSuggestModal() {
-            ovl30SpriceRules = loadSpriceRules();
-            refreshSpriceSuggestPreview(false);
-        }
-
-        $(document).on('click', '.ovl30-sprice-suggest-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!ovl30ModalData.length) {
-                showToast('Load Details data first', 'error');
-                return;
-            }
-            renderSpriceSuggestModal();
-            const el = document.getElementById('spriceSuggestModal');
-            bootstrap.Modal.getOrCreateInstance(el).show();
-        });
-
-        $(document).on('click', '#spriceSuggestRecalcBtn', function(e) {
-            e.preventDefault();
-            refreshSpriceSuggestPreview(true);
-            showToast('Preview updated from your rules', 'success');
-        });
-
-        $(document).on('click', '#spriceSuggestResetRulesBtn', function(e) {
-            e.preventDefault();
-            ovl30SpriceRules = getDefaultSpriceRules();
-            saveSpriceRules(ovl30SpriceRules);
-            refreshSpriceSuggestPreview(false);
-            showToast('Rules reset to defaults', 'info');
-        });
-
-        let spriceRuleRecalcTimer = null;
-        $(document).on('input change', '#spriceSuggestRulesEditor .sprice-rule-input', function() {
-            clearTimeout(spriceRuleRecalcTimer);
-            spriceRuleRecalcTimer = setTimeout(function() {
-                refreshSpriceSuggestPreview(true);
-            }, 250);
-        });
-
-        $(document).on('change', '#spriceSuggestSelectAll', function() {
-            const on = $(this).is(':checked');
-            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb:not(:disabled)').prop('checked', on);
-        });
-
-        $('#spriceSuggestApplyBtn').on('click', function() {
-            const btn = $(this);
-            // Ensure preview matches latest edited rules
-            const checkedIdx = [];
-            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb:checked').each(function() {
-                checkedIdx.push(parseInt($(this).data('idx'), 10));
-            });
-            refreshSpriceSuggestPreview(true);
-            const selected = [];
-            ovl30SpriceSuggestions.forEach((row, idx) => {
-                if (checkedIdx.indexOf(idx) >= 0 && row && row.suggested > 0 && row.editable) {
-                    selected.push(row);
-                }
-            });
-            // Re-check boxes that were selected
-            $('#spriceSuggestPreviewBody .sprice-suggest-row-cb').each(function() {
-                const idx = parseInt($(this).data('idx'), 10);
-                if (checkedIdx.indexOf(idx) >= 0 && !$(this).prop('disabled')) {
-                    $(this).prop('checked', true);
-                }
-            });
-            if (!selected.length) {
-                showToast('Select at least one channel', 'error');
-                return;
-            }
-
-            btn.prop('disabled', true);
-            let done = 0, failed = 0;
-            const total = selected.length;
-
-            const finishOne = () => {
-                done++;
-                if (done >= total) {
-                    btn.prop('disabled', false);
-                    $('#spriceSuggestStatus').text('Applied ' + (total - failed) + '/' + total + (failed ? (' (' + failed + ' failed)') : ''));
-                    showToast('SPRICE filled for ' + (total - failed) + ' channel(s)', failed ? 'error' : 'success');
-                    const modalEl = document.getElementById('spriceSuggestModal');
-                    bootstrap.Modal.getInstance(modalEl)?.hide();
-                    scheduleAutoFitOvl30TableFont();
-                }
-            };
-
-            selected.forEach(s => {
-                // Update in-memory breakdown
-                const item = ovl30ModalData.find(x => (x.marketplace || '') === s.marketplace);
-                if (item) item.sprice = s.suggested;
-
-                const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
-                    return $(this).attr('data-marketplace') === s.marketplace;
-                });
-                const $input = $tr.find('.editable-sprice');
-                if ($input.length) {
-                    $input.val(s.suggested.toFixed(2)).trigger('input');
-                }
-
-                const lp = parseFloat($tr.attr('data-lp')) || (item ? parseFloat(item.lp) || 0 : 0);
-                const ship = parseFloat($tr.attr('data-ship')) || (item ? parseFloat(item.ship) || 0 : 0);
-                const ad = parseFloat($tr.attr('data-ad')) || (item ? parseFloat(item.ad) || 0 : 0);
-                const tacosCh = parseFloat($tr.attr('data-tacos-ch')) || (item ? parseFloat(item.tacos_ch) || 0 : 0);
-                const margin = parseFloat($tr.attr('data-margin')) || (item ? parseFloat(item.margin) || 0.80 : 0.80);
-                const l30 = parseFloat($tr.attr('data-l30')) || (item ? parseInt(item.l30) || 0 : 0);
-                const mpLower = String(s.marketplace || '').toLowerCase();
-                const sprice = s.suggested;
-                const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
-                const temuSugFill = isTemuMp ? temuSuggestedPercents(sprice, margin, lp, ship, tacosCh, mpLower === 'temu2') : null;
-                const sgpft = sprice > 0
-                    ? (isTemuMp ? temuSugFill.sgpft : ((sprice * margin - ship - lp) / sprice) * 100)
-                    : 0;
-                const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
-                const spft = isTemuMp ? temuSugFill.spft
-                    : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
-                const sroi = isTemuMp
-                    ? temuSugFill.sroi
-                    : (lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0);
-
-                $.ajax({
-                    url: '/cvr-master-save-suggested-data',
-                    method: 'POST',
-                    data: {
-                        sku: getModalPrimarySku() || s.sku,
-                        marketplace: s.marketplace,
-                        sprice: sprice,
-                        sgpft: sgpft,
-                        spft: spft,
-                        sroi: sroi,
-                        amazon_margin: margin,
-                        apply_siblings: siblingsApplyPayload(sprice),
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(res) {
-                        if ($input.length) {
-                            $input.css('border-color', '#28a745');
-                            setTimeout(() => $input.css('border-color', ''), 1000);
-                        }
-                        if (res && res.siblings_count) {
-                            showToast('Saved (+' + res.siblings_count + ' siblings) on ' + s.marketplace, 'success');
-                        }
-                        finishOne();
-                    },
-                    error: function() {
-                        failed++;
-                        if ($input.length) $input.css('border-color', '#dc3545');
-                        finishOne();
-                    }
-                });
-            });
-        });
-
         // ==================== PRICE PUSH ====================
 
         function parseOvl30PushPrice(raw) {
@@ -11456,6 +10920,7 @@
                 patch.google_lmp_price = googleRes.lowest_price;
             }
             if (!Object.keys(patch).length) return;
+            patch.lmp_channels = Date.now(); // virtual field: re-renders the "LMP by Channel" cell
 
             (table.getRows() || []).forEach(function(r) {
                 const d = r.getData();
@@ -14914,7 +14379,7 @@
             setTimeout(cleanupOrphanModalBackdrops, 50);
         });
 
-        $(document).on('hidden.bs.modal', '#lmpModal, #spriceDetailsModal, #missingListingsModal, #remarkHistoryModal, #spriceSuggestModal', function() {
+        $(document).on('hidden.bs.modal', '#lmpModal, #spriceDetailsModal, #missingListingsModal, #remarkHistoryModal', function() {
             setTimeout(cleanupOrphanModalBackdrops, 50);
         });
 
