@@ -42,10 +42,16 @@ class HelpDeskFaqController extends Controller
      * History entries with a display time in Ohio (US Eastern) time, e.g. "10 NOV 26, 12:25 PM".
      * Timestamps are stored in the app timezone, so they are converted from it.
      */
-    private function formatHistory($history): array
+    private function formatHistory($history, array $userMap = []): array
     {
-        return array_map(function ($h) {
+        return array_map(function ($h) use ($userMap) {
             $h = is_array($h) ? $h : [];
+            $u = $userMap[strtolower(trim((string) ($h['email'] ?? '')))] ?? null;
+            $h['name'] = $u['name'] ?? null;
+            $h['avatar'] = $u['avatar'] ?? null;
+            $h['avatar_x'] = $u['avatar_x'] ?? 50;
+            $h['avatar_y'] = $u['avatar_y'] ?? 50;
+            $h['avatar_zoom'] = $u['avatar_zoom'] ?? 100;
             $display = (string) ($h['at'] ?? '');
             if ($display !== '') {
                 try {
@@ -109,7 +115,39 @@ class HelpDeskFaqController extends Controller
         $deptNames = ResourceDepartment::pluck('name', 'id');
         $clean = fn ($v) => trim((string) ($v ?? ''));
 
-        $rows = HelpDeskFaq::orderByDesc('id')->get()->map(function ($faq) use ($deptNames, $clean) {
+        $faqs = HelpDeskFaq::orderByDesc('id')->get();
+
+        // Name + profile picture for every user that appears in the history.
+        $emails = [];
+        foreach ($faqs as $faq) {
+            foreach ((is_array($faq->edit_history) ? $faq->edit_history : []) as $h) {
+                $e = strtolower(trim((string) ($h['email'] ?? '')));
+                if ($e !== '') {
+                    $emails[$e] = true;
+                }
+            }
+        }
+        $userMap = [];
+        if ($emails) {
+            \App\Models\User::query()
+                ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(email)'), array_keys($emails))
+                ->get(['name', 'email', 'avatar', 'avatar_position_x', 'avatar_position_y', 'avatar_zoom'])
+                ->each(function ($u) use (&$userMap) {
+                    $avatar = trim((string) $u->avatar);
+                    if ($avatar !== '') {
+                        $avatar = str_starts_with($avatar, 'http') ? $avatar : asset('storage/' . $avatar);
+                    }
+                    $userMap[strtolower(trim((string) $u->email))] = [
+                        'name' => $u->name,
+                        'avatar' => $avatar !== '' ? $avatar : null,
+                        'avatar_x' => (int) ($u->avatar_position_x ?? 50),
+                        'avatar_y' => (int) ($u->avatar_position_y ?? 50),
+                        'avatar_zoom' => (int) ($u->avatar_zoom ?? 100),
+                    ];
+                });
+        }
+
+        $rows = $faqs->map(function ($faq) use ($deptNames, $clean, $userMap) {
             $dept = array_map('strval', is_array($faq->dept) ? $faq->dept : []);
             if (in_array('all', $dept, true)) {
                 $deptLabel = 'All';
@@ -136,7 +174,7 @@ class HelpDeskFaqController extends Controller
                 'ca' => $clean($faq->ca),
                 'plus_action' => $clean($faq->plus_action),
                 'messages' => $clean($faq->messages),
-                'history' => $this->formatHistory($faq->edit_history),
+                'history' => $this->formatHistory($faq->edit_history, $userMap),
                 'created_by_email' => $faq->created_by_email,
                 'updated_by_email' => $faq->updated_by_email,
             ];

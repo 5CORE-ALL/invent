@@ -229,11 +229,14 @@
         .fh-card:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(79,70,229,0.12); }
         .fh-row { display: flex; align-items: center; gap: 12px; }
         .fh-avatar {
-            flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; color: #4338ca; background: #e0e7ff;
+            flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 1.05rem; color: #4338ca; background: #e0e7ff; overflow: hidden;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 3px #c7d2fe;
         }
+        .fh-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .fh-who { flex: 1 1 auto; min-width: 0; }
-        .fh-email { font-size: 0.85rem; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fh-name { font-size: 0.92rem; font-weight: 700; color: #0f172a; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+        .fh-email { font-size: 0.74rem; font-weight: 500; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .fh-badge { display: inline-block; margin-top: 2px; padding: 1px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
         .fh-added .fh-badge { background: #d1fae5; color: #047857; }
         .fh-edited .fh-badge { background: #fef3c7; color: #b45309; }
@@ -330,12 +333,18 @@
 
     <div class="card">
         <div class="card-body">
-            {{-- Three separate column search filters (one row) --}}
+            {{-- Search across all data + three column filters, all in one row --}}
             <div class="d-flex flex-nowrap align-items-center gap-2 mb-2 w-100">
+                <div class="input-group input-group-sm" style="flex: 1.6 1 0; min-width: 0;">
+                    <span class="input-group-text px-2"><img src="{{ asset('images/magnifier-icon.png') }}" alt="Search" style="height: 20px; width: auto; object-fit: contain;"></span>
+                    <input type="text" id="faqFilterAll" class="form-control faq-col-filter" data-field="_all" value="{{ $searchQuery ?? '' }}"
+                        placeholder="Search all data..." title="Searches every column: group, FAQ, answer, dept, variant, what, links, action, CA, messages" autocomplete="off">
+                    <button type="button" id="faqFilterAllClear" class="btn btn-light border px-2" title="Clear search">&times;</button>
+                </div>
                 <input type="text" id="faqFilterGroup" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="group_name" placeholder="Search Group...">
                 <input type="text" id="faqFilterFaq" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="faq" placeholder="Search FAQ/FFP/Issues...">
                 <input type="text" id="faqFilterAnswers" class="form-control form-control-sm faq-col-filter" style="flex: 1 1 0; min-width: 0;" data-field="answers" placeholder="Search Answer/Solutions...">
-                </div>
+            </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3 w-100">
                 {{-- Dept filter: wide panel with quick search + multi-column list --}}
                 <div class="dropdown" style="flex-shrink: 0;">
@@ -968,7 +977,7 @@
 
             // ───────────────────────── helpers ─────────────────────────
             var searchQuery = '';
-            var colQueries = { group_name: '', faq: '', answers: '' }; // per-column header filters
+            var colQueries = { _all: '', group_name: '', faq: '', answers: '' }; // per-column header filters
 
             function esc(s) {
                 var d = document.createElement('div');
@@ -1201,6 +1210,7 @@
                 } else {
                     list.innerHTML = hist.map(function(h) {
                         var email = h.email || '\u2014';
+                        var name = h.name || (h.email ? String(h.email).split('@')[0] : '\u2014');
                         var action = String(h.action || '');
                         var kind = /^added/i.test(action) ? 'added' : 'edited';
                         var when = String(h.at_display || h.at || '');
@@ -1208,8 +1218,10 @@
                             '<div class="fh-dot"><i class="' + (kind === 'added' ? 'ri-add-line' : 'ri-pencil-line') + '"></i></div>' +
                             '<div class="fh-card">' +
                                 '<div class="fh-row">' +
-                                    '<span class="fh-avatar">' + esc(email.charAt(0).toUpperCase()) + '</span>' +
-                                    '<div class="fh-who"><div class="fh-email">' + esc(email) + '</div>' +
+                                    '<span class="fh-avatar">' + (h.avatar
+                                        ? '<img src="' + esc(h.avatar) + '" alt="" style="object-position:' + (h.avatar_x || 50) + '% ' + (h.avatar_y || 50) + '%;transform:scale(' + ((h.avatar_zoom || 100) / 100) + ');" onerror="this.parentNode.textContent=\'' + esc(name.charAt(0).toUpperCase()) + '\';">'
+                                        : esc(name.charAt(0).toUpperCase())) + '</span>' +
+                                    '<div class="fh-who"><div class="fh-name">' + esc(name) + '</div><div class="fh-email">' + esc(email) + '</div>' +
                                     '<span class="fh-badge">' + esc(action || '\u2014') + '</span></div>' +
                                     '<div class="fh-when"><div class="fh-date">' + esc(when) + '</div></div>' +
                                 '</div>' +
@@ -1394,7 +1406,7 @@
                 ajaxURL: DATA_URL,
                 ajaxResponse: function(url, params, response) {
                     (response || []).forEach(function(r) {
-                        r._hay = [r.group_name, r.faq, r.answers, r.type_variant, r.what, r.action, r.ca, r.plus_action, r.messages]
+                        r._hay = [r.group_name, r.faq, r.answers, r.dept_label, r.type_variant, r.what, r.link, r.link2, r.sop, r.video, r.action, r.ca, r.plus_action, r.messages]
                             .join(' ').toLowerCase();
                     });
                     return response || [];
@@ -1440,6 +1452,7 @@
                 var q = searchQuery.toLowerCase();
                 if (q !== '' && (d._hay || '').indexOf(q) === -1) return false;
                 for (var f in colQueries) {
+                    if (f === '_all') continue; // handled above via searchQuery
                     if (colQueries[f] && !containsFilter(colQueries[f], d[f])) return false;
                 }
                 return rowMatchesDept(d, selectedDepts());
@@ -1469,6 +1482,7 @@
                 colFilterInputs.forEach(function(inp) { next[inp.getAttribute('data-field')] = (inp.value || '').trim(); });
                 var changed = Object.keys(next).some(function(k) { return next[k] !== colQueries[k]; });
                 colQueries = next;
+                searchQuery = next._all || '';
                 var sel = selectedDepts();
                 if (deptFilterLabel) {
                     deptFilterLabel.textContent = sel.length === 0 ? 'All' : (sel.length + ' selected');
@@ -1487,6 +1501,15 @@
                 updateCount();
             }
 
+            var allClear = document.getElementById('faqFilterAllClear');
+            if (allClear) {
+                allClear.addEventListener('click', function() {
+                    var inp = document.getElementById('faqFilterAll');
+                    inp.value = '';
+                    applyFilters();
+                    inp.focus();
+                });
+            }
             var colFilterTimer = null;
             colFilterInputs.forEach(function(inp) {
                 inp.addEventListener('input', function() {
