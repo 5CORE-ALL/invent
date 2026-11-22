@@ -5774,6 +5774,9 @@ class CvrMasterController extends Controller
                 'spft'        => $aeSuggestedBd['spft'],
                 'lp'          => $lp,
                 'ship'        => $ship,
+                // Shipping Master "Diff" column = Ship BB − Ship (null when either is missing).
+                // Price Increase › Channels modal adds it to the AliExpress price for High Shipping channels.
+                'ship_diff'   => $this->shippingMasterDiff($values, $productMaster),
                 'margin'      => $aeMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
@@ -6803,6 +6806,22 @@ class CvrMasterController extends Controller
         }
 
         return round($nroi, 2);
+    }
+
+    /**
+     * Shipping Master "Diff" column: Ship BB − Ship (same totals as the Ship / Ship BB columns).
+     * Null when either side is missing, mirroring the "--" shown on the Shipping Master page.
+     */
+    private function shippingMasterDiff($values, $productMaster = null): ?float
+    {
+        $values = is_array($values) ? $values : [];
+        $ship = \App\Support\ProductMasterShip::forPricing($values, $productMaster);
+        $shipBb = ProductMasterShipBb::forPricing($values, $productMaster);
+        if (! ($ship > 0) || ! ($shipBb > 0)) {
+            return null;
+        }
+
+        return round($shipBb - $ship, 2);
     }
 
     /**

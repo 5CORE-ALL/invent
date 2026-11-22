@@ -10385,6 +10385,18 @@
             });
         }
 
+        /** Shipping Master Diff (Ship BB − Ship) for the open SKU, taken from the AliExpress breakdown row; null if unavailable. */
+        function chpushShipDiff() {
+            const rows = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
+            for (let i = 0; i < rows.length; i++) {
+                if (chpushKey(rows[i] && rows[i].marketplace) === 'aliexpress') {
+                    const d = parseFloat(rows[i].ship_diff);
+                    return isFinite(d) ? d : null;
+                }
+            }
+            return null;
+        }
+
         /** SKU-modal table row for a Channel Master channel (or null when this SKU has no such row). */
         function chpushFindRow(channelName) {
             const key = chpushKey(channelName);
@@ -10429,7 +10441,15 @@
                 const names = groups[type] || [];
                 html += '<div class="chpush-card" data-type="' + chpushEsc(type) + '">'
                     + '<div class="chpush-card-head">'
-                    + '<span>' + chpushEsc(type) + '</span><span class="badge bg-secondary">' + names.length + '</span></div>'
+                    + '<span>' + chpushEsc(type)
+                    + (String(type).toLowerCase() === 'high shipping'
+                        ? (function() {
+                            const d = chpushShipDiff();
+                            return ' <small class="text-muted fw-normal" title="Aliexpress price + Shipping Master Diff (Ship BB − Ship)">'
+                                + (d != null ? ('Diff ' + (d >= 0 ? '+' : '−') + '$' + Math.abs(d).toFixed(2)) : 'Diff n/a') + '</small>';
+                        })()
+                        : '')
+                    + '</span><span class="badge bg-secondary">' + names.length + '</span></div>'
                     + '<table class="chpush-table"><thead><tr>'
                     + '<th>Channel</th><th class="text-end">Suggested Price</th><th class="text-center">Push</th>'
                     + '</tr></thead><tbody>';
@@ -10492,6 +10512,13 @@
                 const b2bVal = (isFinite(x) && x > 0) ? (x * 0.75).toFixed(2) : '';
                 typeInputs('b2b').val(b2bVal);
                 typeInputs('c2c').val(b2bVal); // C2C follows the B2B price
+
+                // High Shipping channels = Aliexpress price + Shipping Master Diff (Ship BB − Ship)
+                const diff = chpushShipDiff();
+                if (diff != null) {
+                    const hsVal = (isFinite(x) && x > 0) ? Math.max(0, x + diff).toFixed(2) : '';
+                    typeInputs('high shipping').val(hsVal);
+                }
             }
 
             const $inputs = $(this).closest('table').find('.chpush-input');
