@@ -8757,6 +8757,17 @@ class CvrMasterController extends Controller
      * Temu / Temu2: siblings get both channels (same as primary Temu↔Temu2 cross-apply).
      * Ebay1 / Ebay2 / Ebay3: siblings get all three channels.
      */
+    /** "+$ SPRICE" amount added to the siblings' price (0 when empty / invalid / negative). */
+    private function siblingsAddAmount(Request $request): float
+    {
+        $add = $request->input('siblings_add');
+        if ($add === null || $add === '' || !is_numeric($add)) {
+            return 0.0;
+        }
+
+        return max(0.0, min(10000.0, round((float) $add, 2)));
+    }
+
     private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
     {
         $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
@@ -8773,8 +8784,11 @@ class CvrMasterController extends Controller
         }
         $channels = array_values(array_unique($channels));
 
-        // Siblings Apply only when there is a real (non-zero) suggested price
+        // Siblings Apply only when there is a real (non-zero) suggested price.
+        // "+$ SPRICE" (siblings_add): siblings get this SPRICE + that amount (e.g. 7.44 + 0.01 = 7.45), never the same price.
         if ($applySiblings && $sprice > 0) {
+            $siblingPayload = $payload;
+            $siblingPayload['sprice'] = round($sprice + $this->siblingsAddAmount($request), 2);
             foreach ($this->resolveSiblingSkus($fullSku) as $sibSku) {
                 if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($fullSku))) {
                     continue;
@@ -8782,7 +8796,7 @@ class CvrMasterController extends Controller
                 $anyOk = false;
                 foreach ($channels as $ch) {
                     try {
-                        if ($this->applySuggestedSpriceToSku((string) $sibSku, $ch, $payload)) {
+                        if ($this->applySuggestedSpriceToSku((string) $sibSku, $ch, $siblingPayload)) {
                             $anyOk = true;
                         }
                     } catch (\Throwable $e) {
@@ -8997,7 +9011,7 @@ class CvrMasterController extends Controller
                 }
                 $sibPayload = [
                     'sku' => $sibSku,
-                    'price' => $price,
+                    'price' => round($price + $this->siblingsAddAmount($request), 2),
                     'marketplace' => $marketplace,
                     'apply_siblings' => 0,
                 ];

@@ -1933,11 +1933,11 @@
                         </label>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Siblings addition ($). Saved automatically together with the Siblings tick, per SKU, and restored the next time this SKU is opened.">
+                        title="Siblings addition ($): every sibling gets this SKU's price + this amount (e.g. 7.44 + 0.01 = 7.45). Saved automatically with the Siblings tick, per SKU.">
                         <label for="modal-sprice-bump-input">+$ SPRICE</label>
                         <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
                             placeholder="0" step="0.01" style="width: 58px;"
-                            title="Siblings addition ($) — saved automatically (per SKU)">
+                            title="Added to the price of every sibling (7.44 + 0.01 → siblings 7.45). Saved automatically (per SKU).">
                         <small id="modal-siblings-save-note" class="text-success" style="min-width:12px;"></small>
                     </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
@@ -2744,24 +2744,6 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
-
-                    {{-- Sprice Rule: SP = Amazon LMP × editable factor (default 0.98) --}}
-                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
-                        id="pi-sprice-lmp-rule"
-                        style="background: #ffc107;"
-                        title="Sprice Rule — set SP = Amz LMP × factor. Factor is editable (default 0.98). Applies to selected SKUs, or visible parents' children when none selected.">
-                        <button type="button" id="pi-apply-sprice-lmp-rule-btn"
-                            class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
-                            style="background: transparent;">
-                            <i class="fas fa-percentage"></i> Sprice Rule
-                        </button>
-                        <span class="small fw-bold text-dark text-nowrap">LMP ×</span>
-                        <input type="number" id="pi-sprice-lmp-mult-input"
-                            class="form-control form-control-sm text-end"
-                            value="0.98" step="0.01" min="0.01" max="2"
-                            style="width: 72px;"
-                            title="Editable LMP multiplier — autofilled with 0.98">
-                    </div>
 
                     {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
                 </div>
@@ -3829,6 +3811,12 @@
             siblingsSaveTimer = setTimeout(saveSiblingsSettingsNow, 300);
         });
 
+        /** "+$ SPRICE" box: the amount ADDED to the siblings' price (7.44 + 0.01 → siblings get 7.45). 0 when empty / invalid. */
+        function siblingsAddAmount() {
+            const v = parseFloat(String($('#modal-sprice-bump-input').val() || '').replace(/[$,\s]/g, '').replace(',', '.'));
+            return (isFinite(v) && v > 0) ? +v.toFixed(2) : 0;
+        }
+
         function siblingsApplyPayload(price) {
             // Never apply 0 / empty to siblings — only real suggested prices
             if (price !== undefined && price !== null) {
@@ -3914,7 +3902,8 @@
             if (n > 0) {
                 const preview = modalSiblingSkus.slice(0, 3).join(', ')
                     + (n > 3 ? (' +' + (n - 3) + ' more') : '');
-                return ' (+' + n + ' siblings: ' + preview + ')';
+                const add = siblingsAddAmount();
+                return ' (+' + n + ' siblings: ' + preview + (add > 0 ? (', each +$' + add.toFixed(2)) : '') + ')';
             }
             return ' (+ siblings)';
         }
@@ -6541,188 +6530,6 @@
                 'background:' + meta.color + ';flex-shrink:0;" title="' + String(tip).replace(/"/g, '&quot;') + '"></span>';
         }
 
-        // ==================== Sprice Rule (SP = Amazon LMP × factor) ====================
-        const PI_SPRICE_LMP_MULT_KEY = 'price_increase_sprice_lmp_mult';
-        let piSpriceLmpMult = 0.98;
-
-        function getPiSpriceLmpMult() {
-            const n = parseFloat(piSpriceLmpMult);
-            if (isFinite(n) && n > 0 && n <= 2) return n;
-            return 0.98;
-        }
-
-        function formatPiSpriceLmpMult(v) {
-            const n = Number(v);
-            if (!isFinite(n)) return '0.98';
-            return String(+n.toFixed(4));
-        }
-
-        function loadPiSpriceLmpMult() {
-            try {
-                const stored = parseFloat(localStorage.getItem(PI_SPRICE_LMP_MULT_KEY));
-                if (isFinite(stored) && stored > 0 && stored <= 2) {
-                    piSpriceLmpMult = stored;
-                }
-            } catch (e) { /* ignore */ }
-            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
-        }
-
-        function savePiSpriceLmpMultFromInput() {
-            const raw = parseFloat(String($('#pi-sprice-lmp-mult-input').val() || '').replace(',', '.'));
-            if (!isFinite(raw) || raw <= 0 || raw > 2) {
-                showToast('Enter a multiplier between 0.01 and 2.00', 'error');
-                $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
-                return false;
-            }
-            piSpriceLmpMult = raw;
-            try { localStorage.setItem(PI_SPRICE_LMP_MULT_KEY, String(raw)); } catch (e) { /* ignore */ }
-            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(raw));
-            return true;
-        }
-
-        function collectSkusForPiSpriceLmpRule() {
-            const out = [];
-            const seen = new Set();
-            const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
-
-            function pushSku(sku, lmp) {
-                const key = String(sku || '').trim().toUpperCase();
-                if (!key || key.indexOf('PARENT') === 0 || seen.has(key)) return;
-                const lmpN = parseFloat(lmp) || 0;
-                if (lmpN <= 0) return;
-                seen.add(key);
-                out.push({ sku: String(sku).trim(), lmp: lmpN });
-            }
-
-            function addFromDatasetRow(d) {
-                if (!d || d.is_parent_summary) return;
-                pushSku(d.sku, d.amazon_lmp_price);
-            }
-
-            if (useSelection) {
-                selectedSkus.forEach(function(selSku) {
-                    const key = String(selSku || '').trim().toUpperCase();
-                    if (!key) return;
-                    // Selected parent → all children under that parent
-                    if (key.indexOf('PARENT ') === 0 || (fullDataset || []).some(r =>
-                        r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
-                    )) {
-                        const parentRow = (fullDataset || []).find(r =>
-                            r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
-                        );
-                        const parentName = parentRow
-                            ? String(parentRow.parent || '').trim()
-                            : String(selSku || '').replace(/^PARENT\s+/i, '').trim();
-                        (fullDataset || []).forEach(function(r) {
-                            if (r.is_parent_summary) return;
-                            if (String(r.parent || '').trim() === parentName) addFromDatasetRow(r);
-                        });
-                        return;
-                    }
-                    const child = (fullDataset || []).find(r =>
-                        !r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
-                    );
-                    if (child) addFromDatasetRow(child);
-                });
-            } else if (table) {
-                // No selection: visible rows — parents expand to children; child rows used directly
-                table.getRows('active').forEach(function(r) {
-                    const d = r.getData();
-                    if (!d) return;
-                    if (d.is_parent_summary) {
-                        const parentName = String(d.parent || '').trim();
-                        (fullDataset || []).forEach(function(row) {
-                            if (row.is_parent_summary) return;
-                            if (String(row.parent || '').trim() === parentName) addFromDatasetRow(row);
-                        });
-                    } else {
-                        addFromDatasetRow(d);
-                    }
-                });
-            }
-            return out;
-        }
-
-        loadPiSpriceLmpMult();
-
-        $('#pi-sprice-lmp-mult-input').on('change blur', function() {
-            savePiSpriceLmpMultFromInput();
-        });
-
-        $('#pi-apply-sprice-lmp-rule-btn').on('click', function() {
-            if (!savePiSpriceLmpMultFromInput()) return;
-            const mult = getPiSpriceLmpMult();
-            const multLabel = formatPiSpriceLmpMult(mult);
-            const $btn = $(this);
-            if (!table) {
-                showToast('Table not ready', 'error');
-                return;
-            }
-
-            const targets = collectSkusForPiSpriceLmpRule();
-            if (targets.length === 0) {
-                showToast(selectedSkus.size > 0
-                    ? 'No selected SKUs with Amz LMP > 0'
-                    : 'No visible SKUs with Amz LMP > 0', 'error');
-                return;
-            }
-
-            const scope = selectedSkus.size > 0 ? 'selected' : 'visible';
-            if (!confirm('Set SP = Amz LMP × ' + multLabel + ' for ' + targets.length + ' ' + scope + ' SKU(s)?\n\nSaves to the same SP field as /amazon-tabulator-view.')) {
-                return;
-            }
-
-            const btnHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-            let successCount = 0;
-            let errorCount = 0;
-            let done = 0;
-            const total = targets.length;
-
-            targets.forEach(function(item) {
-                const sp = +Number(item.lmp * mult).toFixed(2);
-                if (!isFinite(sp) || sp <= 0) {
-                    errorCount++;
-                    done++;
-                    if (done >= total) {
-                        $btn.prop('disabled', false).html(btnHtml);
-                        showToast('Sprice Rule done: ' + successCount + ' saved, ' + errorCount + ' failed', errorCount ? 'error' : 'success');
-                    }
-                    return;
-                }
-                $.ajax({
-                    url: '/save-amazon-sprice',
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: {
-                        sku: item.sku,
-                        sprice: sp,
-                        is_standard_price: 1,
-                        _token: '{{ csrf_token() }}'
-                    },
-                    success: function(response) {
-                        const saved = response.data || sp;
-                        applyStandardPriceToPriceIncreaseRows(item.sku, saved, response.applied_skus);
-                        successCount++;
-                    },
-                    error: function() {
-                        errorCount++;
-                    },
-                    complete: function() {
-                        done++;
-                        if (done >= total) {
-                            $btn.prop('disabled', false).html(btnHtml);
-                            showToast(
-                                'Sprice Rule: SP = LMP × ' + multLabel + ' — ' + successCount + ' saved' +
-                                (errorCount ? (', ' + errorCount + ' failed') : ''),
-                                errorCount ? 'error' : 'success'
-                            );
-                        }
-                    }
-                });
-            });
-        });
-
         // ==================== Temu SPRICE / Push (same as /temu-decrease) ====================
         function collectPiTemuSpriceRows() {
             const out = [];
@@ -8375,6 +8182,7 @@
                     sroi: sroi,
                     amazon_margin: margin,
                     apply_siblings: applySiblings,
+                    siblings_add: applySiblings ? siblingsAddAmount() : 0, // siblings get SPRICE + this amount
                     skip_pair_sync: opts.skipPairSync ? 1 : 0,
                     _token: '{{ csrf_token() }}'
                 },
@@ -9679,6 +9487,10 @@
                     ? (target.applySiblings && pushPrice > 0 ? 1 : 0)
                     : siblingsApplyPayload(pushPrice)
             };
+            // Siblings pushed by the server get this price + the "+$ SPRICE" amount (Temu: base price differs, handled by explicit sibling pushes)
+            if (payload.apply_siblings && !(mpLower === 'temu' || mpLower === 'temu2' || mpKeyNoSpace === 'temu3')) {
+                payload.siblings_add = siblingsAddAmount();
+            }
             // Doba: Self Pick = SPRICE − Ship (same as /doba-tabulator)
             if (mpLower === 'doba' && target.$tr && target.$tr.length) {
                 const ship = parseFloat(target.$tr.attr('data-ship')) || 0;
@@ -11011,12 +10823,24 @@
             opts = opts || {};
             if (!targets.length) return;
             const sku = String(getModalPrimarySku() || targets[0].sku || '');
-            const applySiblings = isModalSiblingsApply() ? 1 : 0;
-            const sibSkus = Array.isArray(opts.siblingSkus) ? opts.siblingSkus : [];
+            // Siblings ticked: EVERY sibling SKU gets its own save + push of the same channels in this one click, at this price
+            // + the "+$ SPRICE" amount (7.44 + 0.01 → siblings 7.45). They are handled here (tracked, one by one by the server queue),
+            // so the server-side "copy the same price to siblings" is switched off for this job.
+            const sibsOn = isModalSiblingsApply();
+            const sibSkus = Array.isArray(opts.siblingSkus) ? opts.siblingSkus : (sibsOn ? chpushSiblingSkusFor(sku) : []);
+            const sibAdd = sibsOn ? siblingsAddAmount() : 0;
+            const applySiblings = (sibsOn && !sibSkus.length) ? 1 : 0;
+            const sibBasePrices = (opts.siblingPrices && opts.siblingPrices.length)
+                ? opts.siblingPrices
+                : targets.map(function(t) { return { mp: t.marketplace, price: t.price }; });
+            const sibPrices = sibBasePrices
+                .filter(function(p) { return p.mp && CHSAVE_SUPPORTED.has(String(p.mp).toLowerCase()); })
+                .map(function(p) { return { mp: p.mp, price: +(p.price + sibAdd).toFixed(2) }; });
             const sibSaveDfd = sibSkus.length
-                ? chpushSaveToSiblings(sibSkus, opts.siblingPrices || [])
+                ? chpushSaveToSiblings(sibSkus, sibPrices)
                 : $.Deferred().resolve({ saved: 0, failed: 0, total: 0 }).promise();
             let sibPushOk = 0, sibPushTot = 0;
+            const sibErrors = [];
             const saveJobs = chpushCollectSaveJobs();
             // Detached buttons: the push helper may restyle them, the real UI is driven by the registry.
             const jobTargets = targets.map(function(t) {
@@ -11037,7 +10861,7 @@
             chpushRunning[sku] = (chpushRunning[sku] || 0) + 1;
             chpushBg.jobs++;
             chpushBg.sending++;
-            chpushBg.total += jobTargets.length;
+            chpushBg.total += jobTargets.length * (1 + sibSkus.length);
             chpushBg.sku = sku;
             chpushBgUpdate();
             jobTargets.forEach(function(t) { chpushReg(sku).rows[t.channel] = { state: 'busy', msg: '', price: t.priceTyped }; });
@@ -11073,7 +10897,7 @@
                             : { state: 'ok', msg: 'All pushed' };
                     }
                     chpushPaint();
-                    piRefreshSkuFailCount(sku); // red "channels not updated" number in the Hist column
+                    piRefreshSkuFailCounts([sku].concat(sibSkus)); // red numbers of the "Push Pending" column
                     if (okResults.length) reloadOvl30ModalAfterPush(okResults);
                     if (String(getModalPrimarySku() || '') === sku) syncSameSpriceBoxFromSaved(); // SPRICE $ box + badges show what was saved
                     const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
@@ -11087,21 +10911,21 @@
                     let sibNote = '';
                     let sibBad = false;
                     if (sibSkus.length) {
-                        sibNote = ' | Siblings (' + sibSkus.length + '): SPRICE saved ' + (sibSaveRes.total - sibSaveRes.failed) + '/' + sibSaveRes.total
-                            + (sibPushTot ? (', pushed ' + sibPushOk + '/' + sibPushTot) : '');
-                        sibBad = sibSaveRes.failed > 0 || (sibPushTot > 0 && sibPushOk < sibPushTot);
+                        sibNote = ' | Siblings (' + sibSkus.length + (sibAdd > 0 ? (', +$' + sibAdd.toFixed(2) + ' each') : '') + '): SPRICE saved '
+                            + (sibSaveRes.total - sibSaveRes.failed) + '/' + sibSaveRes.total
+                            + (sibPushTot ? (', pushed ' + sibPushOk + '/' + sibPushTot) : '')
+                            + (sibErrors.length ? ('. Failed: ' + sibErrors.slice(0, 4).join(' | ') + (sibErrors.length > 4 ? (' … +' + (sibErrors.length - 4) + ' more (see Push Pending)') : '')) : '');
+                        sibBad = sibSaveRes.failed > 0 || sibErrors.length > 0;
                     }
                     showToast(prefix + msg + sibNote, okResults.length && !errors.length && !sibBad ? 'success' : 'error');
                 }
                 // The server pushes in the background (survives a page refresh); this page just follows the progress
-                ovl30PushInBackground(sku, jobTargets, {
+                const mainPush = ovl30PushInBackground(sku, jobTargets, {
                     onAccepted: function() { chpushBg.sending = Math.max(0, chpushBg.sending - 1); },
                     onResult: function(i, result) {
                         const t = jobTargets[i];
                         chpushBg.done++;
                         chpushBgUpdate();
-                        const sm = /\(\+(\d+)\/(\d+) siblings\)/.exec(String(result.message || ''));
-                        if (sm) { sibPushOk += parseInt(sm[1], 10) || 0; sibPushTot += parseInt(sm[2], 10) || 0; }
                         if (result.ok) {
                             okResults.push(result);
                             lastMsg = result.message || '';
@@ -11114,7 +10938,26 @@
                             chpushSetRow(sku, t.channel, 'fail', result.message, t.priceTyped);
                         }
                     }
-                }).always(finish);
+                });
+                // Every sibling: same channels, price + addition — queued right behind this SKU (server runs them one at a time)
+                const sibPushes = sibSkus.map(function(sibSku) {
+                    const sibTargets = jobTargets.map(function(t) {
+                        return {
+                            sku: sibSku, marketplace: t.marketplace, price: +(t.priceTyped + sibAdd).toFixed(2),
+                            channel: t.channel, $tr: $(), $btn: $('<button type="button"></button>'), applySiblings: 0
+                        };
+                    });
+                    return ovl30PushInBackground(sibSku, sibTargets, {
+                        onResult: function(i, result) {
+                            chpushBg.done++;
+                            chpushBgUpdate();
+                            sibPushTot++;
+                            if (result.ok) sibPushOk++;
+                            else sibErrors.push(sibSku + ' ' + sibTargets[i].channel + ' — ' + String(result.message || 'failed').slice(0, 100));
+                        }
+                    });
+                });
+                $.when.apply($, [mainPush].concat(sibPushes)).always(finish);
             });
         }
 
@@ -11235,6 +11078,7 @@
             return s.length > 300 ? s.slice(0, 300) + '…' : s;
         }
         function piSkuFailSkus() {
+            if (Array.isArray(piSkuFailCtx.skus) && piSkuFailCtx.skus.length) return piSkuFailCtx.skus;
             if (piSkuFailCtx.sku) return [piSkuFailCtx.sku];
             return (Array.isArray(fullDataset) ? fullDataset : []).filter(function(r) {
                 return r && r.is_parent_summary !== true && String(r.parent || '') === piSkuFailCtx.parent;
@@ -11313,6 +11157,15 @@
             }).always(function() { piSkuFailLoad(); piPendingRefresh(); });
         });
         /** After a push job: refresh the red number of that SKU in the table. */
+        /** Same for several SKUs at once (the SKU + its siblings after a one-click push). */
+        function piRefreshSkuFailCounts(skus) {
+            skus = (skus || []).map(function(s) { return String(s || '').trim(); }).filter(Boolean);
+            if (!skus.length) return;
+            const keep = piSkuFailCtx;
+            piSkuFailCtx = { sku: '', parent: '', skus: skus };
+            $.getJSON('/price-push-pending', { skus: skus }).done(function(res) { piSyncFailCounts((res && res.items) || []); })
+                .always(function() { piSkuFailCtx = keep; });
+        }
         function piRefreshSkuFailCount(sku) {
             sku = String(sku || '');
             if (!sku) return;
