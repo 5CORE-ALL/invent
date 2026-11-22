@@ -3570,6 +3570,38 @@ class CvrMasterController extends Controller
         }
     }
 
+    /**
+     * Product Master row for a SKU typed/passed from the UI. The exact SKU always wins; only when none exists
+     * do we fall back to a prefix match (shortened SKUs). Without this an un-ordered "= OR LIKE 'sku%'" lookup
+     * could return an older SKU that merely starts with the same text (e.g. "WF 8" -> "WF 8 110 1PC"),
+     * so the modal showed that other SKU's (empty) data and saved prices to it.
+     */
+    private function resolveProductMasterBySku(string $sku): ?ProductMaster
+    {
+        $clean = trim(str_replace("\xC2\xA0", ' ', $sku));
+        if ($clean === '') {
+            return null;
+        }
+
+        $exact = ProductMaster::where('sku', $sku)->first()
+            ?? ProductMaster::where('sku', $clean)->first();
+        if ($exact) {
+            return $exact;
+        }
+
+        // Same SKU with different spacing / nbsp / case ("WF 8" vs "WF\u00a08")
+        $compact = strtoupper(str_replace(' ', '', $clean));
+        $loose = ProductMaster::whereRaw(
+            "REPLACE(REPLACE(UPPER(sku), CHAR(194,160 USING utf8mb4), ''), ' ', '') = ?",
+            [$compact]
+        )->orderBy('id')->first();
+        if ($loose) {
+            return $loose;
+        }
+
+        return ProductMaster::where('sku', 'LIKE', $sku . '%')->orderBy('sku')->first();
+    }
+
     public function getBreakdownData(Request $request)
     {
         try {
@@ -3711,9 +3743,7 @@ class CvrMasterController extends Controller
             };
 
             // First, get the full SKU from ProductMaster (in case shortened SKU is passed)
-            $productMaster = ProductMaster::where('sku', $sku)
-                ->orWhere('sku', 'LIKE', $sku . '%')
-                ->first();
+            $productMaster = $this->resolveProductMasterBySku((string) $sku);
             
             // Use the full SKU from ProductMaster if found
             $fullSku = $productMaster ? $productMaster->sku : $sku;
@@ -7871,9 +7901,7 @@ class CvrMasterController extends Controller
             }
 
             // Resolve full SKU (same as getBreakdownData): use ProductMaster then Amazon datasheet for Amazon
-            $productMaster = ProductMaster::where('sku', $sku)
-                ->orWhere('sku', 'LIKE', $sku . '%')
-                ->first();
+            $productMaster = $this->resolveProductMasterBySku((string) $sku);
             $fullSku = $productMaster ? $productMaster->sku : $sku;
 
             // Channels without a price API (Depop, Vinted, Instagram Shop, Mercari, FB Marketplace): SPRICE is saved on the
