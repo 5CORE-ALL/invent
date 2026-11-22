@@ -448,6 +448,18 @@ class GoogleMeetMeetingsTest extends TestCase
         $this->assertSame(0, Meeting::where('series_id', $first->id)->where('recurrence', '!=', 'once')->count());
     }
 
+    public function test_requests_for_you_list_urgent_first(): void
+    {
+        $host = $this->user('Host Person');
+        $guest = $this->user('Guest One');
+        $normal = $this->book($host, 1, '10:00', '11:00', [$guest->id]);
+        $urgent = $this->book($host, 2, '10:00', '11:00', [$guest->id], ['priority' => 'urgent']);
+        $immediate = $this->book($host, 3, '10:00', '11:00', [$guest->id], ['priority' => 'immediate']);
+
+        $ids = collect($this->actingAs($guest)->getJson(route('meetings.requests'))->assertOk()->json('requests'))->pluck('id')->all();
+        $this->assertSame([$urgent->id, $immediate->id, $normal->id], $ids);
+    }
+
     public function test_transient_google_errors_are_retried_with_backoff(): void
     {
         $this->fake->failNext(2, 503, 'POST', '/events');
@@ -733,7 +745,7 @@ class GoogleMeetMeetingsTest extends TestCase
 
     // ------------------------------------------------------------------ 1: priority + oldest on top
 
-    public function test_requests_are_listed_oldest_first_and_carry_priority_room_and_join_link(): void
+    public function test_requests_are_listed_urgent_first_and_carry_priority_room_and_join_link(): void
     {
         $host = $this->user('Host Person');
         $me = $this->user('Me Invitee');
@@ -746,10 +758,11 @@ class GoogleMeetMeetingsTest extends TestCase
         DB::table('meetings')->where('id', $new->id)->update(['created_at' => now()->subHour()]);
 
         $json = $this->actingAs($me)->getJson(route('meetings.requests'))->assertOk()->json();
-        $this->assertSame(['Oldest normal', 'Middle immediate', 'Newest urgent'], array_column($json['requests'], 'title'));
+        // Requests for you: Urgent first, then Immediate, then Normal
+        $this->assertSame(['Newest urgent', 'Middle immediate', 'Oldest normal'], array_column($json['requests'], 'title'));
         $first = $json['requests'][0];
-        $this->assertSame('Normal', $first['priority']['label']);
-        $this->assertSame('Meeting Room 2', $first['room']);
+        $this->assertSame('Urgent', $first['priority']['label']);
+        $this->assertSame('Meeting Room 1', $first['room']);
         $this->assertStringStartsWith('https://meet.google.com/', $first['meet_url']);
 
         $sent = $this->actingAs($host)->getJson(route('meetings.sent'))->assertOk()->json();

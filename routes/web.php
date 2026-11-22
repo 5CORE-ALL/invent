@@ -418,6 +418,7 @@ Route::middleware(['auth'])->prefix('social-media')->name('social-media.')->grou
 // Help Desk FAQ management (admin UI)
 Route::middleware(['auth'])->group(function () {
     Route::get('/help-desk-faqs', [\App\Http\Controllers\HelpDeskFaqController::class, 'index'])->name('help-desk-faqs.index');
+    Route::get('/help-desk-faqs/data', [\App\Http\Controllers\HelpDeskFaqController::class, 'data'])->name('help-desk-faqs.data');
     Route::get('/help-desk-faqs/archived', [\App\Http\Controllers\HelpDeskFaqController::class, 'archived'])->name('help-desk-faqs.archived');
     Route::post('/help-desk-faqs/{id}/restore', [\App\Http\Controllers\HelpDeskFaqController::class, 'restore'])->name('help-desk-faqs.restore');
     Route::delete('/help-desk-faqs/{id}/force-delete', [\App\Http\Controllers\HelpDeskFaqController::class, 'forceDelete'])->name('help-desk-faqs.force-delete');

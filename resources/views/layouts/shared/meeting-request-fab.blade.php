@@ -371,7 +371,7 @@
                 <div id="mrqSent" class="mrq-hidden">
                     <div class="mrq-subtabs" id="mrqSentFilter">
                         <button type="button" class="mrq-subtab active" data-filter="active"><i class="ri-time-line me-1"></i>Active</button>
-                        <button type="button" class="mrq-subtab" data-filter="completed"><i class="ri-check-double-line me-1"></i>Completed <span class="badge bg-primary mrq-hidden" id="mrqCompletedCount">0</span></button>
+                        <button type="button" class="mrq-subtab" data-filter="completed"><i class="ri-archive-line me-1"></i>Archived <span class="badge bg-primary mrq-hidden" id="mrqCompletedCount">0</span></button>
                     </div>
                     <div id="mrqSentList"><div class="text-muted">Loading…</div></div>
                 </div>
@@ -902,7 +902,7 @@
                 if (silent && (sig === sentSig || tab !== 'sent' || box.querySelector('[data-resched]:not(.mrq-hidden)'))) return; // nothing changed (or a reschedule form is open): leave the list alone
                 sentSig = sig;
                 if (!list.length) { box.innerHTML = done
-                    ? '<div class="text-muted py-3 text-center">No completed meetings yet.</div>'
+                    ? '<div class="text-muted py-3 text-center">Nothing archived yet. Completed meetings are archived here.</div>'
                     : '<div class="text-muted py-3 text-center">You have no upcoming or live meetings. Use the <strong>Request a meeting</strong> tab to create one.</div>'; return; }
                 box.innerHTML = '';
                 list.forEach(function (m) {
@@ -919,7 +919,7 @@
                             : m.google
                             ? '<span class="badge bg-warning text-dark">Google Meet link ' + (m.google_status === 'failed' ? 'not created' : 'pending') + '</span> '
                             : '<a class="btn btn-sm btn-success" href="' + esc(m.room_url) + '"><i class="ri-vidicon-line"></i> Open meeting room</a> ');
-                    div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + (done ? ' <span class="badge bg-primary"><i class="ri-check-double-line"></i> Completed</span>' : '')
+                    div.innerHTML = '<h6>' + esc(m.title) + ' ' + prioBadge(m.priority) + (m.live ? ' <span class="badge bg-success">Live now</span>' : '') + (done ? ' <span class="badge bg-secondary"><i class="ri-archive-line"></i> Archived</span>' : '')
                         + (m.recurrence_label ? ' <span class="badge bg-info text-dark"><i class="ri-repeat-line"></i> ' + esc(m.recurrence_label) + '</span>' : '') + '</h6>'
                         + '<div class="small text-muted mb-1">' + esc(m.scheduled_at || (m.live ? 'happening now' : 'No time set')) + (m.room ? ' &middot; <span class="mrq-room">' + esc(m.room) + '</span>' : '') + '</div>'
                         + (m.agenda ? '<div class="small mb-2" style="white-space:pre-line"><span class="text-muted">Agenda:</span> ' + esc(m.agenda) + '</div>' : '')
@@ -944,7 +944,7 @@
                     if (rbtn) rbtn.addEventListener('click', function () { toggleReschedule(div, m); });
                     var cbtn = div.querySelector('[data-complete]');
                     if (cbtn) cbtn.addEventListener('click', function () {
-                        if (!confirm('Mark "' + m.title + '" as completed? It will move to the Completed tab.')) return;
+                        if (!confirm('Mark "' + m.title + '" as completed? It will be archived (Archived tab).')) return;
                         var res = div.querySelector('[data-result]');
                         cbtn.disabled = true;
                         call('POST', m.end_url).then(function (r) {

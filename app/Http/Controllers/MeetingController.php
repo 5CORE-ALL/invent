@@ -375,7 +375,8 @@ class MeetingController extends Controller
             ->whereNull('first_joined_at')
             ->whereHas('meeting', fn ($q) => $q->whereIn('status', [Meeting::STATUS_SCHEDULED, Meeting::STATUS_LIVE]))
             ->with('meeting.host:id,name,avatar')
-            // Old requests on top: the request that has waited longest is listed first.
+            // Urgent first, then Immediate, then Normal; inside each priority the request that has waited longest comes first.
+            ->orderByRaw("(SELECT CASE meetings.priority WHEN 'urgent' THEN 1 WHEN 'immediate' THEN 2 ELSE 3 END FROM meetings WHERE meetings.id = meeting_participants.meeting_id)")
             ->orderBy(Meeting::query()->select('created_at')->whereColumn('meetings.id', 'meeting_participants.meeting_id'))
             ->orderBy('id')
             ->limit(20)
