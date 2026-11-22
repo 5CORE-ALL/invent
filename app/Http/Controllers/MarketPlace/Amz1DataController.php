@@ -68,9 +68,16 @@ class Amz1DataController extends Ebay1DataController
         ];
     }
 
+    /** The UPC is not pushed to Amazon from this page (no Push UPC button, no UPC pending flag). */
     protected function hasUpcColumn(): bool
     {
         return false;
+    }
+
+    /** Every SKU of every product type shows a UPC column with the code held in CP Master. */
+    protected function showsUpcColumn(): bool
+    {
+        return true;
     }
 
     protected function fillsFixedValues(): bool
@@ -289,21 +296,18 @@ class Amz1DataController extends Ebay1DataController
 
     /**
      * The category of a SKU is its Amazon product type: what a pull or Change Category saved comes first (the page
-     * reads that itself), then the product type in the listings report. A SKU Amazon does not know yet keeps its
-     * Category Master / CAT-5C category, so it still has a tab.
+     * reads that itself), then the product type in the listings report. Categories come from Amazon only: a SKU
+     * Amazon has not given a product type for yet stays under "No category" (Category Master is never used)
+     * until Fetch categories or Pull reads it from Amazon.
      */
     protected function categoriesBySku(iterable $listing): array
     {
-        $fallback = parent::categoriesBySku($listing);
         $out = [];
         foreach ($listing as $item) {
             $sku = trim((string) ($item->sku ?? ''));
-            $key = $this->skuKey($sku);
             $type = $this->reportTypeFor($sku);
             if ($type !== '') {
-                $out[$key] = $type;
-            } elseif (isset($fallback[$key])) {
-                $out[$key] = $fallback[$key];
+                $out[$this->skuKey($sku)] = $type;
             }
         }
 
@@ -614,7 +618,8 @@ class Amz1DataController extends Ebay1DataController
                 foreach ((array) ($entry['specifics'] ?? []) as $name => $value) {
                     $name = trim((string) $name);
                     $value = is_scalar($value) ? trim((string) $value) : '';
-                    if ($name !== '' && $value !== '' && ! str_starts_with($name, '__')) {
+                    // The UPC column shows the CP Master code; it is not an item-specific field sent to Amazon.
+                    if ($name !== '' && $value !== '' && ! str_starts_with($name, '__') && $this->aspectKey($name) !== 'upc') {
                         $edits[$name] = $value;
                     }
                 }

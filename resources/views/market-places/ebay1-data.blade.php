@@ -329,6 +329,11 @@
                             <button type="button" class="btn btn-sm btn-outline-dark" id="e1dAllFields" title="One time: fetch the fields {{ $siteName }} defines for every {{ $isAmazon ? 'product type' : 'category' }} the SKUs are in, and save the columns in the app">
                                 <i class="fas fa-columns"></i> All fields
                             </button>
+                            @if ($isAmazon)
+                                <button type="button" class="btn btn-sm btn-outline-dark" id="e1dFetchCats" title="Fetch categories: read the Amazon product type (and the values) of every listed SKU that has no product type yet, straight from Amazon. Categories on this page come from Amazon only.">
+                                    <i class="fas fa-sitemap"></i> Fetch categories
+                                </button>
+                            @endif
                         @else
                             @unless ($ebayCfg['main'])
                                 <button type="button" class="btn btn-sm btn-outline-dark" id="e1dSyncMain" title="Sync from eBay 1: bring item specifics, categories and added columns of every SKU in line with the eBay 1 page (app only, nothing is sent to {{ $ebayCfg['label'] }}; title and price are not copied)">
@@ -1576,16 +1581,22 @@
 
             // ---- Pull (Temu): reads the category and the item specifics of the ticked rows, else of the open tab, from the live Temu products. ----
             let pullRunning = false;
-            async function runPull() {
+            // onlyUncategorised (Amazon, Fetch categories): every listed SKU of the page that has no product type yet.
+            async function runPull(onlyUncategorised) {
                 if (pullRunning) return;
-                const selected = table && tableReady ? table.getSelectedData().filter(passesTab) : [];
-                const base = selected.length ? selected : rows.filter(passesTab);
+                const uncategorised = onlyUncategorised === true;
+                const selected = !uncategorised && table && tableReady ? table.getSelectedData().filter(passesTab) : [];
+                const base = uncategorised ? rows.filter(function (row) { return String(row.category || '').trim() === ''; }) : (selected.length ? selected : rows.filter(passesTab));
                 const todo = base.filter(function (row) { return E1_ID_RE.test(String(row.item_id || '').trim()) && !isParentRow(row); });
                 if (!todo.length) {
-                    rowToast('Nothing to pull: no listed SKU with ' + (E1_AMAZON ? 'an Amazon ASIN' : 'a Temu goods ID') + ' here.', false);
+                    rowToast(uncategorised
+                        ? 'Every listed SKU already has its ' + E1_SITE + ' ' + E1_CAT_WORD + '.'
+                        : 'Nothing to pull: no listed SKU with ' + (E1_AMAZON ? 'an Amazon ASIN' : 'a Temu goods ID') + ' here.', false);
                     return;
                 }
-                const where = selected.length
+                const where = uncategorised
+                    ? todo.length + ' SKU' + (todo.length === 1 ? '' : 's') + ' with no ' + E1_CAT_WORD + ' yet'
+                    : selected.length
                     ? todo.length + ' ticked SKU' + (todo.length === 1 ? '' : 's')
                     : 'all ' + todo.length + ' SKUs of ' + (activeTab === ALL ? 'every category' : '"' + catLabel(activeTab) + '"');
                 if (!window.confirm('Pull the ' + E1_CAT_WORD + ' and item specifics of ' + where + ' from ' + E1_SITE + '?\n\nThe columns of each ' + E1_CAT_WORD + ' are the attributes ' + E1_SITE + ' defines for it, and the values are the ones on the live ' + E1_ITEM_WORD + '. Edited cells that are not pushed yet are kept. It takes about a second per SKU; you can keep working.')) return;
@@ -4161,7 +4172,9 @@
                 document.getElementById('e1dMissCancel').addEventListener('click', function () { document.getElementById('e1dMissModal').hidden = true; });
                 bindCatModal();
                 const pullBtn = document.getElementById('e1dPull');
-                if (pullBtn) pullBtn.addEventListener('click', runPull);
+                if (pullBtn) pullBtn.addEventListener('click', function () { runPull(false); });
+                const fetchCatsBtn = document.getElementById('e1dFetchCats');
+                if (fetchCatsBtn) fetchCatsBtn.addEventListener('click', function () { runPull(true); });
                 const ebayPullBtn = document.getElementById('e1dPullEbay');
                 if (ebayPullBtn) ebayPullBtn.addEventListener('click', runEbayPull);
                 const allFieldsBtn = document.getElementById('e1dAllFields');

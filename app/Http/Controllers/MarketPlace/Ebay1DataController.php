@@ -71,6 +71,12 @@ class Ebay1DataController extends Controller
         return true;
     }
 
+    /** The UPC column is shown on the page (CP Master code). A channel can show it without pushing it (Amz Data). */
+    protected function showsUpcColumn(): bool
+    {
+        return $this->hasUpcColumn();
+    }
+
     /**
      * Hook: columns a channel adds to the item specifics of a SKU (Temu: the attribute list of its category).
      *
@@ -262,7 +268,8 @@ class Ebay1DataController extends Controller
                 $upcPending = $this->hasUpcColumn()
                     && preg_match('/^\d{8,14}$/', $upcDigits) === 1
                     && ($upcPushed[$this->upcMarkerKey($sku)] ?? '') !== $upcDigits;
-                if ($upc !== '' && $this->hasUpcColumn()) {
+                // A page that only shows the code (Amz Data) gives every SKU the column, blank when CP Master has no code.
+                if ($this->showsUpcColumn() && ($upc !== '' || ! $this->hasUpcColumn())) {
                     $upcName = null;
                     foreach (array_keys($specifics) as $specName) {
                         if ($this->aspectKey((string) $specName) === 'upc') {
