@@ -10915,7 +10915,7 @@
             'tiktok', 'tiktok2', 'bestbuy', 'bestbuyusa', 'macy', 'macys', 'reverb', 'topdawg', 'shein', 'faire',
             'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'shopify', 'shopifyb2c', 'sb2c', 'shopifyb2b', 'sb2b',
             // no price API — SPRICE is saved on the channel's own store (e.g. depop_pricing)
-            'depop', 'vinted', 'instagramshop', 'instagram shop', 'mercariwship', 'mercari w ship', 'mercariwoship',
+            'pls', 'depop', 'vinted', 'instagramshop', 'instagram shop', 'mercariwship', 'mercari w ship', 'mercariwoship',
             'mercari w/o ship', 'fbmarketplace', 'fb marketplace'
         ]);
 

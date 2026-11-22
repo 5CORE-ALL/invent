@@ -152,7 +152,8 @@ class PricingMasterExtraChannels
             'fb_sprice' => self::analyticsSpriceMap(FBMarketplaceListingStatus::class, 'fb_marketplace_listing_statuses', FBMarketplaceDataView::class, 'fb_marketplace_data_views'),
             'pls_margin' => MarketplacePercentage::takeHomeDecimal('PLS', 'Pls'),
             'pls' => self::plsBySku(),
-            'pls_sprice' => self::jsonSpriceMap(PLSDataView::class, 'pls_data_views', 'sprice'),
+            // /pls-pricing source (pls_data_views.value.sprice), also keyed by its normalized SKU (dashes / underscores / spaces)
+            'pls_sprice' => self::normalizedSpriceMap(PLSDataView::class, 'pls_data_views', 'sprice'),
             'newegg_margin' => self::neweggFactor(),
             'newegg_price' => ['exact' => [], 'norm' => []],
             'newegg_l30' => ['exact' => [], 'norm' => []],
@@ -295,7 +296,7 @@ class PricingMasterExtraChannels
         $l30 = $row ? (int) $row['l30'] : 0;
         $views = $row ? (int) $row['views'] : 0;
         $margin = (float) $lookups['pls_margin'];
-        $sprice = (float) ($lookups['pls_sprice'][$key] ?? 0);
+        $sprice = (float) ($lookups['pls_sprice'][$key] ?? $lookups['pls_sprice'][\App\Models\ShopifySku::normalizeSkuForShopifyLookup($key)] ?? 0);
         $profit = self::marginProfit($price, $lp, $ship, $margin);
         $suggested = $sprice > 0 ? self::marginProfit($sprice, $lp, $ship, $margin) : ['gpft' => 0.0, 'groi' => 0.0];
 
@@ -469,6 +470,25 @@ class PricingMasterExtraChannels
             }
         } catch (\Throwable $e) {
             Log::warning('Master Analytics '.$table.' skipped: '.$e->getMessage());
+        }
+
+        return $out;
+    }
+
+    /**
+     * jsonSpriceMap plus the Shopify-normalized SKU key (what /pls-pricing matches on).
+     *
+     * @param  class-string  $model
+     * @return array<string, float>
+     */
+    private static function normalizedSpriceMap(string $model, string $table, string $keyName): array
+    {
+        $out = self::jsonSpriceMap($model, $table, $keyName);
+        foreach ($out as $k => $v) {
+            $n = \App\Models\ShopifySku::normalizeSkuForShopifyLookup((string) $k);
+            if ($n !== '' && ! isset($out[$n])) {
+                $out[$n] = $v;
+            }
         }
 
         return $out;

@@ -7865,6 +7865,10 @@ class CvrMasterController extends Controller
             // Channels without a price API (Depop, Vinted, Instagram Shop, Mercari, FB Marketplace): SPRICE is saved on the
             // channel's own store (e.g. depop_pricing.sprice) so /depop/pricing and this page show the same value.
             $saveOnlyKey = preg_replace('/[^a-z0-9]/', '', $marketplace);
+            if ($saveOnlyKey === 'pls') {
+                // Same store as /pls-pricing (pls_data_views.value.sprice)
+                return $this->savePlsSpriceFromMaster((string) $fullSku, round((float) $request->input('sprice', 0), 2), (float) $request->input('sgpft', 0), (float) $request->input('sroi', 0));
+            }
             if (in_array($saveOnlyKey, ['depop', 'vinted', 'instagramshop', 'mercariwship', 'mercariwoship', 'fbmarketplace'], true)) {
                 return $this->saveOnlyChannelSprice($saveOnlyKey, (string) $fullSku, round((float) $request->input('sprice', 0), 2));
             }
@@ -8758,6 +8762,55 @@ class CvrMasterController extends Controller
                 'success' => false,
                 'message' => "{$label} API error: " . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * PLS SPRICE — exactly what /pls-pricing stores: pls_data_views.value.sprice (+ sgpft / sroi).
+     * The row is found like /pls-pricing does (normalized SKU: dashes / underscores / spaces / case), so both pages share one row.
+     */
+    private function savePlsSpriceFromMaster(string $sku, float $price, float $sgpft, float $sroi): JsonResponse
+    {
+        try {
+            $row = \App\Models\PLSDataView::where('sku', $sku)->first()
+                ?: \App\Models\PLSDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+            if (! $row) {
+                $norm = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+                \App\Models\PLSDataView::query()->whereNotNull('sku')->where('sku', '!=', '')->orderBy('id')
+                    ->chunkById(500, function ($rows) use (&$row, $norm) {
+                        foreach ($rows as $r) {
+                            if (\App\Models\ShopifySku::normalizeSkuForShopifyLookup($r->sku) === $norm) {
+                                $row = $r;
+
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    });
+            }
+            $row = $row ?: new \App\Models\PLSDataView(['sku' => trim($sku)]);
+            $value = is_array($row->value) ? $row->value : (json_decode((string) ($row->value ?? ''), true) ?: []);
+            if ($price > 0) {
+                $value['sprice'] = $price;
+                $value['SPRICE'] = $price;
+                $value['sgpft'] = round($sgpft, 2);
+                $value['sroi'] = round($sroi, 2);
+            } else {
+                unset($value['sprice'], $value['SPRICE'], $value['sgpft'], $value['sroi']);
+            }
+            $row->value = $value;
+            $row->save();
+
+            return response()->json([
+                'success' => true,
+                'saved_only' => true,
+                'message' => $price > 0 ? ('Saved $' . number_format($price, 2) . ' for PLS (same as /pls-pricing)') : 'Cleared SPRICE for PLS',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('CVR Master - PLS SPRICE save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => 'Could not save price for PLS: ' . $e->getMessage()], 500);
         }
     }
 
