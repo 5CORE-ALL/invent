@@ -2708,9 +2708,9 @@
                         <div class="dropdown-menu hist-dd-menu">
                             <label class="hist-dd-item" title="Every parent — nothing hidden"><input type="checkbox" value="all" class="form-check-input">
                                 <span>History All</span> <b class="hist-count" data-count="all">0</b></label>
-                            <label class="hist-dd-item" title="All children pushed; oldest last push 7 days ago or less"><input type="checkbox" value="green" class="form-check-input" checked>
+                            <label class="hist-dd-item" title="All children pushed; oldest last push 7 days ago or less"><input type="checkbox" value="green" class="form-check-input">
                                 <i class="fas fa-circle" style="color:#28a745"></i> <span>&le; 7d</span> <b class="hist-count" data-count="green">0</b></label>
-                            <label class="hist-dd-item" title="All children pushed; oldest last push 8–14 days ago"><input type="checkbox" value="yellow" class="form-check-input">
+                            <label class="hist-dd-item" title="All children pushed; oldest last push 8–14 days ago"><input type="checkbox" value="yellow" class="form-check-input" checked>
                                 <i class="fas fa-circle" style="color:#ffc107"></i> <span>7–14d</span> <b class="hist-count" data-count="yellow">0</b></label>
                             <label class="hist-dd-item" title="All children pushed; oldest last push more than 14 days ago"><input type="checkbox" value="red" class="form-check-input" checked>
                                 <i class="fas fa-circle" style="color:#dc3545"></i> <span>&gt; 14d</span> <b class="hist-count" data-count="red">0</b></label>
@@ -13971,7 +13971,7 @@
         // Buckets are decided per PARENT (its dot): every child pushed → age of the oldest child's newest push.
         // Parents without a dot (some child never pushed) only show under "All".
         const HIST_BUCKETS = ['green', 'yellow', 'red'];
-        const HIST_DEFAULT = ['green', 'red'];
+        const HIST_DEFAULT = ['yellow', 'red'];
         function histSelected() {
             return $('#push-history-blocks input:checked').map(function() { return this.value; }).get();
         }
