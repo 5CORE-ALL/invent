@@ -208,6 +208,8 @@
             color: #475569;
             white-space: nowrap;
         }
+        #ovl30DetailsModal #ovl30DetailsTableBody tr.ovl30-recent-hide { display: none !important; }
+        #ovl30DetailsModal.ovl30-show-recent #ovl30DetailsTableBody tr.ovl30-recent-hide { display: table-row !important; opacity: .75; }
         #ovl30DetailsModal .ovl30-tool-group .spm-wrap { display: none; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #cbd5e1; flex-wrap: nowrap; white-space: nowrap; }
         #ovl30DetailsModal .ovl30-tool-group .spm-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 7px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 12px; font-weight: 700; }
         #ovl30DetailsModal .ovl30-tool-group .spm-lbl { font-size: 10px; font-weight: 700; color: #64748b; }
@@ -1898,6 +1900,8 @@
                         </button>
                         <span id="modal-bulk-sprice-metrics" class="spm-wrap"></span>
                     </div>
+                    <button type="button" id="modal-toggle-recent-btn" class="btn btn-sm btn-outline-secondary" style="display:none;height:28px;font-size:12px;"
+                        title="Channels pushed in the last 7 days are hidden (and skipped by the bulk SPRICE / push). Click to show them."></button>
                     <div class="form-check"
                         title="When checked: SPRICE, CPN $, CPN %, DSC, STD→SPRICE and Same $ use the same rules on all sibling SKUs under this parent (incl. INV 0). Preference remembered per SKU. Never applies 0.">
                         <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
@@ -4871,8 +4875,10 @@
                     + '</button>';
                 
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
+                // Channels pushed within the last 7 days are hidden automatically (button in the toolbar shows them)
+                const recentPushed = ovl30IsRecentlyPushed(item);
                 html += `
-                    <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
+                    <tr class="${rowClass}${recentPushed ? ' ovl30-recent-hide' : ''}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
@@ -5041,6 +5047,7 @@
             });
             
             $('#ovl30DetailsTableBody').html(html);
+            ovl30UpdateRecentToggle();
             
             // Calculate averages
             // Avg CVR using CVR formula: (Total L30 / Total Views) × 100 — exclude Reverb
@@ -8730,7 +8737,43 @@
             return isFinite(v) ? v : null;
         }
         /** Average GPFT / GROI / NPFT / NROI of the given modal rows, read from the table cells (what you see). */
-        function renderSpriceMetrics($out, rows, headNote) {
+        /** Amazon's modal row (its margin %, Ads %, LP and ship drive the readout), or an empty jQuery. */
+        function spriceAmazonRow() {
+            return $('#ovl30DetailsTableBody tr').filter(function() {
+                return String($(this).attr('data-marketplace') || '').toLowerCase() === 'amazon';
+            }).first();
+        }
+        /** GPFT / GROI / NPFT / NROI of `price` using the Amazon row's percentages; null when unavailable. */
+        function amazonSpriceMetrics(price) {
+            const $a = spriceAmazonRow();
+            if (!$a.length) return null;
+            const lp = parseFloat($a.attr('data-lp')) || 0;
+            const ship = parseFloat($a.attr('data-ship')) || 0;
+            const ads = parseFloat($a.attr('data-tacos-ch')) || 0;
+            const mAttr = parseFloat($a.attr('data-margin'));
+            const margin = isFinite(mAttr) && mAttr > 0 ? mAttr : 0.80;
+            if (!(price > 0)) {
+                price = parseFloat($a.find('.editable-sprice').val()) || 0; // empty box → Amazon's current SPRICE
+            }
+            if (!(price > 0) || !(lp > 0)) return null;
+            const m = computeAmzSpriceMetrics(price, lp, ship, ads, margin);
+            return { price: price, lp: lp, ship: ship, ads: ads, margin: margin, gpft: m.sgpft, groi: m.sgroi, npft: m.spft, nroi: m.snroi };
+        }
+        function renderSpriceMetrics($out, rows, headNote, basePrice) {
+            const am = amazonSpriceMetrics(parseFloat(basePrice) || 0);
+            if (am) {
+                const vals = [['GPFT', am.gpft, getSgpftSpftColor], ['GROI', am.groi, getSgroiColor],
+                              ['NPFT', am.npft, getSgpftSpftColor], ['NROI', am.nroi, getSroiColor]];
+                $out.html(vals.map(function(v) {
+                    return '<span class="spm-chip"><span class="spm-lbl">' + v[0] + '</span><span style="'
+                        + styleForCellColor(v[2](v[1])) + '">' + Math.round(v[1]) + '%</span></span>';
+                }).join(''))
+                    .attr('title', (headNote || '') + 'Amazon percentages on $' + am.price.toFixed(2)
+                        + ': margin ' + Math.round(am.margin * 100) + '%, Ads ' + am.ads.toFixed(1) + '%, LP $'
+                        + am.lp.toFixed(2) + ', ship $' + am.ship.toFixed(2))
+                    .css('display', 'inline-flex');
+                return;
+            }
             const defs = [
                 { label: 'GPFT', sel: '.calculated-sgpft', color: getSgpftSpftColor },
                 { label: 'GROI', sel: '.calculated-sroi', color: getSgroiColor },
@@ -8778,7 +8821,7 @@
                     restore(null);
                     if (cfg.summaryWhenEmpty) {
                         const $cur = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
-                        if ($cur.length) renderSpriceMetrics($out, $cur, (modalSelectedChannels.size ? 'Ticked channels' : 'All editable channels') + ' — current values\n');
+                        if ($cur.length || spriceAmazonRow().length) renderSpriceMetrics($out, $cur, 'Current values\n');
                         else $out.hide().empty();
                     } else {
                         $out.hide().empty();
@@ -8799,7 +8842,7 @@
                     }
                     $inp.val((cfg.priceFn || adjustAppliedSpriceForChannel)(base, $tr).toFixed(2)).trigger('input');
                 });
-                renderSpriceMetrics($out, rows, 'Preview, not saved until ✓\n');
+                renderSpriceMetrics($out, rows, 'Preview, not saved until ✓\n', base);
             }
             function schedule(ms) {
                 clearTimeout(timer);
@@ -8852,7 +8895,8 @@
                 if (String($('#modal-bulk-sprice-input').val() || '') !== '') {
                     // a typed value: the preview readout already reflects the table cells
                     const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
-                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview, not saved until ✓\n');
+                    const typed = parseFloat(String($('#modal-bulk-sprice-input').val()).replace(/[$,\s]/g, '')) || 0;
+                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview, not saved until ✓\n', typed);
                     return;
                 }
                 bulkSpritePv.schedule(0);
@@ -9226,6 +9270,10 @@
                     const $pp = findModalPpowerEditableRow();
                     if ($pp.length) $rows.push($pp);
                 }
+            }
+            // Channels hidden because they were pushed in the last 7 days are left alone (unless shown)
+            if (!$('#ovl30DetailsModal').hasClass('ovl30-show-recent')) {
+                return $rows.filter(function($tr) { return !$tr.hasClass('ovl30-recent-hide'); });
             }
             return $rows;
         }
@@ -10111,6 +10159,33 @@
                 }
             });
         }
+
+        /** True when this channel's latest push (history) is less than 7 days old → its row is hidden. */
+        function ovl30IsRecentlyPushed(item) {
+            if (!item) return false;
+            let latest = ovl30HistoryDayKey(item.pushed_at_iso || '');
+            (Array.isArray(item.push_history) ? item.push_history : []).forEach(function(h) {
+                const d = ovl30HistoryDayKey(h && h.at);
+                if (d && d > latest) latest = d;
+            });
+            return !!latest && latest >= ovl30HistoryDaysAgoKey(6); // today + the 6 days before
+        }
+        function ovl30UpdateRecentToggle() {
+            const n = $('#ovl30DetailsTableBody tr.ovl30-recent-hide').length;
+            const shown = $('#ovl30DetailsModal').hasClass('ovl30-show-recent');
+            const $b = $('#modal-toggle-recent-btn');
+            if (!n) { $b.hide(); return; }
+            $b.show().html('<i class="fas fa-' + (shown ? 'eye-slash' : 'eye') + '"></i> '
+                + (shown ? 'Hide' : 'Show') + ' pushed &lt; 7d (' + n + ')');
+        }
+        $(document).on('click', '#modal-toggle-recent-btn', function(e) {
+            e.preventDefault();
+            $('#ovl30DetailsModal').toggleClass('ovl30-show-recent');
+            ovl30UpdateRecentToggle();
+        });
+        $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
+            $('#ovl30DetailsModal').removeClass('ovl30-show-recent');
+        });
 
         /** Parse history/push/edit timestamps to YYYY-MM-DD (dynamic calendar day). */
         function ovl30HistoryDayKey(raw) {

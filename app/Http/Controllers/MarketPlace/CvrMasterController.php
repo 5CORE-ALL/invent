@@ -8534,7 +8534,7 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
                 $response = $this->pushToShopifyB2B($sku, $price);
             } elseif ($marketplace === 'pls' || $marketplace === 'prolightsounds') {
-                $response = $this->pushToPls($sku, $price);
+                $response = $this->pushToPls($skuRaw !== '' ? $skuRaw : $sku, $price);
             } elseif ($marketplace === 'reverb') {
                 $response = $this->pushToReverb($sku, $price);
             } elseif ($marketplace === 'fba') {
@@ -9232,11 +9232,43 @@ class CvrMasterController extends Controller
     /**
      * Push price to ProLightSounds (PLS) Shopify store
      */
+    /**
+     * PLS (ProLightSounds) catalog variant for a SKU: exact, then case/space-insensitive, then the same
+     * NBSP / hyphen / space-insensitive match the other Shopify lookups use ("LS 180-6" = "LS180-6").
+     */
+    private function findPlsVariantBySku(string $sku): ?\App\Models\ShopifyPlsVariant
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $variant = \App\Models\ShopifyPlsVariant::where('sku', $sku)->first();
+        if (! $variant) {
+            $variant = \App\Models\ShopifyPlsVariant::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+        }
+        if (! $variant) {
+            $wanted = \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $wantedCompact = \App\Models\ShopifySku::compactSkuForLookup($sku);
+            foreach (\App\Models\ShopifyPlsVariant::query()->whereNotNull('sku')->get(['id', 'sku', 'shopify_variant_id']) as $row) {
+                $rowSku = (string) $row->sku;
+                if (\App\Models\ShopifySku::normalizeSkuForShopifyLookup($rowSku) === $wanted
+                    || ($wantedCompact !== '' && \App\Models\ShopifySku::compactSkuForLookup($rowSku) === $wantedCompact)) {
+                    $variant = $row;
+                    break;
+                }
+            }
+        }
+
+        return $variant;
+    }
+
     private function pushToPls($sku, $price)
     {
         try {
             // Get variant_id from shopify_catalog_variants for PLS store
-            $plsVariant = \App\Models\ShopifyPlsVariant::where('sku', $sku)->first();
+            $plsVariant = $this->findPlsVariantBySku((string) $sku);
 
             if (!$plsVariant) {
                 $this->savePricePushStatus($sku, 'pls', 'error', $price);
