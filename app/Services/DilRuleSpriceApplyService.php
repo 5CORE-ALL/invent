@@ -156,6 +156,12 @@ class DilRuleSpriceApplyService
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
         $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
+        // New Temu One: both rule switches OFF means S PRC is left as it is.
+        if ($this->channel === 'temu' && \App\Support\SpriceActiveRule::forChannel('temu') === 'none') {
+            $this->log($logger, 'temu S PRC rule=none (both switches OFF): nothing applied');
+
+            return ['channel' => $this->channel, 'candidates' => 0, 'applied' => 0, 'skipped_unchanged' => 0, 'skipped' => 0, 'errors' => []];
+        }
         $store = $this->loadDilGroiStore();
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];

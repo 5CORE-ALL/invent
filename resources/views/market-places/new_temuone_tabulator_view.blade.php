@@ -563,6 +563,7 @@
                         'ebaySprcDilChannel' => 'temu',
                         'ebaySprcDilZeroSoldUsesMinGroi' => true,
                         'ebaySprcDilClampToNearest' => true,
+                        'ebaySprcDilIndependentSwitches' => true,
                     ])
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -772,6 +773,7 @@
         'ebaySprcDilChannel' => 'temu',
         'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
+        'ebaySprcDilIndependentSwitches' => true,
     ])
 
     <div class="modal fade" id="uploadLmpModal" tabindex="-1" aria-labelledby="uploadLmpModalLabel" aria-hidden="true">
@@ -1048,6 +1050,7 @@
         'ebaySprcDilChannel' => 'temu',
         'ebaySprcDilZeroSoldUsesMinGroi' => true,
         'ebaySprcDilClampToNearest' => true,
+        'ebaySprcDilIndependentSwitches' => true,
     ])
 
     function temuParseMoney(v) {
@@ -1070,6 +1073,8 @@
      */
     function temuDiscountedPrice(row) {
         if (!row || row.is_parent_summary) return 0;
+        // Sprc Dil and Std prc vs dil both switched OFF: no rule sets a price, S PRC stays as saved.
+        if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
         if (ntoDilRuleOn()) {
             const meta = (typeof ebayDilGroiMetaForRow === 'function') ? ebayDilGroiMetaForRow(row) : null;
             const dilPrice = meta ? Number(meta.sprc) : 0;
