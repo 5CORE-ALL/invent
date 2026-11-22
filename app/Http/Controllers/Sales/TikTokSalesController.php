@@ -12,6 +12,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
+use App\Models\TiktokOrderSettlement;
 use App\Models\TiktokSalesTwo;
 
 class TikTokSalesController extends Controller
@@ -177,6 +178,7 @@ class TikTokSalesController extends Controller
 
             return response()->json(self::mapTikTokOrderLinesToSalesRows(
                 TiktokOrder::linesInWindow($startDate, $endDate),
+                true,
                 true
             ));
         } catch (\Exception $e) {
@@ -314,11 +316,13 @@ class TikTokSalesController extends Controller
      * @param  \Illuminate\Support\Collection<int, TiktokOrder>  $orderItems
      * @return list<array<string, mixed>>
      */
-    private static function mapTikTokOrderLinesToSalesRows($orderItems, bool $slabShip = false): array
+    private static function mapTikTokOrderLinesToSalesRows($orderItems, bool $slabShip = false, bool $withSettlement = false): array
     {
         if ($orderItems->isEmpty()) {
             return [];
         }
+
+        $settlementByLine = $withSettlement ? self::allocateSettlementToLines($orderItems) : [];
 
         $skus = $orderItems->pluck('seller_sku')->filter()->unique()->values()->toArray();
         $productMasters = ProductMaster::whereIn('sku', $skus)
@@ -435,9 +439,64 @@ class TikTokSalesController extends Controller
                 'roi' => round($roi, 2),
                 'margin' => round($margin * 100, 2),
             ];
+
+            if ($withSettlement) {
+                $data[count($data) - 1]['final_settlement'] = $settlementByLine[spl_object_id($item)] ?? null;
+            }
         }
 
         return $data;
+    }
+
+    /**
+     * Final Settlement per line = what TikTok actually paid us (Finance API settlement_amount,
+     * stored in tiktok_order_settlements), NOT the customer-paid sale price.
+     *
+     * TikTok settles per ORDER, so a multi-line order's payout is split across its lines by
+     * line sale amount (last line takes the cent remainder) — the column then still adds up to
+     * the real payout. Orders without a statement yet (not settled) map to null, never 0.
+     *
+     * @param  \Illuminate\Support\Collection<int, TiktokOrder>  $orderItems
+     * @return array<int, float> spl_object_id(line) => settlement
+     */
+    private static function allocateSettlementToLines($orderItems): array
+    {
+        $totals = TiktokOrderSettlement::totalsByOrder($orderItems->pluck('order_id'));
+        if ($totals === []) {
+            return [];
+        }
+
+        $weight = [];
+        $remaining = [];
+        foreach ($orderItems as $item) {
+            $oid = (string) $item->order_id;
+            if (! isset($totals[$oid]) || (float) ($item->quantity ?? 1) <= 0) {
+                continue;
+            }
+            $weight[$oid] = ($weight[$oid] ?? 0.0) + (float) ($item->sale_price ?? 0) * (float) ($item->quantity ?? 1);
+            $remaining[$oid] = ($remaining[$oid] ?? 0) + 1;
+        }
+
+        $left = array_map(fn (float $t) => round($t, 2), $totals);
+        $out = [];
+        foreach ($orderItems as $item) {
+            $oid = (string) $item->order_id;
+            if (! isset($remaining[$oid]) || (float) ($item->quantity ?? 1) <= 0) {
+                continue;
+            }
+            if ($remaining[$oid] === 1) {
+                $share = $left[$oid];
+            } else {
+                $lineWeight = (float) ($item->sale_price ?? 0) * (float) ($item->quantity ?? 1);
+                $ratio = $weight[$oid] > 0 ? $lineWeight / $weight[$oid] : 1 / $remaining[$oid];
+                $share = round($totals[$oid] * $ratio, 2);
+            }
+            $remaining[$oid]--;
+            $left[$oid] = round($left[$oid] - $share, 2);
+            $out[spl_object_id($item)] = round($share, 2);
+        }
+
+        return $out;
     }
 
     /**

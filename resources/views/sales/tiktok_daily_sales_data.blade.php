@@ -307,6 +307,23 @@
                     }
                 },
                 {
+                    title: "Final Settlement",
+                    field: "final_settlement",
+                    headerTooltip: "Amount TikTok actually settles to us (Finance API settlement_amount, 'What you earned'). Differs from Sales AMT when TikTok funds a customer discount. Multi-item orders are split by line sales. '—' = not settled yet.",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 110,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '' || isNaN(value)) {
+                            return '<span class="text-muted" title="Not settled by TikTok yet">—</span>';
+                        }
+                        const num = parseFloat(value);
+                        const color = num >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                    }
+                },
+                {
                     title: "Order Date",
                     field: "order_date",
                     sorter: "datetime",

@@ -284,6 +284,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('tiktok-sync-chargebacks')
             ->appendOutputTo($log);
+        // Final Settlement column on /tiktok/daily-sales: what TikTok actually pays per order (Finance API).
+        $schedule->command('tiktok:sync-settlements')
+            ->dailyAt('05:20')
+            ->withoutOverlapping(240)
+            ->runInBackground()
+            ->name('tiktok-sync-settlements')
+            ->appendOutputTo($log);
         // eBay LQS from the live eBay listing (Trading API GetItem). 300 listings/run, skips SKUs scored in the
         // last 24h, so the whole catalog is covered over several days without burning the shared API quota.
         $schedule->command('lqs:sync-ebay --channel=ebay --limit=300 --stale-hours=24')

@@ -2317,6 +2317,23 @@
             if (!l7) return null;
             return projectedNpftFromL7(l7, parseNumber(row['Gprofit%'] || 0), pAdSpendFromRow(row));
         }
+        function pNroiPctFromRow(row) {
+            const pSales = pSalesFromRow(row);
+            if (!pSales) return null;
+            const pCogs = pCogsFromRow(row);
+            if (!(pCogs > 0)) return null;
+            return ((pGrossPftFromRow(row) - pAdSpendFromRow(row)) / pCogs) * 100;
+        }
+        function pAdsPctFromRow(row) {
+            const pSales = pSalesFromRow(row);
+            if (!(pSales > 0)) return null;
+            return (pAdSpendFromRow(row) / pSales) * 100;
+        }
+        function pCvrPctFromRow(row) {
+            const parts = pCvrPartsFromRow(row);
+            if (!(parts.views > 0)) return null;
+            return (parts.units / parts.views) * 100;
+        }
         function pNetPftFromRow(row) {
             const l7 = parseNumber(row['L7 Sales'] || 0);
             if (!l7) return 0;
@@ -3421,6 +3438,11 @@
                             row['YNPFT%'] = yNpftPctFromRow(row);
                             row['P GROI%'] = pGroiPctFromRow(row);
                             row['PNPFT%'] = pNpftPctFromRow(row);
+                            row['PNROI%'] = pNroiPctFromRow(row);
+                            row['P Views'] = pViewsFromRow(row);
+                            row['P CVR'] = pCvrPctFromRow(row);
+                            row['P Ad Spend'] = pAdSpendFromRow(row);
+                            row['P Ads%'] = pAdsPctFromRow(row);
                             row['P NPFT'] = pNetPftFromRow(row);
                         });
                         updateSummaryStats(response.data);
@@ -4748,6 +4770,136 @@
                         }
                     },
                     {
+                        title: "P Views",
+                        field: "P Views",
+                        headerTooltip: "Projected Views = Views × P-Sales ÷ L30 Sales. Same 30-day pace as P-Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return pViewsFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (!parseNumber(row['L7 Sales'] || 0) || parseNumber(row['Total Views'] || 0) <= 0) {
+                                return '<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales or no views source for this channel">—</span>';
+                            }
+                            const value = Math.round(parseNumber(cell.getValue() || 0));
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) {
+                                if (parseNumber(row['L7 Sales'] || 0) > 0) sum += pViewsFromRow(row);
+                            });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const v = parseNumber(cell.getValue() || 0);
+                            if (!v) return '<strong style="color:#adb5bd;">—</strong>';
+                            return `<strong style="color:#0d6efd;">${Math.round(v).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P CVR%",
+                        field: "P CVR",
+                        headerTooltip: "Projected CVR% = P Orders ÷ P Views × 100. Both use the same 30-day pace as P-Sales.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        mutator: function(value, data) {
+                            return pCvrPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = cell.getValue();
+                            return formatCvrCell(value, belowL30RateColor(value, listingCvrFromRow(row)));
+                        },
+                        bottomCalc: function(values, data) {
+                            let views = 0, units = 0;
+                            data.forEach(function(row) {
+                                const parts = pCvrPartsFromRow(row);
+                                views += parts.views;
+                                units += parts.units;
+                            });
+                            return views > 0 ? (units / views) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">—</strong>';
+                            }
+                            return `<strong>${(Math.round(parseNumber(value) * 100) / 100).toFixed(2)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "P Ads $",
+                        field: "P Ad Spend",
+                        headerTooltip: "Projected ad spend charged against P-Sales. Current L30 ad spend (Temu 2: Ads% × P-Sales).",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return pAdSpendFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = parseNumber(cell.getValue() || 0);
+                            if (!parseNumber(row['L7 Sales'] || 0) || value <= 0) {
+                                return '<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales or no ad spend">—</span>';
+                            }
+                            return `<span style="font-weight:600;color:#d63384;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) {
+                                if (parseNumber(row['L7 Sales'] || 0) > 0) sum += pAdSpendFromRow(row);
+                            });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const v = parseNumber(cell.getValue() || 0);
+                            if (!v) return '<strong style="color:#adb5bd;">—</strong>';
+                            return `<strong style="color:#d63384;">$${Math.round(v).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "P Ads%",
+                        field: "P Ads%",
+                        headerTooltip: "Projected Ads% = projected ad spend ÷ P-Sales × 100. P-Sales = (L7 ÷ 7) × 30.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return pAdsPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
+                                return '<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">—</span>';
+                            }
+                            return `<span style="${ammAdsPctBandStyle(parseNumber(value))}font-weight:600;">${parseNumber(value).toFixed(1)}%</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let spend = 0, pSales = 0;
+                            data.forEach(function(row) {
+                                const ps = pSalesFromRow(row);
+                                if (ps > 0) {
+                                    pSales += ps;
+                                    spend += pAdSpendFromRow(row);
+                                }
+                            });
+                            return pSales > 0 ? (spend / pSales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">—</strong>';
+                            }
+                            return `<strong style="${ammAdsPctBandStyle(parseNumber(value))}">${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
                         title: "P GROI%",
                         field: "P GROI%",
                         headerTooltip: "Projected GROI% from last-7-day pace. P-Sales = (L7 ÷ 7) × 30. P GROI% = (P-Sales × GPFT%) ÷ projected COGS. Projected COGS is L30 COGS × (P-Sales ÷ L30 Sales).",
@@ -4828,6 +4980,50 @@
                                 spend += pAdSpendFromRow(row);
                             });
                             return pSales > 0 ? ((pGross - spend) / pSales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">-</strong>';
+                            }
+                            return `<strong>${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "PNROI%",
+                        field: "PNROI%",
+                        headerTooltip: "Projected NROI% from last-7-day pace: (P-Sales × GPFT% − ad spend) ÷ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales).",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return pNroiPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = cell.getValue();
+                            const channel = (row['Channel '] || '').trim();
+                            const chartIcon = ammHistoryDot(channel, 'p_nroi_pct');
+                            if (!parseNumber(row['L7 Sales'] || 0) || value === null || value === undefined || !isFinite(Number(value))) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No L7 Sales">-</span>${chartIcon}`;
+                            }
+                            const pct = parseNumber(value);
+                            return `<span style="${ammMetricCellStyle('p_nroi_pct', pct)}font-weight:600;">${pct.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let net = 0, cogs = 0;
+                            data.forEach(function(row) {
+                                if (!pSalesFromRow(row)) return;
+                                net += pGrossPftFromRow(row) - pAdSpendFromRow(row);
+                                cogs += pCogsFromRow(row);
+                            });
+                            return cogs > 0 ? (net / cogs) * 100 : null;
                         },
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
@@ -7906,7 +8102,7 @@
                 { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%', 'T GPFT%', 'T GROI%', 'T NPFT%', 'T NROI%'] },
                 { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%', 'Y Ads%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
-                { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P GROI%', 'PNPFT%'] },
+                { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P Views', 'P CVR', 'P Ad Spend', 'P Ads%', 'P GROI%', 'PNPFT%', 'PNROI%'] },
                 { id: 'ads', label: 'Advertisement', fields: ['Total Ad Spend', 'Ads%'] },
                 { id: 'inv', label: 'Inv', fields: [] },
                 { id: 'others', label: 'Others', fields: [] },
@@ -10286,14 +10482,6 @@
                     : '#0d6efd';
                 const inner = `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}`;
                 return yMpWrap(channel, 'p_sales', v, inner, color);
-            }
-
-            function pNroiPctFromRow(row) {
-                const pSales = pSalesFromRow(row);
-                if (!pSales) return null;
-                const pCogs = pCogsFromRow(row);
-                if (!(pCogs > 0)) return null;
-                return ((pGrossPftFromRow(row) - pAdSpendFromRow(row)) / pCogs) * 100;
             }
 
             function renderProjectedMarketplaceRows(rows) {
