@@ -146,9 +146,9 @@ class NewTemuoneController extends Controller
     public function dataJson()
     {
         try {
-            $rows = $this->attachMarketplaceIds(
+            $rows = $this->attachMarketplaceLinks($this->attachMarketplaceIds(
                 $this->attachMarketplacePrices($this->persistSuggestedCatalog()['rows'])
-            );
+            ));
 
             return response()->json(array_merge($rows, $this->parentSummaryRows($rows)));
         } catch (\Exception $e) {
@@ -223,7 +223,78 @@ class NewTemuoneController extends Controller
             $parentKey = $parent !== '' ? $key('PARENT '.$parent) : '';
             $skuKey = $key($r['sku'] ?? '');
             foreach ($maps as $field => $map) {
-                $r[$field] = (string) (($parentKey !== '' ? ($map[$parentKey] ?? null) : null) ?? ($map[$skuKey] ?? ''));
+                $parentId = $parentKey !== '' ? ($map[$parentKey] ?? null) : null;
+                $r[$field] = (string) ($parentId ?? ($map[$skuKey] ?? ''));
+                // 'parent' when the id above is the parent row's id (attachMarketplaceLinks follows the same rule).
+                $r[$field.'_src'] = $parentId !== null ? 'parent' : 'sku';
+            }
+        }
+        unset($r);
+
+        return $rows;
+    }
+
+    /**
+     * Link to the SKU's listing on Amazon / eBay 1-3 / TikTok 1-2: amz_link, ebay1/2/3_link, tiktok1/2_link.
+     * Parent first: the PARENT row's saved link, else a link built from the parent's id; then the SKU's own saved link,
+     * else a link built from its id (Amazon /dp/ASIN, eBay /itm/ID; TikTok has no buildable link). Saved links are
+     * the buyer_link (else seller_link) of the marketplace's listing-status table. Must run after attachMarketplaceIds().
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachMarketplaceLinks(array $rows): array
+    {
+        $key = static fn ($sku) => preg_replace('/\s+/u', '', strtoupper(str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $sku))));
+        $isUrl = static fn ($v) => is_string($v) && preg_match('#^https?://#i', $v) === 1;
+
+        $loadLinks = function (string $table, string $model) use ($key, $isUrl): array {
+            $map = [];
+            if (! $this->hasTable($table)) {
+                return $map;
+            }
+            try {
+                foreach ($model::query()->whereNotNull('sku')->get(['sku', 'value']) as $item) {
+                    $val = is_array($item->value) ? $item->value : (json_decode((string) $item->value, true) ?: []);
+                    $link = trim((string) ($val['buyer_link'] ?? ''));
+                    if (! $isUrl($link)) {
+                        $link = trim((string) ($val['seller_link'] ?? ''));
+                    }
+                    $k = $key($item->sku);
+                    if ($k !== '' && $isUrl($link) && ! isset($map[$k])) {
+                        $map[$k] = $link;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One link lookup failed ('.$table.'): '.$e->getMessage());
+            }
+
+            return $map;
+        };
+
+        $sites = [
+            'amz' => [$loadLinks('amazon_listing_statuses', \App\Models\AmazonListingStatus::class), 'https://www.amazon.com/dp/'],
+            'ebay1' => [$loadLinks((new \App\Models\EbayListingStatus)->getTable(), \App\Models\EbayListingStatus::class), 'https://www.ebay.com/itm/'],
+            'ebay2' => [$loadLinks((new \App\Models\EbayTwoListingStatus)->getTable(), \App\Models\EbayTwoListingStatus::class), 'https://www.ebay.com/itm/'],
+            'ebay3' => [$loadLinks((new \App\Models\EbayThreeListingStatus)->getTable(), \App\Models\EbayThreeListingStatus::class), 'https://www.ebay.com/itm/'],
+            'tiktok1' => [$loadLinks('tiktok_shop_listing_statuses', \App\Models\TiktokShopListingStatus::class), null],
+            'tiktok2' => [$loadLinks('tiktok_two_shop_listing_statuses', \App\Models\TiktokTwoShopListingStatus::class), null],
+        ];
+
+        foreach ($rows as &$r) {
+            $parent = preg_replace('/^PARENT\s+/i', '', trim((string) ($r['Parent'] ?? $r['parent'] ?? '')));
+            $parentKey = $parent !== '' ? $key('PARENT '.$parent) : '';
+            $skuKey = $key($r['sku'] ?? '');
+            foreach ($sites as $site => [$map, $urlBase]) {
+                $pid = trim((string) ($r[$site.'_pid'] ?? ''));
+                $built = ($urlBase !== null && $pid !== '') ? $urlBase.rawurlencode($pid) : '';
+                $fromParent = ($r[$site.'_pid_src'] ?? '') === 'parent';
+                $r[$site.'_link'] = (string) (
+                    ($parentKey !== '' ? ($map[$parentKey] ?? null) : null)
+                    ?: ($fromParent && $built !== '' ? $built : null)
+                    ?: ($map[$skuKey] ?? null)
+                    ?: $built
+                );
             }
         }
         unset($r);

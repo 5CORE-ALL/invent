@@ -3414,7 +3414,7 @@
             return 'advertisement';
         }
         if (
-            /^(_select|image_path|parent|\(child\) sku|links_column|red_alert|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) || /_pid$/i.test(f) ||
+            /^(_select|image_path|parent|\(child\) sku|links_column|red_alert|inv|inventory|temu_stock|l30|temu_l30|views|dil%)$/i.test(f) || /_(pid|link)$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
@@ -3786,6 +3786,46 @@
         });
     }
 
+    // Link to the SKU's listing (server: NewTemuoneController::attachMarketplaceLinks). A parent-level link is already
+    // put on every SKU of that parent; the PARENT row shows its first SKU's link.
+    function ntoMarketLinkColumns() {
+        return [
+            ['amz_link', 'Amz Link', 'Amazon'],
+            ['ebay1_link', 'eBay 1 Link', 'eBay 1'],
+            ['ebay2_link', 'eBay 2 Link', 'eBay 2'],
+            ['ebay3_link', 'eBay 3 Link', 'eBay 3'],
+            ['tiktok1_link', 'TikTok 1 Link', 'TikTok 1'],
+            ['tiktok2_link', 'TikTok 2 Link', 'TikTok 2']
+        ].map(function(def) {
+            const field = def[0];
+            const valueOf = function(row) {
+                row = row || {};
+                if (row.is_parent_summary) {
+                    const first = ntoParentFirstChild.get(String(row.Parent || row.parent || '').trim());
+                    return String((first && first[field]) || '').trim();
+                }
+                return String(row[field] || '').trim();
+            };
+            return {
+                title: def[1],
+                field: field,
+                hozAlign: 'center',
+                width: 80,
+                headerSort: true,
+                sorter: function(a, b) { return (a ? 1 : 0) - (b ? 1 : 0); },
+                headerTooltip: 'Link to this SKU\'s ' + def[2] + ' listing. If the parent has a link, the parent link is used for every SKU of that parent.',
+                accessorDownload: function(value, data) { return valueOf(data); },
+                formatter: function(cell) {
+                    const v = valueOf(cell.getRow().getData());
+                    if (!/^https?:\/\//i.test(v)) return '<span style="color: #6c757d;">—</span>';
+                    const esc = v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    return '<a href="' + esc + '" target="_blank" rel="noopener noreferrer" class="text-info" title="' + esc
+                        + '" style="font-size:12px;text-decoration:none;" onclick="event.stopPropagation();"><i class="fa fa-link"></i> Open</a>';
+                }
+            };
+        });
+    }
+
     $(document).ready(function() {
         table = new Tabulator('#new-temuone-table', {
             ajaxURL: '{{ route("newtemuone.data.json") }}',
@@ -4127,6 +4167,7 @@
                 },
                 ...ntoMarketPrcColumns(),
                 ...ntoMarketIdColumns(),
+                ...ntoMarketLinkColumns(),
                 {
                     title: '12% $',
                     field: 'temu_price_12',
