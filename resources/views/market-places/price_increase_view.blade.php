@@ -4539,7 +4539,7 @@
         // Channel Master "extra" channels (rows from PricingMasterExtraChannels) — normalized keys (lowercase, a-z0-9 only)
         const OVL30_EXTRA_EDITABLE = new Set([
             'wayfair', 'temu3', 'alibaba', 'newegg', 'pls', 'depop', 'vinted', 'instagramshop',
-            'mercariwship', 'mercariwoship', 'fbmarketplace'
+            'mercariwship', 'mercariwoship', 'fbmarketplace', 'b2b', 'cjdropshipping'
         ]);
 
         function renderMarketplaceData(data) {
@@ -4732,7 +4732,9 @@
                     || OVL30_EXTRA_EDITABLE.has(mpLower.replace(/[^a-z0-9]/g, ''));
                 // STD-rule channels stay editable even when listing metrics are missing
                 const forceEditableStdRule = isSb2bMp || isTdMp || isFaireMp || isPpMp;
-                const canEditSprice = isEditable && (isListed || forceEditableStdRule);
+                // A saved SPRICE alone keeps a channel editable / pushable even when the listing metrics are missing (e.g. AliExpress, Macy "not listed")
+                const hasSavedSprice = sprice > 0;
+                const canEditSprice = isEditable && (isListed || forceEditableStdRule || hasSavedSprice);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -4838,10 +4840,10 @@
                 // a price API: Temu 3, Vinted, Depop, Instagram Shop, Mercari, FB Marketplace). Keys compared without spaces / symbols.
                 const pushKeyNorm = String(item.marketplace || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                 const extraPushable = ['wayfair', 'temu3', 'alibaba', 'newegg', 'pls', 'depop', 'vinted', 'instagramshop',
-                    'mercariwship', 'mercariwoship', 'fbmarketplace', 'bestbuyusa', 'macys', 'tiktokshop', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower'];
+                    'mercariwship', 'mercariwoship', 'fbmarketplace', 'bestbuyusa', 'macys', 'tiktokshop', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'b2b', 'cjdropshipping'];
                 // STD-rule channels (Faire, Purchasing Power, SB2B, TopDawg) stay editable without listing metrics, so their push button must too
                 const canPushPrice = (pushableChannels.includes((item.marketplace || '').toLowerCase())
-                    || pushableChannels.includes(pushKeyNorm) || extraPushable.includes(pushKeyNorm)) && (isListed || forceEditableStdRule);
+                    || pushableChannels.includes(pushKeyNorm) || extraPushable.includes(pushKeyNorm)) && (isListed || forceEditableStdRule || hasSavedSprice);
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
 
                 // Price in red when LMP is available and LMP < Price
@@ -10248,7 +10250,7 @@
             'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'macy', 'ppower', 'wayfair', 'topdawg', 'faire',
             'temu', 'temu2', 'tiktok', 'tiktok2', 'aliexpress', 'shein', 'alibaba', 'newegg',
             // no price API: the push saves the price only (sheet / channel pricing store)
-            'temu3', 'vinted', 'instagramshop', 'depop', 'mercariwship', 'mercariwoship', 'fbmarketplace'
+            'temu3', 'vinted', 'instagramshop', 'depop', 'mercariwship', 'mercariwoship', 'fbmarketplace', 'b2b', 'cjdropshipping'
         ]);
 
         function chpushKey(name) {

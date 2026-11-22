@@ -8963,6 +8963,10 @@ class CvrMasterController extends Controller
             } elseif (in_array(preg_replace('/[^a-z0-9]/', '', $marketplace), ['vinted', 'instagramshop', 'depop', 'mercariwship', 'mercariwoship', 'fbmarketplace'], true)) {
                 // No price API for these channels: store the suggested price on the channel's own pricing store.
                 $response = $this->saveOnlyChannelSprice(preg_replace('/[^a-z0-9]/', '', $marketplace), $skuRaw !== '' ? $skuRaw : $sku, $price);
+            } elseif (in_array($marketplace, ['b2b', 'cjdropshipping'], true)) {
+                // No price API and no own pricing page: the price is stored as that channel's SPRICE (channel_sprices) — saved only
+                $pm = $this->resolveProductMasterBySku($skuRaw !== '' ? $skuRaw : $sku);
+                $response = $this->saveChannelSpriceLikeItsPage($marketplace, (string) ($pm ? $pm->sku : ($skuRaw !== '' ? $skuRaw : $sku)), $price);
             } elseif ($marketplace === 'newegg') {
                 // Same API push as /newegg pricing page (NeweggPricingController::pushPriceToNewegg)
                 $response = $this->pushViaChannelController('Newegg', $skuRaw !== '' ? $skuRaw : $sku, $price, function (Request $subReq) {
