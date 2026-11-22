@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Models\PricePushPending;
+use App\Models\Task;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +21,114 @@ class PricePushPendingService
     public const MAX_ATTEMPTS = 72;     // hourly → about 3 days, then the row is marked "failed" (no more retries)
     public const REALERT_HOURS = 6;     // digest e-mail is repeated at most this often while something is pending
     private const EXTRA_KEYS = ['self_pick_price', 'goods_id', 'sku_id', 'product_id'];
+
+    public const TASK_ASSIGNEE_NAME = 'Sneha';
+    public const TASK_GROUP = 'Listing Not Found';
+
+    /** Marketplace answers that mean "this SKU has no listing there" (as opposed to a temporary API error). */
+    public static function isListingNotFound(string $message): bool
+    {
+        return (bool) preg_match(
+            '/(no\s+\w+(\s+\w+)?\s+skucode|not\s+listed|listing\s+not\s+found|no\s+\w+\s+listing|(goodsid|skuid|product\s*id|item)\s+not\s+found|can.t\s+find\s+this\s+item|not\s+found\s+for\s+sku|sku\s+not\s+found)/i',
+            $message
+        );
+    }
+
+    /** User "Sneha" (active), same lookup as the CP Master SKU-delete tasks. */
+    private function snehaUser(): ?User
+    {
+        $matches = User::active()
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['sneha%'])->orWhereRaw('LOWER(email) LIKE ?', ['sneha%']);
+            })
+            ->orderBy('id')
+            ->get();
+        if ($matches->isEmpty()) {
+            return null;
+        }
+
+        return $matches->first(fn ($u) => strtolower(trim((string) $u->name)) === 'sneha') ?? $matches->first();
+    }
+
+    /**
+     * One task per SKU + channel (not repeated for 7 days, even after it is closed — the hourly retry keeps failing
+     * the same way until the listing exists). Assigned to Sneha; assignor = the person who pushed.
+     */
+    private function createListingTask(PricePushPending $row, string $message, ?string $by): void
+    {
+        try {
+            if (! Schema::hasTable('tasks')) {
+                return;
+            }
+            $marker = 'listing-nf-' . md5(strtoupper($row->sku) . '|' . $row->marketplace);
+            $exists = Task::withTrashed()
+                ->where('link8', $marker)
+                ->where('created_at', '>=', now()->subDays(7))
+                ->exists();
+            if ($exists) {
+                return;
+            }
+
+            $assignee = $this->snehaUser();
+            if (! $assignee) {
+                Log::warning('Listing-not-found task: user Sneha not found', ['sku' => $row->sku, 'channel' => $row->channel]);
+
+                return;
+            }
+            $assignor = $by ? User::where('name', $by)->first() : null;
+            $assignorEmail = $assignor->email ?? self::ALERT_EMAIL;
+            $channel = $row->channel ?: $row->marketplace;
+
+            $start = now();
+            $due = $start->copy()->addDays(2);
+            $data = [
+                'title' => 'Listing not found: ' . $row->sku . ' on ' . $channel,
+                'description' => "The price push for SKU {$row->sku} on {$channel} (\${$row->price}) failed because the listing was not found.\n\n"
+                    . 'Marketplace said: ' . mb_substr(trim($message), 0, 500) . "\n\n"
+                    . "Please create / link the listing for this SKU on {$channel} (or sync the channel products), then push the price again from "
+                    . url('/price-increase') . '. The push is retried automatically every hour until the listing exists.',
+                'group' => self::TASK_GROUP,
+                'priority' => 'normal',
+                'assignor' => $assignorEmail,
+                'assign_to' => $assignee->email ?: $assignee->name,
+                'status' => 'Todo',
+                'eta_time' => 30,
+                'start_date' => $start,
+                'completion_date' => $due,
+                'due_date' => $due,
+                'completion_day' => 0,
+                'etc_done' => 0,
+                'is_missed' => 0,
+                'is_missed_track' => 0,
+                'workspace' => 0,
+                'order' => 0,
+                'task_id' => '',
+                'link1' => url('/price-increase'),
+                'link2' => '', 'link3' => '', 'link4' => '', 'link5' => '', 'link6' => '', 'link7' => '',
+                'link8' => $marker,
+                'link9' => '',
+                'is_data_from' => 0,
+                'is_automate_task' => 0,
+                'task_type' => 'manual',
+                'rework_reason' => '',
+                'delete_rating' => 0,
+                'delete_feedback' => '',
+                'split_tasks' => 0,
+            ];
+            if (Schema::hasColumn('tasks', 'is_corrective_action')) {
+                $data['is_corrective_action'] = 0;
+            }
+            $task = Task::create($data);
+
+            try {
+                app(TaskWhatsAppNotificationService::class)->notifyNewTaskAssigned($task);
+            } catch (\Throwable $e) {
+                Log::warning('Listing-not-found task WhatsApp failed', ['task_id' => $task->id, 'error' => $e->getMessage()]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Listing-not-found task could not be created: ' . $e->getMessage(), ['sku' => $row->sku, 'channel' => $row->channel]);
+        }
+    }
 
     public static function key(string $marketplace): string
     {
@@ -70,6 +180,7 @@ class PricePushPendingService
             if (! $samePrice) {
                 $row->attempts = 0;      // a new price is a new job
                 $row->alerted_at = null;
+                $row->pushed_at = null;  // an older push of a different price does not count for this one
             }
             $row->channel = $channel ?: ($row->channel ?: $marketplace);
             $row->price = $price;
@@ -88,6 +199,11 @@ class PricePushPendingService
                 $row->last_error = mb_substr($message, 0, 1000);
             }
             $row->save();
+
+            // The channel has no listing for this SKU: nothing a retry can fix → hand it to Sneha as a task
+            if (! $ok && self::isListingNotFound($message)) {
+                $this->createListingTask($row, $message, $by);
+            }
 
             return $row;
         } catch (\Throwable $e) {

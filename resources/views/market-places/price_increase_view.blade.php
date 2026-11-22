@@ -1049,12 +1049,15 @@
             line-height: 1;
         }
         
-        .hist-blocks { display: inline-flex; gap: 6px; align-items: center; }
-        .hist-block { display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 3px 9px; border: 1px solid #ced4da;
-            border-radius: 6px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; }
-        .hist-block:has(input:checked) { border-color: #0d6efd; background: #e7f0ff; }
-        .hist-block input { margin: 0; cursor: pointer; }
-        .hist-block .hist-count { font-weight: 700; color: #495057; }
+        .hist-dd .dropdown-toggle { font-weight: 600; font-size: 12px; white-space: nowrap; }
+        .hist-dd .dropdown-toggle .hist-count { font-weight: 700; }
+        .hist-dd-menu { padding: 4px; min-width: 190px; }
+        .hist-dd-item { display: flex; align-items: center; gap: 7px; margin: 0; padding: 6px 10px; border-radius: 4px;
+            font-size: 13px; font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; }
+        .hist-dd-item:hover { background: #f1f3f5; }
+        .hist-dd-item:has(input:checked) { background: #e7f0ff; }
+        .hist-dd-item input { margin: 0; cursor: pointer; }
+        .hist-dd-item .hist-count { margin-left: auto; padding-left: 14px; font-weight: 700; color: #495057; }
         .push-price-btn:disabled {
             cursor: not-allowed;
             opacity: 0.7;
@@ -2697,15 +2700,21 @@
                     </button>
 
                     <!-- Push history (Hist column): default shows everything; hiding recent pushes is opt-in -->
-                    <div id="push-history-blocks" class="hist-blocks" title="Parent push history (Hist dot) — tick one or more">
-                        <label class="hist-block" title="Every parent — nothing hidden"><input type="checkbox" value="all" class="form-check-input">
-                            <span>History All</span> <b class="hist-count" data-count="all">0</b></label>
-                        <label class="hist-block" title="All children pushed; oldest last push 7 days ago or less"><input type="checkbox" value="green" class="form-check-input" checked>
-                            <i class="fas fa-circle" style="color:#28a745"></i> <span>&le; 7d</span> <b class="hist-count" data-count="green">0</b></label>
-                        <label class="hist-block" title="All children pushed; oldest last push 8–14 days ago"><input type="checkbox" value="yellow" class="form-check-input">
-                            <i class="fas fa-circle" style="color:#ffc107"></i> <span>7–14d</span> <b class="hist-count" data-count="yellow">0</b></label>
-                        <label class="hist-block" title="All children pushed; oldest last push more than 14 days ago"><input type="checkbox" value="red" class="form-check-input" checked>
-                            <i class="fas fa-circle" style="color:#dc3545"></i> <span>&gt; 14d</span> <b class="hist-count" data-count="red">0</b></label>
+                    <div id="push-history-blocks" class="dropdown hist-dd" title="Parent push history (Hist dot) — tick one or more">
+                        <button type="button" id="push-history-dd-btn" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <span id="push-history-dd-label">History</span>
+                        </button>
+                        <div class="dropdown-menu hist-dd-menu">
+                            <label class="hist-dd-item" title="Every parent — nothing hidden"><input type="checkbox" value="all" class="form-check-input">
+                                <span>History All</span> <b class="hist-count" data-count="all">0</b></label>
+                            <label class="hist-dd-item" title="All children pushed; oldest last push 7 days ago or less"><input type="checkbox" value="green" class="form-check-input" checked>
+                                <i class="fas fa-circle" style="color:#28a745"></i> <span>&le; 7d</span> <b class="hist-count" data-count="green">0</b></label>
+                            <label class="hist-dd-item" title="All children pushed; oldest last push 8–14 days ago"><input type="checkbox" value="yellow" class="form-check-input">
+                                <i class="fas fa-circle" style="color:#ffc107"></i> <span>7–14d</span> <b class="hist-count" data-count="yellow">0</b></label>
+                            <label class="hist-dd-item" title="All children pushed; oldest last push more than 14 days ago"><input type="checkbox" value="red" class="form-check-input" checked>
+                                <i class="fas fa-circle" style="color:#dc3545"></i> <span>&gt; 14d</span> <b class="hist-count" data-count="red">0</b></label>
+                        </div>
                     </div>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
@@ -9193,16 +9202,13 @@
                     }
                 });
 
-                // From here on: identical to the Push All button
+                // From here on: same job as the Push All button (minus its confirm dialog)
                 const targets = chpushCollectTargets($('#chpush-body'));
                 if (!targets.length) {
-                    showToast('No channels have a pushable suggested price (> 0)', 'error');
+                    chpushSaveOnlyOrToast('No channels have a pushable suggested price (> 0)'); // e.g. Doba only → saved in the app
                     return;
                 }
-                if (!confirm('Push to ' + targets.length + ' channel(s)' + siblingsApplyLabel() + '?\n\n'
-                    + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
-                    return;
-                }
+                // No confirm dialog: the ✓ itself is the confirmation
                 chpushStartJob(targets, {});
             }
 
@@ -10016,6 +10022,31 @@
             return targets;
         }
 
+        /** Bulk push never pushes Doba: save its SPRICE (when it differs from what is stored) so the price is not lost. */
+        function saveDobaRowsNotPushed(onlySelected) {
+            const sku = String(getModalPrimarySku() || '');
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') return;
+            $('#ovl30DetailsTableBody tr:visible').each(function() {
+                const $tr = $(this);
+                const mp = String($tr.attr('data-marketplace') || '');
+                if (!isDobaNoPush(mp) || !$tr.find('.editable-sprice').length) return;
+                if (String($tr.attr('data-editable') || '') === '0') return;
+                if (onlySelected && modalSelectedChannels.size > 0 && !modalSelectedChannels.has(mp)) return;
+                const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
+                if (price == null) return;
+                const saved = (ovl30ModalData || []).find(function(it) { return String(it.marketplace || '') === mp; });
+                if (saved && Math.abs((parseFloat(saved.sprice) || 0) - price) < 0.005) return; // already stored
+                saveModalSpriceForRow($tr, price, function(ok) {
+                    if (ok) {
+                        (ovl30ModalData || []).forEach(function(it) { if (String(it.marketplace || '') === mp) it.sprice = price; });
+                        showToast(mp + ' $' + price.toFixed(2) + ' saved in the app (not pushed)', 'success');
+                    } else {
+                        showToast('Could not save ' + mp + ' price in the app', 'error');
+                    }
+                }, { sku: sku });
+            });
+        }
+
         function pushOvl30PriceToMarketplace(target) {
             const price = parseOvl30PushPrice(target && target.price);
             if (price == null) {
@@ -10521,6 +10552,7 @@
 
             const onlySelected = modalSelectedChannels.size > 0;
             const targets = collectOvl30PushTargets(onlySelected);
+            saveDobaRowsNotPushed(onlySelected); // Doba is skipped by the bulk push → keep its price in the app
             if (!targets.length) {
                 showToast(
                     onlySelected
@@ -11098,6 +11130,12 @@
             chpushRunSaves(sku, saveJobs, applySiblings).always(function(saveRes) {
                 if (saveRes && saveRes.failed) {
                     showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s) of ' + sku, 'error');
+                } else {
+                    // Doba is never pushed here — make it clear its price was kept in the app instead
+                    const dobaSaved = saveJobs.filter(function(j) { return isDobaNoPush(j.mp); });
+                    if (dobaSaved.length) {
+                        showToast('Doba $' + dobaSaved[0].price.toFixed(2) + ' saved in the app (not pushed)', 'success');
+                    }
                 }
                 let idx = 0;
                 const okResults = [];
@@ -11158,6 +11196,21 @@
                 if (t) targets.push(t);
             });
             return targets;
+        }
+
+        /**
+         * Doba is never pushed in bulk / Push All. Its price must still end up in the app: save every changed Channels price
+         * (Doba included) without pushing. Used when nothing is pushable; shows noneMsg only when there was nothing to save either.
+         */
+        function chpushSaveOnlyOrToast(noneMsg) {
+            const sku = String(getModalPrimarySku() || '');
+            const jobs = chpushCollectSaveJobs();
+            if (!sku || !jobs.length) { showToast(noneMsg, 'error'); return; }
+            const names = jobs.map(function(j) { return j.mp + ' $' + j.price.toFixed(2); }).join(', ');
+            chpushRunSaves(sku, jobs, isModalSiblingsApply() ? 1 : 0).always(function(res) {
+                if (res && res.failed) showToast('Could not save ' + res.failed + ' price(s) in the app', 'error');
+                else showToast('Saved in the app (not pushed): ' + names, 'success');
+            });
         }
 
         // Editing a price (or autofill from another price) resets tick / triangle so it can be pushed again
@@ -11268,7 +11321,7 @@
             const type = String($card.attr('data-type') || '');
             const targets = chpushCollectTargets($card);
             if (!targets.length) {
-                showToast('No ' + type + ' channels have a pushable suggested price (> 0)', 'error');
+                chpushSaveOnlyOrToast('No ' + type + ' channels have a pushable suggested price (> 0)');
                 return;
             }
             if (!confirm('Push ' + type + ' to ' + targets.length + ' channel(s)' + siblingsApplyLabel() + '?\n\n'
@@ -11284,7 +11337,7 @@
             if ($(this).prop('disabled')) return;
             const targets = chpushCollectTargets($('#chpush-body'));
             if (!targets.length) {
-                showToast('No channels have a pushable suggested price (> 0)', 'error');
+                chpushSaveOnlyOrToast('No channels have a pushable suggested price (> 0)');
                 return;
             }
             if (!confirm('Push to ' + targets.length + ' channel(s)' + siblingsApplyLabel() + '?\n\n'
@@ -13971,12 +14024,28 @@
             const mode = pushHistoryFilterMode();
             return mode === 'all' ? rows : rows.filter(function(r) { return passesPushHistoryFilter(r, mode); });
         }
-        /** Counts (parents) on the four blocks. */
+        /** Dropdown button text: "History All 258" or the ticked colours with their counts. */
+        function updateHistLabel() {
+            const sel = histSelected();
+            const cnt = function(k) { return $('#push-history-blocks .hist-count[data-count="' + k + '"]').first().text() || '0'; };
+            const dots = { green: '#28a745', yellow: '#ffc107', red: '#dc3545' };
+            let html;
+            if (!sel.length || sel.indexOf('all') !== -1) {
+                html = 'History All <b class="hist-count">' + cnt('all') + '</b>';
+            } else {
+                html = 'History ' + HIST_BUCKETS.filter(function(k) { return sel.indexOf(k) !== -1; }).map(function(k) {
+                    return '<i class="fas fa-circle" style="color:' + dots[k] + ';font-size:9px"></i> <b class="hist-count">' + cnt(k) + '</b>';
+                }).join(' ');
+            }
+            $('#push-history-dd-label').html(html);
+        }
+        /** Counts (parents) on the dropdown. */
         function updateRecentPushedToggle() {
             const parents = (fullDataset || []).filter(function(r) { return r.is_parent_summary === true; });
             const c = { all: parents.length, green: 0, yellow: 0, red: 0 };
             parents.forEach(function(p) { const b = histBucketOfParent(p); if (b) c[b]++; });
             Object.keys(c).forEach(function(k) { $('#push-history-blocks .hist-count[data-count="' + k + '"]').text(c[k]); });
+            updateHistLabel();
         }
         $(document).on('change', '#push-history-blocks input', function() {
             let sel = histSelected();
@@ -13984,8 +14053,10 @@
             else if (this.value !== 'all') sel = sel.filter(function(v) { return v !== 'all'; }); // a colour → clears All
             if (!sel.length) sel = ['all'];                                          // nothing ticked = everything
             histSetSelected(sel);
+            updateHistLabel();
             applyFilters();
         });
+        $(updateHistLabel);
 
         function buildParentView() {
             console.log('=== Building Parent View ===');
@@ -14557,7 +14628,7 @@
             $allNpft.addClass('active');
             $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
-            histSetSelected(['all']);
+            histSetSelected(['all']); updateHistLabel();
             applyFilters();
         });
 

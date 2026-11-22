@@ -827,6 +827,7 @@ class NeweggPricingController extends Controller
 
             $results = $errors; // pre-flight failures first
             $pushed = 0;
+            $volumeNote = null;
             foreach ($bulk['results'] as $r) {
                 $spn = (string) ($r['seller_part_number'] ?? '');
                 $localSku = $skuBySpn[$spn] ?? $spn;
@@ -858,8 +859,12 @@ class NeweggPricingController extends Controller
                     'success' => $success,
                     'price'   => $success ? ($priceBySpn[$spn] ?? $requested) : null,
                     'error'   => $success ? null : ($r['error'] ?? 'Rejected'),
-                    'message' => $success ? null : ($r['error'] ?? 'Rejected'),
+                    'message' => $success ? ($r['volume_discount'] ?? null) : ($r['error'] ?? 'Rejected'),
+                    'volume_discount' => $r['volume_discount'] ?? null,
                 ];
+                if ($success && ! empty($r['volume_discount'])) {
+                    $volumeNote = (string) $r['volume_discount'];
+                }
             }
 
             // Whole-batch blocked-by-cloudflare gets a clearer HTTP status so
@@ -894,7 +899,7 @@ class NeweggPricingController extends Controller
                 'price'   => $confirmedPrice,
                 'results' => array_values($results),
                 'error'   => $error,
-                'message' => $error,
+                'message' => $error ?? $volumeNote,
             ]);
         } catch (\Throwable $e) {
             Log::error('Error pushing Newegg prices: ' . $e->getMessage());

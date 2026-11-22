@@ -1081,7 +1081,35 @@ class NeweggApiService
                 continue;
             }
 
-            $priceRow = $this->priceUpdateRow($spn, $country, $currency, $price, $i);
+            $existingRow = $this->extractPriceRowForCountry(
+                $this->getItemPrice($spn, [$country])['json'] ?? null,
+                $country
+            );
+            $priceRow = $this->buildPriceUpdateRow($country, $currency, $price, $i, is_array($existingRow) ? $existingRow : null);
+
+            // Volume discount tiers must stay below the regular price (CT062 / CT065), so they follow the new price.
+            // Price goes DOWN → tiers first (else CT065). Price goes UP → price first, then tiers.
+            $oldPrice = is_array($existingRow) && isset($existingRow['SellingPrice']) && is_numeric($existingRow['SellingPrice'])
+                ? round((float) $existingRow['SellingPrice'], 2) : null;
+            $volPlan = null;
+            $volNote = null;
+            if ($country === 'USA' && ($i['sync_volume_discount'] ?? true)
+                && ($oldPrice === null || abs($oldPrice - $price) >= 0.005)) {
+                $vol = $this->getVolumeDiscountTiers($spn);
+                if (! empty($vol['tiers'])) {
+                    $scaled = $this->scaleVolumeTiers($vol['tiers'], $oldPrice, $price);
+                    if ($scaled !== $vol['tiers']) {
+                        $volPlan = ['tiers' => $scaled, 'item_number' => $vol['item_number'] ?? null];
+                    }
+                }
+            }
+            $volumeFirst = $volPlan !== null && ($oldPrice === null || $price < $oldPrice);
+            if ($volPlan !== null && $volumeFirst) {
+                $volRes = $this->submitVolumeDiscountTiers($spn, $volPlan['tiers'], $volPlan['item_number']);
+                $volNote = $volRes['ok']
+                    ? $this->describeVolumeTiers($volPlan['tiers'])
+                    : 'Volume discount NOT updated: ' . $volRes['error'];
+            }
 
             // Newegg's XSD: <PriceList><Price>…</Price></PriceList>.  In JSON the
             // repeating <Price> element maps to a "Price" array inside "PriceList".
@@ -1099,6 +1127,12 @@ class NeweggApiService
             $res = $this->request('POST', '/marketplace/contentmgmt/item/international/price', [], $body);
 
             $ok = $this->extractPriceUpdateSuccess($res);
+            if ($ok && $volPlan !== null && ! $volumeFirst) {
+                $volRes = $this->submitVolumeDiscountTiers($spn, $volPlan['tiers'], $volPlan['item_number']);
+                $volNote = $volRes['ok']
+                    ? $this->describeVolumeTiers($volPlan['tiers'])
+                    : 'Volume discount NOT updated: ' . $volRes['error'];
+            }
             $err = $ok ? null : $this->extractItemError($res);
             $confirmed = $ok ? $this->extractUpdatedSellingPrice($res, $country) : null;
             $live = null;
@@ -1126,6 +1160,9 @@ class NeweggApiService
                 $err = 'Cloudflare managed challenge (IP not whitelisted for writes).';
             }
 
+            if (! $ok && $err !== null && $volNote !== null) {
+                $err .= ' | ' . $volNote; // e.g. CT065 + why the tiers could not be lowered
+            }
             $results[] = [
                 'seller_part_number' => $spn,
                 'success' => $ok,
@@ -1133,6 +1170,7 @@ class NeweggApiService
                 'error'   => $err,
                 'raw'     => $res['raw'],
                 'confirmed_price' => $confirmed,
+                'volume_discount' => $volNote,
             ];
             if ($ok) {
                 $pushed++;
@@ -1306,20 +1344,6 @@ class NeweggApiService
     }
 
     /**
-     * @param  array<string, mixed>  $item
-     * @return array<string, string>
-     */
-    private function priceUpdateRow(string $spn, string $country, string $currency, float $price, array $item): array
-    {
-        $existing = $this->extractPriceRowForCountry(
-            $this->getItemPrice($spn, [$country])['json'] ?? null,
-            $country
-        );
-
-        return $this->buildPriceUpdateRow($country, $currency, $price, $item, is_array($existing) ? $existing : null);
-    }
-
-    /**
      * @param  array{ok?:bool,status?:int,json?:?array}  $res
      */
     private function extractUpdatedSellingPrice(array $res, string $country): ?float
@@ -1374,6 +1398,140 @@ class NeweggApiService
         }
 
         return abs($a - $b) < 0.015;
+    }
+
+    /**
+     * Read the item's volume discount tiers (PUT …/item/volumediscount, GetVolumeDiscountRequest).
+     *
+     * @return array{tiers:list<array{Priority:int,Quantity:int,SellingPrice:float,EnableFreeShipping:int}>,item_number:?string}|null
+     *         tiers = [] when the item has no volume discount; null result = could not be read (rate limit, blocked, …)
+     */
+    public function getVolumeDiscountTiers(string $sellerPartNumber): ?array
+    {
+        $spn = trim($sellerPartNumber);
+        if ($spn === '') {
+            return null;
+        }
+        $res = $this->request('PUT', '/marketplace/contentmgmt/item/volumediscount', [], [
+            'OperationType' => 'GetVolumeDiscountRequest',
+            'RequestBody' => ['SellerPartNumber' => $spn],
+        ]);
+        if (! empty($res['blocked_by_cloudflare']) || ! is_array($res['json'])) {
+            return null;
+        }
+        $j = $res['json'];
+        $info = data_get($j, 'ResponseBody.ItemVolumeDiscountInfo') ?? data_get($j, 'NeweggAPIResponse.ResponseBody.ItemVolumeDiscountInfo');
+        if (! is_array($info)) {
+            // CT060 "item does not have volume discount yet" is an answer (no tiers); anything else = unreadable
+            return str_contains($this->extractItemError($res), 'CT060') ? ['tiers' => [], 'item_number' => null] : null;
+        }
+        $setting = $info['DiscountSetting'] ?? [];
+        if (is_array($setting) && isset($setting['Tier'])) {
+            $setting = $setting['Tier'];
+        }
+        if (is_array($setting) && isset($setting['Priority'])) {
+            $setting = [$setting];
+        }
+        $tiers = [];
+        foreach ((array) $setting as $t) {
+            if (! is_array($t) || ! isset($t['SellingPrice']) || ! is_numeric($t['SellingPrice'])) {
+                continue;
+            }
+            $tiers[] = [
+                'Priority' => (int) ($t['Priority'] ?? (count($tiers) + 1)),
+                'Quantity' => (int) ($t['Quantity'] ?? 0),
+                'SellingPrice' => round((float) $t['SellingPrice'], 2),
+                'EnableFreeShipping' => (int) ($t['EnableFreeShipping'] ?? 0),
+            ];
+        }
+        usort($tiers, fn ($a, $b) => $a['Priority'] <=> $b['Priority']);
+
+        return [
+            'tiers' => $tiers,
+            'item_number' => isset($info['NeweggItemNumber']) ? (string) $info['NeweggItemNumber'] : null,
+        ];
+    }
+
+    /**
+     * Move every tier with the regular price: tier × (new ÷ old), kept strictly below the new price and strictly
+     * descending (Newegg rule: regular price > tier-1 > tier-2 > tier-3). Quantities / shipping are untouched.
+     * Without a known old price only a tier that is not below the new price is pulled down (to 98 %).
+     *
+     * @param  list<array{Priority:int,Quantity:int,SellingPrice:float,EnableFreeShipping:int}>  $tiers
+     * @return list<array{Priority:int,Quantity:int,SellingPrice:float,EnableFreeShipping:int}>
+     */
+    public function scaleVolumeTiers(array $tiers, ?float $oldPrice, float $newPrice): array
+    {
+        $newPrice = round($newPrice, 2);
+        if ($tiers === []) {
+            return [];
+        }
+        if ($oldPrice !== null && $oldPrice > 0) {
+            $factor = $newPrice / $oldPrice;
+        } elseif ($tiers[0]['SellingPrice'] >= $newPrice && $tiers[0]['SellingPrice'] > 0) {
+            $factor = ($newPrice * 0.98) / $tiers[0]['SellingPrice'];
+        } else {
+            return $tiers;
+        }
+
+        $prev = $newPrice;
+        $out = [];
+        foreach ($tiers as $t) {
+            $p = round($t['SellingPrice'] * $factor, 2);
+            $p = min($p, round($prev - 0.01, 2));
+            $p = max(0.01, $p);
+            $t['SellingPrice'] = $p;
+            $out[] = $t;
+            $prev = $p;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Create / update the item's volume discount (POST …/item/volumediscount, SubmitVolumeDiscountRequest).
+     *
+     * @param  list<array{Priority:int,Quantity:int,SellingPrice:float,EnableFreeShipping:int}>  $tiers
+     * @return array{ok:bool,error:string}
+     */
+    public function submitVolumeDiscountTiers(string $sellerPartNumber, array $tiers, ?string $itemNumber = null): array
+    {
+        $spn = trim($sellerPartNumber);
+        if ($spn === '' || $tiers === []) {
+            return ['ok' => false, 'error' => 'SellerPartNumber and tiers are required'];
+        }
+        $info = $itemNumber !== null && $itemNumber !== ''
+            ? ['NeweggItemNumber' => $itemNumber]
+            : ['SellerPartNumber' => $spn];
+        $info['VolumeActivation'] = 'true';
+        $info['DiscountSetting'] = ['Tier' => array_map(fn ($t) => [
+            'Priority' => (string) $t['Priority'],
+            'Quantity' => (string) $t['Quantity'],
+            'SellingPrice' => number_format((float) $t['SellingPrice'], 2, '.', ''),
+            'EnableFreeShipping' => (string) $t['EnableFreeShipping'],
+        ], $tiers)];
+
+        $res = $this->request('POST', '/marketplace/contentmgmt/item/volumediscount', [], [
+            'OperationType' => 'SubmitVolumeDiscountRequest',
+            'RequestBody' => ['ItemVolumeDiscountInfo' => $info],
+        ]);
+        $j = is_array($res['json']) ? $res['json'] : null;
+        $flag = $j !== null ? (data_get($j, 'NeweggAPIResponse.IsSuccess') ?? ($j['IsSuccess'] ?? null)) : null;
+        $ok = empty($res['blocked_by_cloudflare']) && $j !== null && ! $this->neweggJsonLooksLikeError($j) && $this->neweggFlagIsTrue($flag);
+        if (! $ok) {
+            Log::warning('Newegg volume discount update failed', ['spn' => $spn, 'tiers' => $tiers, 'response' => mb_substr((string) $res['raw'], 0, 500)]);
+        }
+
+        return ['ok' => $ok, 'error' => $ok ? '' : $this->extractItemError($res)];
+    }
+
+    /** @param list<array{Priority:int,Quantity:int,SellingPrice:float,EnableFreeShipping:int}> $tiers */
+    private function describeVolumeTiers(array $tiers): string
+    {
+        return 'Volume discount updated: ' . implode(', ', array_map(
+            fn ($t) => $t['Quantity'] . '+ @ $' . number_format($t['SellingPrice'], 2),
+            $tiers
+        ));
     }
 
     /**

@@ -4116,6 +4116,18 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return null;
             }
         }
+        // Show Temu's own reason (e.g. "Please wait for Temu to review your last application.") instead of bare SKU ids
+        if (is_array($reasonMap) && $reasonMap !== []) {
+            $reasons = [];
+            foreach ($reasonMap as $reason) {
+                if (is_string($reason) && trim($reason) !== '') {
+                    $reasons[trim($reason)] = true;
+                }
+            }
+            if ($reasons !== []) {
+                return 'Temu rejected the price: '.implode(' | ', array_keys($reasons));
+            }
+        }
         foreach (['failList', 'failedList', 'failSkuList', 'failedSkuList', 'errorList'] as $key) {
             if (! empty($result[$key]) && is_array($result[$key])) {
                 return 'Temu rejected part of the update: '.mb_substr((string) json_encode($result[$key], JSON_UNESCAPED_UNICODE), 0, 400);

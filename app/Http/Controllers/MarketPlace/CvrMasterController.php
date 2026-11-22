@@ -9767,7 +9767,15 @@ class CvrMasterController extends Controller
     private function pushToShopifyB2B($sku, $price)
     {
         try {
-            $push = app(StorePricePushService::class)->pushSprice((string) $sku, (float) $price);
+            // Exactly the push of /shopify-b2b-pricing (Shopifyb2bController::pushSpriceToWebsite): push the S PRC to
+            // business5core.com, pull the live Price / Views back from the site and store it as the SKU's SPRICE.
+            $siteResp = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->pushSpriceToWebsite(
+                Request::create('/shopify-b2b/push-website-sprice', 'POST', ['sku' => (string) $sku, 'sprice' => (float) $price]),
+                app(StorePricePushService::class),
+                app(\App\Services\StorePriceSyncService::class)
+            );
+            $push = $siteResp->getData(true);
+            $push = is_array($push) ? $push : [];
             if (! ($push['success'] ?? false)) {
                 $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
 
@@ -9790,9 +9798,11 @@ class CvrMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => $push['message'],
+                'message' => $push['message'] ?? ('Pushed $' . number_format($live, 2) . ' to business5core.com for SKU ' . $sku),
                 'price' => $live,
                 'ebay_price' => $live,
+                'views' => $push['views'] ?? null,
+                'sold' => $push['sold'] ?? null,
             ]);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
@@ -10529,6 +10539,43 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Temu answers "Please wait for Temu to review your last application." while an earlier price change of the SAME
+     * SKU is still under review. When that earlier change is the price we are pushing now (we already pushed it
+     * successfully), nothing is wrong: it only waits for Temu's approval, so it must not be a failure / alert.
+     */
+    private function temuAlreadySubmittedForReview(string $sku, string $marketplace, float $price, string $message): bool
+    {
+        if (! preg_match('/wait\s+for\s+temu\s+to\s+review/i', $message)) {
+            return false;
+        }
+        try {
+            if (! Schema::hasTable('price_push_pendings')) {
+                return false;
+            }
+            $row = \App\Models\PricePushPending::where('sku', strtoupper(trim($sku)))
+                ->where('marketplace', $marketplace)
+                ->first();
+
+            return $row
+                && $row->pushed_at !== null
+                && abs((float) $row->price - $price) < 0.005;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function temuAwaitingReviewResponse(string $label, float $price, array $result)
+    {
+        return response()->json([
+            'success' => true,
+            'awaiting_review' => true,
+            'message' => $label . ' $' . number_format($price, 2)
+                . ' was already submitted — waiting for Temu to review it (not live until Temu approves).',
+            'result' => $result,
+        ]);
+    }
+
+    /**
      * Push price to Temu via TemuApiService::updateSkuBasePrice (same as /temu-decrease → /temu/push-price).
      */
     private function pushToTemu($sku, $price, $goodsId = null, $skuId = null)
@@ -10556,6 +10603,10 @@ class CvrMasterController extends Controller
                     'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Temu for SKU: $sku"),
                     'result' => $result,
                 ]);
+            }
+
+            if ($this->temuAlreadySubmittedForReview((string) $sku, 'temu', (float) $price, (string) ($result['message'] ?? ''))) {
+                return $this->temuAwaitingReviewResponse('Temu', (float) $price, $result);
             }
 
             $this->savePricePushStatus($sku, 'temu', 'error', $price);
@@ -10608,6 +10659,10 @@ class CvrMasterController extends Controller
                     'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Temu2 for SKU: $sku"),
                     'result' => $result,
                 ]);
+            }
+
+            if ($this->temuAlreadySubmittedForReview((string) $sku, 'temu2', (float) $price, (string) ($result['message'] ?? ''))) {
+                return $this->temuAwaitingReviewResponse('Temu2', (float) $price, $result);
             }
 
             $this->savePricePushStatus($sku, 'temu2', 'error', $price);
