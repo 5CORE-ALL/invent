@@ -1160,6 +1160,9 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
+                                    <th data-col-key="ship_diff" data-col-label="Diff" class="shipping-rate-header" title="Diff = Ship − Ship BB">
+                                        <div class="th-vertical-label">Diff</div>
+                                    </th>
                                     <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu" title="Total Temu ship = Temu ship + O-Size Charge">
                                         <div class="th-vertical-label">Temu<br>ship</div>
                                         <select id="filterTemuShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu ship">
@@ -2095,6 +2098,19 @@
                 return parseChargeAmount(base) + oSize;
             }
 
+            /** Diff = Ship − Ship BB. Returns null when either side is blank/non-numeric. */
+            function calcShipDiff(ship, shipBb) {
+                const toNum = (v) => {
+                    if (v === null || v === undefined || v === '') return null;
+                    const n = parseFloat(String(v).replace(/,/g, ''));
+                    return Number.isFinite(n) ? n : null;
+                };
+                const s = toNum(ship);
+                const b = toNum(shipBb);
+                if (s === null || b === null) return null;
+                return Math.round((s - b) * 100) / 100;
+            }
+
             function shipBbTooltip(item, isParentRow) {
                 const base = parseChargeAmount(getOuterCarrierDisplayRate(item, 'ship_bb', !!isParentRow));
                 const oSize = itemOSizeAmount(item);
@@ -2555,7 +2571,7 @@
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="42" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="43" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -2831,6 +2847,21 @@
                         }
                     }
                     row.appendChild(shipBbPmCell);
+
+                    // Diff = Ship − Ship BB (uses the values shown in those two columns)
+                    const shipDiffCell = document.createElement('td');
+                    shipDiffCell.className = 'text-center shipping-rate-cell shipping-ship-diff-col';
+                    const shipDiffVal = calcShipDiff(
+                        pkg.isExtraPackage ? calcTotalShip(shipSource, isParentRow) : displayedSourceShip(shipSource, isParentRow),
+                        calcShipBb(shipSource, isParentRow)
+                    );
+                    if (shipDiffVal === null) {
+                        shipDiffCell.textContent = '--';
+                    } else {
+                        shipDiffCell.textContent = formatNumber(shipDiffVal, 2);
+                        if (shipDiffVal < 0) shipDiffCell.style.color = '#dc3545';
+                    }
+                    row.appendChild(shipDiffCell);
 
                     const carrierShipHighlight = [];
                     const appendCarrierShipCell = (carrierKey, extraClass = '') => {
@@ -3127,33 +3158,33 @@
                 9:  'inv',
                 10: 'ship',
                 11: 'ship_bb',
-                12: 'temu_ship',
-                13: 'temu_gofo',
-                14: 'gofo',
-                15: 'fedex',
-                16: 'ups',
-                17: 'usps',
-                18: 'uni',
-                19: 'fba_sku',
-                20: 'fba_ship',
-                21: 'fba_manual_ship',
-                22: 'wt_act_kg',
-                23: 'wt_act',
-                // 24: wt_oz (computed; not editable)
-                25: 'l',
-                26: 'w',
-                27: 'h',
-                28: 'wt_decl',
-                29: 'l_decl',
-                30: 'w_decl',
-                31: 'h_decl',
-                32: 'l_cm',
-                33: 'w_cm',
-                34: 'h_cm',
-                35: 'ctn_l',
-                36: 'ctn_w',
-                37: 'ctn_h',
-                39: 'ctn_qty'
+                13: 'temu_ship',
+                14: 'temu_gofo',
+                15: 'gofo',
+                16: 'fedex',
+                17: 'ups',
+                18: 'usps',
+                19: 'uni',
+                20: 'fba_sku',
+                21: 'fba_ship',
+                22: 'fba_manual_ship',
+                23: 'wt_act_kg',
+                24: 'wt_act',
+                // 25: wt_oz (computed; not editable)
+                26: 'l',
+                27: 'w',
+                28: 'h',
+                29: 'wt_decl',
+                30: 'l_decl',
+                31: 'w_decl',
+                32: 'h_decl',
+                33: 'l_cm',
+                34: 'w_cm',
+                35: 'h_cm',
+                36: 'ctn_l',
+                37: 'ctn_w',
+                38: 'ctn_h',
+                40: 'ctn_qty'
             };
 
             /** Human-readable field labels used by the small "Enter Missing
@@ -3511,7 +3542,7 @@
             };
             const SHIPPING_COL_CATEGORIES = {
                 basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'o_size_charge', 'pr_charge', 'inv', 'verified', 'dim_wt_link', 'action'],
-                ship_rates: ['ship', 'ship_bb', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
+                ship_rates: ['ship', 'ship_bb', 'ship_diff', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
                 wt: ['wt_act_kg', 'wt_act', 'wt_oz', 'wt_decl'],
                 dimensions: ['l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
                 other: [],
@@ -4568,6 +4599,9 @@
                 if (key === 'ship_bb') {
                     return calcShipBb(item, false);
                 }
+                if (key === 'ship_diff') {
+                    return calcShipDiff(displayedSourceShip(item, false), calcShipBb(item, false));
+                }
                 if (key === 'temu_ship') {
                     return calcTemuShip(item, false);
                 }
@@ -4668,6 +4702,7 @@
                     inv: { key: 'shopify_inv', type: 'num' },
                     ship: { key: 'ship', type: 'num' },
                     ship_bb: { key: 'ship_bb', type: 'num' },
+                    ship_diff: { key: 'ship_diff', type: 'num' },
                     dim_wt_link: { key: 'dim_wt_linked_skus', type: 'text' },
                     temu_ship: { key: 'temu_ship', type: 'num' },
                     temu_gofo: { key: 'temu_gofo', type: 'num' },
@@ -4790,7 +4825,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "O-Size Charge", "PR Charge", "INV", "Ship", "Ship BB", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "O-Size Charge", "PR Charge", "INV", "Ship", "Ship BB", "Diff", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "OZ", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -4820,6 +4855,9 @@
                         },
                         "Ship BB": {
                             computed: "total_ship_bb"
+                        },
+                        "Diff": {
+                            computed: "ship_diff"
                         },
                         "Temu ship": {
                             computed: "total_temu_ship"
@@ -4964,6 +5002,11 @@
                                         }
                                         if (colDef.computed === 'total_ship_bb') {
                                             row.push(calcShipBb(item, false));
+                                            return;
+                                        }
+                                        if (colDef.computed === 'ship_diff') {
+                                            const d = calcShipDiff(displayedSourceShip(item, false), calcShipBb(item, false));
+                                            row.push(d === null ? '' : d);
                                             return;
                                         }
                                         if (colDef.computed === 'total_temu_ship') {
