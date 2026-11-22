@@ -1891,9 +1891,10 @@
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
                             title="Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
-                            title="Apply SPRICE" aria-label="Apply SPRICE">
+                            title="Apply SPRICE (saves the live preview)" aria-label="Apply SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
+                        <span id="modal-bulk-sprice-metrics" class="small" style="display:none;white-space:nowrap;"></span>
                     </div>
                     <div class="ovl30-tool-group"
                         title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
@@ -1956,9 +1957,10 @@
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
                             title="From STD PRC. Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
-                            title="Apply SPRICE $" aria-label="Apply same SPRICE">
+                            title="Apply SPRICE $ (saves the live preview)" aria-label="Apply same SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
+                        <span id="modal-same-sprice-metrics" class="small" style="display:none;white-space:nowrap;"></span>
                     </div>
                     <div class="ovl30-tool-group"
                         title="CPN $: dollar off SPRICE — check channel(s) first.">
@@ -8663,6 +8665,7 @@
                 + siblingsApplyLabel()
             )) return;
 
+            bulkSpritePv.clear(); // the previewed values are being saved now — do not restore them
             const $btn = $('#modal-apply-bulk-sprice-btn');
             const origHtml = $btn.html();
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
@@ -8711,6 +8714,107 @@
                 e.preventDefault();
                 applyModalBulkSprice();
             }
+        });
+
+        // Live preview: typing in a toolbar SPRICE box recalculates the target channels right away
+        // (SGPFT / SROI / SNROI / SPFT columns) and shows the average NROI% / NPFT% next to the box.
+        // Nothing is saved until the check button / Enter is used.
+        function bulkSpriceMetricNum($tr, sel) {
+            const v = parseFloat(String($tr.find(sel).first().text()).replace('%', ''));
+            return isFinite(v) ? v : null;
+        }
+        function makeSpricePreview(cfg) {
+            let rowsState = []; // [{ $tr, orig }]
+            let timer = null;
+            function restore(keepSet) {
+                rowsState = rowsState.filter(function(p) {
+                    if (keepSet && keepSet.indexOf(p.$tr[0]) !== -1) return true;
+                    p.$tr.find('.editable-sprice').val(p.orig).trigger('input');
+                    return false;
+                });
+            }
+            function run() {
+                const $out = $(cfg.out);
+                const raw = $(cfg.input).val();
+                const base = parseFloat(String(raw == null ? '' : raw).replace(/[$,\s]/g, '').replace(',', '.'));
+                if (!isFinite(base) || !(base > 0)) {
+                    restore(null);
+                    $out.hide().empty();
+                    return;
+                }
+                if (cfg.requireSelection && modalSelectedChannels.size === 0) {
+                    restore(null);
+                    $out.html('<span class="text-muted">select channels</span>').show();
+                    return;
+                }
+                const rows = collectModalTargetRows(cfg.rowsOpts);
+                restore(rows.map(function($tr) { return $tr[0]; }));
+                let sumN = 0, cntN = 0, sumP = 0, cntP = 0;
+                const lines = [];
+                rows.forEach(function($tr) {
+                    const $inp = $tr.find('.editable-sprice');
+                    if (!rowsState.some(function(p) { return p.$tr[0] === $tr[0]; })) {
+                        rowsState.push({ $tr: $tr, orig: $inp.val() });
+                    }
+                    const newPrice = adjustAppliedSpriceForChannel(base, $tr);
+                    $inp.val(newPrice.toFixed(2)).trigger('input');
+                    const n = bulkSpriceMetricNum($tr, '.calculated-snroi');
+                    const p = bulkSpriceMetricNum($tr, '.calculated-spft');
+                    if (n !== null) { sumN += n; cntN++; }
+                    if (p !== null) { sumP += p; cntP++; }
+                    lines.push(String($tr.attr('data-marketplace') || '') + ' $' + newPrice.toFixed(2)
+                        + ' → NROI ' + (n !== null ? Math.round(n) + '%' : '-') + ', NPFT ' + (p !== null ? Math.round(p) + '%' : '-'));
+                });
+                const fmt = function(sum, cnt, colorFn) {
+                    if (!cnt) return '<span class="text-muted">-</span>';
+                    const avg = sum / cnt;
+                    return '<span style="' + styleForCellColor(colorFn(avg)) + '">' + Math.round(avg) + '%</span>';
+                };
+                $out.html('NROI ' + fmt(sumN, cntN, getSroiColor) + ' · NPFT ' + fmt(sumP, cntP, getSgpftSpftColor))
+                    .attr('title', (rows.length > 1 ? 'Average of ' + rows.length + ' channels (preview, not saved until ✓)\n' : 'Preview, not saved until ✓\n')
+                        + lines.join('\n'))
+                    .show();
+            }
+            function schedule(ms) {
+                clearTimeout(timer);
+                timer = setTimeout(run, ms);
+            }
+            return {
+                schedule: schedule,
+                // The previewed values are being saved (or the modal closed): keep them, do not restore
+                clear: function() { clearTimeout(timer); rowsState = []; },
+                reset: function() {
+                    clearTimeout(timer); rowsState = [];
+                    $(cfg.input).val('');
+                    $(cfg.out).hide().empty();
+                },
+                active: function() { return String($(cfg.input).val() || '') !== ''; }
+            };
+        }
+        const bulkSpritePv = makeSpricePreview({
+            input: '#modal-bulk-sprice-input', out: '#modal-bulk-sprice-metrics',
+            requireSelection: true,
+            rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true }
+        });
+        // "SPRICE $" box: same rules; every editable channel when none is ticked (same as its ✓ button)
+        const samePricePv = makeSpricePreview({
+            input: '#modal-sprice-same-input', out: '#modal-same-sprice-metrics',
+            requireSelection: false,
+            rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true }
+        });
+        const spricePreviews = [bulkSpritePv, samePricePv];
+        $(document).on('input', '#modal-bulk-sprice-input', function() { bulkSpritePv.schedule(120); });
+        $(document).on('input', '#modal-sprice-same-input', function() { samePricePv.schedule(120); });
+        // Re-run when the channel selection changes while a SPRICE is typed
+        $(document).on('change', '.ovl30-prc-row-cb, #ovl30-select-all-cb', function() {
+            spricePreviews.forEach(function(pv) { if (pv.active()) pv.schedule(150); });
+        });
+        $(document).on('click', '#modal-select-all-channels-btn', function() {
+            spricePreviews.forEach(function(pv) { if (pv.active()) pv.schedule(150); });
+        });
+        // Closing the modal drops the unsaved preview
+        $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
+            spricePreviews.forEach(function(pv) { pv.reset(); });
         });
 
         // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
@@ -8902,6 +9006,62 @@
         });
 
         // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
+        /**
+         * After "SPRICE $" ✓ saved the prices: push them live, one channel at a time (same call as the row Push buttons /
+         * the header bulk push). Runs on a snapshot of SKU + siblings, so it also finishes if the modal is closed.
+         */
+        function pushSavedRows(rows, applySiblings) {
+            const sku = String(getModalPrimarySku() || '');
+            const targets = [];
+            rows.forEach(function($tr) {
+                const $pb = $tr.find('.push-price-btn');
+                if (!$pb.length || $pb.prop('disabled')) return;
+                const mp = String($pb.data('marketplace') || $tr.attr('data-marketplace') || '');
+                const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
+                if (price == null || !sku || !mp || sku.toUpperCase() === 'NOT LISTED') return;
+                targets.push({ sku: sku, marketplace: mp, price: price, $btn: $pb, $tr: $tr, applySiblings: applySiblings ? 1 : 0 });
+            });
+            if (!targets.length) {
+                showToast('Saved. No channel here supports push.', 'success');
+                return;
+            }
+            targets.forEach(function(t) {
+                t.$btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            });
+            let idx = 0;
+            const okResults = [];
+            const errors = [];
+            const savedOnly = [];
+            (function next() {
+                if (idx >= targets.length) {
+                    const prefix = $('#ovl30DetailsModal').hasClass('show') ? '' : (sku + ': ');
+                    const real = okResults.length - savedOnly.length;
+                    showToast(prefix + 'Pushed ' + real + '/' + targets.length + ' channel(s)'
+                        + (savedOnly.length ? ('. Saved only (no API): ' + savedOnly.join(', ')) : '')
+                        + (errors.length ? ('. Failed: ' + errors.join(' | ')) : ''),
+                        okResults.length && !errors.length ? 'success' : 'error');
+                    reloadOvl30ModalAfterPush(okResults);
+                    targets.forEach(function(t) {
+                        if (!t.$btn.hasClass('btn-success')) {
+                            t.$btn.prop('disabled', false).html('<i class="fas fa-upload"></i>')
+                                .removeClass('btn-success').addClass('btn-primary');
+                        }
+                    });
+                    return;
+                }
+                const t = targets[idx++];
+                pushOvl30PriceToMarketplace(t).then(function(result) {
+                    if (result.ok) {
+                        okResults.push(result);
+                        if (result.savedOnly) savedOnly.push(String(t.marketplace));
+                    } else {
+                        errors.push(String(t.marketplace) + ' — ' + String(result.message || 'failed').slice(0, 120));
+                    }
+                    next();
+                });
+            })();
+        }
+
         // From STD: Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
@@ -8944,8 +9104,11 @@
                     + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
                     + siblingsApplyLabel()
                     + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same per-channel SPRICE.' : '')
+                    + '\n\nThe prices are SAVED, then PUSHED live to every channel that supports push.'
                 )) return;
 
+                samePricePv.clear(); // previewed values are being saved now — do not restore them
+                bulkSpritePv.clear();
                 const $btn = $('#modal-apply-sprice-same-btn');
                 const origHtml = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
@@ -8954,6 +9117,7 @@
                 let okCount = 0;
                 let siblingsOk = 0;
 
+                const savedRows = []; // rows whose SPRICE saved OK → pushed next
                 function finishIfDone() {
                     if (doneCount !== $rows.length) return;
                     $btn.prop('disabled', false).html(origHtml);
@@ -8961,10 +9125,11 @@
                         okCount
                             ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                 + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
-                                + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Use Push to go live.')
+                                + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Pushing…')
                             : 'Failed to save SPRICE',
                         okCount ? 'success' : 'error'
                     );
+                    if (okCount) pushSavedRows(savedRows, withSiblings);
                 }
 
                 $rows.forEach(function($tr) {
@@ -8988,6 +9153,7 @@
                     saveModalSpriceForRow($tr, newPrice, function(ok) {
                         if (ok) {
                             okCount++;
+                            savedRows.push($tr);
                             ovl30ModalData.forEach(function(item) {
                                 if (String(item.marketplace || '') === mp) item.sprice = newPrice;
                             });
@@ -9100,6 +9266,8 @@
                 includeAllEditableWhenNoneSelected: true
             });
             if (!$rows.length) return;
+            samePricePv.clear();
+            bulkSpritePv.clear();
 
             if (!silent && !skipConfirm && !confirm(
                 (comboLabel
