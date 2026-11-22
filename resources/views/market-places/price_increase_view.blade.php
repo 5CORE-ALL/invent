@@ -1955,11 +1955,11 @@
                         
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Apply STD PRC as SPRICE. Doba −25%. TopDawg/Faire/SB2B = (STD × marketplace%) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="SPRICE for every channel (saved automatically). Separate from STD PRC. Doba −25%; TopDawg/Faire/SB2B = (price × marketplace%) − Ship; Purchase = (price × 1.15) − Ship.">
                         <label for="modal-sprice-same-input">SPRICE $</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="From STD PRC. Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="SPRICE — saved automatically as you type. Does not change STD PRC. Doba −25%; TopDawg/Faire/SB2B = (price×marketplace%)−Ship; Purchase = (price×1.15)−Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
                             title="Push All — fills every channel by its column rule, then saves and pushes them (same as Channels ▸ Push All)" aria-label="Push all channels with this SPRICE">
                             <i class="fas fa-check"></i>
@@ -5101,8 +5101,6 @@
                     setModalSharedStandardPrice(std);
                     syncModalToolbarSpInput(std);
                     refreshModalStdPrcCells(std);
-                    // Prefill Same-$ SPRICE box from shared sibling SP (user can still edit)
-                    syncSameSpriceBoxFromSaved();
                 });
         }
 
@@ -8636,7 +8634,16 @@
             let label = String(group);
             if (g === CHPUSH_NOSHIP_GROUP.toLowerCase()) label = 'B2B W/o';
             else if (g === 'high shipping') label = 'Hs';
-            return '<span class="badge bg-light text-dark border" style="font-weight:600;" title="' + chpushEsc(group) + '">'
+            // One colour per type
+            const colors = {
+                'b2c': 'background:#0d6efd;color:#fff;',          // blue
+                'b2b': 'background:#198754;color:#fff;',          // green
+                'b2b w/o': 'background:#20c997;color:#000;',      // teal
+                'c2c': 'background:#6f42c1;color:#fff;',          // purple
+                'hs': 'background:#fd7e14;color:#000;'            // orange
+            };
+            const style = colors[label.toLowerCase()] || 'background:#6c757d;color:#fff;';
+            return '<span class="badge" style="font-weight:600;' + style + '" title="' + chpushEsc(group) + '">'
                 + chpushEsc(label) + '</span>';
         }
         function chBulkSpriceFor(base, $tr) {
@@ -8879,10 +8886,8 @@
         // "SPRICE $" box: same rules; every editable channel when none is ticked (same as its ✓ button)
         // True only while the user's own typed value is in the box (a value prefilled from the saved price is NOT a preview)
         let samePriceDirty = false;
-        /** The saved price shown in the SPRICE $ box: STD PRC, else Amazon's saved SPRICE, else any channel's. */
+        /** The saved price shown in the SPRICE $ box: Amazon's saved SPRICE, else any channel's. (Never STD PRC — separate data.) */
         function getSavedSameSprice() {
-            const std = getModalSharedStandardPrice();
-            if (std > 0) return std;
             const items = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
             for (let pass = 0; pass < 2; pass++) {
                 for (let i = 0; i < items.length; i++) {
@@ -8934,7 +8939,7 @@
                 if (!$('#ovl30DetailsModal').hasClass('show')) return;
                 // The user's typed price has its own live preview (it draws the badges itself)
                 if (samePricePv.active()) return;
-                // Otherwise the 4 profit badges ALWAYS show the saved price (Amazon's saved SPRICE, else STD PRC)
+                // Otherwise the 4 profit badges ALWAYS show the saved SPRICE (Amazon's, else any channel's)
                 const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
                 renderSpriceMetrics($('#modal-same-sprice-metrics'), rows, 'Saved values\n', getSavedSameSprice());
             }, 200);
@@ -9082,43 +9087,13 @@
          * every channel is saved and pushed in a background job (tracked: failures retried hourly, e-mailed, red alert).
          * Doba keeps its own rule (−25%) and, like in Push All, is never pushed.
          */
-        /** Save a price as the SKU's STD PRC (shared standard price) without re-applying it to the channel boxes. */
-        function saveTypedPriceAsStd(sku, price) {
-            if (!sku || String(sku).indexOf('PARENT') !== -1 || !(price > 0)) return;
-            $.ajax({
-                url: '/save-amazon-sprice',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: { sku: sku, sprice: price, is_standard_price: 1, _token: '{{ csrf_token() }}' }
-            }).done(function(response) {
-                const saved = parseFloat(response && (response.data || response.STANDARD_PRICE)) || price;
-                if (String(getModalPrimarySku() || '') !== String(sku)) return;
-                setModalSharedStandardPrice(saved);
-                if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
-                    applyStandardPriceToPriceIncreaseRows(sku, saved, response && response.applied_skus);
-                }
-                refreshModalStdPrcCells(saved);
-                syncModalToolbarSpInput(saved);
-            }).fail(function() {
-                showToast('Could not save STD PRC $' + price.toFixed(2) + ' in the app', 'error');
-            });
-        }
-
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
             let samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
-            // Prefer STD PRC when SPRICE $ box empty
-            if (!(isFinite(samePrice) && samePrice > 0)) {
-                samePrice = parseFloat(String($('#modal-std-sp-input').val() || '').replace(/[$,\s]/g, ''));
-                if (!(isFinite(samePrice) && samePrice > 0)) samePrice = getModalSharedStandardPrice();
-                if (isFinite(samePrice) && samePrice > 0) {
-                    $('#modal-sprice-same-input').val(samePrice.toFixed(2));
-                    rawInput = String(samePrice);
-                }
-            }
+            // SPRICE and STD PRC are separate prices: this box never reads or writes STD PRC
             if (rawInput === '' || rawInput == null || !isFinite(samePrice) || !(samePrice > 0)) {
-                showToast('Enter STD PRC / SPRICE $ greater than 0', 'error');
-                $('#modal-std-sp-input').focus();
+                showToast('Enter SPRICE $ greater than 0', 'error');
+                $('#modal-sprice-same-input').focus();
                 return;
             }
             const sku = String(getModalPrimarySku() || '');
@@ -9132,10 +9107,6 @@
             }
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
             clearTimeout(sameAutoTimer); // the ✓ saves everything itself
-
-            // The typed price is also stored as the SKU's STD PRC (same save as the STD PRC ✓), so it is kept in the app
-            // and shows in the STD PRC box / table — independent of which channels get pushed.
-            saveTypedPriceAsStd(sku, basePrice);
 
             function runPushAll() {
                 // Previewed values were never saved: put the saved SPRICEs back so the Channels boxes start from real data
@@ -10305,8 +10276,6 @@
             if (!(x > 0) || !sku || sku.toUpperCase() === 'NOT LISTED' || sku.indexOf('PARENT') !== -1) return;
             if ((chpushRunning[sku] || 0) > 0 || $('#ovl30ChannelsPushModal').hasClass('show')) return; // a push / the Channels modal handles it
             if (sameAutoSaving) { sameAutoTimer = setTimeout(saveSameSpriceAlways, 600); return; }
-            // The typed price is also stored as the SKU's STD PRC so it is still there when the modal is reopened
-            if (Math.abs(getModalSharedStandardPrice() - x) >= 0.005) saveTypedPriceAsStd(sku, +x.toFixed(2));
             // Put the saved SPRICEs back under the live preview so "changed?" compares against real saved values
             samePricePv.restore();
             bulkSpritePv.restore();
