@@ -4838,9 +4838,10 @@
                 // a price API: Temu 3, Vinted, Depop, Instagram Shop, Mercari, FB Marketplace). Keys compared without spaces / symbols.
                 const pushKeyNorm = String(item.marketplace || '').toLowerCase().replace(/[^a-z0-9]/g, '');
                 const extraPushable = ['wayfair', 'temu3', 'alibaba', 'newegg', 'pls', 'depop', 'vinted', 'instagramshop',
-                    'mercariwship', 'mercariwoship', 'fbmarketplace', 'bestbuyusa', 'macys', 'tiktokshop'];
+                    'mercariwship', 'mercariwoship', 'fbmarketplace', 'bestbuyusa', 'macys', 'tiktokshop', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower'];
+                // STD-rule channels (Faire, Purchasing Power, SB2B, TopDawg) stay editable without listing metrics, so their push button must too
                 const canPushPrice = (pushableChannels.includes((item.marketplace || '').toLowerCase())
-                    || pushableChannels.includes(pushKeyNorm) || extraPushable.includes(pushKeyNorm)) && isListed;
+                    || pushableChannels.includes(pushKeyNorm) || extraPushable.includes(pushKeyNorm)) && (isListed || forceEditableStdRule);
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
 
                 // Price in red when LMP is available and LMP < Price
