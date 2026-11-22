@@ -10170,6 +10170,7 @@
                     item.pushed_by = item.pushed_by || userName;
                     item.pushed_at = nowLabel;
                     item.pushed_price = basePrice;
+                    item.pushed_at_iso = new Date().toISOString();
                     if (!Array.isArray(item.push_history)) item.push_history = [];
                     item.push_history.unshift({
                         price: basePrice,
@@ -10185,6 +10186,10 @@
                     );
                 }
             });
+
+            // Just pushed (history < 7 days) → hide the row automatically (toolbar button brings it back)
+            $tr.addClass('ovl30-recent-hide');
+            ovl30UpdateRecentToggle();
         }
 
         /** Review column: ★ rating + review count for the channel ("-" when the channel has no review data). */
