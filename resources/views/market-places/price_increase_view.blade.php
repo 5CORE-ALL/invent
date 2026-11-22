@@ -1598,9 +1598,9 @@
                     @if (empty($channelsByType))
                         <div class="text-muted text-center py-3">No channels found.</div>
                     @else
-                        <div class="row g-3">
+                        <div class="row g-3 row-cols-1 row-cols-sm-2 row-cols-lg-5">
                             @foreach ($channelsByType as $type => $names)
-                                <div class="col-12 col-sm-6 col-lg-3">
+                                <div class="col">
                                     <div class="border rounded h-100">
                                         <div class="px-3 py-2 bg-light border-bottom fw-bold d-flex justify-content-between">
                                             <span>{{ $type }}</span>
