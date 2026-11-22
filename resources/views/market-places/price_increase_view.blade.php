@@ -2684,11 +2684,11 @@
                         <i class="fas fa-store"></i> Channels
                     </button>
 
-                    <!-- Push history (Hist column): default hides SKUs pushed in the last 7 days -->
+                    <!-- Push history (Hist column): default shows everything; hiding recent pushes is opt-in -->
                     <select id="push-history-filter" class="form-select form-select-sm" style="width: auto; min-width: 190px;"
                         title="Filter SKUs by their newest push date (Hist column)">
-                        <option value="hide7" selected>Hist — Hide pushed &lt; 7d</option>
-                        <option value="all">Hist — All</option>
+                        <option value="all" selected>Hist — All</option>
+                        <option value="hide7">Hist — Hide pushed &lt; 7d</option>
                         <option value="recent">Hist — Pushed &lt; 7d only</option>
                         <option value="old">Hist — Pushed 7d+ ago</option>
                         <option value="none">Hist — Never pushed</option>
@@ -8378,23 +8378,22 @@
                 showToast('Choose Decrease, Increase, Same Price, or Clear SPRICE from Prc Mode first', 'error');
                 return;
             }
-            if (modalSelectedChannels.size === 0) {
-                showToast('Please select at least one channel (checkbox column)', 'error');
-                return;
-            }
+            // No checkbox selection needed: with nothing ticked, every editable channel row is used
 
             // Same Price: always include Doba + STD-rule channels (SB2B/TopDawg/Faire/Purchase)
             const $rows = modalSamePriceModeActive
                 ? collectModalTargetRows({
                     alwaysIncludeDoba: true,
-                    alwaysIncludeStdRuleChannels: true
+                    alwaysIncludeStdRuleChannels: true,
+                    includeAllEditableWhenNoneSelected: true
                 })
                 : (function() {
                     const list = [];
+                    const noneTicked = modalSelectedChannels.size === 0;
                     $('#ovl30DetailsTableBody tr').each(function() {
                         const $tr = $(this);
                         const mp = String($tr.attr('data-marketplace') || '');
-                        if (!modalSelectedChannels.has(mp)) return;
+                        if (!noneTicked && !modalSelectedChannels.has(mp)) return;
                         if (!$tr.find('.editable-sprice').length) return;
                         list.push($tr);
                     });
@@ -8986,13 +8985,9 @@
             }
 
             // +$ only adds to each channel's current SPRICE — STD PRC is never added in here.
-            if (modalSelectedChannels.size === 0) {
-                showToast('Please select at least one channel (checkbox)', 'error');
-                return;
-            }
-            const $rows = collectModalTargetRows();
+            const $rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
             if (!$rows.length) {
-                showToast('No editable SPRICE rows selected', 'error');
+                showToast('No editable SPRICE rows found', 'error');
                 return;
             }
 
@@ -13946,8 +13941,8 @@
             const day = String(row.push_history_last_at || '').slice(0, 10);
             return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= ovl30HistoryDaysAgoKey(6); // today + previous 6 days
         }
-        /** Hist filter modes: hide7 (default) | all | recent | old | none. Parent summary rows always pass. */
-        function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'hide7'; }
+        /** Hist filter modes: all (default, nothing hidden) | hide7 | recent | old | none. Parent summary rows always pass. */
+        function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'all'; }
         // parent name -> SKU rows (rebuilt whenever fullDataset is replaced)
         let phChildIdx = null, phChildIdxSrc = null;
         function phChildrenOf(parent) {
@@ -14561,7 +14556,7 @@
             $allNpft.addClass('active');
             $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
-            $('#push-history-filter').val('hide7');
+            $('#push-history-filter').val('all');
             applyFilters();
         });
 
