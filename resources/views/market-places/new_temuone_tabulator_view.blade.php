@@ -877,6 +877,8 @@
                         Each row compares Temu Price with that channel's price for the same SKU. <strong>Match</strong> sets the Temu S PRC of the SKUs
                         Temu is priced above to that channel's price (only those SKUs, and only that channel; other S PRC are not touched).
                         A matched S PRC stays as set, the Dil / Std rules and the LMP cap do not change it. Nothing is pushed to Temu from here.
+                        The LMP row works the same way with the SKU's LMP. <strong>Match Lowest S PRC</strong> (last row) sets each SKU to the lowest of the seven prices
+                        (Amazon, eBay 1-3, TikTok 1-2 and LMP).
                     </div>
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="nto-mp-skip-loss" checked>
@@ -4020,18 +4022,30 @@
         }
     }
     // ===================== Match Price modal: one compared channel at a time =====================
+    /**
+     * One entry per compared price: the six channels, the LMP, and 'lowest' (the lowest of those seven for each SKU).
+     * items = SKUs Temu is priced above on that price, with the price to match. Loss = S PRC at that price is below cost.
+     */
     function ntoMpStats() {
         const out = {};
         Object.keys(NTO_TEMU_ALERT_FIELDS).forEach(function(f) {
             out[f] = { label: NTO_TEMU_ALERT_FIELDS[f], priced: 0, items: [], loss: 0, matched: 0 };
         });
+        out.lmp = { label: 'LMP', priced: 0, items: [], loss: 0, matched: 0 };
+        out.lowest = { label: 'Lowest of all 7', priced: 0, items: [], loss: 0, matched: 0, lowest: true };
         chPromoEachTableRow(function(row, d) {
             if (!chPromoIsChildRow(d)) return;
+            const issues = ntoTemuPriceIssues(d);
             const hits = {};
-            ntoTemuPriceIssues(d).forEach(function(i) { hits[i.key] = true; });
-            Object.keys(out).forEach(function(f) {
-                const p = parseFloat(d[f]) || 0;
+            issues.forEach(function(i) { hits[i.key] = true; });
+            const prices = {};
+            Object.keys(NTO_TEMU_ALERT_FIELDS).forEach(function(f) { prices[f] = parseFloat(d[f]) || 0; });
+            prices.lmp = parseFloat(temuBadgeLmpValue(d)) || 0;
+            let lowestPrice = 0;
+            Object.keys(prices).forEach(function(f) {
+                const p = prices[f];
                 if (!(p > 0)) return;
+                if (!(lowestPrice > 0) || p < lowestPrice) lowestPrice = p;
                 out[f].priced++;
                 if (!hits[f]) return;
                 const parts = temuSpriceCalcParts(d, p);
@@ -4040,6 +4054,14 @@
                 if (d.nto_manual_sprice && Math.abs(ntoSavedSprice(d) - p) < 0.015) out[f].matched++;
                 out[f].items.push({ row: row, d: d, price: +p.toFixed(2), loses: loses });
             });
+            if (!(lowestPrice > 0)) return;
+            out.lowest.priced++;
+            if (!issues.length) return; // Temu is not above any of the seven
+            const lp = temuSpriceCalcParts(d, lowestPrice);
+            const lowLoses = !!(lp && lp.sgroi != null && lp.sgroi < 0);
+            if (lowLoses) out.lowest.loss++;
+            if (d.nto_manual_sprice && Math.abs(ntoSavedSprice(d) - lowestPrice) < 0.015) out.lowest.matched++;
+            out.lowest.items.push({ row: row, d: d, price: +lowestPrice.toFixed(2), loses: lowLoses });
         });
         return out;
     }
@@ -4048,14 +4070,14 @@
         document.getElementById('nto-mp-body').innerHTML = Object.keys(stats).map(function(f) {
             const s = stats[f];
             const n = s.items.length;
-            return '<tr>'
+            return '<tr' + (s.lowest ? ' class="table-light fw-bold"' : '') + '>'
                 + '<td class="fw-semibold">' + ntoPaEsc(s.label) + '</td>'
                 + '<td class="text-end">' + s.priced.toLocaleString() + '</td>'
                 + '<td class="text-end ' + (n ? 'text-danger fw-bold' : 'text-muted') + '">' + n.toLocaleString() + '</td>'
                 + '<td class="text-end ' + (s.loss ? 'text-warning fw-bold' : 'text-muted') + '">' + s.loss.toLocaleString() + '</td>'
                 + '<td class="text-end">' + s.matched.toLocaleString() + '</td>'
-                + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 nto-mp-apply" data-field="' + f + '"'
-                + (n ? '' : ' disabled') + '>Match to ' + ntoPaEsc(s.label) + '</button></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm ' + (s.lowest ? 'btn-danger' : 'btn-outline-danger') + ' py-0 nto-mp-apply" data-field="' + f + '"'
+                + (n ? '' : ' disabled') + '>' + (s.lowest ? 'Match Lowest S PRC' : 'Match to ' + ntoPaEsc(s.label)) + '</button></td>'
                 + '</tr>';
         }).join('');
     }
@@ -4067,7 +4089,7 @@
         const todo = s.items.filter(function(it) { return !(skipLoss && it.loses); });
         const skipped = s.items.length - todo.length;
         if (!todo.length) { showToast('Nothing to match for ' + s.label + (skipped ? ' (' + skipped + ' would lose money)' : ''), 'info'); return; }
-        if (!confirm('Set the Temu S PRC of ' + todo.length.toLocaleString() + ' SKU(s) to their ' + s.label + ' price'
+        if (!confirm('Set the Temu S PRC of ' + todo.length.toLocaleString() + ' SKU(s) to their ' + (s.lowest ? 'lowest of the 7 compared prices (6 channels + LMP)' : s.label + ' price')
             + (skipped ? ' (' + skipped.toLocaleString() + ' skipped: loss)' : '') + '?\n\nNothing is pushed to Temu.')) return;
         const status = document.getElementById('nto-mp-status');
         const buttons = document.querySelectorAll('#nto-mp-body .nto-mp-apply');
