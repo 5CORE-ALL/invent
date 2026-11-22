@@ -823,7 +823,7 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        /* Right: Views→LMP (5–12), SPRICE→SPFT (20–24) — CPN/DSC after STD via class */
+        /* Right: Views→Ads (5–11), LMP (13), SPRICE→SPFT (21–25) — CPN/DSC after STD via class */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
@@ -838,10 +838,8 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(10),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
@@ -849,31 +847,35 @@
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25) {
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
         /* Center: Miss, Link, Check, Suggest, STD, Push, By, Hist */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(26),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(26),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(27),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(28),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(28) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
         }
@@ -2031,6 +2033,7 @@
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="NPFT%"><span>NPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Ads% from All Marketplace Master"><span>Ads</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-review-col" title="Rating ★ and review count for this channel"><span>Review</span></th>
                                     <th title="Lowest Marketplace Price"><span>LMP</span></th>
                                     <th title="Listing links"><span>Link</span></th>
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
@@ -2087,6 +2090,7 @@
                                     <th class="text-end ovl30-metric-col" id="modal-avg-nroi">0%</th>
                                     <th class="text-end ovl30-metric-col" id="modal-avg-npft">0%</th>
                                     <th class="text-end ovl30-metric-col" id="modal-avg-ad">0%</th>
+                                    <th class="ovl30-review-col"></th>
                                     <th></th>
                                     <th></th>
                                     <th></th>
@@ -2117,7 +2121,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="27" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="28" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2666,6 +2670,16 @@
                         data-bs-target="#channelsListModal" title="Show all channels by type">
                         <i class="fas fa-store"></i> Channels
                     </button>
+
+                    <!-- Push history (Hist column): default hides SKUs pushed in the last 7 days -->
+                    <select id="push-history-filter" class="form-select form-select-sm" style="width: auto; min-width: 190px;"
+                        title="Filter SKUs by their newest push date (Hist column)">
+                        <option value="hide7" selected>Hist — Hide pushed &lt; 7d</option>
+                        <option value="all">Hist — All</option>
+                        <option value="recent">Hist — Pushed &lt; 7d only</option>
+                        <option value="old">Hist — Pushed 7d+ ago</option>
+                        <option value="none">Hist — Never pushed</option>
+                    </select>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
                         <i class="fas fa-times-circle"></i> Remove Filter
@@ -3694,7 +3708,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-muted py-4">
+                    <td colspan="28" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3705,7 +3719,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-muted py-4">
+                    <td colspan="28" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3715,7 +3729,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-danger py-4">
+                    <td colspan="28" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -4892,6 +4906,7 @@
                         <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
+                        <td class="text-center ovl30-review-col ${textClass}">${ovl30ReviewCellHtml(item)}</td>
                         <td class="text-end ${textClass}">
                             ${(() => {
                                 if (!isListed) return '-';
@@ -10160,6 +10175,19 @@
             });
         }
 
+        /** Review column: ★ rating + review count for the channel ("-" when the channel has no review data). */
+        function ovl30ReviewCellHtml(item) {
+            const rating = parseFloat(item && item.review_rating);
+            const count = parseInt(item && item.review_count, 10);
+            const hasR = isFinite(rating) && rating > 0;
+            const hasC = isFinite(count) && count > 0;
+            if (!hasR && !hasC) return '<span class="text-muted">-</span>';
+            let color = '#6c757d';
+            if (hasR) color = rating < 3 ? '#a00211' : (rating <= 3.5 ? '#ffc107' : (rating < 4 ? '#3591dc' : (rating <= 4.5 ? '#28a745' : '#e83e8c')));
+            return (hasR ? '<span style="' + styleForCellColor(color) + '"><i class="fa fa-star"></i> ' + rating.toFixed(1) + '</span>' : '')
+                + (hasC ? ' <span style="font-size:11px;' + styleForCellColor(count < 4 ? '#a00211' : '#6c757d') + '">(' + count.toLocaleString() + ')</span>' : '');
+        }
+
         /** True when this channel's latest push (history) is less than 7 days old → its row is hidden. */
         function ovl30IsRecentlyPushed(item) {
             if (!item) return false;
@@ -13698,9 +13726,9 @@
             const parentRow = fullDataset.find(row =>
                 row.is_parent_summary === true && row.parent === parentVal
             );
-            const childRows = fullDataset.filter(row =>
+            const childRows = dropRecentPushedRows(fullDataset.filter(row =>
                 row.parent === parentVal && row.is_parent_summary !== true
-            );
+            ));
 
             // Children first, parent blue row last (clear Dil% sort so order is preserved)
             let displayData = childRows.slice();
@@ -13714,6 +13742,39 @@
             table.setData(displayData).then(() => {
                 updateSummary();
             });
+        });
+
+        // SKU rows whose newest push (Hist column) is less than 7 days old are hidden automatically.
+        function isRecentPushedRow(row) {
+            if (!row || row.is_parent_summary === true) return false;
+            const day = String(row.push_history_last_at || '').slice(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= ovl30HistoryDaysAgoKey(6); // today + previous 6 days
+        }
+        /** Hist filter modes: hide7 (default) | all | recent | old | none. Parent summary rows always pass. */
+        function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'hide7'; }
+        function passesPushHistoryFilter(row, mode) {
+            if (!row || row.is_parent_summary === true) return true;
+            mode = mode || pushHistoryFilterMode();
+            if (mode === 'all') return true;
+            const hasHist = /^\d{4}-\d{2}-\d{2}/.test(String(row.push_history_last_at || '')) || (parseInt(row.push_history_count, 10) || 0) > 0;
+            const recent = isRecentPushedRow(row);
+            if (mode === 'recent') return recent;
+            if (mode === 'old') return hasHist && !recent;
+            if (mode === 'none') return !hasHist;
+            return !recent; // hide7
+        }
+        function dropRecentPushedRows(rows) {
+            const mode = pushHistoryFilterMode();
+            return mode === 'all' ? rows : rows.filter(function(r) { return passesPushHistoryFilter(r, mode); });
+        }
+        function updateRecentPushedToggle() {
+            const rows = (fullDataset || []).filter(function(r) { return r.is_parent_summary !== true; });
+            const n = rows.filter(isRecentPushedRow).length;
+            $('#push-history-filter option[value="hide7"]').text('Hist — Hide pushed < 7d' + (n ? ' (' + n + ' hidden)' : ''));
+            $('#push-history-filter option[value="recent"]').text('Hist — Pushed < 7d only' + (n ? ' (' + n + ')' : ''));
+        }
+        $(document).on('change', '#push-history-filter', function() {
+            applyFilters();
         });
 
         function buildParentView() {
@@ -13748,7 +13809,7 @@
                 parent._expanded = (expandedParent === parent.parent);
                 
                 if (expandedParent !== null && expandedParent === parent.parent) {
-                    const children = childRows.filter(child => child.parent === expandedParent);
+                    const children = dropRecentPushedRows(childRows.filter(child => child.parent === expandedParent));
                     console.log('✓ Parent matched! Adding', children.length, 'children then parent for:', parent.parent);
                     if (children.length > 0) {
                         console.log('Sample children SKUs:', children.slice(0, 3).map(c => c.sku));
@@ -14141,6 +14202,11 @@
 
                 table.clearFilter();
 
+                // Hist filter (default: hide SKU rows pushed within the last 7 days)
+                if (pushHistoryFilterMode() !== 'all') {
+                    table.addFilter(function(data) { return passesPushHistoryFilter(data); });
+                }
+
                 // SKU Only — hide parent summary rows
                 if (skuParentFilter === 'sku') {
                     table.addFilter(function(data) {
@@ -14230,6 +14296,7 @@
                 const parentVal = $('#parent-search').val();
                 if (parentVal) table.addFilter("parent", "like", parentVal);
 
+                updateRecentPushedToggle();
                 updateSummary();
             };
 
@@ -14279,6 +14346,7 @@
             $allNpft.addClass('active');
             $('#npftFilterDropdown').html('').append($allNpft.find('.status-circle').clone()).append(' NPFT%');
             $('#sw-l30-match-filter').val('all');
+            $('#push-history-filter').val('hide7');
             applyFilters();
         });
 
@@ -14471,6 +14539,7 @@
 
             suppressDataLoadedHandler = true;
             table.setData(reordered).then(function() {
+                updateRecentPushedToggle();
                 applyFilters();
                 updateSummary();
             });

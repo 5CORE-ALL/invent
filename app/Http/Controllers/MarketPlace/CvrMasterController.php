@@ -2819,6 +2819,7 @@ class CvrMasterController extends Controller
                 $temuSprice = null;
                 // Approx push-history count for outer Hist column (amazon/temu; Walmart excluded from this page)
                 $pushHistoryCount = 0;
+                $pushHistoryLastAt = null; // newest push date (Y-m-d) — page hides rows pushed < 7 days ago
                 foreach ([$amazonDataViewRow, $temuDataViewRow] as $dvHistRow) {
                     if (!$dvHistRow) {
                         continue;
@@ -2828,7 +2829,14 @@ class CvrMasterController extends Controller
                         ? $rawHist
                         : (is_string($rawHist) ? (json_decode($rawHist, true) ?: []) : []);
                     if (is_array($valHist) && $valHist !== []) {
-                        $pushHistoryCount += count($this->extractPushMeta($valHist)['push_history']);
+                        $histEntries = $this->extractPushMeta($valHist)['push_history'];
+                        $pushHistoryCount += count($histEntries);
+                        foreach ($histEntries as $he) {
+                            $heDay = isset($he['at']) ? substr((string) $he['at'], 0, 10) : '';
+                            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $heDay) && ($pushHistoryLastAt === null || $heDay > $pushHistoryLastAt)) {
+                                $pushHistoryLastAt = $heDay;
+                            }
+                        }
                     }
                 }
                 if ($temuDataViewRow && $temuDataViewRow->value) {
@@ -3082,6 +3090,7 @@ class CvrMasterController extends Controller
                     "remark_solved" => $remarkSolved,
                     "missing_l" => $missingL,
                     "push_history_count" => $pushHistoryCount,
+                    "push_history_last_at" => $pushHistoryLastAt,
                     "label" => $labelType,
                     "label_qty" => $scalarShip($values, 'label_qty'),
                     "wt_act" => $scalarShip($values, 'wt_act'),
@@ -6350,6 +6359,9 @@ class CvrMasterController extends Controller
 
             // Attach push history (date / price / user) per marketplace for OV L30 History column
             $this->enrichBreakdownPushHistory($breakdownData, $fullSku);
+
+            // Rating + review count per channel for the OV L30 "Review" column
+            $this->enrichBreakdownReviews($breakdownData, $fullSku);
 
             Log::info('Total marketplaces: ' . count($breakdownData));
 
@@ -10752,6 +10764,79 @@ class CvrMasterController extends Controller
             'sprice_edited_at' => $spriceEditedAt,
             'push_history' => $formatted,
         ];
+    }
+
+    /**
+     * Attach review_rating / review_count onto each OV L30 breakdown row (null when the channel has no data).
+     * Amazon/FBA = Jungle Scout; TikTok / TikTok 2 / AliExpress / Shein = their metric tables;
+     * any other channel = lqs_marketplace_scores (rating + reviews) when present.
+     */
+    private function enrichBreakdownReviews(array &$breakdownData, string $fullSku): void
+    {
+        $norm = fn ($v) => strtoupper(trim((string) $v));
+        $pick = function (?float $rating, $count): ?array {
+            $rating = $rating !== null && $rating > 0 ? round($rating, 1) : null;
+            $count = $count !== null && (int) $count > 0 ? (int) $count : null;
+            return ($rating === null && $count === null) ? null : ['rating' => $rating, 'reviews' => $count];
+        };
+        $lqsMap = [
+            'ebay1' => 'ebay', 'ebayone' => 'ebay', 'ebay2' => 'ebay2', 'ebaytwo' => 'ebay2',
+            'ebay3' => 'ebay3', 'ebaythree' => 'ebay3', 'ppower' => 'purchasingpower', 'purchase' => 'purchasingpower',
+            'shopifyb2b' => 'b5cb2b', 'sb2b' => 'b5cb2b', 'tiktok2' => 'tiktok2', 'temutwo' => 'temu2',
+        ];
+
+        foreach ($breakdownData as &$row) {
+            $row['review_rating'] = null;
+            $row['review_count'] = null;
+            try {
+                $mp = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) ($row['marketplace'] ?? '')));
+                $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? (string) $row['sku'] : $fullSku;
+                $found = null;
+
+                if ($mp === 'amazon' || $mp === 'fba') {
+                    if (Schema::hasTable((new JungleScoutProductData)->getTable())) {
+                        foreach (JungleScoutProductData::query()
+                            ->select(['id', 'sku', 'data', 'updated_at'])
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])
+                            ->orderByDesc('updated_at')->limit(8)->get() as $js) {
+                            $d = is_array($js->data) ? $js->data : json_decode($js->data ?? '[]', true);
+                            if (is_array($d) && (float) ($d['rating'] ?? 0) > 0) {
+                                $found = $pick((float) $d['rating'], $d['reviews'] ?? null);
+                                break;
+                            }
+                        }
+                    }
+                } elseif ($mp === 'tiktok' && Schema::hasTable('tiktok_products')) {
+                    $r = DB::table('tiktok_products')->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])->orderByDesc('updated_at')->first(['rating', 'reviews']);
+                    $found = $r ? $pick((float) $r->rating, $r->reviews) : null;
+                } elseif ($mp === 'tiktok2' && Schema::hasTable('tiktok_products_two')) {
+                    $r = DB::table('tiktok_products_two')->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])->orderByDesc('updated_at')->first(['rating', 'reviews']);
+                    $found = $r ? $pick((float) $r->rating, $r->reviews) : null;
+                } elseif ($mp === 'aliexpress' && Schema::hasTable('aliexpress_metric')) {
+                    $r = DB::table('aliexpress_metric')->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])->orderByDesc('updated_at')->first(['avg_rating', 'reviews']);
+                    $found = $r ? $pick((float) $r->avg_rating, $r->reviews) : null;
+                } elseif ($mp === 'shein' && Schema::hasTable('shein_metrics')) {
+                    $r = DB::table('shein_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])->orderByDesc('updated_at')->first(['rating', 'review_count']);
+                    $found = $r ? $pick((float) $r->rating, $r->review_count) : null;
+                }
+
+                if ($found === null && Schema::hasTable('lqs_marketplace_scores')) {
+                    $r = DB::table('lqs_marketplace_scores')
+                        ->where('marketplace', $lqsMap[$mp] ?? $mp)
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$norm($rowSku)])
+                        ->orderByDesc('updated_at')->first(['rating', 'reviews']);
+                    $found = $r ? $pick((float) $r->rating, $r->reviews) : null;
+                }
+
+                if ($found) {
+                    $row['review_rating'] = $found['rating'];
+                    $row['review_count'] = $found['reviews'];
+                }
+            } catch (\Throwable $e) {
+                Log::debug('Breakdown review lookup failed: ' . $e->getMessage());
+            }
+        }
+        unset($row);
     }
 
     /**
