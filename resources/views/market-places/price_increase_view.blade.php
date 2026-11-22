@@ -1907,18 +1907,6 @@
                     </span>
                 </div>
                 <div id="modal-target-controls" class="ovl30-toolbar">
-                    <div class="ovl30-tool-group"
-                        title="Same rules as the Channels modal: B2C = price · B2B / C2C = price × 0.75 · High Shipping = price + Shipping Master Diff.">
-                        <label for="modal-bulk-sprice-input">SPRICE</label>
-                        <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
-                            placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="Same as Channels modal: B2C = this price · B2B / C2C = × 0.75 · High Shipping = this price + Diff">
-                        <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
-                            title="Apply SPRICE (saves the live preview)" aria-label="Apply SPRICE">
-                            <i class="fas fa-check"></i>
-                        </button>
-                        <span id="modal-bulk-sprice-metrics" class="spm-wrap"></span>
-                    </div>
                     <div class="form-check"
                         title="When checked: SPRICE, CPN $, CPN %, DSC, STD→SPRICE and Same $ use the same rules on all sibling SKUs under this parent (incl. INV 0). Preference remembered per SKU. Never applies 0.">
                         <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
@@ -1962,37 +1950,6 @@
                             <i class="fas fa-check"></i>
                         </button>
                         <span id="modal-same-sprice-metrics" class="spm-wrap"></span>
-                    </div>
-                    <div class="ovl30-tool-group"
-                        title="CPN $: dollar off SPRICE — check channel(s) first.">
-                        <label for="modal-cpn-dollar-input">CPN $</label>
-                        <input type="text" id="modal-cpn-dollar-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="1" title="$ less on checked channels">
-                        <button type="button" id="modal-apply-cpn-dollar-btn" class="btn btn-sm btn-danger"
-                            title="Apply CPN $ to checked channels only" aria-label="Apply CPN $">
-                            <i class="fas fa-check"></i>
-                        </button>
-                    </div>
-                    <div class="ovl30-tool-group"
-                        title="CPN %: percent off SPRICE — check channel(s) first.">
-                        <label for="modal-cpn-pct-input">CPN %</label>
-                        <input type="text" id="modal-cpn-pct-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="10" title="% less on checked channels">
-                        <button type="button" id="modal-apply-cpn-pct-btn" class="btn btn-sm btn-danger"
-                            title="Apply CPN % to checked channels only" aria-label="Apply CPN %">
-                            <i class="fas fa-check"></i>
-                        </button>
-                    </div>
-                    <div class="ovl30-tool-group"
-                        title="DSC per marketplace: dollar amount only off each channel’s own SPRICE (no %).">
-                        <label for="modal-dsc-input">DSC</label>
-                        <input type="text" id="modal-dsc-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="1 or 5" title="Dollar only — e.g. 1 = $1 less on each channel SPRICE">
-                        <button type="button" id="modal-apply-dsc-btn" class="btn btn-sm"
-                            style="background:#6f42c1;color:#fff;border-color:#6f42c1;"
-                            title="Apply DSC ($) to each channel’s SPRICE" aria-label="Apply DSC">
-                            <i class="fas fa-check"></i>
-                        </button>
                     </div>
                     <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
                         title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
@@ -2716,6 +2673,8 @@
                                 <i class="fas fa-circle" style="color:#dc3545"></i> <span>&gt; 14d</span> <b class="hist-count" data-count="red">0</b></label>
                         </div>
                     </div>
+                    <span id="push-history-total" class="badge bg-light text-dark border" style="font-size:12px;"
+                        title="Parents where every child SKU has been pushed, out of all parents">Pushed 0 / 0</span>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
                         <i class="fas fa-times-circle"></i> Remove Filter
@@ -8955,7 +8914,7 @@
                     }
                     $inp.val((cfg.priceFn || adjustAppliedSpriceForChannel)(base, $tr).toFixed(2)).trigger('input');
                 });
-                renderSpriceMetrics($out, rows, 'Preview, not saved until ✓\n', base);
+                renderSpriceMetrics($out, rows, 'Preview — saved automatically\n', base);
             }
             function schedule(ms) {
                 clearTimeout(timer);
@@ -9011,7 +8970,7 @@
                     // a typed value: the preview readout already reflects the table cells
                     const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
                     const typed = parseFloat(String($('#modal-bulk-sprice-input').val()).replace(/[$,\s]/g, '')) || 0;
-                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview, not saved until ✓\n', typed);
+                    if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview — saved automatically\n', typed);
                     return;
                 }
                 bulkSpritePv.schedule(0);
@@ -9160,6 +9119,28 @@
          * every channel is saved and pushed in a background job (tracked: failures retried hourly, e-mailed, red alert).
          * Doba keeps its own rule (−25%) and, like in Push All, is never pushed.
          */
+        /** Save a price as the SKU's STD PRC (shared standard price) without re-applying it to the channel boxes. */
+        function saveTypedPriceAsStd(sku, price) {
+            if (!sku || String(sku).indexOf('PARENT') !== -1 || !(price > 0)) return;
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, sprice: price, is_standard_price: 1, _token: '{{ csrf_token() }}' }
+            }).done(function(response) {
+                const saved = parseFloat(response && (response.data || response.STANDARD_PRICE)) || price;
+                if (String(getModalPrimarySku() || '') !== String(sku)) return;
+                setModalSharedStandardPrice(saved);
+                if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
+                    applyStandardPriceToPriceIncreaseRows(sku, saved, response && response.applied_skus);
+                }
+                refreshModalStdPrcCells(saved);
+                syncModalToolbarSpInput(saved);
+            }).fail(function() {
+                showToast('Could not save STD PRC $' + price.toFixed(2) + ' in the app', 'error');
+            });
+        }
+
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
             let samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -9187,6 +9168,11 @@
                 return;
             }
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
+            clearTimeout(sameAutoTimer); // the ✓ saves everything itself
+
+            // The typed price is also stored as the SKU's STD PRC (same save as the STD PRC ✓), so it is kept in the app
+            // and shows in the STD PRC box / table — independent of which channels get pushed.
+            saveTypedPriceAsStd(sku, basePrice);
 
             function runPushAll() {
                 // Previewed values were never saved: put the saved SPRICEs back so the Channels boxes start from real data
@@ -10855,8 +10841,39 @@
             chpushAutoSaveSoon(700);
         }
 
+        // ---- SPRICE $ box: the typed price is ALWAYS saved (no push) — every channel by its column rule, Doba −25% ----
+        let sameAutoTimer = null, sameAutoSaving = false;
+        function saveSameSpriceAlways() {
+            const x = parseOvl30PushPrice($('#modal-sprice-same-input').val());
+            const sku = String(getModalPrimarySku() || '');
+            if (!(x > 0) || !sku || sku.toUpperCase() === 'NOT LISTED' || sku.indexOf('PARENT') !== -1) return;
+            if ((chpushRunning[sku] || 0) > 0 || $('#ovl30ChannelsPushModal').hasClass('show')) return; // a push / the Channels modal handles it
+            if (sameAutoSaving) { sameAutoTimer = setTimeout(saveSameSpriceAlways, 600); return; }
+            // Put the saved SPRICEs back under the live preview so "changed?" compares against real saved values
+            samePricePv.restore();
+            bulkSpritePv.restore();
+            chpushSameBase = { sku: sku, x: x, applied: false };
+            renderChannelsPushModal();
+            $('#chpush-body tr[data-channel]').each(function() {
+                if (chpushKey($(this).attr('data-channel')) === 'doba') {
+                    $(this).find('.chpush-input').val(sprice25OffFromBase(x).toFixed(2));
+                }
+            });
+            const jobs = chpushCollectSaveJobs();
+            if (!jobs.length) { samePricePv.schedule(60); return; }
+            sameAutoSaving = true;
+            chpushRunSaves(sku, jobs, isModalSiblingsApply() ? 1 : 0).always(function(res) {
+                sameAutoSaving = false;
+                if (res && res.failed) showToast('Could not save ' + res.failed + ' SPRICE value(s) in the app', 'error');
+                else showToast('SPRICE $' + x.toFixed(2) + ' saved for ' + ((res && res.saved) || 0) + ' channel(s)', 'success');
+                if (String(getModalPrimarySku() || '') === sku) samePricePv.schedule(60); // refresh the profit readout
+            });
+        }
+
         $(document).on('input', '#modal-sprice-same-input', function(e) {
             if (!e.originalEvent) return; // programmatic prefill
+            clearTimeout(sameAutoTimer);
+            sameAutoTimer = setTimeout(saveSameSpriceAlways, 1000);
             const x = parseOvl30PushPrice($(this).val());
             chpushSameBase = { sku: String(getModalPrimarySku() || ''), x: x || 0, applied: false };
             if ($('#ovl30ChannelsPushModal').hasClass('show') && chpushRenderedSku === chpushSameBase.sku) {
@@ -14045,6 +14062,8 @@
             const c = { all: parents.length, green: 0, yellow: 0, red: 0 };
             parents.forEach(function(p) { const b = histBucketOfParent(p); if (b) c[b]++; });
             Object.keys(c).forEach(function(k) { $('#push-history-blocks .hist-count[data-count="' + k + '"]').text(c[k]); });
+            // pushed = parents whose every child has a push (they all carry a green / yellow / red dot)
+            $('#push-history-total').text('Pushed ' + (c.green + c.yellow + c.red) + ' / ' + c.all);
             updateHistLabel();
         }
         $(document).on('change', '#push-history-blocks input', function() {
