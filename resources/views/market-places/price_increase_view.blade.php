@@ -4497,6 +4497,12 @@
                 || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower);
         }
 
+        // Channel Master "extra" channels (rows from PricingMasterExtraChannels) — normalized keys (lowercase, a-z0-9 only)
+        const OVL30_EXTRA_EDITABLE = new Set([
+            'wayfair', 'temu3', 'alibaba', 'newegg', 'pls', 'depop', 'vinted', 'instagramshop',
+            'mercariwship', 'mercariwoship', 'fbmarketplace'
+        ]);
+
         function renderMarketplaceData(data) {
             if (data && data.length > 0) {
                 ovl30ModalData = data.slice();
@@ -4680,7 +4686,11 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'topdawg'].includes(mpLower);
+                // Every channel /cvr-master-save-suggested-data can store a SPRICE for is editable. The "extra" channels
+                // (Wayfair, Temu 3, Alibaba, Newegg, PLS, Depop, Vinted, Instagram Shop, Mercari ×2, FB Marketplace) used to be
+                // missing here, so they had no SPRICE box / checkbox and every toolbar ✓ (+$, discount, same price …) skipped them.
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'bestbuyusa', 'macy', 'macys', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'topdawg'].includes(mpLower)
+                    || OVL30_EXTRA_EDITABLE.has(mpLower.replace(/[^a-z0-9]/g, ''));
                 // STD-rule channels stay editable even when listing metrics are missing
                 const forceEditableStdRule = isSb2bMp || isTdMp || isFaireMp || isPpMp;
                 const canEditSprice = isEditable && (isListed || forceEditableStdRule);
@@ -5135,6 +5145,20 @@
             refreshModalStdPrcCells(saved);
         }
 
+        // "pushed/ALL" shown beside the Hist header: SKUs with a push date / all SKUs (parent summary rows not counted)
+        let histHeaderCountText = '';
+        function updateHistHeaderCount() {
+            const rows = (typeof fullDataset !== 'undefined' && Array.isArray(fullDataset)) ? fullDataset : [];
+            let all = 0, done = 0;
+            rows.forEach(function(r) {
+                if (!r || r.is_parent_summary === true) return;
+                all++;
+                if (r.push_history_last_at) done++;
+            });
+            histHeaderCountText = all ? (done + '/' + all) : '';
+            $('#hist-hdr-count').text(histHeaderCountText);
+        }
+
         /** Hist dot colour by age of a push date (YYYY-MM-DD): green <= 7 days, yellow 8-14, red > 14. Same rule parent and child rows. */
         function histAgeDotHtml(dateStr, title) {
             const d = String(dateStr || '').slice(0, 10);
@@ -5325,7 +5349,11 @@
                     headerSort: false,
                     hozAlign: "center",
                     minWidth: 68,
-                    headerTooltip: "Push history — date, marketplace, price, user",
+                    headerTooltip: "Push history dot (green ≤7d, yellow 8–14d, red >14d). Header count = SKUs pushed / all SKUs. Click a SKU's dot to see its push history.",
+                    // "Hist  pushed/ALL" — SKUs with a push / all SKUs (kept in histHeaderCountText, refreshed on every load)
+                    titleFormatter: function() {
+                        return 'Hist <span id="hist-hdr-count" style="font-weight:600;">' + histHeaderCountText + '</span>';
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary === true) {
@@ -5333,27 +5361,21 @@
                             const total = parseInt(rowData.push_history_children, 10) || 0;
                             const done = parseInt(rowData.push_history_children_done, 10) || 0;
                             const oldest = String(rowData.push_history_oldest_at || '').slice(0, 10);
-                            if (!total || done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) {
-                                return total
-                                    ? '<span class="text-muted small" title="Push history on ' + done + ' of ' + total + ' child SKU(s)">' + done + '/' + total + '</span>'
-                                    : '';
-                            }
-                            return histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push');
+                            if (!total) return '';
+                            const cnt = ' <span class="text-muted small" title="Push history on ' + done + ' of ' + total + ' child SKU(s)">' + done + '/' + total + '</span>';
+                            if (done < total || !/^\d{4}-\d{2}-\d{2}$/.test(oldest)) return cnt;
+                            return histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push') + cnt;
                         }
-                        const sku = rowData.sku || '';
+                        // Child: the dot only (click it to open the SKU's push history)
+                        const skuEsc = String(rowData.sku || '').replace(/"/g, '&quot;');
                         const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
-                        const histTitle = histCount
-                            ? (histCount + ' push record(s) — click to view')
-                            : 'Push history — click to view';
-                        const skuEsc = String(sku).replace(/"/g, '&quot;');
-                        const childDot = histAgeDotHtml(rowData.push_history_last_at, 'Last push');
-                        return (childDot ? childDot + ' ' : '') + '<button type="button" class="ovl30-history-btn outer-push-history-btn'
-                            + (histCount ? ' has-history' : '')
-                            + '" data-sku="' + skuEsc + '"'
-                            + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
-                            + '<i class="fas fa-history"></i>'
-                            + (histCount ? (' <span class="small">' + histCount + '</span>') : '')
-                            + '</button>';
+                        let dot = histAgeDotHtml(rowData.push_history_last_at, 'Last push');
+                        if (!dot && histCount > 0) {
+                            dot = '<i class="fas fa-circle" style="color:#adb5bd;font-size:10px;vertical-align:middle;" title="Pushed (no Amazon / Temu push date)"></i>';
+                        }
+                        if (!dot) return '';
+                        return '<span class="outer-push-history-btn" data-sku="' + skuEsc + '" style="cursor:pointer;display:inline-block;padding:0 6px;" '
+                            + 'title="' + (histCount ? (histCount + ' push record(s) — click to view') : 'Push history — click to view') + '">' + dot + '</span>';
                     }
                 },
                 {
@@ -9824,6 +9846,14 @@
             pushedPrice: null,
         };
 
+        /** "2026-04-01 12:08" → "1 Apr 26" (date only, hover shows the full timestamp) */
+        function ovl30HistoryDateLabel(at) {
+            const m = String(at || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (!m) return String(at || '-').replace(/</g, '&lt;');
+            const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parseInt(m[2], 10) - 1] || m[2];
+            return parseInt(m[3], 10) + ' ' + mon + ' ' + m[1].slice(2);
+        }
+
         function renderOvl30PushHistoryRows(history, fallbackMarketplace) {
             const mp = String(fallbackMarketplace || '');
             if (!history || !history.length) {
@@ -9835,7 +9865,7 @@
                     ? ('$' + parseFloat(h.price).toFixed(2))
                     : '-';
                 html += '<tr>'
-                    + '<td>' + String(h.at || '-').replace(/</g, '&lt;') + '</td>'
+                    + '<td class="text-nowrap" title="' + String(h.at || '').replace(/"/g, '&quot;') + '">' + ovl30HistoryDateLabel(h.at) + '</td>'
                     + '<td>' + String(h.marketplace || mp || '-').replace(/</g, '&lt;') + '</td>'
                     + '<td class="text-end fw-semibold">' + price + '</td>'
                     + '<td>' + String(h.by || '-').replace(/</g, '&lt;') + '</td>'
@@ -9906,10 +9936,6 @@
                         $btn.attr('title', count
                             ? (count + ' push record(s) — click to view')
                             : 'No push history yet');
-                        $btn.html(
-                            '<i class="fas fa-history"></i>'
-                            + (count ? (' <span class="small">' + count + '</span>') : '')
-                        );
                         try {
                             const row = (typeof table !== 'undefined' && table)
                                 ? table.getRows().find(function(r) {
@@ -14411,6 +14437,7 @@
             // Reorder so "10 FR" group is first, then others A-Z; within group children A-Z then parent row last
             const reordered = reorderDataWith10FRFirst(data);
             fullDataset = reordered;
+            updateHistHeaderCount();
 
             suppressDataLoadedHandler = true;
             table.setData(reordered).then(function() {
