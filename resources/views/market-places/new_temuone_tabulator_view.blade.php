@@ -658,6 +658,10 @@
                         title="Match Temu S PRC to the Amz / eBay 1-3 / TikTok 1-2 price, one channel at a time">
                         <i class="fas fa-equals"></i> Match Price
                     </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="newtemuone-clear-sprice-btn"
+                        title="Clear the saved S PRC of every SKU, including hand-set / matched ones. The Dil / Std rules fill it again.">
+                        <i class="fas fa-eraser"></i> Clear S PRC
+                    </button>
                     @include('partials.price-gt-lmp-badge-script')
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemuone-price-lt80-lmp-badge',
@@ -4092,6 +4096,49 @@
         bootstrap.Modal.getOrCreateInstance(document.getElementById('ntoMatchPriceModal')).show();
     }
     $(document).on('click', '#newtemuone-match-price-btn', function() { ntoOpenMatchPriceModal(); });
+
+    /** Clear the saved S PRC of every SKU (hand-set / matched ones too). The rules fill S PRC again. */
+    async function ntoClearAllSprice() {
+        const wipe = [];
+        const wipeRows = [];
+        let manual = 0;
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d)) return;
+            const sku = chPromoSku(d);
+            if (!sku) return;
+            if (d.nto_manual_sprice) manual++;
+            wipe.push({ sku: sku, sprice: 0 });
+            wipeRows.push(row);
+        });
+        if (!wipe.length) { showToast('No SKUs to clear', 'info'); return; }
+        if (!confirm('Clear the saved S PRC of ' + wipe.length.toLocaleString() + ' SKU(s)'
+            + (manual ? ', including ' + manual.toLocaleString() + ' set by hand / matched' : '')
+            + '?\n\nThe Dil / Std rules fill S PRC again. Nothing is pushed to Temu.')) return;
+        const btn = document.getElementById('newtemuone-clear-sprice-btn');
+        const html = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing…';
+        try {
+            await ntoSaveSpriceChunks(wipe);
+            const blocked = table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                wipeRows.forEach(function(row) { chPromoWipeSpriceRow(row); row.update({ nto_manual_sprice: false }); });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            ntoRepaintNow();
+            if ($('#ntoPriceAlertModal').hasClass('show')) ntoPaRender();
+            if ($('#ntoMatchPriceModal').hasClass('show')) ntoMpRender();
+            showToast('S PRC cleared on ' + wipe.length.toLocaleString() + ' SKU(s)', 'success');
+        } catch (err) {
+            showToast('Clear failed: ' + ((err && err.statusText) || (err && err.message) || 'error') + '. Reload the page to see what was saved.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = html;
+        }
+    }
+    $(document).on('click', '#newtemuone-clear-sprice-btn', function() { ntoClearAllSprice(); });
     $(document).on('click', '#nto-mp-body .nto-mp-apply', function() { ntoMpApply(this.getAttribute('data-field')); });
 
     $(document).on('click', '#nto-pa-match-btn', function() { ntoPaMatchToEbay(); });
