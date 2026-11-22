@@ -1582,6 +1582,44 @@
         'sub_title' => 'Price Increase Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
+
+    <!-- Channels (from Channel Master) grouped by type, 4 columns -->
+    <div class="modal fade" id="channelsListModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-store me-2"></i> Channels
+                        <small class="text-muted ms-2">({{ collect($channelsByType ?? [])->flatten()->count() }})</small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (empty($channelsByType))
+                        <div class="text-muted text-center py-3">No channels found.</div>
+                    @else
+                        <div class="row g-3">
+                            @foreach ($channelsByType as $type => $names)
+                                <div class="col-12 col-sm-6 col-lg-3">
+                                    <div class="border rounded h-100">
+                                        <div class="px-3 py-2 bg-light border-bottom fw-bold d-flex justify-content-between">
+                                            <span>{{ $type }}</span>
+                                            <span class="badge bg-secondary">{{ count($names) }}</span>
+                                        </div>
+                                        <ul class="list-unstyled mb-0 px-3 py-2 small">
+                                            @foreach ($names as $name)
+                                                <li class="py-1">{{ $name }}</li>
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Remark History Modal -->
     <div class="modal fade" id="remarkHistoryModal" tabindex="-1" aria-hidden="true">
@@ -2545,6 +2583,11 @@
                         <option value="sku">SKU Only</option>
                         <option value="parent" selected>Parent Only</option>
                     </select>
+
+                    <button type="button" id="channels-list-btn" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                        data-bs-target="#channelsListModal" title="Show all channels by type">
+                        <i class="fas fa-store"></i> Channels
+                    </button>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
                         <i class="fas fa-times-circle"></i> Remove Filter

@@ -215,12 +215,42 @@ class CvrMasterController extends Controller
      */
     public function priceIncreaseView(Request $request)
     {
+        // The compiled view is ~1.5MB; the 128M CLI-server default is not enough to render it.
+        @ini_set('memory_limit', '512M');
+
         $mode = $request->query("mode");
         $demo = $request->query("demo");
+
+        // Active channels from Channel Master, grouped by type (B2C, B2B, C2C, Dropship, Wholesale, ...)
+        $channelsByType = [];
+        try {
+            $typeOrder = ['B2C' => 1, 'B2B' => 2, 'C2C' => 3, 'DROPSHIP' => 4, 'DS' => 4, 'WHOLESALE' => 5];
+            $rows = ChannelMaster::query()
+                ->where('status', 'Active')
+                ->orderBy('channel')
+                ->get(['channel', 'type']);
+            foreach ($rows as $row) {
+                $name = trim((string) $row->channel);
+                if ($name === '') {
+                    continue;
+                }
+                $type = trim((string) ($row->type ?? ''));
+                $channelsByType[$type !== '' ? $type : 'Other'][] = $name;
+            }
+            uksort($channelsByType, function ($a, $b) use ($typeOrder) {
+                $oa = $typeOrder[strtoupper($a)] ?? 99;
+                $ob = $typeOrder[strtoupper($b)] ?? 99;
+
+                return $oa === $ob ? strcasecmp($a, $b) : $oa <=> $ob;
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Price Increase channels list failed: '.$e->getMessage());
+        }
 
         return view("market-places.price_increase_view", [
             "mode" => $mode,
             "demo" => $demo,
+            "channelsByType" => $channelsByType,
             "ebayTakeHomeMap" => array_merge(
                 MarketplacePercentage::ebayTakeHomeMap(),
                 MarketplacePercentage::temuTakeHomeMap()
