@@ -1885,41 +1885,18 @@
                         </select>
                     </span>
                 </div>
-                {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
                 <div id="modal-target-controls" class="ovl30-toolbar">
                     <div class="ovl30-tool-group"
-                        title="Apply from STD/this box. Doba −25%. TopDawg/Faire/SB2B = (STD × marketplace%) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="Same rules as the Channels modal: B2C = price · B2B / C2C = price × 0.75 · High Shipping = price + Shipping Master Diff.">
                         <label for="modal-bulk-sprice-input">SPRICE</label>
                         <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="Same as Channels modal: B2C = this price · B2B / C2C = × 0.75 · High Shipping = this price + Diff">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
                             title="Apply SPRICE (saves the live preview)" aria-label="Apply SPRICE">
                             <i class="fas fa-check"></i>
                         </button>
                         <span id="modal-bulk-sprice-metrics" class="spm-wrap"></span>
-                    </div>
-                    <div class="ovl30-tool-group"
-                        title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
-                        <label for="modal-target-roi-input">ROI%</label>
-                        <input type="number" id="modal-target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 58px;"
-                            title="Target ROI% for selected channels">
-                        <button type="button" id="modal-apply-target-roi-btn" class="btn btn-sm btn-success"
-                            title="Apply Target ROI% to selected channels" aria-label="Apply Target ROI">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-                    <div class="ovl30-tool-group"
-                        title="Target GPFT% — SPRICE = (LP + Ship) / (margin − GPFT%/100) on selected channels">
-                        <label for="modal-target-gpft-input">GPFT%</label>
-                        <input type="number" id="modal-target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 58px;"
-                            title="Target GPFT% for selected channels (must be &lt; channel margin %)">
-                        <button type="button" id="modal-apply-target-gpft-btn" class="btn btn-sm btn-success"
-                            title="Apply Target GPFT% to selected channels" aria-label="Apply Target GPFT">
-                            <i class="fas fa-calculator"></i>
-                        </button>
                     </div>
                     <div class="form-check"
                         title="When checked: SPRICE, CPN $, CPN %, DSC, STD→SPRICE and Same $ use the same rules on all sibling SKUs under this parent (incl. INV 0). Preference remembered per SKU. Never applies 0.">
@@ -8637,6 +8614,35 @@
             return findModalEditableRowByMatcher(isBulkSpricePpowerChannel);
         }
 
+        /**
+         * Toolbar SPRICE box = the Channels modal rules:
+         *   B2C = X · B2B and C2C = 0.75 × X · High Shipping = X + Shipping Master Diff (Ship BB − Ship).
+         */
+        function chModalGroupOfKey(key) {
+            const src = window.PI_CHANNELS_BY_TYPE || {};
+            const overrides = { alibaba: 'B2B' };
+            const moves = { dropship: 'B2B', ds: 'B2B', sheets: 'C2C' };
+            let found = null;
+            Object.keys(src).forEach(function(t) {
+                (src[t] || []).forEach(function(name) {
+                    if (chpushKey(name) !== key) return;
+                    const nk = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+                    found = overrides[nk] || moves[String(t).toLowerCase().trim()] || t;
+                });
+            });
+            return found;
+        }
+        function chBulkSpriceFor(base, $tr) {
+            const x = Math.max(0.01, +Number(base).toFixed(2));
+            const group = String(chModalGroupOfKey(chpushKey($tr && $tr.attr('data-marketplace'))) || '').toLowerCase().trim();
+            if (group === 'b2b' || group === 'c2c') return Math.max(0.01, +(x * 0.75).toFixed(2));
+            if (group === 'high shipping') {
+                const d = chpushShipDiff();
+                return d != null ? Math.max(0.01, +(x + d).toFixed(2)) : x;
+            }
+            return x;
+        }
+
         function applyModalBulkSprice() {
             const rawInput = $('#modal-bulk-sprice-input').val();
             const basePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -8645,25 +8651,19 @@
                 $('#modal-bulk-sprice-input').focus();
                 return;
             }
-            // No channel ticked → every editable channel (same as the SPRICE $ box)
-            const $rows = collectModalTargetRows({
-                alwaysIncludeDoba: true,
-                alwaysIncludeStdRuleChannels: true,
-                includeAllEditableWhenNoneSelected: true
-            });
+            // No channel ticked → every editable channel
+            const $rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
             if (!$rows.length) {
                 showToast('No editable SPRICE rows', 'error');
                 return;
             }
 
-            const reducedPrice = sprice25OffFromBase(basePrice); // Doba always −25%
-            const shipHint = getModalSharedProductShip();
+            const hsDiff = chpushShipDiff();
             if (!confirm(
-                'Apply from STD/base $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
-                + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                + '\nTopDawg / Faire / SB2B = (STD × marketplace%) − Ship'
-                + '\nPurchase = (STD × 1.15) − Ship'
-                + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
+                'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)?\n\n'
+                + 'B2C = $' + basePrice.toFixed(2)
+                + '\nB2B / C2C = $' + (basePrice * 0.75).toFixed(2) + ' (× 0.75)'
+                + '\nHigh Shipping = $' + (hsDiff != null ? Math.max(0, basePrice + hsDiff).toFixed(2) + ' (+ Diff ' + hsDiff.toFixed(2) + ')' : basePrice.toFixed(2))
                 + siblingsApplyLabel()
             )) return;
 
@@ -8677,7 +8677,7 @@
             let siblingsOk = 0;
             $rows.forEach(function($tr) {
                 const mp = String($tr.attr('data-marketplace') || '');
-                const newPrice = adjustAppliedSpriceForChannel(basePrice, $tr);
+                const newPrice = chBulkSpriceFor(basePrice, $tr);
                 $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
                 saveModalSpriceForRow($tr, newPrice, function(ok, res) {
                     if (ok) {
@@ -8698,7 +8698,7 @@
                             okCount
                                 ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                     + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
-                                    + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Use Push to go live.')
+                                    + '. B2B/C2C ×0.75, High Shipping + Diff. Use Push to go live.')
                                 : 'Failed to save SPRICE',
                             okCount ? 'success' : 'error'
                         );
@@ -8793,7 +8793,7 @@
                     if (!rowsState.some(function(p) { return p.$tr[0] === $tr[0]; })) {
                         rowsState.push({ $tr: $tr, orig: $inp.val() });
                     }
-                    $inp.val(adjustAppliedSpriceForChannel(base, $tr).toFixed(2)).trigger('input');
+                    $inp.val((cfg.priceFn || adjustAppliedSpriceForChannel)(base, $tr).toFixed(2)).trigger('input');
                 });
                 renderSpriceMetrics($out, rows, 'Preview, not saved until ✓\n');
             }
@@ -8815,8 +8815,8 @@
         }
         const bulkSpritePv = makeSpricePreview({
             input: '#modal-bulk-sprice-input', out: '#modal-bulk-sprice-metrics',
-            requireSelection: false, summaryWhenEmpty: true,
-            rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true }
+            requireSelection: false, summaryWhenEmpty: true, priceFn: chBulkSpriceFor,
+            rowsOpts: { includeAllEditableWhenNoneSelected: true }
         });
         // "SPRICE $" box: same rules; every editable channel when none is ticked (same as its ✓ button)
         const samePricePv = makeSpricePreview({
@@ -8847,7 +8847,7 @@
                 if (!$('#ovl30DetailsModal').hasClass('show')) return;
                 if (String($('#modal-bulk-sprice-input').val() || '') !== '') {
                     // a typed value: the preview readout already reflects the table cells
-                    const rows = collectModalTargetRows({ alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true });
+                    const rows = collectModalTargetRows({ includeAllEditableWhenNoneSelected: true });
                     if (rows.length) renderSpriceMetrics($('#modal-bulk-sprice-metrics'), rows, 'Preview, not saved until ✓\n');
                     return;
                 }
