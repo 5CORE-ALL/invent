@@ -5509,9 +5509,9 @@
                         title: "Temu Alert",
                         field: "temu_price",
                         hozAlign: "center",
-                        width: 90,
+                        width: 100,
                         headerSort: true,
-                        headerTooltip: "Red alert when the Temu price (/new-temuone Price) is higher than the eBay Price.",
+                        headerTooltip: "Temu price (/new-temuone Price). Red alert when the Temu price (/new-temuone Price) is higher than the eBay Price.",
                         sorter: function(a, b, aRow, bRow) {
                             const f = function(r) {
                                 const d = r.getData();
@@ -5526,9 +5526,14 @@
                             if (rowData.is_parent_summary) return '';
                             const temu = parseFloat(rowData.temu_price) || 0;
                             const ebay = parseFloat(rowData['eBay Price']) || 0;
-                            if (temu <= 0 || ebay <= 0 || temu <= ebay) return '';
-                            return '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:12px;" title="Temu price $'
-                                + temu.toFixed(2) + ' &gt; eBay price $' + ebay.toFixed(2) + '"></i>';
+                            if (temu <= 0) return '';
+                            const alertOn = ebay > 0 && temu > ebay;
+                            const tri = alertOn
+                                ? ' <i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:12px;" title="Temu price $'
+                                    + temu.toFixed(2) + ' &gt; eBay price $' + ebay.toFixed(2) + '"></i>'
+                                : '';
+                            return '<span style="white-space:nowrap;font-weight:' + (alertOn ? '600' : 'normal') + ';color:' + (alertOn ? '#dc3545' : 'inherit') + ';">$'
+                                + temu.toFixed(2) + tri + '</span>';
                         }
                     },
 
