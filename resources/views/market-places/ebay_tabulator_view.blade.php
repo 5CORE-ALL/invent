@@ -997,6 +997,9 @@
                                 data-filter-badge="1" data-metric="sprice_eq_lmp_count" data-live-value="0" data-format="number"
                                 style="background-color:#6610f2;color:#fff;font-weight:700;cursor:pointer;"
                                 title="S PRC = LMP: SKUs where S PRC equals the LMP. Click badge to filter. Click again to clear. Click dot for rolling history.">{!! $ebTrendDot('sprice_eq_lmp_count') !!}S PRC <i class="fas fa-equals"></i> LMP: 0</span>
+                            <span class="badge fs-6 p-2" id="ebay1-temu-alert-badge"
+                                style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                                title="Temu Alert: SKUs where the Temu price is higher than the eBay Price (red alert in the Temu Alert column). Click badge to filter. Click again to clear.">Temu <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2 ebay1-badge-chart" id="ebay1-lmp-missing-badge"
                                 data-lmp-channel="ebay"
                                 data-metric="lmp_missing_count" data-invert="1" data-live-value="0" data-format="number"
@@ -2734,6 +2737,7 @@
         let endedListingFilterActive = false;
         let priceEqLmpFilterActive = false;
         let spriceEqLmpFilterActive = false;
+        let temuAlertFilterActive = false;
 
         /** Parent / summary rows are not selectable. Child SKUs often have Parent = "PARENT 10 FR" — that is the parent name, not a parent row. */
         function ebayIsParentRowData(d) {
@@ -4018,6 +4022,17 @@
                     outline: spriceEqLmpFilterActive ? '3px solid #ffc107' : '',
                     outlineOffset: spriceEqLmpFilterActive ? '2px' : ''
                 });
+                $('#ebay1-temu-alert-badge').css({
+                    outline: temuAlertFilterActive ? '3px solid #ffc107' : '',
+                    outlineOffset: temuAlertFilterActive ? '2px' : ''
+                });
+            }
+            /** Temu price (/new-temuone Price) > eBay Price — same rule as the Temu Alert column. */
+            function ebay1HasTemuAlert(data) {
+                if (!data || ebayIsParentRowData(data) || data.is_parent_summary) return false;
+                const temu = parseFloat(data.temu_price) || 0;
+                const ebay = parseFloat(data['eBay Price']) || 0;
+                return temu > 0 && ebay > 0 && temu > ebay;
             }
             /** INV > 0 and our eBay Price equals the LMP (to the cent). */
             function ebay1PriceEqLmp(data) {
@@ -4039,7 +4054,8 @@
                 const was = {
                     blue: blueTriangleFilterActive, red: redTriangleFilterActive, lmpMissing: lmpMissingFilterActive,
                     purple: priceLt80LmpFilterActive, ended: endedListingFilterActive,
-                    priceEq: priceEqLmpFilterActive, spriceEq: spriceEqLmpFilterActive
+                    priceEq: priceEqLmpFilterActive, spriceEq: spriceEqLmpFilterActive,
+                    temu: temuAlertFilterActive
                 }[key];
                 const on = !was;
                 blueTriangleFilterActive = on && key === 'blue';
@@ -4049,6 +4065,7 @@
                 endedListingFilterActive = on && key === 'ended';
                 priceEqLmpFilterActive = on && key === 'priceEq';
                 spriceEqLmpFilterActive = on && key === 'spriceEq';
+                temuAlertFilterActive = on && key === 'temu';
                 if (on && key === 'red') $('#inventory-filter').val('more');
                 if (on && key === 'ended') $('#view-mode-filter').val('sku');
                 applyFilters();
@@ -4080,6 +4097,9 @@
             $('#ebay1-sprice-eq-lmp-badge').on('click', function(e) {
                 if ($(e.target).closest('.summary-trend-dot').length) return;
                 ebay1ToggleAlertFilter('spriceEq');
+            });
+            $('#ebay1-temu-alert-badge').on('click', function() {
+                ebay1ToggleAlertFilter('temu');
             });
             // SKU chart days filter (Rolling Lx · PT — same pattern as all-marketplace-master)
             $('#sku-chart-days-filter').on('change', function() {
@@ -5486,6 +5506,33 @@
                     },
 
                     {
+                        title: "Temu Alert",
+                        field: "temu_price",
+                        hozAlign: "center",
+                        width: 90,
+                        headerSort: true,
+                        headerTooltip: "Red alert when the Temu price (/new-temuone Price) is higher than the eBay Price.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const f = function(r) {
+                                const d = r.getData();
+                                const t = parseFloat(d.temu_price) || 0;
+                                const e = parseFloat(d['eBay Price']) || 0;
+                                return (t > 0 && e > 0 && t > e) ? (t - e) : -1;
+                            };
+                            return f(aRow) - f(bRow);
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const temu = parseFloat(rowData.temu_price) || 0;
+                            const ebay = parseFloat(rowData['eBay Price']) || 0;
+                            if (temu <= 0 || ebay <= 0 || temu <= ebay) return '';
+                            return '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:12px;" title="Temu price $'
+                                + temu.toFixed(2) + ' &gt; eBay price $' + ebay.toFixed(2) + '"></i>';
+                        }
+                    },
+
+                    {
                         title: "Y Spend",
                         field: "y_spend",
                         hozAlign: "center",
@@ -6765,6 +6812,11 @@
                         return ebay1SpriceEqLmp(data);
                     });
                 }
+                if (temuAlertFilterActive) {
+                        table.addFilter(function(data) {
+                        return ebay1HasTemuAlert(data);
+                    });
+                }
                 if (lmpMissingFilterActive && window.LmpMissingBadge) {
                         table.addFilter(function(data) {
                         return LmpMissingBadge.isMissingLmp(data);
@@ -7015,6 +7067,7 @@
                 let endedListingCount = 0;
                 let priceEqCount = 0;
                 let spriceEqCount = 0;
+                let temuAlertCount = 0;
                 const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
                     ? allTableData
                     : allData;
@@ -7024,7 +7077,9 @@
                     if (ebay1IsEndedListing(row)) endedListingCount++;
                     if (ebay1PriceEqLmp(row)) priceEqCount++;
                     if (ebay1SpriceEqLmp(row)) spriceEqCount++;
+                    if (ebay1HasTemuAlert(row)) temuAlertCount++;
                 });
+                $('#ebay1-temu-alert-badge').html('Temu <i class="fas fa-exclamation-triangle"></i> ' + temuAlertCount.toLocaleString());
                 // Count badges keep their history dot (it sits before the label).
                 function paintCountBadge(sel, html, n) {
                     const $b = $(sel);

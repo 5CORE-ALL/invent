@@ -5752,6 +5752,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu1-raw-data/data', [Temu1RawDataController::class, 'data'])->name('temu1.raw.data.json');
     Route::get('/temu1-raw-data/cell', [Temu1RawDataController::class, 'cell'])->name('temu1.raw.data.cell');
 
+    // Pricing by Channel — price / NPFT% / NROI% / id / buyer link of every active B2C channel, one row per SKU
+    Route::get('/pricing-by-channel', [\App\Http\Controllers\MarketPlace\PricingByChannelController::class, 'index'])->name('pricing.by.channel');
+    Route::get('/pricing-by-channel-data-json', [\App\Http\Controllers\MarketPlace\PricingByChannelController::class, 'dataJson'])->name('pricing.by.channel.data');
+    Route::post('/pricing-by-channel-forget-cache', [\App\Http\Controllers\MarketPlace\PricingByChannelController::class, 'forgetCache'])->name('pricing.by.channel.forget');
+
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');

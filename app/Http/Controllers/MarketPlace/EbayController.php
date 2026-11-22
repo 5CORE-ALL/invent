@@ -551,6 +551,9 @@ class EbayController extends Controller
 
     public function ebayDataJson(Request $request)
     {
+        // The full eBay payload (every SKU, decoded and re-encoded) outgrows PHP's default 128M.
+        @ini_set('memory_limit', '1024M');
+
         // Read-only pages (Volume Pricing) pass ?cache=1 and accept data up to 2 minutes old,
         // so a second open does not rebuild the full payload (dozens of queries) again.
         $useShortCache = $request->boolean('cache');
@@ -586,6 +589,7 @@ class EbayController extends Controller
                 return response()->json(['error' => 'Invalid data payload from server'], 500);
             }
             $rows = $data['data'] ?? [];
+            unset($data, $response);
             if (!is_array($rows)) {
                 $rows = [];
             }
@@ -926,6 +930,29 @@ class EbayController extends Controller
             if (is_numeric($std) && (float) $std > 0) {
                 $amazonStandardPrices[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
             }
+        }
+
+        // Temu Price — same figure as the Price column on /new-temuone (temu_metrics.base_price → S PRC that pushes it).
+        $normalizeTemuSku = static function ($sku) {
+            $sku = strtoupper(trim((string) $sku));
+            $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+
+            return preg_replace('/\s+/', ' ', $sku);
+        };
+        $temuPriceBySku = [];
+        try {
+            if (Schema::hasTable('temu_metrics')) {
+                foreach (\App\Models\TemuMetric::query()->get(['sku', 'base_price']) as $temuMetric) {
+                    $key = $normalizeTemuSku($temuMetric->sku);
+                    $base = (float) ($temuMetric->base_price ?? 0);
+                    if ($key === '' || $base <= 0) {
+                        continue;
+                    }
+                    $temuPriceBySku[$key] = \App\Services\TemuShopifySalesService::newTemuonePriceFromBase($base);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('eBay tabulator: Temu price lookup failed: ' . $e->getMessage());
         }
 
         // PRMT%/CPN%/DSC%/Appr/Push Prc — ebay_data_view.value (Amazon-format PEF_* / PUSH_PRC_* keys)
@@ -1359,6 +1386,8 @@ class EbayController extends Controller
                 }
             }
             $row['STANDARD_PRICE'] = $stdPrc;
+
+            $row['temu_price'] = $temuPriceBySku[$normalizeTemuSku($pm->sku)] ?? null;
 
             // Site-specific promo columns from ebay_data_view (PEF_PRMT_PCT / PEF_CPN_PCT / PUSH_PRC_*)
             $row = app(ChannelPromoPricingService::class)->applyToRow($row, $ebay1PromoMap, (string) $pm->sku);

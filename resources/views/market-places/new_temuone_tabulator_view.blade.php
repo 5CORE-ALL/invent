@@ -647,6 +647,9 @@
                     <span class="badge fs-6 p-2" id="newtemuone-lmp-alert-badge"
                         style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                         title="LMP Alert Prc with INV &gt; 0. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
+                    <span class="badge fs-6 p-2" id="newtemuone-price-alert-badge"
+                        style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                        title="Price alerts: SKUs whose Temu Price is higher than the LMP or than their Amz / eBay 1-3 / TikTok 1-2 price. Click to filter."><i class="fas fa-exclamation-triangle"></i> Price Alerts: 0</span>
                     @include('partials.price-gt-lmp-badge-script')
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemuone-price-lt80-lmp-badge',
@@ -2215,6 +2218,7 @@
     let priceLt80LmpFilterActive = false;
     let missingLmpFilterActive = false;
     let lmpAlertFilterActive = false;
+    let priceAlertFilterActive = false;
 
     // Same LMP basis /temu2-decrease passes in: lmp is the recovery price, lmp_raw the landed one.
     function temuBadgeLmpValue(row) {
@@ -2991,7 +2995,8 @@
             ['#more-sold-count-badge', moreSoldFilterActive],
             ['#newtemuone-blue-triangle-badge', blueTriangleFilterActive],
             ['#newtemuone-missing-lmp-badge', missingLmpFilterActive],
-            ['#newtemuone-lmp-alert-badge', lmpAlertFilterActive]
+            ['#newtemuone-lmp-alert-badge', lmpAlertFilterActive],
+            ['#newtemuone-price-alert-badge', priceAlertFilterActive]
         ];
         pairs.forEach(function(p) {
             $(p[0]).css('box-shadow', p[1] ? '0 0 0 3px rgba(13,110,253,0.55)' : 'none');
@@ -3135,6 +3140,27 @@
         (allRows || []).forEach(function(row) {
             if (temuIsMissingLmp(row)) missingLmp++;
         });
+        // Price alerts (red triangles): SKUs with Temu Price above the LMP / another channel's price — whole dataset.
+        try {
+            const alertBy = {};
+            let alertSkus = 0;
+            let alertIssues = 0;
+            allRows.forEach(function(row) {
+                const issues = ntoTemuPriceIssues(row);
+                if (!issues.length) return;
+                alertSkus++;
+                alertIssues += issues.length;
+                issues.forEach(function(i) { alertBy[i.label] = (alertBy[i.label] || 0) + 1; });
+            });
+            $('#newtemuone-price-alert-badge')
+                .html('<i class="fas fa-exclamation-triangle"></i> Price Alerts: ' + alertSkus.toLocaleString())
+                .css('background-color', alertSkus === 0 ? '#28a745' : '#dc3545')
+                .attr('title', 'Price alerts: ' + alertSkus.toLocaleString() + ' SKUs have Temu Price above the LMP or another channel\'s price ('
+                    + alertIssues.toLocaleString() + ' red triangles in total). Click to filter.'
+                    + Object.keys(alertBy).map(function(k) { return '\n' + k + ': ' + alertBy[k].toLocaleString(); }).join(''));
+        } catch (err) {
+            if (window.console && console.warn) console.warn('Price alert badge', err);
+        }
         const missingEl = $('#newtemuone-missing-lmp-badge');
         missingEl.text('M LMP: ' + missingLmp.toLocaleString());
         missingEl.css({
@@ -3350,6 +3376,9 @@
         }
         if (lmpAlertFilterActive) {
             table.addFilter(function(data) { return temuHasLmpAlert(data); });
+        }
+        if (priceAlertFilterActive) {
+            table.addFilter(function(data) { return ntoTemuPriceIssues(data).length > 0; });
         }
 
         // PARENT arrow fold: only in the plain All view (no filter / search active), so a filtered or searched SKU is never hidden.
@@ -4744,7 +4773,8 @@
             ['#newtemuone-blue-triangle-badge', 'blueTriangle'],
             ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp'],
             ['#newtemuone-missing-lmp-badge', 'missingLmp'],
-            ['#newtemuone-lmp-alert-badge', 'lmpAlert']
+            ['#newtemuone-lmp-alert-badge', 'lmpAlert'],
+            ['#newtemuone-price-alert-badge', 'priceAlert']
         ];
         badgeFilters.forEach(function(pair) {
             $(document).on('click', pair[0], function(e) {
@@ -4757,7 +4787,8 @@
                     blueTriangle: false,
                     priceLt80Lmp: false,
                     missingLmp: false,
-                    lmpAlert: false
+                    lmpAlert: false,
+                    priceAlert: false
                 };
                 const current = {
                     zeroSold: zeroSoldFilterActive,
@@ -4765,7 +4796,8 @@
                     blueTriangle: blueTriangleFilterActive,
                     priceLt80Lmp: priceLt80LmpFilterActive,
                     missingLmp: missingLmpFilterActive,
-                    lmpAlert: lmpAlertFilterActive
+                    lmpAlert: lmpAlertFilterActive,
+                    priceAlert: priceAlertFilterActive
                 };
                 next[want] = !current[want];
                 zeroSoldFilterActive = next.zeroSold;
@@ -4774,6 +4806,7 @@
                 priceLt80LmpFilterActive = next.priceLt80Lmp;
                 missingLmpFilterActive = next.missingLmp;
                 lmpAlertFilterActive = next.lmpAlert;
+                priceAlertFilterActive = next.priceAlert;
                 applyFilters();
             });
         });

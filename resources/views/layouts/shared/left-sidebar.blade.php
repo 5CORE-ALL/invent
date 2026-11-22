@@ -2907,6 +2907,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('pricing.by.channel') }}" class="side-nav-link">
+                    <i class="ri-price-tag-3-line"></i>
+                    <span>Pricing by Channel</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('views.master') }}" class="side-nav-link">
                     <i class="ri-eye-line"></i>
                     <span>Views Master</span>
