@@ -5622,13 +5622,17 @@
                             all.push(c.label + ' $' + v.toFixed(2));
                             if (!low || v < low.v) low = { c: c, v: v };
                         });
-                        if (!low) return '<span class="text-muted">-</span>';
+                        // Dot = same action as the "LMP" button in the SKU modal header (opens the LMP drawer)
+                        const dot = isParent ? '' : '<a href="#" class="view-lmp-competitors ms-1" data-sku="' + skuAttr
+                            + '" style="text-decoration:none;" title="View LMP competitors">'
+                            + '<i class="fas fa-circle" style="color:#5bb8c0;font-size:10px;vertical-align:middle;"></i></a>';
+                        if (!low) return isParent ? '<span class="text-muted">-</span>' : '<span class="text-muted">-</span>' + dot;
                         const tip = (isParent ? 'Average of child LMPs — lowest: ' : 'Lowest LMP — click to open the LMP drawer\n') + all.join(' · ');
                         const badge = '<span class="badge" style="font-weight:600;' + low.c.style + '" title="' + tip.replace(/"/g, '&quot;') + '">'
                             + low.c.label + ' $' + low.v.toFixed(2) + '</span>';
                         if (isParent) return badge;
                         return '<a href="#" class="view-lmp-competitors" data-sku="' + skuAttr + '" style="text-decoration:none;" title="'
-                            + tip.replace(/"/g, '&quot;') + '">' + badge + '</a>';
+                            + tip.replace(/"/g, '&quot;') + '">' + badge + '</a>' + dot;
                     }
                 },
                 {
