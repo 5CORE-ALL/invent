@@ -8761,8 +8761,14 @@
                 return String($(this).attr('data-marketplace') || '').toLowerCase() === 'amazon';
             }).first();
         }
-        /** GPFT / GROI / NPFT / NROI of `price` using the Amazon row's percentages; null when unavailable. */
-        function amazonSpriceMetrics(price) {
+        /**
+         * GPFT / GROI / NPFT / NROI exactly like the Amazon analytics page (amazon_tabulator S GPFT / SGROI / SNPFT / SNROI):
+         *   GPFT = (P × 0.80 − Ship − LP) ÷ P         GROI = (P × 0.80 − Ship − LP) ÷ LP
+         *   NPFT = GPFT − Ads%                         NROI = (P × margin − Ship − LP − P × Ads%) ÷ LP
+         * P = the Amazon row's SPRICE (the preview has already put the typed price there), else the typed price.
+         * LP / Ship = product master, Ads% = Amazon channel Ads%, margin = Amazon % (default 0.80).
+         */
+        function amazonSpriceMetrics(typedPrice) {
             const $a = spriceAmazonRow();
             if (!$a.length) return null;
             const lp = parseFloat($a.attr('data-lp')) || 0;
@@ -8770,12 +8776,15 @@
             const ads = parseFloat($a.attr('data-tacos-ch')) || 0;
             const mAttr = parseFloat($a.attr('data-margin'));
             const margin = isFinite(mAttr) && mAttr > 0 ? mAttr : 0.80;
-            if (!(price > 0)) {
-                price = parseFloat($a.find('.editable-sprice').val()) || 0; // empty box → Amazon's current SPRICE
-            }
+            let price = parseFloat(String($a.find('.editable-sprice').val() || '').replace(/[$,\s]/g, '')) || 0;
+            if (!(price > 0)) price = parseFloat(typedPrice) || 0;
             if (!(price > 0) || !(lp > 0)) return null;
-            const m = computeAmzSpriceMetrics(price, lp, ship, ads, margin);
-            return { price: price, lp: lp, ship: ship, ads: ads, margin: margin, gpft: m.sgpft, groi: m.sgroi, npft: m.spft, nroi: m.snroi };
+            const gross080 = price * 0.80 - ship - lp;
+            const gpft = (gross080 / price) * 100;
+            const groi = (gross080 / lp) * 100;
+            const npft = gpft - ads;
+            const nroi = ((price * margin - ship - lp - price * (ads / 100)) / lp) * 100;
+            return { price: price, lp: lp, ship: ship, ads: ads, margin: margin, gpft: gpft, groi: groi, npft: npft, nroi: nroi };
         }
         function renderSpriceMetrics($out, rows, headNote, basePrice) {
             const am = amazonSpriceMetrics(parseFloat(basePrice) || 0);
@@ -8787,8 +8796,8 @@
                         + styleForCellColor(v[2](v[1])) + '">' + Math.round(v[1]) + '%</span></span>';
                 }).join(''))
                     .attr('title', (headNote || '') + 'Amazon percentages on $' + am.price.toFixed(2)
-                        + ': margin ' + Math.round(am.margin * 100) + '%, Ads ' + am.ads.toFixed(1) + '%, LP $'
-                        + am.lp.toFixed(2) + ', ship $' + am.ship.toFixed(2))
+                        + ' (same formulas as the Amazon analytics page): LP $' + am.lp.toFixed(2) + ', ship $' + am.ship.toFixed(2)
+                        + ', Ads ' + am.ads.toFixed(2) + '%, margin ' + Math.round(am.margin * 100) + '%')
                     .css('display', 'inline-flex');
                 return;
             }
@@ -13787,10 +13796,28 @@
         }
         /** Hist filter modes: hide7 (default) | all | recent | old | none. Parent summary rows always pass. */
         function pushHistoryFilterMode() { return $('#push-history-filter').val() || 'hide7'; }
+        // parent name -> SKU rows (rebuilt whenever fullDataset is replaced)
+        let phChildIdx = null, phChildIdxSrc = null;
+        function phChildrenOf(parent) {
+            if (phChildIdxSrc !== fullDataset) {
+                phChildIdx = {};
+                (fullDataset || []).forEach(function(r) {
+                    if (r.is_parent_summary === true) return;
+                    (phChildIdx[r.parent] = phChildIdx[r.parent] || []).push(r);
+                });
+                phChildIdxSrc = fullDataset;
+            }
+            return phChildIdx[parent] || [];
+        }
         function passesPushHistoryFilter(row, mode) {
-            if (!row || row.is_parent_summary === true) return true;
+            if (!row) return true;
             mode = mode || pushHistoryFilterMode();
             if (mode === 'all') return true;
+            if (row.is_parent_summary === true) {
+                // Parent row is hidden too when none of its SKUs pass (e.g. all pushed < 7 days ago)
+                const kids = phChildrenOf(row.parent);
+                return !kids.length || kids.some(function(k) { return passesPushHistoryFilter(k, mode); });
+            }
             const hasHist = /^\d{4}-\d{2}-\d{2}/.test(String(row.push_history_last_at || '')) || (parseInt(row.push_history_count, 10) || 0) > 0;
             const recent = isRecentPushedRow(row);
             if (mode === 'recent') return recent;
@@ -13824,6 +13851,7 @@
             
             const parentRows = fullDataset
                 .filter(row => row.is_parent_summary === true)
+                .filter(row => passesPushHistoryFilter(row)) // hide parents whose SKUs were all pushed < 7 days ago
                 .slice()
                 .sort((a, b) => (parseFloat(b.dil_percent) || 0) - (parseFloat(a.dil_percent) || 0));
             const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
