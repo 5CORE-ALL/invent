@@ -267,6 +267,13 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
         // Channel prices pushed from the /price-increase modals that did not go through: re-pushed every hour,
         // and software5@5core.com is e-mailed while any is still pending (red alert on the pricing page).
+        // Background pushes whose web request died are finished within minutes (never abandoned)
+        $schedule->command('price-push:run-queued')
+            ->everyMinute()
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->name('price-push-run-queued')
+            ->appendOutputTo($log);
         $schedule->command('price-push:retry-pending')
             ->hourlyAt(15)
             ->withoutOverlapping(55)

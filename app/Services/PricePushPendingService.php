@@ -7,6 +7,7 @@ use App\Models\PricePushPending;
 use App\Models\Task;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -232,8 +233,12 @@ class PricePushPendingService
         if (! $this->available()) {
             return [0, 0];
         }
-        // outstanding() skips rows that are only "Queued" for a background push that is still running
-        $rows = PricePushPending::outstanding()->where('status', 'pending')->orderBy('last_attempt_at')->limit($limit)->get();
+        // "Queued" rows belong to the sequential queue (drainQueue) — never pushed here, so two pushes never run in parallel
+        $rows = PricePushPending::outstanding()->where('status', 'pending')
+            ->where(function ($q) {
+                $q->whereNull('last_error')->orWhere('last_error', 'not like', PricePushPending::QUEUED_PREFIX . '%');
+            })
+            ->orderBy('last_attempt_at')->limit($limit)->get();
         $ok = 0;
         foreach ($rows as $row) {
             if ($this->retryRow($row)) {
@@ -243,6 +248,97 @@ class PricePushPendingService
         }
 
         return [$rows->count(), $ok];
+    }
+
+    private const QUEUE_LOCK_KEY = 'price_push_queue_worker';
+    private const QUEUE_LOCK_SECONDS = 300; // renewed before every job; a dead worker frees the queue after this
+
+    /**
+     * SEQUENTIAL FIFO QUEUE of background pushes. The queue is the set of rows that are "Queued" (written by
+     * POST /price-push-background). Only ONE worker drains it at any time (a cache lock that is renewed before every job),
+     * oldest request first, one channel push after the other — never two pushes in parallel, whichever SKU / user queued them.
+     * A worker that dies (php-fpm timeout, restart) lets the lock expire; price-push:run-queued (every minute) then takes the
+     * queue over, so nothing is abandoned. Returns [pushed, ok, workerRan] (workerRan = false: another worker is already on it).
+     */
+    public function drainQueue(int $maxJobs = 1000): array
+    {
+        if (! $this->available()) {
+            return [0, 0, false];
+        }
+        $token = bin2hex(random_bytes(8));
+        if (! Cache::add(self::QUEUE_LOCK_KEY, $token, self::QUEUE_LOCK_SECONDS)) {
+            return [0, 0, false]; // another worker is draining — it will also pick up what was just queued
+        }
+        $tried = 0;
+        $ok = 0;
+        $done = [];
+        try {
+            while ($tried < $maxJobs) {
+                if (Cache::get(self::QUEUE_LOCK_KEY) !== $token) {
+                    break; // lock lost (expired while a job ran long) — the next worker continues
+                }
+                Cache::put(self::QUEUE_LOCK_KEY, $token, self::QUEUE_LOCK_SECONDS);
+                $row = PricePushPending::where('status', 'pending')
+                    ->where('last_error', 'like', PricePushPending::QUEUED_PREFIX . '%')
+                    ->when($done, fn ($q) => $q->whereNotIn('id', $done))
+                    ->orderBy('last_attempt_at')
+                    ->orderBy('id')
+                    ->first();
+                if (! $row) {
+                    break;
+                }
+                $done[] = $row->id;
+                $tried++;
+                if ($this->runQueuedRow($row)) {
+                    $ok++;
+                }
+            }
+        } finally {
+            if (Cache::get(self::QUEUE_LOCK_KEY) === $token) {
+                Cache::forget(self::QUEUE_LOCK_KEY);
+            }
+        }
+
+        return [$tried, $ok, true];
+    }
+
+    /** Push one queued row exactly like the web request would (same user in the push history), record + cache the result. */
+    private function runQueuedRow(PricePushPending $row): bool
+    {
+        $extras = (array) ($row->extras ?? []);
+        $payload = array_merge($extras, [
+            'sku' => $row->sku,
+            'price' => $row->price,
+            'marketplace' => $row->marketplace,
+            'channel' => (string) ($row->channel ?: $row->marketplace),
+        ]);
+        $body = [];
+        try {
+            $req = Request::create('/cvr-master-push-price', 'POST', $payload);
+            if ($row->requested_by) {
+                $user = User::where('name', $row->requested_by)->first();
+                if ($user) {
+                    $req->setUserResolver(fn () => $user); // "pushed by" in the push history
+                }
+            }
+            [$ok, $message, $body] = $this->runPush($payload, $req);
+        } catch (\Throwable $e) {
+            $ok = false;
+            $message = $e->getMessage() ?: 'Push exception';
+        }
+        $saved = $this->record($row->sku, $row->marketplace, $row->channel, (float) $row->price, $extras, $ok, (string) $message);
+        Cache::put(
+            'price_push_result:' . strtoupper($row->sku) . '|' . $row->marketplace,
+            ['message' => (string) $message, 'saved_only' => ! empty($body['saved_only'])],
+            now()->addMinutes(30)
+        );
+        if ($saved && ! $ok && $saved->alerted_at === null) {
+            if ($this->sendAlert([$saved], 'A channel price could not be pushed. It will be retried every hour.')) {
+                $saved->forceFill(['alerted_at' => now()])->save();
+            }
+        }
+
+        return $ok;
     }
 
     /** E-mail software5@5core.com. $rows = outstanding rows to list. */

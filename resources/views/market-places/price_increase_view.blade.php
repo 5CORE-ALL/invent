@@ -1933,15 +1933,12 @@
                         </label>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Add this $ to the current SPRICE of the selected channels (STD PRC is not added).">
+                        title="Siblings addition ($). Saved automatically together with the Siblings tick, per SKU, and restored the next time this SKU is opened.">
                         <label for="modal-sprice-bump-input">+$ SPRICE</label>
                         <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
-                            placeholder="1" step="0.01" style="width: 58px;"
-                            title="Add $ to the current SPRICE on selected channels.">
-                        <button type="button" id="modal-apply-sprice-bump-btn" class="btn btn-sm btn-outline-primary"
-                            title="Apply +$ to the current SPRICE of the selected channels" aria-label="Apply SPRICE increase">
-                            <i class="fas fa-check"></i>
-                        </button>
+                            placeholder="0" step="0.01" style="width: 58px;"
+                            title="Siblings addition ($) — saved automatically (per SKU)">
+                        <small id="modal-siblings-save-note" class="text-success" style="min-width:12px;"></small>
                     </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
                         title="STD PRC for all marketplaces.">
@@ -3564,6 +3561,7 @@
             syncModalGroupSelects('');
             // Restore per-SKU siblings preference (saved when user ticks Siblings for this SKU)
             $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
+            $('#modal-sprice-bump-input').val(getSiblingsAddForSku(sku)); // saved siblings addition for this SKU
             $('#modal-std-sp-input').val('');
             modalCpnDollarRaw = '';
             modalCpnPctRaw = '';
@@ -3792,6 +3790,44 @@
             if (!sku) return false;
             return !!getSiblingsPrefMap()[sku.toUpperCase()];
         }
+
+        // Siblings addition ($ in the "+$ SPRICE" box) — saved per SKU together with the Siblings tick
+        const SIBLINGS_ADD_STORAGE_KEY = 'cvr_master_siblings_add_by_sku_v1';
+        function getSiblingsAddMap() {
+            try {
+                const raw = localStorage.getItem(SIBLINGS_ADD_STORAGE_KEY);
+                const map = raw ? JSON.parse(raw) : {};
+                return (map && typeof map === 'object') ? map : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function getSiblingsAddForSku(sku) {
+            sku = String(sku || '').trim();
+            if (!sku) return '';
+            const v = getSiblingsAddMap()[sku.toUpperCase()];
+            return (v === undefined || v === null) ? '' : String(v);
+        }
+        /** Save the Siblings tick + addition for the open SKU (called on every change). Ticked or unticked is always stored. */
+        let siblingsSaveNoteTimer = null;
+        function saveSiblingsSettingsNow() {
+            const sku = getModalPrimarySku();
+            if (!sku) return;
+            const key = sku.toUpperCase();
+            setSiblingsPrefForSku(sku, $('#modal-siblings-apply-cb').is(':checked'));
+            const raw = String($('#modal-sprice-bump-input').val() || '').trim();
+            const map = getSiblingsAddMap();
+            if (raw === '') delete map[key]; else map[key] = raw;
+            try { localStorage.setItem(SIBLINGS_ADD_STORAGE_KEY, JSON.stringify(map)); } catch (e) { /* ignore */ }
+            const $n = $('#modal-siblings-save-note').text('✓').attr('title', 'Saved');
+            clearTimeout(siblingsSaveNoteTimer);
+            siblingsSaveNoteTimer = setTimeout(function() { $n.text(''); }, 1500);
+        }
+        let siblingsSaveTimer = null;
+        $(document).on('input change', '#modal-sprice-bump-input', function() {
+            clearTimeout(siblingsSaveTimer);
+            siblingsSaveTimer = setTimeout(saveSiblingsSettingsNow, 300);
+        });
 
         function siblingsApplyPayload(price) {
             // Never apply 0 / empty to siblings — only real suggested prices
@@ -4077,7 +4113,7 @@
                 return;
             }
             // Remember preference for this SKU (restored next time the modal opens)
-            setSiblingsPrefForSku(sku, on);
+            saveSiblingsSettingsNow(); // tick state + addition, ticked or unticked
             if (!on) return;
             if (!modalSiblingSkus.length) {
                 // Re-fetch once in case count was stale
@@ -5216,6 +5252,20 @@
             $('#hist-hdr-count').text(histHeaderCountText);
         }
 
+        // Red total beside the "Push Pending" header: channels not updated, over all SKUs (parent summary rows not counted)
+        let pushPendingHeaderCountText = '';
+        function updatePushPendingHeaderCount() {
+            let rows = (typeof fullDataset !== 'undefined' && Array.isArray(fullDataset)) ? fullDataset : [];
+            try { if (typeof table !== 'undefined' && table && table.getData) rows = table.getData(); } catch (e) { /* table not ready */ }
+            let n = 0;
+            rows.forEach(function(r) {
+                if (!r || r.is_parent_summary === true) return;
+                n += parseInt(r.push_failed_count, 10) || 0;
+            });
+            pushPendingHeaderCountText = n > 0 ? String(n) : '';
+            $('#pp-hdr-count').text(pushPendingHeaderCountText);
+        }
+
         /** Hist dot colour by age of a push date (YYYY-MM-DD): green <= 7 days, yellow 8-14, red > 14. Same rule parent and child rows. */
         function histAgeDotHtml(dateStr, title) {
             const d = String(dateStr || '').slice(0, 10);
@@ -5421,10 +5471,9 @@
                             const parentDot = (total && done >= total && /^\d{4}-\d{2}-\d{2}$/.test(oldest))
                                 ? histAgeDotHtml(oldest, 'All ' + total + ' child SKU(s) pushed — oldest last push')
                                 : '';
-                            const parentFail = histFailBadgeHtml(parseInt(rowData.push_failed_count, 10) || 0, '', rowData.parent || '');
-                            return parentDot + parentFail;
+                            return parentDot; // channels not updated → own column "Push Pending"
                         }
-                        // Child: the dot (click → push history) + in RED how many channels were NOT updated (click → channels + reason)
+                        // Child: the dot (click → push history). Channels not updated → own column "Push Pending"
                         const skuEsc = String(rowData.sku || '').replace(/"/g, '&quot;');
                         const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
                         let dot = histAgeDotHtml(rowData.push_history_last_at, 'Last push');
@@ -5435,7 +5484,29 @@
                             ? '<span class="outer-push-history-btn" data-sku="' + skuEsc + '" style="cursor:pointer;display:inline-block;padding:0 4px;" '
                                 + 'title="' + (histCount ? (histCount + ' push record(s) — click to view') : 'Push history — click to view') + '">' + dot + '</span>'
                             : '';
-                        return dotHtml + histFailBadgeHtml(parseInt(rowData.push_failed_count, 10) || 0, rowData.sku || '', '');
+                        return dotHtml;
+                    }
+                },
+                {
+                    title: "Push Pending",
+                    field: "push_failed_count",
+                    hozAlign: "center",
+                    minWidth: 78,
+                    sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
+                    headerTooltip: "Channels whose last price push did NOT succeed (pending / retried hourly). Click a red number to see the channels and the reason.",
+                    titleFormatter: function() {
+                        return 'Push Pending <span id="pp-hdr-count" style="color:#dc3545;font-weight:700;">' + pushPendingHeaderCountText + '</span>';
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const n = parseInt(rowData.push_failed_count, 10) || 0;
+                        if (!(n > 0)) return '';
+                        const isParent = rowData.is_parent_summary === true;
+                        const esc = function(s) { return String(s).replace(/"/g, '&quot;'); };
+                        return '<span class="pi-skufail-btn" data-sku="' + esc(isParent ? '' : (rowData.sku || '')) + '" data-parent="' + esc(isParent ? (rowData.parent || '') : '') + '" '
+                            + 'style="color:#dc3545;font-weight:700;font-size:13px;cursor:pointer;display:inline-block;padding:0 6px;" '
+                            + 'title="' + n + ' channel(s) NOT updated' + (isParent ? ' (all child SKUs)' : '') + ' — click to see which and why">' + n + '</span>';
                     }
                 },
                 {
@@ -9175,14 +9246,12 @@
             }
         }
 
-        $(document).on('click', '#modal-apply-sprice-bump-btn', function(e) {
-            e.preventDefault();
-            applyModalSpriceBump();
-        });
+        // The ✓ button is gone: the Siblings tick and the +$ amount are saved automatically (see saveSiblingsSettingsNow)
         $(document).on('keydown', '#modal-sprice-bump-input', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                applyModalSpriceBump();
+                saveSiblingsSettingsNow();
+                $(this).blur();
             }
         });
 
@@ -9234,8 +9303,12 @@
                     chpushSaveOnlyOrToast('No channels have a pushable suggested price (> 0)'); // e.g. Doba only → saved in the app
                     return;
                 }
-                // No confirm dialog: the ✓ itself is the confirmation
-                chpushStartJob(targets, {});
+                // No confirm dialog: the ✓ itself is the confirmation.
+                // Siblings ticked → the same click also saves this SPRICE on every sibling SKU and pushes it to their channels
+                const sibSkus = isModalSiblingsApply() ? chpushSiblingSkusFor(sku) : [];
+                chpushStartJob(targets, sibSkus.length
+                    ? { siblingSkus: sibSkus, siblingPrices: chpushCollectAllPrices() }
+                    : {});
             }
 
             // Refresh the sibling list first so INV 0 siblings are included when "apply to siblings" is on
@@ -9672,9 +9745,9 @@
                     }
                 }).always(function() {
                     if (!pending.length) { piPendingRefreshSoon(); dfd.resolve(results); return; }
-                    if (Date.now() - startedAt > 10 * 60 * 1000) { // stop waiting; the server keeps going / hourly retry takes over
+                    if (Date.now() - startedAt > 45 * 60 * 1000) { // stop waiting; the server queue keeps going (one push at a time, in order)
                         pending.forEach(function(it) {
-                            finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: 'Still running on the server — check the pending alert shortly' });
+                            finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: 'Still waiting in the server queue (pushes run one at a time, in order) — check Push Pending shortly' });
                         });
                         piPendingRefreshSoon();
                         dfd.resolve(results);
@@ -9683,23 +9756,119 @@
                     setTimeout(poll, 1500);
                 });
             }
-            $.ajax({
-                url: '/price-push-background', method: 'POST', dataType: 'json', contentType: 'application/json',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: JSON.stringify({ sku: sku, items: items.map(function(x) { return x.payload; }) })
-            }).done(function() {
+            // The job is written to an outbox BEFORE it is sent and removed only once the server has it. A refresh, a closed
+            // tab or a failed request therefore never loses a push: the page keeps retrying, and sends what is left on the next load.
+            const body = { sku: sku, items: items.map(function(x) { return x.payload; }) };
+            const entry = ppOutboxAdd(body);
+            const sentAt = entry.at;
+            const retryDelays = [2000, 5000, 12000, 25000];
+            let attempt = 0;
+            function failAll(msg) {
+                accept();
+                items.forEach(function(it) { finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: msg }); });
+                dfd.resolve(results);
+            }
+            function taken() { // the server has the job → follow it
+                ppOutboxRemove(entry.id);
                 accept();
                 piPendingRefreshSoon();
                 setTimeout(poll, 800);
-            }).fail(function(xhr) {
-                accept();
-                const j = xhr.responseJSON || {};
-                const msg = j.message || 'Could not start the background push';
-                items.forEach(function(it) { finishItem(it.i, { ok: false, marketplace: targets[it.i].marketplace, message: msg }); });
-                dfd.resolve(results);
-            });
+            }
+            function send() {
+                $.ajax({
+                    url: '/price-push-background', method: 'POST', dataType: 'json', contentType: 'application/json',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: JSON.stringify(body)
+                }).done(taken).fail(function(xhr) {
+                    const st = xhr.status || 0;
+                    const j = xhr.responseJSON || {};
+                    const why = j.message ? (j.message + ' (HTTP ' + st + ')') : ('HTTP ' + (st || 'no connection'));
+                    // Clear refusal from the server (validation / not available): retrying cannot help
+                    if (st === 422 || (st === 503 && j.message)) { ppOutboxRemove(entry.id); failAll('Could not start the background push — ' + why); return; }
+                    if (st === 419 || st === 401) { failAll('Session expired — reload the page: this push is saved and is sent automatically after reload (' + why + ')'); return; }
+                    // Ambiguous (timeout / 5xx / network): the server may already have the job — look before sending it again
+                    ppServerHasJob(entry, function(has) {
+                        if (has) { taken(); return; }
+                        if (attempt >= retryDelays.length) {
+                            failAll('Could not reach the server (' + why + '). The push is saved in this browser and is sent again automatically (every retry and on the next page load).');
+                            return;
+                        }
+                        setTimeout(send, retryDelays[attempt++]);
+                    });
+                });
+            }
+            send();
             return dfd.promise();
         }
+
+        // ---- Outbox: background push jobs not yet accepted by the server (survives refresh / closed tab) ----
+        const PP_OUTBOX_KEY = 'price_push_outbox_v1';
+        function ppOutboxAll() {
+            try {
+                const a = JSON.parse(localStorage.getItem(PP_OUTBOX_KEY) || '[]');
+                return Array.isArray(a) ? a : [];
+            } catch (e) { return []; }
+        }
+        function ppOutboxSave(list) {
+            try { localStorage.setItem(PP_OUTBOX_KEY, JSON.stringify(list)); } catch (e) { /* storage full / blocked */ }
+        }
+        function ppOutboxAdd(body) {
+            const entry = { id: 'pp' + Date.now() + Math.random().toString(36).slice(2, 7), at: Date.now(), body: body };
+            const list = ppOutboxAll();
+            list.push(entry);
+            ppOutboxSave(list);
+            return entry;
+        }
+        function ppOutboxRemove(id) {
+            ppOutboxSave(ppOutboxAll().filter(function(e) { return e.id !== id; }));
+        }
+        /** Did the server already take this job? (every item's row was written after the job was created) */
+        function ppServerHasJob(entry, cb) {
+            const sku = String(entry.body.sku || '');
+            $.getJSON('/price-push-status', { sku: sku }).done(function(res) {
+                const rows = (res && res.rows) || {};
+                const items = entry.body.items || [];
+                const has = items.length > 0 && items.every(function(it) {
+                    const r = rows[String(it.marketplace || '').toLowerCase().replace(/\s+/g, '')];
+                    if (!r || !r.at) return false;
+                    return new Date(r.at).getTime() >= (entry.at - 120000) && Math.abs((parseFloat(r.price) || 0) - (parseFloat(it.price) || 0)) < 0.005;
+                });
+                cb(has);
+            }).fail(function() { cb(false); });
+        }
+        let ppOutboxResuming = false;
+        /** Send what a refresh / closed tab / failed request left behind. Runs on page load and every 2 minutes. */
+        function ppOutboxResume() {
+            if (ppOutboxResuming) return;
+            const dayAgo = Date.now() - 24 * 3600 * 1000;
+            const list = ppOutboxAll().filter(function(e) { return e && e.body && e.at > dayAgo; });
+            ppOutboxSave(list);
+            if (!list.length) return;
+            ppOutboxResuming = true;
+            let sent = 0, idx = 0;
+            (function next() {
+                if (idx >= list.length) {
+                    ppOutboxResuming = false;
+                    if (sent) { showToast('Resumed ' + sent + ' interrupted price push job(s) in the background', 'info'); piPendingRefreshSoon(); }
+                    return;
+                }
+                const e = list[idx++];
+                // a job that is still being sent by THIS page (young entry) is not touched
+                if (Date.now() - e.at < 90000 && chpushBg.sending > 0) { next(); return; }
+                ppServerHasJob(e, function(has) {
+                    if (has) { ppOutboxRemove(e.id); next(); return; }
+                    $.ajax({
+                        url: '/price-push-background', method: 'POST', dataType: 'json', contentType: 'application/json',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        data: JSON.stringify(e.body)
+                    }).done(function() { sent++; ppOutboxRemove(e.id); }).fail(function(xhr) {
+                        if (xhr.status === 422) ppOutboxRemove(e.id); // refused for good
+                    }).always(next);
+                });
+            })();
+        }
+        $(function() { setTimeout(ppOutboxResume, 2500); });
+        setInterval(ppOutboxResume, 120000);
 
         function pushOvl30PriceToMarketplace(target) {
             const built = ovl30BuildPushPayload(target);
@@ -10778,15 +10947,76 @@
             return dfd.promise();
         }
 
+        /** Every channel box with a price > 0 (saved or not): what the siblings must get when the SPRICE $ ✓ is clicked. */
+        function chpushCollectAllPrices() {
+            const out = [];
+            $('#chpush-body tr[data-channel]').each(function() {
+                const $chTr = $(this);
+                const price = parseOvl30PushPrice($chTr.find('.chpush-input').val());
+                if (price == null) return;
+                const $row = chpushFindRow($chTr.attr('data-channel'));
+                const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey($chTr.attr('data-channel'));
+                if (!CHSAVE_SUPPORTED.has(mp.toLowerCase())) return;
+                out.push({ mp: mp, price: price });
+            });
+            return out;
+        }
+
+        /** Other SKUs under the same parent (INV 0 included) — the ones the SPRICE $ ✓ must update when Siblings is ticked. */
+        function chpushSiblingSkusFor(sku) {
+            const me = String(sku || '').trim().toUpperCase();
+            const seen = {};
+            return (modalSiblingSkus || []).map(function(s) { return String(s || '').trim(); }).filter(function(s) {
+                const u = s.toUpperCase();
+                if (!s || u === me || u === 'NOT LISTED' || seen[u]) return false;
+                seen[u] = true;
+                return true;
+            });
+        }
+
+        /** Save every channel price on every sibling SKU (3 siblings at a time, each one channel after the other). */
+        function chpushSaveToSiblings(sibSkus, prices) {
+            const dfd = $.Deferred();
+            let saved = 0, failed = 0, next = 0, active = 0;
+            const total = sibSkus.length * prices.length;
+            if (!total) { dfd.resolve({ saved: 0, failed: 0, total: 0 }); return dfd.promise(); }
+            function worker() {
+                if (next >= sibSkus.length) {
+                    if (active === 0) dfd.resolve({ saved: saved, failed: failed, total: total });
+                    return;
+                }
+                const sibSku = sibSkus[next++];
+                let pi = 0;
+                active++;
+                (function step() {
+                    if (pi >= prices.length) { active--; worker(); return; }
+                    const p = prices[pi++];
+                    saveSpriceForSkuMarketplace(sibSku, p.mp, p.price, {}, function(ok) {
+                        if (ok) saved++; else failed++;
+                        step();
+                    });
+                })();
+            }
+            for (let k = 0; k < 3; k++) worker();
+            return dfd.promise();
+        }
+
         /**
          * Save every channel price, then push the targets one by one — in the background.
          * opts.colType: column whose header button started the job.
+         * opts.siblingSkus + opts.siblingPrices: SPRICE $ ✓ with Siblings ticked — every sibling SKU gets the same SPRICE saved
+         *   on every channel (even when the main SKU already had that value) and the push goes to the siblings too.
          */
         function chpushStartJob(targets, opts) {
             opts = opts || {};
             if (!targets.length) return;
             const sku = String(getModalPrimarySku() || targets[0].sku || '');
             const applySiblings = isModalSiblingsApply() ? 1 : 0;
+            const sibSkus = Array.isArray(opts.siblingSkus) ? opts.siblingSkus : [];
+            const sibSaveDfd = sibSkus.length
+                ? chpushSaveToSiblings(sibSkus, opts.siblingPrices || [])
+                : $.Deferred().resolve({ saved: 0, failed: 0, total: 0 }).promise();
+            let sibPushOk = 0, sibPushTot = 0;
             const saveJobs = chpushCollectSaveJobs();
             // Detached buttons: the push helper may restyle them, the real UI is driven by the registry.
             const jobTargets = targets.map(function(t) {
@@ -10814,7 +11044,9 @@
             if (opts.colType) chpushReg(sku).cols[opts.colType] = { state: 'busy', msg: '' };
             chpushPaint();
 
-            chpushRunSaves(sku, saveJobs, applySiblings).always(function(saveRes) {
+            // The siblings' SPRICE is saved before anything is pushed, so every sibling push already has its price in place
+            $.when(chpushRunSaves(sku, saveJobs, applySiblings), sibSaveDfd).always(function(saveRes, sibSaveRes) {
+                sibSaveRes = sibSaveRes || { saved: 0, failed: 0, total: 0 };
                 if (saveRes && saveRes.failed) {
                     showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s) of ' + sku, 'error');
                 } else {
@@ -10851,7 +11083,15 @@
                         : ('Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + jobTargets.length + ' channel(s)'
                             + (savedOnlyNames.length ? ('. Saved only (no API, not pushed): ' + savedOnlyNames.join(', ')) : '')
                             + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''));
-                    showToast(prefix + msg, okResults.length && !errors.length ? 'success' : 'error');
+                    // Siblings: how many sibling SPRICEs were saved / sibling pushes went through (server pushes them with the main SKU)
+                    let sibNote = '';
+                    let sibBad = false;
+                    if (sibSkus.length) {
+                        sibNote = ' | Siblings (' + sibSkus.length + '): SPRICE saved ' + (sibSaveRes.total - sibSaveRes.failed) + '/' + sibSaveRes.total
+                            + (sibPushTot ? (', pushed ' + sibPushOk + '/' + sibPushTot) : '');
+                        sibBad = sibSaveRes.failed > 0 || (sibPushTot > 0 && sibPushOk < sibPushTot);
+                    }
+                    showToast(prefix + msg + sibNote, okResults.length && !errors.length && !sibBad ? 'success' : 'error');
                 }
                 // The server pushes in the background (survives a page refresh); this page just follows the progress
                 ovl30PushInBackground(sku, jobTargets, {
@@ -10860,6 +11100,8 @@
                         const t = jobTargets[i];
                         chpushBg.done++;
                         chpushBgUpdate();
+                        const sm = /\(\+(\d+)\/(\d+) siblings\)/.exec(String(result.message || ''));
+                        if (sm) { sibPushOk += parseInt(sm[1], 10) || 0; sibPushTot += parseInt(sm[2], 10) || 0; }
                         if (result.ok) {
                             okResults.push(result);
                             lastMsg = result.message || '';
@@ -11025,6 +11267,7 @@
                 });
                 row.update({ push_failed_count: sum });
             });
+            updatePushPendingHeaderCount();
         }
         function piSkuFailLoad() {
             const skus = piSkuFailSkus();
@@ -14637,6 +14880,7 @@
             const reordered = reorderDataWith10FRFirst(data);
             fullDataset = reordered;
             updateHistHeaderCount();
+            updatePushPendingHeaderCount();
 
             suppressDataLoadedHandler = true;
             table.setData(reordered).then(function() {

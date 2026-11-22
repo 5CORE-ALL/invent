@@ -50,6 +50,9 @@ class PricePushPendingController extends Controller
      */
     public function pushBackground(Request $request, PricePushPendingService $svc)
     {
+        // The job must survive a closed / refreshed browser: never stop because the client went away
+        @ignore_user_abort(true);
+        @set_time_limit(0);
         $sku = trim((string) $request->input('sku'));
         $items = $request->input('items');
         if ($sku === '' || ! is_array($items) || ! $items) {
@@ -78,6 +81,10 @@ class PricePushPendingController extends Controller
                     $extras[$k] = $it[$k];
                 }
             }
+            // Remembered so a takeover / hourly retry also pushes the siblings
+            if (! empty($it['apply_siblings']) && filter_var($it['apply_siblings'], FILTER_VALIDATE_BOOLEAN)) {
+                $extras['apply_siblings'] = 1;
+            }
             $payload = array_merge($it, ['sku' => $itemSku, 'marketplace' => $mp, 'price' => $price]);
             $channel = (string) ($it['channel'] ?? '');
             // "Queued" rows are what the page polls; they also make the hourly retry take over if this process dies
@@ -88,34 +95,13 @@ class PricePushPendingController extends Controller
             return response()->json(['success' => false, 'message' => 'Nothing to push (price must be > 0)'], 422);
         }
 
-        // Runs after the response has been sent (php-fpm: fastcgi_finish_request) — survives a refresh / closed tab
-        app()->terminating(function () use ($jobs, $svc, $user, $by) {
+        // SEQUENTIAL QUEUE: the rows above ("Queued") are the queue. Exactly one worker at a time drains it, oldest first
+        // (first in, first out) — this request's worker, or whichever worker is already running, or the per-minute
+        // price-push:run-queued if that one died. Runs after the response was sent, so a refresh / closed tab changes nothing.
+        app()->terminating(function () use ($svc) {
             @ignore_user_abort(true);
             @set_time_limit(0);
-            foreach ($jobs as $j) {
-                try {
-                    $req = Request::create('/cvr-master-push-price', 'POST', $j['payload']);
-                    if ($user) {
-                        $req->setUserResolver(fn () => $user); // "pushed by" in the push history
-                    }
-                    [$ok, $message, $body] = $svc->runPush($j['payload'], $req);
-                } catch (\Throwable $e) {
-                    $ok = false;
-                    $message = $e->getMessage() ?: 'Push exception';
-                    $body = [];
-                }
-                $row = $svc->record($j['sku'], $j['marketplace'], $j['channel'], $j['price'], $j['extras'], $ok, (string) $message, $by);
-                Cache::put(
-                    'price_push_result:' . strtoupper($j['sku']) . '|' . PricePushPendingService::key($j['marketplace']),
-                    ['message' => (string) $message, 'saved_only' => ! empty($body['saved_only'])],
-                    now()->addMinutes(30)
-                );
-                if ($row && ! $ok && $row->alerted_at === null) {
-                    if ($svc->sendAlert([$row], 'A channel price could not be pushed. It will be retried every hour.')) {
-                        $row->forceFill(['alerted_at' => now()])->save();
-                    }
-                }
-            }
+            $svc->drainQueue();
         });
 
         return response()->json(['success' => true, 'queued' => count($jobs)]);
@@ -137,6 +123,7 @@ class PricePushPendingController extends Controller
                 'price' => $r->price,
                 'message' => $cached['message'] ?? null,
                 'saved_only' => ! empty($cached['saved_only']),
+                'at' => optional($r->last_attempt_at)->toIso8601String(), // lets the page tell whether the server got its job
             ];
         }
 
