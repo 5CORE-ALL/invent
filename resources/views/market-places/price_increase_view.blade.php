@@ -8180,7 +8180,7 @@
 
         function saveModalSpriceForRow($row, sprice, done, opts) {
             opts = opts || {};
-            const sku = getModalPrimarySku() || $row.attr('data-sku');
+            const sku = opts.sku || getModalPrimarySku() || $row.attr('data-sku');
             const marketplace = $row.attr('data-marketplace');
             const lp = parseFloat($row.attr('data-lp')) || 0;
             const ad = parseFloat($row.attr('data-ad')) || 0;
@@ -8246,8 +8246,9 @@
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
-                    // Promo/CPN applies set skipPairSync so Temu does not copy to Temu2 / all
-                    if (!opts.skipPairSync) {
+                    // Promo/CPN applies set skipPairSync so Temu does not copy to Temu2 / all.
+                    // Background saves (opts.sku) must not touch the modal once it shows another SKU.
+                    if (!opts.skipPairSync && (!opts.sku || opts.sku === getModalPrimarySku())) {
                         if (isTemuMp) {
                             syncTemuPairedSpriceInModal(mpLower, sprice);
                         }
@@ -9846,7 +9847,10 @@
                 sku: target.sku,
                 price: pushPrice,
                 marketplace: target.marketplace,
-                apply_siblings: siblingsApplyPayload(pushPrice),
+                // Background jobs snapshot the siblings toggle when they start (target.applySiblings)
+                apply_siblings: (target.applySiblings !== undefined)
+                    ? (target.applySiblings && pushPrice > 0 ? 1 : 0)
+                    : siblingsApplyPayload(pushPrice),
                 _token: '{{ csrf_token() }}'
             };
             // Doba: Self Pick = SPRICE − Ship (same as /doba-tabulator)
@@ -9873,6 +9877,7 @@
                         .prop('disabled', true);
                     return {
                         ok: true,
+                        sku: target.sku,
                         savedOnly: !!response.saved_only,
                         marketplace: target.marketplace,
                         message: response.message,
@@ -10217,6 +10222,8 @@
             const list = Array.isArray(pushedTargets) ? pushedTargets : [];
             list.forEach(function(t) {
                 if (!t || !t.ok) return;
+                // Background pushes can finish after the modal moved to another SKU — never patch that SKU's rows
+                if (t.sku && String(t.sku) !== String(getModalPrimarySku() || '')) return;
                 const $tr = t.$tr && t.$tr.length
                     ? t.$tr
                     : $('#ovl30DetailsTableBody tr').filter(function() {
@@ -10492,6 +10499,8 @@
             });
             html += '</div>';
             $('#chpush-body').html(html);
+            chpushRenderedSku = String(getModalPrimarySku() || '');
+            chpushPaint(); // restore tick / triangle / spinner of pushes that ran (or still run) in the background
         }
 
         /** Build a push target from a row in the Channels modal (reuses the SKU modal row for Doba/Temu context). */
@@ -10580,9 +10589,96 @@
             }
         }
 
-        /** Persist every changed channel price so it is prefilled next time (until it is changed again). */
-        function chpushSaveAllSprices() {
-            const dfd = $.Deferred();
+        // ---- Background-safe push jobs -------------------------------------------------------------
+        // A job keeps running when the Channels modal (or the SKU modal) is closed: everything it needs is
+        // snapshotted when it starts and its progress lives in this registry, not in the modal's DOM.
+        const chpushRegistry = {};   // sku -> { rows: { channel: {state,msg,price} }, cols: { type: {state,msg} } }
+        const chpushRunning = {};    // sku -> number of running jobs
+        const chpushBg = { jobs: 0, done: 0, total: 0, sku: '' };
+        let chpushRenderedSku = '';
+        const CHPUSH_ALL_HTML = '<i class="fas fa-upload me-1"></i> Push All';
+
+        function chpushReg(sku) {
+            return chpushRegistry[sku] || (chpushRegistry[sku] = { rows: {}, cols: {} });
+        }
+
+        function chpushSetRow(sku, channel, state, msg, price) {
+            chpushReg(sku).rows[channel] = { state: state, msg: msg || '', price: price };
+            chpushPaint();
+        }
+
+        function chpushSetCol(sku, type, state, msg) {
+            chpushReg(sku).cols[type] = { state: state, msg: msg || '' };
+            chpushPaint();
+        }
+
+        /** Draw registry state onto the open Channels modal (no-op while it is closed / shows another SKU). */
+        function chpushPaint() {
+            const sku = chpushRenderedSku;
+            if (!sku || !$('#chpush-body .chpush-card').length) return;
+            const reg = chpushReg(sku);
+            $('#chpush-body tr[data-channel]').each(function() {
+                const $tr = $(this);
+                const ch = String($tr.attr('data-channel'));
+                const e = reg.rows[ch];
+                const $btn = $tr.find('.chpush-btn');
+                if (!e) { chpushSetBtnState($btn, 'idle'); return; }
+                if (e.state === 'busy') { chpushSetBtnState($btn, 'busy'); return; }
+                // tick / triangle only stay while the typed price is still the one that was pushed
+                const typed = parseOvl30PushPrice($tr.find('.chpush-input').val());
+                if (typed == null || e.price == null || Math.abs(typed - e.price) >= 0.005) {
+                    delete reg.rows[ch];
+                    chpushSetBtnState($btn, 'idle');
+                    return;
+                }
+                chpushSetBtnState($btn, e.state, e.msg);
+            });
+            $('#chpush-body .chpush-col-btn').each(function() {
+                const $colBtn = $(this);
+                const $card = $colBtn.closest('.chpush-card');
+                const type = String($card.attr('data-type') || '');
+                const e = reg.cols[type];
+                if (!e) { chpushSetBtnState($colBtn, 'idle'); return; }
+                if (e.state === 'busy') { chpushSetBtnState($colBtn, 'busy'); return; }
+                if ($card.find('.chpush-btn[data-pushable="1"]').not('.btn-success, .btn-danger').length) {
+                    delete reg.cols[type];
+                    chpushSetBtnState($colBtn, 'idle');
+                    return;
+                }
+                chpushSetBtnState($colBtn, e.state, e.msg);
+            });
+            const $all = $('#chpush-all-btn');
+            if ((chpushRunning[sku] || 0) > 0) {
+                $all.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Pushing...');
+            } else {
+                $all.prop('disabled', false).html(CHPUSH_ALL_HTML);
+            }
+        }
+
+        /** Floating progress badge — visible while pushes run after the modal is closed. */
+        function chpushBgUpdate() {
+            let $b = $('#chpush-bg-badge');
+            if (!chpushBg.jobs) { $b.remove(); return; }
+            if (!$b.length) {
+                $b = $('<div id="chpush-bg-badge"></div>').css({
+                    position: 'fixed', right: '16px', bottom: '16px', zIndex: 2100, padding: '8px 14px',
+                    background: '#0d6efd', color: '#fff', borderRadius: '8px', fontSize: '13px',
+                    boxShadow: '0 4px 14px rgba(0,0,0,.25)'
+                }).appendTo('body');
+            }
+            $b.html('<i class="fas fa-spinner fa-spin me-2"></i>Pushing prices… ' + chpushBg.done + '/' + chpushBg.total
+                + ' <small style="opacity:.8">(' + chpushEsc(chpushBg.sku) + ')</small>');
+        }
+
+        window.addEventListener('beforeunload', function(e) {
+            if (chpushBg.jobs > 0) {
+                e.preventDefault();
+                e.returnValue = 'Prices are still being pushed. Leaving now will stop the remaining pushes.';
+            }
+        });
+
+        /** Snapshot of every changed channel price that should be saved for next time. */
+        function chpushCollectSaveJobs() {
             const jobs = [];
             $('#chpush-body tr[data-channel]').each(function() {
                 const $chTr = $(this);
@@ -10596,6 +10692,12 @@
                 if (current != null && Math.abs(current - price) < 0.005) return; // already saved with this value
                 jobs.push({ $row: $row, mp: mp, price: price });
             });
+            return jobs;
+        }
+
+        /** Save the snapshot sequentially (explicit SKU, so it is safe even after the modal moved on). */
+        function chpushRunSaves(sku, jobs, applySiblings) {
+            const dfd = $.Deferred();
             let idx = 0, saved = 0, failed = 0;
             (function next() {
                 if (idx >= jobs.length) { dfd.resolve({ saved: saved, failed: failed }); return; }
@@ -10603,67 +10705,96 @@
                 saveModalSpriceForRow(j.$row, j.price, function(ok) {
                     if (ok) {
                         saved++;
-                        j.$row.find('.editable-sprice').val(j.price.toFixed(2)).trigger('input');
-                        ovl30ModalData.forEach(function(item) {
-                            if (String(item.marketplace || '') === j.mp) item.sprice = j.price;
-                        });
+                        if (String(getModalPrimarySku() || '') === sku) {
+                            j.$row.find('.editable-sprice').val(j.price.toFixed(2)).trigger('input');
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === j.mp) item.sprice = j.price;
+                            });
+                        }
                     } else {
                         failed++;
                     }
                     next();
-                });
+                }, { sku: sku, applySiblings: applySiblings });
             })();
             return dfd.promise();
         }
 
-        /** Save every channel's price, then push the given targets one by one. */
-        function chpushPushMany(targets, $trigger, opts) {
+        /**
+         * Save every channel price, then push the targets one by one — in the background.
+         * opts.colType: column whose header button started the job.
+         */
+        function chpushStartJob(targets, opts) {
             opts = opts || {};
-            const origHtml = $trigger.html();
-            const isColBtn = $trigger.hasClass('chpush-col-btn');
-            if (isColBtn) chpushSetBtnState($trigger, 'busy');
-            else $trigger.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i> Pushing...');
-            targets.forEach(function(t) { chpushSetBtnState(t.$btn, 'busy'); });
+            if (!targets.length) return;
+            const sku = String(getModalPrimarySku() || targets[0].sku || '');
+            const applySiblings = isModalSiblingsApply() ? 1 : 0;
+            const saveJobs = chpushCollectSaveJobs();
+            // Detached buttons: the push helper may restyle them, the real UI is driven by the registry.
+            const jobTargets = targets.map(function(t) {
+                return {
+                    sku: t.sku, marketplace: t.marketplace, price: t.price, priceTyped: t.price,
+                    channel: t.channel, $tr: t.$tr, $btn: $('<button type="button"></button>'),
+                    applySiblings: applySiblings
+                };
+            });
 
-            chpushSaveAllSprices().always(function(saveRes) {
+            chpushRunning[sku] = (chpushRunning[sku] || 0) + 1;
+            chpushBg.jobs++;
+            chpushBg.total += jobTargets.length;
+            chpushBg.sku = sku;
+            chpushBgUpdate();
+            jobTargets.forEach(function(t) { chpushReg(sku).rows[t.channel] = { state: 'busy', msg: '', price: t.priceTyped }; });
+            if (opts.colType) chpushReg(sku).cols[opts.colType] = { state: 'busy', msg: '' };
+            chpushPaint();
+
+            chpushRunSaves(sku, saveJobs, applySiblings).always(function(saveRes) {
                 if (saveRes && saveRes.failed) {
-                    showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s)', 'error');
+                    showToast('Could not save the suggested price for ' + saveRes.failed + ' channel(s) of ' + sku, 'error');
                 }
                 let idx = 0;
                 const okResults = [];
                 const errors = [];
                 const errorDetails = [];
                 const savedOnlyNames = [];
+                let lastMsg = '';
                 (function next() {
-                    if (idx >= targets.length) {
-                        if (isColBtn) {
-                            chpushSetBtnState($trigger, errors.length ? 'fail' : 'ok',
-                                errors.length ? ('Failed: ' + errors.join(', ')) : 'All pushed');
-                        } else {
-                            $trigger.prop('disabled', false).html(origHtml);
+                    if (idx >= jobTargets.length) {
+                        chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
+                        chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
+                        if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.total = 0; }
+                        chpushBgUpdate();
+                        if (opts.colType) {
+                            chpushReg(sku).cols[opts.colType] = errors.length
+                                ? { state: 'fail', msg: 'Failed: ' + errors.join(', ') }
+                                : { state: 'ok', msg: 'All pushed' };
                         }
+                        chpushPaint();
                         if (okResults.length) reloadOvl30ModalAfterPush(okResults);
-                        showToast(
-                            'Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + targets.length + ' channel(s)'
+                        const modalOpen = $('#ovl30ChannelsPushModal').hasClass('show');
+                        const prefix = modalOpen ? '' : (sku + ': ');
+                        const msg = jobTargets.length === 1
+                            ? (errors.length ? ('Failed: ' + errorDetails[0]) : (lastMsg || (savedOnlyNames.length ? 'Saved (not pushed)' : 'Price pushed')))
+                            : ('Pushed ' + (okResults.length - savedOnlyNames.length) + '/' + jobTargets.length + ' channel(s)'
                                 + (savedOnlyNames.length ? ('. Saved only (no API, not pushed): ' + savedOnlyNames.join(', ')) : '')
-                                + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''),
-                            okResults.length && !errors.length ? 'success' : 'error'
-                        );
-                        if (typeof opts.done === 'function') opts.done(okResults, errors);
+                                + (errorDetails.length ? '. Failed: ' + errorDetails.join(' | ') : ''));
+                        showToast(prefix + msg, okResults.length && !errors.length ? 'success' : 'error');
                         return;
                     }
-                    const t = targets[idx++];
+                    const t = jobTargets[idx++];
                     pushOvl30PriceToMarketplace(t).then(function(result) {
+                        chpushBg.done++;
+                        chpushBgUpdate();
                         if (result.ok) {
                             okResults.push(result);
-                            t.$btn.closest('tr').data('pushedVal', t.priceTyped);
+                            lastMsg = result.message || '';
                             if (result.savedOnly) savedOnlyNames.push(t.channel);
-                            chpushSetBtnState(t.$btn, 'ok', result.savedOnly ? ('Saved, not pushed — ' + (result.message || '')) : (result.message || 'Pushed'));
+                            chpushSetRow(sku, t.channel, 'ok',
+                                result.savedOnly ? ('Saved, not pushed — ' + (result.message || '')) : (result.message || 'Pushed'), t.priceTyped);
                         } else {
                             errors.push(t.channel);
                             errorDetails.push(t.channel + ' — ' + String(result.message || 'failed').slice(0, 140));
-                            t.$btn.closest('tr').data('pushedVal', t.priceTyped);
-                            chpushSetBtnState(t.$btn, 'fail', result.message);
+                            chpushSetRow(sku, t.channel, 'fail', result.message, t.priceTyped);
                         }
                         next();
                     });
@@ -10676,30 +10807,14 @@
             const targets = [];
             $scope.find('tr[data-channel]').each(function() {
                 const t = chpushTargetFor($(this));
-                if (t) { t.priceTyped = t.price; targets.push(t); }
+                if (t) targets.push(t);
             });
             return targets;
         }
 
         // Editing a price (or autofill from another price) resets tick / triangle so it can be pushed again
         $(document).on('input', '#ovl30ChannelsPushModal .chpush-input', function() {
-            $('#chpush-body tr[data-channel]').each(function() {
-                const $tr = $(this);
-                const $btn = $tr.find('.chpush-btn');
-                if (!$btn.hasClass('btn-success') && !$btn.hasClass('btn-danger')) return;
-                const typed = parseOvl30PushPrice($tr.find('.chpush-input').val());
-                const pushed = $tr.data('pushedVal');
-                if (pushed == null || typed == null || Math.abs(typed - pushed) >= 0.005) {
-                    chpushSetBtnState($btn, 'idle');
-                    $tr.removeData('pushedVal');
-                }
-            });
-            $('#chpush-body .chpush-col-btn.btn-success, #chpush-body .chpush-col-btn.btn-danger').each(function() {
-                const $card = $(this).closest('.chpush-card');
-                if ($card.find('.chpush-btn[data-pushable="1"]').not('.btn-success, .btn-danger').length) {
-                    chpushSetBtnState($(this), 'idle');
-                }
-            });
+            chpushPaint();
         });
 
         // Push a single channel
@@ -10716,22 +10831,7 @@
                 + ' for SKU: ' + target.sku + siblingsApplyLabel() + '?')) {
                 return;
             }
-            target.priceTyped = target.price;
-            chpushSetBtnState(target.$btn, 'busy');
-            chpushSaveAllSprices().always(function() {
-                pushOvl30PriceToMarketplace(target).then(function(result) {
-                    if (result.ok) {
-                        $chTr.data('pushedVal', target.priceTyped);
-                        chpushSetBtnState(target.$btn, 'ok', result.savedOnly ? ('Saved, not pushed — ' + (result.message || '')) : (result.message || 'Pushed'));
-                        showToast(result.message || (result.savedOnly ? 'Saved (not pushed)' : 'Price pushed'), 'success');
-                        reloadOvl30ModalAfterPush([result]);
-                    } else {
-                        $chTr.data('pushedVal', target.priceTyped);
-                        chpushSetBtnState(target.$btn, 'fail', result.message);
-                        showToast(result.message || 'Failed to push price', 'error');
-                    }
-                });
-            });
+            chpushStartJob([target], {});
         });
 
         // Push every channel in one column
@@ -10750,14 +10850,13 @@
                 + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
                 return;
             }
-            chpushPushMany(targets, $colBtn);
+            chpushStartJob(targets, { colType: type });
         });
 
         // Push all channels together (every channel with a pushable suggested price)
         $(document).on('click', '#chpush-all-btn', function(e) {
             e.preventDefault();
-            const $allBtn = $(this);
-            if ($allBtn.prop('disabled')) return;
+            if ($(this).prop('disabled')) return;
             const targets = chpushCollectTargets($('#chpush-body'));
             if (!targets.length) {
                 showToast('No channels have a pushable suggested price (> 0)', 'error');
@@ -10767,7 +10866,7 @@
                 + targets.map(function(t) { return t.channel + ' $' + t.price.toFixed(2); }).join(', '))) {
                 return;
             }
-            chpushPushMany(targets, $allBtn);
+            chpushStartJob(targets, {});
         });
 
         // ==================== LMP COMPETITORS MODAL ====================
