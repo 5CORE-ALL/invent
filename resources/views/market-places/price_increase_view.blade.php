@@ -8645,6 +8645,7 @@
          *   B2C = X · B2B and C2C = 0.75 × X · High Shipping = X + Shipping Master Diff (Ship BB − Ship).
          */
         function chModalGroupOfKey(key) {
+            if (CHPUSH_NOSHIP_KEYS.has(key)) return CHPUSH_NOSHIP_GROUP;
             const src = window.PI_CHANNELS_BY_TYPE || {};
             const overrides = { alibaba: 'B2B' };
             const moves = { dropship: 'B2B', ds: 'B2B', sheets: 'C2C' };
@@ -8661,6 +8662,7 @@
         function chBulkSpriceFor(base, $tr) {
             const x = Math.max(0.01, +Number(base).toFixed(2));
             const group = String(chModalGroupOfKey(chpushKey($tr && $tr.attr('data-marketplace'))) || '').toLowerCase().trim();
+            if (group === CHPUSH_NOSHIP_GROUP.toLowerCase()) return chpushNoShipPrice(x);
             if (group === 'b2b' || group === 'c2c') return Math.max(0.01, +(x * 0.75).toFixed(2));
             if (group === 'high shipping') {
                 const d = chpushShipDiff();
@@ -8689,6 +8691,7 @@
                 'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)?\n\n'
                 + 'B2C = $' + basePrice.toFixed(2)
                 + '\nB2B / C2C = $' + (basePrice * 0.75).toFixed(2) + ' (× 0.75)'
+                + '\nB2B without ship = $' + chpushNoShipPrice(basePrice).toFixed(2) + ' (× 0.75 − Ship $' + chpushShipAmount().toFixed(2) + ')'
                 + '\nHigh Shipping = $' + (hsDiff != null ? Math.max(0, basePrice + hsDiff).toFixed(2) + ' (+ Diff ' + hsDiff.toFixed(2) + ')' : basePrice.toFixed(2))
                 + siblingsApplyLabel()
             )) return;
@@ -10668,6 +10671,27 @@
             return null;
         }
 
+        /** Channels where no shipping is applied in the SKU modal (ship = 0): they get their own "B2B without ship" column. */
+        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg', 'faire', 'ppower']);
+        const CHPUSH_NOSHIP_GROUP = 'B2B without ship';
+        /** Shipping $ of the open SKU (AliExpress row, else Amazon row); 0 when unknown. */
+        function chpushShipAmount() {
+            const rows = Array.isArray(ovl30ModalData) ? ovl30ModalData : [];
+            for (const want of ['aliexpress', 'amazon']) {
+                for (let i = 0; i < rows.length; i++) {
+                    if (chpushKey(rows[i] && rows[i].marketplace) === want) {
+                        const sh = parseFloat(rows[i].ship);
+                        if (isFinite(sh) && sh > 0) return sh;
+                    }
+                }
+            }
+            return 0;
+        }
+        /** B2B price less ship: 0.75 × X − Ship (never below $0.01). */
+        function chpushNoShipPrice(x) {
+            return Math.max(0.01, +((x * 0.75) - chpushShipAmount()).toFixed(2));
+        }
+
         /** SKU-modal table row for a Channel Master channel (or null when this SKU has no such row). */
         function chpushFindRow(channelName) {
             const key = chpushKey(channelName);
@@ -10692,16 +10716,23 @@
             Object.keys(srcGroups).forEach(function(t) {
                 (srcGroups[t] || []).forEach(function(name) {
                     const nameKey = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
-                    const target = channelOverride[nameKey] || typeMoves[String(t).toLowerCase().trim()] || t;
+                    let target = channelOverride[nameKey] || typeMoves[String(t).toLowerCase().trim()] || t;
+                    if (CHPUSH_NOSHIP_KEYS.has(chpushKey(name))) target = CHPUSH_NOSHIP_GROUP; // no ship applied
                     (groups[target] = groups[target] || []).push(name);
                 });
             });
-            ['B2B', 'C2C'].forEach(function(t) {
+            ['B2B', 'C2C', CHPUSH_NOSHIP_GROUP].forEach(function(t) {
                 if (groups[t]) {
                     groups[t].sort(function(a, b) { return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }); });
                 }
             });
-            const types = Object.keys(groups);
+            let types = Object.keys(groups);
+            // "B2B without ship" sits right after B2B
+            if (groups[CHPUSH_NOSHIP_GROUP]) {
+                types = types.filter(function(t) { return t !== CHPUSH_NOSHIP_GROUP; });
+                const bi = types.findIndex(function(t) { return String(t).toLowerCase() === 'b2b'; });
+                types.splice(bi >= 0 ? bi + 1 : types.length, 0, CHPUSH_NOSHIP_GROUP);
+            }
             $('#chpush-sku').text(getModalPrimarySku() || '');
             if (!types.length) {
                 $('#chpush-body').html('<div class="text-muted text-center py-3">No channels found.</div>');
@@ -10742,7 +10773,9 @@
                             return ' <small class="text-muted fw-normal" title="Aliexpress price + Shipping Master Diff (Ship BB − Ship)">'
                                 + (d != null ? ('Diff ' + (d >= 0 ? '+' : '−') + '$' + Math.abs(d).toFixed(2)) : 'Diff n/a') + '</small>';
                         })()
-                        : '')
+                        : (type === CHPUSH_NOSHIP_GROUP
+                            ? ' <small class="text-muted fw-normal" title="0.75 × price − Ship (no shipping applied on these channels)">Ship −$' + chpushShipAmount().toFixed(2) + '</small>'
+                            : ''))
                     + '</span><span class="d-flex align-items-center gap-2"><span class="badge bg-secondary">' + names.length + '</span>'
                     + '<button type="button" class="btn btn-sm btn-primary chpush-col-btn" data-pushable="' + (anyPushable ? '1' : '0') + '"'
                     + (anyPushable ? ' title="Push all ' + chpushEsc(type) + ' channels"' : ' disabled title="No pushable channels in this column"')
@@ -10791,6 +10824,8 @@
                 const b2bVal = (isFinite(x) && x > 0) ? (x * 0.75).toFixed(2) : '';
                 typeInputs('b2b').val(b2bVal);
                 typeInputs('c2c').val(b2bVal); // C2C follows the B2B price
+                // B2B without ship = B2B price less ship
+                typeInputs(CHPUSH_NOSHIP_GROUP.toLowerCase()).val((isFinite(x) && x > 0) ? chpushNoShipPrice(x).toFixed(2) : '');
 
                 // High Shipping channels = Aliexpress price + Shipping Master Diff (Ship BB − Ship)
                 const diff = chpushShipDiff();
