@@ -31,6 +31,12 @@ class NewTemuoneSuggestedPriceStore
 
     public const KEY_LMP_ALERT = 'NTO_LMP_ALERT';
 
+    /**
+     * The S PRC was typed / matched by hand (Price Alerts modal). A manual S PRC stays as it is: the Dil / Std rules and the
+     * LMP cap do not recompute it. Any normal save or clear of the SKU's S PRC removes the mark.
+     */
+    public const KEY_MANUAL = 'NTO_MANUAL_SPRICE';
+
     /** S Promo Base Prc the page painted (Std − 12% − Disc − ship disc). The headless push sends this as the base. */
     public const KEY_S_PROMO_BASE = 'NTO_S_PROMO_BASE';
 
@@ -128,6 +134,13 @@ class NewTemuoneSuggestedPriceStore
     {
         $fp = $this->fingerprint($inputs, $dilRules, $cvrAdj);
         $saved = $this->savedValue($sku);
+        if (! empty($saved[self::KEY_MANUAL]) && is_numeric($saved[self::KEY_SPRICE] ?? null) && (float) $saved[self::KEY_SPRICE] > 0) {
+            $manual = $this->hydrateSaved($saved);
+            $manual['use_saved'] = true;
+            $manual['manual'] = true;
+
+            return $this->withPushMeta($manual, $saved);
+        }
         if ($this->isReusable($saved, $fp)) {
             return $this->withPushMeta($this->hydrateSaved($saved), $saved);
         }
@@ -328,7 +341,8 @@ class NewTemuoneSuggestedPriceStore
         float $lp = 0.0,
         float $ship = 0.0,
         float $sprcDil = 0.0,
-        array $labels = []
+        array $labels = [],
+        bool $manual = false
     ): void {
         $sku = trim($sku);
         $sprice = round($sprice, 2);
@@ -360,6 +374,7 @@ class NewTemuoneSuggestedPriceStore
             'lmp_alert' => false,
             'capped' => abs($uncapped - $sprice) > 0.01,
             'use_saved' => true,
+            'manual' => $manual,
         ], $fp);
     }
 
@@ -603,6 +618,7 @@ class NewTemuoneSuggestedPriceStore
             self::KEY_CAPPED => $computed['capped'] ? true : null,
             self::KEY_LABELS => $computed['labels'] !== [] ? $computed['labels'] : null,
             self::KEY_LMP_ALERT => $computed['lmp_alert'] ? true : null,
+            self::KEY_MANUAL => ! empty($computed['manual']) ? true : null,
         ];
         if ($this->samePersisted($saved, $patch, $fp)) {
             return;
@@ -617,6 +633,9 @@ class NewTemuoneSuggestedPriceStore
     private function samePersisted(array $saved, array $patch, string $fp): bool
     {
         if (($saved[self::KEY_FINGERPRINT] ?? null) !== $fp) {
+            return false;
+        }
+        if (! empty($saved[self::KEY_MANUAL]) !== ! empty($patch[self::KEY_MANUAL])) {
             return false;
         }
         foreach ([self::KEY_SGROI, self::KEY_SPRICE, self::KEY_S_BASE, self::KEY_SPRICE_DIL] as $field) {

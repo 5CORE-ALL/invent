@@ -650,6 +650,14 @@
                     <span class="badge fs-6 p-2" id="newtemuone-price-alert-badge"
                         style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                         title="Price alerts: SKUs whose Temu Price is higher than the LMP or than their Amz / eBay 1-3 / TikTok 1-2 price. Click to filter."><i class="fas fa-exclamation-triangle"></i> Price Alerts: 0</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="newtemuone-price-alert-open-btn"
+                        style="display:none;" title="Open the Price Alerts modal (edit S PRC / match to eBay S PRC)">
+                        <i class="fas fa-edit"></i> S PRC
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger" id="newtemuone-match-price-btn"
+                        title="Match Temu S PRC to the Amz / eBay 1-3 / TikTok 1-2 price, one channel at a time">
+                        <i class="fas fa-equals"></i> Match Price
+                    </button>
                     @include('partials.price-gt-lmp-badge-script')
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemuone-price-lt80-lmp-badge',
@@ -845,6 +853,103 @@
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
                         <i class="fa fa-upload me-1"></i>Up View Data
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Match Price: per compared channel, how many SKUs Temu is priced above, and a button to match Temu S PRC to that channel --}}
+    <div class="modal fade" id="ntoMatchPriceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="fas fa-equals text-danger"></i> Match Price</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2">
+                        Each row compares Temu Price with that channel's price for the same SKU. <strong>Match</strong> sets the Temu S PRC of the SKUs
+                        Temu is priced above to that channel's price (only those SKUs, and only that channel; other S PRC are not touched).
+                        A matched S PRC stays as set, the Dil / Std rules and the LMP cap do not change it. Nothing is pushed to Temu from here.
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="nto-mp-skip-loss" checked>
+                        <label class="form-check-label small" for="nto-mp-skip-loss">Skip SKUs that would lose money at the matched price (SGROI below 0)</label>
+                    </div>
+                    <table class="table table-sm table-bordered align-middle mb-0" style="font-size:13px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Channel</th>
+                                <th class="text-end" title="SKUs that have a price on this channel">Priced</th>
+                                <th class="text-end" title="Temu Price is higher than this channel's price">Temu higher</th>
+                                <th class="text-end" title="Of those, S PRC would be below cost (SGROI &lt; 0) at the channel price">Loss</th>
+                                <th class="text-end" title="Temu higher SKUs whose S PRC already equals this channel's price">Matched</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nto-mp-body"></tbody>
+                    </table>
+                    <div class="small text-muted mt-2" id="nto-mp-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Price Alerts: SKUs whose Temu Price is above the LMP / another channel's price. Edit or match S PRC to eBay S PRC. --}}
+    <div class="modal fade" id="ntoPriceAlertModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-danger"></i> Price Alerts <span class="badge bg-danger" id="nto-pa-count">0</span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <label class="small fw-semibold mb-0" for="nto-pa-source">eBay S PRC to use</label>
+                        <select id="nto-pa-source" class="form-select form-select-sm" style="width:auto;">
+                            <option value="lowest">Lowest of eBay 1 / 2 / 3</option>
+                            <option value="ebay1">eBay 1</option>
+                            <option value="ebay2">eBay 2</option>
+                            <option value="ebay3">eBay 3</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-primary" id="nto-pa-match-btn"
+                            title="Clears every S PRC first, then sets the S PRC of each SKU below to its eBay S PRC">
+                            <i class="fas fa-equals"></i> Match Temu price to eBay S PRC
+                        </button>
+                        <span class="small text-muted" id="nto-pa-status"></span>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        <strong>Match</strong> first clears the saved S PRC on every SKU, then sets the S PRC of the SKUs below to the eBay S PRC chosen above
+                        (SKUs with no eBay S PRC are left on the normal rule). The S PRC column is editable: type a price and press Enter / leave the cell to save it
+                        (empty = back to the rule). An edited or matched S PRC stays as typed, the Dil / Std rules and the LMP cap do not change it.
+                        Nothing is pushed to Temu from here.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" id="nto-pa-table" style="font-size:12.5px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th class="text-end">Temu Price</th>
+                                    <th class="text-end">LMP</th>
+                                    <th class="text-end">eBay 1</th>
+                                    <th class="text-end">eBay 2</th>
+                                    <th class="text-end">eBay 3</th>
+                                    <th class="text-end">eBay 1 S PRC</th>
+                                    <th class="text-end">eBay 2 S PRC</th>
+                                    <th class="text-end">eBay 3 S PRC</th>
+                                    <th>S PRC</th>
+                                    <th>Alerts</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nto-pa-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1159,6 +1264,11 @@
     function temuSpriceCapCompute(row, rawSprice, extra) {
         extra = extra || {};
         if (!row || row.is_parent_summary) return { sprice: 0, labels: [], lmpAlert: false, lmp: 0 };
+        // Hand-set S PRC (Price Alerts modal): kept exactly as typed / matched, no rule, LMP cap or Std cap on top.
+        if (row.nto_manual_sprice) {
+            const hand = ntoSavedSprice(row);
+            if (hand > 0) return { sprice: hand, labels: [], lmpAlert: false, lmp: 0 };
+        }
         // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode.
         if (ntoIsClearance(row)) {
             const cp = typeof window.ebayClearancePriceForRow === 'function' ? Number(window.ebayClearancePriceForRow(row)) || 0 : 0;
@@ -3001,6 +3111,7 @@
         pairs.forEach(function(p) {
             $(p[0]).css('box-shadow', p[1] ? '0 0 0 3px rgba(13,110,253,0.55)' : 'none');
         });
+        $('#newtemuone-price-alert-open-btn').toggle(!!priceAlertFilterActive);
         // This one paints its own active state (yellow outline) via the shared module.
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.setOutline(
@@ -3737,6 +3848,254 @@
         return ntoTemuAlertTri('Temu price $' + ntoTemuLivePrice(row).toFixed(2) + ' is higher than this '
             + hit.label + ' $' + hit.price.toFixed(2) + (hit.note || ''));
     }
+
+    // ===================== Price Alerts modal: edit S PRC / match Temu S PRC to eBay S PRC =====================
+    function ntoPaEsc(v) {
+        return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function ntoPaMoney(v) {
+        const n = parseFloat(v);
+        return n > 0 ? '$' + n.toFixed(2) : '<span class="text-muted">—</span>';
+    }
+    /** Child SKU rows that carry at least one price alert. */
+    function ntoPaAlertRows() {
+        const out = [];
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d)) return;
+            if (ntoTemuPriceIssues(d).length) out.push({ row: row, d: d });
+        });
+        out.sort(function(a, b) { return temuListingSkuSequence(a.d, b.d); });
+        return out;
+    }
+    /** The eBay S PRC to match: one eBay channel, or the lowest of the three. 0 when there is none. */
+    function ntoPaEbaySprice(d, source) {
+        const vals = { ebay1: parseFloat(d.ebay1_sprice) || 0, ebay2: parseFloat(d.ebay2_sprice) || 0, ebay3: parseFloat(d.ebay3_sprice) || 0 };
+        if (source && source !== 'lowest') return vals[source] > 0 ? vals[source] : 0;
+        const pos = [vals.ebay1, vals.ebay2, vals.ebay3].filter(function(v) { return v > 0; });
+        return pos.length ? Math.min.apply(null, pos) : 0;
+    }
+    function ntoPaRender() {
+        const items = ntoPaAlertRows();
+        document.getElementById('nto-pa-count').textContent = items.length.toLocaleString();
+        const body = document.getElementById('nto-pa-body');
+        if (!items.length) {
+            body.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">No price alerts.</td></tr>';
+            return;
+        }
+        body.innerHTML = items.map(function(it) {
+            const d = it.d;
+            const sku = chPromoSku(d);
+            const sp = temuDisplayedSprice(d);
+            const manual = !!d.nto_manual_sprice;
+            const issues = ntoTemuPriceIssues(d).map(function(i) { return i.label + ' $' + i.price.toFixed(2); }).join(', ');
+            return '<tr data-sku="' + ntoPaEsc(sku) + '">'
+                + '<td class="fw-semibold">' + ntoPaEsc(sku) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(ntoTemuLivePrice(d)) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(temuBadgeLmpValue(d)) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay1_prc) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay2_prc) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay3_prc) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay1_sprice) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay2_sprice) + '</td>'
+                + '<td class="text-end">' + ntoPaMoney(d.ebay3_sprice) + '</td>'
+                + '<td style="min-width:120px;"><input type="number" step="0.01" min="0" class="form-control form-control-sm nto-pa-sprice"'
+                + ' data-sku="' + ntoPaEsc(sku) + '" value="' + (sp > 0 ? sp.toFixed(2) : '') + '"'
+                + (manual ? ' style="border-color:#6f42c1;background:#f6f0ff;" title="Typed / matched by hand"' : ' title="Edit to set your own S PRC"') + '></td>'
+                + '<td class="text-danger" style="font-size:11.5px;">Temu above: ' + ntoPaEsc(issues) + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+    function ntoOpenPriceAlertModal() {
+        ntoPaRender();
+        document.getElementById('nto-pa-status').textContent = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ntoPriceAlertModal')).show();
+    }
+    window.ntoOpenPriceAlertModal = ntoOpenPriceAlertModal;
+
+    /** Save one SKU's hand-set S PRC (0 / empty = clear it, the rule takes over again). */
+    function ntoPaSaveOne(row, price) {
+        const d = row.getData();
+        const sku = chPromoSku(d);
+        const update = price > 0
+            ? { sku: sku, sprice: price, lp: parseFloat(d.lp) || 0, ship: parseFloat(d.temu_ship) || 0, sprc_dil: 0, manual: true }
+            : { sku: sku, sprice: 0 };
+        return ntoSaveSpriceChunks([update]).then(function() {
+            if (price > 0) {
+                row.update(Object.assign(chPromoSpricePatch(price), { nto_manual_sprice: true, sprc_dil: price }));
+            } else {
+                chPromoWipeSpriceRow(row);
+                row.update({ nto_manual_sprice: false });
+            }
+            ntoRepaintNow();
+        });
+    }
+    $(document).on('change', '#nto-pa-body .nto-pa-sprice', function() {
+        const input = this;
+        const sku = input.getAttribute('data-sku');
+        const found = ntoPaAlertRows().filter(function(it) { return chPromoSku(it.d) === sku; })[0];
+        if (!found) return;
+        const raw = String(input.value || '').trim();
+        const price = raw === '' ? 0 : +parseFloat(raw).toFixed(2);
+        if (raw !== '' && !(price >= 0)) { showToast('Enter a valid S PRC', 'error'); return; }
+        const status = document.getElementById('nto-pa-status');
+        input.disabled = true;
+        ntoPaSaveOne(found.row, price).then(function() {
+            showToast(price > 0 ? sku + ' S PRC saved: $' + price.toFixed(2) : sku + ' S PRC cleared (rule applies)', 'success');
+            status.textContent = '';
+            ntoPaRender();
+        }).catch(function() {
+            showToast('Could not save S PRC for ' + sku, 'error');
+            input.disabled = false;
+        });
+    });
+
+    /** Clear every saved S PRC, then set the S PRC of the alert SKUs to their eBay S PRC. */
+    async function ntoPaMatchToEbay() {
+        const source = document.getElementById('nto-pa-source').value;
+        const alerts = ntoPaAlertRows();
+        if (!alerts.length) { showToast('No price alerts to match', 'info'); return; }
+        const matches = [];
+        alerts.forEach(function(it) {
+            const p = ntoPaEbaySprice(it.d, source);
+            if (p > 0) matches.push({ row: it.row, d: it.d, price: p });
+        });
+        if (!matches.length) { showToast('None of the alert SKUs has an eBay S PRC', 'error'); return; }
+        if (!confirm('This clears the saved S PRC on every SKU first, then sets the S PRC of ' + matches.length.toLocaleString()
+            + ' alert SKU(s) to their eBay S PRC.\n\nNothing is pushed to Temu. Continue?')) return;
+
+        const btn = document.getElementById('nto-pa-match-btn');
+        const status = document.getElementById('nto-pa-status');
+        btn.disabled = true;
+        try {
+            // 1) clear the whole S PRC column
+            status.textContent = 'Clearing S PRC…';
+            const wipe = [];
+            const wipeRows = [];
+            chPromoEachTableRow(function(row, d) {
+                if (!chPromoIsChildRow(d)) return;
+                const sku = chPromoSku(d);
+                if (!sku) return;
+                wipe.push({ sku: sku, sprice: 0 });
+                wipeRows.push(row);
+            });
+            await ntoSaveSpriceChunks(wipe);
+            const blocked = table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                wipeRows.forEach(function(row) { chPromoWipeSpriceRow(row); row.update({ nto_manual_sprice: false }); });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            // 2) apply the eBay S PRC
+            status.textContent = 'Applying eBay S PRC…';
+            await ntoSaveSpriceChunks(matches.map(function(m) {
+                return { sku: chPromoSku(m.d), sprice: m.price, lp: parseFloat(m.d.lp) || 0, ship: parseFloat(m.d.temu_ship) || 0, sprc_dil: 0, manual: true };
+            }));
+            if (blocked) table.blockRedraw();
+            try {
+                matches.forEach(function(m) {
+                    m.row.update(Object.assign(chPromoSpricePatch(m.price), { nto_manual_sprice: true, sprc_dil: m.price }));
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            ntoRepaintNow();
+            ntoPaRender();
+            status.textContent = '';
+            showToast('S PRC cleared, then ' + matches.length.toLocaleString() + ' SKU(s) set to their eBay S PRC (' + (alerts.length - matches.length) + ' had none)', 'success');
+        } catch (err) {
+            status.textContent = '';
+            showToast('Match failed: ' + ((err && err.statusText) || (err && err.message) || 'error') + '. Reload the page to see what was saved.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+    // ===================== Match Price modal: one compared channel at a time =====================
+    function ntoMpStats() {
+        const out = {};
+        Object.keys(NTO_TEMU_ALERT_FIELDS).forEach(function(f) {
+            out[f] = { label: NTO_TEMU_ALERT_FIELDS[f], priced: 0, items: [], loss: 0, matched: 0 };
+        });
+        chPromoEachTableRow(function(row, d) {
+            if (!chPromoIsChildRow(d)) return;
+            const hits = {};
+            ntoTemuPriceIssues(d).forEach(function(i) { hits[i.key] = true; });
+            Object.keys(out).forEach(function(f) {
+                const p = parseFloat(d[f]) || 0;
+                if (!(p > 0)) return;
+                out[f].priced++;
+                if (!hits[f]) return;
+                const parts = temuSpriceCalcParts(d, p);
+                const loses = !!(parts && parts.sgroi != null && parts.sgroi < 0);
+                if (loses) out[f].loss++;
+                if (d.nto_manual_sprice && Math.abs(ntoSavedSprice(d) - p) < 0.015) out[f].matched++;
+                out[f].items.push({ row: row, d: d, price: +p.toFixed(2), loses: loses });
+            });
+        });
+        return out;
+    }
+    function ntoMpRender() {
+        const stats = ntoMpStats();
+        document.getElementById('nto-mp-body').innerHTML = Object.keys(stats).map(function(f) {
+            const s = stats[f];
+            const n = s.items.length;
+            return '<tr>'
+                + '<td class="fw-semibold">' + ntoPaEsc(s.label) + '</td>'
+                + '<td class="text-end">' + s.priced.toLocaleString() + '</td>'
+                + '<td class="text-end ' + (n ? 'text-danger fw-bold' : 'text-muted') + '">' + n.toLocaleString() + '</td>'
+                + '<td class="text-end ' + (s.loss ? 'text-warning fw-bold' : 'text-muted') + '">' + s.loss.toLocaleString() + '</td>'
+                + '<td class="text-end">' + s.matched.toLocaleString() + '</td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 nto-mp-apply" data-field="' + f + '"'
+                + (n ? '' : ' disabled') + '>Match to ' + ntoPaEsc(s.label) + '</button></td>'
+                + '</tr>';
+        }).join('');
+    }
+    async function ntoMpApply(field) {
+        const stats = ntoMpStats();
+        const s = stats[field];
+        if (!s) return;
+        const skipLoss = document.getElementById('nto-mp-skip-loss').checked;
+        const todo = s.items.filter(function(it) { return !(skipLoss && it.loses); });
+        const skipped = s.items.length - todo.length;
+        if (!todo.length) { showToast('Nothing to match for ' + s.label + (skipped ? ' (' + skipped + ' would lose money)' : ''), 'info'); return; }
+        if (!confirm('Set the Temu S PRC of ' + todo.length.toLocaleString() + ' SKU(s) to their ' + s.label + ' price'
+            + (skipped ? ' (' + skipped.toLocaleString() + ' skipped: loss)' : '') + '?\n\nNothing is pushed to Temu.')) return;
+        const status = document.getElementById('nto-mp-status');
+        const buttons = document.querySelectorAll('#nto-mp-body .nto-mp-apply');
+        buttons.forEach(function(b) { b.disabled = true; });
+        status.textContent = 'Saving ' + todo.length.toLocaleString() + ' S PRC…';
+        try {
+            await ntoSaveSpriceChunks(todo.map(function(it) {
+                return { sku: chPromoSku(it.d), sprice: it.price, lp: parseFloat(it.d.lp) || 0, ship: parseFloat(it.d.temu_ship) || 0, sprc_dil: 0, manual: true };
+            }));
+            const blocked = table && typeof table.blockRedraw === 'function';
+            if (blocked) table.blockRedraw();
+            try {
+                todo.forEach(function(it) {
+                    it.row.update(Object.assign(chPromoSpricePatch(it.price), { nto_manual_sprice: true, sprc_dil: it.price }));
+                });
+            } finally {
+                if (blocked) table.restoreRedraw();
+            }
+            ntoRepaintNow();
+            showToast(todo.length.toLocaleString() + ' SKU(s): Temu S PRC matched to ' + s.label + (skipped ? ', ' + skipped + ' skipped (loss)' : ''), 'success');
+        } catch (err) {
+            showToast('Match failed: ' + ((err && err.statusText) || (err && err.message) || 'error') + '. Reload the page to see what was saved.', 'error');
+        } finally {
+            status.textContent = '';
+            ntoMpRender();
+        }
+    }
+    function ntoOpenMatchPriceModal() {
+        ntoMpRender();
+        document.getElementById('nto-mp-status').textContent = '';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('ntoMatchPriceModal')).show();
+    }
+    $(document).on('click', '#newtemuone-match-price-btn', function() { ntoOpenMatchPriceModal(); });
+    $(document).on('click', '#nto-mp-body .nto-mp-apply', function() { ntoMpApply(this.getAttribute('data-field')); });
+
+    $(document).on('click', '#nto-pa-match-btn', function() { ntoPaMatchToEbay(); });
+    $(document).on('click', '#newtemuone-price-alert-open-btn', function() { ntoOpenPriceAlertModal(); });
 
     // Live price of the same SKU on the other marketplaces (server: NewTemuoneController::attachMarketplacePrices),
     // shown exactly as each marketplace's own page shows its current price.
@@ -4808,6 +5167,8 @@
                 lmpAlertFilterActive = next.lmpAlert;
                 priceAlertFilterActive = next.priceAlert;
                 applyFilters();
+                // Alert button ON: open the modal (edit S PRC / match to eBay S PRC).
+                if (want === 'priceAlert' && priceAlertFilterActive) ntoOpenPriceAlertModal();
             });
         });
 

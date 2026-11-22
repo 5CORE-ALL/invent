@@ -147,7 +147,7 @@ class NewTemuoneController extends Controller
     {
         try {
             $rows = $this->attachMarketplaceLinks($this->attachMarketplaceIds(
-                $this->attachMarketplacePrices($this->persistSuggestedCatalog()['rows'])
+                $this->attachEbaySprices($this->attachMarketplacePrices($this->persistSuggestedCatalog()['rows']))
             ));
 
             return response()->json(array_merge($rows, $this->parentSummaryRows($rows)));
@@ -156,6 +156,61 @@ class NewTemuoneController extends Controller
 
             return response()->json(['error' => 'Failed to fetch data'], 500);
         }
+    }
+
+    /**
+     * Suggested price (SPRICE) of each SKU on eBay 1 / 2 / 3, as saved by their own pages: ebay1_sprice, ebay2_sprice,
+     * ebay3_sprice (0 when none). Used by the Price Alerts modal to match Temu's S PRC to the eBay S PRC.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachEbaySprices(array $rows): array
+    {
+        $skus = [];
+        foreach ($rows as $r) {
+            $s = trim((string) ($r['sku'] ?? ''));
+            if ($s !== '') {
+                $skus[$s] = true;
+            }
+        }
+        $skus = array_keys($skus);
+        $models = [
+            'ebay1_sprice' => \App\Models\EbayDataView::class,
+            'ebay2_sprice' => \App\Models\EbayTwoDataView::class,
+            'ebay3_sprice' => \App\Models\EbayThreeDataView::class,
+        ];
+        $maps = [];
+        foreach ($models as $field => $model) {
+            $maps[$field] = [];
+            try {
+                if (! $this->hasTable((new $model)->getTable())) {
+                    continue;
+                }
+                foreach (array_chunk($skus, 500) as $chunk) {
+                    foreach ($model::query()->whereIn('sku', $chunk)->get(['sku', 'value']) as $item) {
+                        $val = is_array($item->value) ? $item->value : (json_decode((string) $item->value, true) ?: []);
+                        $sp = $val['SPRICE'] ?? $val['sprice'] ?? null;
+                        $sp = ($sp !== null && $sp !== '' && (float) $sp > 0) ? round((float) $sp, 2) : 0.0;
+                        $key = strtoupper(trim((string) $item->sku));
+                        if ($key !== '' && $sp > 0 && ! isset($maps[$field][$key])) {
+                            $maps[$field][$key] = $sp;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('New Temu One eBay SPRICE lookup failed ('.$field.'): '.$e->getMessage());
+            }
+        }
+        foreach ($rows as &$r) {
+            $key = strtoupper(trim((string) ($r['sku'] ?? '')));
+            foreach (array_keys($models) as $field) {
+                $r[$field] = $maps[$field][$key] ?? 0;
+            }
+        }
+        unset($r);
+
+        return $rows;
     }
 
     /**
@@ -959,6 +1014,7 @@ class NewTemuoneController extends Controller
                     'sroi_percent' => $sroiPercent,
                     'sgroi_percent' => $sgroiPercent,
                     'nto_use_saved' => (bool) ($suggested['use_saved'] ?? false),
+                    'nto_manual_sprice' => (bool) ($suggested['manual'] ?? false),
                     'nto_capped' => (bool) ($suggested['capped'] ?? false),
                     'nto_s_promo_base' => $suggested['s_promo_base'] ?? null,
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
@@ -1074,7 +1130,8 @@ class NewTemuoneController extends Controller
                     (float) ($row['lp'] ?? 0),
                     (float) ($row['ship'] ?? 0),
                     (float) ($row['sprc_dil'] ?? 0),
-                    is_array($row['labels'] ?? null) ? $row['labels'] : []
+                    is_array($row['labels'] ?? null) ? $row['labels'] : [],
+                    ! empty($row['manual'])
                 );
                 $saved++;
             } else {
