@@ -208,8 +208,6 @@
             color: #475569;
             white-space: nowrap;
         }
-        #ovl30DetailsModal #ovl30DetailsTableBody tr.ovl30-recent-hide { display: none !important; }
-        #ovl30DetailsModal.ovl30-show-recent #ovl30DetailsTableBody tr.ovl30-recent-hide { display: table-row !important; opacity: .75; }
         #ovl30DetailsModal .ovl30-tool-group .spm-wrap { display: none; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #cbd5e1; flex-wrap: nowrap; white-space: nowrap; }
         #ovl30DetailsModal .ovl30-tool-group .spm-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 7px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 12px; font-weight: 700; }
         #ovl30DetailsModal .ovl30-tool-group .spm-lbl { font-size: 10px; font-weight: 700; color: #64748b; }
@@ -1902,8 +1900,6 @@
                         </button>
                         <span id="modal-bulk-sprice-metrics" class="spm-wrap"></span>
                     </div>
-                    <button type="button" id="modal-toggle-recent-btn" class="btn btn-sm btn-outline-secondary" style="display:none;height:28px;font-size:12px;"
-                        title="Channels pushed in the last 7 days are hidden (and skipped by the bulk SPRICE / push). Click to show them."></button>
                     <div class="form-check"
                         title="When checked: SPRICE, CPN $, CPN %, DSC, STD→SPRICE and Same $ use the same rules on all sibling SKUs under this parent (incl. INV 0). Preference remembered per SKU. Never applies 0.">
                         <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
@@ -4889,10 +4885,8 @@
                     + '</button>';
                 
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
-                // Channels pushed within the last 7 days are hidden automatically (button in the toolbar shows them)
-                const recentPushed = ovl30IsRecentlyPushed(item);
                 html += `
-                    <tr class="${rowClass}${recentPushed ? ' ovl30-recent-hide' : ''}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
+                    <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-base-price="${parseFloat(item.base_price || item.temu_base_price) || ''}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
@@ -5062,7 +5056,6 @@
             });
             
             $('#ovl30DetailsTableBody').html(html);
-            ovl30UpdateRecentToggle();
             
             // Calculate averages
             // Avg CVR using CVR formula: (Total L30 / Total Views) × 100 — exclude Reverb
@@ -9298,10 +9291,6 @@
                     if ($pp.length) $rows.push($pp);
                 }
             }
-            // Channels hidden because they were pushed in the last 7 days are left alone (unless shown)
-            if (!$('#ovl30DetailsModal').hasClass('ovl30-show-recent')) {
-                return $rows.filter(function($tr) { return !$tr.hasClass('ovl30-recent-hide'); });
-            }
             return $rows;
         }
 
@@ -10200,33 +10189,6 @@
             return (hasR ? '<span style="' + styleForCellColor(color) + '"><i class="fa fa-star"></i> ' + rating.toFixed(1) + '</span>' : '')
                 + (hasC ? ' <span style="font-size:11px;' + styleForCellColor(count < 4 ? '#a00211' : '#6c757d') + '">(' + count.toLocaleString() + ')</span>' : '');
         }
-
-        /** True when this channel's latest push (history) is less than 7 days old → its row is hidden. */
-        function ovl30IsRecentlyPushed(item) {
-            if (!item) return false;
-            let latest = ovl30HistoryDayKey(item.pushed_at_iso || '');
-            (Array.isArray(item.push_history) ? item.push_history : []).forEach(function(h) {
-                const d = ovl30HistoryDayKey(h && h.at);
-                if (d && d > latest) latest = d;
-            });
-            return !!latest && latest >= ovl30HistoryDaysAgoKey(6); // today + the 6 days before
-        }
-        function ovl30UpdateRecentToggle() {
-            const n = $('#ovl30DetailsTableBody tr.ovl30-recent-hide').length;
-            const shown = $('#ovl30DetailsModal').hasClass('ovl30-show-recent');
-            const $b = $('#modal-toggle-recent-btn');
-            if (!n) { $b.hide(); return; }
-            $b.show().html('<i class="fas fa-' + (shown ? 'eye-slash' : 'eye') + '"></i> '
-                + (shown ? 'Hide' : 'Show') + ' pushed &lt; 7d (' + n + ')');
-        }
-        $(document).on('click', '#modal-toggle-recent-btn', function(e) {
-            e.preventDefault();
-            $('#ovl30DetailsModal').toggleClass('ovl30-show-recent');
-            ovl30UpdateRecentToggle();
-        });
-        $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
-            $('#ovl30DetailsModal').removeClass('ovl30-show-recent');
-        });
 
         /** Parse history/push/edit timestamps to YYYY-MM-DD (dynamic calendar day). */
         function ovl30HistoryDayKey(raw) {
