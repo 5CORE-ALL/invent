@@ -2865,6 +2865,12 @@
             return Number.isFinite(nroi) && Number.isFinite(npft) && nroi < 30 && npft < 10;
         }
 
+        /** Monthly Sale = MSL / 4. */
+        function forecastMonthlySale(row) {
+            const msl = parseFloat(row ? row.msl : 0);
+            return Number.isFinite(msl) ? msl / 4 : 0;
+        }
+
         /** Text colour for the MSL and Order cells: MSL > Order = red, MSL < Order = green, equal / n.a. = default. */
         function forecastMslVsOrderColor(row) {
             if (!row || row.is_parent || row.isParent) return '';
@@ -4024,26 +4030,22 @@
                 },
 
                 {
-                    // Monthly Sale = units sold in the last 30 days (same source as the l30 column).
+                    // Monthly Sale = MSL / 4 (same MSL as the MSL column).
                     title: "Monthly Sale",
                     field: "monthly_sale",
                     headerSort: true,
                     hozAlign: "center",
-                    headerTooltip: "Monthly Sale = last 30 days sales (L30)",
+                    headerTooltip: "Monthly Sale = MSL / 4",
                     accessor: function(row) {
-                        const v = parseFloat(row ? row["L30"] : 0);
-                        return Number.isFinite(v) ? v : 0;
+                        return forecastMonthlySale(row);
                     },
                     sorter: function(a, b, aRow, bRow) {
-                        const av = parseFloat((aRow.getData() || {}).L30) || 0;
-                        const bv = parseFloat((bRow.getData() || {}).L30) || 0;
-                        return av - bv;
+                        return forecastMonthlySale(aRow.getData()) - forecastMonthlySale(bRow.getData());
                     },
                     formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        const v = d.L30;
-                        const value = (v === null || v === undefined || v === '') ? 0 : v;
-                        return `<span style="display:block; text-align:center;">${value}</span>`;
+                        const v = forecastMonthlySale(cell.getRow().getData());
+                        const disp = Number.isInteger(v) ? v : (Math.round(v * 10) / 10);
+                        return `<span style="display:block; text-align:center;">${disp}</span>`;
                     }
                 },
 
