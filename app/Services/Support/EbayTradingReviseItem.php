@@ -192,7 +192,7 @@ final class EbayTradingReviseItem
 
             if (! array_key_exists($url, $cache)) {
                 $name = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME);
-                $up = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $url, $name !== '' ? mb_substr(rawurldecode($name), 0, 60) : 'image');
+                $up = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $url, $name !== '' ? mb_substr(rawurldecode($name), 0, 60) : 'image', self::driveFilePath($url));
                 if (($up['success'] ?? false) && ! empty($up['url'])) {
                     $cache[$url] = preg_replace('#^http://#i', 'https://', (string) $up['url']);
                     $out['hosted']++;
@@ -212,6 +212,29 @@ final class EbayTradingReviseItem
         $out['html'] = is_string($converted) ? $converted : $html;
 
         return $out;
+    }
+
+    /**
+     * Files in our own Drive ("/drive/file/{uuid}") are private: opening that address needs a login, so neither eBay nor
+     * a server-side download can read it. Return the file's place on this server instead.
+     */
+    private static function driveFilePath(string $url): ?string
+    {
+        if (! preg_match('#/drive/file/([0-9a-fA-F-]{20,40})(?:[/?\#]|$)#', $url, $m)) {
+            return null;
+        }
+        try {
+            $item = \App\Models\DriveItem::where('uuid', $m[1])->first();
+            if (! $item || $item->isFolder()) {
+                return null;
+            }
+
+            return app(\App\Services\Drive\DriveService::class)->absolutePath($item->disk, $item->path);
+        } catch (\Throwable $e) {
+            Log::warning('Drive picture lookup failed', ['uuid' => $m[1], 'error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 
     /** An absolute, correctly encoded https/http address for a picture link, or null when it cannot be made one. */
@@ -294,6 +317,7 @@ final class EbayTradingReviseItem
         string $authToken,
         string $imageUrl,
         string $pictureName = 'image',
+        ?string $localFile = null,
     ): array {
         // Already an eBay-hosted URL — no need to re-upload
         if (preg_match('#^https?://(i|p)\.ebayimg\.com/#i', $imageUrl)) {
@@ -304,7 +328,8 @@ final class EbayTradingReviseItem
         $imageData = null;
         $contentType = 'image/jpeg';
 
-        $localPath = self::resolveLocalStoragePath($imageUrl);
+        // A file the caller already located on this server (e.g. a private Drive file that needs a login to download).
+        $localPath = ($localFile !== null && is_file($localFile)) ? $localFile : self::resolveLocalStoragePath($imageUrl);
         if ($localPath && file_exists($localPath)) {
             $imageData = file_get_contents($localPath);
             $mime = mime_content_type($localPath);
