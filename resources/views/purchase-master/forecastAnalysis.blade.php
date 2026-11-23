@@ -759,6 +759,8 @@
             align-items: stretch;
             gap: 6px;
             width: 100%;
+            overflow-x: auto;
+            scrollbar-width: thin;
         }
         #forecast-toolbar-top .forecast-play-group {
             display: flex;
@@ -812,12 +814,13 @@
             align-items: stretch;
             gap: 4px;
             flex: 1 1 auto;
-            min-width: 0;
+            min-width: max-content;
         }
         #forecast-summary-badges .btn {
-            flex: 1 1 0;
-            min-width: 0;
-            padding: 0.35rem 0.3rem;
+            /* Width follows the badge content (label + value + count). */
+            flex: 0 0 auto;
+            min-width: max-content;
+            padding: 0.35rem 0.6rem;
             font-size: 0.78rem;
             line-height: 1.2;
             white-space: nowrap;
@@ -831,7 +834,7 @@
         @media (max-width: 1400px) {
             #forecast-summary-badges .btn {
                 font-size: 0.7rem;
-                padding: 0.3rem 0.2rem;
+                padding: 0.3rem 0.45rem;
             }
         }
         @media (max-width: 1100px) {
