@@ -417,21 +417,32 @@
         pointer-events: none;
     }
 
-    /* Every hover image on this page opens at the SAME fixed size (400x400 box),
+    /* Every hover image on this page opens at the SAME fixed size (300x300 box = 0.75x of the old 400),
        whatever the photo's own dimensions: small ones scale up, big ones scale down, no cropping. */
     html #comparison-cd-image-hover-preview img,
     html #global-img-hover-preview {
         display: block;
         box-sizing: border-box !important;
-        width: min(400px, 80vw) !important;
-        height: min(400px, 80vh) !important;
-        max-width: min(400px, 80vw) !important;
-        max-height: min(400px, 80vh) !important;
+        width: min(300px, 80vw) !important;
+        height: min(300px, 80vh) !important;
+        max-width: min(300px, 80vw) !important;
+        max-height: min(300px, 80vh) !important;
         object-fit: contain !important;
         background: #fff;
     }
     html #global-img-hover-preview {
         padding: 6px !important;
+    }
+
+    /* Full-page comparison view: hover photos open in the TOP-LEFT corner of the screen. */
+    html:has(body.cd-page-mode) #comparison-cd-image-hover-preview,
+    html:has(body.cd-page-mode) #global-img-hover-preview {
+        left: 12px !important;
+        top: 12px !important;
+        right: auto !important;
+        bottom: auto !important;
+        transform: none !important;
+        z-index: 200060 !important;
     }
 
     .comparison-lmp-photo {
@@ -11110,12 +11121,14 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const set = (prop, val) => preview.style.setProperty(prop, val, 'important');
         set('position', 'fixed');
-        set('left', '50%');
-        set('top', '50%');
+        const topLeft = document.body.classList.contains('cd-page-mode');
+        set('left', topLeft ? '12px' : '50%');
+        set('top', topLeft ? '12px' : '50%');
         set('right', 'auto');
         set('bottom', 'auto');
         set('margin', '0');
-        set('transform', 'translate(-50%, -50%)');
+        set('transform', topLeft ? 'none' : 'translate(-50%, -50%)');
+        set('z-index', '200060');
         set('pointer-events', 'none');
         set('display', 'block');
     }
