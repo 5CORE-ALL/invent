@@ -401,6 +401,12 @@
 
     #comparison-cd-image-hover-preview {
         position: fixed;
+        left: 50% !important;
+        top: 50% !important;
+        right: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        transform: translate(-50%, -50%) !important;
         z-index: 20050;
         display: none;
         padding: 6px;
@@ -10886,7 +10892,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function hideComparisonImageHover() {
         const preview = document.getElementById('comparison-cd-image-hover-preview');
         if (preview) {
-            preview.style.display = 'none';
+            preview.style.setProperty('display', 'none', 'important');
             preview.innerHTML = '';
         }
     }
@@ -10894,18 +10900,25 @@ document.addEventListener('DOMContentLoaded', function () {
     function showComparisonImageHover(url, clientX, clientY) {
         const preview = document.getElementById('comparison-cd-image-hover-preview');
         if (!preview || !url) return;
-        preview.innerHTML = `<img src="${escapeHtmlAttr(url)}" alt="SKU preview">`;
-        preview.style.display = 'block';
-        const pad = 16;
-        const box = 540;
-        const maxLeft = window.innerWidth - box;
-        const maxTop = window.innerHeight - box;
-        let left = (clientX || 0) + pad;
-        let top = (clientY || 0) + pad;
-        if (left > maxLeft) left = Math.max(8, (clientX || 0) - box);
-        if (top > maxTop) top = Math.max(8, (clientY || 0) - box);
-        preview.style.left = left + 'px';
-        preview.style.top = top + 'px';
+        // Keep the box outside any transformed/zoomed ancestor, then pin it to the viewport centre.
+        if (preview.parentNode !== document.documentElement) {
+            document.documentElement.appendChild(preview);
+        }
+        // Don't rebuild the <img> on every mousemove (avoids flicker / reload).
+        const cur = preview.querySelector('img');
+        if (!cur || cur.getAttribute('src') !== url) {
+            preview.innerHTML = `<img src="${escapeHtmlAttr(url)}" alt="SKU preview">`;
+        }
+        const set = (prop, val) => preview.style.setProperty(prop, val, 'important');
+        set('position', 'fixed');
+        set('left', '50%');
+        set('top', '50%');
+        set('right', 'auto');
+        set('bottom', 'auto');
+        set('margin', '0');
+        set('transform', 'translate(-50%, -50%)');
+        set('pointer-events', 'none');
+        set('display', 'block');
     }
 
     function openComparisonModal(row) {

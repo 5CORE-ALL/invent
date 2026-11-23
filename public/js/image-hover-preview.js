@@ -141,6 +141,8 @@
         if (img.getAttribute && img.getAttribute('data-no-img-hover') != null) return false;
         if (img.closest && img.closest(SKIP_CLOSEST)) return false;
 
+        // Pages that ship their own #image-hover-preview box (e.g. /to-order-analysis .hover-thumb): don't stack a 2nd popup.
+        if (img.classList && img.classList.contains('hover-thumb') && document.getElementById('image-hover-preview')) return false;
         // Page already has its own centred preview box for data-preview thumbs: don't stack a second popup.
         if (img.hasAttribute && img.hasAttribute('data-preview') && document.getElementById('cell-image-preview')) return false;
 

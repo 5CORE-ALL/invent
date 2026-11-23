@@ -1591,6 +1591,10 @@
 
             Object.assign(globalPreview.style, {
                 position: "fixed",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                pointerEvents: "none",
                 zIndex: 9999,
                 border: "1px solid #ccc",
                 background: "#fff",
@@ -1598,7 +1602,8 @@
                 boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                 display: "none",
             });
-            document.body.appendChild(globalPreview);
+            // Direct child of <html> (outside the zoomed <body>) so it is always centred in the viewport.
+            document.documentElement.appendChild(globalPreview);
 
             let hideTimeout;
             let uniqueSuppliers = [];
@@ -2791,12 +2796,8 @@
 
                             globalPreview.innerHTML = `<img src="${img.dataset.full}" style="max-width:350px;max-height:350px;">`;
                             globalPreview.style.display = "block";
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
                         },
                         cellMouseMove: (e) => {
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
                         },
                         cellMouseOut: () => {
                             hideTimeout = setTimeout(() => {
@@ -2873,13 +2874,9 @@
                             if (!img) return;
                             globalPreview.innerHTML = `<img src="${img.dataset.full}" style="max-width:350px;max-height:350px;object-fit:contain;">`;
                             globalPreview.style.display = 'block';
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
                         },
                         cellMouseMove: function (e) {
                             if (globalPreview.style.display !== 'block') return;
-                            globalPreview.style.top = `${e.clientY + 15}px`;
-                            globalPreview.style.left = `${e.clientX + 15}px`;
                         },
                         cellMouseOut: function () {
                             hideTimeout = setTimeout(function () {
