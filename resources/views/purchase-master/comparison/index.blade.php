@@ -452,13 +452,13 @@
     html body #comparisonQcIssuesModal.modal { --cmp-drawer-w: 448px; }
     html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 504px; }
     html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 504px; }
-    html body #comparisonRoiModal.modal { --cmp-drawer-w: 770px; }
+    /* Profit Calculator (#comparisonRoiModal) is NOT a side drawer: it drops from the top, full width, data height. */
     html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 392px; }
     html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 364px; }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal {
         padding: 0 !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-dialog {
         position: fixed !important;
         top: 0 !important;
         right: 0 !important;
@@ -477,10 +477,10 @@
         transform: translateX(100%) !important;
         transition: transform 0.3s ease-out !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal.show .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal.show .modal-dialog {
         transform: translateX(0) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-content {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-content {
         width: 100% !important;
         max-width: 100% !important;
         height: 100% !important;
@@ -492,11 +492,11 @@
         flex-direction: column !important;
         box-shadow: -8px 0 28px rgba(15, 23, 42, 0.22) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-header,
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-footer {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-header,
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-footer {
         flex: 0 0 auto !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-body {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-body {
         flex: 1 1 auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -1010,19 +1010,41 @@
     }
 
     /* Two sticky action columns at the far right: Critical/QC edit, then Supplier edit (last). */
-    /* Empty trailing supplier columns are hidden; the + buttons bring them back. */
+    /* Trailing supplier columns with no supplier name are hidden; the + buttons bring them back. */
     .cd-sheet-table .cd-blank-hidden { display: none !important; }
 
     /* QC column is hidden on this page (data is kept, just not shown). */
     .cd-sheet-table .cd-qc-col { display: none !important; }
 
-    .cd-sheet-table th.cd-row-edit-col:not(.cd-supplier-edit-col),
-    .cd-sheet-table td.cd-row-edit-col:not(.cd-supplier-edit-col) {
-        right: 52px;
+    .cd-sheet-table th.cd-row-edit-col:not(.cd-supplier-edit-col):not(.cd-row-delete-col),
+    .cd-sheet-table td.cd-row-edit-col:not(.cd-supplier-edit-col):not(.cd-row-delete-col) {
+        right: 94px;
     }
+    .cd-sheet-table th.cd-row-delete-col,
+    .cd-sheet-table td.cd-row-delete-col {
+        right: 0;
+        font-size: 10px;
+        line-height: 1.1;
+    }
+    .cd-sheet-table .cd-sheet-row-delete-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 0;
+        outline: none;
+        box-shadow: none;
+        background: transparent;
+        color: #dc3545;
+        cursor: pointer;
+    }
+    .cd-sheet-table .cd-sheet-row-delete-btn:hover { color: #a71d2a; }
+    .cd-sheet-table .cd-sheet-row-delete-btn i { font-size: 16px; line-height: 1; }
     .cd-sheet-table th.cd-supplier-edit-col,
     .cd-sheet-table td.cd-supplier-edit-col {
-        right: 0;
+        right: 42px;
         min-width: 52px;
         max-width: 52px;
         width: 52px;
@@ -1793,13 +1815,25 @@
         background: #eff6ff;
     }
 
-    /* Spec (label) column: 0.7x of its previous 260px width (260 -> 182px). */
+    /* Spec (label) column: 182px reduced by another 20% (-> 146px). Long labels are cut with "…" and shown in full on hover / while editing. */
     .cd-sheet-table th.cd-spec-col,
     .cd-sheet-table td.cd-label-cell {
-        width: 182px;
-        min-width: 182px;
-        max-width: 182px;
+        width: 146px;
+        min-width: 146px;
+        max-width: 146px;
         word-break: break-word;
+    }
+
+    .cd-sheet-table td.cd-label-cell .cd-sheet-cell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .cd-sheet-table td.cd-label-cell .cd-sheet-cell:focus {
+        white-space: pre-wrap;
+        overflow: visible;
+        text-overflow: clip;
     }
 
     .cd-sheet-table .cd-label-cell:not([style*="background-color"]) {
@@ -2763,6 +2797,9 @@
 
                             {{-- Line 2: filters, insights, layout & fill --}}
                             <div class="cd-sheet-toolbar-row" aria-label="Filters, insights, and formatting">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-sort-priority-btn" aria-pressed="true" title="Rows ordered Critical, then Important, then Normal (click to switch back to sheet order)">
+                                    <i class="mdi mdi-sort-variant"></i> Priority order
+                                </button>
                                 <div class="dropdown cd-priority-filter-dropdown" id="comparison-cd-critical-filters">
                                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
                                         id="comparison-cd-critical-filter-btn"
@@ -3607,6 +3644,22 @@ document.addEventListener('DOMContentLoaded', function () {
         return 'Normal';
     }
 
+    // Blank Critical/QC cells default to Critical on the Supplier Name row, Normal everywhere else.
+    function defaultPriorityForRow(rowIndex) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex) || rowIndex < 1) {
+            return 'Normal';
+        }
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const label = String(((currentSheetCells || [])[rowIndex] || [])[specCol] ?? '').trim().toLowerCase();
+        return (label === 'supplier name' || label === 'supplier') ? 'Critical' : 'Normal';
+    }
+
+    function priorityValueForRow(value, rowIndex) {
+        return String(value ?? '').trim() === ''
+            ? defaultPriorityForRow(rowIndex)
+            : normalizePriorityValue(value);
+    }
+
     function priorityDotClass(value) {
         const normalized = normalizePriorityValue(value);
         if (normalized === 'Critical') return 'cd-priority-dot-critical';
@@ -3718,7 +3771,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <span class="cd-priority-header-label">${escapeHtml(label)}</span>
             </div>`;
         }
-        const normalized = normalizePriorityValue(value);
+        const normalized = priorityValueForRow(value, rowIndex);
         return `<div class="cd-sheet-cell cd-sheet-cell-priority" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(normalized)}" title="${escapeHtmlAttr(normalized)}" aria-label="${escapeHtmlAttr(label + ': ' + normalized)}">
             <div class="cd-priority-wrap">
                 <span class="cd-priority-dot ${priorityDotClass(normalized)}" aria-hidden="true"></span>
@@ -3786,7 +3839,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (rowCheckbox) {
             rowCheckbox.checked = !!selected;
         }
-        const tr = document.querySelector(`#comparison-cd-sheet-body tr:nth-child(${r + 1})`);
+        const tr = document.querySelector(`#comparison-cd-sheet-body tr[data-row="${r}"]`);
         if (tr) {
             tr.classList.toggle('cd-multi-selected', !!selected);
         }
@@ -3878,6 +3931,9 @@ document.addEventListener('DOMContentLoaded', function () {
     let supplierEditTargetRow = null;
 
     // ---- Blank trailing supplier columns are hidden; the "+" buttons reveal / add them ----
+    let sheetSortByPriority = (function () {
+        try { return localStorage.getItem('cmp_cd_sort_priority') !== '0'; } catch (e) { return true; }
+    })();
     let sheetMinVisibleCols = 0;      // columns the user asked to keep visible (via "+")
     let sheetMinVisibleColsSku = '';
 
@@ -3885,7 +3941,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return String(currentCdRow?.sheet_sku || currentCdRow?.sku || '');
     }
 
-    // Number of leading columns that are shown. Everything after is a hidden, completely empty supplier column.
+    // Number of leading columns that are shown. Everything after is a hidden supplier column without a name.
     function sheetVisibleColCount(cells) {
         const list = cells || currentSheetCells || [];
         const total = list.reduce((m, r) => Math.max(m, Array.isArray(r) ? r.length : 0), 0);
@@ -3898,9 +3954,22 @@ document.addEventListener('DOMContentLoaded', function () {
         const criticalCol = detectCriticalColumnIndex(list, specCol);
         const qcCol = detectQcColumnIndex(list, specCol);
         const firstSupplier = Math.max(specCol, criticalCol ?? -1, qcCol ?? -1) + 1;
+        // A column counts as "named" when it has a Supplier Name (or Company Name) value. Trailing columns
+        // without a name are hidden even if they hold data (the data stays saved; "+" shows them again).
+        // Sheets with no such row fall back to "column has any data".
+        const nameRows = [];
+        list.forEach((row, r) => {
+            const label = String((row || [])[specCol] ?? '').trim().toLowerCase();
+            if (label === 'supplier name' || label === 'company name' || isSupplierNameRow(list, r, specCol)) {
+                nameRows.push(r);
+            }
+        });
+        const isNamedCol = (c) => (nameRows.length
+            ? nameRows.some(r => String((list[r] || [])[c] ?? '').trim() !== '')
+            : list.some(row => Array.isArray(row) && String(row[c] ?? '').trim() !== ''));
         let lastData = firstSupplier - 1;
         for (let c = total - 1; c >= firstSupplier; c--) {
-            if (list.some(row => Array.isArray(row) && String(row[c] ?? '').trim() !== '')) {
+            if (isNamedCol(c)) {
                 lastData = c;
                 break;
             }
@@ -3935,6 +4004,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const list = document.getElementById('comparison-supplier-edit-list');
         const cols = getSupplierColumnIndexes();
         if (!list) return;
+
+        // Dropdown on top: pick one supplier of this sheet to show only its input (default: all).
+        const supplierSelect = document.getElementById('comparison-supplier-edit-select');
+        if (supplierSelect) {
+            supplierSelect.innerHTML = `<option value="all">All suppliers (${cols.length})</option>` + cols.map((c) => {
+                const nm = getSupplierNameForColumn(c, currentSheetCells) || getSheetColumnHeaderLabel(c, currentSheetCells) || columnLetter(c);
+                return `<option value="${c}">${escapeHtml(nm)} (${columnLetter(c)})</option>`;
+            }).join('');
+            supplierSelect.value = 'all';
+            supplierSelect.disabled = !cols.length;
+        }
         if (!cols.length) {
             list.innerHTML = '<div class="text-muted small">No supplier columns in this sheet yet.</div>';
         } else {
@@ -3945,7 +4025,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const supplier = getSupplierNameForColumn(c, currentSheetCells) || getSheetColumnHeaderLabel(c, currentSheetCells) || columnLetter(c);
                 const original = isImg ? (isUrl ? raw : '') : raw;
                 const placeholder = isImg ? 'Embedded photo — paste an image URL to replace (empty = keep)' : '';
-                return `<div class="cd-supp-edit-item">
+                return `<div class="cd-supp-edit-item" data-col="${c}">
                     ${isImg ? sheetEditThumbHtml(r, c, raw) : ''}
                     <div class="cd-supp-edit-main">
                         <div class="cd-supp-edit-name">${escapeHtml(supplier)} <span class="text-muted fw-normal">(${columnLetter(c)})</span></div>
@@ -3962,6 +4042,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (modalEl && typeof bootstrap !== 'undefined') {
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         }
+    }
+
+    function filterSupplierEditItems(colValue) {
+        document.querySelectorAll('#comparison-supplier-edit-list .cd-supp-edit-item').forEach((item) => {
+            item.classList.toggle('d-none', colValue !== 'all' && item.dataset.col !== String(colValue));
+        });
     }
 
     function saveSupplierEditModal() {
@@ -3997,6 +4083,12 @@ document.addEventListener('DOMContentLoaded', function () {
         hide();
         supplierEditTargetRow = null;
     }
+
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'comparison-supplier-edit-select') {
+            filterSupplierEditItems(e.target.value);
+        }
+    });
 
     document.addEventListener('click', function (e) {
         if (e.target.closest('#comparison-supplier-edit-save-btn')) {
@@ -4117,8 +4209,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
-        if (imagesApplied) {
-            // Photos changed: rebuild the grid so the new thumbnails show.
+        if (imagesApplied || (sheetSortByPriority && criticalVal && criticalCol !== null)) {
+            // Photos changed or Critical order changed: rebuild the grid (new thumbnails / priority order).
             renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
         }
         applyPriorityRowFilters();
@@ -4757,6 +4849,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     continue;
                 }
             }
+            // Communication row is not edited from this modal (Spec column still lists it).
+            if (!isSpecCol && isCommRow(r, currentSheetCells)) {
+                continue;
+            }
             const rawValue = row[col] ?? '';
             const value = String(rawValue ?? '');
             const displayValue = value.startsWith('data:image/')
@@ -4785,7 +4881,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (isPriorityCol && r > 0) {
-                const normalized = normalizePriorityValue(displayValue);
+                const normalized = priorityValueForRow(displayValue, r);
                 const fieldHtml = `<select class="form-select form-select-sm cd-col-edit-field cd-col-edit-select" data-row="${r}">
                             <option value="Normal" ${normalized === 'Normal' ? 'selected' : ''}>Normal</option>
                             <option value="Important" ${normalized === 'Important' ? 'selected' : ''}>Important</option>
@@ -5732,10 +5828,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const criticalAllowed = getSelectedPriorityFilters('critical');
         const qcAllowed = getSelectedPriorityFilters('qc');
 
-        Array.from(body.children).forEach((tr, rowIndex) => {
+        Array.from(body.children).forEach((tr, domIndex) => {
             if (!tr || tr.tagName !== 'TR') {
                 return;
             }
+            const attrRow = parseInt(tr.dataset.row, 10);
+            const rowIndex = Number.isNaN(attrRow) ? domIndex : attrRow;
             const visible = rowMatchesPriorityFilters(
                 rowIndex,
                 cells,
@@ -8638,11 +8736,21 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         headHtml += '<th class="cd-row-edit-col" title="Edit Critical / QC for selected rows">Edit</th>';
         headHtml += '<th class="cd-row-edit-col cd-supplier-edit-col" title="Edit supplier data only (supplier columns of a row)">Edit<br>Supp.</th>';
+        headHtml += '<th class="cd-row-edit-col cd-row-delete-col" title="Delete row">Del</th>';
         headHtml += '</tr>';
         head.innerHTML = headHtml;
 
         const parts = [];
-        for (let r = 0; r < currentSheetCells.length; r++) {
+        // Display order: header row first, then Critical -> Important -> Normal (stable; data order is untouched).
+        let rowOrder = Array.from({ length: currentSheetCells.length }, (_, i) => i);
+        if (sheetSortByPriority && criticalCol !== null && rowOrder.length > 2) {
+            const rank = (ri) => {
+                const v = priorityValueForRow((currentSheetCells[ri] || [])[criticalCol], ri);
+                return v === 'Critical' ? 0 : (v === 'Important' ? 1 : 2);
+            };
+            rowOrder = [0, ...rowOrder.slice(1).sort((a, b) => (rank(a) - rank(b)) || (a - b))];
+        }
+        for (const r of rowOrder) {
             const row = currentSheetCells[r] || [];
             const rowSelectedClass = selectedSheetRow === r ? ' cd-axis-selected' : '';
             const multiSelectedClass = selectedSheetMultiRows.has(r) ? ' cd-multi-selected' : '';
@@ -8652,7 +8760,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const ctnPkgClass = isCtnPkgSectionLabel(specLabel) ? ' cd-ctn-pkg-row' : '';
             const pkgHeaderClass = isPkgSectionHeaderLabel(specLabel) ? ' cd-pkg-section-header' : '';
             const canSelectRow = r > 0;
-            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${multiSelectedClass}${commRowClass}${innerPkgClass}${ctnPkgClass}${pkgHeaderClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
+            let rowHtml = `<tr data-row="${r}" class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${multiSelectedClass}${commRowClass}${innerPkgClass}${ctnPkgClass}${pkgHeaderClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
             rowHtml += `<td class="cd-row-select-col">`;
             if (canSelectRow) {
                 rowHtml += `<input type="checkbox" class="cd-sheet-row-select" data-row="${r}" title="Select row ${r + 1}" ${selectedSheetMultiRows.has(r) ? 'checked' : ''}>`;
@@ -8670,7 +8778,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!isSpec && !isPriority && isCommRow(r, currentSheetCells)) {
                     cellInner = commCellEditorHtml(r, c, getSupplierNameForColumn(c));
                 }
-                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
+                const specTitleAttr = (isSpec && String(value).trim() !== '') ? ` title="${escapeHtmlAttr(String(value))}"` : '';
+                rowHtml += `<td data-sheet-col="${c}"${specTitleAttr} class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
             rowHtml += `<td class="cd-row-edit-col">`;
             if (canSelectRow) {
@@ -8683,6 +8792,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!isCommRow(r, currentSheetCells)) {
                 rowHtml += `<button type="button" class="cd-sheet-supplier-edit-btn" data-row="${r}" title="Edit supplier data (row ${r + 1})" aria-label="Edit supplier data for row ${r + 1}">
                     <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
+                </button>`;
+            }
+            rowHtml += `</td>`;
+            rowHtml += `<td class="cd-row-edit-col cd-row-delete-col">`;
+            if (canSelectRow) {
+                rowHtml += `<button type="button" class="cd-sheet-row-delete-btn" data-row="${r}" title="Delete row ${r + 1}" aria-label="Delete row ${r + 1}">
+                    <i class="mdi mdi-delete-outline" aria-hidden="true"></i>
                 </button>`;
             }
             rowHtml += `</td></tr>`;
@@ -8761,7 +8877,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const col = parseInt(el.dataset.col, 10);
             el.classList.toggle('cd-axis-selected', selectedSheetCol === col);
         });
-        table.querySelectorAll('#comparison-cd-sheet-body tr').forEach((tr, index) => {
+        table.querySelectorAll('#comparison-cd-sheet-body tr').forEach((tr, domIndex) => {
+            const attrRow = parseInt(tr.dataset.row, 10);
+            const index = Number.isNaN(attrRow) ? domIndex : attrRow;
             tr.classList.toggle('cd-row-selected', selectedSheetRow === index);
             tr.classList.toggle('cd-multi-selected', selectedSheetMultiRows.has(index));
             tr.querySelectorAll('td[data-sheet-col]').forEach((td) => {
@@ -8813,6 +8931,25 @@ document.addEventListener('DOMContentLoaded', function () {
         renderSheetEditor(currentSheetCells);
         setSheetStatus(`Row ${idx + 1} deleted.`, false);
         scheduleAutoSaveComparisonSheet(400);
+    }
+
+    // Trash icon at the end of a row: confirm, then delete exactly that row.
+    function deleteSheetRowByIndex(rowIndex) {
+        const idx = parseInt(rowIndex, 10);
+        if (Number.isNaN(idx) || idx < 1) {
+            return;
+        }
+        readCellsFromEditor({ expandImages: false });
+        if (!currentSheetCells[idx]) {
+            return;
+        }
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const label = String(currentSheetCells[idx][specCol] ?? '').trim() || `Row ${idx + 1}`;
+        if (!window.confirm(`Delete row ${idx + 1} (${label})? This removes the row for every supplier.`)) {
+            return;
+        }
+        selectedSheetRow = idx;
+        deleteSheetRow();
     }
 
     function insertSheetColumn() {
@@ -9044,11 +9181,14 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         const rows = [];
         const trList = body.children;
-        for (let rowIndex = 0; rowIndex < trList.length; rowIndex++) {
-            const tr = trList[rowIndex];
+        for (let domIndex = 0; domIndex < trList.length; domIndex++) {
+            const tr = trList[domIndex];
             if (!tr || tr.tagName !== 'TR') {
                 continue;
             }
+            // Rows can be shown in priority order, so the data index comes from data-row, not DOM position.
+            const attrRow = parseInt(tr.dataset.row, 10);
+            const rowIndex = Number.isNaN(attrRow) ? domIndex : attrRow;
 
             // Prefer data-sheet-col tds (ignores # / select / Edit chrome columns).
             const dataTds = tr.querySelectorAll('td[data-sheet-col]');
@@ -9057,7 +9197,7 @@ document.addEventListener('DOMContentLoaded', function () {
             );
 
             if (!dataTds.length) {
-                rows.push(row);
+                rows[rowIndex] = row;
                 continue;
             }
 
@@ -9087,7 +9227,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (cell.classList.contains('cd-sheet-cell-priority')) {
                     row[colIndex] = normalizePriorityValue(
-                        stored || (currentSheetCells[rowIndex] || [])[colIndex] || 'Normal'
+                        stored || (currentSheetCells[rowIndex] || [])[colIndex] || defaultPriorityForRow(rowIndex)
                     );
                     return;
                 }
@@ -9142,9 +9282,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 cell.dataset.value = liveText;
             });
 
-            rows.push(row);
+            rows[rowIndex] = row;
         }
 
+        // Fill any gap (should not happen) so the array is never sparse.
+        for (let i = 0; i < rows.length; i++) {
+            if (!rows[i]) {
+                rows[i] = (currentSheetCells[i] || []).slice();
+            }
+        }
         currentSheetCells = rows;
         return rows;
     }
@@ -13710,6 +13856,25 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         loadComparisonRoiPriceHistoryChart();
     });
+    function syncSortPriorityButton() {
+        const btn = document.getElementById('comparison-cd-sort-priority-btn');
+        if (!btn) return;
+        btn.classList.toggle('active', !!sheetSortByPriority);
+        btn.classList.toggle('btn-secondary', !!sheetSortByPriority);
+        btn.classList.toggle('btn-outline-secondary', !sheetSortByPriority);
+        btn.setAttribute('aria-pressed', sheetSortByPriority ? 'true' : 'false');
+    }
+    syncSortPriorityButton();
+    document.getElementById('comparison-cd-sort-priority-btn')?.addEventListener('click', function () {
+        sheetSortByPriority = !sheetSortByPriority;
+        try { localStorage.setItem('cmp_cd_sort_priority', sheetSortByPriority ? '1' : '0'); } catch (e) { /* ignore */ }
+        syncSortPriorityButton();
+        if (currentSheetCells.length) {
+            readCellsFromEditor({ expandImages: false });
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        }
+        setSheetStatus(sheetSortByPriority ? 'Rows shown Critical, then Important, then Normal.' : 'Rows shown in sheet order.', false);
+    });
     document.getElementById('comparison-cd-add-supplier-col-btn')?.addEventListener('click', addSupplierColumnAtEnd);
     document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
     document.getElementById('comparison-cd-qc-issues-btn')?.addEventListener('click', openComparisonQcIssuesModal);
@@ -14016,6 +14181,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        const rowDeleteBtn = e.target.closest('.cd-sheet-row-delete-btn');
+        if (rowDeleteBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            deleteSheetRowByIndex(rowDeleteBtn.dataset.row);
+            return;
+        }
+
         const colAddBtn = e.target.closest('.cd-sheet-col-add-btn');
         if (colAddBtn) {
             e.preventDefault();
@@ -14271,7 +14444,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         wrap.addEventListener('dragstart', function (e) {
-            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-col-add-btn, .cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn')) {
+            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-col-add-btn, .cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn, .cd-sheet-row-delete-btn')) {
                 e.preventDefault();
                 return;
             }
@@ -14650,6 +14823,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold mb-1" for="comparison-supplier-edit-select">Supplier</label>
+                    <select id="comparison-supplier-edit-select" class="form-select form-select-sm" aria-label="Choose supplier"></select>
+                </div>
                 <p class="small text-muted mb-2">Only the supplier columns of this row are edited here. Critical / QC and the Spec label are not touched.</p>
                 <div id="comparison-supplier-edit-list"></div>
             </div>
