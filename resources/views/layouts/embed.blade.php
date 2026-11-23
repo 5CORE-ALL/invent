@@ -27,6 +27,6 @@
         @yield('content')
     </div>
     @include('layouts.shared.footer-scripts')
-    <script src="{{ asset('js/image-hover-preview.js') }}?v=20261124e"></script>
+    <script src="{{ asset('js/image-hover-preview.js') }}?v=20261124f"></script>
 </body>
 </html>

@@ -175,6 +175,19 @@
         popup.style.transform = 'translate(-50%, -50%)';
     }
 
+    // True when a page-specific preview box (CENTER_SELECTORS ids) is currently on screen.
+    function pageBoxVisible() {
+        if (!ID_SELECTORS) return false;
+        var list;
+        try { list = document.querySelectorAll(ID_SELECTORS); } catch (err) { return false; }
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (el.id === 'global-img-hover-preview') continue;
+            if (window.getComputedStyle(el).display !== 'none' && el.offsetWidth > 0) return true;
+        }
+        return false;
+    }
+
     function show(img, e) {
         popup = ensurePopup();
         if (activeImg && activeImg !== img) {
@@ -205,6 +218,13 @@
         });
         popup.src = img.currentSrc || img.src;
         popup.style.display = 'block';
+        // Never open TWO previews: the page's own handler runs right after this one (bubble phase).
+        // If it shows its own centred box, drop the global popup so only one image is visible.
+        requestAnimationFrame(function () {
+            if (popup && popup.style.display === 'block' && activeImg === img && pageBoxVisible()) {
+                popup.style.display = 'none';
+            }
+        });
         cx = e.clientX;
         cy = e.clientY;
         position();
