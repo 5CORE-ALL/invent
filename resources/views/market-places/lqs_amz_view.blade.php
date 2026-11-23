@@ -184,6 +184,21 @@
             width: 100%;
             max-width: 100%;
         }
+        #lqs-pulse { position: relative; margin: 0 0 14px; padding: 14px 16px 8px; border-radius: 18px; color: #f8fafc; background: #0b1020; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.18); }
+        #lqs-pulse::before { content: ''; position: absolute; inset: 0; padding: 1px; border-radius: 18px; background: linear-gradient(120deg,#f472b6,#a78bfa,#22d3ee); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+        #lqs-pulse .lqs-pulse-shine { position: absolute; top: 0; bottom: 0; width: 28%; background: linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); animation: lqsPulseShine 7s linear infinite; pointer-events: none; }
+        #lqs-pulse .lqs-pulse-head { position: relative; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        #lqs-pulse .lqs-pulse-kicker { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: #c4b5fd; font-weight: 700; }
+        #lqs-pulse .lqs-pulse-title { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+        #lqs-pulse .lqs-pulse-stats { display: flex; gap: 14px; margin-left: auto; }
+        #lqs-pulse .lqs-pulse-stats div { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+        #lqs-pulse .lqs-pulse-stats span { font-size: 22px; font-weight: 800; background: linear-gradient(90deg,#f9a8d4,#c4b5fd,#67e8f9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        #lqs-pulse .lqs-pulse-stats small { margin-top: 3px; font-size: 10px; color: #94a3b8; letter-spacing: .04em; text-transform: uppercase; }
+        #lqs-pulse .lqs-pulse-ranges { display: flex; gap: 6px; }
+        #lqs-pulse .lqs-pulse-ranges button { border: 0; background: rgba(255,255,255,.08); color: #cbd5e1; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 4px 10px; cursor: pointer; }
+        #lqs-pulse .lqs-pulse-ranges button.on { background: #fff; color: #0b1020; }
+        #lqs-pulse .lqs-pulse-canvas { position: relative; height: 148px; margin-top: 6px; }
+        @keyframes lqsPulseShine { from { left: -30%; } to { left: 110%; } }
     </style>
 @endsection
 
@@ -253,6 +268,26 @@
                         <button type="button" id="amz-export-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-file-csv"></i> Export CSV
                         </button>
+                    </div>
+
+                    <div id="lqs-pulse" data-url="{{ route('lqs.amz.rating.pulse') }}">
+                        <div class="lqs-pulse-shine"></div>
+                        <div class="lqs-pulse-head">
+                            <div>
+                                <div class="lqs-pulse-kicker">Action Taken</div>
+                                <div class="lqs-pulse-title">Optimized.</div>
+                            </div>
+                            <div class="lqs-pulse-stats">
+                                <div><span id="lqs-pulse-today">0</span><small>Today</small></div>
+                                <div><span id="lqs-pulse-avg">0</span><small>Daily avg</small></div>
+                            </div>
+                            <div class="lqs-pulse-ranges">
+                                <button type="button" data-days="14">14d</button>
+                                <button type="button" class="on" data-days="30">30d</button>
+                                <button type="button" data-days="60">60d</button>
+                            </div>
+                        </div>
+                        <div class="lqs-pulse-canvas"><canvas id="lqsPulseChart"></canvas></div>
                     </div>
 
                     {{-- ── Summary badges ── --}}
@@ -1297,6 +1332,7 @@
                         }
                         bootstrap.Modal.getInstance(document.getElementById('amzActionModal')).hide();
                         amzNotify('Action saved!', 'success');
+                        if (window.lqsReloadPulse) window.lqsReloadPulse();
                     },
                     error: function() {
                         $('#amzActionErr').text('Failed to save. Please try again.').show();
@@ -1547,6 +1583,8 @@
                 );
                 amzLoadBadgeChart();
             });
+
+            @include('market-places.lqs._pulse_script')
         });
     </script>
 @endsection

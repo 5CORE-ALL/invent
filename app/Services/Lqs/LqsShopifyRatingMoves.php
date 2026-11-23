@@ -2,6 +2,7 @@
 
 namespace App\Services\Lqs;
 
+use App\Models\LqsAmzAction;
 use App\Models\LqsMarketplaceAction;
 use App\Models\LqsShopifySeoScore;
 use Illuminate\Support\Facades\DB;
@@ -72,32 +73,19 @@ class LqsShopifyRatingMoves
     /**
      * @return array{days: list<array{date: string, label: string, red_to_green: int, actions: int}>, recent: list<array<string, mixed>>, totals: array<string, int>}
      */
-    public static function pulse(int $days = 14): array
+    public static function pulse(string $marketplace, int $days = 30): array
     {
         self::ensureTable();
         $days = max(7, min(60, $days));
         $start = now()->startOfDay()->subDays($days - 1);
+        $marketplace = strtolower(trim($marketplace));
 
-        $moves = DB::table(self::TABLE)
-            ->where('created_at', '>=', $start)
-            ->get(['sku', 'kind', 'created_at']);
-
-        $actions = Schema::hasTable('lqs_marketplace_actions')
-            ? LqsMarketplaceAction::query()
-                ->where('marketplace', 'shopify')
-                ->where('created_at', '>=', $start)
-                ->with('user:id,name')
-                ->orderBy('created_at')
-                ->get(['id', 'sku', 'action', 'user_id', 'created_at'])
+        $moves = Schema::hasTable(self::TABLE)
+            ? DB::table(self::TABLE)->where('created_at', '>=', $start)->get(['sku', 'kind', 'created_at'])
             : collect();
 
-        $actionsOnSku = Schema::hasTable('lqs_marketplace_actions')
-            ? LqsMarketplaceAction::query()
-                ->where('marketplace', 'shopify')
-                ->selectRaw('sku, COUNT(*) as n')
-                ->groupBy('sku')
-                ->pluck('n', 'sku')
-            : collect();
+        $actions = self::actionRows($marketplace, $start);
+        $actionsOnSku = self::actionCounts($marketplace);
 
         $byDay = [];
         for ($i = 0; $i < $days; $i++) {
@@ -157,5 +145,44 @@ class LqsShopifyRatingMoves
                 'actions_window' => $actions->count(),
             ],
         ];
+    }
+
+    /** Action Taken rows for one LQS page. Amazon keeps its own table; every other page shares one. */
+    private static function actionRows(string $marketplace, $start)
+    {
+        if ($marketplace === 'amz' && Schema::hasTable('lqs_amz_actions')) {
+            return LqsAmzAction::query()
+                ->where('created_at', '>=', $start)
+                ->with('user:id,name')
+                ->orderBy('created_at')
+                ->get(['id', 'sku', 'action', 'user_id', 'created_at']);
+        }
+        if (! Schema::hasTable('lqs_marketplace_actions')) {
+            return collect();
+        }
+
+        return LqsMarketplaceAction::query()
+            ->where('marketplace', $marketplace)
+            ->where('created_at', '>=', $start)
+            ->with('user:id,name')
+            ->orderBy('created_at')
+            ->get(['id', 'sku', 'action', 'user_id', 'created_at']);
+    }
+
+    /** @return \Illuminate\Support\Collection<string, int> */
+    private static function actionCounts(string $marketplace)
+    {
+        if ($marketplace === 'amz' && Schema::hasTable('lqs_amz_actions')) {
+            return LqsAmzAction::query()->selectRaw('sku, COUNT(*) as n')->groupBy('sku')->pluck('n', 'sku');
+        }
+        if (! Schema::hasTable('lqs_marketplace_actions')) {
+            return collect();
+        }
+
+        return LqsMarketplaceAction::query()
+            ->where('marketplace', $marketplace)
+            ->selectRaw('sku, COUNT(*) as n')
+            ->groupBy('sku')
+            ->pluck('n', 'sku');
     }
 }

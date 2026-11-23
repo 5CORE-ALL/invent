@@ -142,8 +142,7 @@
                     </div>
                     @endif
 
-                    @if(!empty($lqsPage['has_yoast_seo']))
-                    <div id="lqs-pulse">
+                    <div id="lqs-pulse" data-url="{{ $lqsPage['routes']['pulse'] ?? '' }}">
                         <div class="lqs-pulse-shine"></div>
                         <div class="lqs-pulse-head">
                             <div>
@@ -162,7 +161,6 @@
                         </div>
                         <div class="lqs-pulse-canvas"><canvas id="lqsPulseChart"></canvas></div>
                     </div>
-                    @endif
 
                     {{-- ── Summary badges ── --}}
                     <div id="amz-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">

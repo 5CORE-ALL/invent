@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace\Lqs;
 
 use App\Http\Controllers\Controller;
 use App\Services\Lqs\LqsMarketplacePageService;
+use App\Services\Lqs\LqsShopifyRatingMoves;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -88,6 +89,14 @@ abstract class LqsMarketplaceBaseController extends Controller
             'success' => true,
             'data' => $this->service->badgeHistory($this->slug(), $metric, (int) $request->input('days', 30)),
         ]);
+    }
+
+    /** Rolling Action Taken history for this marketplace. */
+    public function ratingPulse(Request $request)
+    {
+        return response()->json([
+            'success' => true,
+        ] + LqsShopifyRatingMoves::pulse($this->slug(), (int) $request->query('days', 30)));
     }
 
     public function cvrHistory(Request $request)
@@ -207,6 +216,7 @@ abstract class LqsMarketplaceBaseController extends Controller
             'history' => url('/lqs/'.$slug.'/action-history'),
             'badge' => route('lqs.'.$slug.'.badge.chart'),
             'cvr' => route('lqs.'.$slug.'.cvr.history'),
+            'pulse' => route('lqs.'.$slug.'.rating.pulse'),
             'sample' => route('lqs.'.$slug.'.sample'),
             'download' => route('lqs.'.$slug.'.download'),
             'upload' => route('lqs.'.$slug.'.upload'),

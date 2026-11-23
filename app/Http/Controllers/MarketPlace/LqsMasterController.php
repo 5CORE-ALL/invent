@@ -16,6 +16,7 @@ use App\Models\AmazonDatasheet;
 use App\Models\AmazonProductReview;
 use App\Models\LqsAmzHistory;
 use App\Models\LqsAmzAction;
+use App\Services\Lqs\LqsShopifyRatingMoves;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -1011,6 +1012,14 @@ class LqsMasterController extends Controller
         } catch (\Exception $e) {
             \Log::error('LQS Amz snapshot failed: ' . $e->getMessage());
         }
+    }
+
+    /** Rolling Action Taken history for LQS Amz. */
+    public function ratingPulse(Request $request)
+    {
+        return response()->json([
+            'success' => true,
+        ] + LqsShopifyRatingMoves::pulse('amz', (int) $request->query('days', 30)));
     }
 
     /**

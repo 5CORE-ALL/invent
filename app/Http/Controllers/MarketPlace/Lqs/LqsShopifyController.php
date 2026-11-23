@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\MarketPlace\Lqs;
 
-use App\Services\Lqs\LqsShopifyRatingMoves;
 use App\Services\Lqs\LqsShopifySeoService;
 use Illuminate\Http\Request;
 
@@ -16,12 +15,6 @@ class LqsShopifyController extends LqsMarketplaceBaseController
     protected function viewName(): string
     {
         return 'market-places.lqs.shopify';
-    }
-
-    /** Day-by-day red → green moves and Action Taken notes, for the rolling graph. */
-    public function ratingPulse(Request $request)
-    {
-        return response()->json(['success' => true] + LqsShopifyRatingMoves::pulse((int) $request->query('days', 30)));
     }
 
     public function syncSeo(Request $request, LqsShopifySeoService $seo)

@@ -6694,6 +6694,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/amz/action', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'saveLqsAmzAction'])->name('lqs.amz.action.save');
     Route::get('/lqs/amz/action-history/{sku}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzActionHistory'])->name('lqs.amz.action.history');
     Route::get('/lqs/amz/cvr-history', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'getLqsAmzCvrHistory'])->name('lqs.amz.cvr.history');
+    Route::get('/lqs/amz/rating-pulse', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'ratingPulse'])->name('lqs.amz.rating.pulse');
     Route::get('/lqs/amz/mobile/{asin}', [App\Http\Controllers\MarketPlace\LqsMasterController::class, 'lqsAmzMobileView'])->where('asin', '[A-Za-z0-9]{10}')->name('lqs.amz.mobile');
 
     // LQS Marketplaces (same functions as /lqs-amz; API metrics when available, sheet upload otherwise)
@@ -6705,6 +6706,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post("/lqs/{$lqsSlug}/action", [$lqsController, 'saveAction'])->name("lqs.{$lqsSlug}.action.save");
         Route::get("/lqs/{$lqsSlug}/action-history/{sku}", [$lqsController, 'actionHistory'])->name("lqs.{$lqsSlug}.action.history");
         Route::get("/lqs/{$lqsSlug}/cvr-history", [$lqsController, 'cvrHistory'])->name("lqs.{$lqsSlug}.cvr.history");
+        Route::get("/lqs/{$lqsSlug}/rating-pulse", [$lqsController, 'ratingPulse'])->name("lqs.{$lqsSlug}.rating.pulse");
         Route::get("/lqs/{$lqsSlug}/sheet/sample", [$lqsController, 'downloadSample'])->name("lqs.{$lqsSlug}.sample");
         Route::get("/lqs/{$lqsSlug}/sheet/download", [$lqsController, 'downloadSheet'])->name("lqs.{$lqsSlug}.download");
         Route::post("/lqs/{$lqsSlug}/sheet/upload", [$lqsController, 'uploadSheet'])->name("lqs.{$lqsSlug}.upload");
@@ -6773,7 +6775,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/b5cb2b/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'startApiSync'])->name('lqs.b5cb2b.api.sync');
     Route::get('/lqs/b5cb2b/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'apiSyncStatus'])->name('lqs.b5cb2b.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
-    Route::get('/lqs/shopify/rating-pulse', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'ratingPulse'])->name('lqs.shopify.rating.pulse');
 
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');
