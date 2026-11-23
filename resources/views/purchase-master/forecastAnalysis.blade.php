@@ -3584,23 +3584,12 @@
             wrap.addEventListener('mouseleave', forecastScheduleImagePreviewHide);
         }
 
-        function forecastClampPreviewPosition(wrap, clientX, clientY) {
-            const pad = 12;
-            let left = clientX + pad;
-            let top = clientY + pad;
+        /** Preview is always shown centered in the viewport (cursor position is ignored). */
+        function forecastClampPreviewPosition(wrap) {
             wrap.style.position = 'fixed';
-            wrap.style.left = left + 'px';
-            wrap.style.top = top + 'px';
-            const rect = wrap.getBoundingClientRect();
-            const vw = window.innerWidth;
-            const vh = window.innerHeight;
-            const m = 8;
-            if (rect.right > vw - m) left = Math.max(m, vw - rect.width - m);
-            if (rect.bottom > vh - m) top = Math.max(m, vh - rect.height - m);
-            if (left < m) left = m;
-            if (top < m) top = m;
-            wrap.style.left = left + 'px';
-            wrap.style.top = top + 'px';
+            wrap.style.left = '50%';
+            wrap.style.top = '50%';
+            wrap.style.transform = 'translate(-50%, -50%)';
         }
 
         function forecastShowImagePreview(clientX, clientY, fullUrl) {
@@ -3622,15 +3611,15 @@
             const wrap = document.createElement('div');
             wrap.id = 'image-hover-preview';
             wrap.style.zIndex = '10050';
-            wrap.style.pointerEvents = 'auto';
+            wrap.style.pointerEvents = 'none'; // never steals hover from the SKU text
             wrap.style.border = '1px solid #ccc';
             wrap.style.background = '#fff';
             wrap.style.padding = '4px';
             wrap.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
             wrap.style.borderRadius = '6px';
             const big = document.createElement('img');
-            big.style.maxWidth = '350px';
-            big.style.maxHeight = '350px';
+            big.style.maxWidth = 'min(480px, 80vw)';
+            big.style.maxHeight = 'min(480px, 80vh)';
             big.style.display = 'block';
             big.alt = '';
             big.src = fullUrl;
@@ -3640,6 +3629,20 @@
             forecastImagePreviewEl = wrap;
             forecastClampPreviewPosition(wrap, clientX, clientY);
         }
+
+        // Image preview opens only while hovering the SKU text (not the thumbnail).
+        document.addEventListener('mouseover', function(e) {
+            const t = e.target && e.target.closest ? e.target.closest('.forecast-sku-hover') : null;
+            if (!t) return;
+            if (e.relatedTarget && t.contains(e.relatedTarget)) return;
+            forecastShowImagePreview(0, 0, t.getAttribute('data-full'));
+        });
+        document.addEventListener('mouseout', function(e) {
+            const t = e.target && e.target.closest ? e.target.closest('.forecast-sku-hover') : null;
+            if (!t) return;
+            if (e.relatedTarget && t.contains(e.relatedTarget)) return;
+            forecastRemoveImagePreview();
+        });
 
         // SKU column width toggle (header expand button)
         const SKU_COL_WIDTH_COLLAPSED = 180;
@@ -3771,29 +3774,6 @@
                         style="width:30px;height:30px;border-radius:6px;object-fit:contain;box-shadow:0 1px 4px #0001;cursor: pointer;"
                     >`;
                     },
-                    cellMouseOver: function(e, cell) {
-                        const img = cell.getElement().querySelector('.hover-thumb');
-                        if (!img) return;
-                        const fullUrl = img.getAttribute('data-full');
-                        forecastShowImagePreview(e.clientX, e.clientY, fullUrl);
-                    },
-                    cellMouseMove: function(e, cell) {
-                        const preview = forecastImagePreviewEl;
-                        if (!preview || !document.body.contains(preview)) return;
-                        const img = cell.getElement().querySelector('.hover-thumb');
-                        const fullUrl = img ? img.getAttribute('data-full') : '';
-                        const big = preview.querySelector('img');
-                        if (!fullUrl || !big || big.getAttribute('src') !== fullUrl) return;
-                        forecastClampPreviewPosition(preview, e.clientX, e.clientY);
-                    },
-                    cellMouseOut: function(e, cell) {
-                        const related = e.relatedTarget;
-                        if (related && typeof related.closest === 'function' && related.closest('#image-hover-preview')) {
-                            forecastCancelImagePreviewHide();
-                            return;
-                        }
-                        forecastScheduleImagePreviewHide();
-                    },
                     width: 52,
                     minWidth: 48,
                     maxWidth: 56,
@@ -3857,6 +3837,8 @@
                         const title = esc.replace(/"/g, '&quot;');
                         const safeSku = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
+                        const skuImgUrl = String(rowData.Image || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+
                         // Copy icon
                         const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
 
@@ -3874,7 +3856,7 @@
                             : '';
 
                         return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
-                            <span title="${title}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>
+                            <span title="${title}" class="forecast-sku-hover" data-full="${skuImgUrl}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;${skuImgUrl ? 'cursor:zoom-in;' : ''}">${esc}</span>
                             ${copyBtn}
                             ${deleteBtn}
                             ${linkPart}
