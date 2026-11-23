@@ -1682,7 +1682,7 @@
                 };
                 const drawPulse = function (rows) {
                     const labels = rows.map(function (r) { return r.label; });
-                    const data = rows.map(function (r) { return Number(r.red_to_green) || 0; });
+                    const data = rows.map(function (r) { return Number(r.actions) || 0; });
                     pulseCount(document.getElementById('lqs-pulse-today'), data.length ? data[data.length - 1] : 0);
                     pulseCount(document.getElementById('lqs-pulse-avg'), data.length ? Math.round(data.reduce(function (a, b) { return a + b; }, 0) / data.length) : 0);
                     const canvas = document.getElementById('lqsPulseChart');
@@ -1775,7 +1775,15 @@
                                         title: function (items) { return rows[items[0].dataIndex].date; },
                                         label: function (item) {
                                             const n = item.parsed.y;
-                                            return n.toLocaleString() + ' optimized (red to green)';
+                                            return n.toLocaleString() + ' action' + (n === 1 ? '' : 's');
+                                        },
+                                        afterBody: function (items) {
+                                            const row = rows[items[0].dataIndex] || {};
+                                            const lines = (row.details || []).map(function (d) {
+                                                return d.sku + ' · ' + d.sku_actions + ' on this SKU · ' + d.user + (d.action ? ' · ' + d.action : '');
+                                            });
+                                            if (row.more) lines.push('+' + row.more + ' more');
+                                            return lines;
                                         }
                                     }
                                 }

@@ -86,7 +86,17 @@ class LqsShopifyRatingMoves
             ? LqsMarketplaceAction::query()
                 ->where('marketplace', 'shopify')
                 ->where('created_at', '>=', $start)
-                ->get(['sku', 'created_at'])
+                ->with('user:id,name')
+                ->orderBy('created_at')
+                ->get(['id', 'sku', 'action', 'user_id', 'created_at'])
+            : collect();
+
+        $actionsOnSku = Schema::hasTable('lqs_marketplace_actions')
+            ? LqsMarketplaceAction::query()
+                ->where('marketplace', 'shopify')
+                ->selectRaw('sku, COUNT(*) as n')
+                ->groupBy('sku')
+                ->pluck('n', 'sku')
             : collect();
 
         $byDay = [];
@@ -97,6 +107,8 @@ class LqsShopifyRatingMoves
                 'label' => $day->format('d M'),
                 'red_to_green' => 0,
                 'actions' => 0,
+                'details' => [],
+                'more' => 0,
             ];
         }
         foreach ($moves as $row) {
@@ -107,9 +119,22 @@ class LqsShopifyRatingMoves
         }
         foreach ($actions as $row) {
             $key = $row->created_at?->toDateString();
-            if ($key !== null && isset($byDay[$key])) {
-                $byDay[$key]['actions']++;
+            if ($key === null || ! isset($byDay[$key])) {
+                continue;
             }
+            $byDay[$key]['actions']++;
+            if (count($byDay[$key]['details']) >= 8) {
+                $byDay[$key]['more']++;
+
+                continue;
+            }
+            $sku = trim((string) $row->sku);
+            $byDay[$key]['details'][] = [
+                'sku' => $sku,
+                'user' => (string) ($row->user->name ?? 'Unknown'),
+                'action' => (string) $row->action,
+                'sku_actions' => (int) ($actionsOnSku[$sku] ?? 1),
+            ];
         }
 
         $recent = DB::table(self::TABLE)
