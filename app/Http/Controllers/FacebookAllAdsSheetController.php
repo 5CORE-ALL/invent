@@ -271,7 +271,7 @@ class FacebookAllAdsSheetController extends Controller
         // recent Spend batch by `Campaign ID`. Default when no specific batch
         // is asked for, so the user sees one unified table out of the box.
         if ($batchId === null && ($view === 'merged' || $view === null)) {
-            $merged = $this->getMergedView($typeList, $chFilter, $b2bFilter);
+            $merged = $this->getMergedView($typeList, $chFilter, $b2bFilter, true);
             if ($merged !== null) {
                 return response()->json($merged);
             }
@@ -552,7 +552,7 @@ class FacebookAllAdsSheetController extends Controller
      * Type filtering (`$typeList` from /facebook-{video|carousal}-… pages)
      * is applied to the merged set just like it is to individual batches.
      */
-    public function getMergedView(?array $typeList, ?string $chFilter = null, ?string $b2bFilter = null): ?array
+    public function getMergedView(?array $typeList, ?string $chFilter = null, ?string $b2bFilter = null, bool $withUnattributed = false): ?array
     {
         $latestByType = $this->latestBatchPerType();
         // API-only mode: Spend / Impr / Clk / Status come from the Meta API and
@@ -997,6 +997,22 @@ class FacebookAllAdsSheetController extends Controller
             ));
         }
 
+        // Shopify's Meta sales that no sheet campaign owns (no / unknown campaign tag),
+        // as one pink row so the sheet's Shopify totals reconcile with Shopify. Only on
+        // the full, unfiltered sheet — a type / CH / B2B lens shows a subset of campaigns,
+        // so "not on the sheet" would be wrong there. Added after the snapshot pass so
+        // it never becomes a campaign snapshot.
+        if ($withUnattributed && ! $typeList && ! $chFilter && ! $b2bFilter && $liveShopify !== null) {
+            $sheetIds = [];
+            foreach ($projected as $pr) {
+                $sheetIds[(string) ($pr['_campaign_id'] ?? '')] = true;
+            }
+            $unattributedRow = $this->unattributedShopifyRow($sheetIds);
+            if ($unattributedRow !== null) {
+                $projected[] = $unattributedRow;
+            }
+        }
+
         $columnList = array_map(
             fn($c) => ['title' => $c['title'], 'field' => $c['title']],
             self::MERGED_COLUMNS
@@ -1059,6 +1075,64 @@ class FacebookAllAdsSheetController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * One synthetic row with the Shopify Meta sales / orders / sessions that belong to
+     * no campaign on the sheet: orders with a blank campaign tag, a non-id tag, or an
+     * id the sheet doesn't list. Only the Shopify columns + Sessions are filled — never
+     * SALES / SOLD / SPEND, so the toolbar totals and every ratio are untouched.
+     * The page paints it light pink (`_unattributed`).
+     *
+     * @param  array<string, true>  $sheetIds  campaign ids on the sheet
+     */
+    private function unattributedShopifyRow(array $sheetIds): ?array
+    {
+        try {
+            $res = app(ShopifyMarketingReportService::class)->campaignPerformance(30, 'meta');
+        } catch (\Throwable $e) {
+            Log::warning('FAAS unattributed Shopify row failed: ' . $e->getMessage());
+            return null;
+        }
+        if (empty($res['success'])) {
+            return null;
+        }
+
+        $sales = 0.0;
+        $orders = 0;
+        $sessions = 0;
+        foreach ($res['rows'] as $r) {
+            $cid = trim((string) ($r['marketing_campaign'] ?? ''));
+            if ($cid !== '' && isset($sheetIds[$cid]) && preg_match('/^\d{6,}$/', $cid)) {
+                continue; // already shown on its own campaign row
+            }
+            $sales    += (float) ($r['total_sales'] ?? 0);
+            $orders   += (int) ($r['orders'] ?? 0);
+            $sessions += (int) ($r['sessions'] ?? 0);
+        }
+        if ($orders === 0 && $sales <= 0 && $sessions === 0) {
+            return null;
+        }
+
+        $row = [
+            '_id'          => null,
+            '_row_index'   => null,
+            '_upload_type' => 'unattributed',
+            '_campaign_id' => '',
+            '_unattributed' => true,
+            'ad_type'      => null,
+            'ch'           => null,
+            'b2b_b2c'      => null,
+        ];
+        foreach (self::MERGED_COLUMNS as $col) {
+            $row[$col['title']] = null;
+        }
+        $row['Campaign name'] = 'Unattributed Meta orders (no campaign tag)';
+        $row['Sessions']      = (string) $sessions;
+        $row['Shopify Sales'] = '$' . number_format($sales, 2);
+        $row['Shopify Sold']  = (string) $orders;
+
+        return $row;
     }
 
     /**

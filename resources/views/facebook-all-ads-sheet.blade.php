@@ -1385,6 +1385,11 @@
         // over the current average ACOS AND spending more than $30 — i.e.
         // an expensive campaign performing worse than the visible average.
         // Reads the live faasAvgAcos so it re-evaluates as filters change.
+        // CH / Type / B2B editors are off for the synthetic "Unattributed Meta orders" row.
+        function faasRowEditable(cell) {
+            return !((cell.getRow().getData() || {})._unattributed);
+        }
+
         function formatActionCell(cell) {
             const row   = cell.getRow().getData();
             const acos  = toNumber(row['Acos']);
@@ -2048,6 +2053,11 @@
                     function formatCampaignNameCell(cell) {
                         const v = (cell.getValue() ?? '').toString();
                         if (!v) return '';
+                        // The synthetic "Unattributed Meta orders" row is not a campaign — no status dot.
+                        if ((cell.getRow().getData() || {})._unattributed) {
+                            return '<strong title="Shopify Meta orders with no campaign tag (or a tag not on this sheet)">'
+                                 + v.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</strong>';
+                        }
                         const attr = v.replace(/&/g, '&amp;').replace(/</g, '&lt;')
                                       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                         // Green = active, red = anything else (paused, archived, …).
@@ -2216,6 +2226,13 @@
                         ]);
                         const sorter = NUMERIC.has(c.field)
                             ? function (a, b, aRow, bRow, column, dir) {
+                                // The pink "Unattributed Meta orders" row always stays on top.
+                                const aU = !!(aRow && aRow.getData()._unattributed);
+                                const bU = !!(bRow && bRow.getData()._unattributed);
+                                if (aU !== bU) {
+                                    const top = aU ? -1 : 1;
+                                    return dir === 'desc' ? -top : top;
+                                }
                                 const na = parseFloat(String(a ?? '').replace(/[^\d.\-]/g, ''));
                                 const nb = parseFloat(String(b ?? '').replace(/[^\d.\-]/g, ''));
                                 const aOk = isFinite(na), bOk = isFinite(nb);
@@ -2307,6 +2324,7 @@
                             field:        'ch',
                             width:        80,
                             headerFilter: false,
+                            editable:     faasRowEditable,
                             editor:       'list',
                             editorParams: {
                                 values: {
@@ -2328,6 +2346,7 @@
                             field:        'ad_type',
                             width:        110,
                             headerFilter: false,
+                            editable:     faasRowEditable,
                             editor:       'list',
                             editorParams: {
                                 // valuesLookup is called every time the editor
@@ -2346,6 +2365,7 @@
                             field:        'b2b_b2c',
                             width:        100,
                             headerFilter: false,
+                            editable:     faasRowEditable,
                             editor:       'list',
                             editorParams: {
                                 valuesLookup:     function () { return b2bEditorValues(); },
@@ -2413,6 +2433,18 @@
                         // Row checkboxes feed the Bulk CH action.
                         selectableRows:         true,
                         selectableRowsRangeMode:'click',
+                        // The synthetic "Unattributed Meta orders" row is not a campaign:
+                        // it can't be ticked for Bulk CH (selectableCheck = older Tabulator name).
+                        selectableRowsCheck:    function (row) { return !row.getData()._unattributed; },
+                        selectableCheck:        function (row) { return !row.getData()._unattributed; },
+                        // Light pink background for that row (row + cells, so frozen /
+                        // striped / hover styles can't hide it).
+                        rowFormatter:           function (row) {
+                            if (!row.getData()._unattributed) return;
+                            const bg = '#ffe4ec';
+                            row.getElement().style.backgroundColor = bg;
+                            row.getCells().forEach(function (c) { c.getElement().style.backgroundColor = bg; });
+                        },
                         // Centre every column unless a column overrides
                         // hozAlign explicitly (e.g. the # row-index column).
                         columnDefaults: {
@@ -2808,8 +2840,9 @@
                 // 'active' = rows after filters / search are applied,
                 // which is what users see in the table.
                 const rows = tabulator.getData('active') || [];
-                visibleCount = rows.length;
+                visibleCount = rows.filter(r => !r._unattributed).length;
                 rows.forEach(r => {
+                    if (r._unattributed) return;   // not a campaign — keep it out of every total
                     ltSpendSum += Number(r._lt_spend) || 0;
                     ltSalesSum += Number(r._lt_sales) || 0;
                     ltImprSum  += Number(r._lt_impr)  || 0;
@@ -3247,6 +3280,8 @@
             }
 
             tabulator.setFilter(function (row) {
+                // The pink "Unattributed Meta orders" row is always shown.
+                if (row._unattributed) return true;
                 // Sbgt — exact-match by numeric value.
                 if (sbgtSel.size > 0) {
                     const v = Number(row['Sbgt']);
