@@ -2906,6 +2906,10 @@ class Kernel extends ConsoleKernel
         // Lifetime Acos / Lifetime Sales columns on /facebook-all-ads-sheet.
         $retryFiveTimesUntil('facebook:sync-lifetime-stats', 'facebook-lifetime-stats-sync', '19:45');
 
+        // Campaign list of /facebook-all-ads-sheet straight from the Meta API
+        // (after meta-ads:sync at 19:00), so no manual Campaign upload is needed.
+        $retryFiveTimesUntil('facebook:sync-sheet-campaigns', 'facebook-sheet-campaigns-sync', '19:15');
+
         $ist($schedule->command('meta-ads:run-automation')
             ->dailyAt('20:30')
             ->timezone('Asia/Kolkata')

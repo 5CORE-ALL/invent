@@ -555,6 +555,14 @@ class FacebookAllAdsSheetController extends Controller
     public function getMergedView(?array $typeList, ?string $chFilter = null, ?string $b2bFilter = null): ?array
     {
         $latestByType = $this->latestBatchPerType();
+        // API-only mode: Spend / Impr / Clk / Status come from the Meta API and
+        // Sales / Orders / Sessions from Shopify (overlays below). The old Spend /
+        // Sales uploads are no longer read, so a failed API call leaves the cell
+        // blank instead of showing a stale uploaded number. (The rows are kept in
+        // the table because they carry Ad Type / CH / B2B-B2C tags.)
+        if (self::API_ONLY) {
+            unset($latestByType['spend'], $latestByType['sales']);
+        }
         if (empty($latestByType)) {
             return null;
         }
@@ -2853,6 +2861,133 @@ class FacebookAllAdsSheetController extends Controller
     }
 
     /**
+     * Build the sheet's Campaign list straight from the Meta API tables
+     * (meta_campaigns, filled by the meta-ads sync) instead of an Excel upload.
+     *
+     * Writes a new "campaign" batch (Campaign name / Campaign ID / Link) and drops
+     * the previous campaign batch, exactly like an upload does. Ad Type, CH,
+     * B2B/B2C tags and the Link column are carried over by Campaign ID so nothing
+     * the user entered is lost. Spend / Impr / Clk / Status / Sales / Lifetime
+     * are then filled live from the APIs by getMergedView().
+     *
+     * Does nothing (and keeps the current list) when meta_campaigns is empty.
+     *
+     * @return array{success: bool, message: string, imported: int, replaced: int}
+     */
+    public function syncCampaignBatchFromApi(): array
+    {
+        if (! Schema::hasTable('meta_campaigns')) {
+            return ['success' => false, 'message' => 'meta_campaigns table is missing.', 'imported' => 0, 'replaced' => 0];
+        }
+
+        // One row per Meta campaign id (meta_campaigns can hold copies) — newest sync wins.
+        $camps = [];
+        foreach (DB::table('meta_campaigns')
+            ->whereNotNull('meta_id')
+            ->orderByDesc('synced_at')
+            ->orderByDesc('id')
+            ->get(['meta_id', 'name', 'status', 'effective_status']) as $c) {
+            $cid = trim((string) $c->meta_id);
+            if (! preg_match('/^\d{6,}$/', $cid) || isset($camps[$cid])) {
+                continue;
+            }
+            $raw = strtoupper(trim((string) ($c->effective_status ?: $c->status)));
+            if ($raw === 'DELETED') {
+                continue;
+            }
+            $camps[$cid] = trim((string) $c->name);
+        }
+
+        if ($camps === []) {
+            return ['success' => false, 'message' => 'No campaigns in meta_campaigns; kept the current list.', 'imported' => 0, 'replaced' => 0];
+        }
+
+        // Carry-over maps, read BEFORE the previous campaign batch is dropped.
+        $prevAdTypeByCid = $this->buildAdTypeCarryMap();
+        $prevChByCid     = $this->buildChCarryMap();
+        $prevB2bByCid    = $this->buildB2bB2cCarryMap();
+
+        $linkByCid = [];
+        // Rows of the previous Campaign list whose campaign Meta's tables don't
+        // have (yet). They are re-inserted untouched so the sync never drops a
+        // campaign or its tags — it only adds / refreshes from the API.
+        $keepRows = [];
+        $prevCampaignBatch = $this->latestBatchPerType()['campaign'] ?? null;
+        if ($prevCampaignBatch) {
+            foreach (FacebookAllAdsSheet::where('import_batch_id', $prevCampaignBatch)->get(['row_data', 'ad_type', 'ch', 'b2b_b2c']) as $pr) {
+                $rd   = array_filter($pr->row_data ?? [], fn ($_, $k) => ! str_starts_with((string) $k, '__'), ARRAY_FILTER_USE_BOTH);
+                $pcid = $this->findCampaignId($rd);
+                $link = trim((string) ($rd['Link'] ?? $rd['link'] ?? $rd['URL'] ?? $rd['Url'] ?? $rd['url'] ?? ''));
+                if ($pcid !== null && $pcid !== '' && $link !== '') {
+                    $linkByCid[$pcid] = $link;
+                }
+                if ($pcid === null || $pcid === '' || ! isset($camps[$pcid])) {
+                    $keepRows[] = $pr;
+                }
+            }
+        }
+
+        $batchId = (string) \Illuminate\Support\Str::uuid();
+        $imported = 0;
+        $replaced = 0;
+
+        DB::beginTransaction();
+        try {
+            $i = 0;
+            foreach ($camps as $cid => $name) {
+                $assoc = [
+                    '__upload_type' => 'campaign',
+                    'Campaign name' => $name,
+                    'Campaign ID'   => (string) $cid,
+                ];
+                if (isset($linkByCid[$cid])) {
+                    $assoc['Link'] = $linkByCid[$cid];
+                }
+
+                FacebookAllAdsSheet::create([
+                    'import_batch_id' => $batchId,
+                    'source_filename' => 'Meta API sync',
+                    'row_index'       => 2 + $i++,
+                    'row_data'        => $assoc,
+                    'ad_type'         => $prevAdTypeByCid[$cid] ?? null,
+                    'ch'              => $prevChByCid[$cid] ?? null,
+                    'b2b_b2c'         => $prevB2bByCid[$cid] ?? null,
+                    'uploaded_by'     => null,
+                ]);
+                $imported++;
+            }
+
+            foreach ($keepRows as $kr) {
+                FacebookAllAdsSheet::create([
+                    'import_batch_id' => $batchId,
+                    'source_filename' => 'Meta API sync',
+                    'row_index'       => 2 + $i++,
+                    'row_data'        => $kr->row_data,
+                    'ad_type'         => $kr->ad_type,
+                    'ch'              => $kr->ch,
+                    'b2b_b2c'         => $kr->b2b_b2c,
+                    'uploaded_by'     => null,
+                ]);
+                $imported++;
+            }
+
+            $replaced = $this->deleteOlderBatchesOfType('campaign', $batchId);
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('FAAS campaign sync from API failed: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed: ' . $e->getMessage(), 'imported' => 0, 'replaced' => 0];
+        }
+
+        return [
+            'success'  => true,
+            'message'  => "Campaign list rebuilt from Meta API: {$imported} campaign(s), replaced {$replaced} old row(s).",
+            'imported' => $imported,
+            'replaced' => $replaced,
+        ];
+    }
+
+    /**
      * Walk recent batches and return ['campaign'=>batchId, 'spend'=>batchId]
      * — i.e. the most recent batch of each upload_type. Falls back to header
      * detection for legacy batches that pre-date the `__upload_type` tag.
@@ -3260,6 +3395,9 @@ class FacebookAllAdsSheetController extends Controller
      */
     /** Allowed `upload_type` values used by the modal's dropdown. */
     private const UPLOAD_TYPES = ['campaign', 'spend', 'sales'];
+
+    /** true = merged view ignores uploaded Spend / Sales files; those numbers come only from the APIs. */
+    private const API_ONLY = true;
 
     /**
      * The curated columns the Merged view exposes — fixed and friendly,
