@@ -215,8 +215,22 @@
         }
         #forecastRowEditModal .fre-qty-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.75rem;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
+        }
+        /* Compact layout so every field fits without scrolling the sidebar. */
+        #forecastRowEditModal .modal-header { padding: 0.6rem 1rem; }
+        #forecastRowEditModal .modal-body { padding: 0.75rem 1rem; }
+        #forecastRowEditModal .modal-footer { padding: 0.5rem 1rem 0.75rem; }
+        #forecastRowEditModal .form-label { margin-bottom: 0.15rem !important; font-size: 0.75rem; }
+        #forecastRowEditModal .form-control,
+        #forecastRowEditModal .form-select,
+        #forecastRowEditModal .select-searchable-display,
+        #forecastRowEditModal #fre_stage_dd_btn {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+            font-size: 0.85rem;
+            min-height: 0;
         }
         @media (max-width: 420px) {
             #forecastRowEditModal .modal-dialog {
@@ -1244,7 +1258,7 @@
                         <input type="hidden" id="fre_sku">
                         <input type="hidden" id="fre_parent">
 
-                        <div class="row g-3">
+                        <div class="row g-2">
                             <div class="col-12">
                                 <div class="fre-qty-grid">
                                     <div>
@@ -1274,25 +1288,34 @@
                                 </div>
                             </div>
 
-                            <div class="col-12">
+                            <div class="col-6">
                                 <label class="form-label small mb-1">Supplier</label>
                                 <select class="form-select select-searchable" id="fre_supplier">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
-                            <div class="col-12">
+                            <div class="col-6">
                                 <label class="form-label small mb-1">Category</label>
                                 <select class="form-select select-searchable" id="fre_category">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
-                            <div class="col-12">
+                            <div class="col-6">
                                 <label class="form-label small mb-1">Exec</label>
                                 <select class="form-select select-searchable" id="fre_exec" data-search-placeholder="Search exec…">
                                     <option value="">NA</option>
                                     @foreach (($execUsers ?? []) as $execName)
                                         <option value="{{ $execName }}">{{ $execName }}</option>
                                     @endforeach
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small mb-1">NR</label>
+                                <select class="form-select" id="fre_nr">
+                                    <option value="">— None —</option>
+                                    <option value="REQ">REQ</option>
+                                    <option value="NR">NR</option>
+                                    <option value="LATER">LATER</option>
                                 </select>
                             </div>
                             <div class="col-12">
@@ -1320,22 +1343,12 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label small mb-1">NR</label>
-                                <select class="form-select" id="fre_nr">
-                                    <option value="">— None —</option>
-                                    <option value="REQ">REQ</option>
-                                    <option value="NR">NR</option>
-                                    <option value="LATER">LATER</option>
-                                </select>
-                            </div>
-                            <div class="col-12 mt-1">
-                                <h6 class="text-muted small text-uppercase mb-2">Links</h6>
                                 <label class="form-label small mb-1">Comparison Link (Clink)</label>
                                 <input type="url" class="form-control" id="fre_clink" placeholder="https://...">
                             </div>
                         </div>
 
-                        <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                             <label class="d-inline-flex align-items-center gap-2 mb-0 small"
                                 title="Temporary: only this Save applies the same changes to all child SKUs under this Parent"
                                 style="cursor:pointer;user-select:none;">
