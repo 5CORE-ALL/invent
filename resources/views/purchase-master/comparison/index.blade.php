@@ -3199,15 +3199,22 @@ document.addEventListener('DOMContentLoaded', function () {
         return html;
     }
 
-    function showCdHover(event, row) {
+    // CD column hover card opens in the centre of the screen (class cd-hover-centered).
+    // cdHoverOwner = cell that owns the card, so a late mouse-leave from the previous
+    // cell can't hide the card of the cell just entered.
+    let cdHoverOwner = null;
+
+    function showCdHover(event, row, ownerEl) {
         if (!cdHoverPreview) return;
+        cdHoverOwner = ownerEl || null;
         cdHoverPreview.innerHTML = buildCdHoverHtml(row);
+        cdHoverPreview.classList.add('cd-hover-centered');
         cdHoverPreview.style.display = 'block';
-        positionCdHover(event);
     }
 
     function positionCdHover(event) {
         if (!cdHoverPreview) return;
+        if (cdHoverPreview.classList.contains('cd-hover-centered')) return;
         const offset = 12;
         let left = event.clientX + offset;
         let top = event.clientY + offset;
@@ -3222,7 +3229,9 @@ document.addEventListener('DOMContentLoaded', function () {
         cdHoverPreview.style.top = `${Math.max(8, top)}px`;
     }
 
-    function hideCdHover() {
+    function hideCdHover(ownerEl) {
+        if (ownerEl && cdHoverOwner && ownerEl !== cdHoverOwner) return;
+        cdHoverOwner = null;
         if (cdHoverPreview) {
             cdHoverPreview.style.display = 'none';
         }
@@ -5344,6 +5353,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function showSheetCellTooltip(event, text) {
         if (!cdHoverPreview || !text) return;
         cdHoverPreview.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+        cdHoverPreview.classList.remove('cd-hover-centered'); // sheet-cell text tips keep following the cursor
         cdHoverPreview.style.display = 'block';
         positionCdHover(event);
     }
@@ -11004,7 +11014,7 @@ document.addEventListener('DOMContentLoaded', function () {
             : (clinkIsSheet ? 'Load comparison sheet from C link' : 'View comparison data');
         const color = hasSheet ? '#16a34a' : (clinkIsSheet ? '#d97706' : '#2563eb');
 
-        return `<div class="comparison-cd-cell" role="button" tabindex="0" title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
+        return `<div class="comparison-cd-cell" role="button" tabindex="0" aria-label="${escapeHtmlAttr(title)}">
             <span class="comparison-cd-btn">
                 <i class="mdi mdi-magnify" style="font-size:18px;color:${color};line-height:1;"></i>
             </span>
@@ -12292,13 +12302,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 headerTooltip: 'Comparison Data',
                 formatter: cdFormatter,
                 cellMouseEnter: function (e, cell) {
-                    showCdHover(e, cell.getRow().getData());
+                    showCdHover(e, cell.getRow().getData(), cell.getElement());
                 },
-                cellMouseMove: function (e) {
-                    positionCdHover(e);
-                },
-                cellMouseLeave: function () {
-                    hideCdHover();
+                cellMouseLeave: function (e, cell) {
+                    hideCdHover(cell.getElement());
                 },
                 cellClick: function (e, cell) {
                     e.preventDefault();

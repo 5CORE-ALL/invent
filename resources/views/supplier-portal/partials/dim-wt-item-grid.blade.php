@@ -116,7 +116,9 @@
     .sp-dw-check { width: 36px; text-align: center; }
     .sp-dw-table img.sp-dw-thumb { width: 30px; height: 30px; object-fit: cover; border-radius: 4px; cursor: zoom-in; }
     #spDwImgHover {
-        position: fixed; display: none; z-index: 200060; pointer-events: none;
+        position: fixed !important; left: 50% !important; top: 50% !important; right: auto !important; bottom: auto !important;
+        transform: translate(-50%, -50%) !important; /* always centered, same as /forecast.analysis */
+        display: none; z-index: 200060; pointer-events: none;
         max-width: min(420px, 90vw); max-height: min(420px, 80vh);
         object-fit: contain; background: #fff; border-radius: 10px; padding: 4px;
         box-shadow: 0 8px 32px rgba(0,0,0,.35); border: 1px solid rgba(0,0,0,.08);

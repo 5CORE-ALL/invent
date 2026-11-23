@@ -238,8 +238,8 @@
     .product-image-enlarged {
         width: auto !important;
         height: auto !important;
-        max-width: min(420px, 90vw) !important;
-        max-height: min(420px, 80vh) !important;
+        max-width: min(480px, 80vw) !important;
+        max-height: min(480px, 80vh) !important;
         object-fit: contain !important;
     }
 

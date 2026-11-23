@@ -1,30 +1,78 @@
 /**
  * Global product-image hover preview.
- * Shows a large floating preview when hovering small thumbnails app-wide.
+ * Shows a large floating preview, ALWAYS centered in the viewport (same as /forecast.analysis),
+ * when hovering small thumbnails app-wide. The page-specific preview boxes listed in
+ * CENTER_SELECTORS below are forced to the same centered position via CSS, so every page behaves alike.
  * Opt out: class "no-img-hover" or data-no-img-hover on the img / ancestor.
  */
 (function () {
     if (window.__globalImgHoverInit) return;
     window.__globalImgHoverInit = true;
 
+    // Page-specific hover preview boxes (their own JS positions them by cursor / anchor).
+    // Forced to the viewport center so every page matches /forecast.analysis.
+    var CENTER_SELECTORS = [
+        '#image-hover-preview',
+        '#compliance-img-hover-preview',
+        '#cell-image-preview',
+        '#image-preview-popup',
+        '#comparison-cd-image-hover-preview',
+        '#mercWsOpImgHoverPreview',
+        '#mercWosOpImgHoverPreview',
+        '#vnOpImgHoverPreview',
+        '#dpOpImgHoverPreview',
+        '#ads-image-preview',
+        '#vnt-img-hover-preview',
+        '#titleMasterImgPreview',
+        '#spDwImgHover',
+        '#sku-link-lmp-image-hover-preview',
+        '#sku-link-lmp-amz-image-hover-preview',
+        '#wf-image-hover-preview',
+        '#fr-image-hover-preview',
+        '#ne-img-preview',
+        '#ebay2op-img-hover-preview',
+        '#dws-img-hover-preview',
+        '#skuImageTooltip',
+        '#optionsHoverPreview',
+        '#ovl30SkuThumbPreview',
+        '#scPreview',
+        '#task-avatar-flyout',
+        '#task-summary-avatar-flyout',
+        'img.preview-popup',
+        '.popup-img',
+        '.zoomed-photo',
+        '.zoomed-barcode',
+        '.image-hover-preview',
+        '.image-hover-container .hover-preview',
+        // CD (Comparison Data) hover cards on /to-order-analysis and /purchase-master/comparison
+        '#toa-cd-hover-preview.cd-hover-centered',
+        '#cd-hover-preview.cd-hover-centered'
+    ];
+
     var STYLE =
         '#global-img-hover-preview{' +
         'position:fixed;display:none;z-index:200060;pointer-events:none;' +
         'width:auto;height:auto;' +
-        'max-width:min(420px,90vw)!important;max-height:min(420px,80vh)!important;' +
-        'object-fit:contain;background:#fff;border-radius:10px;padding:4px;' +
-        'box-shadow:0 8px 32px rgba(0,0,0,.35);border:1px solid rgba(0,0,0,.08);' +
+        'max-width:min(480px,80vw)!important;max-height:min(480px,80vh)!important;' +
+        'object-fit:contain;background:#fff;border-radius:6px;padding:4px;' +
+        'box-shadow:0 4px 16px rgba(0,0,0,.18);border:1px solid #ccc;' +
         '}' +
         '#global-img-hover-preview.is-large{' +
         'max-width:min(680px,88vw)!important;max-height:min(680px,82vh)!important;' +
-        'border-radius:16px;padding:8px;' +
+        'border-radius:10px;padding:6px;' +
         '}' +
         '#global-img-hover-preview.is-circle{' +
         'width:min(280px,70vw);height:min(280px,70vw);' +
         'max-width:min(280px,70vw)!important;max-height:min(280px,70vw)!important;' +
         'border-radius:50%;object-fit:cover;padding:0;border:3px solid #fff;' +
         '}' +
-        'img.global-img-hover-active{cursor:zoom-in;}';
+        'img.global-img-hover-active{cursor:zoom-in;}' +
+        // Centered placement for every page-specific preview box (does not touch show/hide).
+        CENTER_SELECTORS.join(',') + '{' +
+        'position:fixed!important;left:50%!important;top:50%!important;' +
+        'right:auto!important;bottom:auto!important;margin:0!important;' +
+        'transform:translate(-50%,-50%)!important;pointer-events:none!important;' +
+        '}';
 
     var styleEl = document.createElement('style');
     styleEl.textContent = STYLE;
@@ -97,21 +145,12 @@
     var cx = 0;
     var cy = 0;
 
+    // Always centered in the viewport (cursor position is ignored).
     function position() {
         if (!popup || popup.style.display !== 'block') return;
-        var pad = 16;
-        var vw = window.innerWidth;
-        var vh = window.innerHeight;
-        var pw = popup.offsetWidth || 320;
-        var ph = popup.offsetHeight || 320;
-        var x = cx + pad;
-        var y = cy + pad;
-        if (x + pw > vw - 8) x = cx - pw - pad;
-        if (y + ph > vh - 8) y = cy - ph - pad;
-        if (x < 8) x = 8;
-        if (y < 8) y = 8;
-        popup.style.left = x + 'px';
-        popup.style.top = y + 'px';
+        popup.style.left = '50%';
+        popup.style.top = '50%';
+        popup.style.transform = 'translate(-50%, -50%)';
     }
 
     function show(img, e) {

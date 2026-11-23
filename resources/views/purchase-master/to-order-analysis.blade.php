@@ -36,6 +36,7 @@
             position: fixed;
             z-index: 1080;
             max-width: 320px;
+            word-break: break-word;
             padding: 10px 12px;
             background: #1a2942;
             color: #fff;
@@ -49,14 +50,6 @@
         #toa-cd-hover-preview .cd-hover-label {
             color: #93c5fd;
             font-weight: 600;
-        }
-        #toaCdModal .modal-body {
-            min-height: calc(100vh - 120px);
-        }
-        #toaCdIframe {
-            width: 100%;
-            height: calc(100vh - 120px);
-            border: 0;
         }
 
         /* Column show/hide menu */
@@ -902,23 +895,6 @@
     </div>
 
     <div id="toa-cd-hover-preview"></div>
-
-    {{-- Comparison CD modal (loads /purchase-master/comparison sheet editor) --}}
-    <div class="modal fade" id="toaCdModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white py-2">
-                    <h5 class="modal-title mb-0">
-                        <i class="mdi mdi-magnify"></i> Comparison Data — <span id="toaCdModalSku"></span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <iframe id="toaCdIframe" title="Comparison data"></iframe>
-                </div>
-            </div>
-        </div>
-    </div>
 
     {{-- LMP Competitors Modal (same data source as /amazon-tabulator-view) --}}
     <div class="modal fade" id="toaLmpModal" tabindex="-1" aria-hidden="true">
@@ -2678,8 +2654,6 @@
 
             const comparisonCdBaseUrl = @json(route('comparison.sheet.page'));
             const toaCdHoverPreview = document.getElementById('toa-cd-hover-preview');
-            const toaCdModalEl = document.getElementById('toaCdModal');
-            const toaCdIframe = document.getElementById('toaCdIframe');
 
             function isToaGoogleSheetUrl(url) {
                 return /^https?:\/\/(docs|sheets)\.google\.com\/spreadsheets/i.test(String(url || '').trim());
@@ -2713,30 +2687,24 @@
                 return html;
             }
 
-            function showToaCdHover(event, row) {
+            // The CD hover card opens in the centre of the screen (class cd-hover-centered).
+            // toaCdHoverOwner = the cell that currently owns the card, so a late mouse-leave
+            // from the previous cell can't hide the card of the cell you just entered.
+            let toaCdHoverOwner = null;
+
+            function showToaCdHover(event, row, ownerEl) {
                 if (!toaCdHoverPreview) return;
+                toaCdHoverOwner = ownerEl || null;
                 toaCdHoverPreview.innerHTML = buildToaCdHoverHtml(row);
+                toaCdHoverPreview.classList.add('cd-hover-centered');
                 toaCdHoverPreview.style.display = 'block';
-                positionToaCdHover(event);
             }
 
-            function positionToaCdHover(event) {
-                if (!toaCdHoverPreview) return;
-                const offset = 12;
-                let left = event.clientX + offset;
-                let top = event.clientY + offset;
-                const rect = toaCdHoverPreview.getBoundingClientRect();
-                if (left + rect.width > window.innerWidth - 8) {
-                    left = event.clientX - rect.width - offset;
-                }
-                if (top + rect.height > window.innerHeight - 8) {
-                    top = event.clientY - rect.height - offset;
-                }
-                toaCdHoverPreview.style.left = `${Math.max(8, left)}px`;
-                toaCdHoverPreview.style.top = `${Math.max(8, top)}px`;
-            }
+            function positionToaCdHover() { /* centred by CSS — nothing to follow */ }
 
-            function hideToaCdHover() {
+            function hideToaCdHover(ownerEl) {
+                if (ownerEl && toaCdHoverOwner && ownerEl !== toaCdHoverOwner) return;
+                toaCdHoverOwner = null;
                 if (toaCdHoverPreview) {
                     toaCdHoverPreview.style.display = 'none';
                 }
@@ -2744,7 +2712,7 @@
 
             function openToaComparisonCd(rowData) {
                 const sku = String(rowData?.SKU || '').trim();
-                if (!sku || !toaCdIframe) return;
+                if (!sku) return;
 
                 hideToaCdHover();
                 const parent = String(rowData?.Parent || '').trim();
@@ -2753,17 +2721,8 @@
                     params.set('parent', parent);
                 }
 
-                document.getElementById('toaCdModalSku').textContent = sku;
-                toaCdIframe.src = `${comparisonCdBaseUrl}?${params.toString()}`;
-                bootstrap.Modal.getOrCreateInstance(toaCdModalEl).show();
-            }
-
-            if (toaCdModalEl) {
-                toaCdModalEl.addEventListener('hidden.bs.modal', function () {
-                    if (toaCdIframe) {
-                        toaCdIframe.src = 'about:blank';
-                    }
-                });
+                // Open the Comparison Data page in a new browser tab (no modal).
+                window.open(`${comparisonCdBaseUrl}?${params.toString()}`, '_blank', 'noopener');
             }
 
             // Executive list — dynamic from the users table (server-provided), matching
@@ -3422,18 +3381,15 @@
                                 : (clinkIsSheet ? 'Load comparison sheet from C link' : 'View comparison data');
                             const color = hasSheet ? '#16a34a' : (clinkIsSheet ? '#d97706' : '#2563eb');
 
-                            return `<div class="toa-cd-cell" role="button" tabindex="0" title="${escapeHtmlAttr(title)}" aria-label="${escapeHtmlAttr(title)}">
+                            return `<div class="toa-cd-cell" role="button" tabindex="0" aria-label="${escapeHtmlAttr(title)}">
                                 <i class="mdi mdi-magnify" style="font-size:18px;color:${color};line-height:1;"></i>
                             </div>`;
                         },
                         cellMouseEnter: function (e, cell) {
-                            showToaCdHover(e, cell.getRow().getData());
+                            showToaCdHover(e, cell.getRow().getData(), cell.getElement());
                         },
-                        cellMouseMove: function (e) {
-                            positionToaCdHover(e);
-                        },
-                        cellMouseLeave: function () {
-                            hideToaCdHover();
+                        cellMouseLeave: function (e, cell) {
+                            hideToaCdHover(cell.getElement());
                         },
                         cellClick: function (e, cell) {
                             e.preventDefault();
