@@ -1602,8 +1602,9 @@
                 boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                 display: "none",
             });
-            // Direct child of <html> (outside the zoomed <body>) so it is always centred in the viewport.
-            document.documentElement.appendChild(globalPreview);
+            // NOTE: this page-local preview box is intentionally NOT attached to the DOM any more.
+            // The shared hover script (js/image-hover-preview.js) is now the ONLY thing that shows the
+            // enlarged thumbnail (always centred), so the image can never open twice.
 
             let hideTimeout;
             let uniqueSuppliers = [];
