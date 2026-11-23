@@ -4044,7 +4044,7 @@
                     },
                     formatter: function(cell) {
                         const v = forecastMonthlySale(cell.getRow().getData());
-                        const disp = Number.isInteger(v) ? v : (Math.round(v * 10) / 10);
+                        const disp = Math.round(v);
                         return `<span style="display:block; text-align:center;">${disp}</span>`;
                     }
                 },
