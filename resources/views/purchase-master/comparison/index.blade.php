@@ -417,11 +417,21 @@
         pointer-events: none;
     }
 
-    #comparison-cd-image-hover-preview img {
+    /* Every hover image on this page opens at the SAME fixed size (400x400 box),
+       whatever the photo's own dimensions: small ones scale up, big ones scale down, no cropping. */
+    html #comparison-cd-image-hover-preview img,
+    html #global-img-hover-preview {
         display: block;
-        max-width: min(520px, 70vw);
-        max-height: min(520px, 70vh);
-        object-fit: contain;
+        box-sizing: border-box !important;
+        width: min(400px, 80vw) !important;
+        height: min(400px, 80vh) !important;
+        max-width: min(400px, 80vw) !important;
+        max-height: min(400px, 80vh) !important;
+        object-fit: contain !important;
+        background: #fff;
+    }
+    html #global-img-hover-preview {
+        padding: 6px !important;
     }
 
     .comparison-lmp-photo {
@@ -555,7 +565,99 @@
     }
 
     .cd-sheet-toolbar .cd-sheet-tab-input {
-        width: 88px;
+        width: 70px;
+    }
+
+    /* Photo thumbnails inside the Edit column / Edit row modals */
+    .cd-edit-thumb {
+        flex: 0 0 auto;
+        width: 56px;
+        height: 56px;
+        object-fit: contain;
+        background: #fff;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        cursor: zoom-in;
+    }
+    .cd-edit-thumb-empty {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 22px;
+        cursor: default;
+    }
+    .cd-edit-img-row,
+    .cd-edit-img-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .cd-edit-img-field-wrap,
+    .cd-edit-img-meta {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .cd-edit-img-item {
+        padding: 6px 0;
+        border-bottom: 1px solid #eef2f6;
+    }
+    .cd-edit-img-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 3px;
+    }
+    #comparison-priority-bulk-images-list {
+        max-height: 260px;
+        overflow-y: auto;
+    }
+
+    /* Single-row toolbar, every control at 0.8x size, laid out left -> right.
+       The two logical rows are flattened (display: contents) into one flex line. */
+    .cd-sheet-toolbar {
+        flex-direction: row;
+        flex-wrap: wrap;                 /* one row whenever it fits; only wraps on very narrow screens (keeps dropdowns unclipped) */
+        align-items: center;
+        gap: 5px;
+        padding: 6px 8px;
+        overflow: visible;
+    }
+
+    .cd-sheet-toolbar .cd-sheet-toolbar-row {
+        display: contents;
+    }
+
+    .cd-sheet-toolbar-group {
+        gap: 5px;
+    }
+
+    .cd-sheet-toolbar .btn,
+    .cd-sheet-toolbar .btn-sm {
+        font-size: 0.7rem;               /* 0.875rem x 0.8 */
+        padding: 0.2rem 0.4rem;          /* .25rem .5rem x 0.8 */
+        line-height: 1.5;
+        white-space: nowrap;
+    }
+
+    .cd-sheet-toolbar .form-control-sm {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+        min-height: 0;
+        height: calc(1.5em + 0.4rem + 2px);
+    }
+
+    .cd-sheet-toolbar .badge {
+        font-size: 0.6rem;
+    }
+
+    .cd-sheet-toolbar .comparison-cd-clink-url-wrap {
+        min-height: 0;
+        gap: 4px;
+    }
+
+    .cd-sheet-toolbar .comparison-cd-clink-url-edit-btn {
+        padding: 0.2rem 0.4rem;
     }
 
     .cd-sheet-wrap {
@@ -1501,6 +1603,15 @@
     .cd-sheet-table .cd-sheet-cell:focus {
         box-shadow: inset 0 0 0 2px #2563eb;
         background: #eff6ff;
+    }
+
+    /* Spec (label) column: 0.7x of its previous 260px width (260 -> 182px). */
+    .cd-sheet-table th.cd-spec-col,
+    .cd-sheet-table td.cd-label-cell {
+        width: 182px;
+        min-width: 182px;
+        max-width: 182px;
+        word-break: break-word;
     }
 
     .cd-sheet-table .cd-label-cell:not([style*="background-color"]) {
@@ -3501,6 +3612,70 @@ document.addEventListener('DOMContentLoaded', function () {
         return common || '';
     }
 
+    // Thumbnail URL for an image cell value (used by the Edit column / Edit row modals).
+    function sheetEditThumbSrc(rowIndex, colIndex, rawValue) {
+        const v = String(rawValue ?? '').trim();
+        if (!v) return '';
+        if (v.startsWith('data:image/') || v.startsWith('blob:') || /^https?:\/\//i.test(v) || v.startsWith('/')) {
+            return v;
+        }
+        if (v.startsWith('[cmp-photo:') || v.startsWith('[embedded-image:')) {
+            const preview = getSheetPastePreview(rowIndex, colIndex);
+            if (preview) return preview;
+            const coords = parseEmbeddedImageCoords(v, rowIndex, colIndex);
+            return sheetEmbeddedImageSrc(coords.row, coords.col, v);
+        }
+        return '';
+    }
+
+    function sheetEditThumbHtml(rowIndex, colIndex, rawValue) {
+        const src = sheetEditThumbSrc(rowIndex, colIndex, rawValue);
+        if (!src) {
+            return '<span class="cd-edit-thumb cd-edit-thumb-empty" aria-hidden="true"><i class="mdi mdi-image-off-outline"></i></span>';
+        }
+        return `<img class="cd-edit-thumb" src="${escapeHtmlAttr(src)}" alt="Photo" loading="lazy" referrerpolicy="no-referrer">`;
+    }
+
+    // Edit row modal: list every photo cell of the selected row(s) so images can be seen and replaced.
+    function renderPriorityBulkEditImages(rows) {
+        const box = document.getElementById('comparison-priority-bulk-images');
+        const list = document.getElementById('comparison-priority-bulk-images-list');
+        if (!box || !list) return;
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const items = [];
+        (rows || []).forEach((r) => {
+            const row = currentSheetCells[r] || [];
+            for (let c = 0; c < row.length; c++) {
+                if (c === specCol || c === criticalCol || c === qcCol) continue;
+                const raw = String(row[c] ?? '');
+                if (!raw || !isSheetImageUrl(raw)) continue;
+                items.push({ r, c, raw });
+            }
+        });
+        if (!items.length) {
+            box.classList.add('d-none');
+            list.innerHTML = '';
+            return;
+        }
+        list.innerHTML = items.map((it) => {
+            const isUrl = /^https?:\/\//i.test(it.raw) || it.raw.startsWith('/');
+            const label = `Row ${it.r + 1} · ${getSheetColumnHeaderLabel(it.c)}`;
+            return `<div class="cd-edit-img-item">
+                ${sheetEditThumbHtml(it.r, it.c, it.raw)}
+                <div class="cd-edit-img-meta">
+                    <div class="cd-edit-img-label">${escapeHtml(label)}</div>
+                    <input type="text" class="form-control form-control-sm cd-row-edit-img-field"
+                        data-row="${it.r}" data-col="${it.c}" data-original="${escapeHtmlAttr(isUrl ? it.raw : '')}"
+                        value="${escapeHtmlAttr(isUrl ? it.raw : '')}"
+                        placeholder="${isUrl ? 'Image URL' : 'Embedded photo — paste an image URL to replace (empty = keep)'}">
+                </div>
+            </div>`;
+        }).join('');
+        box.classList.remove('d-none');
+    }
+
     function openPriorityBulkEditModal(anchorRow) {
         let rows = getSelectedSheetMultiRows();
         const anchor = parseInt(anchorRow, 10);
@@ -3544,6 +3719,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         refreshPriorityBulkEditModalMeta();
+        renderPriorityBulkEditImages(rows);
 
         const modalEl = document.getElementById('comparisonPriorityBulkEditModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
@@ -3563,12 +3739,29 @@ document.addEventListener('DOMContentLoaded', function () {
         const criticalVal = String(criticalSelect?.value || '').trim();
         const qcVal = String(qcSelect?.value || '').trim();
 
-        if (!criticalVal && !qcVal) {
-            setSheetStatus('Choose a Critical and/or QC value to apply.', true);
+        // Photo cells edited in this modal (replace by URL).
+        const imageChanges = [];
+        document.querySelectorAll('#comparison-priority-bulk-images-list .cd-row-edit-img-field').forEach((input) => {
+            const next = String(input.value || '').trim();
+            const orig = String(input.dataset.original || '').trim();
+            if (next && next !== orig) {
+                imageChanges.push({ row: parseInt(input.dataset.row, 10), col: parseInt(input.dataset.col, 10), value: next });
+            }
+        });
+
+        if (!criticalVal && !qcVal && !imageChanges.length) {
+            setSheetStatus('Choose a Critical and/or QC value, or replace a photo, to apply.', true);
             return;
         }
 
         readCellsFromEditor();
+        let imagesApplied = 0;
+        imageChanges.forEach((chg) => {
+            if (!currentSheetCells[chg.row]) return;
+            while (currentSheetCells[chg.row].length <= chg.col) currentSheetCells[chg.row].push('');
+            currentSheetCells[chg.row][chg.col] = chg.value;
+            imagesApplied += 1;
+        });
         const specCol = detectSpecColumnIndex(currentSheetCells);
         const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
         const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
@@ -3595,6 +3788,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
 
+        if (imagesApplied) {
+            // Photos changed: rebuild the grid so the new thumbnails show.
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        }
         applyPriorityRowFilters();
         // Quiet local save — no full sheet rebuild / list reload.
         scheduleAutoSaveComparisonSheet(200, { rerender: false, refreshTable: false });
@@ -3602,6 +3799,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const parts = [];
         if (criticalVal) parts.push(`Critical → ${normalizePriorityValue(criticalVal)}`);
         if (qcVal) parts.push(`QC → ${normalizePriorityValue(qcVal)}`);
+        if (imagesApplied) parts.push(`${imagesApplied} photo(s) replaced`);
         setSheetStatus(`Updated ${rows.length} row(s): ${parts.join(', ')}.`, false);
 
         const modalEl = document.getElementById('comparisonPriorityBulkEditModal');
@@ -4187,10 +4385,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? '<div class="cd-col-edit-hint mt-1">Embedded photo — leave as-is to keep, or paste an image URL to replace.</div>'
                 : '';
             const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
+            const thumbHtml = isImage ? sheetEditThumbHtml(r, col, rawValue) : '';
             parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
                 ${checkHtml}
                 <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}${hint}</td>
+                <td class="cd-col-edit-value">${isImage ? `<div class="cd-edit-img-row">${thumbHtml}<div class="cd-edit-img-field-wrap">${wrapFieldWithClipboardActions(fieldHtml)}${hint}</div></div>` : `${wrapFieldWithClipboardActions(fieldHtml)}${hint}`}</td>
             </tr>`);
         }
         tbody.innerHTML = parts.join('');
@@ -7600,7 +7799,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     headerText = columnLetter(c);
                 }
             }
-            headHtml += `<th class="cd-col-header cd-select-col${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
+            headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
                 <span class="cd-col-header-inner">
                     <span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
                     <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
@@ -13406,6 +13605,10 @@ document.addEventListener('DOMContentLoaded', function () {
                             </button>
                         </span>
                     </div>
+                </div>
+                <div class="mb-3 d-none" id="comparison-priority-bulk-images">
+                    <label class="form-label small fw-semibold mb-1"><i class="mdi mdi-image-outline me-1"></i> Photos in selected row(s)</label>
+                    <div id="comparison-priority-bulk-images-list"></div>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     <button type="button" class="btn btn-sm btn-outline-danger" id="comparison-priority-bulk-delete-row-btn" title="Delete the selected row(s)">
