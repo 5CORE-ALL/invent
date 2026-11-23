@@ -2161,6 +2161,10 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             return ['success' => false, 'message' => 'No eBay2 listing found for this SKU or item_id.'];
         }
 
+        // Pictures inside the description must sit on eBay's own picture host, or they show as broken images.
+        $hosted = EbayTradingReviseItem::hostDescriptionImages($description, $this->endpoint, $this->devId, $this->appId, $this->certId, $token);
+        $description = $hosted['html'];
+
         $html = EbayTradingReviseItem::buildListingDescriptionHtml(
             $description,
             (string) $identifier,
@@ -2179,13 +2183,18 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $html
         );
 
-        return EbayTradingReviseItem::verifyDescriptionApplied(
+        $verified = EbayTradingReviseItem::verifyDescriptionApplied(
             $res,
             ($res['success'] ?? false) ? $this->getItem((string) $itemId) : null,
             $html,
             (string) $itemId,
             'eBay2'
         );
+        if ($hosted['failed'] !== []) {
+            $verified['message'] = trim((string) ($verified['message'] ?? '')).' These picture(s) could not be copied to eBay and may not show: '.implode('; ', array_slice($hosted['failed'], 0, 3)).'.';
+        }
+
+        return $verified;
     }
 
     public function isConfigured(): bool

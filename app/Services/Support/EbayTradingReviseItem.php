@@ -138,6 +138,119 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Turn every picture inside a description into an address eBay can always show.
+     * Pictures that only load on our own pages (relative "/cdn/shop/..." paths, "//host/..." links, http links, links
+     * with spaces or "+", pictures pasted as base64) look broken once they sit inside an eBay listing. Each one is
+     * made absolute and copied onto eBay's own picture host (i.ebayimg.com). A picture that cannot be copied keeps
+     * its cleaned-up https link and is reported in "failed".
+     *
+     * @return array{html: string, hosted: int, failed: list<string>}
+     */
+    public static function hostDescriptionImages(
+        string $html,
+        string $endpoint,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $authToken,
+    ): array {
+        $out = ['html' => $html, 'hosted' => 0, 'failed' => []];
+        if ($html === '' || stripos($html, '<img') === false) {
+            return $out;
+        }
+
+        // Pictures pasted as base64 become stored files first, so they have an address to copy from.
+        $html = \App\Support\Marketplace\AplusInlineImages::externalize($html);
+
+        $cache = [];
+        $converted = preg_replace_callback('#<img\b[^>]*>#i', static function (array $m) use (&$cache, &$out, $endpoint, $devId, $appId, $certId, $authToken): string {
+            $tag = $m[0];
+            $src = '';
+            foreach (['src', 'data-src', 'data-original'] as $attr) {
+                if (preg_match('#\b'.$attr.'\s*=\s*(?:"([^"]*)"|\'([^\']*)\')#i', $tag, $a)) {
+                    $candidate = trim(html_entity_decode($a[1] !== '' ? $a[1] : ($a[2] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                    if ($candidate !== '') {
+                        $src = $candidate;
+                        break;
+                    }
+                }
+            }
+            if ($src === '' && preg_match('#\bsrcset\s*=\s*(?:"([^"]*)"|\'([^\']*)\')#i', $tag, $a)) {
+                $first = trim(explode(',', html_entity_decode($a[1] !== '' ? $a[1] : ($a[2] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'))[0]);
+                $src = trim(preg_split('/\s+/', $first)[0] ?? '');
+            }
+            if ($src === '') {
+                return $tag;
+            }
+
+            $url = self::absoluteImageUrl($src);
+            if ($url === null) {
+                $out['failed'][] = mb_substr($src, 0, 120);
+
+                return $tag;
+            }
+
+            if (! array_key_exists($url, $cache)) {
+                $name = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME);
+                $up = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $url, $name !== '' ? mb_substr(rawurldecode($name), 0, 60) : 'image');
+                if (($up['success'] ?? false) && ! empty($up['url'])) {
+                    $cache[$url] = preg_replace('#^http://#i', 'https://', (string) $up['url']);
+                    $out['hosted']++;
+                } else {
+                    $cache[$url] = null;
+                    $out['failed'][] = mb_substr($url, 0, 120).' ('.mb_substr((string) ($up['message'] ?? 'upload failed'), 0, 120).')';
+                }
+            }
+            $final = $cache[$url] ?? $url;
+
+            // Drop the old address attributes, then write the working one.
+            $tag = preg_replace('#\s(?:src|srcset|data-src|data-original|sizes)\s*=\s*(?:"[^"]*"|\'[^\']*\')#i', '', $tag) ?? $tag;
+
+            return preg_replace('#<img\b#i', '<img src="'.htmlspecialchars($final, ENT_QUOTES, 'UTF-8').'"', $tag, 1) ?? $tag;
+        }, $html);
+
+        $out['html'] = is_string($converted) ? $converted : $html;
+
+        return $out;
+    }
+
+    /** An absolute, correctly encoded https/http address for a picture link, or null when it cannot be made one. */
+    private static function absoluteImageUrl(string $src): ?string
+    {
+        $src = trim($src);
+        if ($src === '' || stripos($src, 'data:') === 0 || stripos($src, 'blob:') === 0 || stripos($src, 'cid:') === 0) {
+            return null;
+        }
+        if (stripos($src, 'shopify://shop_images/') === 0) {
+            $src = '/cdn/shop/files/'.substr($src, strlen('shopify://shop_images/'));
+        }
+        if (str_starts_with($src, '//')) {
+            $src = 'https:'.$src;
+        } elseif (! preg_match('#^https?://#i', $src)) {
+            if (! str_starts_with($src, '/')) {
+                $src = '/'.$src;
+            }
+            if (str_starts_with($src, '/storage/')) {
+                $base = rtrim((string) config('app.url'), '/');
+            } else {
+                $host = trim((string) (config('services.shopify.store_url') ?: config('services.shopify.domain')));
+                $host = rtrim(preg_replace('#^https?://#i', '', $host) ?? $host, '/');
+                $base = $host !== '' ? 'https://'.$host : rtrim((string) config('app.url'), '/');
+            }
+            if ($base === '') {
+                return null;
+            }
+            $src = $base.$src;
+        }
+
+        // Encode only what a link cannot carry (spaces, quotes, non-ASCII); keep "+" and existing %XX as they are.
+        $src = preg_replace_callback('#[^A-Za-z0-9\-._~:/?\#\[\]@!$&\'()*+,;=%]#u', static fn (array $c): string => rawurlencode($c[0]), $src) ?? $src;
+        $src = preg_replace('#%(?![0-9A-Fa-f]{2})#', '%25', $src) ?? $src;
+
+        return preg_match('#^https?://[^/\s]+#i', $src) ? $src : null;
+    }
+
+    /**
      * Listing Description body for a push: the caller's full HTML is kept intact (only active content
      * eBay rejects is removed). Images already inside that HTML stay; the product gallery is not added.
      */
