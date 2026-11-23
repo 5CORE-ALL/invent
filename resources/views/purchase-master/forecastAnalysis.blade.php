@@ -3630,20 +3630,6 @@
             forecastClampPreviewPosition(wrap, clientX, clientY);
         }
 
-        // Image preview opens only while hovering the SKU text (not the thumbnail).
-        document.addEventListener('mouseover', function(e) {
-            const t = e.target && e.target.closest ? e.target.closest('.forecast-sku-hover') : null;
-            if (!t) return;
-            if (e.relatedTarget && t.contains(e.relatedTarget)) return;
-            forecastShowImagePreview(0, 0, t.getAttribute('data-full'));
-        });
-        document.addEventListener('mouseout', function(e) {
-            const t = e.target && e.target.closest ? e.target.closest('.forecast-sku-hover') : null;
-            if (!t) return;
-            if (e.relatedTarget && t.contains(e.relatedTarget)) return;
-            forecastRemoveImagePreview();
-        });
-
         // SKU column width toggle (header expand button)
         const SKU_COL_WIDTH_COLLAPSED = 180;
         const SKU_COL_WIDTH_EXPANDED = 380;
@@ -3846,8 +3832,6 @@
                         const title = esc.replace(/"/g, '&quot;');
                         const safeSku = v.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-                        const skuImgUrl = String(rowData.Image || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-
                         // Copy icon
                         const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
 
@@ -3865,7 +3849,7 @@
                             : '';
 
                         return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
-                            <span title="${title}" class="forecast-sku-hover" data-full="${skuImgUrl}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;${skuImgUrl ? 'cursor:zoom-in;' : ''}">${esc}</span>
+                            <span title="${title}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>
                             ${copyBtn}
                             ${deleteBtn}
                             ${linkPart}
