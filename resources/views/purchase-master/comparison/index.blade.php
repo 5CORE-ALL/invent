@@ -445,6 +445,10 @@
         z-index: 200060 !important;
     }
 
+    .comparison-lmp-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .comparison-lmp-lowest { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .comparison-lmp-lowest .badge { font-size:.75rem; }
+
     .comparison-lmp-photo {
         width: 36px;
         height: 36px;
@@ -951,9 +955,11 @@
         width: 26px;
         height: 26px;
         padding: 0;
-        border: 1px solid #cbd5e1;
+        border: 0;
+        outline: none;
+        box-shadow: none;
         border-radius: 6px;
-        background: #fff;
+        background: transparent;
         color: #64748b;
         line-height: 1;
         cursor: pointer;
@@ -961,9 +967,10 @@
 
     .cd-sheet-table .cd-sheet-row-edit-btn:hover,
     .cd-sheet-table .cd-sheet-row-edit-btn:focus {
-        background: #e2e8f0;
+        background: transparent;
         color: #1e293b;
-        border-color: #94a3b8;
+        outline: none;
+        box-shadow: none;
     }
 
     .cd-sheet-table .cd-sheet-row-edit-btn i {
@@ -992,9 +999,11 @@
         width: 20px;
         height: 20px;
         padding: 0;
-        border: 1px solid #cbd5e1;
+        border: 0;
+        outline: none;
+        box-shadow: none;
         border-radius: 4px;
-        background: #fff;
+        background: transparent;
         color: #64748b;
         line-height: 1;
         cursor: pointer;
@@ -1003,9 +1012,10 @@
 
     .cd-sheet-table .cd-sheet-col-edit-btn:hover,
     .cd-sheet-table .cd-sheet-col-edit-btn:focus {
-        background: #e2e8f0;
+        background: transparent;
         color: #1e293b;
-        border-color: #94a3b8;
+        outline: none;
+        box-shadow: none;
     }
 
     .cd-sheet-table .cd-sheet-col-edit-btn i {
@@ -1600,8 +1610,8 @@
     .cd-sheet-table .cd-sheet-img,
     .cd-sheet-table td img,
     .cd-sheet-table .cd-sheet-cell img {
-        max-width: 120px !important;
-        max-height: 80px !important;
+        max-width: 96px !important;
+        max-height: 64px !important;
         width: auto !important;
         height: auto !important;
         object-fit: contain !important;
@@ -2926,6 +2936,17 @@ document.addEventListener('DOMContentLoaded', function () {
     const googleLmpDataUrl = @json(route('google.lmp.data'));
     const googleLmpAddUrl = @json(route('google.lmp.add'));
     const cvrMasterLmpIgnoreUrl = @json(route('cvr.master.lmp.ignore'));
+    // All-marketplace LMP (same sources as Master Analytics → LMP drawer)
+    const bestbuyLmpDataUrl = @json(route('bestbuy.lmp.data'));
+    const macyLmpDataUrl = @json(route('macy.lmp.data'));
+    const reverbLmpDataUrl = @json(route('reverb.lmp.data'));
+    const lmpDeleteUrls = {
+        ebay: @json(route('ebay.lmp.delete')),
+        google: @json(route('google.lmp.delete')),
+        bestbuy: @json(route('bestbuy.lmp.delete')),
+        macy: @json(route('macy.lmp.delete')),
+        reverb: @json(route('reverb.lmp.delete')),
+    };
     const updateLinkUrl = @json(route('update.rfq.link'));
     const groupMasterCategoriesUrl = @json(route('group.master.categories'));
     const groupMasterUpdateFieldUrl = @json(route('group.master.update.field'));
@@ -5822,6 +5843,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         listEl.innerHTML = amazonLmpLoadingHtml();
 
+        // LMP Competitors tab: show EVERY marketplace (Amz, eBay, Google, BestBuy, Macy, Reverb, Temu).
+        if (listEl.id === 'comparison-cd-lmp-list') {
+            return loadAllMarketplaceLmp(sku, listEl);
+        }
+
         return fetch(`${competitorsUrl}?sku=${encodeURIComponent(sku)}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
         })
@@ -5837,6 +5863,285 @@ document.addEventListener('DOMContentLoaded', function () {
             listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!</div>';
         });
     }
+
+
+    // ===== LMP Competitors tab: all marketplaces, lowest landed price (P+S) first =====
+    const ALL_LMP_CHANNELS = [
+        { key: 'amazon', label: 'Amz', color: '#ff9900', text: '#000' },
+        { key: 'ebay', label: 'eBay', color: '#0d6efd', text: '#fff' },
+        { key: 'google', label: 'Google', color: '#198754', text: '#fff' },
+        { key: 'bestbuy', label: 'BestBuy', color: '#0046be', text: '#fff' },
+        { key: 'macy', label: 'Macy', color: '#e21a2c', text: '#fff' },
+        { key: 'reverb', label: 'Reverb', color: '#d9281d', text: '#fff' },
+        { key: 'temu', label: 'Temu', color: '#fb7701', text: '#fff' },
+    ];
+    let allLmpCache = { sku: '', rows: [], filter: 'all', listEl: null };
+
+    function allLmpChannelMeta(key) {
+        return ALL_LMP_CHANNELS.find(c => c.key === key) || { key, label: key, color: '#6c757d', text: '#fff' };
+    }
+
+    function allLmpParseShip(delivery) {
+        if (delivery == null || delivery === '') return null;
+        if (typeof delivery === 'number' && !isNaN(delivery)) return Math.max(0, delivery);
+        const text = String(delivery).trim();
+        if (!text) return null;
+        if (/^[\d.]+$/.test(text)) {
+            const n = parseFloat(text);
+            return isNaN(n) ? null : Math.max(0, n);
+        }
+        if (/\bfree\b/i.test(text)) return 0;
+        const m = text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/);
+        if (m) {
+            const n = parseFloat(m[1]);
+            if (!isNaN(n) && n >= 0) return n;
+        }
+        return null;
+    }
+
+    function allLmpDecode(text) {
+        const t = String(text || '');
+        if (!t || t.indexOf('&') === -1) return t;
+        const ta = document.createElement('textarea');
+        ta.innerHTML = t;
+        return ta.value;
+    }
+
+    function allLmpLanded(row) {
+        const price = parseFloat(row.price) || 0;
+        if (row.total != null && row.total > 0) return row.total;
+        return price + (row.ship != null ? row.ship : 0);
+    }
+
+    function buildAllLmpRows(res) {
+        const rows = [];
+        const list = (r) => (r && r.success && Array.isArray(r.competitors)) ? r.competitors : [];
+
+        list(res.amazon).forEach(function (c) {
+            const price = parseFloat(c.price) || 0;
+            if (price <= 0) return;
+            const ship = allLmpParseShip(c.delivery);
+            const landed = parseFloat(c.landed_price);
+            rows.push({
+                channel: 'amazon', id: c.id, extId: c.asin || '', price, ship,
+                total: (Number.isFinite(landed) && landed > 0) ? landed : (ship != null ? price + ship : null),
+                ignored: !!c.ignored, link: c.product_link || c.link || '', image: c.image || '',
+                title: c.product_title || c.title || '', rating: c.rating, reviews: c.reviews,
+                units: c.monthly_units_sold, type: c.seller_type, delivery: c.delivery || '',
+            });
+        });
+
+        const itemStyle = function (channel, arr) {
+            list(arr).forEach(function (c) {
+                const base = parseFloat(c.price) || 0;
+                const sc = parseFloat(c.shipping_cost);
+                const ship = !isNaN(sc) ? Math.max(0, sc) : 0;
+                const total = parseFloat(c.total_price) || (base > 0 ? base + ship : 0);
+                if (!(base > 0) && !(total > 0)) return;
+                rows.push({
+                    channel, id: c.id, extId: c.item_id || '', price: base > 0 ? base : total, ship,
+                    total: total > 0 ? total : null, ignored: !!c.ignored,
+                    link: c.link || c.product_link || '', image: c.image || '',
+                    title: c.product_title || c.title || '', rating: c.rating, reviews: c.reviews,
+                    delivery: ship,
+                });
+            });
+        };
+        itemStyle('ebay', res.ebay);
+        itemStyle('bestbuy', res.bestbuy);
+        itemStyle('macy', res.macy);
+        itemStyle('reverb', res.reverb);
+
+        list(res.google).forEach(function (c) {
+            const total = parseFloat(c.price) || 0;
+            if (total <= 0) return;
+            const ship = Math.max(0, parseFloat(c.shipping) || 0);
+            const base = c.base_price != null ? (parseFloat(c.base_price) || total) : total;
+            rows.push({
+                channel: 'google', id: c.id, extId: c.product_id || '', price: base, ship, total,
+                ignored: !!c.ignored, link: c.link || c.product_link || '', image: c.image || '',
+                title: c.product_title || c.title || c.source || '', rating: c.rating, reviews: c.reviews,
+                delivery: ship,
+            });
+        });
+
+        list(res.temu).forEach(function (c) {
+            const price = parseFloat(c.price) || 0;
+            if (price <= 0) return;
+            let ship = parseFloat(c.delivery != null ? c.delivery : c.shipping_cost);
+            if (isNaN(ship) || ship < 0) ship = 0;
+            if (ship <= 0 && price < 27) ship = 2.99;
+            const total = parseFloat(c.total_price);
+            rows.push({
+                channel: 'temu', id: c.id, extId: '', price, ship,
+                total: (!isNaN(total) && total > 0) ? total : price + ship,
+                ignored: !!c.ignored, link: c.link || c.product_link || '', image: c.image || '',
+                title: c.product_title || c.title || '', rating: c.rating, reviews: c.reviews,
+                delivery: ship, noDelete: true,
+            });
+        });
+
+        // Lowest landed price (price + shipping) on top; hidden-from-LMP rows go last.
+        rows.sort(function (a, b) {
+            if (a.ignored !== b.ignored) return a.ignored ? 1 : -1;
+            return allLmpLanded(a) - allLmpLanded(b);
+        });
+        return rows;
+    }
+
+    function renderAllMarketplaceLmp() {
+        const { sku, rows: allRows, filter, listEl } = allLmpCache;
+        if (!listEl) return;
+        if (!allRows.length) {
+            listEl.innerHTML = '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU on any marketplace yet.</div>';
+            return;
+        }
+
+        const rows = filter === 'all' ? allRows : allRows.filter(r => r.channel === filter);
+        const lowestBy = {};
+        allRows.forEach(function (r) {
+            if (r.ignored) return;
+            const v = allLmpLanded(r);
+            if (v > 0 && (lowestBy[r.channel] == null || v < lowestBy[r.channel])) lowestBy[r.channel] = v;
+        });
+
+        let html = '<div class="comparison-lmp-chips">';
+        html += `<button type="button" class="btn btn-sm ${filter === 'all' ? 'btn-dark' : 'btn-outline-secondary'} comparison-lmp-filter-btn" data-filter="all">All <span class="badge bg-light text-dark">${allRows.length}</span></button>`;
+        ALL_LMP_CHANNELS.forEach(function (ch) {
+            const count = allRows.filter(r => r.channel === ch.key).length;
+            if (!count) return;
+            const active = filter === ch.key;
+            html += `<button type="button" class="btn btn-sm comparison-lmp-filter-btn ${active ? '' : 'btn-outline-secondary'}" data-filter="${ch.key}"
+                ${active ? `style="background:${ch.color};color:${ch.text};border-color:${ch.color};"` : ''}>${ch.label} <span class="badge bg-light text-dark">${count}</span></button>`;
+        });
+        html += '</div><div class="comparison-lmp-lowest">';
+        ALL_LMP_CHANNELS.forEach(function (ch) {
+            if (lowestBy[ch.key] == null) return;
+            html += `<span class="badge" style="background:${ch.color};color:${ch.text};">${ch.label} $${lowestBy[ch.key].toFixed(2)}</span>`;
+        });
+        html += '</div>';
+
+        html += `<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">
+            <thead class="table-light"><tr>
+                <th style="width:30px;">#</th>
+                <th style="width:44px;">Image</th>
+                <th style="width:52px;" title="Hide From LMP Model">Hide</th>
+                <th style="width:80px;">Marketplace</th>
+                <th style="width:250px;">Product Title</th>
+                <th style="width:110px;" title="Price + Shipping">Price (P+S)</th>
+                <th style="width:70px;">Units 30d</th>
+                <th style="width:60px;">Type</th>
+                <th style="width:70px;">Rating</th>
+                <th style="width:70px;">Reviews</th>
+                <th style="width:100px;">Delivery</th>
+                <th style="width:60px;">Link</th>
+                <th style="width:70px;">Actions</th>
+            </tr></thead><tbody>`;
+
+        rows.forEach(function (row, index) {
+            const meta = allLmpChannelMeta(row.channel);
+            const landed = allLmpLanded(row);
+            const ship = row.ship != null ? row.ship : 0;
+            const isLowest = !row.ignored && lowestBy[row.channel] != null && Math.abs(landed - lowestBy[row.channel]) < 0.01;
+            const isOverallLowest = !row.ignored && index === 0 && filter === 'all';
+            const rowClass = (row.ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
+            const hideBadge = row.ignored ? ' <span class="badge bg-secondary">Hidden</span>' : '';
+            const totalFmt = '$' + landed.toFixed(2);
+            const priceInner = ship > 0
+                ? `${totalFmt} <small style="color:#888;font-weight:400;">($${row.price.toFixed(2)}+$${ship.toFixed(2)})</small>`
+                : totalFmt;
+            const priceBadge = isLowest
+                ? `<span class="badge bg-success">${priceInner} <i class="fa fa-trophy"></i></span>`
+                : `<strong>${priceInner}</strong>`;
+            const imageUrl = row.channel === 'amazon' ? amazonFullPhotoUrl(row.image) : String(row.image || '');
+            const imageHtml = imageUrl
+                ? `<img src="${escapeHtmlAttr(imageUrl)}" class="comparison-lmp-photo comparison-table-sku-image" data-full-src="${escapeHtmlAttr(imageUrl)}" alt="">`
+                : '<span style="color:#999;">—</span>';
+            const dash = '<span style="color:#999;">—</span>';
+            const units = row.units ? `<span style="color:#007bff;font-weight:600;">${parseInt(row.units, 10)}</span>` : dash;
+            const rating = row.rating ? `<span style="background:#ffc107;color:#000;font-weight:600;padding:2px 6px;border-radius:4px;">${parseFloat(row.rating).toFixed(1)} <i class="fas fa-star"></i></span>` : dash;
+            const reviews = row.reviews ? `<span>${parseInt(row.reviews, 10).toLocaleString()}</span>` : dash;
+            let deliveryHtml = dash;
+            if (row.channel === 'amazon') {
+                if (row.delivery) {
+                    const paid = String(row.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                    if (paid) deliveryHtml = `<span style="color:#dc3545;font-weight:600;" title="${escapeHtmlAttr(row.delivery)}">$${paid[1]} ship</span>`;
+                    else if (/free/i.test(row.delivery)) deliveryHtml = `<span style="color:#28a745;font-weight:600;" title="${escapeHtmlAttr(row.delivery)}">FREE</span>`;
+                    else {
+                        const t = String(row.delivery);
+                        deliveryHtml = `<span style="font-size:10px;" title="${escapeHtmlAttr(t)}">${escapeHtml(t.substring(0, 22))}${t.length > 22 ? '…' : ''}</span>`;
+                    }
+                }
+            } else if (row.ship != null) {
+                deliveryHtml = row.ship > 0
+                    ? `<span style="color:#dc3545;font-weight:600;">$${row.ship.toFixed(2)} ship</span>`
+                    : '<span style="color:#28a745;font-weight:600;">FREE</span>';
+            }
+            const typeHtml = row.channel === 'amazon' ? amazonSellerTypeBadge(row.type) : dash;
+            const link = row.link || '#';
+            const title = allLmpDecode(row.title) || (meta.label + ' listing');
+            const delBtn = row.noDelete ? '' : `<button type="button" class="comparison-lmp-icon-btn comparison-lmp-delete-btn comparison-delete-lmp-btn"
+                data-id="${escapeHtmlAttr(String(row.id ?? ''))}" data-marketplace="${row.channel}"
+                data-asin="${escapeHtmlAttr(row.extId || '')}" data-ext-id="${escapeHtmlAttr(row.extId || '')}"
+                data-price="${escapeHtmlAttr(String(row.price ?? ''))}" title="Delete this competitor"><i class="bi bi-trash"></i></button>`;
+
+            html += `<tr class="${rowClass}">
+                <td class="text-center"><strong>${index + 1}</strong></td>
+                <td class="text-center">${imageHtml}</td>
+                <td class="text-center comparison-lmp-hide-cell">${comparisonLmpHideCbHtml(row, row.channel, sku)}${hideBadge}</td>
+                <td class="text-center"><span class="badge" style="background:${meta.color};color:${meta.text};">${meta.label}</span>${isOverallLowest ? ' <i class="fa fa-trophy text-success" title="Lowest overall"></i>' : ''}</td>
+                <td style="font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(title)}">${escapeHtml(title)}</td>
+                <td>${priceBadge}</td>
+                <td class="text-center">${units}</td>
+                <td class="text-center">${typeHtml}</td>
+                <td class="text-center">${rating}</td>
+                <td class="text-center">${reviews}</td>
+                <td class="text-center">${deliveryHtml}</td>
+                <td class="text-center"><a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener" class="comparison-lmp-icon-btn comparison-lmp-link-btn" title="Open listing"><i class="bi bi-box-arrow-up-right"></i></a></td>
+                <td class="text-center">${delBtn}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+        listEl.innerHTML = html;
+    }
+
+    function loadAllMarketplaceLmp(sku, listEl) {
+        const endpoints = {
+            amazon: competitorsUrl,
+            ebay: ebayLmpDataUrl,
+            google: googleLmpDataUrl,
+            bestbuy: bestbuyLmpDataUrl,
+            macy: macyLmpDataUrl,
+            reverb: reverbLmpDataUrl,
+            temu: temuLmpDataUrl,
+        };
+        const keys = Object.keys(endpoints);
+        return Promise.all(keys.map(function (key) {
+            return fetch(`${endpoints[key]}?sku=${encodeURIComponent(sku)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            })
+            .then(r => r.json())
+            .catch(() => null);
+        })).then(function (results) {
+            const res = {};
+            keys.forEach((k, i) => { res[k] = results[i]; });
+            allLmpCache = {
+                sku,
+                rows: buildAllLmpRows(res),
+                filter: allLmpCache.sku === sku ? allLmpCache.filter : 'all',
+                listEl,
+            };
+            renderAllMarketplaceLmp();
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.comparison-lmp-filter-btn');
+        if (!btn || !btn.closest('#comparison-cd-lmp-list')) return;
+        e.preventDefault();
+        allLmpCache.filter = btn.dataset.filter || 'all';
+        renderAllMarketplaceLmp();
+    });
 
     function reloadCurrentAmazonLmp() {
         if (currentAmazonLmpSku && currentAmazonLmpListEl) {
@@ -5938,7 +6243,14 @@ document.addEventListener('DOMContentLoaded', function () {
         button.disabled = true;
         button.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
 
-        fetch(amazonLmpDeleteUrl, {
+        const delMarketplace = String(button.dataset.marketplace || 'amazon').toLowerCase();
+        const delExtId = button.dataset.extId || '';
+        const delPayload = { id };
+        if ((delMarketplace === 'ebay' || delMarketplace === 'bestbuy' || delMarketplace === 'macy' || delMarketplace === 'reverb') && delExtId) delPayload.item_id = delExtId;
+        if (delMarketplace === 'google' && delExtId) delPayload.product_id = delExtId;
+        if (delMarketplace === 'amazon' && delExtId) delPayload.asin = delExtId;
+
+        fetch(delMarketplace === 'amazon' ? amazonLmpDeleteUrl : (lmpDeleteUrls[delMarketplace] || amazonLmpDeleteUrl), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -5946,7 +6258,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json',
             },
-            body: JSON.stringify({ id }),
+            body: JSON.stringify(delPayload),
         })
         .then(response => response.json().then(data => ({ ok: response.ok, data })))
         .then(({ ok, data }) => {
@@ -6005,7 +6317,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(data?.error || data?.message || 'Failed to update hide');
             }
             showComparisonToast('success', ignored ? 'Hidden from LMP Model' : 'Included in LMP Model');
-            const reload = marketplace === 'amazon'
+            const reload = (marketplace === 'amazon' || cb.closest('#comparison-cd-lmp-list'))
                 ? reloadCurrentAmazonLmp()
                 : reloadCurrentComparisonLmpList();
             return reload.then(function () {
