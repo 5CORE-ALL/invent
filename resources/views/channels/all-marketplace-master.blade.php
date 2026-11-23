@@ -9220,6 +9220,7 @@
                         color: s.color,
                         count: Number(s.count) || 0,
                         inv_at_sp: val,
+                        inv_at_lp: Number(s.inv_at_lp) || 0,
                         pct: total > 0 ? Math.round((val / total) * 100) : 0,
                     };
                 });
@@ -9258,6 +9259,22 @@
                                 const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
                                 return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span>'
                                     + '<button type="button" class="amm-inv-row-hist-dot" data-chart="sp" data-band="' + d.key + '" '
+                                    + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
+                            },
+                            bottomCalc: 'sum',
+                            bottomCalcFormatter: function(cell) {
+                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
+                            },
+                        },
+                        {
+                            title: 'Inv@LP $', field: 'inv_at_lp', hozAlign: 'right', sorter: 'number',
+                            // Same dot/history behaviour as Inv@SP $, using the LP series (<band>_lp).
+                            formatter: function(cell) {
+                                const d = cell.getData();
+                                const dotColor = ammInvBandDotColor(d.key, d.key + '_lp');
+                                const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span>'
+                                    + '<button type="button" class="amm-inv-row-hist-dot" data-chart="lp" data-band="' + d.key + '" '
                                     + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
                             },
                             bottomCalc: 'sum',

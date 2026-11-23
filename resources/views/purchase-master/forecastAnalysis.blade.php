@@ -2851,6 +2851,31 @@
             return Math.round((moq / (msl / 4)) * 30);
         }
 
+        /** True when Avg NROI < 30% AND Avg NPFT < 10% (child SKU rows, not NR). Drives the alert + cell backgrounds. */
+        const FA_LOW_MARGIN_BG = '#fecaca';
+        function forecastLowNroiNpft(row) {
+            if (!row || row.is_parent || row.isParent) return false;
+            if (String(row.nr == null ? '' : row.nr).trim().toUpperCase() === 'NR') return false;
+            const toNum = function(v) {
+                if (v === null || v === undefined || v === '') return NaN;
+                return parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+            };
+            const nroi = toNum(row.avg_nroi_pct);
+            const npft = toNum(row.avg_npft_pct);
+            return Number.isFinite(nroi) && Number.isFinite(npft) && nroi < 30 && npft < 10;
+        }
+
+        /** Text colour for the MSL and Order cells: MSL > Order = red, MSL < Order = green, equal / n.a. = default. */
+        function forecastMslVsOrderColor(row) {
+            if (!row || row.is_parent || row.isParent) return '';
+            const msl = parseFloat(row.msl);
+            if (!Number.isFinite(msl)) return '';
+            const order = forecastRowOrderQty(row);
+            if (msl > order) return '#dc3545';
+            if (msl < order) return '#28a745';
+            return '';
+        }
+
         /**
          * Pre-purchase alerts for a SKU row. Returns [{sev:'high'|'med'|'low', label, text}].
          * Skipped for parent rows and for NR (do-not-reorder) SKUs.
@@ -2889,6 +2914,8 @@
             const npft = num(row.avg_npft_pct);
             if ((Number.isFinite(nroi) && nroi < 0) || (Number.isFinite(npft) && npft < 0)) {
                 push('high', 'Negative margin', 'Avg NROI or Avg NPFT is negative. This SKU loses money at the current price/cost.');
+            } else if (forecastLowNroiNpft(row)) {
+                push('high', 'Low NROI & NPFT', 'Avg NROI is ' + Math.round(nroi) + '% (below 30%) and Avg NPFT is ' + Math.round(npft) + '% (below 10%). Margins are too low to buy at the current price/cost.');
             } else {
                 if (Number.isFinite(nroi) && nroi < 50) {
                     push('med', 'Low NROI', 'Avg NROI is ' + Math.round(nroi) + '% (below 50%). Review price or cost before buying.');
@@ -4056,8 +4083,9 @@
                     accessor: row => (row && (row["msl"] !== undefined && row["msl"] !== null)) ? row["msl"] : 0,
                     formatter: function(cell) {
                         const value = cell.getValue() || 0;
+                        const mslColor = forecastMslVsOrderColor(cell.getRow().getData());
                         return `
-                        <div style="text-align:center; font-weight:bold;">
+                        <div style="text-align:center; font-weight:bold;${mslColor ? 'color:' + mslColor + ';' : ''}">
                             ${value}
                             <button class="btn btn-sm btn-link open-month-modal d-inline-flex align-items-center" style="padding: 0 4px; vertical-align: middle;" title="View Monthly">
                                 <span class="nrp-status-dot" style="background-color:#22c55e;" aria-hidden="true"></span>
@@ -4171,7 +4199,8 @@
                         // 2BDC/LATER (shared helper — also drives the Ord $ badge).
                         const q = forecastRowOrderQty(rowData);
                         const disp = (q > 0) ? (Number.isInteger(q) ? q : q.toFixed(2).replace(/\.?0+$/, '')) : 0;
-                        return `<div style="text-align:center;font-weight:bold;">${disp}</div>`;
+                        const ordColor = forecastMslVsOrderColor(rowData);
+                        return `<div style="text-align:center;font-weight:bold;${ordColor ? 'color:' + ordColor + ';' : ''}">${disp}</div>`;
                     },
                 },
                 {
@@ -4815,6 +4844,8 @@
                             else if (n < 100) col = '#B8860B';
                             else if (n <= 150) col = '#28a745';
                         }
+                        // NROI < 30 and NPFT < 10: highlight both cells (reset otherwise, cells are reused).
+                        cell.getElement().style.backgroundColor = forecastLowNroiNpft(row) ? FA_LOW_MARGIN_BG : '';
                         const valueHtml = empty
                             ? '<span style="color:#6c757d">—</span>'
                             : `<span style="font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
@@ -4851,6 +4882,7 @@
                             else if (n < 40) col = '#ff9c00';
                             else if (n <= 50) col = '#28a745';
                         }
+                        cell.getElement().style.backgroundColor = forecastLowNroiNpft(row) ? FA_LOW_MARGIN_BG : '';
                         const valueHtml = empty
                             ? '<span style="color:#6c757d">—</span>'
                             : `<span style="font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
