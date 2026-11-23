@@ -2636,7 +2636,7 @@
                                     <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm cd-sheet-tab-input"
                                         value="Sheet1" title="Tab name" placeholder="Tab" aria-label="Tab name">
                                 </div>
-                                <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn" title="Pull data from Google Sheet once (import only — does not push local edits back)">
+                                <button type="button" class="btn btn-sm btn-success d-none" id="comparison-cd-import-btn" title="Pull data from Google Sheet once (import only — does not push local edits back)">
                                     <i class="fab fa-google"></i> C Link Refresh
                                 </button>
                                 <span class="cd-sheet-toolbar-divider" aria-hidden="true"></span>
