@@ -563,7 +563,8 @@ class Temu2ListingPublishService
             return [
                 'success' => false,
                 'message' => 'Could not add the variation(s) to the existing '.$this->shopLabel().' parent (goods '.$existingGoodsId.'). '
-                    .'No new listing was created. '.trim((string) ($added['message'] ?? '')),
+                    .'No new listing was created. '
+                    .$this->explainImageRatioError(trim((string) ($added['message'] ?? '')), $prepared, $parentImages, $hostedBySource, $parentKey),
             ];
         }
 
@@ -652,7 +653,9 @@ class Temu2ListingPublishService
 
             return [
                 'success' => false,
-                'message' => $msg !== '' ? $msg : $this->shopLabel().' add-goods API rejected the listing.',
+                'message' => $msg !== ''
+                    ? $this->explainImageRatioError($msg, $prepared, $parentImages, $hostedBySource, $parentKey)
+                    : $this->shopLabel().' add-goods API rejected the listing.',
             ];
         }
 
@@ -2401,6 +2404,128 @@ class Temu2ListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * Temu refuses a photo that is not exactly square and names only its own hosted link. This adds which SKU (or the
+     * parent photos) the photo belongs to, and the real pixel size of every photo of this listing that is not square.
+     * Nothing is changed or resized; it only explains the refusal.
+     *
+     * @param  list<array<string, mixed>>  $prepared  rows with 'sku' and 'images' (our source links)
+     * @param  list<string>  $parentImages
+     * @param  array<string, string>  $hostedBySource  our link => Temu hosted link
+     */
+    private function explainImageRatioError(string $message, array $prepared, array $parentImages, array $hostedBySource, string $parentKey): string
+    {
+        if ($message === '' || (stripos($message, 'aspect ratio') === false && ! str_contains($message, '150011356'))) {
+            return $message;
+        }
+
+        try {
+            // Where each photo is used: our link => labels such as "GH ABS 2pcs photo 3".
+            $uses = [];
+            foreach ($prepared as $row) {
+                $n = 0;
+                foreach ((array) ($row['images'] ?? []) as $source) {
+                    $n++;
+                    $uses[(string) $source][] = (string) ($row['sku'] ?? '').' photo '.$n;
+                }
+            }
+            $n = 0;
+            foreach ($parentImages as $source) {
+                $n++;
+                $uses[(string) $source][] = 'PARENT '.$parentKey.' parent photo '.$n;
+            }
+
+            // The photo Temu named: its hosted link back to our link, then to the SKU.
+            $named = '';
+            if (preg_match('#https?://\S+#i', $message, $m)) {
+                $hostedUrl = rtrim($m[0], '.,;)\'"');
+                foreach ($hostedBySource as $source => $hosted) {
+                    if ($hosted !== '' && (strcasecmp((string) $hosted, $hostedUrl) === 0 || strcasecmp(strtok((string) $hosted, '?') ?: '', strtok($hostedUrl, '?') ?: '') === 0)) {
+                        $labels = $uses[(string) $source] ?? [];
+                        $named = $labels !== []
+                            ? implode(' / ', array_unique($labels)).' ('.$source.')'
+                            : (string) $source;
+                        break;
+                    }
+                }
+            }
+
+            // Every photo of this listing that is not square, with its real size.
+            $notSquare = [];
+            $unreadable = 0;
+            $startedAt = microtime(true);
+            foreach ($uses as $source => $labels) {
+                if ((microtime(true) - $startedAt) > 45) {
+                    break;
+                }
+                $size = $this->sourceImageSize((string) $source);
+                if ($size === null) {
+                    $unreadable++;
+
+                    continue;
+                }
+                if ($size[0] !== $size[1]) {
+                    $notSquare[] = implode(' / ', array_unique($labels)).' is '.$size[0].'x'.$size[1];
+                }
+            }
+
+            $parts = [$message];
+            if ($named !== '') {
+                $parts[] = 'The photo Temu refused is '.$named.'.';
+            }
+            if ($notSquare !== []) {
+                $parts[] = 'Photos that are not square: '.implode('; ', array_slice($notSquare, 0, 12)).(count($notSquare) > 12 ? '; and '.(count($notSquare) - 12).' more' : '').'.';
+            } elseif ($named === '') {
+                $parts[] = 'Every photo that could be read here is square'.($unreadable > 0 ? ' ('.$unreadable.' could not be read)' : '').', so the refused one could not be traced to a SKU.';
+            }
+
+            return implode(' ', $parts);
+        } catch (\Throwable $e) {
+            Log::warning('Temu publish: could not trace the non-square photo', ['error' => $e->getMessage()]);
+
+            return $message;
+        }
+    }
+
+    /** @return array{0: int, 1: int}|null width and height of a source photo (local copy first, else downloaded) */
+    private function sourceImageSize(string $url): ?array
+    {
+        $raw = null;
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?? '');
+        $relative = null;
+        if (preg_match('#/listing-manager/media/([^/]+)$#', $path, $m)) {
+            $relative = 'listing-manager/images/'.basename(rawurldecode($m[1]));
+        } elseif (preg_match('#/storage/(.+)$#', $path, $m)) {
+            $relative = ltrim(rawurldecode($m[1]), '/');
+        }
+        if ($relative !== null) {
+            foreach ([
+                \Illuminate\Support\Facades\Storage::disk('public')->path($relative),
+                storage_path('app/public/'.$relative),
+                public_path('storage/'.$relative),
+            ] as $file) {
+                if (is_file($file) && is_readable($file)) {
+                    $raw = @file_get_contents($file);
+                    break;
+                }
+            }
+        }
+        if (! is_string($raw) || strlen($raw) < 32) {
+            try {
+                $response = Http::timeout(15)->withoutVerifying()->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; 5CoreListingManager/1.0)'])->get($url);
+                $raw = $response->successful() ? $response->body() : null;
+            } catch (\Throwable) {
+                $raw = null;
+            }
+        }
+        if (! is_string($raw) || strlen($raw) < 32) {
+            return null;
+        }
+        $info = @getimagesizefromstring($raw);
+
+        return is_array($info) && ($info[0] ?? 0) > 0 && ($info[1] ?? 0) > 0 ? [(int) $info[0], (int) $info[1]] : null;
     }
 
     private function isTemuHostedImageUrl(string $url): bool
