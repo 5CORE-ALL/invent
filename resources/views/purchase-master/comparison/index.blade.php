@@ -1010,6 +1010,9 @@
     }
 
     /* Two sticky action columns at the far right: Critical/QC edit, then Supplier edit (last). */
+    /* Empty trailing supplier columns are hidden; the + buttons bring them back. */
+    .cd-sheet-table .cd-blank-hidden { display: none !important; }
+
     /* QC column is hidden on this page (data is kept, just not shown). */
     .cd-sheet-table .cd-qc-col { display: none !important; }
 
@@ -1127,6 +1130,31 @@
         outline: none;
         box-shadow: none;
     }
+
+    .cd-sheet-table .cd-sheet-col-add-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 19.6px;
+        height: 19.6px;
+        padding: 0;
+        border: 0;
+        outline: none;
+        box-shadow: none;
+        border-radius: 4px;
+        background: transparent;
+        color: #198754;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .cd-sheet-table .cd-sheet-col-add-btn:hover,
+    .cd-sheet-table .cd-sheet-col-add-btn:focus {
+        background: rgba(25, 135, 84, 0.12);
+        outline: none;
+        box-shadow: none;
+    }
+    .cd-sheet-table .cd-sheet-col-add-btn i { font-size: 15px; line-height: 1; }
 
     .cd-sheet-table .cd-sheet-col-edit-btn i {
         font-size: 12.74px;
@@ -1301,6 +1329,29 @@
         flex: 1 1 auto;
         min-width: 140px;
         width: auto;
+    }
+
+    /* Dropdown cells: the visible label sizes the column; the real <select> is an invisible overlay. */
+    .cd-sheet-table .cd-sheet-cell-select {
+        position: relative;
+        cursor: pointer;
+    }
+    .cd-sheet-table .cd-sheet-cell-select .cd-dd-label::after {
+        content: " \25BE";
+        color: #adb5bd;
+        font-size: 0.85em;
+    }
+    .cd-sheet-table .cd-sheet-cell-select:hover { background: rgba(13, 110, 253, 0.08); }
+    .cd-sheet-table select.cd-sheet-dd {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        border: 0;
+        padding: 0;
+        font-size: 14px;
     }
 
     /* Copy and Cut icons are removed; only Paste stays. */
@@ -2702,6 +2753,9 @@
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
                                     <span class="badge rounded-pill bg-light text-dark ms-1" id="comparison-cd-supplier-count">0</span>
                                 </button>
+                                <button type="button" class="btn btn-sm btn-primary" id="comparison-cd-add-supplier-col-btn" title="Add a new blank supplier column at the end of the sheet">
+                                    <i class="mdi mdi-table-column-plus-after"></i> Add Supplier Column
+                                </button>
                                 <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open Profit Calculator">
                                     <i class="mdi mdi-percent"></i> Profit Calculator
                                 </button>
@@ -3031,6 +3085,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const historyUrl = @json(route('comparison.history'));
     const sheetGetUrl = @json(route('comparison.sheet.get'));
     const sheetSaveUrl = @json(route('comparison.sheet.save'));
+    const specificationsUrl = @json(route('comparison.specifications'));
     const sheetImageUrl = @json(route('comparison.sheet.image'));
     const sheetPhotoUploadUrl = @json(route('comparison.sheet.photo'));
     const sheetSyncClinkUrl = @json(route('comparison.sheet.sync-clink'));
@@ -3822,12 +3877,43 @@ document.addEventListener('DOMContentLoaded', function () {
     // ===== Edit supplier data (last "Edit Supp." column): only supplier columns of one row =====
     let supplierEditTargetRow = null;
 
+    // ---- Blank trailing supplier columns are hidden; the "+" buttons reveal / add them ----
+    let sheetMinVisibleCols = 0;      // columns the user asked to keep visible (via "+")
+    let sheetMinVisibleColsSku = '';
+
+    function sheetBlankColsSku() {
+        return String(currentCdRow?.sheet_sku || currentCdRow?.sku || '');
+    }
+
+    // Number of leading columns that are shown. Everything after is a hidden, completely empty supplier column.
+    function sheetVisibleColCount(cells) {
+        const list = cells || currentSheetCells || [];
+        const total = list.reduce((m, r) => Math.max(m, Array.isArray(r) ? r.length : 0), 0);
+        const sku = sheetBlankColsSku();
+        if (sku !== sheetMinVisibleColsSku) {
+            sheetMinVisibleColsSku = sku;
+            sheetMinVisibleCols = 0;
+        }
+        const specCol = detectSpecColumnIndex(list);
+        const criticalCol = detectCriticalColumnIndex(list, specCol);
+        const qcCol = detectQcColumnIndex(list, specCol);
+        const firstSupplier = Math.max(specCol, criticalCol ?? -1, qcCol ?? -1) + 1;
+        let lastData = firstSupplier - 1;
+        for (let c = total - 1; c >= firstSupplier; c--) {
+            if (list.some(row => Array.isArray(row) && String(row[c] ?? '').trim() !== '')) {
+                lastData = c;
+                break;
+            }
+        }
+        return Math.min(total, Math.max(lastData + 1, firstSupplier, sheetMinVisibleCols));
+    }
+
     function getSupplierColumnIndexes() {
         const specCol = detectSpecColumnIndex(currentSheetCells);
         const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
         const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
         const firstSupplier = Math.max(specCol, criticalCol ?? -1, qcCol ?? -1) + 1;
-        const maxCols = currentSheetCells.reduce((m, r) => Math.max(m, (r || []).length), 0);
+        const maxCols = sheetVisibleColCount(currentSheetCells);
         const cols = [];
         for (let c = firstSupplier; c < maxCols; c++) cols.push(c);
         return cols;
@@ -4344,6 +4430,9 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             let nextVal = String(field.value ?? '');
+            if (nextVal === SPEC_ADD_VALUE) {
+                return;
+            }
             if (isPriorityCol && rowIndex > 0) {
                 nextVal = normalizePriorityValue(nextVal);
             }
@@ -4415,28 +4504,117 @@ document.addEventListener('DOMContentLoaded', function () {
         </td>`;
     }
 
+    // ---- Specification master list (DB table comparison_specifications, shared by every comparison page) ----
+    const SPEC_ADD_VALUE = '__cd_spec_add__';
+    let comparisonSpecList = null;      // null = not loaded yet / unavailable (inputs fall back to plain text)
+    let comparisonSpecLoading = null;
+
+    function loadComparisonSpecifications(force) {
+        if (comparisonSpecList && !force) {
+            return Promise.resolve(comparisonSpecList);
+        }
+        if (comparisonSpecLoading && !force) {
+            return comparisonSpecLoading;
+        }
+        comparisonSpecLoading = fetch(specificationsUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(r => r.json())
+            .then((j) => {
+                if (j && j.success && Array.isArray(j.specifications) && !j.table_missing) {
+                    comparisonSpecList = j.specifications.map(String);
+                }
+                return comparisonSpecList;
+            })
+            .catch(() => comparisonSpecList)
+            .finally(() => { comparisonSpecLoading = null; });
+        return comparisonSpecLoading;
+    }
+
+    function specOptionsHtml(selected, extra) {
+        const cur = String(selected ?? '').trim();
+        // Keep the sheet's own spelling/casing for the current value (never rewrite it just by opening the modal).
+        const list = (comparisonSpecList || []).map(n => (cur && n.toLowerCase() === cur.toLowerCase()) ? cur : n);
+        if (cur && !list.includes(cur)) {
+            list.unshift(cur);
+        }
+        return `<option value=""${cur === '' ? ' selected' : ''}>— Select specification —</option>`
+            + list.map(n => `<option value="${escapeHtmlAttr(n)}"${n === cur ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('')
+            + (extra || '')
+            + `<option value="${SPEC_ADD_VALUE}">+ Add new specification…</option>`;
+    }
+
+    function refreshSpecBulkSelect(selectValue) {
+        const bulk = document.getElementById('comparison-column-edit-bulk-value');
+        if (bulk && bulk.dataset.mode === 'spec') {
+            bulk.innerHTML = specOptionsHtml(selectValue);
+            bulk.value = selectValue;
+        }
+    }
+
+    function refreshSpecSelectsInColumnEditModal() {
+        document.querySelectorAll('#comparisonColumnEditModal select.cd-spec-dd').forEach((sel) => {
+            const keep = sel.dataset.current ?? sel.value;
+            sel.innerHTML = specOptionsHtml(keep);
+            sel.value = keep;
+        });
+    }
+
+    // Prompt for a new specification, store it in the DB table, refresh every spec dropdown. Resolves to the saved name or ''.
+    function addComparisonSpecification() {
+        const typed = (window.prompt('New specification name (added for all comparison pages):', '') || '').trim();
+        if (!typed) {
+            return Promise.resolve('');
+        }
+        return fetch(specificationsUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            credentials: 'same-origin',
+            body: JSON.stringify({ name: typed }),
+        })
+            .then(r => r.json())
+            .then((j) => {
+                if (!j || !j.success) {
+                    throw new Error((j && j.message) || 'Could not save specification.');
+                }
+                comparisonSpecList = (j.specifications || []).map(String);
+                setSheetStatus(`Specification "${j.name}" added to the master list.`, false);
+                return String(j.name);
+            })
+            .catch((err) => {
+                setSheetStatus(err.message || 'Could not save specification.', true);
+                return '';
+            });
+    }
+
     function setupColumnEditBulkValueControl(isPriorityCol) {
         const bulkValueWrap = document.getElementById('comparison-column-edit-bulk-value-wrap');
         if (!bulkValueWrap) {
             return;
         }
+        const specColNow = detectSpecColumnIndex(currentSheetCells);
+        const isSpecDropdown = !isPriorityCol
+            && columnEditTargetCol === specColNow
+            && Array.isArray(comparisonSpecList);
+        const mode = isPriorityCol ? 'priority' : (isSpecDropdown ? 'spec' : 'text');
         const existing = document.getElementById('comparison-column-edit-bulk-value');
-        const existingIsSelect = !!(existing && existing.tagName === 'SELECT');
-        if (isPriorityCol && existingIsSelect) {
-            return;
-        }
-        if (!isPriorityCol && existing && existing.tagName === 'INPUT' && existing.type === 'text') {
+        if (existing && existing.dataset.mode === mode) {
+            if (mode === 'spec') {
+                const keep = existing.value;
+                existing.innerHTML = specOptionsHtml(keep);
+                existing.value = keep;
+            }
             return;
         }
 
-        if (isPriorityCol) {
-            bulkValueWrap.innerHTML = `<select id="comparison-column-edit-bulk-value" class="form-select form-select-sm cd-col-edit-bulk-value" title="Value to apply to selected rows">
+        if (mode === 'priority') {
+            bulkValueWrap.innerHTML = `<select id="comparison-column-edit-bulk-value" data-mode="priority" class="form-select form-select-sm cd-col-edit-bulk-value" title="Value to apply to selected rows">
                 <option value="Normal">Normal</option>
                 <option value="Important">Important</option>
                 <option value="Critical" selected>Critical</option>
             </select>`;
+        } else if (mode === 'spec') {
+            bulkValueWrap.innerHTML = `<select id="comparison-column-edit-bulk-value" data-mode="spec" class="form-select form-select-sm cd-col-edit-bulk-value" title="Specification to apply to selected rows">${specOptionsHtml('')}</select>`;
         } else {
-            bulkValueWrap.innerHTML = `<input type="text" id="comparison-column-edit-bulk-value" class="form-control form-control-sm cd-col-edit-bulk-value" value="" placeholder="Value for selected rows" title="Value to apply to selected rows">`;
+            bulkValueWrap.innerHTML = `<input type="text" id="comparison-column-edit-bulk-value" data-mode="text" class="form-control form-control-sm cd-col-edit-bulk-value" value="" placeholder="Value for selected rows" title="Value to apply to selected rows">`;
         }
     }
 
@@ -4511,6 +4689,10 @@ document.addEventListener('DOMContentLoaded', function () {
         let nextVal = String(bulkField.value ?? '');
         if (isPriorityCol) {
             nextVal = normalizePriorityValue(nextVal);
+        }
+        if (bulkField.dataset.mode === 'spec' && (nextVal === '' || nextVal === SPEC_ADD_VALUE)) {
+            setSheetStatus('Choose a specification to apply first.', true);
+            return;
         }
 
         let applied = 0;
@@ -4634,7 +4816,10 @@ document.addEventListener('DOMContentLoaded', function () {
             )
                 ? '<div class="cd-col-edit-hint mt-1">Embedded photo — leave as-is to keep, or paste an image URL to replace.</div>'
                 : '';
-            const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
+            const useSpecDropdown = isSpecCol && !isImage && Array.isArray(comparisonSpecList);
+            const fieldHtml = useSpecDropdown
+                ? `<select class="form-select form-select-sm cd-col-edit-field cd-spec-dd" data-row="${r}" data-current="${escapeHtmlAttr(displayValue.trim())}">${specOptionsHtml(displayValue)}</select>`
+                : `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
             const thumbHtml = isImage ? sheetEditThumbHtml(r, col, rawValue) : '';
             parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
                 ${checkHtml}
@@ -4696,6 +4881,16 @@ document.addEventListener('DOMContentLoaded', function () {
         applySheetSelectionHighlight();
         refreshColumnEditModalChrome();
         renderColumnEditModalRows();
+        // Spec column: make sure the master list is loaded, then redraw the rows as dropdowns.
+        if (col === detectSpecColumnIndex(currentSheetCells) && !comparisonSpecList) {
+            loadComparisonSpecifications().then((list) => {
+                if (list && columnEditTargetCol === col) {
+                    applyColumnEditModalDrafts();
+                    refreshColumnEditModalChrome();
+                    renderColumnEditModalRows();
+                }
+            });
+        }
 
         const modalEl = document.getElementById('comparisonColumnEditModal');
         if (modalEl && typeof bootstrap !== 'undefined') {
@@ -8188,6 +8383,79 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     }
 
+    // ---- Dropdown rows: supplier cells on these spec rows are a <select> instead of free text ----
+    // Options = values already used on this row + every value ever picked/added (kept in this browser
+    // so other SKUs get the same list). "+ Add new..." extends the list for future use.
+    const SHEET_DROPDOWN_ROW_LABELS = ['magnet grade', 'material type'];
+    const SHEET_DROPDOWN_STORE_KEY = 'cmp_cd_dropdown_options_v1';
+    const SHEET_DROPDOWN_ADD_VALUE = '__cd_add_new__';
+
+    function sheetDropdownRowKey(rowIndex, cells) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex)) {
+            return '';
+        }
+        const list = cells || currentSheetCells;
+        const specCol = detectSpecColumnIndex(list);
+        const label = String(((list || [])[rowIndex] || [])[specCol] || '').trim().toLowerCase();
+        return SHEET_DROPDOWN_ROW_LABELS.includes(label) ? label : '';
+    }
+
+    function loadSheetDropdownStore() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(SHEET_DROPDOWN_STORE_KEY) || '{}');
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function saveSheetDropdownStore(store) {
+        try {
+            localStorage.setItem(SHEET_DROPDOWN_STORE_KEY, JSON.stringify(store));
+        } catch (e) { /* storage unavailable: list still works for this page view */ }
+    }
+
+    function sheetDropdownOptions(key, rowIndex, current) {
+        const store = loadSheetDropdownStore();
+        const seen = new Set();
+        const out = [];
+        const push = (v) => {
+            const t = String(v ?? '').trim();
+            if (!t || seen.has(t.toLowerCase())) return;
+            seen.add(t.toLowerCase());
+            out.push(t);
+        };
+        (Array.isArray(store[key]) ? store[key] : []).forEach(push);
+        const specCol = sheetRenderColCache?.specCol ?? detectSpecColumnIndex(currentSheetCells);
+        ((currentSheetCells || [])[rowIndex] || []).forEach((v, c) => {
+            if (c <= specCol || isSheetCriticalColumn(c) || isSheetQcColumn(c)) return;
+            const t = String(v ?? '').trim();
+            if (t && !/^https?:\/\//i.test(t) && !t.startsWith('[') && !t.startsWith('data:')) push(t);
+        });
+        push(current);
+        // Remember everything seen so other SKUs offer the same choices.
+        const merged = out.slice();
+        if (JSON.stringify(store[key] || []) !== JSON.stringify(merged)) {
+            store[key] = merged;
+            saveSheetDropdownStore(store);
+        }
+        return out;
+    }
+
+    function sheetDropdownSelectInner(options, current) {
+        const cur = String(current ?? '').trim();
+        return `<option value=""${cur === '' ? ' selected' : ''}>—</option>`
+            + options.map(o => `<option value="${escapeHtmlAttr(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('')
+            + `<option value="${SHEET_DROPDOWN_ADD_VALUE}">+ Add new…</option>`;
+    }
+
+    function sheetDropdownCellHtml(value, rowIndex, colIndex, key) {
+        const cur = String(value ?? '').trim();
+        const options = sheetDropdownOptions(key, rowIndex, cur);
+        // No whitespace between tags: .cd-sheet-cell is white-space: pre-wrap, so newlines would render as blank lines.
+        return `<div class="cd-sheet-cell cd-sheet-cell-select" contenteditable="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(cur)}"><span class="cd-dd-label">${cur ? escapeHtml(cur) : '&nbsp;'}</span><select class="cd-sheet-dd" data-dd-key="${escapeHtmlAttr(key)}" data-row="${rowIndex}" data-col="${colIndex}" aria-label="${escapeHtmlAttr(key)}" title="${escapeHtmlAttr(cur || key)}">${sheetDropdownSelectInner(options, cur)}</select></div>`;
+    }
+
     function sheetCellEditorHtml(value, rowIndex, colIndex, forceText) {
         if (!forceText && isSheetCriticalColumn(colIndex)) {
             return priorityCellEditorHtml(value, rowIndex, colIndex, 'Critical');
@@ -8262,6 +8530,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!forceText && isCommDataCell(rowIndex, colIndex)) {
             return commCellEditorHtml(rowIndex, colIndex, getSupplierNameForColumn(colIndex));
         }
+        if (!forceText && !isSheetSpecColumn(colIndex)) {
+            const ddKey = sheetDropdownRowKey(rowIndex);
+            const ddSpecCol = sheetRenderColCache?.specCol ?? detectSpecColumnIndex(currentSheetCells);
+            if (ddKey && colIndex > ddSpecCol) {
+                return sheetDropdownCellHtml(rawText, rowIndex, colIndex, ddKey);
+            }
+        }
         if (!text) {
             return `<div class="cd-sheet-cell cd-sheet-cell-empty" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}"></div>`;
         }
@@ -8319,6 +8594,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const specCol = detectSpecColumnIndex(currentSheetCells);
         const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
         const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const visibleColCount = sheetVisibleColCount(currentSheetCells);
         const head = document.getElementById('comparison-cd-sheet-head');
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!head || !body) return;
@@ -8349,12 +8625,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     headerText = columnLetter(c);
                 }
             }
-            headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
+            headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
                 <span class="cd-col-header-inner">
                     <span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
                     <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
                         <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
-                    </button>
+                    </button>${(c > specCol && !isPriorityCol) ? `<button type="button" class="cd-sheet-col-add-btn" data-col="${c}" draggable="false" title="Add a new column after ${escapeHtmlAttr(headerText)}" aria-label="Add column after ${escapeHtmlAttr(headerText)}">
+                        <i class="mdi mdi-plus" aria-hidden="true"></i>
+                    </button>` : ''}
                 </span>
             </th>`;
         }
@@ -8392,7 +8670,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!isSpec && !isPriority && isCommRow(r, currentSheetCells)) {
                     cellInner = commCellEditorHtml(r, c, getSupplierNameForColumn(c));
                 }
-                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
+                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
             rowHtml += `<td class="cd-row-edit-col">`;
             if (canSelectRow) {
@@ -8556,6 +8834,69 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleAutoSaveComparisonSheet(400);
     }
 
+    // Toolbar button: append a blank supplier column after the last column, then jump to its Supplier Name cell.
+    function addSupplierColumnAtEnd() {
+        addSupplierColumn(null);
+    }
+
+    // "+" button: afterCol = null -> after the last visible column.
+    // On the last visible column a hidden blank column is simply shown; otherwise a new blank column is inserted.
+    function addSupplierColumn(afterCol) {
+        if (!currentSheetCells.length) {
+            setSheetStatus('Load a comparison sheet first.', true);
+            return;
+        }
+        readCellsFromEditor({ expandImages: false });
+        const colCount = Math.max(...currentSheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 1);
+        const visible = sheetVisibleColCount(currentSheetCells);
+        const isLastVisible = afterCol === null || afterCol === undefined || Number.isNaN(afterCol) || afterCol >= visible - 1;
+        let newCol;
+
+        if (isLastVisible && visible < colCount) {
+            // Reveal the next hidden blank column (no data change, nothing to save).
+            newCol = visible;
+            sheetMinVisibleCols = visible + 1;
+            selectedSheetCol = newCol;
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+            setSheetStatus(`Column ${columnLetter(newCol)} added. Type the supplier name in the "Supplier Name" row.`, false);
+        } else {
+            newCol = isLastVisible ? colCount : Math.min(afterCol + 1, colCount);
+            currentSheetCells = currentSheetCells.map((row) => {
+                const next = Array.isArray(row) ? row.slice() : [String(row || '')];
+                while (next.length < colCount) next.push('');
+                next.splice(newCol, 0, '');
+                return next;
+            });
+            if (newCol < colCount) {
+                currentSheetFormats.cols = shiftNumericFormatMap(currentSheetFormats.cols, newCol, 1);
+                currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, newCol, 'col', 1);
+            }
+            sheetMinVisibleCols = Math.max(sheetMinVisibleCols, visible) + 1;
+            selectedSheetCol = newCol;
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+            scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            setSheetStatus(`New column added at ${columnLetter(newCol)}. Type the supplier name in the "Supplier Name" row.`, false);
+        }
+
+        window.setTimeout(function () {
+            const specCol = detectSpecColumnIndex(currentSheetCells);
+            let nameRow = -1;
+            for (let r = 0; r < currentSheetCells.length; r++) {
+                if (isSupplierNameRow(currentSheetCells, r, specCol)) { nameRow = r; break; }
+            }
+            const cell = nameRow >= 0
+                ? document.querySelector(`#comparison-cd-sheet-body .cd-sheet-cell[data-row="${nameRow}"][data-col="${newCol}"]`)
+                : null;
+            const target = cell || document.querySelector(`#comparison-cd-sheet-body .cd-sheet-cell[data-col="${newCol}"]`);
+            if (target) {
+                target.scrollIntoView({ block: 'nearest', inline: 'end' });
+                if (target.getAttribute('contenteditable') === 'true' && typeof target.focus === 'function') {
+                    target.focus();
+                }
+            }
+        }, 80);
+    }
+
     function deleteSheetColumn() {
         readCellsFromEditor();
         const colCount = currentSheetCells[0]?.length || 0;
@@ -8577,6 +8918,7 @@ document.addEventListener('DOMContentLoaded', function () {
             selectedSheetCell = { row: selectedSheetCell.row, col: selectedSheetCell.col - 1 };
         }
         selectedSheetCol = Math.min(idx, (currentSheetCells[0]?.length || 1) - 1);
+        if (sheetMinVisibleCols > 0) { sheetMinVisibleCols -= 1; }
         renderSheetEditor(currentSheetCells);
         setSheetStatus(`Column ${columnLetter(idx)} deleted.`, false);
         scheduleAutoSaveComparisonSheet(400);
@@ -13368,6 +13710,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         loadComparisonRoiPriceHistoryChart();
     });
+    document.getElementById('comparison-cd-add-supplier-col-btn')?.addEventListener('click', addSupplierColumnAtEnd);
     document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
     document.getElementById('comparison-cd-qc-issues-btn')?.addEventListener('click', openComparisonQcIssuesModal);
 
@@ -13673,6 +14016,17 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        const colAddBtn = e.target.closest('.cd-sheet-col-add-btn');
+        if (colAddBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const afterCol = parseInt(colAddBtn.dataset.col, 10);
+            if (!Number.isNaN(afterCol)) {
+                addSupplierColumn(afterCol);
+            }
+            return;
+        }
+
         const colEditBtn = e.target.closest('.cd-sheet-col-edit-btn');
         if (colEditBtn) {
             e.preventDefault();
@@ -13754,6 +14108,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    loadComparisonSpecifications();
+
     document.getElementById('comparisonColumnEditModal')?.addEventListener('change', function (e) {
         const selectAll = e.target.closest('#comparison-column-edit-select-all');
         if (selectAll) {
@@ -13766,6 +14122,25 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (e.target.closest('.cd-col-edit-row-check')) {
             syncColumnEditSelectedRowsFromDom();
+            return;
+        }
+
+        // Specification dropdowns (Spec column): "+ Add new specification…" stores a new name in the master table.
+        const specSelect = e.target.closest('select.cd-spec-dd, select#comparison-column-edit-bulk-value[data-mode="spec"]');
+        if (specSelect) {
+            if (specSelect.value === SPEC_ADD_VALUE) {
+                const previous = specSelect.dataset.current ?? '';
+                addComparisonSpecification().then((name) => {
+                    refreshSpecSelectsInColumnEditModal();
+                    if (name) {
+                        specSelect.dataset.current = name;
+                    }
+                    refreshSpecBulkSelect(name ? name : '');
+                    specSelect.value = name || previous;
+                });
+                return;
+            }
+            specSelect.dataset.current = specSelect.value;
             return;
         }
 
@@ -13791,6 +14166,50 @@ document.addEventListener('DOMContentLoaded', function () {
                 setSheetStatus(`Applied "${rowSelect.value}" to ${applied + 1} selected row(s). Click Save column to keep changes.`, false);
             }
         }
+    });
+
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('change', function (e) {
+        const sel = e.target.closest('select.cd-sheet-dd');
+        if (!sel) return;
+        const cell = sel.closest('.cd-sheet-cell-select');
+        const rowIndex = parseInt(sel.dataset.row, 10);
+        const colIndex = parseInt(sel.dataset.col, 10);
+        const key = sel.dataset.ddKey || '';
+        if (!cell || Number.isNaN(rowIndex) || Number.isNaN(colIndex)) return;
+        let value = sel.value;
+        if (value === SHEET_DROPDOWN_ADD_VALUE) {
+            const typed = (window.prompt('Add a new option for "' + key + '":', '') || '').trim();
+            if (!typed) {
+                sel.value = cell.dataset.value || '';
+                return;
+            }
+            const store = loadSheetDropdownStore();
+            const list = Array.isArray(store[key]) ? store[key] : [];
+            const existing = list.find(o => String(o).toLowerCase() === typed.toLowerCase());
+            value = existing || typed;
+            if (!existing) {
+                list.push(typed);
+                store[key] = list;
+                saveSheetDropdownStore(store);
+            }
+            // Offer the new option in every dropdown of this row type right away.
+            document.querySelectorAll('select.cd-sheet-dd[data-dd-key="' + key.replace(/"/g, '') + '"]').forEach((other) => {
+                const otherCell = other.closest('.cd-sheet-cell-select');
+                const otherRow = parseInt(other.dataset.row, 10);
+                const keep = other === sel ? value : (otherCell?.dataset.value || '');
+                other.innerHTML = sheetDropdownSelectInner(sheetDropdownOptions(key, otherRow, keep), keep);
+            });
+        }
+        cell.dataset.value = value;
+        const ddLabel = cell.querySelector('.cd-dd-label');
+        if (ddLabel) { ddLabel.textContent = value || '\u00a0'; }
+        sel.title = value || key;
+        if (!Array.isArray(currentSheetCells[rowIndex])) currentSheetCells[rowIndex] = [];
+        while (currentSheetCells[rowIndex].length <= colIndex) currentSheetCells[rowIndex].push('');
+        currentSheetCells[rowIndex][colIndex] = value;
+        sheetReadyForAutoSave = true;
+        setSheetStatus('Saved "' + (value || '—') + '" for ' + key + '.', false);
+        scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
     });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('input', function (e) {
@@ -13852,7 +14271,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         wrap.addEventListener('dragstart', function (e) {
-            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn')) {
+            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-col-add-btn, .cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn')) {
                 e.preventDefault();
                 return;
             }
@@ -14290,14 +14709,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
             </div>
             <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-outline-danger" id="comparison-column-edit-delete-col-btn-footer" title="Delete this column">
-                    <i class="mdi mdi-delete-outline me-1"></i> Delete column
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-success me-auto" id="comparison-column-edit-add-col-btn-footer" title="Insert a blank column after this one">
-                    <i class="mdi mdi-plus me-1"></i> Add blank column
-                </button>
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-sm btn-primary" id="comparison-column-edit-save-btn">
+                <button type="button" class="btn btn-sm btn-primary ms-auto" id="comparison-column-edit-save-btn">
                     <i class="mdi mdi-content-save-outline me-1"></i> Save column
                 </button>
             </div>

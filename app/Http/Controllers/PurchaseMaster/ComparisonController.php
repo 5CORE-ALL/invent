@@ -12,6 +12,7 @@ use App\Models\Category;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\ComparisonData;
 use App\Models\ComparisonHistory;
+use App\Models\ComparisonSpecification;
 use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbaySkuCompetitor;
@@ -1018,6 +1019,64 @@ class ComparisonController extends Controller
             'success' => true,
             'token' => $token,
             'photo' => $photoId,
+        ]);
+    }
+
+    /**
+     * Master list of specification labels shared by every comparison sheet.
+     */
+    public function specifications()
+    {
+        if (! Schema::hasTable('comparison_specifications')) {
+            return response()->json(['success' => true, 'specifications' => [], 'table_missing' => true]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'specifications' => ComparisonSpecification::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->pluck('name')
+                ->values(),
+        ]);
+    }
+
+    public function addSpecification(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:120',
+        ]);
+
+        if (! Schema::hasTable('comparison_specifications')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Specification table is missing. Run php artisan migrate.',
+            ], 500);
+        }
+
+        $name = trim(preg_replace('/\s+/u', ' ', $validated['name']));
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Name is required.'], 422);
+        }
+
+        // Name column is case-insensitive unique: reuse an existing entry instead of duplicating it.
+        $existing = ComparisonSpecification::query()->where('name', $name)->first();
+        if (! $existing) {
+            $existing = ComparisonSpecification::query()->create([
+                'name' => $name,
+                'sort_order' => (int) ComparisonSpecification::query()->max('sort_order') + 1,
+                'created_by' => (string) (Auth::user()->name ?? Auth::id() ?? ''),
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'name' => $existing->name,
+            'specifications' => ComparisonSpecification::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->pluck('name')
+                ->values(),
         ]);
     }
 
