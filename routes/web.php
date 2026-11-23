@@ -537,6 +537,11 @@ Route::get('/tiktok/connect', [\App\Http\Controllers\MarketPlace\TikTokAuthContr
 Route::get('/tiktok/test-connection', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'testConnection'])->name('tiktok.oauth.test');
 Route::match(['get', 'post'], '/tiktok/exchange', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'exchangeForm'])->name('tiktok.oauth.exchange');
 
+// TikTok Ads (Marketing API) OAuth — callback is public (TikTok redirects here) but needs the state set by /tiktok-ads/connect
+Route::get('/tiktok/callback', [\App\Http\Controllers\Campaigns\TikTokAdsAuthController::class, 'callback'])->name('tiktok.ads.oauth.callback');
+Route::get('/tiktok-ads/connect', [\App\Http\Controllers\Campaigns\TikTokAdsAuthController::class, 'connect'])->middleware('auth')->name('tiktok.ads.oauth.connect');
+Route::match(['get', 'post'], '/tiktok-ads/exchange', [\App\Http\Controllers\Campaigns\TikTokAdsAuthController::class, 'exchange'])->middleware('auth')->name('tiktok.ads.oauth.exchange');
+
 // TikTok Shop 2 OAuth — /index must match TIKTOK2_REDIRECT_URI (public; TikTok redirects here)
 Route::get('/index', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'callback'])->name('tiktok2.oauth.callback');
 

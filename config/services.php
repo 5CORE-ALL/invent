@@ -1099,6 +1099,17 @@ return [
         'access_token' => env('TIKTOK_ADS_ACCESS_TOKEN'),
         'advertiser_id' => env('TIKTOK_ADS_ADVERTISER_ID', env('TIKTOK_ADVERTISER_ID')),
         'store_id' => env('TIKTOK_ADS_STORE_ID', env('TIKTOK_SHOP_ID')),
+
+        // TikTok Marketing (Ads Manager) API app — see App\Services\TikTokAdsApiService.
+        'app_id' => env('TIKTOK_ADS_APP_ID'),
+        'app_secret' => env('TIKTOK_ADS_APP_SECRET'),
+        'api_base' => env('TIKTOK_ADS_API_BASE', 'https://business-api.tiktok.com'),
+        // Must be one of the "Advertiser redirect URLs" saved on the TikTok developer app.
+        'redirect_uri' => env('TIKTOK_ADS_REDIRECT_URI', 'https://inventory.5coremanagement.com/'),
+        // TikTok rejects India IPs ("Client IP address is in banned Country list").
+        // Route calls through a non-India proxy, e.g. socks5h://user:pass@host:1080 or http://host:3128
+        'proxy' => env('TIKTOK_ADS_PROXY'),
+        'timeout' => (int) env('TIKTOK_ADS_TIMEOUT', 30),
     ],
 
     /*
