@@ -825,6 +825,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            /* inline-flex collapses the whitespace between label text and value span */
+            column-gap: 0.35em;
         }
         @media (max-width: 1400px) {
             #forecast-summary-badges .btn {
@@ -945,15 +947,15 @@
 
                         <div id="forecast-summary-badges">
                             <span id="filtered-row-badge" class="btn btn-sm btn-dark fw-semibold text-white" title="Filtered child SKU rows"><span id="filtered-row-count">0</span></span>
-                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">MSL_LP <span id="total_msl_c_value">0.00</span></button>
-                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4">MSL_SP <span id="total_msl_sp_amz_value">0</span></button>
-                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV <span id="total_inv_value_display">0</span></button>
-                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP <span id="total_lp_value_display">0</span></button>
-                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="Σ (CP × Order)">Ord <span id="total_order_value_display">0</span></button>
-                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP <span id="total_mip_value_display">0</span></button>
-                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S <span id="total_r2s_value_display">0</span></button>
-                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn <span id="total_transit_value_display">0</span></button>
-                            <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM <span id="total_cbm_value_display">0</span></button>
+                            <button id="total_msl_c" class="btn btn-sm btn-success fw-semibold text-dark">MSL_LP: <span id="total_msl_c_value">0.00</span></button>
+                            <button type="button" class="btn btn-sm btn-info fw-semibold text-dark" title="MSL × AMZ price ÷ 4">MSL_SP: <span id="total_msl_sp_amz_value">0</span></button>
+                            <button id="total_inv_value" class="btn btn-sm btn-info fw-semibold text-dark" title="INV Value">INV: <span id="total_inv_value_display">0</span></button>
+                            <button id="total_lp_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="LP Value">LP: <span id="total_lp_value_display">0</span></button>
+                            <button id="total_order_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="Σ (CP × Order)">Ord: <span id="total_order_value_display">0</span> <span id="total_order_count_display">(0)</span></button>
+                            <button id="total_mip_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="MIP Value">MIP: <span id="total_mip_value_display">0</span> <span id="total_mip_count_display">(0)</span></button>
+                            <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S: <span id="total_r2s_value_display">0</span> <span id="total_r2s_count_display">(0)</span></button>
+                            <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn: <span id="total_transit_value_display">0</span> <span id="total_transit_count_display">(0)</span></button>
+                            <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM: <span id="total_cbm_value_display">0</span></button>
                             <button type="button" id="fa-avg-npft-badge" class="btn btn-sm fw-semibold text-dark" style="background-color:#ffc107;border-color:#ffc107;" title="NPFT% — same as Active channel (/all-marketplace-master)">NPFT: <span id="fa-avg-npft-value">—</span></button>
                             <button type="button" id="fa-avg-nroi-badge" class="btn btn-sm fw-semibold text-dark" style="background-color:#20c997;border-color:#20c997;" title="NROI% — same as Active channel (/all-marketplace-master)">NROI: <span id="fa-avg-nroi-value">—</span></button>
                             <button type="button" id="zero-stock-badge-btn" class="btn btn-sm fw-semibold text-white" style="cursor:pointer;background-color:#dc3545;border-color:#dc3545;" title="Available % — child SKUs with INV &gt; 0. Click for history graph · Ctrl/⌘+click to filter." aria-pressed="false" data-exact-value=""><span id="zero-stock-count">0%</span></button>
@@ -2084,6 +2086,12 @@
                 return m.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + 'M';
             }
             return Math.round(n / 1000).toLocaleString('en-US') + 'K';
+        }
+
+        /** Show the SKU count next to a badge value, e.g. "(42)". */
+        function setBadgeCount(id, count) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '(' + (parseInt(count, 10) || 0).toLocaleString('en-US') + ')';
         }
 
         /** POST inline forecast updates (used by Tabulator MOQ editor and other handlers). */
@@ -3920,11 +3928,8 @@
                         if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
                             const dilDecimal = (l30 / inv);
                             const percent = Math.round(dilDecimal * 100);
-                            // Pink range (>= 50%) gets the badge/pill look; other ranges
-                            // keep the previous coloured-text styling.
-                            if (percent >= 50) {
-                                return `<div class="text-center"><span class="forecast-dil-pct pink-pct-badge">${percent}%</span></div>`;
-                            }
+                            // Text color only (no pill background) for every range;
+                            // >= 50% resolves to magenta in getDilTextColor.
                             const col = getDilTextColor(dilDecimal);
                             return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${percent}%</span></div>`;
                         }
@@ -5136,6 +5141,9 @@
                 let totalMipValue = 0;
                 let totalR2sValue = 0;
                 let totalTransitValueLocal = 0;
+                let mipSkuCount = 0;
+                let r2sSkuCount = 0;
+                let transitSkuCount = 0;
                 // Sum the CBM column (already pre-computed per row as MSL × CBM/unit
                 // by the controller — see total_cbm assignment in ForecastAnalysisController).
                 let totalCbmSum = 0;
@@ -5162,12 +5170,16 @@
 
                     // Multi-stage MIP / R2S value (shared helpers so the logic
                     // lives in one place — see setCombinedFilters recalculation).
-                    totalMipValue += forecastRowMipValue(item);
-                    totalR2sValue += forecastRowR2sValue(item);
-
+                    const rowMipValue = forecastRowMipValue(item);
+                    const rowR2sValue = forecastRowR2sValue(item);
+                    totalMipValue += rowMipValue;
+                    totalR2sValue += rowR2sValue;
+                    if (rowMipValue > 0) mipSkuCount++;
+                    if (rowR2sValue > 0) r2sSkuCount++;
                     const t  = parseFloat(item.transit) || 0;
                     const cp = parseFloat(item.CP)      || 0;
                     totalTransitValueLocal += t * cp;
+                    if (t > 0) transitSkuCount++;
                 }
 
                 const averageRestockLp  = restockCount > 0 ? totalRestockLpSum / restockCount : 0;
@@ -5200,6 +5212,9 @@
                 setBadgeText('total_r2s_value_display',          totalR2sValue);
                 setBadgeText('total_transit_value_display',      totalTransitValue);
                 setBadgeText('total_restock_msl_lp_value',       totalRestockMslLp);
+                setBadgeCount('total_mip_count_display',         mipSkuCount);
+                setBadgeCount('total_r2s_count_display',         r2sSkuCount);
+                setBadgeCount('total_transit_count_display',     transitSkuCount);
 
                 // CBM badge — rounded to nearest whole number.
                 const totalCbmEl = document.getElementById('total_cbm_value_display');
@@ -6680,11 +6695,13 @@
                 if (totalLpValueElement) {
                     totalLpValueElement.textContent = formatBadgeK(visibleLpValue);
                 }
+                let visibleOrderSkuCount = 0;
                 const visibleOrderValue = visibleChildRows.reduce(function(sum, row) {
                     const d = row.getData();
                     // Ord $ = sum(CP x displayed Order qty) — matches the Order column.
                     const orderQty = forecastRowOrderQty(d);
                     if (!(orderQty > 0)) return sum;
+                    visibleOrderSkuCount++;
                     const cp = parseFloat(d.CP ?? (d.raw_data ? d.raw_data.CP : 0)) || 0;
                     return sum + (orderQty * cp);
                 }, 0);
@@ -6692,6 +6709,7 @@
                 if (totalOrderValueElement) {
                     totalOrderValueElement.textContent = formatBadgeK(visibleOrderValue);
                 }
+                setBadgeCount('total_order_count_display', visibleOrderSkuCount);
 
                 let totalMslSpAmz = 0;
                 visibleRows.forEach(row => {
@@ -6757,11 +6775,19 @@
                 // so the logic matches the ajaxResponse pass exactly).
                 let totalMipValue = 0;
                 let totalR2sValue = 0;
+                let mipSkuCount = 0;
+                let r2sSkuCount = 0;
                 table.getRows().forEach(function (row) {
                     const data = row.getData();
-                    totalMipValue += forecastRowMipValue(data);
-                    totalR2sValue += forecastRowR2sValue(data);
+                    const mipVal = forecastRowMipValue(data);
+                    const r2sVal = forecastRowR2sValue(data);
+                    totalMipValue += mipVal;
+                    totalR2sValue += r2sVal;
+                    if (mipVal > 0) mipSkuCount++;
+                    if (r2sVal > 0) r2sSkuCount++;
                 });
+                setBadgeCount('total_mip_count_display', mipSkuCount);
+                setBadgeCount('total_r2s_count_display', r2sSkuCount);
 
                 const totalMipValueElement = document.getElementById('total_mip_value_display');
                 if (totalMipValueElement) {
