@@ -69,51 +69,26 @@
         'img.global-img-hover-active{cursor:zoom-in;}' +
         // Centered placement for every page-specific preview box (does not touch show/hide).
         CENTER_SELECTORS.join(',') + '{' +
-        'position:fixed!important;left:calc(50% / var(--ihp-zoom,1))!important;top:calc(50% / var(--ihp-zoom,1))!important;' +
+        'position:fixed!important;left:50%!important;top:50%!important;' +
         'right:auto!important;bottom:auto!important;margin:0!important;' +
         'transform:translate(-50%,-50%)!important;pointer-events:none!important;' +
         '}';
 
     // Some pages apply `document.body.style.zoom = "90%"`. Depending on the browser, a position:fixed
-    // box inside a zoomed body gets its left/top ("50%") scaled by that zoom and lands off-centre.
-    // We PROBE the real behaviour (a tiny fixed box at 50%/50% + elementFromPoint) and publish
-    // --ihp-zoom so the CSS / position() below divide the zoom back out only when the browser needs it.
-    var zoomProbeCache = {};
+    // box that lives INSIDE a zoomed body gets its left/top scaled (and its size) and lands off-centre.
+    // Fix: keep every preview box OUTSIDE <body> (as a direct child of <html>) so body zoom can never
+    // touch it. Page-specific boxes are hoisted lazily, right before they are shown.
+    var ID_SELECTORS = CENTER_SELECTORS.filter(function (sel) { return /^#[\w-]+$/.test(sel); }).join(',');
 
-    function fixedNeedsZoomComp(z) {
-        if (Math.abs(z - 1) < 0.001) return false;
-        var key = String(z);
-        if (zoomProbeCache.hasOwnProperty(key)) return zoomProbeCache[key];
-        var needs = false;
-        try {
-            var probe = document.createElement('div');
-            probe.style.cssText = 'position:fixed;left:50%;top:50%;width:8px;height:8px;margin:0;padding:0;' +
-                'border:0;z-index:2147483647;visibility:hidden;pointer-events:auto;';
-            (document.body || document.documentElement).appendChild(probe);
-            var r = probe.getBoundingClientRect();
-            // visibility:hidden boxes are not hit-testable, so test against the real centre point instead
-            probe.style.visibility = 'visible';
-            probe.style.opacity = '0';
-            var hit = document.elementFromPoint(window.innerWidth / 2 + 3, window.innerHeight / 2 + 3);
-            needs = hit !== probe;
-            probe.parentNode.removeChild(probe);
-        } catch (err) { needs = false; }
-        zoomProbeCache[key] = needs;
-        return needs;
-    }
-
-    function syncZoom() {
-        var z = 1;
-        try {
-            [document.documentElement, document.body].forEach(function (el) {
-                if (!el) return;
-                var v = parseFloat(window.getComputedStyle(el).zoom);
-                if (v > 0 && isFinite(v)) z *= v;
-            });
-        } catch (err) { z = 1; }
-        var comp = fixedNeedsZoomComp(z) ? z : 1;
-        document.documentElement.style.setProperty('--ihp-zoom', String(comp));
-        return comp;
+    function hoistPreviewBoxes() {
+        var root = document.documentElement;
+        if (!root || !ID_SELECTORS) return;
+        var list;
+        try { list = document.querySelectorAll(ID_SELECTORS); } catch (err) { return; }
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (el.parentNode !== root) root.appendChild(el);
+        }
     }
 
     var styleEl = document.createElement('style');
@@ -126,7 +101,7 @@
         el = document.createElement('img');
         el.id = 'global-img-hover-preview';
         el.alt = '';
-        (document.body || document.documentElement).appendChild(el);
+        document.documentElement.appendChild(el); // outside <body> => immune to body zoom
         return el;
     }
 
@@ -166,6 +141,9 @@
         if (img.getAttribute && img.getAttribute('data-no-img-hover') != null) return false;
         if (img.closest && img.closest(SKIP_CLOSEST)) return false;
 
+        // Page already has its own centred preview box for data-preview thumbs: don't stack a second popup.
+        if (img.hasAttribute && img.hasAttribute('data-preview') && document.getElementById('cell-image-preview')) return false;
+
         var src = (img.currentSrc || img.src || '').trim();
         if (!src) return false;
         if (/^data:image\/svg/i.test(src)) return false;
@@ -190,10 +168,8 @@
     // Always centered in the viewport (cursor position is ignored).
     function position() {
         if (!popup || popup.style.display !== 'block') return;
-        var z = syncZoom();
-        var c = 'calc(50% / ' + z + ')';
-        popup.style.left = c;
-        popup.style.top = c;
+        popup.style.left = '50%';
+        popup.style.top = '50%';
         popup.style.transform = 'translate(-50%, -50%)';
     }
 
@@ -249,7 +225,7 @@
     }
 
     function onOver(e) {
-        syncZoom();
+        hoistPreviewBoxes();
         var img = e.target && e.target.closest ? e.target.closest('img') : null;
         if (!isEligible(img)) return;
         var from = e.relatedTarget;
