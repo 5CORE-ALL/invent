@@ -357,7 +357,8 @@
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead class="table-light"><tr>
-                                <th>Forwarder</th><th>Email</th><th>Sent</th><th>Status</th><th>Total ($)</th><th></th>
+                                <th>Rank</th><th>Forwarder</th><th>Email</th><th>Sent</th><th>Status</th>
+                                <th>Shipping Line</th><th>Est Dt Sail</th><th class="text-end">Pickup Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th><th></th>
                             </tr></thead>
                             <tbody id="qfRequests"></tbody>
                         </table>
@@ -1171,28 +1172,45 @@
             function renderRequestRows(reqs) {
                 const reqBody = document.getElementById('qfRequests');
                 if (!reqs.length) {
-                    reqBody.innerHTML = '<tr><td colspan="6" class="text-muted">Nothing sent yet — use the Send button.</td></tr>';
+                    reqBody.innerHTML = '<tr><td colspan="11" class="text-muted">Nothing sent yet — use the Send button.</td></tr>';
                     return;
                 }
+                const hasTotal = r => r.total !== null && r.total !== undefined && r.total !== '';
+                const usd = v => (v === null || v === undefined || v === '') ? '—'
+                    : '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                // Lowest total on top (L1, L2, L3 …); requests without a total follow, in the order they were sent.
+                reqs = reqs.map((r, i) => ({ r: r, i: i })).sort(function (a, b) {
+                    const x = hasTotal(a.r), y = hasTotal(b.r);
+                    if (x && y) return (Number(a.r.total) - Number(b.r.total)) || (a.i - b.i);
+                    if (x !== y) return x ? -1 : 1;
+                    return a.i - b.i;
+                }).map(o => o.r);
+                let rankNo = 0;
                 reqBody.innerHTML = reqs.map(function (r) {
+                    const rank = hasTotal(r)
+                        ? '<span class="badge ' + (rankNo === 0 ? 'bg-success' : 'bg-secondary') + '">L' + (++rankNo) + '</span>'
+                        : '<span class="text-muted">—</span>';
                     const status = r.submitted_at
                         ? '<span class="badge bg-success">Submitted</span><div class="small text-muted">' + esc(r.submitted_at) + '</div>'
                         : (r.last_error ? '<span class="badge bg-danger" title="' + esc(r.last_error) + '">Send failed</span>'
                             : '<span class="badge bg-warning text-dark">Awaiting quote</span>');
-                    const total = r.total !== null && r.total !== undefined
-                        ? '$' + Number(r.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
                     const money = f => ['Pickup Charges', 'Freight', 'Total'].includes(f);
                     const show = (f, v) => (v === null || v === undefined || v === '') ? '<i>empty</i>'
                         : esc(money(f) ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v);
                     const alertRow = r.changed
-                        ? '<tr class="table-danger"><td colspan="6"><i class="fas fa-triangle-exclamation qc-alert-tri"></i>' +
+                        ? '<tr class="table-danger"><td colspan="11"><i class="fas fa-triangle-exclamation qc-alert-tri"></i>' +
                           '<b>' + esc(r.forwarder) + ' changed the quote after saving</b> <span class="small text-muted">(' + esc(r.changed_at || '') + ')</span>' +
                           '<div class="small mt-1">' + (r.changes || []).map(c =>
                               '<span class="me-3">' + esc(c.label) + ': <s>' + show(c.label, c.old) + '</s> → <b>' + show(c.label, c.new) + '</b></span>').join('') + '</div>' +
                           '<button type="button" class="btn btn-sm btn-outline-danger mt-1 qf-ack" data-id="' + r.id + '"><i class="fas fa-check me-1"></i>Acknowledge</button></td></tr>'
                         : '';
-                    return '<tr' + (r.changed ? ' class="table-danger"' : '') + '><td>' + esc(r.forwarder) + '</td><td class="small">' + esc(r.email) + '</td>' +
-                        '<td class="small">' + (r.sent_at ? esc(r.sent_at) : '—') + '</td><td>' + status + '</td><td>' + total + '</td>' +
+                    return '<tr' + (r.changed ? ' class="table-danger"' : '') + '><td>' + rank + '</td><td>' + esc(r.forwarder) + '</td><td class="small">' + esc(r.email) + '</td>' +
+                        '<td class="small">' + (r.sent_at ? esc(r.sent_at) : '—') + '</td><td>' + status + '</td>' +
+                        '<td>' + (r.shipping_line ? esc(r.shipping_line) : '—') + '</td>' +
+                        '<td class="text-nowrap">' + (r.est_dt_sail ? esc(r.est_dt_sail) : '—') + '</td>' +
+                        '<td class="text-end">' + usd(r.pickup_charges) + '</td>' +
+                        '<td class="text-end">' + usd(r.freight) + '</td>' +
+                        '<td class="text-end fw-bold">' + usd(r.total) + '</td>' +
                         '<td><button type="button" class="btn btn-sm btn-outline-secondary qf-copy" data-url="' + esc(r.url || '') + '" title="Copy the forwarder\'s form link"><i class="fas fa-link"></i></button></td></tr>' + alertRow;
                 }).join('');
             }
