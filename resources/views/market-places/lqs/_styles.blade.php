@@ -263,37 +263,19 @@
         }
         .amz-copy-sku:hover, .amz-copy-sku.is-copied { color: #0d6efd; }
         .amz-copy-sku i { pointer-events: none; }
-        #lqs-pulse {
-            margin: 0 0 14px; border-radius: 22px; padding: 14px 16px 12px; color: #f8f5ff;
-            background:
-                radial-gradient(280px 90px at 0% 0%, rgba(190,242,100,.35), transparent 70%),
-                radial-gradient(240px 90px at 100% 0%, rgba(244,114,182,.35), transparent 70%),
-                linear-gradient(120deg, #1c1430, #4c1d95 70%, #7c3aed);
-            box-shadow: 0 12px 28px rgba(76, 29, 149, .22);
-        }
-        #lqs-pulse .lqs-pulse-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-        #lqs-pulse .lqs-pulse-kicker { font-size: 13px; font-weight: 800; letter-spacing: .02em; text-transform: none; color: #bef264; }
-        #lqs-pulse h6 { margin: 2px 0 0; color: #fff; font-weight: 800; font-size: 18px; }
-        #lqs-pulse .lqs-pulse-stats { display: flex; gap: 8px; }
-        #lqs-pulse .lqs-pulse-stats div { background: rgba(255,255,255,.12); border-radius: 14px; padding: 6px 12px; min-width: 92px; }
-        #lqs-pulse .lqs-pulse-stats b { display: block; font-size: 20px; line-height: 1; }
-        #lqs-pulse .lqs-pulse-stats span { font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: #ddd6fe; }
-        #lqs-pulse .lqs-pulse-stage { height: 92px; margin-top: 10px; overflow: hidden; position: relative; }
-        #lqs-pulse .lqs-pulse-track { display: flex; gap: 8px; width: max-content; animation: lqsPulseRoll 22s linear infinite; }
-        #lqs-pulse .lqs-pulse-stage:hover .lqs-pulse-track { animation-play-state: paused; }
-        #lqs-pulse .lqs-pulse-day { width: 54px; height: 92px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
-        #lqs-pulse .lqs-pulse-bars { height: 64px; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
-        #lqs-pulse .lqs-pulse-bars i { display: block; width: 14px; border-radius: 7px 7px 3px 3px; min-height: 3px; transform-origin: bottom; animation: lqsPulseGrow .8s ease both; }
-        #lqs-pulse .lqs-pulse-bars i.green { background: #bef264; }
-        #lqs-pulse .lqs-pulse-bars i.ink { background: #f9a8d4; }
-        #lqs-pulse .lqs-pulse-day em { font-style: normal; font-size: 9px; color: #ddd6fe; }
-        #lqs-pulse .lqs-pulse-legend { font-size: 11px; color: #e9defa; margin-top: 6px; }
-        #lqs-pulse .lqs-pulse-legend .lg { display: inline-block; width: 8px; height: 8px; border-radius: 99px; margin: 0 4px 0 8px; }
-        #lqs-pulse .lqs-pulse-legend .lg.green { background: #bef264; }
-        #lqs-pulse .lqs-pulse-legend .lg.ink { background: #f9a8d4; }
-        #lqs-pulse .lqs-pulse-roll { margin-top: 8px; overflow: hidden; white-space: nowrap; font-size: 12px; color: #fff; }
-        #lqs-pulse .lqs-pulse-roll .inner { display: inline-block; padding-left: 100%; animation: lqsPulseMarquee 18s linear infinite; }
-        @keyframes lqsPulseRoll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-        @keyframes lqsPulseGrow { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
-        @keyframes lqsPulseMarquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+        #lqs-pulse { position: relative; margin: 0 0 14px; padding: 14px 16px 8px; border-radius: 18px; color: #f8fafc; background: #0b1020; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,42,.18); }
+        #lqs-pulse::before { content: ''; position: absolute; inset: 0; padding: 1px; border-radius: 18px; background: linear-gradient(120deg,#f472b6,#a78bfa,#22d3ee); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+        #lqs-pulse .lqs-pulse-shine { position: absolute; top: 0; bottom: 0; width: 28%; background: linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); animation: lqsPulseShine 7s linear infinite; pointer-events: none; }
+        #lqs-pulse .lqs-pulse-head { position: relative; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        #lqs-pulse .lqs-pulse-kicker { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: #c4b5fd; font-weight: 700; }
+        #lqs-pulse .lqs-pulse-title { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+        #lqs-pulse .lqs-pulse-stats { display: flex; gap: 14px; margin-left: auto; }
+        #lqs-pulse .lqs-pulse-stats div { display: flex; flex-direction: column; align-items: flex-end; line-height: 1; }
+        #lqs-pulse .lqs-pulse-stats span { font-size: 22px; font-weight: 800; background: linear-gradient(90deg,#f9a8d4,#c4b5fd,#67e8f9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        #lqs-pulse .lqs-pulse-stats small { margin-top: 3px; font-size: 10px; color: #94a3b8; letter-spacing: .04em; text-transform: uppercase; }
+        #lqs-pulse .lqs-pulse-ranges { display: flex; gap: 6px; }
+        #lqs-pulse .lqs-pulse-ranges button { border: 0; background: rgba(255,255,255,.08); color: #cbd5e1; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 4px 10px; cursor: pointer; }
+        #lqs-pulse .lqs-pulse-ranges button.on { background: #fff; color: #0b1020; }
+        #lqs-pulse .lqs-pulse-canvas { position: relative; height: 148px; margin-top: 6px; }
+        @keyframes lqsPulseShine { from { left: -30%; } to { left: 110%; } }
     </style>

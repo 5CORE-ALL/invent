@@ -19,9 +19,9 @@ class LqsShopifyController extends LqsMarketplaceBaseController
     }
 
     /** Day-by-day red → green moves and Action Taken notes, for the rolling graph. */
-    public function ratingPulse()
+    public function ratingPulse(Request $request)
     {
-        return response()->json(['success' => true] + LqsShopifyRatingMoves::pulse(14));
+        return response()->json(['success' => true] + LqsShopifyRatingMoves::pulse((int) $request->query('days', 30)));
     }
 
     public function syncSeo(Request $request, LqsShopifySeoService $seo)

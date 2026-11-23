@@ -75,7 +75,7 @@ class LqsShopifyRatingMoves
     public static function pulse(int $days = 14): array
     {
         self::ensureTable();
-        $days = max(7, min(30, $days));
+        $days = max(7, min(60, $days));
         $start = now()->startOfDay()->subDays($days - 1);
 
         $moves = DB::table(self::TABLE)
