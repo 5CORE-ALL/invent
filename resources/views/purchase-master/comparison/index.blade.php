@@ -445,7 +445,65 @@
         z-index: 200060 !important;
     }
 
+    /* ===== Comparison page: every modal opens as a RIGHT-SIDE drawer, full height ===== */
+    html body #comparisonColumnEditModal.modal { --cmp-drawer-w: 760px; }
+    html body #comparisonHistoryModal.modal { --cmp-drawer-w: 760px; }
+    html body #comparisonLmpModal.modal { --cmp-drawer-w: 980px; }
+    html body #comparisonQcIssuesModal.modal { --cmp-drawer-w: 640px; }
+    html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 720px; }
+    html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 720px; }
+    html body #comparisonRoiModal.modal { --cmp-drawer-w: 1100px; }
+    html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 520px; }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal {
+        padding: 0 !important;
+    }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-dialog {
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        left: auto !important;
+        margin: 0 !important;
+        width: var(--cmp-drawer-w, 480px) !important;
+        max-width: 96vw !important;
+        height: 100vh !important;
+        min-height: 0 !important;
+        max-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+        transform: translateX(100%) !important;
+        transition: transform 0.3s ease-out !important;
+    }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal.show .modal-dialog {
+        transform: translateX(0) !important;
+    }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        border-radius: 0 !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+        box-shadow: -8px 0 28px rgba(15, 23, 42, 0.22) !important;
+    }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-header,
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-footer {
+        flex: 0 0 auto !important;
+    }
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-body {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+    }
+
     .comparison-lmp-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .comparison-lmp-chip-empty { opacity:.6; }
     .comparison-lmp-lowest { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .comparison-lmp-lowest .badge { font-size:.75rem; }
 
@@ -1610,8 +1668,8 @@
     .cd-sheet-table .cd-sheet-img,
     .cd-sheet-table td img,
     .cd-sheet-table .cd-sheet-cell img {
-        max-width: 96px !important;
-        max-height: 64px !important;
+        max-width: 77px !important;
+        max-height: 51px !important;
         width: auto !important;
         height: auto !important;
         object-fit: contain !important;
@@ -4357,6 +4415,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const parts = [];
         for (let r = 0; r < currentSheetCells.length; r++) {
             const row = currentSheetCells[r] || [];
+            // "Company Name" and "Link" rows are not edited from this modal (edit them in the sheet).
+            if (!isSpecCol) {
+                const specLabel = String(row[specCol] ?? '').trim().toLowerCase();
+                if (specLabel === 'company name' || specLabel === 'link' || specLabel === 'supplier link') {
+                    continue;
+                }
+            }
             const rawValue = row[col] ?? '';
             const value = String(rawValue ?? '');
             const displayValue = value.startsWith('data:image/')
@@ -5992,11 +6057,6 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderAllMarketplaceLmp() {
         const { sku, rows: allRows, filter, listEl } = allLmpCache;
         if (!listEl) return;
-        if (!allRows.length) {
-            listEl.innerHTML = '<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU on any marketplace yet.</div>';
-            return;
-        }
-
         const rows = filter === 'all' ? allRows : allRows.filter(r => r.channel === filter);
         const lowestBy = {};
         allRows.forEach(function (r) {
@@ -6009,9 +6069,8 @@ document.addEventListener('DOMContentLoaded', function () {
         html += `<button type="button" class="btn btn-sm ${filter === 'all' ? 'btn-dark' : 'btn-outline-secondary'} comparison-lmp-filter-btn" data-filter="all">All <span class="badge bg-light text-dark">${allRows.length}</span></button>`;
         ALL_LMP_CHANNELS.forEach(function (ch) {
             const count = allRows.filter(r => r.channel === ch.key).length;
-            if (!count) return;
             const active = filter === ch.key;
-            html += `<button type="button" class="btn btn-sm comparison-lmp-filter-btn ${active ? '' : 'btn-outline-secondary'}" data-filter="${ch.key}"
+            html += `<button type="button" class="btn btn-sm comparison-lmp-filter-btn ${active ? '' : 'btn-outline-secondary'}${count ? '' : ' comparison-lmp-chip-empty'}" data-filter="${ch.key}"
                 ${active ? `style="background:${ch.color};color:${ch.text};border-color:${ch.color};"` : ''}>${ch.label} <span class="badge bg-light text-dark">${count}</span></button>`;
         });
         html += '</div><div class="comparison-lmp-lowest">';
@@ -6020,6 +6079,15 @@ document.addEventListener('DOMContentLoaded', function () {
             html += `<span class="badge" style="background:${ch.color};color:${ch.text};">${ch.label} $${lowestBy[ch.key].toFixed(2)}</span>`;
         });
         html += '</div>';
+
+        if (!rows.length) {
+            const label = filter === 'all' ? 'any marketplace' : allLmpChannelMeta(filter).label;
+            const addable = ['amazon', 'ebay', 'google', 'temu'].includes(filter);
+            html += `<div class="alert alert-info mb-0"><i class="fa fa-info-circle"></i> No competitors found for this SKU on ${escapeHtml(label)} yet.${
+                addable ? ` <a href="#" class="comparison-lmp-add-link" data-platform="${filter === 'google' ? 'shopify' : filter}">Add one</a>` : ''}</div>`;
+            listEl.innerHTML = html;
+            return;
+        }
 
         html += `<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">
             <thead class="table-light"><tr>
@@ -6136,6 +6204,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     document.addEventListener('click', function (e) {
+        const addLink = e.target.closest('.comparison-lmp-add-link');
+        if (addLink && addLink.closest('#comparison-cd-lmp-list')) {
+            e.preventDefault();
+            loadComparisonLmpModal(allLmpCache.sku, addLink.dataset.platform || 'amazon');
+            return;
+        }
         const btn = e.target.closest('.comparison-lmp-filter-btn');
         if (!btn || !btn.closest('#comparison-cd-lmp-list')) return;
         e.preventDefault();
