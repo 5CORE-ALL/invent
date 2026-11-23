@@ -454,6 +454,16 @@
                 <div class="modal-footer">
                     <span class="small me-auto" id="vm-aplus-status"></span>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <div class="btn-group dropup d-none" id="vm-aplus-push-wrap">
+                        <button type="button" class="btn btn-primary dropdown-toggle" id="vm-aplus-push" data-bs-toggle="dropdown" aria-expanded="false" title="Saves this A+ content, then updates the parent listing only">
+                            <i class="fas fa-cloud-upload-alt"></i> Push to marketplace
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">Update the parent listing's A+</h6></li>
+                            <li><a class="dropdown-item" href="#" data-push-mp="ebay2">eBay 2</a></li>
+                            <li><a class="dropdown-item" href="#" data-push-mp="ebay3">eBay 3</a></li>
+                        </ul>
+                    </div>
                     <button type="button" class="btn btn-success" id="vm-aplus-save"><i class="fas fa-save"></i> Save all</button>
                 </div>
             </div>
@@ -1228,6 +1238,8 @@
                 document.getElementById('vm-desc-sku').textContent = row.sku ? '· Fetch live / Fetch A+ read SKU ' + row.sku : '';
                 aplusStatus.textContent = '';
                 descLoading('');
+                // Push to marketplace updates the PARENT listing only, so it is offered on PARENT rows.
+                document.getElementById('vm-aplus-push-wrap')?.classList.toggle('d-none', row.row_type !== 'parent');
                 const show = function () {
                     bootstrap.Modal.getOrCreateInstance(aplusModalEl).show();
                 };
@@ -1247,6 +1259,43 @@
                 }
                 show();
             }
+
+            // Push to marketplace: save the editor as the parent's A+, then update that parent listing on eBay 2 / eBay 3.
+            const pushAplusUrl = @json(route('variation.master.push.aplus'));
+            const PUSH_LABELS = { ebay2: 'eBay 2', ebay3: 'eBay 3' };
+            document.querySelectorAll('#vm-aplus-push-wrap [data-push-mp]').forEach(function (item) {
+                item.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    const mp = item.dataset.pushMp;
+                    const row = panelRow;
+                    const pushBtn = document.getElementById('vm-aplus-push');
+                    const saveBtn = document.getElementById('vm-aplus-save');
+                    if (!row || row.row_type !== 'parent' || pushBtn.disabled) return;
+                    const html = getDescContent();
+                    if (!String(html || '').trim()) {
+                        descFail('Write the A+ content first.');
+                        return;
+                    }
+                    if (!window.confirm('Save this A+ content and update the PARENT listing ' + (row.sku || parentLabel(row)) + ' on ' + PUSH_LABELS[mp] + '? Child listings are not changed.')) return;
+                    pushBtn.disabled = true;
+                    saveBtn.disabled = true;
+                    aplusStatus.className = 'small me-auto text-muted';
+                    aplusStatus.textContent = 'Saving A+…';
+                    postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: html }).then(function (json) {
+                        applyParentPatch(row, { aplus: json.aplus || '' });
+                        aplusStatus.textContent = 'Pushing to ' + PUSH_LABELS[mp] + '…';
+                        return postJson(pushAplusUrl, { id: row.id, marketplace: mp });
+                    }).then(function (json) {
+                        descNote(json.message || ('A+ updated on ' + PUSH_LABELS[mp] + '.'));
+                        setStatus(json.message || ('A+ updated on ' + PUSH_LABELS[mp] + '.'), true);
+                    }).catch(function (err) {
+                        descFail(err.message || 'Push failed.');
+                    }).finally(function () {
+                        pushBtn.disabled = false;
+                        saveBtn.disabled = false;
+                    });
+                });
+            });
 
             document.getElementById('vm-aplus-save')?.addEventListener('click', function () {
                 const btn = this;

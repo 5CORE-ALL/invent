@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\ListingManagerProductPublisher;
 use App\Support\Marketplace\VariationListingContent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -145,6 +146,63 @@ class VariationMasterController extends Controller
             'bullet_5' => $listing['bullet_5'] ?? '',
             'aplus' => $listing['aplus'] ?? '',
             'parent_images' => $listing['parent_images'] ?? [],
+        ]);
+    }
+
+    /** Marketplaces Variation Master can push a parent's A+ content to. */
+    public const APLUS_PUSH_CHANNELS = [
+        'ebay2' => 'eBay 2',
+        'ebay3' => 'eBay 3',
+    ];
+
+    /**
+     * Send the PARENT row's saved A+ content to its own live listing on eBay 2 or eBay 3.
+     * Only the parent listing is revised; child SKUs are never touched.
+     */
+    public function pushAplus(Request $request): JsonResponse
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'marketplace' => 'required|string|in:'.implode(',', array_keys(self::APLUS_PUSH_CHANNELS)),
+        ]);
+
+        $product = ProductMaster::query()->find($request->integer('id'));
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'SKU was not found on CP master.'], 404);
+        }
+        $sku = trim((string) $product->sku);
+        if (! ListingManagerFamily::isParentSku($sku)) {
+            return response()->json(['success' => false, 'message' => 'Only a PARENT row can be pushed. Open the PARENT row to push its A+ content.'], 422);
+        }
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        $html = trim((string) ($values[VariationListingContent::APLUS_KEY] ?? ''));
+        if ($html === '') {
+            return response()->json(['success' => false, 'message' => 'No A+ content is saved for '.$sku.'. Save it first, then push.'], 422);
+        }
+
+        @set_time_limit(120);
+        $marketplace = (string) $request->input('marketplace');
+        $label = self::APLUS_PUSH_CHANNELS[$marketplace];
+
+        try {
+            $result = (new ListingManagerProductPublisher())
+                ->pushToMarketplaces($sku, [$marketplace], ['aplus' => $html], ['aplus'])[$marketplace] ?? null;
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $label.': '.$e->getMessage()], 200);
+        }
+
+        $ok = (bool) ($result['success'] ?? false);
+        $message = trim((string) ($result['parts']['aplus'] ?? $result['message'] ?? ''));
+
+        return response()->json([
+            'success' => $ok,
+            'marketplace' => $marketplace,
+            'label' => $label,
+            'sku' => $sku,
+            'message' => $ok
+                ? $label.': A+ content updated on the parent listing ('.$sku.').'
+                : $label.' ('.$sku.'): '.($message !== '' ? $message : 'Update failed.'),
         ]);
     }
 
