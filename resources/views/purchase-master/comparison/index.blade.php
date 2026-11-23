@@ -457,6 +457,18 @@
     body.cd-page-mode .modal-backdrop {
         display: none !important;
     }
+    body.cd-page-mode #comparison-main-card {
+        display: none !important;
+    }
+    /* No modal fade/slide animation: the editor is simply the page. */
+    body.cd-page-mode #comparisonCdModal,
+    body.cd-page-mode #comparisonCdModal.fade,
+    body.cd-page-mode #comparisonCdModal .modal-dialog {
+        opacity: 1 !important;
+        transition: none !important;
+        transform: none !important;
+        animation: none !important;
+    }
     body.cd-page-mode #comparisonCdModal {
         position: static !important;
         display: block !important;
@@ -2260,6 +2272,11 @@
 @endsection
 
 @section('content')
+@if(!empty($cdPageSku))
+{{-- Dedicated CD page: switch to page mode immediately (before first paint) so the list never flashes
+     and the editor appears as a normal full page instead of a sliding-in modal. --}}
+<script>document.body.classList.add('cd-page-mode');</script>
+@endif
 <div class="container-fluid mt-4">
     <div class="row">
         <div class="col-12">
