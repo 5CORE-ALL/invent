@@ -3774,6 +3774,15 @@
                         style="width:30px;height:30px;border-radius:6px;object-fit:contain;box-shadow:0 1px 4px #0001;cursor: pointer;"
                     >`;
                     },
+                    // Hovering the thumbnail also opens the centered preview.
+                    cellMouseOver: function(e, cell) {
+                        const img = cell.getElement().querySelector('.hover-thumb');
+                        if (!img) return;
+                        forecastShowImagePreview(0, 0, img.getAttribute('data-full'));
+                    },
+                    cellMouseOut: function() {
+                        forecastRemoveImagePreview();
+                    },
                     width: 52,
                     minWidth: 48,
                     maxWidth: 56,
