@@ -453,11 +453,12 @@
     html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 720px; }
     html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 720px; }
     html body #comparisonRoiModal.modal { --cmp-drawer-w: 1100px; }
+    html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 560px; }
     html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 520px; }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal {
         padding: 0 !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-dialog {
         position: fixed !important;
         top: 0 !important;
         right: 0 !important;
@@ -476,10 +477,10 @@
         transform: translateX(100%) !important;
         transition: transform 0.3s ease-out !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal.show .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal.show .modal-dialog {
         transform: translateX(0) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-content {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-content {
         width: 100% !important;
         max-width: 100% !important;
         height: 100% !important;
@@ -491,11 +492,11 @@
         flex-direction: column !important;
         box-shadow: -8px 0 28px rgba(15, 23, 42, 0.22) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-header,
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-footer {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-header,
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-footer {
         flex: 0 0 auto !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal).modal .modal-body {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal .modal-body {
         flex: 1 1 auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -743,14 +744,16 @@
 
     .cd-sheet-table {
         border-collapse: collapse;
-        min-width: 100%;
+        /* Auto-fit: every column is only as wide as its own data (no stretching to the full width). */
+        min-width: 0;
+        width: max-content;
         font-size: 12px;
     }
 
     .cd-sheet-table th,
     .cd-sheet-table td {
         border: 1px solid #d0d7de;
-        min-width: 110px;
+        min-width: 0;
         max-width: 260px;
         vertical-align: middle;
         text-align: center;
@@ -1006,6 +1009,52 @@
         top: 0;
     }
 
+    /* Two sticky action columns at the far right: Critical/QC edit, then Supplier edit (last). */
+    .cd-sheet-table th.cd-row-edit-col:not(.cd-supplier-edit-col),
+    .cd-sheet-table td.cd-row-edit-col:not(.cd-supplier-edit-col) {
+        right: 52px;
+    }
+    .cd-sheet-table th.cd-supplier-edit-col,
+    .cd-sheet-table td.cd-supplier-edit-col {
+        right: 0;
+        min-width: 52px;
+        max-width: 52px;
+        width: 52px;
+        font-size: 10px;
+        line-height: 1.1;
+    }
+    .cd-sheet-table .cd-sheet-supplier-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 0;
+        outline: none;
+        box-shadow: none;
+        background: transparent;
+        color: #0f766e;
+        cursor: pointer;
+    }
+    .cd-sheet-table .cd-sheet-supplier-edit-btn:hover { color: #134e4a; }
+    .cd-sheet-table .cd-sheet-supplier-edit-btn i { font-size: 15px; line-height: 1; }
+
+    #comparison-supplier-edit-list .cd-supp-edit-item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 8px 0;
+        border-bottom: 1px solid #eef2f6;
+    }
+    #comparison-supplier-edit-list .cd-supp-edit-name {
+        font-size: 12px;
+        font-weight: 700;
+        color: #1e3a8a;
+        margin-bottom: 3px;
+    }
+    #comparison-supplier-edit-list .cd-supp-edit-main { flex: 1 1 auto; min-width: 0; }
+
     .cd-sheet-table .cd-sheet-row-edit-btn {
         display: inline-flex;
         align-items: center;
@@ -1054,8 +1103,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 20px;
-        height: 20px;
+        width: 19.6px;
+        height: 19.6px;
         padding: 0;
         border: 0;
         outline: none;
@@ -1077,7 +1126,7 @@
     }
 
     .cd-sheet-table .cd-sheet-col-edit-btn i {
-        font-size: 13px;
+        font-size: 12.74px;
         line-height: 1;
     }
 
@@ -2619,7 +2668,7 @@
                         <div class="cd-sheet-toolbar mb-3">
                             {{-- Line 1: sheet source + primary actions --}}
                             <div class="cd-sheet-toolbar-row" aria-label="Sheet source and primary actions">
-                                <div class="cd-sheet-toolbar-group" title="C link Sheet URL">
+                                <div class="cd-sheet-toolbar-group d-none" title="C link Sheet URL">
                                     <div class="comparison-cd-clink-url-wrap" id="comparison-cd-google-url-wrap">
                                         <a id="comparison-cd-google-url-link" href="#" target="_blank" rel="noopener noreferrer"
                                             class="comparison-clink-dot-link comparison-clink-dot-empty"
@@ -2646,12 +2695,6 @@
                                 </button>
                                 <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open Profit Calculator">
                                     <i class="mdi mdi-percent"></i> Profit Calculator
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-copy-specs-btn" title="Copy Spec column labels to memory and clipboard">
-                                    <i class="mdi mdi-content-copy"></i> Copy Specs
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-replace-specs-btn" title="Replace Spec column with the saved template from memory">
-                                    <i class="mdi mdi-clipboard-arrow-down"></i> Replace Specs
                                 </button>
                             </div>
 
@@ -3765,6 +3808,107 @@ document.addEventListener('DOMContentLoaded', function () {
         }).join('');
         box.classList.remove('d-none');
     }
+
+
+    // ===== Edit supplier data (last "Edit Supp." column): only supplier columns of one row =====
+    let supplierEditTargetRow = null;
+
+    function getSupplierColumnIndexes() {
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const firstSupplier = Math.max(specCol, criticalCol ?? -1, qcCol ?? -1) + 1;
+        const maxCols = currentSheetCells.reduce((m, r) => Math.max(m, (r || []).length), 0);
+        const cols = [];
+        for (let c = firstSupplier; c < maxCols; c++) cols.push(c);
+        return cols;
+    }
+
+    function openSupplierEditModal(rowIndex) {
+        const r = parseInt(rowIndex, 10);
+        if (Number.isNaN(r) || r < 0) return;
+        readCellsFromEditor({ expandImages: false });
+        if (!currentSheetCells[r]) return;
+        supplierEditTargetRow = r;
+
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const row = currentSheetCells[r];
+        const label = String(row[specCol] ?? '').trim() || `Row ${r + 1}`;
+        const titleEl = document.getElementById('comparison-supplier-edit-title');
+        if (titleEl) titleEl.textContent = `Row ${r + 1} · ${label}`;
+
+        const list = document.getElementById('comparison-supplier-edit-list');
+        const cols = getSupplierColumnIndexes();
+        if (!list) return;
+        if (!cols.length) {
+            list.innerHTML = '<div class="text-muted small">No supplier columns in this sheet yet.</div>';
+        } else {
+            list.innerHTML = cols.map((c) => {
+                const raw = String(row[c] ?? '');
+                const isImg = !!raw && isSheetImageUrl(raw);
+                const isUrl = /^https?:\/\//i.test(raw) || raw.startsWith('/');
+                const supplier = getSupplierNameForColumn(c, currentSheetCells) || getSheetColumnHeaderLabel(c, currentSheetCells) || columnLetter(c);
+                const original = isImg ? (isUrl ? raw : '') : raw;
+                const placeholder = isImg ? 'Embedded photo — paste an image URL to replace (empty = keep)' : '';
+                return `<div class="cd-supp-edit-item">
+                    ${isImg ? sheetEditThumbHtml(r, c, raw) : ''}
+                    <div class="cd-supp-edit-main">
+                        <div class="cd-supp-edit-name">${escapeHtml(supplier)} <span class="text-muted fw-normal">(${columnLetter(c)})</span></div>
+                        <input type="text" class="form-control form-control-sm cd-supp-edit-field"
+                            data-row="${r}" data-col="${c}" data-image="${isImg ? 1 : 0}"
+                            data-original="${escapeHtmlAttr(original)}" value="${escapeHtmlAttr(original)}"
+                            placeholder="${escapeHtmlAttr(placeholder)}">
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        const modalEl = document.getElementById('comparisonSupplierEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function saveSupplierEditModal() {
+        const r = supplierEditTargetRow;
+        const modalEl = document.getElementById('comparisonSupplierEditModal');
+        const hide = () => {
+            if (modalEl && typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        };
+        if (r === null || !currentSheetCells[r]) { hide(); return; }
+
+        const changes = [];
+        document.querySelectorAll('#comparison-supplier-edit-list .cd-supp-edit-field').forEach((input) => {
+            const next = String(input.value ?? '');
+            const orig = String(input.dataset.original ?? '');
+            if (next === orig) return;
+            if (input.dataset.image === '1' && !next.trim()) return; // empty = keep embedded photo
+            changes.push({ col: parseInt(input.dataset.col, 10), value: input.dataset.image === '1' ? next.trim() : next });
+        });
+        if (!changes.length) {
+            hide();
+            setSheetStatus('No supplier changes.', false);
+            return;
+        }
+
+        readCellsFromEditor({ expandImages: false });
+        changes.forEach((chg) => {
+            while (currentSheetCells[r].length <= chg.col) currentSheetCells[r].push('');
+            currentSheetCells[r][chg.col] = chg.value;
+        });
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+        setSheetStatus(`Updated ${changes.length} supplier cell(s) in row ${r + 1}.`, false);
+        hide();
+        supplierEditTargetRow = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#comparison-supplier-edit-save-btn')) {
+            e.preventDefault();
+            saveSupplierEditModal();
+        }
+    });
 
     function openPriorityBulkEditModal(anchorRow) {
         let rows = getSelectedSheetMultiRows();
@@ -8206,6 +8350,7 @@ document.addEventListener('DOMContentLoaded', function () {
             </th>`;
         }
         headHtml += '<th class="cd-row-edit-col" title="Edit Critical / QC for selected rows">Edit</th>';
+        headHtml += '<th class="cd-row-edit-col cd-supplier-edit-col" title="Edit supplier data only (supplier columns of a row)">Edit<br>Supp.</th>';
         headHtml += '</tr>';
         head.innerHTML = headHtml;
 
@@ -8243,6 +8388,13 @@ document.addEventListener('DOMContentLoaded', function () {
             rowHtml += `<td class="cd-row-edit-col">`;
             if (canSelectRow) {
                 rowHtml += `<button type="button" class="cd-sheet-row-edit-btn" data-row="${r}" title="Edit Critical / QC" aria-label="Edit Critical and QC for selected rows">
+                    <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
+                </button>`;
+            }
+            rowHtml += `</td>`;
+            rowHtml += `<td class="cd-row-edit-col cd-supplier-edit-col">`;
+            if (!isCommRow(r, currentSheetCells)) {
+                rowHtml += `<button type="button" class="cd-sheet-supplier-edit-btn" data-row="${r}" title="Edit supplier data (row ${r + 1})" aria-label="Edit supplier data for row ${r + 1}">
                     <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
                 </button>`;
             }
@@ -13504,6 +13656,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        const supplierEditBtn = e.target.closest('.cd-sheet-supplier-edit-btn');
+        if (supplierEditBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            openSupplierEditModal(supplierEditBtn.dataset.row);
+            return;
+        }
+
         const colEditBtn = e.target.closest('.cd-sheet-col-edit-btn');
         if (colEditBtn) {
             e.preventDefault();
@@ -13659,7 +13819,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         wrap.addEventListener('dragstart', function (e) {
-            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-row-edit-btn')) {
+            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn')) {
                 e.preventDefault();
                 return;
             }
@@ -13844,7 +14004,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (e.target.closest('.cd-sheet-row-edit-btn, .cd-row-select-col, .cd-sheet-cell-priority')) {
+        if (e.target.closest('.cd-sheet-row-edit-btn, .cd-sheet-supplier-edit-btn, .cd-row-select-col, .cd-sheet-cell-priority')) {
             e.stopPropagation();
             const cellTarget = e.target.closest('.cd-sheet-cell');
             if (cellTarget) {
@@ -14022,6 +14182,29 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-sm btn-primary" id="comparison-priority-bulk-save-btn">
                     <i class="mdi mdi-content-save-outline me-1"></i> Save to selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonSupplierEditModal" tabindex="-1" aria-labelledby="comparisonSupplierEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonSupplierEditModalLabel">
+                    <i class="mdi mdi-pencil-outline me-1"></i> Edit supplier data: <span id="comparison-supplier-edit-title"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-2">Only the supplier columns of this row are edited here. Critical / QC and the Spec label are not touched.</p>
+                <div id="comparison-supplier-edit-list"></div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="comparison-supplier-edit-save-btn">
+                    <i class="mdi mdi-content-save-outline me-1"></i> Save supplier data
                 </button>
             </div>
         </div>
