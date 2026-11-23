@@ -446,15 +446,15 @@
     }
 
     /* ===== Comparison page: every modal opens as a RIGHT-SIDE drawer, full height ===== */
-    html body #comparisonColumnEditModal.modal { --cmp-drawer-w: 760px; }
-    html body #comparisonHistoryModal.modal { --cmp-drawer-w: 760px; }
-    html body #comparisonLmpModal.modal { --cmp-drawer-w: 980px; }
-    html body #comparisonQcIssuesModal.modal { --cmp-drawer-w: 640px; }
-    html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 720px; }
-    html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 720px; }
-    html body #comparisonRoiModal.modal { --cmp-drawer-w: 1100px; }
-    html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 560px; }
-    html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 520px; }
+    html body #comparisonColumnEditModal.modal { --cmp-drawer-w: 532px; }
+    html body #comparisonHistoryModal.modal { --cmp-drawer-w: 532px; }
+    html body #comparisonLmpModal.modal { --cmp-drawer-w: 686px; }
+    html body #comparisonQcIssuesModal.modal { --cmp-drawer-w: 448px; }
+    html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 504px; }
+    html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 504px; }
+    html body #comparisonRoiModal.modal { --cmp-drawer-w: 770px; }
+    html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 392px; }
+    html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 364px; }
     html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonRoiModal,#comparisonSupplierEditModal).modal {
         padding: 0 !important;
     }
@@ -465,7 +465,7 @@
         bottom: 0 !important;
         left: auto !important;
         margin: 0 !important;
-        width: var(--cmp-drawer-w, 480px) !important;
+        width: var(--cmp-drawer-w, 336px) !important;
         max-width: 96vw !important;
         height: 100vh !important;
         min-height: 0 !important;
@@ -1010,6 +1010,9 @@
     }
 
     /* Two sticky action columns at the far right: Critical/QC edit, then Supplier edit (last). */
+    /* QC column is hidden on this page (data is kept, just not shown). */
+    .cd-sheet-table .cd-qc-col { display: none !important; }
+
     .cd-sheet-table th.cd-row-edit-col:not(.cd-supplier-edit-col),
     .cd-sheet-table td.cd-row-edit-col:not(.cd-supplier-edit-col) {
         right: 52px;
@@ -1298,6 +1301,12 @@
         flex: 1 1 auto;
         min-width: 140px;
         width: auto;
+    }
+
+    /* Copy and Cut icons are removed; only Paste stays. */
+    .cd-field-clip-btn.cd-field-copy-btn,
+    .cd-field-clip-btn.cd-field-cut-btn {
+        display: none !important;
     }
 
     .cd-field-clip-btns {
@@ -2726,7 +2735,7 @@
                                         </label>
                                     </div>
                                 </div>
-                                <div class="dropdown cd-priority-filter-dropdown" id="comparison-cd-qc-filters">
+                                <div class="dropdown cd-priority-filter-dropdown d-none" id="comparison-cd-qc-filters">
                                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
                                         id="comparison-cd-qc-filter-btn"
                                         data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -8340,7 +8349,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     headerText = columnLetter(c);
                 }
             }
-            headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
+            headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
                 <span class="cd-col-header-inner">
                     <span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
                     <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
@@ -8383,7 +8392,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!isSpec && !isPriority && isCommRow(r, currentSheetCells)) {
                     cellInner = commCellEditorHtml(r, c, getSupplierNameForColumn(c));
                 }
-                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
+                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
             rowHtml += `<td class="cd-row-edit-col">`;
             if (canSelectRow) {
@@ -13757,6 +13766,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (e.target.closest('.cd-col-edit-row-check')) {
             syncColumnEditSelectedRowsFromDom();
+            return;
+        }
+
+        // Bulk behaviour: changing the dropdown of one TICKED row applies the same value to every ticked row.
+        const rowSelect = e.target.closest('select.cd-col-edit-field');
+        if (rowSelect && rowSelect.id !== 'comparison-column-edit-bulk-value') {
+            const rowIndex = parseInt(rowSelect.dataset.row, 10);
+            const ownCheck = document.querySelector(`#comparison-column-edit-tbody .cd-col-edit-row-check[data-row="${rowIndex}"]`);
+            if (!ownCheck || !ownCheck.checked) {
+                return;
+            }
+            let applied = 0;
+            document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-row-check:checked').forEach((check) => {
+                const otherRow = parseInt(check.dataset.row, 10);
+                if (otherRow === rowIndex) return;
+                const other = document.querySelector(`#comparison-column-edit-tbody select.cd-col-edit-field[data-row="${otherRow}"]`);
+                if (other && other.value !== rowSelect.value) {
+                    other.value = rowSelect.value;
+                    applied += 1;
+                }
+            });
+            if (applied) {
+                setSheetStatus(`Applied "${rowSelect.value}" to ${applied + 1} selected row(s). Click Save column to keep changes.`, false);
+            }
         }
     });
 
@@ -14143,7 +14176,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         </span>
                     </div>
                 </div>
-                <div class="mb-3">
+                <div class="mb-3 d-none">
                     <label class="form-label small fw-semibold mb-1" for="comparison-priority-bulk-qc">QC</label>
                     <div class="cd-field-clip-wrap">
                         <select id="comparison-priority-bulk-qc" class="form-select form-select-sm">
