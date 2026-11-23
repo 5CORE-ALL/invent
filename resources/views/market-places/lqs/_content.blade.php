@@ -142,6 +142,24 @@
                     </div>
                     @endif
 
+                    @if(!empty($lqsPage['has_yoast_seo']))
+                    <div id="lqs-pulse">
+                        <div class="lqs-pulse-head">
+                            <div>
+                                <span class="lqs-pulse-kicker">Action Taken</span>
+                                <h6>Optimized.</h6>
+                            </div>
+                            <div class="lqs-pulse-stats">
+                                <div><b id="lqs-pulse-green">0</b><span>optimized</span></div>
+                                <div><b id="lqs-pulse-actions">0</b><span>actions, 14 days</span></div>
+                            </div>
+                        </div>
+                        <div class="lqs-pulse-stage" id="lqs-pulse-stage" aria-label="Rolling graph of Action Taken, Optimized"></div>
+                        <div class="lqs-pulse-legend"><span class="lg green"></span> Optimized <span class="lg ink"></span> Action notes saved</div>
+                        <div class="lqs-pulse-roll" id="lqs-pulse-roll"><span>Waiting for the first red → green…</span></div>
+                    </div>
+                    @endif
+
                     {{-- ── Summary badges ── --}}
                     <div id="amz-summary-stats" class="mt-2 p-3 bg-light rounded mb-3">
                         <div class="d-flex flex-wrap gap-2 amz-badge-row" role="group" aria-label="Summary metrics">

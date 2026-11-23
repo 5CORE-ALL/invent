@@ -848,6 +848,7 @@
                     }
                     amzNotify('Scored ' + (res.products || 0) + ' Shopify products from ' + (res.source || 'Shopify'));
                     if (amzTable) amzTable.setData('{{ $lqsPage['routes']['data'] }}');
+                    if (window.lqsReloadPulse) window.lqsReloadPulse();
                 }).fail(function(xhr) {
                     const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Yoast sync failed';
                     amzNotify(msg, 'error');
@@ -1164,6 +1165,7 @@
                         }
                         bootstrap.Modal.getInstance(document.getElementById('amzActionModal')).hide();
                         amzNotify('Action saved!', 'success');
+                        if (window.lqsReloadPulse) window.lqsReloadPulse();
                     },
                     error: function() {
                         $('#amzActionErr').text('Failed to save. Please try again.').show();
@@ -1630,5 +1632,45 @@
                 );
                 amzLoadBadgeChart();
             });
+
+            if (lqsHasYoast) {
+                const pulseEsc = function (value) {
+                    return String(value ?? '').replace(/[&<>"']/g, function (c) {
+                        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                    });
+                };
+                const pulseDay = function (day, max) {
+                    const green = Math.max(3, Math.round((day.red_to_green / max) * 64));
+                    const ink = Math.max(3, Math.round((day.actions / max) * 64));
+                    return '<div class="lqs-pulse-day"><div class="lqs-pulse-bars">'
+                        + '<i class="green" style="height:' + (day.red_to_green ? green : 3) + 'px" title="' + day.red_to_green + ' optimized"></i>'
+                        + '<i class="ink" style="height:' + (day.actions ? ink : 3) + 'px" title="' + day.actions + ' actions"></i>'
+                        + '</div><em>' + pulseEsc(day.label) + '</em></div>';
+                };
+                window.lqsReloadPulse = function () {
+                    const stage = document.getElementById('lqs-pulse-stage');
+                    if (!stage) return;
+                    fetch('/lqs/shopify/rating-pulse', { headers: { Accept: 'application/json' } })
+                        .then(function (res) { return res.json(); })
+                        .then(function (json) {
+                            const days = Array.isArray(json.days) ? json.days : [];
+                            const max = Math.max(1, ...days.map(function (d) { return Math.max(d.red_to_green || 0, d.actions || 0); }));
+                            const html = days.map(function (d) { return pulseDay(d, max); }).join('');
+                            stage.innerHTML = '<div class="lqs-pulse-track">' + html + html + '</div>';
+                            const totals = json.totals || {};
+                            document.getElementById('lqs-pulse-green').textContent = (totals.red_to_green_window || 0).toLocaleString();
+                            document.getElementById('lqs-pulse-actions').textContent = (totals.actions_window || 0).toLocaleString();
+                            const recent = Array.isArray(json.recent) ? json.recent : [];
+                            const roll = document.getElementById('lqs-pulse-roll');
+                            roll.innerHTML = recent.length
+                                ? '<span class="inner">' + recent.map(function (row) {
+                                    return pulseEsc(row.sku) + ' · ' + pulseEsc(row.kind) + ' optimized';
+                                }).join('  ·  ') + '</span>'
+                                : '<span>Nothing optimized yet. The next Sync Yoast scores records each listing that goes from red to green.</span>';
+                        })
+                        .catch(function () {});
+                };
+                window.lqsReloadPulse();
+            }
         });
     </script>

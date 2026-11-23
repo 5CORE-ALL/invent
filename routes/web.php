@@ -6773,6 +6773,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lqs/b5cb2b/api-sync', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'startApiSync'])->name('lqs.b5cb2b.api.sync');
     Route::get('/lqs/b5cb2b/api-sync/status', [App\Http\Controllers\MarketPlace\Lqs\LqsB5cb2bController::class, 'apiSyncStatus'])->name('lqs.b5cb2b.api.sync.status');
     Route::post('/lqs/shopify/seo/sync', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'syncSeo'])->name('lqs.shopify.seo.sync');
+    Route::get('/lqs/shopify/rating-pulse', [App\Http\Controllers\MarketPlace\Lqs\LqsShopifyController::class, 'ratingPulse'])->name('lqs.shopify.rating.pulse');
 
     // ebay variation
     Route::get('/zero-ebayvariation', [EbayVariationZeroController::class, 'ebayVariationZeroview'])->name('zero.ebayvariation');

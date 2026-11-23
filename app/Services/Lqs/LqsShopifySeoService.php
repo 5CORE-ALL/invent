@@ -153,6 +153,8 @@ class LqsShopifySeoService
             'image_alts' => $product['image_alts'] ?? [],
         ]);
 
+        $before = LqsShopifySeoScore::query()->where('shopify_product_id', (int) $product['id'])->first();
+
         LqsShopifySeoScore::updateOrCreate(
             ['shopify_product_id' => (int) $product['id']],
             [
@@ -172,6 +174,8 @@ class LqsShopifySeoService
                 'synced_at' => $now,
             ]
         );
+
+        LqsShopifyRatingMoves::record($before, $scored, $product);
     }
 
     /**
