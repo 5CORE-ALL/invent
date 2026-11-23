@@ -771,7 +771,7 @@
                             </select>
                         </div>
                         <div class="filter-item">
-                            <select id="supplier-filter" class="form-select" title="Supplier" aria-label="Supplier">
+                            <select id="supplier-filter" class="form-select border border-primary exec-typeahead" title="Supplier" aria-label="Supplier" data-eta-placeholder="Supplier">
                                 <option value="">Supplier</option>
                                 <option value="__blank__">Blank / No supplier</option>
                                 @foreach($allSuppliers ?? [] as $s)
@@ -4706,7 +4706,10 @@
                 isSupplierPlaying = false;
                 currentSupplierFilter = null;
                 const sel = document.getElementById('supplier-filter');
-                if (sel) sel.value = '';
+                if (sel) {
+                    sel.value = '';
+                    sel.dispatchEvent(new Event('eta:sync')); // refresh the type-to-search box
+                }
                 applyFilters();
                 document.getElementById('play-pause').style.display = 'none';
                 document.getElementById('play-auto').style.display = 'inline-block';
