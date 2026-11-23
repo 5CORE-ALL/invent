@@ -3835,10 +3835,6 @@
                         // Copy icon
                         const copyBtn = `<i class="fa fa-copy forecast-copy-sku" data-sku="${safeSku}" title="Copy SKU" style="cursor:pointer;margin-left:6px;color:#6c757d;font-size:12px;flex-shrink:0;"></i>`;
 
-                        // Delete (archive from CP Master) — child SKUs only, blocked server-side when INV > 0
-                        const isParentRow = !!(rowData.is_parent || rowData.isParent) || /^PARENT/i.test(v.trim());
-                        const deleteBtn = isParentRow ? '' : `<i class="fa fa-trash forecast-delete-sku" data-sku="${safeSku}" data-inv="${Number(rowData.INV) || 0}" title="Archive SKU from CP Master" style="cursor:pointer;margin-left:6px;color:#dc3545;font-size:12px;flex-shrink:0;"></i>`;
-
                         // B link (Buyer). Seller link removed per request.
                         const buyerLink  = String(rowData.Clink || '').trim();
                         const buyerBtn   = buyerLink
@@ -3851,7 +3847,6 @@
                         return `<div style="display:flex;align-items:center;gap:4px;min-width:0;">
                             <span title="${title}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc}</span>
                             ${copyBtn}
-                            ${deleteBtn}
                             ${linkPart}
                         </div>`;
                     }
@@ -5103,9 +5098,9 @@
                     field: "_edit_row",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 52,
-                    minWidth: 44,
-                    maxWidth: 58,
+                    width: 72,
+                    minWidth: 64,
+                    maxWidth: 80,
                     widthGrow: 0,
                     widthShrink: 1,
                     // Frozen to the right edge so the Edit / History buttons stay visible while
@@ -5119,11 +5114,16 @@
                         if (d.is_parent || d.isParent) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
+                        const skuVal = String(d.SKU || d.sku || '').trim();
+                        const safeSku = skuVal.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                        // Delete (archive from CP Master) — blocked server-side when INV > 0
+                        const deleteBtn = `<button type="button" class="btn btn-sm btn-link forecast-delete-sku d-inline-flex align-items-center p-0" data-sku="${safeSku}" data-inv="${Number(d.INV) || 0}" title="Archive SKU from CP Master" style="line-height:1;color:#dc3545;"><i class="fa fa-trash" style="font-size:12px;"></i></button>`;
                         return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
                             <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
                             <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
                                 <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
                             </button>
+                            ${deleteBtn}
                         </div>`;
                     },
                     cellClick: function(e, cell) {
