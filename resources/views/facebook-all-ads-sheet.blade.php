@@ -1930,7 +1930,7 @@
                         'Campaign name',
                         'Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR',
                         'SPEND', 'SALES', 'SOLD', 'CVR', 'CPS',
-                        'Sessions',
+                        'Sessions', 'Shopify Sales', 'Shopify Sold',
                         'Lifetime Acos', 'Lifetime CTR', 'Lifetime Sales', 'Lifetime Spend',
                         'LT Sold', 'LT CVR', 'LT CPS',
                         'Price', 'GPFT$', 'GPFT%', 'LMP',
@@ -2192,7 +2192,7 @@
                         }
                         else if (c.field === 'SALES')        formatter = formatSalesCell;
                         else if (c.field === 'SOLD')         formatter = formatSoldCell;
-                        else if (c.field === 'Sessions') formatter = formatLiveShopifyCell;
+                        else if (c.field === 'Sessions' || c.field === 'Shopify Sales' || c.field === 'Shopify Sold') formatter = formatLiveShopifyCell;
                         else if (c.field === 'CTR')          formatter = formatCtrCell;
                         else if (c.field === 'CVR')          formatter = formatCvrCell;
                         else if (c.field === 'Campaign name') formatter = formatCampaignNameCell;
@@ -2209,7 +2209,7 @@
                         const NUMERIC = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR',
                             'SPEND','SALES','SOLD','CVR','CPS',
-                            'Sessions',
+                            'Sessions','Shopify Sales','Shopify Sold',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                             'LT Sold','LT CVR','LT CPS',
                             'Price','GPFT$','GPFT%','LMP',
@@ -2237,7 +2237,7 @@
                         // layout fills any leftover horizontal space.
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
-                            'Sessions',
+                            'Sessions','Shopify Sales','Shopify Sold',
                             'Lifetime Acos','Lifetime CTR','Lifetime Sales','Lifetime Spend',
                             'LT Sold','LT CVR','LT CPS',
                             'Price','GPFT$','GPFT%','LMP',
@@ -2952,7 +2952,7 @@
             basic: new Set(['ch', 'ad_type', 'b2b_b2c', 'Campaign name', 'CAMPAIGN ID', 'Link', 'Status',
                             '_action', 'Audit Req', 'History']),
             advertisement: new Set(['Acos', 'Sbgt', 'IMPR', 'CLK', 'CTR', 'SPEND', 'SALES', 'SOLD', 'CVR',
-                                    'CPS', 'Sessions']),
+                                    'CPS', 'Sessions', 'Shopify Sales', 'Shopify Sold']),
             pricing: new Set(['Price', 'GPFT$', 'GPFT%', 'LMP']),
         };
         function faasColVisClassify(field) {

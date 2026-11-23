@@ -766,6 +766,10 @@ class FacebookAllAdsSheetController extends Controller
                 $mRow['Total sales (last non-direct click)']  = (string) round($ls['sales'], 2);
                 $mRow['Orders (last non-direct click)']       = (string) $ls['orders'];
                 $mRow['Sessions']                             = (string) $ls['sessions'];
+                // Dedicated "Shopify Sales" / "Shopify Sold" columns: live Shopify only
+                // (no uploaded-file fallback), so they stay blank when Shopify is down.
+                $mRow['Shopify live sales']                   = '$' . number_format((float) $ls['sales'], 2);
+                $mRow['Shopify live sold']                    = (string) $ls['orders'];
             }
             unset($mRow);
         }
@@ -3449,6 +3453,11 @@ class FacebookAllAdsSheetController extends Controller
         // overlay in getMergedView(); blank if the Shopify pull failed and the
         // uploaded export has no Sessions column.
         ['title' => 'Sessions',      'sources' => ['Sessions']],
+        // Live Shopify sales / orders (last 30 days, last non-direct click) per campaign id,
+        // set by the live overlay in getMergedView(). Unlike SALES / SOLD these never fall
+        // back to the uploaded Shopify export, so a blank means "Shopify not reached".
+        ['title' => 'Shopify Sales', 'sources' => ['Shopify live sales']],
+        ['title' => 'Shopify Sold',  'sources' => ['Shopify live sold']],
         // Lifetime (all-time) ACOS and SALES per campaign. Placeholders here —
         // the values are attached in "Pass 4b" from facebook_campaign_lifetime_stats
         // (filled by `facebook:sync-lifetime-stats` from Meta, date_preset=maximum).
