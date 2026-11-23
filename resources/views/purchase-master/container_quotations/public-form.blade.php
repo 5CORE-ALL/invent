@@ -97,17 +97,22 @@
                                 value="{{ old('est_dt_sail', $existing && $existing->est_dt_sail ? substr((string) $existing->est_dt_sail, 0, 10) : '') }}">
                         </div>
                         <div class="col-md-6"></div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold small">Pickup Charges ($) <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" name="pickup_charges" id="qfPickup" class="form-control" required
                                 value="{{ old('pickup_charges', $existing->pickup_charges ?? '') }}">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold small">Document Charges ($)</label>
+                            <input type="number" step="0.01" min="0" name="document_charges" id="qfDocument" class="form-control"
+                                value="{{ old('document_charges', $existing->document_charges ?? '') }}">
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold small">Freight ($) <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" name="freight" id="qfFreight" class="form-control" required
                                 value="{{ old('freight', $existing->freight ?? '') }}">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold small">Total ($) <span class="text-danger">*</span></label>
                             <input type="number" step="0.01" min="0" name="total" id="qfTotal" class="form-control fw-bold" required
                                 value="{{ old('total', $existing->total ?? '') }}">
@@ -128,20 +133,21 @@
     (function () {
         // Total is entered by the forwarder (incl. of all charges); the sum of pickup + freight
         // is only a minimum, so warn if the total is lower than that.
-        var p = document.getElementById('qfPickup'), f = document.getElementById('qfFreight'), t = document.getElementById('qfTotal');
-        if (!p || !f || !t) return;
-        function sum() { return Math.round(((parseFloat(p.value) || 0) + (parseFloat(f.value) || 0)) * 100) / 100; }
+        var p = document.getElementById('qfPickup'), d = document.getElementById('qfDocument'), f = document.getElementById('qfFreight'), t = document.getElementById('qfTotal');
+        if (!p || !d || !f || !t) return;
+        function sum() { return Math.round(((parseFloat(p.value) || 0) + (parseFloat(d.value) || 0) + (parseFloat(f.value) || 0)) * 100) / 100; }
         function check() {
             var v = parseFloat(t.value);
-            t.setCustomValidity(!isNaN(v) && v < sum() ? 'Total must include all charges (at least Pickup + Freight).' : '');
+            t.setCustomValidity(!isNaN(v) && v < sum() ? 'Total must include all charges (at least Pickup + Document + Freight).' : '');
         }
         // Total fills itself with Pickup + Freight; type over it if there are other charges (then it stays as typed).
         var manual = t.value !== '' && Math.round(parseFloat(t.value) * 100) / 100 !== sum();
         function auto() {
             if (manual) return;
-            t.value = (p.value === '' && f.value === '') ? '' : sum();
+            t.value = (p.value === '' && d.value === '' && f.value === '') ? '' : sum();
         }
         p.addEventListener('input', function () { auto(); check(); });
+        d.addEventListener('input', function () { auto(); check(); });
         f.addEventListener('input', function () { auto(); check(); });
         t.addEventListener('input', function () {
             manual = t.value.trim() !== '';

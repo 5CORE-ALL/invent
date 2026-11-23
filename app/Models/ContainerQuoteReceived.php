@@ -16,6 +16,7 @@ class ContainerQuoteReceived extends Model
         'shipping_line',
         'est_dt_sail',
         'pickup_charges',
+        'document_charges',
         'freight',
         'total',
         'updated_by',

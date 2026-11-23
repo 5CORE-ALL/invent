@@ -294,6 +294,7 @@
                                     <th style="min-width:150px;">Shipping Line</th>
                                     <th style="min-width:150px;">Est Dt Sail</th>
                                     <th>Pickup Charges ($)</th>
+                                    <th>Document Charges ($)</th>
                                     <th>Freight ($)</th>
                                     <th>Total ($)</th>
                                     <th style="width:40px;"></th>
@@ -328,7 +329,7 @@
         </div>
     </div>    {{-- Combined QR Form (Q details read-only + forwarder quote section) --}}
     <div class="modal fade" id="qfModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width:98vw;width:98vw;">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title fw-bold"><i class="fas fa-file-lines me-2"></i>QR Form — <span id="qfContainer"></span></h5>
@@ -350,6 +351,7 @@
                         <div class="col-md-4"><label class="form-label small fw-semibold">Shipping Line</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Est Dt Sail</label><input type="date" class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Pickup Charges ($)</label><input class="form-control qf-locked" disabled></div>
+                        <div class="col-md-4"><label class="form-label small fw-semibold">Document Charges ($)</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Freight ($)</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Total ($) <span class="text-muted fw-normal">(incl. of all charges)</span></label><input class="form-control qf-locked" disabled></div>
                     </div>
@@ -358,7 +360,7 @@
                         <table class="table table-sm align-middle mb-0">
                             <thead class="table-light"><tr>
                                 <th>Rank</th><th>Forwarder</th><th>Email</th><th>Sent</th><th>Status</th>
-                                <th>Shipping Line</th><th>Est Dt Sail</th><th class="text-end">Pickup Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th><th></th>
+                                <th>Shipping Line</th><th>Est Dt Sail</th><th class="text-end">Pickup Charges ($)</th><th class="text-end">Document Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th><th></th>
                             </tr></thead>
                             <tbody id="qfRequests"></tbody>
                         </table>
@@ -448,7 +450,7 @@
                         <table class="table table-sm align-middle mb-0">
                             <thead class="table-light"><tr>
                                 <th style="width:60px;">Rank</th><th>Forwarder</th><th>Shipping Line</th><th>Est Dt Sail</th>
-                                <th class="text-end">Pickup Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th>
+                                <th class="text-end">Pickup Charges ($)</th><th class="text-end">Document Charges ($)</th><th class="text-end">Freight ($)</th><th class="text-end">Total ($)</th>
                                 <th class="text-center" style="min-width:150px;">Approved</th>
                             </tr></thead>
                             <tbody id="lBody"></tbody>
@@ -614,6 +616,13 @@
 
             function esc(v) {
                 return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            // 2026-04-01 -> "1 Apr 26"
+            function fmtDate(v) {
+                const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''));
+                if (!m) return String(v ?? '');
+                const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m[2]) - 1];
+                return mon ? Number(m[3]) + ' ' + mon + ' ' + m[1].slice(2) : String(v);
             }
             function textCell(cell) {
                 const v = String(cell.getValue() ?? '').trim();
@@ -898,6 +907,7 @@
                     '<td><input type="text" class="form-control form-control-sm qr-line" list="qcShippingLineList" maxlength="255" placeholder="Shipping line" autocomplete="off" required></td>' +
                     '<td><input type="date" class="form-control form-control-sm qr-sail" required></td>' +
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-pickup" required></td>' +
+                    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-document"></td>' +
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm qr-freight" required></td>' +
                     '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-bold qr-total" placeholder="Incl. all charges" required></td>' +
                     '<td><button type="button" class="btn btn-sm btn-link text-danger p-0 qr-del" title="Remove"><i class="fas fa-trash-alt"></i></button></td>';
@@ -918,10 +928,11 @@
                 tr.querySelector('.qr-line').value = q.shipping_line ?? '';
                 tr.querySelector('.qr-sail').value = q.est_dt_sail ?? '';
                 tr.querySelector('.qr-pickup').value = q.pickup_charges ?? '';
+                tr.querySelector('.qr-document').value = q.document_charges ?? '';
                 tr.querySelector('.qr-freight').value = q.freight ?? '';
                 tr.querySelector('.qr-total').value = q.total ?? '';
-                // A saved total that differs from Pickup + Freight was typed by hand (other charges): keep it as is.
-                const sum = round2(num(q.pickup_charges) + num(q.freight));
+                // A saved total that differs from Pickup + Document + Freight was typed by hand (other charges): keep it as is.
+                const sum = round2(num(q.pickup_charges) + num(q.document_charges) + num(q.freight));
                 tr.dataset.totalManual = (q.total !== null && q.total !== undefined && q.total !== '' && round2(num(q.total)) !== sum) ? '1' : '0';
                 if (tr.dataset.totalManual === '0') qrAutoTotal(tr);
                 if (q.approved_at) {
@@ -955,8 +966,8 @@
             const round2 = n => Math.round(n * 100) / 100;
             function qrAutoTotal(tr) {
                 if (tr.dataset.totalManual === '1') return;
-                const p = tr.querySelector('.qr-pickup').value, f = tr.querySelector('.qr-freight').value;
-                tr.querySelector('.qr-total').value = (String(p).trim() === '' && String(f).trim() === '') ? '' : round2(num(p) + num(f));
+                const p = tr.querySelector('.qr-pickup').value, d = tr.querySelector('.qr-document').value, f = tr.querySelector('.qr-freight').value;
+                tr.querySelector('.qr-total').value = (String(p).trim() === '' && String(d).trim() === '' && String(f).trim() === '') ? '' : round2(num(p) + num(d) + num(f));
             }
             qrBody.addEventListener('input', function (e) {
                 const tr = e.target.closest('tr');
@@ -965,7 +976,7 @@
                         // typing a total by hand locks it; clearing it hands control back to the automatic sum
                         tr.dataset.totalManual = e.target.value.trim() === '' ? '0' : '1';
                         if (tr.dataset.totalManual === '0') qrAutoTotal(tr);
-                    } else if (e.target.classList.contains('qr-pickup') || e.target.classList.contains('qr-freight')) {
+                    } else if (e.target.classList.contains('qr-pickup') || e.target.classList.contains('qr-document') || e.target.classList.contains('qr-freight')) {
                         qrAutoTotal(tr);
                     }
                 }
@@ -990,6 +1001,7 @@
                     shipping_line: tr.querySelector('.qr-line').value,
                     est_dt_sail: tr.querySelector('.qr-sail').value,
                     pickup_charges: tr.querySelector('.qr-pickup').value,
+                    document_charges: tr.querySelector('.qr-document').value,
                     freight: tr.querySelector('.qr-freight').value,
                     total: tr.querySelector('.qr-total').value,
                 }));
@@ -1115,11 +1127,11 @@
                         ' title="' + (!canEdit ? 'Only 5Core users can approve' : (approvedQ ? 'Another quote is already approved' : 'Tick to approve (cannot be undone)')) + '">';
                 };
                 const line = function (label, q, hl) {
-                    if (!q) return '<tr><td><b>' + label + '</b></td><td colspan="7" class="text-muted">—</td></tr>';
+                    if (!q) return '<tr><td><b>' + label + '</b></td><td colspan="8" class="text-muted">—</td></tr>';
                     return '<tr' + (hl ? ' class="table-success"' : '') + '><td><b>' + label + '</b></td>' +
                         '<td>' + esc(q.forwarder || '') + '</td><td>' + (esc(q.shipping_line || '') || '<span class="text-muted">—</span>') + '</td>' +
-                        '<td>' + (esc(q.est_dt_sail || '') || '<span class="text-muted">—</span>') + '</td>' +
-                        '<td class="text-end">' + fm(q.pickup_charges) + '</td><td class="text-end">' + fm(q.freight) + '</td>' +
+                        '<td>' + (esc(fmtDate(q.est_dt_sail)) || '<span class="text-muted">—</span>') + '</td>' +
+                        '<td class="text-end">' + fm(q.pickup_charges) + '</td><td class="text-end">' + fm(q.document_charges) + '</td><td class="text-end">' + fm(q.freight) + '</td>' +
                         '<td class="text-end fw-bold">' + fm(q.total) + '</td><td class="text-center">' + approveCell(q) + '</td></tr>';
                 };
                 let html = ['L1', 'L2', 'L3'].map((label, i) => line(label, ranked[i], i === 0)).join('');
@@ -1172,7 +1184,7 @@
             function renderRequestRows(reqs) {
                 const reqBody = document.getElementById('qfRequests');
                 if (!reqs.length) {
-                    reqBody.innerHTML = '<tr><td colspan="11" class="text-muted">Nothing sent yet — use the Send button.</td></tr>';
+                    reqBody.innerHTML = '<tr><td colspan="12" class="text-muted">Nothing sent yet — use the Send button.</td></tr>';
                     return;
                 }
                 const hasTotal = r => r.total !== null && r.total !== undefined && r.total !== '';
@@ -1185,32 +1197,42 @@
                     if (x !== y) return x ? -1 : 1;
                     return a.i - b.i;
                 }).map(o => o.r);
+                // Per column: the lowest amount stays normal, anything higher is shown in red.
+                const colMin = {};
+                ['pickup_charges', 'document_charges', 'freight', 'total'].forEach(function (k) {
+                    const vals = reqs.map(r => r[k]).filter(v => v !== null && v !== undefined && v !== '').map(Number);
+                    colMin[k] = vals.length ? Math.min.apply(null, vals) : null;
+                });
+                const amt = function (r, k, extra) {
+                    const v = r[k];
+                    const high = v !== null && v !== undefined && v !== '' && colMin[k] !== null && Number(v) > colMin[k];
+                    return '<td class="text-end ' + (extra || '') + (high ? ' text-danger' : '') + '">' + usd(v) + '</td>';
+                };
                 let rankNo = 0;
                 reqBody.innerHTML = reqs.map(function (r) {
+                    const isL1 = hasTotal(r) && rankNo === 0;
                     const rank = hasTotal(r)
-                        ? '<span class="badge ' + (rankNo === 0 ? 'bg-success' : 'bg-secondary') + '">L' + (++rankNo) + '</span>'
+                        ? '<span class="badge ' + (isL1 ? 'bg-success' : 'bg-secondary') + '">L' + (++rankNo) + '</span>'
                         : '<span class="text-muted">—</span>';
                     const status = r.submitted_at
                         ? '<span class="badge bg-success">Submitted</span><div class="small text-muted">' + esc(r.submitted_at) + '</div>'
                         : (r.last_error ? '<span class="badge bg-danger" title="' + esc(r.last_error) + '">Send failed</span>'
                             : '<span class="badge bg-warning text-dark">Awaiting quote</span>');
-                    const money = f => ['Pickup Charges', 'Freight', 'Total'].includes(f);
+                    const money = f => ['Pickup Charges', 'Document Charges', 'Freight', 'Total'].includes(f);
                     const show = (f, v) => (v === null || v === undefined || v === '') ? '<i>empty</i>'
-                        : esc(money(f) ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v);
+                        : esc(money(f) ? '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (f === 'Est Dt Sail' ? fmtDate(v) : v));
                     const alertRow = r.changed
-                        ? '<tr class="table-danger"><td colspan="11"><i class="fas fa-triangle-exclamation qc-alert-tri"></i>' +
+                        ? '<tr class="table-danger"><td colspan="12"><i class="fas fa-triangle-exclamation qc-alert-tri"></i>' +
                           '<b>' + esc(r.forwarder) + ' changed the quote after saving</b> <span class="small text-muted">(' + esc(r.changed_at || '') + ')</span>' +
                           '<div class="small mt-1">' + (r.changes || []).map(c =>
                               '<span class="me-3">' + esc(c.label) + ': <s>' + show(c.label, c.old) + '</s> → <b>' + show(c.label, c.new) + '</b></span>').join('') + '</div>' +
                           '<button type="button" class="btn btn-sm btn-outline-danger mt-1 qf-ack" data-id="' + r.id + '"><i class="fas fa-check me-1"></i>Acknowledge</button></td></tr>'
                         : '';
-                    return '<tr' + (r.changed ? ' class="table-danger"' : '') + '><td>' + rank + '</td><td>' + esc(r.forwarder) + '</td><td class="small">' + esc(r.email) + '</td>' +
+                    return '<tr' + (isL1 ? ' class="table-success"' : (r.changed ? ' class="table-danger"' : '')) + '><td>' + rank + '</td><td>' + esc(r.forwarder) + '</td><td class="small">' + esc(r.email) + '</td>' +
                         '<td class="small">' + (r.sent_at ? esc(r.sent_at) : '—') + '</td><td>' + status + '</td>' +
                         '<td>' + (r.shipping_line ? esc(r.shipping_line) : '—') + '</td>' +
-                        '<td class="text-nowrap">' + (r.est_dt_sail ? esc(r.est_dt_sail) : '—') + '</td>' +
-                        '<td class="text-end">' + usd(r.pickup_charges) + '</td>' +
-                        '<td class="text-end">' + usd(r.freight) + '</td>' +
-                        '<td class="text-end fw-bold">' + usd(r.total) + '</td>' +
+                        '<td class="text-nowrap">' + (r.est_dt_sail ? esc(fmtDate(r.est_dt_sail)) : '—') + '</td>' +
+                        amt(r, 'pickup_charges') + amt(r, 'document_charges') + amt(r, 'freight') + amt(r, 'total', 'fw-bold') +
                         '<td><button type="button" class="btn btn-sm btn-outline-secondary qf-copy" data-url="' + esc(r.url || '') + '" title="Copy the forwarder\'s form link"><i class="fas fa-link"></i></button></td></tr>' + alertRow;
                 }).join('');
             }

@@ -379,16 +379,18 @@ class ContainerQuoteRequestController extends Controller
             'shipping_line' => 'required|string|max:255',
             'est_dt_sail' => 'required|date',
             'pickup_charges' => 'required|numeric|min:0|max:99999999',
+            'document_charges' => 'nullable|numeric|min:0|max:99999999',
             'freight' => 'required|numeric|min:0|max:99999999',
             'total' => 'required|numeric|min:0|max:99999999',
         ]);
 
         $pickup = (float) $data['pickup_charges'];
+        $document = isset($data['document_charges']) && $data['document_charges'] !== '' ? (float) $data['document_charges'] : null;
         $freight = (float) $data['freight'];
         $total = round((float) $data['total'], 2);
-        if ($total < round($pickup + $freight, 2)) {
+        if ($total < round($pickup + (float) $document + $freight, 2)) {
             return back()->withInput()->withErrors([
-                'total' => 'Total must include all charges (at least Pickup Charges + Freight).',
+                'total' => 'Total must include all charges (at least Pickup + Document Charges + Freight).',
             ]);
         }
         $line = trim((string) $data['shipping_line']);
@@ -399,6 +401,7 @@ class ContainerQuoteRequestController extends Controller
             'shipping_line' => $line === '' ? null : $line,
             'est_dt_sail' => $sail === '' ? null : date('Y-m-d', strtotime($sail)),
             'pickup_charges' => $pickup,
+            'document_charges' => $document,
             'freight' => $freight,
             'total' => $total,
             'source' => 'forwarder',
@@ -461,6 +464,7 @@ class ContainerQuoteRequestController extends Controller
             'shipping_line' => 'Shipping Line',
             'est_dt_sail' => 'Est Dt Sail',
             'pickup_charges' => 'Pickup Charges',
+            'document_charges' => 'Document Charges',
             'freight' => 'Freight',
             'total' => 'Total',
         ];
@@ -503,7 +507,7 @@ class ContainerQuoteRequestController extends Controller
         if ($value === null || trim((string) $value) === '') {
             return null;
         }
-        if (in_array($field, ['pickup_charges', 'freight', 'total'], true)) {
+        if (in_array($field, ['pickup_charges', 'document_charges', 'freight', 'total'], true)) {
             return number_format((float) $value, 2, '.', '');
         }
         if ($field === 'est_dt_sail') {
@@ -646,6 +650,7 @@ class ContainerQuoteRequestController extends Controller
                     'shipping_line' => $q && trim((string) $q->shipping_line) !== '' ? $q->shipping_line : null,
                     'est_dt_sail' => $q && $q->est_dt_sail ? substr((string) $q->est_dt_sail, 0, 10) : null,
                     'pickup_charges' => $q && $q->pickup_charges !== null ? (float) $q->pickup_charges : null,
+                    'document_charges' => $q && $q->document_charges !== null ? (float) $q->document_charges : null,
                     'freight' => $q && $q->freight !== null ? (float) $q->freight : null,
                     'total' => $q && $q->total !== null ? (float) $q->total : null,
                     'changed' => (bool) $r->quote_changed_at,

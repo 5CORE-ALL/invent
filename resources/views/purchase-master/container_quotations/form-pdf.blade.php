@@ -58,8 +58,13 @@
         </tr>
         <tr>
             <td><div class="lbl">Pickup Charges ($)</div><div class="blank"></div></td>
+            <td><div class="lbl">Document Charges ($)</div><div class="blank"></div></td>
             <td><div class="lbl">Freight ($)</div><div class="blank"></div></td>
+        </tr>
+        <tr>
             <td><div class="lbl">Total ($)</div><div class="blank"></div></td>
+            <td></td>
+            <td></td>
         </tr>
     </table>
 
