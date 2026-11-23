@@ -87,6 +87,8 @@ class AdvanceForecastMonth extends Command
             'fa_shopify_raw_months',
             'fa_sku_monthly_orders',
             'fa_inv_available_months',
+            'fa_sku_monthly_orders_older',
+            'fa_inv_available_months_older',
             'fa_movement_analysis',
             'fa_shopify_skus',
         ];

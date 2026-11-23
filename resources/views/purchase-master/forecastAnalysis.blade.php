@@ -2825,7 +2825,7 @@
 
         /**
          * Days of stock from MSL pace: INV ÷ (monthly avg ÷ 30).
-         * Monthly avg = m_avg (Shopify 12 months + L30), else MSL ÷ 4.
+         * Monthly avg = m_avg (lifetime Shopify sales + L30), else MSL ÷ 4.
          */
         function forecastDaysOfStock(row) {
             if (!row || row.is_parent || row.isParent) return null;
@@ -5266,7 +5266,7 @@
                     const orderGiven = parseFloat(item["order_given"] ?? item["Order Given"]) || 0;
                     const r2s = parseFloat(item["readyToShipQty"] ?? item["readyToShipQty"]) || 0;
 
-                    // Use PHP-computed MSL (Shopify 12 months + L30) directly
+                    // Use PHP-computed MSL (lifetime Shopify sales + L30) directly
                     const mslRaw = parseFloat(item.msl);
                     const msl = Number.isFinite(mslRaw) ? mslRaw : (totalMonth > 0 ? (total / totalMonth) * 4 : 0);
                     const effectiveMslForToOrder = msl;
@@ -6958,8 +6958,7 @@
             l30Card.title = "Last 30 days";
             l30Card.querySelector(".month-title").title = "Last 30 days";
 
-            // MSL = (last 12 months + L30) ÷ months inventory was available × 4.
-            // Divisor is 13 when stock was on hand in every month and in the L30 window.
+            // MSL (lifetime) = (all sales: older months + last 12 months + L30) ÷ months inventory was available × 4.
             if (mslInfo) {
                 const shopifyTotal        = parseFloat(mslInfo.total)        || 0;
                 const shopifyActiveMonths = parseFloat(mslInfo.activeMonths) || 0;
@@ -6986,7 +6985,7 @@
                 formulaEl.innerHTML = `
                     <span style="font-weight:700; color:#047857; font-size:0.88rem; margin-right:4px;">MSL Formula</span>
 
-                    <span style="display:inline-flex; align-items:center; gap:6px;" title="Last 12 months + L30, divided by months inventory was available. 13 when stock was on hand the whole window.">
+                    <span style="display:inline-flex; align-items:center; gap:6px;" title="Lifetime sales (older months + last 12 months + L30), divided by months inventory was available.">
                         <span style="background:#dbeafe; color:#1d4ed8; font-size:0.7rem; font-weight:600; padding:1px 7px; border-radius:20px;">Shopify</span>
                         <span style="color:#374151;"><strong>${shopifyTotal}</strong> ÷ <strong>${shopifyActiveMonths}</strong> mo × 4</span>
                         <span style="color:#6b7280;">=</span>

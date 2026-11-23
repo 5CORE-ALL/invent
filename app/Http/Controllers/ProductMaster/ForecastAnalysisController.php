@@ -417,6 +417,54 @@ class ForecastAnalysisController extends Controller
 
             return null;
         };
+
+        // Lifetime MSL: everything older than the trailing-12-month window.
+        // Sales come from sku_monthly_orders (closed months), stock-on-hand months from
+        // shopifysku_inventory_history. Both are limited to whatever history exists.
+        $olderHistRows = $this->cachedOrRun('fa_sku_monthly_orders_older:'.$monthCacheKey, 1800, function () use ($shopifyWindowStart) {
+            if (! Schema::hasTable('sku_monthly_orders')) {
+                return collect();
+            }
+
+            return DB::table('sku_monthly_orders')
+                ->whereRaw("STR_TO_DATE(CONCAT(year,'-',month,'-01'), '%Y-%c-%d') < ?", [$shopifyWindowStart])
+                ->get(['sku', 'year', 'month', 'order_count']);
+        });
+        $olderInvRows = $this->cachedOrRun('fa_inv_available_months_older:'.$monthCacheKey, 1800, function () use ($shopifyWindowStart) {
+            if (! Schema::hasTable('shopifysku_inventory_history')) {
+                return collect();
+            }
+
+            return DB::table('shopifysku_inventory_history')
+                ->selectRaw('sku, YEAR(snapshot_date) as y, MONTH(snapshot_date) as m')
+                ->where('snapshot_date', '<', $shopifyWindowStart)
+                ->where(function ($q) {
+                    $q->where('closing_inventory', '>', 0)
+                        ->orWhere('opening_inventory', '>', 0)
+                        ->orWhere('sold_quantity', '>', 0);
+                })
+                ->groupByRaw('sku, YEAR(snapshot_date), MONTH(snapshot_date)')
+                ->get();
+        });
+        [$olderQtyBySku, $olderQtyByNoSp, $olderQtyByCanon] = $indexMonthQty($olderHistRows, 'order_count');
+        // Inventory rows carry no qty; the index is only used for which months had stock.
+        [$olderInvBySku, $olderInvByNoSp, $olderInvByCanon] = $indexMonthQty($olderInvRows, 'qty');
+        $lookupOlderSlots = function (array $bySku, array $byNoSp, array $byCanon, string $sku) use ($normalizeSku, $canonicalSku): array {
+            $skuKey = $normalizeSku($sku);
+            if (isset($bySku[$skuKey])) {
+                return $bySku[$skuKey];
+            }
+            $noSp = str_replace(' ', '', $skuKey);
+            if (isset($byNoSp[$noSp])) {
+                return $byNoSp[$noSp];
+            }
+            $canon = $canonicalSku($sku);
+            if ($canon !== '' && isset($byCanon[$canon])) {
+                return $byCanon[$canon];
+            }
+
+            return [];
+        };
         $readyToShipRows = DB::table('ready_to_ship')
             ->where('transit_inv_status', 0)
             ->whereNull('deleted_at')
@@ -1127,8 +1175,8 @@ class ForecastAnalysisController extends Controller
                 $item->{'Total'} = $totalSum;
                 $item->{'Total month'} = $totalMonthCount;
 
-                // MSL = (last 12 months + L30) / months inventory was available × 4.
-                // Divisor is 13 when stock was on hand in every month and in the L30 window.
+                // MSL (lifetime) = (all sales: older months + last 12 months + L30) /
+                // months inventory was available × 4.
                 $invSlots = $invMonthsBySku[$sheetSku]
                     ?? $invMonthsBySkuNoSp[str_replace(' ', '', $sheetSku)]
                     ?? $invMonthsByCanonical[$canonicalSku($sheetSku)]
@@ -1155,7 +1203,23 @@ class ForecastAnalysisController extends Controller
                     $invAvailableMonths++;
                 }
 
-                $shopifyBasisQty = $shopifyMonthSum + $l30Qty;
+                // Trailing-12-month basis (kept for Return Rate, whose returns are also 12 months).
+                $item->return_basis_qty = $shopifyMonthSum + $l30Qty;
+
+                // Lifetime: add every month older than the 12-month window. A month counts
+                // toward the divisor when stock was on hand or the SKU sold in it.
+                $olderQtySlots = $lookupOlderSlots($olderQtyBySku, $olderQtyByNoSp, $olderQtyByCanon, $sheetSku);
+                $olderInvSlots = $lookupOlderSlots($olderInvBySku, $olderInvByNoSp, $olderInvByCanon, $sheetSku);
+                $olderQty = (int) array_sum($olderQtySlots);
+                $olderSlotSet = $olderInvSlots;
+                foreach ($olderQtySlots as $olderSlot => $olderSlotQty) {
+                    if ((int) $olderSlotQty > 0) {
+                        $olderSlotSet[$olderSlot] = 0;
+                    }
+                }
+                $invAvailableMonths += count($olderSlotSet);
+
+                $shopifyBasisQty = $shopifyMonthSum + $l30Qty + $olderQty;
                 $msl = $invAvailableMonths > 0 ? ($shopifyBasisQty / $invAvailableMonths) * 4 : 0;
                 $item->msl_shopify = (int) round($msl);
                 $item->msl_basis_qty = $shopifyBasisQty;
@@ -1190,7 +1254,7 @@ class ForecastAnalysisController extends Controller
 
             // Return Rate = returned qty (last 12 months) ÷ units sold over the MSL basis window.
             $item->return_qty = (int) ($returnQtyBySku[$sheetSku] ?? 0);
-            $returnSoldQty = (float) ($item->msl_basis_qty ?? 0);
+            $returnSoldQty = (float) ($item->return_basis_qty ?? $item->msl_basis_qty ?? 0);
             $item->return_sold_qty = (int) round($returnSoldQty);
             $item->return_rate = $returnSoldQty > 0
                 ? round(($item->return_qty / $returnSoldQty) * 100, 1)
