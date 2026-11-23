@@ -2874,8 +2874,10 @@ class FacebookAllAdsSheetController extends Controller
      *
      * @return array{success: bool, message: string, imported: int, replaced: int}
      */
-    public function syncCampaignBatchFromApi(): array
+    public function syncCampaignBatchFromApi(bool $fresh = false): array
     {
+        // $fresh = true: wipe every old row (all batches) and keep ONLY what the API
+        // returns; tags are still carried over by Campaign ID, read before the wipe.
         if (! Schema::hasTable('meta_campaigns')) {
             return ['success' => false, 'message' => 'meta_campaigns table is missing.', 'imported' => 0, 'replaced' => 0];
         }
@@ -2921,7 +2923,7 @@ class FacebookAllAdsSheetController extends Controller
                 if ($pcid !== null && $pcid !== '' && $link !== '') {
                     $linkByCid[$pcid] = $link;
                 }
-                if ($pcid === null || $pcid === '' || ! isset($camps[$pcid])) {
+                if (! $fresh && ($pcid === null || $pcid === '' || ! isset($camps[$pcid]))) {
                     $keepRows[] = $pr;
                 }
             }
@@ -2971,7 +2973,9 @@ class FacebookAllAdsSheetController extends Controller
                 $imported++;
             }
 
-            $replaced = $this->deleteOlderBatchesOfType('campaign', $batchId);
+            $replaced = $fresh
+                ? FacebookAllAdsSheet::query()->where('import_batch_id', '!=', $batchId)->delete()
+                : $this->deleteOlderBatchesOfType('campaign', $batchId);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
