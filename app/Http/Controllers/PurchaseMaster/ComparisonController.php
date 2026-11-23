@@ -423,6 +423,109 @@ class ComparisonController extends Controller
         ]);
     }
 
+    /**
+     * Suggested Mfr categories for a SKU, derived the same way the Category List page (/category.list) lists it:
+     *  1. the SKU's own Mfr categories (shared across its linked SKUs),
+     *  2. otherwise the categories of its siblings under the same Parent (a PARENT row inherits its children's),
+     *  3. otherwise the categories whose suppliers are tagged with this SKU / Parent.
+     * Supplier categories ("categories" table) are matched to product Mfr categories by NAME.
+     */
+    public function suggestCategories(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $own = $this->resolveSharedCategoryIds($this->resolveLinkedSkuGroupMembers($sku));
+        if ($own !== []) {
+            return response()->json(['success' => true, 'source' => 'own', 'categories' => $this->categoriesPayload($own)]);
+        }
+
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first(['sku', 'parent']);
+        $parent = trim((string) ($product->parent ?? ''));
+        if ($parent === '' && stripos($sku, 'PARENT') === 0) {
+            $parent = trim(substr($sku, 6));
+        }
+
+        // 2. siblings under the same Parent, most common category first
+        if ($parent !== '') {
+            $tally = [];
+            foreach (ProductMaster::query()->where('parent', $parent)->get(['category_id', 'mfr_category_ids']) as $sibling) {
+                $ids = $this->normalizeCategoryIds(
+                    is_array($sibling->mfr_category_ids) ? $sibling->mfr_category_ids : [],
+                    $sibling->category_id ? (int) $sibling->category_id : null
+                );
+                foreach ($ids as $id) {
+                    $tally[$id] = ($tally[$id] ?? 0) + 1;
+                }
+            }
+            if ($tally !== []) {
+                arsort($tally);
+
+                return response()->json([
+                    'success' => true,
+                    'source' => 'parent',
+                    'categories' => $this->categoriesPayload(array_map('intval', array_keys($tally))),
+                ]);
+            }
+        }
+
+        // 3. categories whose suppliers are tagged with this SKU / Parent
+        $skuKey = strtoupper($sku);
+        $parentKey = strtoupper($parent);
+        $supplierCategoryIds = [];
+        $suppliers = \App\Models\Supplier::query()
+            ->whereNotNull('category_id')->where('category_id', '!=', '')
+            ->where(function ($q) use ($sku, $parent) {
+                $q->whereRaw('FIND_IN_SET(?, REPLACE(sku, " ", ""))', [$sku])
+                    ->orWhereRaw('FIND_IN_SET(?, REPLACE(parent, " ", ""))', [$sku]);
+                if ($parent !== '') {
+                    $q->orWhereRaw('FIND_IN_SET(?, REPLACE(parent, " ", ""))', [$parent]);
+                }
+            })
+            ->get(['sku', 'parent', 'category_id']);
+        foreach ($suppliers as $supplier) {
+            $tokens = array_map('strtoupper', array_map('trim', array_merge(
+                preg_split('/\s*,\s*/', (string) $supplier->sku, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                preg_split('/\s*,\s*/', (string) $supplier->parent, -1, PREG_SPLIT_NO_EMPTY) ?: []
+            )));
+            if (! in_array($skuKey, $tokens, true) && ($parentKey === '' || ! in_array($parentKey, $tokens, true))) {
+                continue;
+            }
+            foreach (preg_split('/\s*,\s*/', (string) $supplier->category_id, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $rawId) {
+                $cid = (int) trim($rawId);
+                if ($cid > 0) {
+                    $supplierCategoryIds[$cid] = ($supplierCategoryIds[$cid] ?? 0) + 1;
+                }
+            }
+        }
+        if ($supplierCategoryIds !== []) {
+            arsort($supplierCategoryIds);
+            $names = \App\Models\Category::query()->whereIn('id', array_keys($supplierCategoryIds))->pluck('name', 'id')->all();
+            $byName = ProductCategory::query()->where('status', 'active')->get(['id', 'category_name'])
+                ->mapWithKeys(fn ($c) => [mb_strtolower(trim((string) $c->category_name)) => (int) $c->id])->all();
+            $ids = [];
+            foreach (array_keys($supplierCategoryIds) as $cid) {
+                $key = mb_strtolower(trim((string) ($names[$cid] ?? '')));
+                if ($key !== '' && isset($byName[$key])) {
+                    $ids[$byName[$key]] = true;
+                }
+            }
+            if ($ids !== []) {
+                return response()->json([
+                    'success' => true,
+                    'source' => 'supplier',
+                    'categories' => $this->categoriesPayload(array_map('intval', array_keys($ids))),
+                ]);
+            }
+        }
+
+        return response()->json(['success' => true, 'source' => 'none', 'categories' => []]);
+    }
+
     public function getSheet(Request $request)
     {
         $sku = trim((string) $request->query('sku', ''));
@@ -3573,5 +3676,240 @@ class ComparisonController extends Controller
             $clink = $this->clinkForSku($targetSku);
             $this->persistSheetForSku($targetSku, $targetParent, $cells, $url, $tab, $user, $clink, $formats);
         }
+    }
+
+    // ── QR form (supplier quotation request) helpers ─────────────────────────
+
+    /**
+     * The SKU's own richest sheet grid, for the QR form.
+     *
+     * @return array{cells: array<int, array<int, string>>, parent: string}
+     */
+    public function qrSheet(string $sku): array
+    {
+        $sources = $this->loadSheetSources($sku);
+        $cells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        if (! $this->sheetService->hasMeaningfulContent($cells)) {
+            return ['cells' => [], 'parent' => ''];
+        }
+
+        return [
+            'cells' => $this->sheetService->ensureLeadColumns($cells),
+            'parent' => (string) ($sources['record']?->parent ?? ($sources['file_payload']['parent'] ?? '')),
+        ];
+    }
+
+    /**
+     * Suppliers tagged with any of this SKU's Mfr categories (the Suppliers page "Category" tags).
+     *
+     * @return array{categories: list<string>, suppliers: list<array{id: int, name: string, company: string, email: string}>}
+     */
+    public function qrCategorySuppliers(string $sku): array
+    {
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['id', 'sku', 'category_id', 'mfr_category_ids']);
+        if (! $product) {
+            return ['categories' => [], 'suppliers' => []];
+        }
+
+        $ids = $this->normalizeCategoryIds(
+            is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [],
+            $product->category_id ? (int) $product->category_id : null
+        );
+        $categories = $this->categoriesPayload($ids);
+
+        $seen = [];
+        $suppliers = [];
+        foreach ($categories as $category) {
+            // The item's Mfr category (product_categories) and the Suppliers page category (categories)
+            // are matched by name, the same way the Suppliers autopopulate does.
+            $supplierCategory = Category::query()->where('name', $category['name'])->first();
+            if (! $supplierCategory) {
+                continue;
+            }
+            $rows = Supplier::query()
+                ->whereNull('deleted_at')
+                ->whereNotNull('name')
+                ->where('name', '!=', '')
+                ->whereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$supplierCategory->id])
+                ->orderBy('name')
+                ->get(['id', 'name', 'company', 'email']);
+            foreach ($rows as $s) {
+                if (isset($seen[$s->id])) {
+                    continue;
+                }
+                $seen[$s->id] = true;
+                $suppliers[] = [
+                    'id' => (int) $s->id,
+                    'name' => trim((string) $s->name, " \t\n\r\0\x0B\"'"),
+                    'company' => trim((string) ($s->company ?? '')),
+                    'email' => trim((string) ($s->email ?? '')),
+                ];
+            }
+        }
+
+        return [
+            'categories' => array_values(array_map(fn ($c) => $c['name'], $categories)),
+            'suppliers' => $suppliers,
+        ];
+    }
+
+    /**
+     * Make sure the sheet has a supplier column for this supplier (appended at the end when missing),
+     * so their quotation has somewhere to land.
+     */
+    public function qrEnsureSupplierColumn(string $sku, string $supplierName, string $company, string $user): bool
+    {
+        $sources = $this->loadSheetSources($sku);
+        $cells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        if (! $this->sheetService->hasMeaningfulContent($cells)) {
+            return false;
+        }
+        $cells = $this->sheetService->ensureLeadColumns($cells);
+
+        $key = $this->sheetService->supplierKey($supplierName);
+        foreach ($this->sheetService->supplierColumns($cells) as $sc) {
+            if ($sc['key'] === $key) {
+                return true;
+            }
+        }
+
+        $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+        $nameRow = null;
+        foreach (array_keys($cells) as $r) {
+            if ($this->sheetService->isSupplierNameRow($cells, (int) $r, $specCol)) {
+                $nameRow = (int) $r;
+                break;
+            }
+        }
+        if ($nameRow === null) {
+            return false;
+        }
+        $companyRow = $this->sheetService->findRowIndexByLabel($cells, 'company name', $specCol);
+
+        $newCol = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells));
+        foreach ($cells as $r => $row) {
+            $row = is_array($row) ? $row : [];
+            while (count($row) <= $newCol) {
+                $row[] = '';
+            }
+            $cells[$r] = $row;
+        }
+        $cells[$nameRow][$newCol] = $supplierName;
+        if ($companyRow !== null && $company !== '') {
+            $cells[$companyRow][$newCol] = $company;
+        }
+
+        $record = $sources['record'];
+        $filePayload = $sources['file_payload'];
+        $formats = $this->sheetStorage->formatsFromPayload($filePayload);
+        if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
+            $formats = ComparisonData::normalizeFormats($record->sheet_data['formats'] ?? []);
+        }
+        $parent = (string) ($record?->parent ?? ($filePayload['parent'] ?? ''));
+        $url = $record?->google_sheet_url ?? ($filePayload['google_sheet_url'] ?? null);
+        $tab = (string) ($record?->google_sheet_tab ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'));
+
+        $this->linkedSkuGroupService->reset();
+        $this->persistSheetForLinkedGroup($sku, [], $parent, $cells, $url, $tab, $user, $formats, []);
+        ComparisonHistory::logChange($sku, $parent, 'qr_form', '', 'Added supplier column '.$supplierName, $user);
+
+        return true;
+    }
+
+    /** Product image URL (absolute when it is a local path), or null. */
+    public function qrProductImage(string $sku): ?string
+    {
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['id', 'parent', 'sku', 'Values', 'main_image', 'image1']);
+        if (! $product) {
+            return null;
+        }
+        $url = $this->resolveProductImage($product, ShopifySku::firstForProductSku($sku));
+        if ($url === null) {
+            return null;
+        }
+
+        return str_starts_with($url, '/') ? url($url) : $url;
+    }
+
+    /**
+     * Write a supplier's quoted values into their column of the sheet.
+     *
+     * @param  array<string, string>  $valuesByLabel  Spec label => value (only Critical labels are accepted)
+     * @return array{ok: bool, message: string, updated: array<string, string>}
+     */
+    public function qrApplyValues(string $sku, string $supplierName, array $valuesByLabel, string $user): array
+    {
+        $sources = $this->loadSheetSources($sku);
+        $cells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        if (! $this->sheetService->hasMeaningfulContent($cells)) {
+            return ['ok' => false, 'message' => 'This item has no comparison sheet yet.', 'updated' => []];
+        }
+        $cells = $this->sheetService->ensureLeadColumns($cells);
+
+        $key = $this->sheetService->supplierKey($supplierName);
+        $col = null;
+        foreach ($this->sheetService->supplierColumns($cells) as $sc) {
+            if ($sc['key'] === $key) {
+                $col = $sc['col'];
+                break;
+            }
+        }
+        if ($col === null) {
+            return ['ok' => false, 'message' => 'Your column is no longer on this comparison sheet.', 'updated' => []];
+        }
+
+        $criticalByLabel = [];
+        foreach ($this->sheetService->criticalSpecRows($cells) as $r) {
+            $criticalByLabel[$r['label']] ??= $r['row'];
+        }
+
+        $updated = [];
+        foreach ($valuesByLabel as $label => $value) {
+            $value = trim(preg_replace('/\s+/u', ' ', (string) $value) ?? '');
+            $row = $criticalByLabel[$label] ?? null;
+            if ($row === null || $value === '') {
+                continue;
+            }
+            $value = mb_substr($value, 0, 500);
+            if (trim((string) ($cells[$row][$col] ?? '')) === $value) {
+                continue;
+            }
+            while (count($cells[$row]) <= $col) {
+                $cells[$row][] = '';
+            }
+            $cells[$row][$col] = $value;
+            $updated[$label] = $value;
+        }
+        if ($updated === []) {
+            return ['ok' => true, 'message' => 'No changes.', 'updated' => []];
+        }
+
+        $record = $sources['record'];
+        $filePayload = $sources['file_payload'];
+        $formats = $this->sheetStorage->formatsFromPayload($filePayload);
+        if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
+            $formats = ComparisonData::normalizeFormats($record->sheet_data['formats'] ?? []);
+        }
+        $parent = (string) ($record?->parent ?? ($filePayload['parent'] ?? ''));
+        $url = $record?->google_sheet_url ?? ($filePayload['google_sheet_url'] ?? null);
+        $tab = (string) ($record?->google_sheet_tab ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'));
+
+        $this->linkedSkuGroupService->reset();
+        $this->persistSheetForLinkedGroup($sku, [], $parent, $cells, $url, $tab, $user, $formats, []);
+
+        ComparisonHistory::logChange(
+            $sku,
+            $parent,
+            'qr_form',
+            '',
+            $supplierName.': '.implode('; ', array_map(fn ($l, $v) => $l.' = '.$v, array_keys($updated), $updated)),
+            $user
+        );
+
+        return ['ok' => true, 'message' => 'Saved.', 'updated' => $updated];
     }
 }

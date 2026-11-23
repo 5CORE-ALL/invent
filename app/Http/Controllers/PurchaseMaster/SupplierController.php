@@ -544,8 +544,30 @@ class SupplierController extends Controller
      */
     public function getSuppliersJson(Request $request)
     {
+        // Same suppliers table as the Supplier list page. Duplicate names collapse to one entry
+        // that keeps the first non-empty value of each detail (company, links, contact info).
+        $detailFields = ['company', 'alibaba', 'link_1688', 'email', 'phone', 'whatsapp', 'wechat', 'qq'];
+        $detailsByName = Supplier::query()
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('id')
+            ->get(array_merge(['name'], $detailFields))
+            ->groupBy('name')
+            ->map(function ($rows) use ($detailFields) {
+                $out = [];
+                foreach ($detailFields as $field) {
+                    $first = $rows->first(fn ($r) => trim((string) $r->{$field}) !== '');
+                    $out[$field] = $first ? trim((string) $first->{$field}) : '';
+                }
+                return $out;
+            });
+
+        $blank = array_fill_keys($detailFields, '');
         $suppliers = Supplier::distinctNameRowsForDropdownJson()
-            ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]);
+            ->map(fn ($s) => array_merge(
+                ['id' => $s->id, 'name' => $s->name],
+                $detailsByName->get($s->name, $blank)
+            ));
         return response()->json(['suppliers' => $suppliers]);
     }
 

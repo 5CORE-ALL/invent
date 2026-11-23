@@ -1764,7 +1764,7 @@ class ComparisonSheetService
                     $score += 5;
                     continue;
                 }
-                $trim = strtolower(trim($text));
+                $trim = $rowIndex === 0 ? $this->headerLabelOf($text) : strtolower(trim($text));
                 if ($trim === '' || in_array($trim, ['normal', 'critical', 'important'], true)) {
                     continue;
                 }
@@ -1992,6 +1992,21 @@ class ComparisonSheetService
     /**
      * @param  array<int, array<int, string>>  $cells
      */
+    /**
+     * Header cell text without the optional row-0 priority suffix ("Critical|Important" -> "critical").
+     * The Company Name row keeps its own Critical/QC value after the "|"; plain "Critical" means Normal.
+     */
+    protected function headerLabelOf(string $text): string
+    {
+        $text = trim($text);
+        $pos = strpos($text, '|');
+        if ($pos !== false) {
+            $text = substr($text, 0, $pos);
+        }
+
+        return strtolower(trim($text));
+    }
+
     protected function findColumnHeaderIndex(array $cells, string $headerName, int $fromCol = 0): ?int
     {
         $needle = strtolower(trim($headerName));
@@ -2001,7 +2016,7 @@ class ComparisonSheetService
 
         $colCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells) ?: [0]);
         for ($colIndex = max(0, $fromCol); $colIndex < $colCount; $colIndex++) {
-            $header = strtolower(trim((string) ($cells[0][$colIndex] ?? '')));
+            $header = $this->headerLabelOf((string) ($cells[0][$colIndex] ?? ''));
             if ($header === $needle) {
                 return $colIndex;
             }
@@ -2026,7 +2041,7 @@ class ComparisonSheetService
             if ($text === '') {
                 continue;
             }
-            $lower = strtolower($text);
+            $lower = $this->headerLabelOf($text);
             if ($rowIndex === 0 && ($lower === 'critical' || $lower === 'qc')) {
                 continue;
             }
@@ -2052,7 +2067,7 @@ class ComparisonSheetService
         }
 
         $candidate = $specCol + 1;
-        $header = strtolower(trim((string) ($cells[0][$candidate] ?? '')));
+        $header = $this->headerLabelOf((string) ($cells[0][$candidate] ?? ''));
         if ($header === 'qc') {
             return null;
         }
@@ -2073,7 +2088,7 @@ class ComparisonSheetService
 
         $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
         $candidate = ($criticalCol !== null ? $criticalCol : $specCol) + 1;
-        $header = strtolower(trim((string) ($cells[0][$candidate] ?? '')));
+        $header = $this->headerLabelOf((string) ($cells[0][$candidate] ?? ''));
         if ($header === 'critical') {
             return null;
         }
@@ -2101,7 +2116,9 @@ class ComparisonSheetService
         if (! isset($cells[0]) || ! is_array($cells[0])) {
             $cells[0] = [];
         }
-        $cells[0][$criticalCol] = 'Critical';
+        if ($this->headerLabelOf((string) ($cells[0][$criticalCol] ?? '')) !== 'critical') {
+            $cells[0][$criticalCol] = 'Critical';
+        }
 
         return ComparisonData::normalizeCells($cells);
     }
@@ -2128,7 +2145,9 @@ class ComparisonSheetService
         if (! isset($cells[0]) || ! is_array($cells[0])) {
             $cells[0] = [];
         }
-        $cells[0][$qcCol] = 'QC';
+        if ($this->headerLabelOf((string) ($cells[0][$qcCol] ?? '')) !== 'qc') {
+            $cells[0][$qcCol] = 'QC';
+        }
 
         return ComparisonData::normalizeCells($cells);
     }
@@ -2602,6 +2621,97 @@ class ComparisonSheetService
     protected function sheetColumnCount(array $cells): int
     {
         return max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells) ?: [0]);
+    }
+
+    /**
+     * Clean supplier name used to match a supplier column across requests (quotes/spacing/case ignored).
+     */
+    public function supplierKey(string $name): string
+    {
+        $name = trim($name, " \t\n\r\0\x0B\"'");
+
+        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $name)));
+    }
+
+    /**
+     * Supplier columns of a sheet (one entry per distinct supplier name).
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array{col: int, name: string, key: string}>
+     */
+    public function supplierColumns(array $cells): array
+    {
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $first = $this->getFirstSupplierColumnIndex($cells, $specCol);
+        $count = $this->sheetColumnCount($cells);
+        $seen = [];
+        $out = [];
+        for ($col = $first; $col < $count; $col++) {
+            if ($col === $specCol) {
+                continue;
+            }
+            $name = trim($this->supplierNameForColumn($cells, $col), " \t\n\r\0\x0B\"'");
+            $key = $this->supplierKey($name);
+            if ($name === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = ['col' => $col, 'name' => $name, 'key' => $key];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Rows marked Critical (the Spec rows a supplier has to quote). Identity / chrome rows are left out.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array{row: int, label: string, amazon: string, five_core: string}>
+     */
+    public function criticalSpecRows(array $cells): array
+    {
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+        if ($criticalCol === null) {
+            return [];
+        }
+
+        $skip = ['company name', 'supplier name', 'supplier', 'link', 'supplier link', 'comm', 'communication', 'product photo'];
+        $plain = function (string $v): string {
+            $v = trim($v);
+            if ($v === '' || str_starts_with($v, 'data:image/') || str_starts_with($v, '[cmp-photo:') || str_starts_with($v, '[embedded-image:')) {
+                return '';
+            }
+
+            return $v;
+        };
+
+        $out = [];
+        foreach ($cells as $rowIndex => $row) {
+            $rowIndex = (int) $rowIndex;
+            if ($rowIndex < 1 || ! is_array($row)) {
+                continue;
+            }
+            $label = trim((string) ($row[$specCol] ?? ''));
+            $lower = mb_strtolower($label);
+            if ($label === '' || in_array($lower, $skip, true) || str_contains($lower, 'photo') || str_contains($lower, 'image') || str_contains($lower, 'communication')) {
+                continue;
+            }
+            if ($this->isSupplierNameRow($cells, $rowIndex, $specCol)) {
+                continue;
+            }
+            if (mb_strtolower(trim((string) ($row[$criticalCol] ?? ''))) !== 'critical') {
+                continue;
+            }
+            $out[] = [
+                'row' => $rowIndex,
+                'label' => $label,
+                'amazon' => $plain((string) ($row[$specCol - 2] ?? '')),
+                'five_core' => $plain((string) ($row[$specCol - 1] ?? '')),
+            ];
+        }
+
+        return $out;
     }
 
     /**

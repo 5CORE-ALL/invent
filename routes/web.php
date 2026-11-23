@@ -464,6 +464,12 @@ Route::get('/quote-form/{token}', [\App\Http\Controllers\PurchaseMaster\Containe
 Route::post('/quote-form/{token}', [\App\Http\Controllers\PurchaseMaster\ContainerQuoteRequestController::class, 'publicSubmit'])
     ->where('token', '[A-Za-z0-9]{20,64}')->middleware('throttle:20,1')->name('container.quote.form.submit');
 
+// Comparison QR form — public (no login), reached through a personal link sent to the supplier.
+Route::get('/comparison-quote/{token}', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'publicForm'])
+    ->where('token', '[A-Za-z0-9]{20,64}')->middleware('throttle:60,1')->name('comparison.qr.form');
+Route::post('/comparison-quote/{token}', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'publicSubmit'])
+    ->where('token', '[A-Za-z0-9]{20,64}')->middleware('throttle:20,1')->name('comparison.qr.form.submit');
+
 Route::middleware(['auth'])->prefix('supplier-portal/manage')->name('supplier-portal.admin.')->group(function () {
     Route::get('/', [\App\Http\Controllers\SupplierPortalAdminController::class, 'index'])->name('index');
     Route::get('/products/search', [\App\Http\Controllers\SupplierPortalAdminController::class, 'searchProducts'])->name('products.search');
@@ -6305,6 +6311,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/data', 'getData')->name('comparison.data');
         Route::get('/parents', 'getParents')->name('comparison.parents');
         Route::post('/category/save', 'saveCategory')->name('comparison.category.save');
+        Route::get('/category/suggest', 'suggestCategories')->name('comparison.category.suggest');
         Route::get('/suppliers-for-sku', 'suppliersForSku')->name('comparison.suppliers-for-sku');
         Route::get('/history', 'getHistory')->name('comparison.history');
         Route::get('/sheet', 'getSheet')->name('comparison.sheet.get');
@@ -6318,6 +6325,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/shipping-slab-rate', 'shippingSlabRate')->name('comparison.shipping-slab-rate');
         Route::get('/lmp-rates', 'lmpRates')->name('comparison.lmp-rates');
         Route::post('/roi/save-cell', 'saveRoiCell')->name('comparison.roi.save-cell');
+        Route::get('/qr-form/data', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'data'])->name('comparison.qr.data');
+        Route::get('/qr-form/suppliers', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'suppliers'])->name('comparison.qr.suppliers');
+        Route::get('/qr-form/draft', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'draft'])->name('comparison.qr.draft');
+        Route::post('/qr-form/send', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'send'])->name('comparison.qr.send');
         Route::post('/linked-skus/add', 'addLinkedSku')->name('comparison.linked-skus.add');
         Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('comparison.linked-skus.bulk-link');
         Route::post('/linked-skus/remove', 'removeLinkedSku')->name('comparison.linked-skus.remove');

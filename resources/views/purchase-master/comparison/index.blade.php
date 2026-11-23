@@ -367,6 +367,30 @@
         vertical-align: middle;
     }
 
+    /* MFR Category quick-search dropdown in the sheet header. */
+    .cd-mfr-box { display: inline-flex; align-items: center; gap: 6px; margin-left: 0.5rem; font-size: 0.8rem; font-weight: 400; }
+    .cd-mfr-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+    .cd-mfr-chip { display: inline-flex; align-items: center; gap: 4px; background: #fff; color: #1f2937; border-radius: 999px; padding: 1px 4px 1px 9px; font-size: 0.75rem; font-weight: 600; }
+    .cd-mfr-chip button { border: 0; background: transparent; color: #6b7280; padding: 0 3px; line-height: 1; font-size: 0.95rem; cursor: pointer; }
+    .cd-mfr-chip button:hover { color: #dc2626; }
+    .cd-mfr-input-wrap { position: relative; display: inline-block; }
+    .cd-mfr-input-wrap .form-control { width: 160px; height: 28px; padding: 2px 8px; font-size: 0.8rem; }
+    .cd-mfr-results {
+        position: absolute; top: calc(100% + 3px); left: 0; z-index: 3000;
+        min-width: 100%; width: max-content; max-width: 260px; max-height: 240px; overflow-y: auto;
+        background: #fff; color: #1f2937; border: 1px solid #cbd5e1; border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18); text-align: left;
+    }
+    .cd-mfr-results .cd-mfr-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; font-size: 0.82rem; user-select: none; }
+    .cd-mfr-results .cd-mfr-item:hover, .cd-mfr-results .cd-mfr-item.active { background: #e6f4f4; }
+    .cd-mfr-results .cd-mfr-item.added { background: #f0fdf4; font-weight: 600; }
+    .cd-mfr-results .cd-mfr-item input { margin: 0; pointer-events: none; }
+    .cd-mfr-results .cd-mfr-name { flex: 1 1 auto; }
+    .cd-mfr-results .cd-mfr-count { flex: 0 0 auto; min-width: 24px; text-align: center; background: #e5e7eb; color: #374151; border-radius: 999px; padding: 0 7px; font-size: 0.72rem; font-weight: 700; }
+    .cd-mfr-results .cd-mfr-count.low { background: #fee2e2; color: #b91c1c; }
+    .cd-mfr-results .cd-mfr-foot { position: sticky; bottom: 0; background: #f8fafc; border-top: 1px solid #e5e7eb; padding: 4px 10px; font-size: 0.72rem; color: #64748b; }
+    .cd-mfr-results .cd-mfr-empty { padding: 6px 10px; color: #6b7280; font-size: 0.8rem; }
+
     .comparison-cd-header-image-wrap {
         display: inline-flex;
         align-items: center;
@@ -453,6 +477,13 @@
     html body #comparisonReviewsChartModal.modal { --cmp-drawer-w: 504px; }
     html body #comparisonRoiPriceChartModal.modal { --cmp-drawer-w: 504px; }
     /* Profit Calculator (#comparisonRoiModal) is NOT a side drawer: it drops from the top, full width, data height. */
+    #comparisonQrFormModal .qr-section-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: #64748b; font-weight: 700; margin-bottom: .5rem; }
+    #comparisonQrFormModal .qr-item-img { width: 100%; max-width: 130px; aspect-ratio: 1 / 1; margin: 0; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3ebf0; border-radius: 14px; padding: 6px; color: #94a3b8; }
+    #comparisonQrFormModal .qr-item-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .comparison-send-btn, .comparison-draft-btn { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 32px; border-radius: 999px; border: 2px solid #94a3b8; background: #fff; color: #64748b; cursor: pointer; transition: all .15s ease; }
+    .comparison-send-btn:hover, .comparison-draft-btn:hover { border-color: #2563eb; color: #2563eb; }
+    .comparison-qr-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; color: #2a9d9f; }
+    .comparison-qr-btn:hover { background: #e6f4f4; }
     html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 392px; }
     html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 364px; }
     html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal {
@@ -502,6 +533,16 @@
         max-height: none !important;
         overflow-y: auto !important;
     }
+
+    /* Supplier Communication drawer: only as tall as its contact table. */
+    html body #comparisonCommModal.modal { --cmp-drawer-w: 440px; }
+    html body #comparisonCommModal.modal .modal-dialog,
+    html body #comparisonCommModal.modal .modal-content {
+        height: auto !important;
+        bottom: auto !important;
+        max-height: 100vh !important;
+    }
+    html body #comparisonCommModal.modal .modal-body { flex: 0 1 auto !important; }
 
     .comparison-lmp-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .comparison-lmp-chip-empty { opacity:.6; }
@@ -1248,10 +1289,88 @@
         word-break: break-word;
     }
 
+    /* Spec column drawer: the "Spec / Row" (Row 1, Row 2 ...) label column is hidden — the dropdown itself is the row. */
+    #comparisonColumnEditModal .cd-col-edit-table.cd-hide-label-col th:nth-child(2),
+    #comparisonColumnEditModal .cd-col-edit-table.cd-hide-label-col td.cd-col-edit-label,
+    #comparisonColumnEditModal .cd-col-edit-table.cd-hide-label-col colgroup col:nth-child(2) {
+        display: none;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-del {
+        width: 44px;
+        text-align: center;
+        vertical-align: middle;
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-row-del {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #dc3545;
+        cursor: pointer;
+        border-radius: 6px;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-row-del:hover { background: #fee2e2; color: #a71d2a; }
+    #comparisonColumnEditModal .cd-col-edit-row-del i { font-size: 18px; line-height: 1; }
+
     #comparisonColumnEditModal .cd-col-edit-value {
         width: auto;
         min-width: 200px;
         vertical-align: middle;
+    }
+
+    #comparisonColumnEditModal .cd-supp-combo {
+        position: relative;
+        flex: 0 1 280px;
+        min-width: 200px;
+    }
+
+    #comparisonColumnEditModal .cd-supp-combo input { padding-right: 1.8rem; }
+
+    #comparisonColumnEditModal .cd-supp-combo-caret {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: #64748b;
+    }
+
+    #comparisonColumnEditModal .cd-supp-combo-list {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 2px);
+        z-index: 50;
+        max-height: 220px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.15);
+    }
+
+    #comparisonColumnEditModal .cd-supp-combo-item {
+        padding: 0.35rem 0.6rem;
+        font-size: 0.82rem;
+        cursor: pointer;
+    }
+
+    #comparisonColumnEditModal .cd-supp-combo-item:hover,
+    #comparisonColumnEditModal .cd-supp-combo-item.active { background: #e0f2fe; }
+
+    #comparisonColumnEditModal .cd-supp-combo-empty {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+        color: #94a3b8;
     }
 
     #comparisonColumnEditModal .cd-col-edit-bulk-bar {
@@ -1756,11 +1875,40 @@
         background: #e0f7fa;
     }
 
-    .comparison-comm-plat-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 10px;
+    /* Supplier Communication: compact contact table. */
+    #comparisonCommModal .modal-header { padding: 8px 14px; }
+    #comparisonCommModal .modal-header .modal-title { font-size: 1rem; }
+    #comparisonCommModal .modal-body { padding: 10px 14px 12px; }
+    #comparisonCommModal .comparison-comm-head {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 2px 8px;
+        margin-bottom: 6px;
     }
+    .comparison-comm-table {
+        width: 100%;
+        margin: 0;
+        font-size: 0.82rem;
+        border-collapse: collapse;
+    }
+    .comparison-comm-table th,
+    .comparison-comm-table td {
+        padding: 3px 8px;
+        border: 1px solid #e5e7eb;
+        vertical-align: middle;
+        line-height: 1.25;
+    }
+    .comparison-comm-table th {
+        width: 112px;
+        background: #f8fafc;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .comparison-comm-table th i { width: 16px; text-align: center; margin-right: 4px; }
+    .comparison-comm-table td { word-break: break-all; }
+    .comparison-comm-table td a { text-decoration: none; }
+    .comparison-comm-table td a:hover { text-decoration: underline; }
 
     .comparison-comm-plat-card {
         border: 1px solid #e5e7eb;
@@ -1816,6 +1964,38 @@
     }
 
     /* Spec (label) column: 182px reduced by another 20% (-> 146px). Long labels are cut with "…" and shown in full on hover / while editing. */
+    /* Per-supplier QR Form / Draft / Send action row (second header row). */
+    .cd-sheet-table tr.cd-qr-action-row th {
+        top: auto !important;
+        position: static;
+        padding: 3px 2px;
+        background: #f8fafc;
+        font-weight: 400;
+        white-space: nowrap;
+    }
+    .cd-sheet-table tr.cd-qr-action-row th.cd-row-num,
+    .cd-sheet-table tr.cd-qr-action-row th.cd-row-select-col,
+    .cd-sheet-table tr.cd-qr-action-row th.cd-row-edit-col { position: sticky; }
+    .cd-qr-act-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 24px;
+        margin: 0 1px;
+        padding: 0;
+        border: 1px solid #9aa5b8;
+        border-radius: 12px;
+        background: #fff;
+        color: #4b5563;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+    }
+    .cd-qr-act-btn:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+    .cd-qr-act-btn.cd-qr-act-form { border-color: transparent; background: transparent; color: #0d9488; font-size: 17px; }
+    .cd-qr-act-btn.cd-qr-act-form:hover { background: #ccfbf1; }
+
     .cd-sheet-table th.cd-spec-col,
     .cd-sheet-table td.cd-label-cell {
         width: 146px;
@@ -2710,10 +2890,136 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="mb-1"><strong id="comparison-comm-supplier-name"></strong></p>
-                <p class="text-muted small mb-3" id="comparison-comm-supplier-company"></p>
-                <div id="comparison-comm-platforms" class="comparison-comm-plat-grid"></div>
+                <div class="comparison-comm-head">
+                    <strong id="comparison-comm-supplier-name"></strong>
+                    <span class="text-muted small" id="comparison-comm-supplier-company"></span>
+                </div>
+                <div id="comparison-comm-platforms"></div>
                 <p class="text-muted small mb-0 d-none" id="comparison-comm-empty">No communication details on file for this supplier.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonQrFormModal" tabindex="-1" aria-labelledby="comparisonQrFormModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="comparisonQrFormModalLabel">
+                    <i class="mdi mdi-file-document-edit-outline me-1"></i> QR Form — <span id="qrFormSku"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qrFormLoading" class="text-muted py-4 text-center">Loading…</div>
+                <div id="qrFormError" class="alert alert-warning d-none mb-0"></div>
+                <div id="qrFormContent" class="d-none">
+                    <div class="qr-section-title">1 · Product</div>
+                    <div class="mb-3">
+                        <div id="qrFormImage" class="qr-item-img"></div>
+                    </div>
+
+                    <div class="qr-section-title">2 · Supplier quotation form</div>
+                    <p class="text-muted small mb-2">The supplier fills these fields through their personal link. What they enter is saved straight into their column of this sheet.</p>
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm table-bordered align-middle mb-0" style="max-width:560px;">
+                            <thead><tr><th style="width:42%">Field</th><th>Supplier's quote</th></tr></thead>
+                            <tbody id="qrFormFields"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonQrDraftModal" tabindex="-1" aria-labelledby="comparisonQrDraftModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="comparisonQrDraftModalLabel">
+                    <i class="mdi mdi-email-open-outline me-1"></i> Draft email — <span id="qrDraftSku"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger py-2 d-none" id="qrDraftError"></div>
+                <div class="alert alert-warning py-2 d-none" id="qrDraftNoCritical">No spec row is marked Critical on this sheet yet — the email will not list any specifications until you mark some.</div>
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                    <span class="small text-muted" id="qrDraftHint"></span>
+                    <select id="qrDraftWho" class="form-select form-select-sm ms-auto" style="max-width: 320px;" aria-label="Supplier"></select>
+                </div>
+                <div class="border rounded px-3 py-2 small">
+                    <div><span class="text-muted">From:</span> <span id="qrDraftFrom"></span></div>
+                    <div><span class="text-muted">To:</span> <span id="qrDraftTo"></span></div>
+                    <div><span class="text-muted">Subject:</span> <b id="qrDraftSubject"></b></div>
+                    <hr class="my-2">
+                    <div id="qrDraftBody" style="line-height:1.5; word-break:break-word;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="qrDraftToSend"><i class="mdi mdi-send me-1"></i> Go to Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonQrSendModal" tabindex="-1" aria-labelledby="comparisonQrSendModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="comparisonQrSendModalLabel">
+                    <i class="mdi mdi-send me-1"></i> Send QR form — <span id="qrSendSku"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qrSendLoading" class="text-muted py-4 text-center">Loading…</div>
+                <div id="qrSendError" class="alert alert-warning d-none mb-0"></div>
+                <div id="qrSendContent" class="d-none">
+                    <div class="small text-muted mb-2">
+                        Suppliers tagged with this product's Mfr Category: <strong id="qrSendCategories"></strong>.
+                        Each ticked supplier gets their own personal QR form link; their answers fill their column of the sheet
+                        (a column is added for suppliers that are not on the sheet yet).
+                    </div>
+                    <div class="alert alert-warning py-2 d-none" id="qrSendNoCritical">No spec row is marked Critical on this sheet yet — mark the rows the supplier must quote as Critical first.</div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                        <div class="input-group input-group-sm" style="max-width: 260px;">
+                            <span class="input-group-text bg-white"><i class="mdi mdi-magnify"></i></span>
+                            <input type="text" id="qrSendSearch" class="form-control" placeholder="Search supplier…" autocomplete="off">
+                        </div>
+                        <div class="form-check mb-0 ms-2">
+                            <input class="form-check-input" type="checkbox" id="qrSendAll">
+                            <label class="form-check-label small fw-semibold" for="qrSendAll">Select all shown</label>
+                        </div>
+                        <span class="small text-muted ms-auto" id="qrSendCount"></span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendLinksBtn"><i class="mdi mdi-link-variant"></i> Create links</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-email-send-outline"></i> Email selected</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width:34px"></th>
+                                    <th>Supplier</th>
+                                    <th>Company</th>
+                                    <th style="min-width:230px">Email</th>
+                                    <th>Status</th>
+                                    <th style="width:110px">Link</th>
+                                </tr>
+                            </thead>
+                            <tbody id="qrSendBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="qrSendResult" class="small mt-2"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -2732,6 +3038,13 @@
                     </a>
                     <span><i class="fas fa-balance-scale"></i> Comparison Data</span>
                     <span class="badge bg-light text-dark ms-2" id="comparison-cd-modal-sku-badge"></span>
+                    <span class="cd-mfr-box d-none" id="comparison-cd-mfr-box">
+                        <span class="cd-mfr-chips" id="comparison-cd-mfr-chips"></span>
+                        <span class="cd-mfr-input-wrap">
+                            <input type="text" id="comparison-cd-mfr-input" class="form-control form-control-sm" placeholder="MFR Category" autocomplete="off" aria-label="MFR Category" title="Quick search: type to find an MFR Category and click it to apply">
+                            <span id="comparison-cd-mfr-results" class="cd-mfr-results d-none"></span>
+                        </span>
+                    </span>
                     <span class="comparison-cd-header-image-wrap d-none" id="comparison-cd-modal-image-wrap">
                         <img id="comparison-cd-modal-image" class="comparison-cd-header-image" src="" alt="SKU image" title="Hover to enlarge">
                         <button type="button" class="btn btn-sm btn-outline-light comparison-cd-image-refresh-btn"
@@ -2792,6 +3105,15 @@
                                 </button>
                                 <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open Profit Calculator">
                                     <i class="mdi mdi-percent"></i> Profit Calculator
+                                </button>
+                                <button type="button" class="btn btn-sm btn-success" id="comparison-cd-qr-btn" title="QR Form: product + Critical specs, and the quotation form to send to suppliers">
+                                    <i class="mdi mdi-file-document-edit-outline"></i> QR Form
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-qr-draft-btn" title="Preview the email each supplier of this product's Mfr Category will receive">
+                                    <i class="mdi mdi-email-open-outline"></i> Draft
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-qr-send-btn" title="Send the QR form to the suppliers of this product's Mfr Category">
+                                    <i class="mdi mdi-send"></i> Send
                                 </button>
                             </div>
 
@@ -3123,6 +3445,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const sheetGetUrl = @json(route('comparison.sheet.get'));
     const sheetSaveUrl = @json(route('comparison.sheet.save'));
     const specificationsUrl = @json(route('comparison.specifications'));
+    const supplierNamesJsonUrl = @json(route('supplier.list.json'));
     const sheetImageUrl = @json(route('comparison.sheet.image'));
     const sheetPhotoUploadUrl = @json(route('comparison.sheet.photo'));
     const sheetSyncClinkUrl = @json(route('comparison.sheet.sync-clink'));
@@ -3637,6 +3960,39 @@ document.addEventListener('DOMContentLoaded', function () {
         return text === 'critical' || text === 'important' || text === 'normal';
     }
 
+    // Row 0 of the Critical / QC columns holds the column marker ("Critical" / "QC"). The Company Name
+    // row keeps its own priority after a pipe: "Critical|Important". A bare marker means Normal.
+    function headerLabelOf(value) {
+        const text = String(value ?? '');
+        const pos = text.indexOf('|');
+        return (pos >= 0 ? text.slice(0, pos) : text).trim().toLowerCase();
+    }
+
+    function row0PriorityOf(value) {
+        const text = String(value ?? '');
+        const pos = text.indexOf('|');
+        return pos >= 0 ? normalizePriorityValue(text.slice(pos + 1)) : 'Normal';
+    }
+
+    function encodeRow0Priority(label, priority) {
+        const normalized = normalizePriorityValue(priority);
+        return normalized === 'Normal' ? label : `${label}|${normalized}`;
+    }
+
+    // Row-0 marker label for a priority column ("Critical" or "QC").
+    function row0MarkerLabel(colIndex) {
+        const existing = headerLabelOf((currentSheetCells[0] || [])[colIndex]);
+        if (existing === 'qc') return 'QC';
+        if (existing === 'critical') return 'Critical';
+        return isSheetQcColumn(colIndex) ? 'QC' : 'Critical';
+    }
+
+    // Priority currently stored for a cell (row 0 reads the value after the marker).
+    function storedPriorityAt(rowIndex, colIndex) {
+        const raw = (currentSheetCells[rowIndex] || [])[colIndex];
+        return rowIndex === 0 ? row0PriorityOf(raw) : normalizePriorityValue(raw);
+    }
+
     function normalizePriorityValue(value) {
         const text = String(value || '').trim().toLowerCase();
         if (text === 'critical') return 'Critical';
@@ -3674,7 +4030,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const colCount = Math.max(...(cells || []).map(row => (Array.isArray(row) ? row.length : 0)), 0);
         for (let colIndex = Math.max(0, fromCol || 0); colIndex < colCount; colIndex++) {
-            const header = String((cells[0] || [])[colIndex] || '').trim().toLowerCase();
+            const header = headerLabelOf((cells[0] || [])[colIndex]);
             if (header === needle) {
                 return colIndex;
             }
@@ -3693,7 +4049,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!text) {
                 continue;
             }
-            if (rowIndex === 0 && (text.toLowerCase() === 'critical' || text.toLowerCase() === 'qc')) {
+            if (rowIndex === 0 && (headerLabelOf(text) === 'critical' || headerLabelOf(text) === 'qc')) {
                 continue;
             }
             if (isPriorityValue(text)) {
@@ -3713,7 +4069,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return byHeader;
         }
         const candidate = specCol + 1;
-        const header = String((cells[0] || [])[candidate] || '').trim().toLowerCase();
+        const header = headerLabelOf((cells[0] || [])[candidate]);
         if (header === 'qc') {
             return null;
         }
@@ -3732,7 +4088,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const criticalCol = detectCriticalColumnIndex(cells, specCol);
         const candidate = (criticalCol !== null ? criticalCol : specCol) + 1;
-        const header = String((cells[0] || [])[candidate] || '').trim().toLowerCase();
+        const header = headerLabelOf((cells[0] || [])[candidate]);
         if (header === 'critical') {
             return null;
         }
@@ -3766,12 +4122,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function priorityCellEditorHtml(value, rowIndex, colIndex, columnLabel) {
         const label = columnLabel || 'Priority';
-        if (rowIndex === 0 && String(value || '').trim().toLowerCase() === label.toLowerCase()) {
-            return `<div class="cd-sheet-cell cd-sheet-cell-priority" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(label)}" title="${escapeHtmlAttr(label)}">
-                <span class="cd-priority-header-label">${escapeHtml(label)}</span>
-            </div>`;
-        }
-        const normalized = priorityValueForRow(value, rowIndex);
+        // Row 0 (Company Name) is a normal priority row; its cell keeps the column marker ("Critical|Important").
+        const isRow0Marker = rowIndex === 0 && headerLabelOf(value) === label.toLowerCase();
+        const normalized = isRow0Marker ? row0PriorityOf(value) : priorityValueForRow(value, rowIndex);
         return `<div class="cd-sheet-cell cd-sheet-cell-priority" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(normalized)}" title="${escapeHtmlAttr(normalized)}" aria-label="${escapeHtmlAttr(label + ': ' + normalized)}">
             <div class="cd-priority-wrap">
                 <span class="cd-priority-dot ${priorityDotClass(normalized)}" aria-hidden="true"></span>
@@ -3795,7 +4148,9 @@ document.addEventListener('DOMContentLoaded', function () {
         cell.dataset.value = normalized;
         cell.setAttribute('title', normalized);
         if (!Number.isNaN(rowIndex) && !Number.isNaN(colIndex) && currentSheetCells[rowIndex]) {
-            currentSheetCells[rowIndex][colIndex] = normalized;
+            currentSheetCells[rowIndex][colIndex] = rowIndex === 0
+                ? encodeRow0Priority(row0MarkerLabel(colIndex), normalized)
+                : normalized;
         }
 
         const dot = cell.querySelector('.cd-priority-wrap > .cd-priority-dot');
@@ -3852,7 +4207,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         let common = null;
         for (let i = 0; i < rows.length; i++) {
-            const val = normalizePriorityValue((currentSheetCells[rows[i]] || [])[colIndex]);
+            const val = storedPriorityAt(rows[i], colIndex);
             if (common === null) {
                 common = val;
             } else if (common !== val) {
@@ -4100,7 +4455,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function openPriorityBulkEditModal(anchorRow) {
         let rows = getSelectedSheetMultiRows();
         const anchor = parseInt(anchorRow, 10);
-        if (Number.isFinite(anchor) && anchor > 0) {
+        if (Number.isFinite(anchor) && anchor === 0) {
+            // Company Name row: edited on its own, never mixed into the multi-row selection.
+            rows = [0];
+        } else if (Number.isFinite(anchor) && anchor > 0) {
             if (!rows.includes(anchor)) {
                 if (rows.length === 0) {
                     setSheetMultiRowSelected(anchor, true);
@@ -4149,7 +4507,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function savePriorityBulkEditModal() {
-        const rows = (priorityBulkEditTargetRows || []).filter(r => r > 0 && r < currentSheetCells.length);
+        const rows = (priorityBulkEditTargetRows || []).filter(r => r >= 0 && r < currentSheetCells.length);
         if (!rows.length) {
             setSheetStatus('No rows selected for edit.', true);
             return;
@@ -4193,7 +4551,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (criticalVal && criticalCol !== null) {
                 const normalized = normalizePriorityValue(criticalVal);
-                currentSheetCells[rowIndex][criticalCol] = normalized;
+                currentSheetCells[rowIndex][criticalCol] = rowIndex === 0 ? encodeRow0Priority('Critical', normalized) : normalized;
                 const cell = document.querySelector(
                     `.cd-sheet-cell-priority[data-row="${rowIndex}"][data-col="${criticalCol}"]`
                 );
@@ -4201,7 +4559,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (qcVal && qcCol !== null) {
                 const normalized = normalizePriorityValue(qcVal);
-                currentSheetCells[rowIndex][qcCol] = normalized;
+                currentSheetCells[rowIndex][qcCol] = rowIndex === 0 ? encodeRow0Priority('QC', normalized) : normalized;
                 const cell = document.querySelector(
                     `.cd-sheet-cell-priority[data-row="${rowIndex}"][data-col="${qcCol}"]`
                 );
@@ -4231,7 +4589,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function refreshPriorityBulkEditModalMeta() {
         const rows = (priorityBulkEditTargetRows || [])
-            .filter(r => r > 0 && r < currentSheetCells.length)
+            .filter(r => r >= 0 && r < currentSheetCells.length)
             .sort((a, b) => a - b);
         priorityBulkEditTargetRows = rows;
         const countEl = document.getElementById('comparison-priority-bulk-count');
@@ -4244,7 +4602,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const deleteBtn = document.getElementById('comparison-priority-bulk-delete-row-btn');
         if (deleteBtn) {
-            deleteBtn.disabled = !rows.length || currentSheetCells.length <= 1;
+            deleteBtn.disabled = !rows.length || currentSheetCells.length <= 1 || rows.every(r => r === 0);
         }
         const addBtn = document.getElementById('comparison-priority-bulk-add-row-btn');
         if (addBtn) {
@@ -4527,6 +4885,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             if (isPriorityCol && rowIndex > 0) {
                 nextVal = normalizePriorityValue(nextVal);
+            } else if (isPriorityCol && rowIndex === 0) {
+                nextVal = encodeRow0Priority(row0MarkerLabel(col), nextVal);
             }
 
             const prev = String(currentSheetCells[rowIndex][col] ?? '');
@@ -4576,9 +4936,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex) || rowIndex < 0) {
             return false;
         }
-        if (isPriorityCol && rowIndex === 0) {
-            return false;
-        }
         if (isCommRow(rowIndex, currentSheetCells) && !isSpecCol && !isPriorityCol) {
             return false;
         }
@@ -4594,6 +4951,207 @@ document.addEventListener('DOMContentLoaded', function () {
             <input type="checkbox" class="form-check-input cd-col-edit-row-check" data-row="${rowIndex}"
                 title="Select row for bulk apply" aria-label="Select row ${rowIndex + 1}"${checked}>
         </td>`;
+    }
+
+    // The "Supplier Name" row is fixed: it cannot be deleted (no trash icon, delete is refused).
+    function isFixedSupplierNameRow(rowIndex, cells) {
+        cells = cells || currentSheetCells || [];
+        const specCol = detectSpecColumnIndex(cells);
+        const label = String(((cells[rowIndex] || [])[specCol]) ?? '').trim().toLowerCase();
+        return label === 'supplier name' || label === 'supplier';
+    }
+
+    // ---- Supplier picker (Edit column drawer): same supplier list as the Supplier page (route supplier.list.json) ----
+    let comparisonSupplierList = null;
+    let comparisonSupplierLoading = null;
+    let comparisonSupplierCompanyMap = new Map(); // normalized supplier name -> supplier row from the suppliers table (company, links, contacts)
+
+    function supplierCompanyKey(name) {
+        return String(name ?? '').replace(/^["'“”\s]+|["'“”\s]+$/g, '').replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    function supplierInfoForName(name) {
+        const key = supplierCompanyKey(name);
+        return key ? (comparisonSupplierCompanyMap.get(key) || null) : null;
+    }
+
+    function companyForSupplierName(name) {
+        return String((supplierInfoForName(name) || {}).company || '').trim();
+    }
+
+    function asHttpUrl(value) {
+        const v = String(value || '').trim();
+        if (!v) return '';
+        return /^https?:\/\//i.test(v) ? v : ('https://' + v.replace(/^\/+/, ''));
+    }
+
+    // Supplier link for the Link row: Alibaba page first, then the 1688 link (Supplier page columns).
+    function linkForSupplierName(name) {
+        const info = supplierInfoForName(name) || {};
+        return asHttpUrl(info.alibaba) || asHttpUrl(info.link_1688);
+    }
+
+    // Platform cards for the Comm popup, built from the suppliers table (same order as the server-side list).
+    function platformLinksFromSupplierInfo(info) {
+        if (!info) return [];
+        const out = [];
+        const email = String(info.email || '').trim();
+        if (email) out.push({ label: 'Email', url: 'mailto:' + email, external: false, display: email });
+        const phone = String(info.phone || '').trim();
+        if (phone) {
+            const digits = phone.replace(/\D/g, '');
+            out.push({ label: 'Phone', url: digits ? 'tel:' + digits : null, external: false, display: phone });
+        }
+        const wa = String(info.whatsapp || '').trim();
+        const waDigits = wa.replace(/\D/g, '');
+        if (waDigits) out.push({ label: 'WhatsApp', url: 'https://wa.me/' + waDigits, external: true, display: wa });
+        const wechat = String(info.wechat || '').trim();
+        if (wechat) out.push({ label: 'WeChat', url: null, display: wechat });
+        const qq = String(info.qq || '').trim();
+        if (qq) out.push({ label: 'QQ', url: null, display: qq });
+        const ali = asHttpUrl(info.alibaba);
+        if (ali) out.push({ label: 'Alibaba', url: ali, external: true });
+        const l1688 = asHttpUrl(info.link_1688);
+        if (l1688) out.push({ label: '1688', url: l1688, external: true });
+        return out;
+    }
+
+    // Fill the "Company Name" and "Link" row cells of supplier column `c` from the suppliers table.
+    // overwrite=false only fills empty cells. Works on `cells` in memory; returns true when something changed.
+    function fillSupplierDetailsForColumn(cells, c, overwrite) {
+        const specCol = detectSpecColumnIndex(cells);
+        if (c <= specCol) {
+            return false;
+        }
+        const supplierRow = findSupplierNameRowIndex(cells, specCol);
+        if (supplierRow === null || !cells[supplierRow]) {
+            return false;
+        }
+        const supplierName = cells[supplierRow][c];
+        let changed = false;
+        const setCell = (rowIndex, value) => {
+            if (rowIndex === null || !cells[rowIndex] || !value) return;
+            const current = String(cells[rowIndex][c] ?? '').trim();
+            if (current === value || (current !== '' && !overwrite)) return;
+            while (cells[rowIndex].length <= c) cells[rowIndex].push('');
+            cells[rowIndex][c] = value;
+            changed = true;
+        };
+        setCell(findRowIndexByLabel(cells, 'company name', specCol), companyForSupplierName(supplierName));
+        setCell(findSheetLinkRowIndex(cells, specCol), linkForSupplierName(supplierName));
+        return changed;
+    }
+
+    // Autofill Company Name + Link for supplier columns (blank cells only unless opts.overwrite, optionally limited to opts.cols).
+    function autofillCompanyNames(opts) {
+        opts = opts || {};
+        if (!comparisonSupplierCompanyMap.size || !currentSheetCells.length || sheetEditorHydrating) {
+            return 0;
+        }
+        readCellsFromEditor({ expandImages: false });
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const first = getFirstSupplierColumnIndex(currentSheetCells, specCol);
+        const colCount = Math.max(...currentSheetCells.map(r => (Array.isArray(r) ? r.length : 0)), 0);
+        const cols = Array.isArray(opts.cols) ? opts.cols : Array.from({ length: Math.max(colCount - first, 0) }, (_, i) => first + i);
+        let changed = 0;
+        cols.forEach((c) => {
+            if (fillSupplierDetailsForColumn(currentSheetCells, c, !!opts.overwrite)) changed++;
+        });
+        if (changed) {
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+            scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            setSheetStatus(`Company Name / Link filled for ${changed} supplier column(s).`, false);
+        }
+        return changed;
+    }
+
+    function loadComparisonSupplierList() {
+        if (comparisonSupplierList) {
+            return Promise.resolve(comparisonSupplierList);
+        }
+        if (comparisonSupplierLoading) {
+            return comparisonSupplierLoading;
+        }
+        comparisonSupplierLoading = fetch(supplierNamesJsonUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then(r => r.json())
+            .then((data) => {
+                const seen = new Set();
+                comparisonSupplierCompanyMap = new Map();
+                (data.suppliers || []).forEach((x) => {
+                    const key = supplierCompanyKey(x && x.name);
+                    if (key && !comparisonSupplierCompanyMap.has(key)) {
+                        comparisonSupplierCompanyMap.set(key, x);
+                    }
+                });
+                comparisonSupplierList = (data.suppliers || [])
+                    .map(x => String((x && x.name) ?? '').trim().replace(/^["'“”]+|["'“”]+$/g, '').trim())
+                    .filter(n => n !== '' && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()))
+                    .sort((a, b) => a.localeCompare(b));
+                return comparisonSupplierList;
+            })
+            .catch(() => null)
+            .finally(() => { comparisonSupplierLoading = null; });
+        return comparisonSupplierLoading;
+    }
+
+    function renderSupplierComboList(query) {
+        const listEl = document.getElementById('comparison-column-edit-supplier-list');
+        if (!listEl) return;
+        const q = String(query || '').trim().toLowerCase();
+        const items = (comparisonSupplierList || []).filter(n => q === '' || n.toLowerCase().includes(q)).slice(0, 100);
+        listEl.innerHTML = items.length
+            ? items.map(n => `<div class="cd-supp-combo-item" role="option" data-name="${escapeHtmlAttr(n)}">${escapeHtml(n)}</div>`).join('')
+            : `<div class="cd-supp-combo-empty">${comparisonSupplierList ? 'No supplier found' : 'Loading suppliers…'}</div>`;
+        listEl.classList.remove('d-none');
+    }
+
+    function closeSupplierComboList() {
+        document.getElementById('comparison-column-edit-supplier-list')?.classList.add('d-none');
+    }
+
+    // Enable/disable the Supplier picker: it fills the Supplier Name row of a supplier column.
+    function refreshColumnEditSupplierBar() {
+        const input = document.getElementById('comparison-column-edit-supplier-input');
+        const hint = document.getElementById('comparison-column-edit-supplier-hint');
+        if (!input) return;
+        const col = columnEditTargetCol;
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const notSupplierCol = col === specCol || (criticalCol !== null && col === criticalCol) || (qcCol !== null && col === qcCol);
+        input.disabled = !!notSupplierCol;
+        if (hint) {
+            hint.textContent = notSupplierCol
+                ? 'Open a supplier column to set its supplier'
+                : "Fills this column's Supplier Name row";
+        }
+    }
+
+    function applySupplierToColumnEdit(name) {
+        const col = columnEditTargetCol;
+        if (!name || col === null || col === undefined || Number.isNaN(col)) return;
+        let field = null;
+        for (let r = 0; r < currentSheetCells.length; r++) {
+            if (!isFixedSupplierNameRow(r)) continue;
+            const f = document.querySelector(`#comparison-column-edit-tbody .cd-col-edit-field[data-row="${r}"]:not([type="hidden"]):not([readonly])`);
+            if (f) { field = f; break; }
+        }
+        const hint = document.getElementById('comparison-column-edit-supplier-hint');
+        if (!field) {
+            if (hint) hint.textContent = 'No Supplier Name row in this column';
+            return;
+        }
+        field.value = name;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        if (hint) hint.textContent = `Supplier Name set to "${name}" — click Save column`;
+    }
+
+    // Trash cell at the end of each row of the Edit column modal (every row except the fixed Supplier Name row).
+    function columnEditDeleteCellHtml(rowIndex) {
+        if (isFixedSupplierNameRow(rowIndex)) {
+            return `<td class="cd-col-edit-del"></td>`;
+        }
+        return `<td class="cd-col-edit-del"><button type="button" class="cd-col-edit-row-del" data-row="${rowIndex}" title="Delete row ${rowIndex + 1}" aria-label="Delete row ${rowIndex + 1}"><i class="mdi mdi-delete-outline" aria-hidden="true"></i></button></td>`;
     }
 
     // ---- Specification master list (DB table comparison_specifications, shared by every comparison page) ----
@@ -4839,11 +5397,13 @@ document.addEventListener('DOMContentLoaded', function () {
             )
         );
 
+        tbody.closest('table')?.classList.toggle('cd-hide-label-col', !!isSpecCol);
+
         const parts = [];
         for (let r = 0; r < currentSheetCells.length; r++) {
             const row = currentSheetCells[r] || [];
             // "Company Name" and "Link" rows are not edited from this modal (edit them in the sheet).
-            if (!isSpecCol) {
+            if (!isSpecCol && !(isPriorityCol && r === 0)) {
                 const specLabel = String(row[specCol] ?? '').trim().toLowerCase();
                 if (specLabel === 'company name' || specLabel === 'link' || specLabel === 'supplier link') {
                     continue;
@@ -4876,12 +5436,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         <input type="hidden" class="cd-col-edit-field" data-row="${r}" value="">
                         <span class="cd-col-edit-hint">Comm actions are managed in the sheet (not edited here).</span>
                     </td>
+                    ${columnEditDeleteCellHtml(r)}
                 </tr>`);
                 continue;
             }
 
-            if (isPriorityCol && r > 0) {
-                const normalized = priorityValueForRow(displayValue, r);
+            if (isPriorityCol) {
+                const normalized = r === 0 ? row0PriorityOf(displayValue) : priorityValueForRow(displayValue, r);
                 const fieldHtml = `<select class="form-select form-select-sm cd-col-edit-field cd-col-edit-select" data-row="${r}">
                             <option value="Normal" ${normalized === 'Normal' ? 'selected' : ''}>Normal</option>
                             <option value="Important" ${normalized === 'Important' ? 'selected' : ''}>Important</option>
@@ -4891,19 +5452,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     ${checkHtml}
                     <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
                     <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}</td>
+                    ${columnEditDeleteCellHtml(r)}
                 </tr>`);
                 continue;
             }
 
-            if (isPriorityCol && r === 0) {
-                const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" readonly>`;
-                parts.push(`<tr data-edit-row="${r}">
-                    ${checkHtml}
-                    <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                    <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}</td>
-                </tr>`);
-                continue;
-            }
 
             const isImage = isSheetImageUrl(displayValue);
             const hint = isImage && (
@@ -4921,6 +5474,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 ${checkHtml}
                 <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
                 <td class="cd-col-edit-value">${isImage ? `<div class="cd-edit-img-row">${thumbHtml}<div class="cd-edit-img-field-wrap">${wrapFieldWithClipboardActions(fieldHtml)}${hint}</div></div>` : `${wrapFieldWithClipboardActions(fieldHtml)}${hint}`}</td>
+                ${columnEditDeleteCellHtml(r)}
             </tr>`);
         }
         tbody.innerHTML = parts.join('');
@@ -4958,6 +5512,7 @@ document.addEventListener('DOMContentLoaded', function () {
             || (qcCol !== null && col === qcCol);
         setupColumnEditBulkValueControl(isPriorityCol);
         refreshColumnEditBulkBar();
+        refreshColumnEditSupplierBar();
     }
 
     function openColumnEditModal(colIndex) {
@@ -4975,6 +5530,10 @@ document.addEventListener('DOMContentLoaded', function () {
         columnEditSelectedRows = new Set();
         selectedSheetCol = col;
         applySheetSelectionHighlight();
+        const supplierInput = document.getElementById('comparison-column-edit-supplier-input');
+        if (supplierInput) supplierInput.value = '';
+        closeSupplierComboList();
+        loadComparisonSupplierList();
         refreshColumnEditModalChrome();
         renderColumnEditModalRows();
         // Spec column: make sure the master list is loaded, then redraw the rows as dropdowns.
@@ -5101,9 +5660,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         readCellsFromEditor({ expandImages: false });
+        const prevSupplierName = getSupplierNameForColumn(col, currentSheetCells);
         const changed = applyColumnEditModalDrafts();
+        // New / changed supplier name -> Company Name follows (a blank company is also filled).
+        const nextSupplierName = getSupplierNameForColumn(col, currentSheetCells);
+        const companyFilled = fillSupplierDetailsForColumn(currentSheetCells, col, nextSupplierName !== prevSupplierName);
 
-        if (!changed) {
+        if (!changed && !companyFilled) {
             const modalEl = document.getElementById('comparisonColumnEditModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
                 bootstrap.Modal.getOrCreateInstance(modalEl).hide();
@@ -5138,7 +5701,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!cells[0]) {
             cells[0] = [];
         }
-        cells[0][criticalCol] = 'Critical';
+        if (headerLabelOf(cells[0][criticalCol]) !== 'critical') {
+            cells[0][criticalCol] = 'Critical';
+        }
         return { cells, insertedAt, criticalCol };
     }
 
@@ -5157,7 +5722,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!cells[0]) {
             cells[0] = [];
         }
-        cells[0][qcCol] = 'QC';
+        if (headerLabelOf(cells[0][qcCol]) !== 'qc') {
+            cells[0][qcCol] = 'QC';
+        }
         return { cells, insertedAt, qcCol };
     }
 
@@ -5792,20 +6359,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function rowMatchesPriorityFilters(rowIndex, cells, criticalCol, qcCol, criticalAllowed, qcAllowed) {
-        // Keep the stamped header row visible so column labels stay in place.
-        if (rowIndex === 0) {
-            return true;
-        }
+        // The Company Name row (row 0) is filtered by its own priority like every other row.
+        const priorityOf = (col) => rowIndex === 0
+            ? row0PriorityOf((cells[0] || [])[col])
+            : normalizePriorityValue((cells[rowIndex] || [])[col]);
 
         if (criticalCol !== null && criticalAllowed.size > 0 && criticalAllowed.size < 3) {
-            const criticalValue = normalizePriorityValue((cells[rowIndex] || [])[criticalCol]);
+            const criticalValue = priorityOf(criticalCol);
             if (!criticalAllowed.has(criticalValue)) {
                 return false;
             }
         }
 
         if (qcCol !== null && qcAllowed.size > 0 && qcAllowed.size < 3) {
-            const qcValue = normalizePriorityValue((cells[rowIndex] || [])[qcCol]);
+            const qcValue = priorityOf(qcCol);
             if (!qcAllowed.has(qcValue)) {
                 return false;
             }
@@ -5992,11 +6559,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!name) {
             return `<div class="cd-sheet-comm-cell cd-sheet-comm-cell-empty"><span class="text-muted">-</span></div>`;
         }
+        const info = supplierInfoForName(name);
+        const summary = platformLinksFromSupplierInfo(info)
+            .map(l => `${l.label}: ${l.display || l.url || ''}`)
+            .join(' | ');
+        const title = summary ? `Communication: ${name} — ${summary}` : `Communication: ${name}`;
         return `<div class="cd-sheet-comm-cell">
             <button type="button" class="cd-sheet-comm-btn" data-row="${rowIndex}" data-col="${colIndex}"
                 data-supplier-name="${escapeHtmlAttr(name)}"
-                title="Communication: ${escapeHtmlAttr(name)}" aria-label="Open communication details for ${escapeHtmlAttr(name)}">
-                <i class="fas fa-comments"></i>
+                title="${escapeHtmlAttr(title)}" aria-label="Open communication details for ${escapeHtmlAttr(name)}">
+                <i class="mdi mdi-message-text-outline"></i>
             </button>
         </div>`;
     }
@@ -6019,7 +6591,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        const links = supplier?.platform_links || [];
+        // Supplier not in this SKU's category list: fall back to the suppliers table (Supplier page data).
+        const tableInfo = supplierInfoForName(name);
+        let links = supplier?.platform_links || [];
+        if (!links.length) {
+            links = platformLinksFromSupplierInfo(tableInfo);
+        }
         const nameEl = document.getElementById('comparison-comm-supplier-name');
         const companyEl = document.getElementById('comparison-comm-supplier-company');
         const gridEl = document.getElementById('comparison-comm-platforms');
@@ -6029,7 +6606,7 @@ document.addEventListener('DOMContentLoaded', function () {
             nameEl.textContent = name || 'Supplier';
         }
         if (companyEl) {
-            const company = String(supplier?.company || '').trim();
+            const company = String(supplier?.company || tableInfo?.company || '').trim();
             companyEl.textContent = company;
             companyEl.classList.toggle('d-none', !company);
         }
@@ -6044,25 +6621,18 @@ document.addEventListener('DOMContentLoaded', function () {
             emptyEl?.classList.add('d-none');
             if (gridEl) {
                 gridEl.classList.remove('d-none');
-                gridEl.innerHTML = links.map(function (link) {
+                gridEl.innerHTML = '<table class="comparison-comm-table"><tbody>' + links.map(function (link) {
                     const icon = COMM_PLAT_ICON[link.label] || 'fas fa-link';
                     const color = COMM_PLAT_COLOR[link.label] || '#6b7280';
-                    const display = link.display || link.url || link.label;
+                    const display = String(link.display || link.url || link.label);
                     const title = escapeHtmlAttr(link.label + (link.display ? ': ' + link.display : ''));
+                    let value = escapeHtml(display);
                     if (link.url) {
                         const ext = link.external ? ' target="_blank" rel="noopener noreferrer"' : '';
-                        return `<a href="${escapeHtmlAttr(link.url)}" class="comparison-comm-plat-card"${ext} title="${title}">
-                            <i class="${icon}" style="color:${color};"></i>
-                            <div class="fw-semibold small">${escapeHtml(link.label)}</div>
-                            <div class="text-muted small text-truncate">${escapeHtml(String(display))}</div>
-                        </a>`;
+                        value = `<a href="${escapeHtmlAttr(link.url)}"${ext} title="${title}">${value}</a>`;
                     }
-                    return `<div class="comparison-comm-plat-card" title="${title}">
-                        <i class="${icon}" style="color:${color};"></i>
-                        <div class="fw-semibold small">${escapeHtml(link.label)}</div>
-                        <div class="text-muted small text-truncate">${escapeHtml(String(display))}</div>
-                    </div>`;
-                }).join('');
+                    return `<tr><th><i class="${icon}" style="color:${color};"></i>${escapeHtml(link.label)}</th><td>${value}</td></tr>`;
+                }).join('') + '</tbody></table>';
             }
         }
 
@@ -8738,17 +9308,39 @@ document.addEventListener('DOMContentLoaded', function () {
         headHtml += '<th class="cd-row-edit-col cd-supplier-edit-col" title="Edit supplier data only (supplier columns of a row)">Edit<br>Supp.</th>';
         headHtml += '<th class="cd-row-edit-col cd-row-delete-col" title="Delete row">Del</th>';
         headHtml += '</tr>';
-        head.innerHTML = headHtml;
+
+        // Second header row: QR Form / Draft / Send for each supplier column.
+        let actHtml = '<tr class="cd-qr-action-row"><th class="cd-row-num"></th><th class="cd-row-select-col"></th>';
+        for (let c = 0; c < colCount; c++) {
+            const isPriorityCol = (criticalCol !== null && c === criticalCol) || (qcCol !== null && c === qcCol);
+            const hiddenCls = `${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}`;
+            const supName = (c > specCol && !isPriorityCol) ? String(getSupplierNameForColumn(c, currentSheetCells) || '').trim() : '';
+            if (!supName) {
+                actHtml += `<th class="${hiddenCls.trim()}"></th>`;
+                continue;
+            }
+            const nm = escapeHtmlAttr(supName);
+            actHtml += `<th class="cd-qr-act-cell${hiddenCls}" data-col="${c}">`
+                + `<button type="button" class="cd-qr-act-btn cd-qr-act-form" data-act="form" data-supplier="${nm}" title="QR Form for ${nm}" aria-label="QR Form for ${nm}"><i class="mdi mdi-file-document-edit-outline"></i></button>`
+                + `<button type="button" class="cd-qr-act-btn" data-act="draft" data-supplier="${nm}" title="Draft email for ${nm}" aria-label="Draft email for ${nm}"><i class="mdi mdi-email-open-outline"></i></button>`
+                + `<button type="button" class="cd-qr-act-btn" data-act="send" data-supplier="${nm}" title="Send QR form to ${nm}" aria-label="Send QR form to ${nm}"><i class="mdi mdi-send"></i></button>`
+                + `</th>`;
+        }
+        actHtml += '<th class="cd-row-edit-col"></th><th class="cd-row-edit-col cd-supplier-edit-col"></th><th class="cd-row-edit-col cd-row-delete-col"></th></tr>';
+        head.innerHTML = headHtml + actHtml;
 
         const parts = [];
-        // Display order: header row first, then Critical -> Important -> Normal (stable; data order is untouched).
+        // Display order: Critical -> Important -> Normal (stable; data order is untouched).
+        // The Company Name row (row 0) is an ordinary row here — it is ranked by its own priority,
+        // not pinned to the top as a header (the column headers above already show the supplier names).
         let rowOrder = Array.from({ length: currentSheetCells.length }, (_, i) => i);
         if (sheetSortByPriority && criticalCol !== null && rowOrder.length > 2) {
             const rank = (ri) => {
-                const v = priorityValueForRow((currentSheetCells[ri] || [])[criticalCol], ri);
+                const raw = (currentSheetCells[ri] || [])[criticalCol];
+                const v = ri === 0 ? row0PriorityOf(raw) : priorityValueForRow(raw, ri);
                 return v === 'Critical' ? 0 : (v === 'Important' ? 1 : 2);
             };
-            rowOrder = [0, ...rowOrder.slice(1).sort((a, b) => (rank(a) - rank(b)) || (a - b))];
+            rowOrder = rowOrder.sort((a, b) => (rank(a) - rank(b)) || (a - b));
         }
         for (const r of rowOrder) {
             const row = currentSheetCells[r] || [];
@@ -8782,7 +9374,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 rowHtml += `<td data-sheet-col="${c}"${specTitleAttr} class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
             rowHtml += `<td class="cd-row-edit-col">`;
-            if (canSelectRow) {
+            if (canSelectRow || r === 0) {
                 rowHtml += `<button type="button" class="cd-sheet-row-edit-btn" data-row="${r}" title="Edit Critical / QC" aria-label="Edit Critical and QC for selected rows">
                     <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
                 </button>`;
@@ -8796,7 +9388,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             rowHtml += `</td>`;
             rowHtml += `<td class="cd-row-edit-col cd-row-delete-col">`;
-            if (canSelectRow) {
+            // Every row can be deleted except the fixed Supplier Name row.
+            if (!isFixedSupplierNameRow(r, currentSheetCells)) {
                 rowHtml += `<button type="button" class="cd-sheet-row-delete-btn" data-row="${r}" title="Delete row ${r + 1}" aria-label="Delete row ${r + 1}">
                     <i class="mdi mdi-delete-outline" aria-hidden="true"></i>
                 </button>`;
@@ -8936,20 +9529,25 @@ document.addEventListener('DOMContentLoaded', function () {
     // Trash icon at the end of a row: confirm, then delete exactly that row.
     function deleteSheetRowByIndex(rowIndex) {
         const idx = parseInt(rowIndex, 10);
-        if (Number.isNaN(idx) || idx < 1) {
-            return;
+        if (Number.isNaN(idx) || idx < 0) {
+            return false;
         }
         readCellsFromEditor({ expandImages: false });
         if (!currentSheetCells[idx]) {
-            return;
+            return false;
+        }
+        if (isFixedSupplierNameRow(idx)) {
+            setSheetStatus('The Supplier Name row cannot be deleted.', true);
+            return false;
         }
         const specCol = detectSpecColumnIndex(currentSheetCells);
         const label = String(currentSheetCells[idx][specCol] ?? '').trim() || `Row ${idx + 1}`;
         if (!window.confirm(`Delete row ${idx + 1} (${label})? This removes the row for every supplier.`)) {
-            return;
+            return false;
         }
         selectedSheetRow = idx;
         deleteSheetRow();
+        return true;
     }
 
     function insertSheetColumn() {
@@ -9224,6 +9822,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 const stored = cell.dataset.value || '';
+
+                if (cell.classList.contains('cd-sheet-cell-priority') && rowIndex === 0) {
+                    row[colIndex] = encodeRow0Priority(
+                        row0MarkerLabel(colIndex),
+                        stored || row0PriorityOf((currentSheetCells[0] || [])[colIndex])
+                    );
+                    return;
+                }
 
                 if (cell.classList.contains('cd-sheet-cell-priority')) {
                     row[colIndex] = normalizePriorityValue(
@@ -9651,6 +10257,8 @@ document.addEventListener('DOMContentLoaded', function () {
             };
 
             applySheetPayload(data, currentCdRow || row);
+            // Autofill blank Company Name / Link cells from the suppliers table (Supplier page).
+            loadComparisonSupplierList().then(() => autofillCompanyNames());
 
             // Google Sheet is pull-only via "C Link Refresh". Do not auto-import on open
             // (that sync was a major cause of repeated Page Unresponsive freezes).
@@ -12168,6 +12776,273 @@ document.addEventListener('DOMContentLoaded', function () {
         set('display', 'block');
     }
 
+    // ── MFR Category quick-search dropdown (header of the sheet) ──
+    // Options come from the MFR Category list of /mfr-category-supplier. The number beside each category is
+    // how many suppliers are tagged with it. Multi-select: every tick / untick is saved for this SKU.
+    const mfrCategorySupplierDataUrl = @json(route('mfr.category.supplier.data'));
+    const comparisonCategorySuggestUrl = @json(route('comparison.category.suggest'));
+    const cdMfrNoAutofillKey = (sku) => 'cmp_mfr_no_autofill_' + String(sku || '').trim().toUpperCase();
+    let cdMfrAutofillNote = '';
+    let cdMfrSku = '';
+    let cdMfrCategories = [];
+    let cdMfrSeq = 0;
+    let cdMfrCounts = null;       // lowercase category name -> supplier count
+    let cdMfrSaveTimer = null;
+    let cdMfrSaving = 0;
+
+    function cdMfrLoadCounts() {
+        if (cdMfrCounts) return Promise.resolve();
+        return fetch(mfrCategorySupplierDataUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(r => r.json())
+            .then(rows => {
+                const map = {};
+                (Array.isArray(rows) ? rows : []).forEach(r => {
+                    const key = String(r.mfr_category || '').trim().toLowerCase();
+                    if (key) map[key] = parseInt(r.count, 10) || 0;
+                });
+                cdMfrCounts = map;
+            })
+            .catch(() => { cdMfrCounts = {}; });
+    }
+
+    function cdMfrCountFor(name) {
+        const n = cdMfrCounts ? cdMfrCounts[String(name || '').trim().toLowerCase()] : undefined;
+        return Number.isInteger(n) ? n : null;
+    }
+
+    function cdMfrHas(name) {
+        const key = String(name || '').trim().toLowerCase();
+        return cdMfrCategories.some(c => String(c.name || '').trim().toLowerCase() === key);
+    }
+
+    function cdMfrRenderChips() {
+        const el = document.getElementById('comparison-cd-mfr-chips');
+        if (!el) return;
+        el.innerHTML = cdMfrCategories.map(c => {
+            const n = cdMfrCountFor(c.name);
+            return `<span class="cd-mfr-chip">${escapeHtml(c.name)}${n === null ? '' : ` <span class="text-muted">(${n})</span>`}<button type="button" data-id="${escapeHtmlAttr(String(c.id))}" title="Remove ${escapeHtmlAttr(c.name)}" aria-label="Remove ${escapeHtmlAttr(c.name)}">&times;</button></span>`;
+        }).join('');
+    }
+
+    function cdMfrRenderResults(term) {
+        const box = document.getElementById('comparison-cd-mfr-results');
+        if (!box) return;
+        const q = String(term || '').trim().toLowerCase();
+        const matches = supplierCategoryOptions.filter(c => !q || String(c.name || '').toLowerCase().includes(q));
+        let html;
+        if (!supplierCategoryOptions.length) {
+            html = '<div class="cd-mfr-empty">No categories loaded.</div>';
+        } else if (!matches.length) {
+            html = '<div class="cd-mfr-empty">No matching category.</div>';
+        } else {
+            html = matches.map(c => {
+                const name = String(c.name || '').trim();
+                const added = cdMfrHas(name);
+                const n = cdMfrCountFor(name);
+                const countHtml = n === null ? '' : `<span class="cd-mfr-count${n < 13 ? ' low' : ''}" title="${n} supplier${n === 1 ? '' : 's'} in this category">${n}</span>`;
+                return `<div class="cd-mfr-item${added ? ' added' : ''}" data-name="${escapeHtmlAttr(name)}"><input type="checkbox" class="form-check-input"${added ? ' checked' : ''} tabindex="-1"><span class="cd-mfr-name">${escapeHtml(name)}</span>${countHtml}</div>`;
+            }).join('');
+        }
+        html += `<div class="cd-mfr-foot">${cdMfrCategories.length} selected · saved automatically</div>`;
+        const keep = box.scrollTop;
+        box.innerHTML = html;
+        box.scrollTop = keep;
+        box.classList.remove('d-none');
+    }
+
+    function cdMfrRefreshOpen() {
+        const box = document.getElementById('comparison-cd-mfr-results');
+        if (box && !box.classList.contains('d-none')) {
+            cdMfrRenderResults(document.getElementById('comparison-cd-mfr-input')?.value || '');
+        }
+    }
+
+    function cdMfrHideResults() {
+        document.getElementById('comparison-cd-mfr-results')?.classList.add('d-none');
+    }
+
+    async function cdMfrLoad(sku) {
+        const seq = ++cdMfrSeq;
+        try {
+            const res = await fetch(`${dataUrl}?${new URLSearchParams({ skus: sku }).toString()}`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const json = await res.json();
+            if (seq !== cdMfrSeq || cdMfrSaving > 0 || cdMfrSaveTimer) return;
+            const hit = (json.data || []).find(r => String(r.sku || '').trim().toUpperCase() === sku.toUpperCase());
+            cdMfrCategories = Array.isArray(hit?.categories) ? hit.categories.map(c => ({ id: parseInt(c.id, 10), name: String(c.name || '') })) : [];
+            cdMfrRenderChips();
+            cdMfrRefreshOpen();
+            if (!cdMfrCategories.length) {
+                cdMfrAutofill(sku, seq);
+            }
+        } catch (e) { /* leave the chips as they are */ }
+    }
+
+    // Autofill an empty MFR Category the way the Category List page (/category.list) places this SKU:
+    // via its Parent's other SKUs, or via the categories whose suppliers are tagged with this SKU / Parent.
+    async function cdMfrAutofill(sku, seq) {
+        try {
+            if (localStorage.getItem(cdMfrNoAutofillKey(sku)) === '1') return; // user cleared it on purpose
+        } catch (e) { /* storage unavailable: carry on */ }
+        try {
+            const res = await fetch(`${comparisonCategorySuggestUrl}?${new URLSearchParams({ sku: sku }).toString()}`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const json = await res.json();
+            if (seq !== cdMfrSeq || sku !== cdMfrSku || cdMfrCategories.length) return;
+            const list = Array.isArray(json.categories) ? json.categories : [];
+            if (!json.success || !list.length || json.source === 'own') return;
+            cdMfrCategories = list.map(c => ({ id: parseInt(c.id, 10), name: String(c.name || '') }));
+            cdMfrAutofillNote = json.source === 'parent' ? 'Autofilled from the other SKUs of this Parent'
+                : (json.source === 'supplier' ? 'Autofilled from the suppliers tagged with this SKU' : '');
+            const wrap = document.getElementById('comparison-cd-mfr-box');
+            if (wrap) wrap.title = cdMfrAutofillNote;
+            cdMfrRenderChips();
+            cdMfrRefreshOpen();
+            cdMfrQueueSave();
+        } catch (e) { /* no suggestion */ }
+    }
+
+    function cdMfrInit(row, isBulk) {
+        const box = document.getElementById('comparison-cd-mfr-box');
+        if (!box) return;
+        const sku = String(row?.sku || '').trim();
+        cdMfrSku = sku;
+        clearTimeout(cdMfrSaveTimer);
+        cdMfrSaveTimer = null;
+        cdMfrCategories = Array.isArray(row?.categories)
+            ? row.categories.map(c => ({ id: parseInt(c.id, 10), name: String(c.name || '') })) : [];
+        const input = document.getElementById('comparison-cd-mfr-input');
+        if (input) input.value = '';
+        cdMfrHideResults();
+        cdMfrRenderChips();
+        box.classList.toggle('d-none', !sku || !!isBulk);
+        if (sku && !isBulk) {
+            if (!supplierCategoryOptions.length) loadProductCategories();
+            cdMfrLoadCounts().then(() => { cdMfrRenderChips(); cdMfrRefreshOpen(); });
+            cdMfrLoad(sku);
+        }
+    }
+
+    // Saves the whole current selection for this SKU (debounced so quick multi-ticks go out as one request).
+    function cdMfrQueueSave() {
+        clearTimeout(cdMfrSaveTimer);
+        cdMfrSaveTimer = setTimeout(cdMfrSaveNow, 350);
+    }
+
+    function cdMfrSaveNow() {
+        cdMfrSaveTimer = null;
+        const sku = cdMfrSku;
+        if (!sku) return;
+        const ids = cdMfrCategories.map(c => c.id).filter(n => Number.isInteger(n) && n > 0);
+        const box = document.getElementById('comparison-cd-mfr-box');
+        box?.classList.add('opacity-50');
+        cdMfrSaving += 1;
+        fetch(comparisonCategorySaveUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ sku: sku, category_ids: ids }),
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                alert('Error: ' + (res.message || 'Could not save category.'));
+                return;
+            }
+            if (Array.isArray(res.affected)) {
+                applyAffectedLinkedSkuRows(res.affected);
+            }
+        })
+        .catch(() => alert('Could not save category.'))
+        .finally(() => {
+            cdMfrSaving = Math.max(0, cdMfrSaving - 1);
+            if (!cdMfrSaving) box?.classList.remove('opacity-50');
+        });
+    }
+
+    // If the user empties the list on purpose, do not autofill it again next time.
+    function cdMfrRememberCleared() {
+        try {
+            if (cdMfrCategories.length) localStorage.removeItem(cdMfrNoAutofillKey(cdMfrSku));
+            else localStorage.setItem(cdMfrNoAutofillKey(cdMfrSku), '1');
+        } catch (e) { /* ignore */ }
+    }
+
+    function cdMfrToggle(name) {
+        name = String(name || '').trim();
+        if (!name) return;
+        if (cdMfrHas(name)) {
+            const key = name.toLowerCase();
+            cdMfrCategories = cdMfrCategories.filter(c => String(c.name || '').trim().toLowerCase() !== key);
+            cdMfrRenderChips();
+            cdMfrRefreshOpen();
+            cdMfrRememberCleared();
+            cdMfrQueueSave();
+            return;
+        }
+        // Mark it selected right away (id is filled in once the product category is resolved).
+        const placeholder = { id: 0, name: name };
+        cdMfrCategories = cdMfrCategories.concat([placeholder]);
+        cdMfrRememberCleared();
+        cdMfrRenderChips();
+        cdMfrRefreshOpen();
+        resolveProductCategoryId(name).then(id => {
+            id = parseInt(id, 10);
+            if (!Number.isInteger(id) || id <= 0) {
+                cdMfrCategories = cdMfrCategories.filter(c => c !== placeholder);
+                cdMfrRenderChips();
+                cdMfrRefreshOpen();
+                alert('Could not find or create the category "' + name + '".');
+                return;
+            }
+            placeholder.id = id;
+            cdMfrQueueSave();
+        });
+    }
+
+    (function bindCdMfr() {
+        const input = document.getElementById('comparison-cd-mfr-input');
+        const results = document.getElementById('comparison-cd-mfr-results');
+        const chips = document.getElementById('comparison-cd-mfr-chips');
+        if (!input || !results) return;
+        input.addEventListener('focus', () => cdMfrRenderResults(input.value));
+        input.addEventListener('input', () => cdMfrRenderResults(input.value));
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { cdMfrHideResults(); input.blur(); }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const first = results.querySelector('.cd-mfr-item');
+                if (first) cdMfrToggle(first.dataset.name);
+            }
+        });
+        // Keep the dropdown open and the input focused so several categories can be ticked in a row.
+        results.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            e.stopPropagation(); // the list is re-rendered below; don't let the outside-click closer see a detached target
+            const item = e.target.closest('.cd-mfr-item');
+            if (item) cdMfrToggle(item.dataset.name);
+        });
+        chips?.addEventListener('click', function (e) {
+            const btn = e.target.closest('button[data-id]');
+            if (!btn) return;
+            const id = parseInt(btn.dataset.id, 10);
+            cdMfrCategories = cdMfrCategories.filter(c => c.id !== id);
+            cdMfrRenderChips();
+            cdMfrRefreshOpen();
+            cdMfrRememberCleared();
+            cdMfrQueueSave();
+        });
+        document.addEventListener('mousedown', function (e) {
+            if (!e.target.closest('.cd-mfr-input-wrap')) cdMfrHideResults();
+        });
+    })();
+
     function openComparisonModal(row) {
         if (!cdModal) return;
 
@@ -12203,6 +13078,7 @@ document.addEventListener('DOMContentLoaded', function () {
             skuHidden.textContent = row.sku || '';
         }
         setComparisonHeaderSkuImage(row);
+        cdMfrInit(row, Array.isArray(comparisonBulkEditSkus) && comparisonBulkEditSkus.length >= 1);
 
         const sheetTabBtn = document.getElementById('cd-sheet-tab-btn');
         if (sheetTabBtn) {
@@ -12278,6 +13154,390 @@ document.addEventListener('DOMContentLoaded', function () {
             errorEl.classList.remove('d-none');
         });
     }
+
+    function qrFormFormatter() {
+        return `<span class="comparison-qr-btn" role="button" tabindex="0" title="Open QR Form" aria-label="Open QR Form">
+            <i class="mdi mdi-file-document-edit-outline" style="font-size:18px;line-height:1;"></i>
+        </span>`;
+    }
+
+    // ── QR Form: product + Critical specs (part 1) and the supplier quotation form (part 2) ──
+    const qrDataUrl = @json(route('comparison.qr.data'));
+    const qrSendUrl = @json(route('comparison.qr.send'));
+    let qrCurrent = null;
+    let qrPreselect = '';
+    const qrNameKey = (n) => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+    function qrSetResult(html) {
+        const el = document.getElementById('qrFormResult');
+        if (el) el.innerHTML = html || '';
+    }
+
+    function renderQrForm(data) {
+        qrCurrent = data;
+        const content = document.getElementById('qrFormContent');
+        const errorEl = document.getElementById('qrFormError');
+        document.getElementById('qrFormLoading')?.classList.add('d-none');
+        if (!data.has_sheet || !data.rows.length) {
+            errorEl.textContent = !data.has_sheet
+                ? 'This product has no comparison sheet yet.'
+                : 'No spec row is marked Critical on this sheet. Mark the rows the supplier must quote as Critical, then open the QR Form again.';
+            errorEl.classList.remove('d-none');
+            content.classList.add('d-none');
+            return;
+        }
+        errorEl.classList.add('d-none');
+        content.classList.remove('d-none');
+
+        document.getElementById('qrFormImage').innerHTML = data.image
+            ? `<img src="${escapeHtmlAttr(data.image)}" alt="Product ${escapeHtmlAttr(data.sku)}">`
+            : '<span class="small">No image</span>';
+
+        document.getElementById('qrFormFields').innerHTML = data.rows.map(r => `<tr>
+            <td class="fw-semibold">${escapeHtml(r.label)}</td>
+            <td><input type="text" class="form-control form-control-sm" value="" placeholder="Supplier fills this in" readonly disabled></td>
+        </tr>`).join('');
+    }
+
+    async function openQrFormModal(sku, supplierName) {
+        sku = String(sku || '').trim();
+        if (!sku) return;
+        qrPreselect = qrNameKey(supplierName);
+        document.getElementById('qrFormSku').textContent = sku;
+        document.getElementById('qrFormLoading').classList.remove('d-none');
+        document.getElementById('qrFormContent').classList.add('d-none');
+        document.getElementById('qrFormError').classList.add('d-none');
+        qrSetResult('');
+        const modalEl = document.getElementById('comparisonQrFormModal');
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        try {
+            const res = await fetch(qrDataUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.message || 'Could not load the QR form.');
+            }
+            renderQrForm(data);
+        } catch (err) {
+            document.getElementById('qrFormLoading').classList.add('d-none');
+            const errorEl = document.getElementById('qrFormError');
+            errorEl.textContent = err.message || 'Could not load the QR form.';
+            errorEl.classList.remove('d-none');
+        }
+    }
+
+    document.getElementById('comparison-cd-qr-btn')?.addEventListener('click', function () {
+        openQrFormModal(currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || ''));
+    });
+
+    function qrDraftFormatter() {
+        return `<span class="comparison-draft-btn" role="button" tabindex="0" title="View the draft email before sending" aria-label="Draft email">
+            <i class="mdi mdi-email-open-outline" style="font-size:17px;line-height:1;"></i>
+        </span>`;
+    }
+
+    // ── Draft: the email a supplier of this product's Mfr Category will receive ──
+    const qrDraftUrl = @json(route('comparison.qr.draft'));
+    let qrDraftSku = '';
+    let qrDraftSeq = 0;
+    let qrDraftSuppliers = [];
+
+    function qrDraftShowError(msg) {
+        const el = document.getElementById('qrDraftError');
+        el.textContent = msg || '';
+        el.classList.toggle('d-none', !msg);
+    }
+
+    async function qrDraftLoad() {
+        const seq = ++qrDraftSeq;
+        qrDraftShowError('');
+        const sel = document.getElementById('qrDraftWho');
+        const chosen = qrDraftSuppliers[parseInt(sel.value, 10)] || null;
+        try {
+            const params = new URLSearchParams({ sku: qrDraftSku });
+            if (chosen) {
+                params.set('supplier', chosen.name);
+                if (chosen.email) params.set('email', chosen.email);
+            }
+            const res = await fetch(qrDraftUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' } });
+            const j = await res.json();
+            if (seq !== qrDraftSeq) return;
+            if (!res.ok || !j.success) throw new Error(j.message || 'Could not load the draft.');
+            document.getElementById('qrDraftFrom').textContent = j.from;
+            document.getElementById('qrDraftTo').innerHTML = j.to
+                ? escapeHtml(j.to)
+                : '<span class="text-muted">— (no email saved for this supplier yet)</span>';
+            document.getElementById('qrDraftSubject').textContent = j.subject;
+            document.getElementById('qrDraftBody').innerHTML = j.html;
+            document.getElementById('qrDraftNoCritical').classList.toggle('d-none', !j.has_sheet || j.critical_count > 0);
+        } catch (err) {
+            qrDraftShowError(err.message || 'Could not load the draft.');
+        }
+    }
+
+    async function openQrDraftModal(sku, supplierName) {
+        sku = String(sku || '').trim();
+        if (!sku) return;
+        qrDraftSku = sku;
+        const wantKey = qrNameKey(supplierName);
+        qrDraftSuppliers = [];
+        document.getElementById('qrDraftSku').textContent = sku;
+        document.getElementById('qrDraftWho').innerHTML = '';
+        document.getElementById('qrDraftHint').textContent = '';
+        document.getElementById('qrDraftFrom').textContent = '';
+        document.getElementById('qrDraftTo').textContent = '';
+        document.getElementById('qrDraftSubject').textContent = '';
+        document.getElementById('qrDraftBody').innerHTML = '';
+        qrDraftShowError('');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('comparisonQrDraftModal')).show();
+        try {
+            const res = await fetch(qrSuppliersUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                qrDraftSuppliers = data.suppliers || [];
+                if (wantKey && !qrDraftSuppliers.some(s => qrNameKey(s.name) === wantKey)) {
+                    // Supplier is on the sheet but not tagged with this Mfr Category: still allow its draft.
+                    let extra = { name: String(supplierName).trim(), company: '', email: '' };
+                    try {
+                        const r2 = await fetch(qrDataUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+                        const d2 = await r2.json();
+                        const hit = (d2.suppliers || []).find(s => qrNameKey(s.name) === wantKey);
+                        if (hit) extra = { name: hit.name, company: hit.company || '', email: hit.email || '' };
+                    } catch (e) { /* keep the bare entry */ }
+                    qrDraftSuppliers.unshift(extra);
+                }
+                document.getElementById('qrDraftWho').innerHTML = qrDraftSuppliers
+                    .map((s, i) => `<option value="${i}">${escapeHtml(s.name)}${s.company ? ' — ' + escapeHtml(s.company) : ''}</option>`).join('');
+                const cats = (data.categories || []).join(', ');
+                document.getElementById('qrDraftHint').textContent = qrDraftSuppliers.length
+                    ? `Mfr Category ${cats}: ${qrDraftSuppliers.length} supplier${qrDraftSuppliers.length === 1 ? '' : 's'} — pick one to preview:`
+                    : 'No supplier is tagged with this product\'s Mfr Category — showing a sample with a generic name.';
+                if (wantKey) {
+                    const idx = qrDraftSuppliers.findIndex(s => qrNameKey(s.name) === wantKey);
+                    if (idx >= 0) document.getElementById('qrDraftWho').value = String(idx);
+                }
+            }
+        } catch (err) { /* fall back to the generic draft */ }
+        qrDraftLoad();
+    }
+
+    document.getElementById('qrDraftWho')?.addEventListener('change', qrDraftLoad);
+    document.getElementById('qrDraftToSend')?.addEventListener('click', function () {
+        const sku = qrDraftSku;
+        const el = document.getElementById('comparisonQrDraftModal');
+        el.addEventListener('hidden.bs.modal', function () { openQrSendModal(sku); }, { once: true });
+        bootstrap.Modal.getOrCreateInstance(el).hide();
+    });
+    document.getElementById('comparison-cd-qr-draft-btn')?.addEventListener('click', function () {
+        openQrDraftModal(currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || ''));
+    });
+
+    function qrSendFormatter() {
+        return `<span class="comparison-send-btn" role="button" tabindex="0" title="Send QR form to suppliers of this Mfr Category" aria-label="Send QR form">
+            <i class="mdi mdi-send" style="font-size:16px;line-height:1;"></i>
+        </span>`;
+    }
+
+    // ── Send: all suppliers of this SKU's Mfr Category, with their QR form status ──
+    const qrSuppliersUrl = @json(route('comparison.qr.suppliers'));
+    let qrSendCurrent = null;
+    let qrSendPreselect = '';
+
+    function qrSendSetResult(html) {
+        const el = document.getElementById('qrSendResult');
+        if (el) el.innerHTML = html || '';
+    }
+
+    function qrSendFilterRows() {
+        const q = String(document.getElementById('qrSendSearch')?.value || '').trim().toLowerCase();
+        let shown = 0;
+        document.querySelectorAll('#qrSendBody tr[data-name]').forEach(tr => {
+            const hit = !q || (tr.dataset.search || '').includes(q);
+            tr.classList.toggle('d-none', !hit);
+            if (hit) shown += 1;
+        });
+        const total = document.querySelectorAll('#qrSendBody tr[data-name]').length;
+        const countEl = document.getElementById('qrSendCount');
+        if (countEl) countEl.textContent = `${shown} of ${total} suppliers`;
+    }
+
+    function renderQrSend(data) {
+        qrSendCurrent = data;
+        document.getElementById('qrSendLoading').classList.add('d-none');
+        const errorEl = document.getElementById('qrSendError');
+        const content = document.getElementById('qrSendContent');
+        if (!data.has_sheet) {
+            errorEl.textContent = 'This product has no comparison sheet yet.';
+            errorEl.classList.remove('d-none');
+            content.classList.add('d-none');
+            return;
+        }
+        errorEl.classList.add('d-none');
+        content.classList.remove('d-none');
+        document.getElementById('qrSendNoCritical').classList.toggle('d-none', data.critical_count > 0);
+        document.getElementById('qrSendCategories').textContent = (data.categories || []).join(', ') || 'none set for this product';
+
+        const body = document.getElementById('qrSendBody');
+        if (!data.suppliers.length) {
+            body.innerHTML = '<tr><td colspan="6" class="text-muted">No suppliers are tagged with this product\'s Mfr Category. Set the Mfr Category on the product, or tag suppliers on the Suppliers page.</td></tr>';
+            document.getElementById('qrSendCount').textContent = '';
+            return;
+        }
+        body.innerHTML = data.suppliers.map((s, i) => {
+            let status = '<span class="text-muted">Not sent</span>';
+            if (s.submitted_at) {
+                status = `<span class="badge bg-success">Submitted</span> <span class="small text-muted">${escapeHtml(s.submitted_at)}</span>`;
+            } else if (s.sent_at) {
+                status = `<span class="badge bg-info text-dark">Sent</span> <span class="small text-muted">${escapeHtml(s.sent_at)}</span>`;
+            } else if (s.url) {
+                status = '<span class="badge bg-secondary">Link created</span>';
+            }
+            if (!s.on_sheet) {
+                status += '<div class="small text-muted">Not on sheet — column added on send</div>';
+            }
+            if (s.last_error) {
+                status += `<div class="small text-danger">${escapeHtml(s.last_error)}</div>`;
+            }
+            const link = s.url
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary qr-copy-btn" data-url="${escapeHtmlAttr(s.url)}" title="Copy link"><i class="mdi mdi-content-copy"></i></button>
+                   <a class="btn btn-sm btn-outline-secondary" href="${escapeHtmlAttr(s.url)}" target="_blank" rel="noopener" title="Open form"><i class="mdi mdi-open-in-new"></i></a>`
+                : '<span class="text-muted">—</span>';
+            return `<tr data-name="${escapeHtmlAttr(s.name)}" data-search="${escapeHtmlAttr((s.name + ' ' + s.company + ' ' + s.email).toLowerCase())}">
+                <td><input type="checkbox" class="form-check-input qr-send-check" aria-label="Select ${escapeHtmlAttr(s.name)}"></td>
+                <td class="fw-semibold">${escapeHtml(s.name)}</td>
+                <td>${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
+                <td><input type="text" class="form-control form-control-sm qr-send-email" value="${escapeHtmlAttr(s.email || '')}" placeholder="supplier@email.com" autocomplete="off"></td>
+                <td>${status}</td>
+                <td>${link}</td>
+            </tr>`;
+        }).join('');
+        const all = document.getElementById('qrSendAll');
+        if (all) all.checked = false;
+        qrSendFilterRows();
+        if (qrSendPreselect) {
+            body.querySelectorAll('tr[data-name]').forEach(tr => {
+                if (qrNameKey(tr.dataset.name) === qrSendPreselect) {
+                    const cb = tr.querySelector('.qr-send-check');
+                    if (cb) cb.checked = true;
+                    tr.classList.add('table-primary');
+                    tr.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    }
+
+    async function loadQrSend(sku) {
+        const res = await fetch(qrSuppliersUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'Could not load suppliers.');
+        }
+        if (qrSendPreselect && data.has_sheet && !(data.suppliers || []).some(s => qrNameKey(s.name) === qrSendPreselect)) {
+            // Supplier is on the sheet but not tagged with this Mfr Category: add it to the list so it can still be sent.
+            try {
+                const r2 = await fetch(qrDataUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' } });
+                const d2 = await r2.json();
+                const hit = (d2.suppliers || []).find(s => qrNameKey(s.name) === qrSendPreselect);
+                if (hit) {
+                    data.suppliers = [{ name: hit.name, company: hit.company || '', email: hit.email || '', on_sheet: true,
+                        url: hit.url || null, sent_at: hit.sent_at || null, submitted_at: hit.submitted_at || null,
+                        last_error: hit.last_error || null }, ...(data.suppliers || [])];
+                }
+            } catch (e) { /* list stays as is */ }
+        }
+        renderQrSend(data);
+    }
+
+    async function openQrSendModal(sku, supplierName) {
+        sku = String(sku || '').trim();
+        if (!sku) return;
+        qrSendPreselect = qrNameKey(supplierName);
+        document.getElementById('qrSendSku').textContent = sku;
+        document.getElementById('qrSendLoading').classList.remove('d-none');
+        document.getElementById('qrSendContent').classList.add('d-none');
+        document.getElementById('qrSendError').classList.add('d-none');
+        const search = document.getElementById('qrSendSearch');
+        if (search) search.value = '';
+        qrSendSetResult('');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('comparisonQrSendModal')).show();
+        try {
+            await loadQrSend(sku);
+        } catch (err) {
+            document.getElementById('qrSendLoading').classList.add('d-none');
+            const errorEl = document.getElementById('qrSendError');
+            errorEl.textContent = err.message || 'Could not load suppliers.';
+            errorEl.classList.remove('d-none');
+        }
+    }
+
+    async function qrSendSubmit(sendEmail) {
+        if (!qrSendCurrent) return;
+        const names = [];
+        const emails = {};
+        document.querySelectorAll('#qrSendBody tr[data-name]').forEach(tr => {
+            if (tr.classList.contains('d-none') || !tr.querySelector('.qr-send-check')?.checked) return;
+            names.push(tr.dataset.name);
+            emails[tr.dataset.name] = tr.querySelector('.qr-send-email')?.value || '';
+        });
+        if (!names.length) {
+            qrSendSetResult('<span class="text-danger">Select at least one supplier.</span>');
+            return;
+        }
+        qrSendSetResult('<span class="text-muted">Working…</span>');
+        try {
+            const res = await fetch(qrSendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({ sku: qrSendCurrent.sku, suppliers: names, emails, send_email: !!sendEmail, add_missing: true }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.message || 'Request failed.');
+            }
+            const lines = (data.results || []).map(r =>
+                `<div class="${r.ok ? 'text-success' : 'text-danger'}"><strong>${escapeHtml(r.supplier)}</strong> — ${escapeHtml(r.message || '')}</div>`
+            ).join('');
+            await loadQrSend(qrSendCurrent.sku);
+            qrSendSetResult(lines);
+        } catch (err) {
+            qrSendSetResult(`<span class="text-danger">${escapeHtml(err.message || 'Request failed.')}</span>`);
+        }
+    }
+
+    document.getElementById('qrSendLinksBtn')?.addEventListener('click', () => qrSendSubmit(false));
+    document.getElementById('qrSendEmailBtn')?.addEventListener('click', () => qrSendSubmit(true));
+    document.getElementById('qrSendSearch')?.addEventListener('input', qrSendFilterRows);
+    document.getElementById('qrSendAll')?.addEventListener('change', function () {
+        document.querySelectorAll('#qrSendBody tr[data-name]:not(.d-none) .qr-send-check').forEach(c => { c.checked = this.checked; });
+    });
+    document.getElementById('comparisonQrSendModal')?.addEventListener('click', function (e) {
+        const copyBtn = e.target.closest('.qr-copy-btn');
+        if (!copyBtn) return;
+        const url = copyBtn.dataset.url || '';
+        const done = () => {
+            copyBtn.innerHTML = '<i class="mdi mdi-check"></i>';
+            setTimeout(() => { copyBtn.innerHTML = '<i class="mdi mdi-content-copy"></i>'; }, 1200);
+        };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(url).then(done, () => window.prompt('Copy this link:', url));
+        } else {
+            window.prompt('Copy this link:', url);
+        }
+    });
+    document.getElementById('comparison-cd-qr-send-btn')?.addEventListener('click', function () {
+        openQrSendModal(currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || ''));
+    });
+    // Per-supplier QR Form / Draft / Send buttons in the sheet's second header row.
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.cd-qr-act-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const sku = currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || '');
+        const name = btn.dataset.supplier || '';
+        if (btn.dataset.act === 'form') openQrFormModal(sku, name);
+        else if (btn.dataset.act === 'draft') openQrDraftModal(sku, name);
+        else if (btn.dataset.act === 'send') openQrSendModal(sku, name);
+    });
 
     function cdFormatter(cell) {
         const row = cell.getRow().getData();
@@ -13595,6 +14855,54 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
             },
             {
+                title: 'QR Form',
+                field: 'qr_form',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 80,
+                headerSort: false,
+                headerTooltip: 'QR Form: product + Critical specs, and the quotation form for suppliers',
+                formatter: qrFormFormatter,
+                cellClick: function (e, cell) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const data = cell.getRow().getData();
+                    openQrFormModal(String(data.sheet_sku || data.sku || '').trim());
+                },
+            },
+            {
+                title: 'Draft',
+                field: 'qr_draft',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 80,
+                headerSort: false,
+                headerTooltip: 'Preview the email for the suppliers of this product\'s Mfr Category',
+                formatter: qrDraftFormatter,
+                cellClick: function (e, cell) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const data = cell.getRow().getData();
+                    openQrDraftModal(String(data.sheet_sku || data.sku || '').trim());
+                },
+            },
+            {
+                title: 'Send',
+                field: 'qr_send',
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                width: 80,
+                headerSort: false,
+                headerTooltip: 'Send the QR form to the suppliers of this SKU\'s Mfr Category',
+                formatter: qrSendFormatter,
+                cellClick: function (e, cell) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const data = cell.getRow().getData();
+                    openQrSendModal(String(data.sheet_sku || data.sku || '').trim());
+                },
+            },
+            {
                 title: 'History',
                 field: 'history_view',
                 hozAlign: 'center',
@@ -14283,6 +15591,97 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadComparisonSpecifications();
 
+    // Typing a supplier name directly in the sheet: Company Name follows (from the suppliers table).
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('focusout', function (e) {
+        const cell = e.target.closest ? e.target.closest('.cd-sheet-cell') : null;
+        if (!cell || sheetEditorHydrating) return;
+        const r = parseInt(cell.dataset.row, 10);
+        const c = parseInt(cell.dataset.col, 10);
+        if (Number.isNaN(r) || Number.isNaN(c)) return;
+        if (!isSupplierNameRow(currentSheetCells, r, detectSpecColumnIndex(currentSheetCells))) return;
+        writeLiveSheetCellToMemory(cell);
+        loadComparisonSupplierList().then(() => {
+            setTimeout(() => autofillCompanyNames({ cols: [c], overwrite: true }), 0);
+        });
+    });
+
+    // Supplier picker (searchable dropdown) in the Edit column drawer.
+    (function () {
+        const input = document.getElementById('comparison-column-edit-supplier-input');
+        const listEl = document.getElementById('comparison-column-edit-supplier-list');
+        if (!input || !listEl) return;
+        const open = () => {
+            renderSupplierComboList(input.value);
+            if (!comparisonSupplierList) {
+                loadComparisonSupplierList().then(() => {
+                    if (!listEl.classList.contains('d-none')) renderSupplierComboList(input.value);
+                });
+            }
+        };
+        input.addEventListener('focus', function () { input.select(); open(); });
+        input.addEventListener('click', open);
+        input.addEventListener('input', open);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { closeSupplierComboList(); return; }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const first = listEl.querySelector('.cd-supp-combo-item');
+                if (first) first.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            }
+        });
+        // mousedown (not click) so the choice lands before the input loses focus.
+        listEl.addEventListener('mousedown', function (e) {
+            const item = e.target.closest('.cd-supp-combo-item');
+            if (!item) return;
+            e.preventDefault();
+            const name = item.dataset.name || '';
+            input.value = name;
+            closeSupplierComboList();
+            applySupplierToColumnEdit(name);
+        });
+        document.addEventListener('mousedown', function (e) {
+            if (!e.target.closest('#comparison-column-edit-supplier-combo')) closeSupplierComboList();
+        });
+    })();
+
+    // Trash icon at the end of a row in the Edit column modal: delete that row, keep other unsaved edits.
+    document.getElementById('comparisonColumnEditModal')?.addEventListener('click', function (e) {
+        const delBtn = e.target.closest('.cd-col-edit-row-del');
+        if (!delBtn) {
+            return;
+        }
+        e.preventDefault();
+        const delRow = parseInt(delBtn.dataset.row, 10);
+        if (Number.isNaN(delRow)) {
+            return;
+        }
+        // Remember unsaved edits (row -> value) so the re-render does not lose them.
+        const drafts = [];
+        document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-field:not([type="hidden"])').forEach((field) => {
+            const r = parseInt(field.dataset.row, 10);
+            if (Number.isNaN(r) || r === delRow) return;
+            const original = field.tagName === 'SELECT' ? (field.dataset.current ?? null) : field.defaultValue;
+            if (original !== null && String(field.value) !== String(original) && field.value !== SPEC_ADD_VALUE) {
+                drafts.push({ row: r > delRow ? r - 1 : r, value: field.value });
+            }
+        });
+        const selected = [...columnEditSelectedRows];
+        if (!deleteSheetRowByIndex(delRow)) {
+            return;
+        }
+        columnEditSelectedRows = new Set(selected.filter(r => r !== delRow).map(r => (r > delRow ? r - 1 : r)));
+        renderColumnEditModalRows();
+        drafts.forEach((d) => {
+            const field = document.querySelector(`#comparison-column-edit-tbody .cd-col-edit-field[data-row="${d.row}"]:not([type="hidden"]):not([readonly])`);
+            if (!field) return;
+            if (field.tagName === 'SELECT' && ![...field.options].some(o => o.value === d.value)) {
+                field.add(new Option(d.value, d.value));
+            }
+            field.value = d.value;
+        });
+        refreshColumnEditBulkBar();
+    });
+
     document.getElementById('comparisonColumnEditModal')?.addEventListener('change', function (e) {
         const selectAll = e.target.closest('#comparison-column-edit-select-all');
         if (selectAll) {
@@ -14850,6 +16249,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div class="cd-col-edit-bulk-bar cd-col-edit-supplier-bar" id="comparison-column-edit-supplier-bar">
+                    <label class="cd-col-edit-bulk-label" for="comparison-column-edit-supplier-input">Supplier</label>
+                    <div class="cd-supp-combo" id="comparison-column-edit-supplier-combo">
+                        <input type="text" id="comparison-column-edit-supplier-input" class="form-control form-control-sm" placeholder="— Select supplier (type to search) —" autocomplete="off" aria-label="Supplier">
+                        <i class="mdi mdi-chevron-down cd-supp-combo-caret" aria-hidden="true"></i>
+                        <div class="cd-supp-combo-list d-none" id="comparison-column-edit-supplier-list" role="listbox"></div>
+                    </div>
+                    <span class="cd-col-edit-bulk-count" id="comparison-column-edit-supplier-hint">Fills this column's Supplier Name row</span>
+                </div>
                 <div class="cd-col-edit-bulk-bar" id="comparison-column-edit-bulk-bar">
                     <label class="cd-col-edit-bulk-label" for="comparison-column-edit-bulk-value">Apply to selected</label>
                     <span id="comparison-column-edit-bulk-value-wrap">
@@ -14870,6 +16278,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <col style="width: 42px;">
                             <col style="width: 28%;">
                             <col>
+                            <col style="width: 44px;">
                         </colgroup>
                         <thead>
                             <tr>
@@ -14879,6 +16288,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 </th>
                                 <th scope="col">Spec / Row</th>
                                 <th scope="col">Value</th>
+                                <th scope="col" class="cd-col-edit-del" title="Delete row"></th>
                             </tr>
                         </thead>
                         <tbody id="comparison-column-edit-tbody"></tbody>
