@@ -145,15 +145,21 @@
                     <div class="tab-pane fade" id="pane-category-supplier" role="tabpanel" aria-labelledby="tab-category-supplier">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                             <div class="text-muted small">
-                                One row per category. Tick categories and press <strong>Category merge</strong> to merge them into one new category.
+                                One row per category. <strong>Add category</strong> creates one. Tick categories and press <strong>Category merge</strong> to merge them into one new category, or <strong>Delete</strong> to remove them.
                             </div>
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge bg-light text-dark border" id="cs-count">0 categories</span>
                                 <button type="button" class="btn btn-light border btn-sm" id="cs-clear-filters">
                                     <i class="mdi mdi-close me-1"></i> Clear filters
                                 </button>
+                                <button type="button" class="btn btn-success btn-sm" id="cs-add-btn" title="Create a new category">
+                                    <i class="mdi mdi-plus me-1"></i> Add category
+                                </button>
                                 <button type="button" class="btn btn-primary btn-sm" id="cs-merge-btn" title="Merge the ticked categories into one new category">
                                     <i class="mdi mdi-call-merge me-1"></i> Category merge <span id="cs-merge-count"></span>
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" id="cs-delete-btn" disabled title="Delete the ticked categories">
+                                    <i class="mdi mdi-delete me-1"></i> Delete <span id="cs-delete-count"></span>
                                 </button>
                             </div>
                         </div>
@@ -384,6 +390,28 @@
                                 <div class="modal-footer">
                                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="cmg-save" disabled>
+                                        <i class="mdi mdi-content-save me-1"></i> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- Add category (Category - Supplier tab) --}}
+                    <div class="modal fade" id="categoryCreateModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered modal-sm shadow-none">
+                            <div class="modal-content border-0 rounded-3">
+                                <div class="modal-header bg-success text-white rounded-top">
+                                    <h5 class="modal-title"><i class="mdi mdi-plus me-1"></i> Add category</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <label class="form-label fw-semibold" for="ccm-name">Category name <span class="text-danger">*</span></label>
+                                    <input type="text" id="ccm-name" class="form-control" maxlength="255" autocomplete="off" placeholder="Type the category name">
+                                    <div class="text-danger small mt-2" id="ccm-error" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-success" id="ccm-save" disabled>
                                         <i class="mdi mdi-content-save me-1"></i> Save
                                     </button>
                                 </div>
@@ -1581,6 +1609,8 @@
                     (shown === total ? total : shown + ' of ' + total) + (total === 1 ? ' category' : ' categories');
                 const picked = csTable.getSelectedRows().length;
                 document.getElementById('cs-merge-count').textContent = picked ? '(' + picked + ')' : '';
+                document.getElementById('cs-delete-count').textContent = picked ? '(' + picked + ')' : '';
+                document.getElementById('cs-delete-btn').disabled = picked === 0;
                 const all = document.getElementById('cs-select-all');
                 if (all) {
                     all.checked = shown > 0 && picked === shown;
@@ -1634,6 +1664,10 @@
                                       return '<span class="d-inline-block border rounded-pill bg-light px-2 py-0 me-1 mb-1 small">' + esc(s.name) + '</span>';
                                   }).join('');
                           } },
+                        { title: 'Action', field: 'key', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                          formatter: function(cell) {
+                              return '<button type="button" class="btn btn-sm btn-soft-danger cs-delete-row" title="Delete this category" data-key="' + esc(cell.getValue()) + '"><i class="mdi mdi-delete"></i></button>';
+                          } },
                     ],
                 });
                 csTable.on('rowSelectionChanged', updateCounts);
@@ -1664,6 +1698,89 @@
                 const ids = [];
                 if (csTable) csTable.getSelectedData().forEach(function(r) { (r.category_ids || []).forEach(function(id) { ids.push(id); }); });
                 window.openCategoryMerge(ids);
+            });
+
+            // ---- Delete (one row, or every ticked row) ----
+            const csrf = function() { return $('meta[name="csrf-token"]').attr('content'); };
+            const errMsg = function(xhr) {
+                if (xhr && xhr.responseJSON) {
+                    if (xhr.responseJSON.errors) return Object.values(xhr.responseJSON.errors).flat().join(' ');
+                    if (xhr.responseJSON.message) return xhr.responseJSON.message;
+                }
+                return 'Server error occurred.';
+            };
+            function deleteRows(rows) {
+                if (!rows.length) return;
+                const ids = [];
+                let suppliers = 0;
+                rows.forEach(function(r) {
+                    (r.category_ids || []).forEach(function(id) { ids.push(id); });
+                    suppliers += r.supplier_count || 0;
+                });
+                const names = rows.map(function(r) { return sentenceCase(r.category_name); });
+                const what = rows.length === 1 ? 'the category "' + names[0] + '"' : rows.length + ' categories (' + names.slice(0, 5).join(', ') + (names.length > 5 ? ', ...' : '') + ')';
+                const text = 'Delete ' + what + '?\n\n' +
+                    (suppliers ? suppliers + ' supplier link' + (suppliers === 1 ? '' : 's') + ' will be removed (the suppliers themselves stay in Supplier List).\n' : '') +
+                    'SKUs stay in CP Master.';
+                if (!confirm(text)) return;
+                $.ajax({
+                    url: '{{ route('category.delete-many') }}',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: csrf(), category_ids: ids }
+                }).done(function(res) {
+                    alert((res && res.message) || 'Deleted.');
+                    window.location.reload(); // the page carries category lists in several modals
+                }).fail(function(xhr) { alert('Could not delete: ' + errMsg(xhr)); });
+            }
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest ? e.target.closest('.cs-delete-row') : null;
+                if (!btn || !csTable) return;
+                const row = csTable.getRow(btn.getAttribute('data-key'));
+                if (row) deleteRows([row.getData()]);
+            });
+            document.getElementById('cs-delete-btn').addEventListener('click', function() {
+                if (csTable) deleteRows(csTable.getSelectedData());
+            });
+
+            // ---- Add category ----
+            const createModal = document.getElementById('categoryCreateModal');
+            const $ccmName = $('#ccm-name');
+            function ccmState() {
+                const name = $ccmName.val().trim();
+                const dupe = name && csTable && csTable.getData().some(function(r) { return r.category_name.trim().toLowerCase() === name.toLowerCase(); });
+                if (dupe) $('#ccm-error').text('A category named "' + name + '" already exists.').show(); else $('#ccm-error').hide();
+                $('#ccm-save').prop('disabled', !name || dupe);
+            }
+            document.getElementById('cs-add-btn').addEventListener('click', function() {
+                bootstrap.Modal.getOrCreateInstance(createModal).show();
+            });
+            createModal.addEventListener('show.bs.modal', function() {
+                $ccmName.val('');
+                $('#ccm-error').hide();
+                $('#ccm-save').prop('disabled', true).html('<i class="mdi mdi-content-save me-1"></i> Save');
+            });
+            createModal.addEventListener('shown.bs.modal', function() { $ccmName.trigger('focus'); });
+            $ccmName.on('input', ccmState).on('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); $('#ccm-save').trigger('click'); }
+            });
+            $('#ccm-save').on('click', function() {
+                const name = $ccmName.val().trim();
+                if (!name || $(this).prop('disabled')) return;
+                const $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+                $.ajax({
+                    url: '{{ route('category.create') }}',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: csrf(), category_name: name }
+                }).done(function(res) {
+                    if (res && res.success) { window.location.reload(); return; }
+                    $('#ccm-error').text((res && res.message) || 'Could not create the category.').show();
+                    $btn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save');
+                }).fail(function(xhr) {
+                    $('#ccm-error').text(errMsg(xhr)).show();
+                    $btn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save');
+                });
             });
 
             // Tabs: build tab 2 the first time it is shown (a hidden Tabulator cannot measure itself),

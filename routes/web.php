@@ -6172,6 +6172,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/category/sku-search', [CategoryController::class, 'categorySkuSearch'])->name('category.sku.search');
     Route::post('/category/rows/add', [CategoryController::class, 'categoryRowsAdd'])->name('category.rows.add');
     Route::post('/category/merge', [CategoryController::class, 'mergeCategories'])->name('category.merge');
+    Route::post('/category/delete-many', [CategoryController::class, 'deleteCategories'])->name('category.delete-many');
 
     // To Order Analysis routes
     Route::controller(ToOrderAnalysisController::class)->group(function () {

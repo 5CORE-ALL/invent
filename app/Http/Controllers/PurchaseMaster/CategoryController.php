@@ -1108,6 +1108,55 @@ class CategoryController extends Controller
     }
 
     /**
+     * Delete categories (Category - Supplier tab). Only the category itself is deleted: each of its
+     * suppliers just loses the link to it (the supplier stays in Supplier List, with its other
+     * categories), and CP Master SKUs are left alone (they stay in CP Master and are simply listed as
+     * "no category" until they are put in another one).
+     */
+    public function deleteCategories(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'category_ids' => 'required|array|min:1|max:500',
+            'category_ids.*' => 'required|integer',
+        ], ['category_ids.required' => 'Pick at least one category to delete.']);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $ids = array_values(array_unique(array_map('intval', $request->input('category_ids'))));
+        $categories = Category::query()->whereIn('id', $ids)->get(['id', 'name']);
+        if ($categories->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'The categories were not found (already deleted?).'], 404);
+        }
+        $foundIds = $categories->pluck('id')->map(fn ($i) => (int) $i)->all();
+
+        $unlinked = 0;
+        DB::transaction(function () use ($foundIds, &$unlinked) {
+            $suppliers = Supplier::query()->where(function ($q) use ($foundIds) {
+                foreach ($foundIds as $id) {
+                    $q->orWhereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$id]);
+                }
+            })->get();
+            foreach ($suppliers as $supplier) {
+                $remaining = array_values(array_filter($this->supplierCategoryIds($supplier), fn ($cid) => ! in_array($cid, $foundIds, true)));
+                $supplier->category_id = $remaining === [] ? null : implode(',', $remaining);
+                $supplier->save();
+                $unlinked++;
+            }
+            Category::query()->whereIn('id', $foundIds)->delete();
+        });
+
+        $n = count($foundIds);
+
+        return response()->json([
+            'success' => true,
+            'message' => $n.' categor'.($n === 1 ? 'y' : 'ies').' deleted ('.$unlinked.' supplier link'.($unlinked === 1 ? '' : 's').' removed).',
+            'deleted' => $n,
+            'suppliers_unlinked' => $unlinked,
+        ]);
+    }
+
+    /**
      * Merge categories ("Category merge" on /category.list): everything that belongs to the chosen
      * categories (their CP Master SKUs and their suppliers) is moved under ONE category with the new
      * name, and the chosen categories are then removed.
