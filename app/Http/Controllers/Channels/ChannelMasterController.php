@@ -17684,17 +17684,21 @@ class ChannelMasterController extends Controller
         $isRename = $updatedChannel !== null
             && mb_strtolower(trim((string) $updatedChannel)) !== mb_strtolower(trim((string) $channel->channel));
         if ($isRename && !in_array($currentEmail, $channelRenameAllowed, true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You do not have permission to edit the channel name.',
-            ], 403);
+            // The name field is read-only for these users, so a differing value is just a
+            // display/lookup mismatch (alias, spacing). Keep the stored name and save the rest.
+            $updatedChannel = $channel->channel;
         }
 
         $channel->channel = $updatedChannel;
         $channel->sheet_link = $sheetUrl;
         $channel->type = $type;
-        $channel->channel_percentage = $channelPercentage;
-        $channel->base = $base;
+        // The edit form no longer posts these; only touch them when sent so saves don't wipe them.
+        if ($request->has('channel_percentage')) {
+            $channel->channel_percentage = $channelPercentage;
+        }
+        if ($request->has('base')) {
+            $channel->base = $base;
+        }
         // Target is no longer editable from the UI; only touch it when the
         // request actually sends the field so existing values aren't wiped.
         if ($request->has('target')) {

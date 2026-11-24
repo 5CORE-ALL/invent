@@ -483,7 +483,8 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            z-index: 9999;
+            /* Must sit above .modal (z-index 9999 !important) so errors raised while a modal is open stay visible. */
+            z-index: 20000;
         }
 
         /* Modal z-index fix */
@@ -6740,7 +6741,7 @@
                             return `
                                 <div class="d-flex justify-content-center gap-1">
                                     <button class="btn btn-sm btn-outline-primary edit-channel-btn" 
-                                            data-channel='${JSON.stringify(rowData)}' 
+                                            data-channel='${JSON.stringify(rowData).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;')}' 
                                             title="Edit">
                                         <i class="fas fa-edit"></i>
                                     </button>
@@ -10082,12 +10083,20 @@
                 }
                 formData.append('_token', $('meta[name="csrf-token"]').attr('content'));
 
+                const $updateBtn = $('#updateChannelBtn');
+                if ($updateBtn.prop('disabled')) return;
+                $updateBtn.prop('disabled', true).text('Updating...');
+
                 $.ajax({
                     url: '/channel_master/update',
                     method: 'POST',
                     data: formData,
                     processData: false,
                     contentType: false,
+                    headers: { 'Accept': 'application/json' },
+                    complete: function() {
+                        $updateBtn.prop('disabled', false).text('Update Channel');
+                    },
                     success: function(res) {
                         if (res.success) {
                             const modal = bootstrap.Modal.getInstance(document.getElementById(
@@ -10105,9 +10114,13 @@
                         }
                     },
                     error: function(xhr) {
-                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                        console.error('Channel update failed', xhr.status, xhr.responseText);
+                        let msg = (xhr.responseJSON && xhr.responseJSON.message)
                             ? xhr.responseJSON.message
-                            : 'Error updating channel';
+                            : 'Error updating channel (HTTP ' + xhr.status + ')';
+                        if (xhr.responseJSON && xhr.responseJSON.errors) {
+                            msg = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                        }
                         showToast('error', msg);
                     }
                 });
