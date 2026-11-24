@@ -194,7 +194,7 @@ final class EbayTradingReviseItem
                 $name = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME);
                 $up = self::uploadImageToEps($endpoint, $devId, $appId, $certId, $authToken, $url, $name !== '' ? mb_substr(rawurldecode($name), 0, 60) : 'image', self::driveFilePath($url));
                 if (($up['success'] ?? false) && ! empty($up['url'])) {
-                    $cache[$url] = preg_replace('#^http://#i', 'https://', (string) $up['url']);
+                    $cache[$url] = self::fullSizeEbayPictureUrl((string) $up['url']);
                     $out['hosted']++;
                 } else {
                     $cache[$url] = null;
@@ -206,12 +206,31 @@ final class EbayTradingReviseItem
             // Drop the old address attributes, then write the working one.
             $tag = preg_replace('#\s(?:src|srcset|data-src|data-original|sizes)\s*=\s*(?:"[^"]*"|\'[^\']*\')#i', '', $tag) ?? $tag;
 
-            return preg_replace('#<img\b#i', '<img src="'.htmlspecialchars($final, ENT_QUOTES, 'UTF-8').'"', $tag, 1) ?? $tag;
+            // Fit the page width but never shrink below the picture's own size.
+            $tag = preg_replace('#\sstyle\s*=\s*(?:"[^"]*"|\'[^\']*\')#i', '', $tag) ?? $tag;
+
+            return preg_replace('#<img\b#i', '<img src="'.htmlspecialchars($final, ENT_QUOTES, 'UTF-8').'" style="max-width:100%;height:auto;"', $tag, 1) ?? $tag;
         }, $html);
 
         $out['html'] = is_string($converted) ? $converted : $html;
 
         return $out;
+    }
+
+    /**
+     * eBay hands back a thumbnail-sized address for an uploaded picture (".../s-l225.jpg", ".../$_1.JPG"). Inside a
+     * description that shows the picture tiny, so ask eBay's picture host for its largest size instead.
+     */
+    private static function fullSizeEbayPictureUrl(string $url): string
+    {
+        $url = preg_replace('#^http://#i', 'https://', trim($url)) ?? $url;
+        if (! preg_match('#^https://[a-z0-9.-]*ebayimg\.com/#i', $url)) {
+            return $url;
+        }
+        $url = preg_replace('#/s-l\d+(\.[A-Za-z]+)#', '/s-l1600$1', $url) ?? $url;
+        $url = preg_replace_callback('#\$_\d+(\.[A-Za-z]+)#', static fn (array $m): string => '$_57'.$m[1], $url) ?? $url;
+
+        return $url;
     }
 
     /**
