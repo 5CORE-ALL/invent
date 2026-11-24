@@ -8839,6 +8839,13 @@
             requireSelection: false,
             summaryWhenEmpty: true,
             fallbackPrice: getSavedSameSprice,
+            // Same column rules as the ✓ / auto-save (PPower & BestBuy = High Shipping = X + Diff, not the old STD "×1.15 − Ship"),
+            // so the previewed boxes show exactly what gets saved. Doba stays −25%.
+            priceFn: function(base, $tr) {
+                const mpLower = String(($tr && $tr.attr('data-marketplace')) || '').toLowerCase();
+                if (isBulkSprice25OffChannel(mpLower)) return sprice25OffFromBase(base);
+                return chBulkSpriceFor(base, $tr);
+            },
             isActive: function() { return samePriceDirty && String($('#modal-sprice-same-input').val() || '') !== ''; },
             rowsOpts: { alwaysIncludeDoba: true, alwaysIncludeStdRuleChannels: true, includeAllEditableWhenNoneSelected: true }
         });
@@ -10396,7 +10403,8 @@
             if (t === CHPUSH_NOSHIP_GROUP.toLowerCase()) return chpushNoShipPrice(x); // 0.75 × X − Ship
             if (t === 'high shipping') {                                              // X + Shipping Master Diff
                 const d = chpushShipDiff();
-                return d == null ? null : Math.max(0.01, +(x + d).toFixed(2));
+                // No Diff (Ship BB / Ship missing in Product Master): use X itself — never leave PPower / BestBuy untouched
+                return Math.max(0.01, +(x + (d == null ? 0 : d)).toFixed(2));
             }
             return +x.toFixed(2);                                                     // B2C and the rest = X
         }

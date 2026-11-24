@@ -174,7 +174,8 @@ class ChannelSpriceRuleService
             return max(0.01, round(($x * 0.75) - $shipAmount, 2));
         }
         if ($t === 'high shipping') {
-            return $shipDiff === null ? null : max(0.01, round($x + $shipDiff, 2));
+            // No Diff (Ship BB / Ship missing): X itself, so High Shipping channels are never left unchanged
+            return max(0.01, round($x + ($shipDiff ?? 0.0), 2));
         }
 
         return $x;
