@@ -302,6 +302,26 @@
             color: #fff;
             font-size: 10px;
         }
+        #vm-push-overlay {
+            position: fixed; inset: 0; z-index: 2000; display: none;
+            align-items: center; justify-content: center;
+            background: rgba(15, 23, 42, .55); backdrop-filter: blur(2px);
+        }
+        #vm-push-overlay.show { display: flex; }
+        #vm-push-overlay .vm-push-card {
+            width: min(480px, 92vw); max-height: 80vh; overflow: auto; text-align: center;
+            background: #fff; border-radius: 14px; padding: 26px 24px 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+        }
+        #vm-push-overlay .vm-push-icon { font-size: 44px; line-height: 1; margin-bottom: 10px; }
+        #vm-push-overlay .vm-push-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+        #vm-push-overlay .vm-push-text { font-size: 13px; color: #475569; word-break: break-word; }
+        #vm-push-overlay .vm-push-bar { height: 6px; border-radius: 4px; background: #e2e8f0; overflow: hidden; margin-top: 14px; }
+        #vm-push-overlay .vm-push-bar > div { height: 100%; width: 0; background: #3b82f6; transition: width .25s; }
+        #vm-push-overlay .vm-push-list { text-align: left; font-size: 12px; margin: 12px 0 0; padding-left: 18px; color: #b91c1c; }
+        #vm-push-overlay.is-ok .vm-push-icon { color: #16a34a; }
+        #vm-push-overlay.is-fail .vm-push-icon { color: #dc2626; }
+        #vm-push-overlay.is-busy .vm-push-icon { color: #3b82f6; }
     </style>
 @endsection
 
@@ -348,6 +368,16 @@
                         <button type="button" class="btn btn-sm btn-warning" id="vm-update-btn" title="Fill empty Title, Description and Bullet 1–5 from each parent's SKUs; if a SKU has none, from the Temu tables, then the Amazon tables">
                             <i class="bi bi-arrow-repeat me-1"></i>Update
                         </button>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-primary dropdown-toggle" id="vm-bulk-push" data-bs-toggle="dropdown" aria-expanded="false" title="Tick the PARENT rows, then push their saved A+ content to the parent listings">
+                                <i class="fas fa-cloud-upload-alt me-1"></i>Push A+
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><h6 class="dropdown-header">Push the saved A+ of the ticked parents to</h6></li>
+                                <li><a class="dropdown-item" href="#" data-bulk-push="ebay2">eBay 2</a></li>
+                                <li><a class="dropdown-item" href="#" data-bulk-push="ebay3">eBay 3</a></li>
+                            </ul>
+                        </div>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
                         <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description and Bullet 1–5 are shared by every child of that parent. A child row’s A+ Content comes from Description Master and its images come from Image Master, and both refresh from those pages whenever Variation Master loads. Where the marketplace takes A+ (eBay) a saved A+ Content is sent instead of the Description; other marketplaces use the Description.</span>
                         <span class="small ms-auto" id="vm-status"></span>
@@ -425,6 +455,21 @@
     </div>
 
     {{-- Same editor as Description Master's "Edit descriptions" modal. The parent keeps ONE shared content. --}}
+    {{-- Loader while A+ is pushed, then the success / failure result. --}}
+    <div id="vm-push-overlay" role="alertdialog" aria-live="polite">
+        <div class="vm-push-card">
+            <div class="vm-push-icon"><i class="fas fa-spinner fa-spin"></i></div>
+            <div class="vm-push-title"></div>
+            <div class="vm-push-text"></div>
+            <div class="vm-push-bar d-none"><div></div></div>
+            <ul class="vm-push-list d-none"></ul>
+            <div class="mt-3 d-flex justify-content-center gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="vm-push-dl"><i class="fas fa-download me-1"></i>Download list (CSV)</button>
+                <button type="button" class="btn btn-primary btn-sm d-none" id="vm-push-close">OK</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="vm-aplus-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
@@ -456,7 +501,7 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <div class="btn-group dropup d-none" id="vm-aplus-push-wrap">
                         <button type="button" class="btn btn-primary dropdown-toggle" id="vm-aplus-push" data-bs-toggle="dropdown" aria-expanded="false" title="Saves this A+ content, then updates the parent listing only">
-                            <i class="fas fa-cloud-upload-alt"></i> Push to marketplace
+                            <i class="fas fa-cloud-upload-alt"></i> Push A+
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><h6 class="dropdown-header">Update the parent listing's A+</h6></li>
@@ -916,6 +961,10 @@
                     setStatus(json.message || 'Updated.', true);
                     table.deselectRow();
                     table.replaceData();
+                    if (Array.isArray(json.issues) && json.issues.length) {
+                        pushOverlay.done(false, json.issues.length + ' parent' + (json.issues.length === 1 ? '' : 's') + ' not updated', json.message || '', json.issues,
+                            [['Reason']].concat(json.issues.map(function (r) { return [r]; })));
+                    }
                 }).catch(function (err) {
                     editStatusEl.className = 'small me-auto text-danger';
                     editStatusEl.textContent = err && err.message ? err.message : 'Bulk update failed.';
@@ -1261,6 +1310,62 @@
             }
 
             // Push to marketplace: save the editor as the parent's A+, then update that parent listing on eBay 2 / eBay 3.
+            const pushOverlay = (function () {
+                const el = document.getElementById('vm-push-overlay');
+                const icon = el.querySelector('.vm-push-icon');
+                const title = el.querySelector('.vm-push-title');
+                const text = el.querySelector('.vm-push-text');
+                const bar = el.querySelector('.vm-push-bar');
+                const fill = bar.firstElementChild;
+                const list = el.querySelector('.vm-push-list');
+                const close = document.getElementById('vm-push-close');
+                const dl = document.getElementById('vm-push-dl');
+                let csvRows = null;
+                close.addEventListener('click', function () { el.classList.remove('show'); });
+                dl.addEventListener('click', function () {
+                    if (!csvRows) return;
+                    const csv = csvRows.map(function (r) {
+                        return r.map(function (c) { return '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"'; }).join(',');
+                    }).join('\r\n');
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+                    a.download = 'variation-master-failed-rows.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                });
+                return {
+                    busy: function (t, sub, percent) {
+                        el.className = 'show is-busy';
+                        icon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                        title.textContent = t;
+                        text.textContent = sub || '';
+                        list.classList.add('d-none');
+                        close.classList.add('d-none');
+                        dl.classList.add('d-none');
+                        bar.classList.toggle('d-none', typeof percent !== 'number');
+                        if (typeof percent === 'number') fill.style.width = Math.max(3, percent) + '%';
+                    },
+                    done: function (ok, t, message, failures, csv) {
+                        csvRows = csv || null;
+                        dl.classList.toggle('d-none', !csv);
+                        el.className = 'show ' + (ok ? 'is-ok' : 'is-fail');
+                        icon.innerHTML = ok ? '<i class="fas fa-circle-check"></i>' : '<i class="fas fa-circle-xmark"></i>';
+                        title.textContent = t;
+                        text.textContent = message || '';
+                        bar.classList.add('d-none');
+                        list.innerHTML = '';
+                        (failures || []).forEach(function (f) {
+                            const li = document.createElement('li');
+                            li.textContent = f;
+                            list.appendChild(li);
+                        });
+                        list.classList.toggle('d-none', !(failures && failures.length));
+                        close.classList.remove('d-none');
+                        close.focus();
+                    }
+                };
+            })();
             const pushAplusUrl = @json(route('variation.master.push.aplus'));
             const PUSH_LABELS = { ebay2: 'eBay 2', ebay3: 'eBay 3' };
             document.querySelectorAll('#vm-aplus-push-wrap [data-push-mp]').forEach(function (item) {
@@ -1279,20 +1384,73 @@
                     if (!window.confirm('Save this A+ content and update the PARENT listing ' + (row.sku || parentLabel(row)) + ' on ' + PUSH_LABELS[mp] + '? Child listings are not changed.')) return;
                     pushBtn.disabled = true;
                     saveBtn.disabled = true;
+                    const label = row.sku || parentLabel(row);
                     aplusStatus.className = 'small me-auto text-muted';
                     aplusStatus.textContent = 'Saving A+…';
+                    pushOverlay.busy('Saving A+ content…', label);
                     postJson(saveUrl, { id: row.id, parent: row.parent || '', aplus: html }).then(function (json) {
                         applyParentPatch(row, { aplus: json.aplus || '' });
                         aplusStatus.textContent = 'Pushing to ' + PUSH_LABELS[mp] + '…';
+                        pushOverlay.busy('Pushing A+ to ' + PUSH_LABELS[mp] + '…', label + ' · this can take up to a minute');
                         return postJson(pushAplusUrl, { id: row.id, marketplace: mp });
                     }).then(function (json) {
-                        descNote(json.message || ('A+ updated on ' + PUSH_LABELS[mp] + '.'));
-                        setStatus(json.message || ('A+ updated on ' + PUSH_LABELS[mp] + '.'), true);
+                        const msg = json.message || ('A+ updated on ' + PUSH_LABELS[mp] + '.');
+                        descNote(msg);
+                        setStatus(msg, true);
+                        pushOverlay.done(true, 'A+ pushed to ' + PUSH_LABELS[mp], msg);
                     }).catch(function (err) {
-                        descFail(err.message || 'Push failed.');
+                        const msg = (err && err.message) || 'Push failed.';
+                        descFail(msg);
+                        setStatus(msg, false);
+                        pushOverlay.done(false, 'Push to ' + PUSH_LABELS[mp] + ' failed', msg);
                     }).finally(function () {
                         pushBtn.disabled = false;
                         saveBtn.disabled = false;
+                    });
+                });
+            });
+
+            // Bulk "Push A+": the saved A+ of every ticked PARENT row, one parent after another.
+            document.querySelectorAll('[data-bulk-push]').forEach(function (item) {
+                item.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    const mp = item.dataset.bulkPush;
+                    const label = PUSH_LABELS[mp];
+                    const picked = table.getSelectedRows().map(function (r) { return r.getData(); });
+                    const parents = [];
+                    const seen = {};
+                    picked.forEach(function (d) {
+                        if (d.row_type === 'parent' && !seen[d.id]) { seen[d.id] = true; parents.push(d); }
+                    });
+                    if (!parents.length) {
+                        const msg = picked.length
+                            ? 'Only PARENT rows can be pushed. Tick at least one PARENT row.'
+                            : 'Tick the PARENT rows whose A+ you want to push first.';
+                        setStatus(msg, false);
+                        pushOverlay.done(false, 'Nothing to push', msg);
+                        return;
+                    }
+                    if (!window.confirm('Push the saved A+ content of ' + parents.length + ' parent' + (parents.length === 1 ? '' : 's') + ' to ' + label + '? Child listings are not changed.')) return;
+
+                    const failures = [];
+                    let okCount = 0;
+                    let index = 0;
+                    const tag = function (d) { return d.sku || parentLabel(d); };
+                    pushOverlay.busy('Pushing A+ to ' + label + '…', 'Starting…', 0);
+                    const next = function () {
+                        if (index >= parents.length) return Promise.resolve();
+                        const d = parents[index++];
+                        pushOverlay.busy('Pushing A+ to ' + label + '… (' + index + ' of ' + parents.length + ')', tag(d), (index - 1) / parents.length * 100);
+                        return postJson(pushAplusUrl, { id: d.id, marketplace: mp }).then(function () {
+                            okCount++;
+                        }).catch(function (err) {
+                            failures.push((err && err.message) || (tag(d) + ': failed'));
+                        }).then(next);
+                    };
+                    next().then(function () {
+                        const summary = okCount + ' of ' + parents.length + ' parent' + (parents.length === 1 ? '' : 's') + ' updated on ' + label + '.';
+                        setStatus(summary + (failures.length ? ' ' + failures.length + ' failed.' : ''), failures.length === 0);
+                        pushOverlay.done(failures.length === 0, failures.length === 0 ? 'A+ pushed to ' + label : (okCount ? 'Pushed with errors' : 'Push to ' + label + ' failed'), summary, failures);
                     });
                 });
             });
@@ -1486,6 +1644,7 @@
                 const body = new FormData();
                 body.append('file', file);
                 setStatus('Uploading…', true);
+                pushOverlay.busy('Uploading ' + file.name + '…', 'Importing rows, please wait.');
                 fetch(importUrl, {
                     method: 'POST',
                     headers: {
@@ -1498,11 +1657,31 @@
                         return { ok: res.ok, json: json };
                     });
                 }).then(function (result) {
-                    const message = (result.json && result.json.message) || (result.ok ? 'Uploaded.' : 'Upload failed.');
-                    setStatus(message, result.ok && result.json && result.json.success !== false);
+                    const json = result.json || {};
+                    let message = json.message || (result.ok ? 'Uploaded.' : 'Upload failed.');
+                    if (!result.ok && json.errors) {
+                        const first = Object.values(json.errors)[0];
+                        if (first && first[0]) message = first[0];
+                    }
+                    const good = result.ok && json.success !== false;
+                    setStatus(message, good);
                     if (result.ok) table.replaceData();
+                    const issues = Array.isArray(json.issues) ? json.issues : [];
+                    if (issues.length) {
+                        const lines = issues.map(function (i) {
+                            const who = [i.sku ? 'SKU ' + i.sku : '', i.parent ? 'Parent ' + i.parent : ''].filter(Boolean).join(' · ') || 'Row';
+                            return 'Row ' + i.row + ' — ' + who + ': ' + i.reason;
+                        });
+                        const csv = [['Row', 'SKU', 'Parent', 'Type', 'Reason']].concat(issues.map(function (i) {
+                            return [i.row, i.sku, i.parent, i.kind, i.reason];
+                        }));
+                        pushOverlay.done(false, issues.length + ' row' + (issues.length === 1 ? '' : 's') + ' not imported', message, lines, csv);
+                    } else {
+                        pushOverlay.done(good, good ? 'Upload complete' : 'Upload failed', message);
+                    }
                 }).catch(function () {
                     setStatus('Upload failed.', false);
+                    pushOverlay.done(false, 'Upload failed', 'The server did not return a readable answer. If the file is large, try again or split it.');
                 });
             });
         });

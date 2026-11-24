@@ -448,7 +448,7 @@ class VariationMasterController extends Controller
                         $this->extraFromRequest($request)
                     );
                     if ($error !== null) {
-                        $errors[] = $error;
+                        $errors[] = str_contains($error, $parent) ? $error : $parent.': '.$error;
                     } else {
                         $parentsUpdated++;
                     }
@@ -465,11 +465,12 @@ class VariationMasterController extends Controller
         }
         $message = implode(', ', $parts).'.';
         if ($errors !== []) {
-            $message .= ' Skipped: '.implode(' ', array_slice(array_unique($errors), 0, 3));
+            $message .= ' '.count(array_unique($errors)).' skipped, see the list.';
         }
 
         return response()->json([
             'success' => $childUpdated > 0 || $parentsUpdated > 0,
+            'issues' => array_values(array_unique($errors)),
             'parent_created' => $this->parentRowCreated,
             'message' => $message,
             'sku_updated' => $childUpdated,
@@ -1000,15 +1001,34 @@ class VariationMasterController extends Controller
         $updated = 0;
         $skipped = 0;
         $missing = 0;
+        // Every row that was not imported, with the reason: [row number in the file, sku, parent, kind, reason].
+        $issues = [];
 
-        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing) {
-            foreach (array_slice($rows, 1) as $row) {
+        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing, &$issues) {
+            foreach (array_slice($rows, 1, null, true) as $rowIndex => $row) {
                 if (! is_array($row)) {
                     continue;
                 }
+                $fileRow = $rowIndex + 1;
                 $sku = $this->normalizeDisplay($row[$skuIdx] ?? null);
+                $rowParent = $parentIdx !== null ? $this->normalizeDisplay($row[$parentIdx] ?? null) : '';
+                $issue = static function (string $kind, string $reason) use (&$issues, $fileRow, &$sku, &$rowParent) {
+                    $issues[] = ['row' => $fileRow, 'sku' => $sku, 'parent' => $rowParent, 'kind' => $kind, 'reason' => $reason];
+                };
                 if ($sku === '' || ListingManagerFamily::isParentSku($sku)) {
                     $skipped++;
+                    $blank = true;
+                    foreach ($row as $cell) {
+                        if (trim((string) $cell) !== '') {
+                            $blank = false;
+                            break;
+                        }
+                    }
+                    if (! $blank) {
+                        $issue('skipped', $sku === ''
+                            ? 'Child SKU is empty, so the row was skipped.'
+                            : 'PARENT rows are not imported; the import reads child SKU rows only (the parent text is taken from them).');
+                    }
 
                     continue;
                 }
@@ -1017,8 +1037,12 @@ class VariationMasterController extends Controller
                 $product = $byNorm[$key] ?? null;
                 if (! $product) {
                     $missing++;
+                    $issue('not_found', 'SKU was not found on CP master.');
 
                     continue;
+                }
+                if ($rowParent === '') {
+                    $rowParent = $this->normalizeDisplay($product->parent);
                 }
 
                 $changed = false;
@@ -1061,6 +1085,7 @@ class VariationMasterController extends Controller
                     );
                     if ($error !== null) {
                         $missing++;
+                        $issue('failed', $error);
 
                         continue;
                     }
@@ -1069,6 +1094,7 @@ class VariationMasterController extends Controller
 
                 if (! $changed) {
                     $skipped++;
+                    $issue('skipped', 'Nothing to update: the file has none of the importable columns for this row.');
 
                     continue;
                 }
@@ -1077,12 +1103,16 @@ class VariationMasterController extends Controller
             }
         });
 
+        $failed = count($issues);
+
         return response()->json([
             'success' => true,
-            'message' => "Updated {$updated} SKU(s). Skipped {$skipped}. Not found {$missing}.",
+            'message' => "Updated {$updated} SKU(s). Skipped {$skipped}. Not found {$missing}.".($failed > 0 ? " {$failed} row(s) were not imported, see the list." : ''),
             'updated' => $updated,
             'skipped' => $skipped,
             'missing' => $missing,
+            'failed' => $failed,
+            'issues' => array_slice($issues, 0, 5000),
         ]);
     }
 

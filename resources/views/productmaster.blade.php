@@ -1805,7 +1805,8 @@
                 }
                 const s = String(raw || '').trim();
                 const lower = s.toLowerCase();
-                if (lower === 'active') return 'active';
+                // A SKU with no status yet belongs on Active; otherwise it matches no tab and cannot be found.
+                if (lower === 'active' || s === '') return 'active';
                 if (s.toUpperCase() === 'DC') return 'dc';
                 if (lower === 'upcoming') return 'upcoming';
                 return 'other';
