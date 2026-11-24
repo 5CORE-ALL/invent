@@ -6327,6 +6327,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/roi/save-cell', 'saveRoiCell')->name('comparison.roi.save-cell');
         Route::get('/qr-form/data', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'data'])->name('comparison.qr.data');
         Route::get('/qr-form/suppliers', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'suppliers'])->name('comparison.qr.suppliers');
+        Route::post('/qr-form/ensure-suppliers', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'ensureSuppliers'])->name('comparison.qr.ensure.suppliers');
         Route::get('/qr-form/draft', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'draft'])->name('comparison.qr.draft');
         Route::post('/qr-form/send', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'send'])->name('comparison.qr.send');
         Route::post('/linked-skus/add', 'addLinkedSku')->name('comparison.linked-skus.add');

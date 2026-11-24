@@ -480,6 +480,9 @@
     #comparisonQrFormModal .qr-section-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: #64748b; font-weight: 700; margin-bottom: .5rem; }
     #comparisonQrFormModal .qr-item-img { width: 100%; max-width: 130px; aspect-ratio: 1 / 1; margin: 0; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #e3ebf0; border-radius: 14px; padding: 6px; color: #94a3b8; }
     #comparisonQrFormModal .qr-item-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    /* Send QR form modal: full width so the supplier table is not squeezed. */
+    #comparisonQrSendModal .modal-dialog { max-width: none; width: calc(100vw - 24px); margin-left: auto; margin-right: auto; }
+    #comparisonQrSendModal .qr-send-status-cell { white-space: nowrap; }
     .comparison-send-btn, .comparison-draft-btn { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 32px; border-radius: 999px; border: 2px solid #94a3b8; background: #fff; color: #64748b; cursor: pointer; transition: all .15s ease; }
     .comparison-send-btn:hover, .comparison-draft-btn:hover { border-color: #2563eb; color: #2563eb; }
     .comparison-qr-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; color: #2a9d9f; }
@@ -948,6 +951,37 @@
 
     .cd-sheet-table .cd-sheet-cell-link-missing {
         cursor: pointer;
+    }
+
+    .cd-sheet-table .cd-sheet-cell-supplier {
+        padding: 1px 2px;
+        line-height: 1;
+        white-space: normal;
+    }
+
+    .cd-sheet-table .cd-sheet-supplier-select {
+        display: block;
+        width: 100%;
+        min-width: 90px;
+        max-width: 100%;
+        padding: 2px 16px 2px 4px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background-color: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        text-align: center;
+        text-align-last: center;
+        text-overflow: ellipsis;
+        cursor: pointer;
+    }
+
+    .cd-sheet-table .cd-sheet-supplier-select:hover,
+    .cd-sheet-table .cd-sheet-supplier-select:focus {
+        border-color: #93c5fd;
+        background-color: #fff;
+        outline: none;
     }
 
     .cd-sheet-table .cd-sheet-cell-company {
@@ -5094,6 +5128,226 @@ document.addEventListener('DOMContentLoaded', function () {
         return comparisonSupplierLoading;
     }
 
+    // ---- Supplier Name row = dropdown of the Supplier page; sheet <-> Supplier page stay in sync ----
+    const SUPPLIER_ADD_VALUE = '__add_new_supplier__';
+    const supplierEnsureUrl = @json(route('comparison.qr.ensure.suppliers'));
+    const supplierEnsureTried = new Set(); // supplier keys already sent to the server this page view
+
+    function isSheetSupplierNameCell(rowIndex, colIndex) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex)) return false;
+        const cells = currentSheetCells || [];
+        let specCol;
+        let supplierRow;
+        if (sheetRenderColCache && sheetRenderColCache.supplierRow !== undefined) {
+            specCol = sheetRenderColCache.specCol;
+            supplierRow = sheetRenderColCache.supplierRow;
+        } else {
+            specCol = detectSpecColumnIndex(cells);
+            supplierRow = findSupplierNameRowIndex(cells, specCol);
+        }
+        if (supplierRow === null || supplierRow === undefined || rowIndex !== supplierRow) return false;
+        if (colIndex === specCol || isSheetPriorityColumn(colIndex)) return false;
+        return colIndex >= getFirstSupplierColumnIndex(cells, specCol);
+    }
+
+    // <option>s for a Supplier Name cell: every supplier of the Supplier page; the sheet's current
+    // text is kept (selected) even if the Supplier page spells it differently or does not have it yet.
+    function supplierSelectOptionsHtml(current) {
+        const cur = String(current ?? '').trim();
+        const key = supplierCompanyKey(cur);
+        const list = comparisonSupplierList || [];
+        let matched = false;
+        let html = `<option value=""${cur === '' ? ' selected' : ''}>— Select supplier —</option>`;
+        list.forEach((n) => {
+            const same = key !== '' && supplierCompanyKey(n) === key;
+            if (same) matched = true;
+            const v = same ? cur : n;
+            html += `<option value="${escapeHtmlAttr(v)}"${same ? ' selected' : ''}>${escapeHtml(v)}</option>`;
+        });
+        if (cur !== '' && !matched) {
+            const note = comparisonSupplierList ? ' (adding to Supplier page…)' : '';
+            html = `<option value="${escapeHtmlAttr(cur)}" selected>${escapeHtml(cur + note)}</option>` + html;
+        }
+        html += `<option value="${SUPPLIER_ADD_VALUE}">+ Add new supplier…</option>`;
+        return html;
+    }
+
+    function supplierNameCellEditorHtml(value, rowIndex, colIndex) {
+        const cur = String(value ?? '').trim();
+        return `<div class="cd-sheet-cell cd-sheet-cell-supplier" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(cur)}" title="${escapeHtmlAttr(cur || 'Pick a supplier')}"><select class="cd-sheet-supplier-select" aria-label="Supplier">${supplierSelectOptionsHtml(cur)}</select></div>`;
+    }
+
+    // Refresh the options of every Supplier Name dropdown in place (after the supplier list loaded / changed).
+    function refreshSheetSupplierSelects() {
+        document.querySelectorAll('#comparison-cd-sheet-wrap .cd-sheet-cell-supplier').forEach((cell) => {
+            const sel = cell.querySelector('.cd-sheet-supplier-select');
+            if (!sel || document.activeElement === sel) return;
+            sel.innerHTML = supplierSelectOptionsHtml(cell.dataset.value || '');
+        });
+    }
+
+    function isRealSupplierName(name) {
+        const n = String(name ?? '').trim();
+        if (n.length < 2 || n.length > 120) return false;
+        if (/^https?:\/\//i.test(n) || /^\[(cmp-photo|embedded-image):/i.test(n) || /^data:/i.test(n)) return false;
+        if (!/[A-Za-z\u00C0-\u024F\u4E00-\u9FFF]/.test(n)) return false;
+        return !['n/a', 'na', 'tbd', 'nil', 'none', 'supplier', 'supplier name', 'suppliers', 'company', 'company name', 'link', 'amazon', 'amz', 'critical', 'qc', 'spec'].includes(n.toLowerCase());
+    }
+
+    // Supplier names on this sheet that the Supplier page does not have yet are created there
+    // (company + link taken from the same column). Never duplicates an existing supplier.
+    async function syncMissingSuppliers() {
+        if (!comparisonSupplierList || sheetEditorHydrating || !currentCdRow || !(currentSheetCells || []).length) return;
+        const cells = currentSheetCells;
+        const specCol = detectSpecColumnIndex(cells);
+        const supplierRow = findSupplierNameRowIndex(cells, specCol);
+        if (supplierRow === null || !cells[supplierRow]) return;
+        const first = getFirstSupplierColumnIndex(cells, specCol);
+        const companyRow = findRowIndexByLabel(cells, 'company name', specCol);
+        const linkRow = findSheetLinkRowIndex(cells, specCol);
+        const have = new Set(comparisonSupplierList.map(supplierCompanyKey));
+        comparisonSupplierCompanyMap.forEach((_, k) => have.add(k));
+
+        const pending = [];
+        const seen = new Set();
+        for (let c = first; c < cells[supplierRow].length; c++) {
+            const name = String(cells[supplierRow][c] ?? '').trim().replace(/^["'“”]+|["'“”]+$/g, '').trim();
+            const key = supplierCompanyKey(name);
+            if (!key || !isRealSupplierName(name) || have.has(key) || seen.has(key) || supplierEnsureTried.has(key)) continue;
+            seen.add(key);
+            const pick = (r) => (r === null || !cells[r]) ? '' : String(cells[r][c] ?? '').trim();
+            const link = pick(linkRow);
+            pending.push({ key, name, company: pick(companyRow), link: /^https?:\/\//i.test(link) ? link : '' });
+        }
+        if (!pending.length) return;
+        pending.forEach(p => supplierEnsureTried.add(p.key));
+
+        try {
+            const res = await fetch(supplierEnsureUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    sku: currentSheetSku(),
+                    suppliers: pending.map(p => ({ name: p.name, company: p.company, link: p.link })),
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) return;
+            const made = (data.created || []).length;
+            if (made) {
+                comparisonSupplierList = null; // reload so the new suppliers appear in every dropdown
+                await loadComparisonSupplierList();
+                refreshSheetSupplierSelects();
+                setSheetStatus(`${made} supplier(s) added to the Supplier page: ${data.created.map(x => x.name).join(', ')}.`, false);
+            }
+        } catch (e) {
+            pending.forEach(p => supplierEnsureTried.delete(p.key)); // retry next time
+        }
+    }
+
+    // A column is free when it has nothing in it (apart from the A/B/C letter stamp of row 0).
+    function isSheetColumnEmpty(cells, c) {
+        for (let r = 0; r < cells.length; r++) {
+            const v = String((cells[r] || [])[c] ?? '').trim();
+            if (v === '') continue;
+            if (r === 0 && /^[A-Z]{1,3}$/.test(v)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    // Add every supplier of the item's category as a supplier column. A supplier that already has a
+    // column (same name) is skipped; free columns are used first, new ones are appended at the end.
+    let supplierAutofillBusy = false;
+    async function autofillCategorySuppliers() {
+        if (supplierAutofillBusy || sheetEditorHydrating || !currentCdRow || !(currentSheetCells || []).length) return 0;
+        const sku = currentSheetSku();
+        if (!sku || !sheetLooksMeaningful(currentSheetCells)) return 0;
+        supplierAutofillBusy = true;
+        try {
+            const res = await fetch(qrSuppliersUrl + '?sku=' + encodeURIComponent(sku), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+            const data = await res.json();
+            if (!data.success || !Array.isArray(data.suppliers) || !data.suppliers.length) return 0;
+            if (currentSheetSku() !== sku || sheetEditorHydrating) return 0;
+
+            await loadComparisonSupplierList();
+            readCellsFromEditor({ expandImages: false });
+            const cells = currentSheetCells;
+            const specCol = detectSpecColumnIndex(cells);
+            const supplierRow = findSupplierNameRowIndex(cells, specCol);
+            if (supplierRow === null || !cells[supplierRow]) return 0;
+            const first = getFirstSupplierColumnIndex(cells, specCol);
+            let colCount = Math.max(...cells.map(r => (Array.isArray(r) ? r.length : 0)), 0);
+
+            const existing = new Set();
+            for (let c = first; c < colCount; c++) {
+                const k = supplierCompanyKey(cells[supplierRow][c]);
+                if (k) existing.add(k);
+            }
+            const toAdd = [];
+            data.suppliers.forEach((s) => {
+                const name = String(s.name || '').trim();
+                const k = supplierCompanyKey(name);
+                if (!k || existing.has(k) || !isRealSupplierName(name)) return;
+                existing.add(k);
+                toAdd.push(name);
+            });
+            if (!toAdd.length) return 0;
+
+            let used = 0;
+            const filledCols = [];
+            toAdd.forEach((name) => {
+                let target = -1;
+                for (let c = first; c < colCount; c++) {
+                    if (!String(cells[supplierRow][c] ?? '').trim() && isSheetColumnEmpty(cells, c)) { target = c; break; }
+                }
+                if (target < 0) {
+                    target = colCount++;
+                    cells.forEach(r => { while (r.length < colCount) r.push(''); });
+                }
+                while (cells[supplierRow].length <= target) cells[supplierRow].push('');
+                cells[supplierRow][target] = name;
+                filledCols.push(target);
+                used++;
+            });
+            filledCols.forEach(c => fillSupplierDetailsForColumn(cells, c, false));
+            renderSheetEditor(cells, { migrateDimWt: false, sortByPrice: false });
+            sheetReadyForAutoSave = true;
+            scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            setSheetStatus(`${used} supplier column(s) added from the item's category.`, false);
+            return used;
+        } catch (e) {
+            return 0;
+        } finally {
+            supplierAutofillBusy = false;
+        }
+    }
+
+    // After the sheet is open: supplier list -> Company/Link autofill -> category suppliers -> create missing suppliers.
+    function syncSheetSuppliers() {
+        return loadComparisonSupplierList()
+            .then(() => { autofillCompanyNames(); refreshSheetSupplierSelects(); return autofillCategorySuppliers(); })
+            .then(() => syncMissingSuppliers());
+    }
+
+    function setSheetSupplierName(rowIndex, colIndex, name) {
+        const cell = document.querySelector(`#comparison-cd-sheet-wrap .cd-sheet-cell-supplier[data-row="${rowIndex}"][data-col="${colIndex}"]`);
+        if (cell) cell.dataset.value = name;
+        readCellsFromEditor({ expandImages: false });
+        while (currentSheetCells[rowIndex].length <= colIndex) currentSheetCells[rowIndex].push('');
+        currentSheetCells[rowIndex][colIndex] = name;
+        sheetReadyForAutoSave = true;
+        loadComparisonSupplierList().then(() => {
+            const changed = autofillCompanyNames({ cols: [colIndex], overwrite: true });
+            if (!changed) {
+                renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+                scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            }
+            return syncMissingSuppliers();
+        });
+    }
+
     function renderSupplierComboList(query) {
         const listEl = document.getElementById('comparison-column-edit-supplier-list');
         if (!listEl) return;
@@ -9131,6 +9385,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!forceText && isSheetQcColumn(colIndex)) {
             return priorityCellEditorHtml(value, rowIndex, colIndex, 'QC');
         }
+        if (!forceText && isSheetSupplierNameCell(rowIndex, colIndex)) {
+            return supplierNameCellEditorHtml(value, rowIndex, colIndex);
+        }
         const rawText = String(value ?? '');
         const text = rawText.trim();
         // Supplier Link row: any http(s) value is a clickable link dot.
@@ -9268,7 +9525,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!head || !body) return;
 
         // Cache column roles for cell helpers during this render.
-        sheetRenderColCache = { specCol, criticalCol, qcCol };
+        sheetRenderColCache = { specCol, criticalCol, qcCol, supplierRow: findSupplierNameRowIndex(currentSheetCells, specCol) };
 
         selectedSheetMultiRows = new Set(
             [...selectedSheetMultiRows].filter(r => r > 0 && r < currentSheetCells.length)
@@ -10258,7 +10515,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             applySheetPayload(data, currentCdRow || row);
             // Autofill blank Company Name / Link cells from the suppliers table (Supplier page).
-            loadComparisonSupplierList().then(() => autofillCompanyNames());
+            // Then: supplier dropdowns, category suppliers as columns, and create missing suppliers.
+            syncSheetSuppliers();
 
             // Google Sheet is pull-only via "C Link Refresh". Do not auto-import on open
             // (that sync was a major cause of repeated Page Unresponsive freezes).
@@ -12958,6 +13216,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (Array.isArray(res.affected)) {
                 applyAffectedLinkedSkuRows(res.affected);
             }
+            // The category decides which suppliers belong on the sheet: add their columns now.
+            if (sku === cdMfrSku) {
+                autofillCategorySuppliers().then(() => syncMissingSuppliers());
+            }
         })
         .catch(() => alert('Could not save category.'))
         .finally(() => {
@@ -13406,7 +13668,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td class="fw-semibold">${escapeHtml(s.name)}</td>
                 <td>${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
                 <td><input type="text" class="form-control form-control-sm qr-send-email" value="${escapeHtmlAttr(s.email || '')}" placeholder="supplier@email.com" autocomplete="off"></td>
-                <td>${status}</td>
+                <td class="qr-send-status-cell">${status}</td>
                 <td>${link}</td>
             </tr>`;
         }).join('');
@@ -15450,6 +15712,25 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('change', function (e) {
+        const supplierSel = e.target?.closest?.('.cd-sheet-supplier-select');
+        if (supplierSel) {
+            const cell = supplierSel.closest('.cd-sheet-cell-supplier');
+            const rowIndex = parseInt(cell?.dataset.row, 10);
+            const colIndex = parseInt(cell?.dataset.col, 10);
+            if (Number.isNaN(rowIndex) || Number.isNaN(colIndex)) return;
+            let picked = String(supplierSel.value || '').trim();
+            if (picked === SUPPLIER_ADD_VALUE) {
+                const typed = window.prompt('New supplier name (it is also added to the Supplier page):', '');
+                picked = String(typed || '').trim();
+                if (!picked) {
+                    supplierSel.innerHTML = supplierSelectOptionsHtml(cell.dataset.value || '');
+                    return;
+                }
+            }
+            setSheetSupplierName(rowIndex, colIndex, picked);
+            return;
+        }
+
         if (e.target && e.target.id === 'cd-sheet-select-all-rows') {
             const checked = !!e.target.checked;
             for (let r = 1; r < (currentSheetCells || []).length; r++) {

@@ -3756,6 +3756,32 @@ class ComparisonController extends Controller
     }
 
     /**
+     * Ids of the Suppliers-page categories (`categories`) that match this item's Mfr categories by name.
+     * Used to tag a supplier that is created from the comparison sheet.
+     *
+     * @return int[]
+     */
+    public function qrSupplierCategoryIds(string $sku): array
+    {
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['id', 'sku', 'category_id', 'mfr_category_ids']);
+        if (! $product) {
+            return [];
+        }
+        $ids = $this->normalizeCategoryIds(
+            is_array($product->mfr_category_ids) ? $product->mfr_category_ids : [],
+            $product->category_id ? (int) $product->category_id : null
+        );
+        $names = array_map(fn ($c) => $c['name'], $this->categoriesPayload($ids));
+        if ($names === []) {
+            return [];
+        }
+
+        return Category::query()->whereIn('name', $names)->pluck('id')->map(fn ($v) => (int) $v)->all();
+    }
+
+    /**
      * Make sure the sheet has a supplier column for this supplier (appended at the end when missing),
      * so their quotation has somewhere to land.
      */

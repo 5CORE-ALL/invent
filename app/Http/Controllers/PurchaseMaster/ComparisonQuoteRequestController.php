@@ -471,6 +471,71 @@ class ComparisonQuoteRequestController extends Controller
         });
     }
 
+    /**
+     * Supplier names that were typed on a comparison sheet but are not on the Supplier page yet are
+     * added there. A name that already exists (case / quote / spacing insensitive) is never duplicated.
+     */
+    public function ensureSuppliers(Request $request): JsonResponse
+    {
+        if ($deny = $this->denyUnlessInternal()) {
+            return $deny;
+        }
+        $data = $request->validate([
+            'sku' => ['nullable', 'string', 'max:191'],
+            'suppliers' => ['required', 'array', 'max:60'],
+            'suppliers.*.name' => ['required', 'string', 'max:150'],
+            'suppliers.*.company' => ['nullable', 'string', 'max:255'],
+            'suppliers.*.link' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $existing = [];
+        Supplier::query()
+            ->whereNull('deleted_at')
+            ->whereNotNull('name')
+            ->get(['id', 'name'])
+            ->each(function ($s) use (&$existing) {
+                $existing[$this->sheetService->supplierKey((string) $s->name)] = (int) $s->id;
+            });
+
+        $categoryIds = trim((string) ($data['sku'] ?? '')) !== ''
+            ? $this->comparison->qrSupplierCategoryIds((string) $data['sku'])
+            : [];
+
+        $created = [];
+        $already = [];
+        foreach ($data['suppliers'] as $row) {
+            $name = trim((string) $row['name'], " \t\n\r\0\x0B\"'");
+            $name = trim((string) preg_replace('/\s+/u', ' ', $name));
+            $key = $this->sheetService->supplierKey($name);
+            if ($key === '' || mb_strlen($name) < 2) {
+                continue;
+            }
+            if (isset($existing[$key])) {
+                $already[] = $name;
+
+                continue;
+            }
+
+            $link = trim((string) ($row['link'] ?? ''));
+            $supplier = Supplier::create([
+                'type' => 'Supplier',
+                'category_id' => implode(',', $categoryIds),
+                'name' => $name,
+                'company' => trim((string) ($row['company'] ?? '')) ?: null,
+                'alibaba' => $link !== '' && stripos($link, 'alibaba') !== false ? $link : null,
+                'link_1688' => $link !== '' && stripos($link, '1688.com') !== false ? $link : null,
+            ]);
+            $existing[$key] = (int) $supplier->id;
+            $created[] = ['id' => (int) $supplier->id, 'name' => $name];
+        }
+
+        return response()->json([
+            'success' => true,
+            'created' => $created,
+            'existing' => $already,
+        ]);
+    }
+
     private function denyUnlessInternal(): ?JsonResponse
     {
         $user = Auth::user();
