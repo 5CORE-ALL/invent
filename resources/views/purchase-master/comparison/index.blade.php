@@ -483,6 +483,8 @@
     /* Send QR form modal: full width so the supplier table is not squeezed. */
     #comparisonQrSendModal .modal-dialog { max-width: none; width: calc(100vw - 24px); margin-left: auto; margin-right: auto; }
     #comparisonQrSendModal .qr-send-status-cell { white-space: nowrap; }
+    #comparisonQrSendModal .qr-send-email.qr-email-missing::placeholder { color: #dc3545; font-weight: 600; opacity: 1; }
+    #comparisonQrSendModal .qr-send-email.qr-email-missing { border-color: #f1aeb5; }
     /* Supplier / Company columns: wide enough to show the full name on one line (the table scrolls sideways if needed). */
     #comparisonQrSendModal .qr-send-name-cell,
     #comparisonQrSendModal .qr-send-company-cell { white-space: nowrap; }
@@ -3346,6 +3348,7 @@
                         </div>
                         <span class="small text-muted ms-auto" id="qrSendCount"></span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendLinksBtn"><i class="mdi mdi-link-variant"></i> Create links</button>
+                        <button type="button" class="btn btn-sm btn-success" id="qrSendEmailExceptMissingBtn" title="Send to every shown supplier that has an email (or only the ticked ones, if any are ticked). Suppliers with a missing email are skipped."><i class="mdi mdi-email-check-outline me-1" aria-hidden="true"></i> Send mail except missing</button>
                         <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-send me-1" aria-hidden="true"></i> Send Email</button>
                     </div>
                     <div class="table-responsive">
@@ -14753,7 +14756,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td><input type="checkbox" class="form-check-input qr-send-check" aria-label="Select ${escapeHtmlAttr(s.name)}"></td>
                 <td class="fw-semibold qr-send-name-cell">${escapeHtml(s.name)}</td>
                 <td class="qr-send-company-cell">${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
-                <td><input type="text" class="form-control form-control-sm qr-send-email" value="${escapeHtmlAttr(s.email || '')}" placeholder="supplier@email.com" autocomplete="off"></td>
+                <td><input type="text" class="form-control form-control-sm qr-send-email${String(s.email || '').trim() ? '' : ' qr-email-missing'}" value="${escapeHtmlAttr(s.email || '')}" placeholder="Missing" autocomplete="off"></td>
                 <td class="qr-send-status-cell">${status}</td>
                 <td>${link}</td>
             </tr>`;
@@ -14817,12 +14820,25 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    async function qrSendSubmit(sendEmail) {
+    async function qrSendSubmit(sendEmail, exceptMissing) {
         if (!qrSendCurrent) return;
         const names = [];
         const emails = {};
-        document.querySelectorAll('#qrSendBody tr[data-name]').forEach(tr => {
-            if (tr.classList.contains('d-none') || !tr.querySelector('.qr-send-check')?.checked) return;
+        const rows = Array.from(document.querySelectorAll('#qrSendBody tr[data-name]')).filter(tr => !tr.classList.contains('d-none'));
+        let picked = rows.filter(tr => tr.querySelector('.qr-send-check')?.checked);
+        if (exceptMissing) {
+            // Ticked suppliers if any are ticked, otherwise every shown supplier; suppliers without an email are skipped.
+            if (!picked.length) picked = rows;
+            const withEmail = picked.filter(tr => String(tr.querySelector('.qr-send-email')?.value || '').trim() !== '');
+            const skipped = picked.length - withEmail.length;
+            if (!withEmail.length) {
+                qrSendSetResult('<span class="text-danger">No supplier with an email to send to.</span>');
+                return;
+            }
+            if (!window.confirm(`Send mail to ${withEmail.length} supplier(s)` + (skipped ? ` (skipping ${skipped} with missing email)` : '') + '?')) return;
+            picked = withEmail;
+        }
+        picked.forEach(tr => {
             names.push(tr.dataset.name);
             emails[tr.dataset.name] = tr.querySelector('.qr-send-email')?.value || '';
         });
@@ -14853,6 +14869,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('qrSendLinksBtn')?.addEventListener('click', () => qrSendSubmit(false));
     document.getElementById('qrSendEmailBtn')?.addEventListener('click', () => qrSendSubmit(true));
+    document.getElementById('qrSendEmailExceptMissingBtn')?.addEventListener('click', () => qrSendSubmit(true, true));
+    document.getElementById('qrSendBody')?.addEventListener('input', function (e) {
+        const inp = e.target.closest('.qr-send-email');
+        if (inp) inp.classList.toggle('qr-email-missing', !String(inp.value || '').trim());
+    });
     document.getElementById('qrSendSearch')?.addEventListener('input', qrSendFilterRows);
     document.getElementById('qrSendAll')?.addEventListener('change', function () {
         document.querySelectorAll('#qrSendBody tr[data-name]:not(.d-none) .qr-send-check').forEach(c => { c.checked = this.checked; });

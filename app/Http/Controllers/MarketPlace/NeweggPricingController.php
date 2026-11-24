@@ -400,6 +400,9 @@ class NeweggPricingController extends Controller
                 'pft'                => $price !== null ? round($pftEach, 2) : null,
                 'pft_pct'            => $price !== null ? $pftPct : null,
                 'roi'                => $price !== null ? $roi : null,
+                // Net = gross: Newegg has no ad spend (Ads% = 0), same as /all-marketplace-master.
+                'npft'               => $price !== null ? $pftPct : null,
+                'nroi'               => $price !== null ? $roi : null,
                 'map'                => $newegg && $newegg->map !== null ? round((float) $newegg->map, 2) : null,
                 'available_quantity' => $newegg->available_quantity ?? null,
                 'currency'           => $newegg->currency ?? null,
@@ -1955,6 +1958,7 @@ class NeweggPricingController extends Controller
                 'dil' => true, 'price' => true, 'a_price' => true, 'l30' => true,
                 'views' => true, 'cvr' => true,
                 'lp' => false, 'ship' => false, 'pft' => true, 'pft_pct' => true, 'roi' => true,
+                'nroi' => true, 'npft' => true,
                 'sprice' => true, 'push_status' => true, 'spft' => true, 'sroi' => true, 'nr' => true, 'bs' => true,
                 'lmp_price' => true, 'lmp_diff_pct' => true,
                 'linked_lmp_skus' => true, 'linked_lmp_sku_add' => true,

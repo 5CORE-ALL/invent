@@ -162,6 +162,10 @@
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge"
                             style="color: black; font-weight: bold;" title="Overall ROI% = Σ profit / Σ COGS">ROI%: 0%</span>
+                        <span class="badge fs-6 p-2" id="avg-npft-badge"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads%. Newegg has no ad spend, so NPFT% = GPFT%.">NPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge"
+                            style="background-color: #e83e8c; color: white; font-weight: bold;" title="NROI% = (profit − ad spend) / Σ COGS. Newegg has no ad spend, so NROI% = ROI%.">NROI: 0%</span>
                     </div>
                 </div>
 
@@ -1788,6 +1792,37 @@
                             return `<span style="color:${color};font-weight:bold;">${Math.round(n)}%</span>`;
                         }
                     },
+                    {
+                        // Newegg has no ad spend in the margin math (Ads% = 0), so NROI% = GROI% (same as /all-marketplace-master).
+                        title: "NROI%", field: "nroi", hozAlign: "right", sorter: "number",
+                        headerTooltip: "NROI% = (profit − ad spend) / LP × 100. Newegg has no ad spend, so NROI% = GROI%.",
+                        formatter: function(cell) {
+                            const m = neLivePriceMetrics(cell.getRow().getData());
+                            const n = m.groi;
+                            if (n === null || !isFinite(n)) return '';
+                            let color = '#d63384';
+                            if (n < 40) color = '#a00211';
+                            else if (n < 75) color = '#ffc107';
+                            else if (n < 125) color = '#28a745';
+                            return `<span style="color:${color};font-weight:bold;">${n.toFixed(0)}%</span>`;
+                        }
+                    },
+                    {
+                        // Newegg has no ad spend (Ads% = 0), so NPFT% = GPFT%.
+                        title: "NPFT%", field: "npft", hozAlign: "right", sorter: "number",
+                        headerTooltip: "NPFT% = GPFT% − Ads%. Newegg has no ad spend, so NPFT% = GPFT%.",
+                        formatter: function(cell) {
+                            const m = neLivePriceMetrics(cell.getRow().getData());
+                            const n = m.gpft;
+                            if (n === null || !isFinite(n)) return '';
+                            let color = '#e83e8c';
+                            if (n < 10) color = '#a00211';
+                            else if (n < 20) color = '#3591dc';
+                            else if (n < 30) color = '#ffc107';
+                            else if (n < 50) color = '#28a745';
+                            return `<span style="color:${color};font-weight:bold;">${Math.round(n)}%</span>`;
+                        }
+                    },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: "Sprc Dil",
@@ -3038,6 +3073,9 @@
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
                 $('#roi-percent-badge').text('ROI%: ' + Math.round(roiPct) + '%');
+                // Newegg has no ad spend, so net = gross.
+                $('#avg-npft-badge').text('NPFT: ' + Math.round(pftPct) + '%');
+                $('#nroi-percent-badge').text('NROI: ' + Math.round(roiPct) + '%');
 
                 // Sold counted over full dataset (stable regardless of active filter).
                 let zeroSold = 0, moreSold = 0;

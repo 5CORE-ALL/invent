@@ -56,6 +56,10 @@
         .qc-send-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
         .qc-qf-btn[disabled], .qc-send-btn[disabled], .qc-draft-btn[disabled] { opacity: .5; cursor: not-allowed; }
         .qf-locked { background: #f8fafc !important; }
+        .qf-sec-toggle { border: 0; background: transparent; padding: 0 8px 0 0; color: #64748b; line-height: 1; cursor: pointer; }
+        .qf-sec-toggle:hover { color: #0f172a; }
+        .qf-sec-toggle i { transition: transform .15s; font-size: .8rem; }
+        .qf-sec-toggle.collapsed i { transform: rotate(-90deg); }
         #qrModal .modal-dialog { max-width: 98vw; width: 98vw; margin-left: auto; margin-right: auto; }
         #qrTable input { min-width: 110px; }
         #qrTable tr.qr-lowest td { background: #ecfdf5; }
@@ -337,14 +341,19 @@
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-warning py-2 d-none" id="qfNoQ">The Q details are not filled in yet — fill them with the Q button first.</div>
-                    <div class="fw-bold text-uppercase small text-muted mb-2">Container details (from Q — auto-filled, not editable)</div>
+                    <div class="d-flex align-items-center mb-2">
+                        <button type="button" class="qf-sec-toggle" data-target="qfQ" aria-expanded="true" title="Hide / show"><i class="fas fa-chevron-down"></i></button>
+                        <div class="fw-bold text-uppercase small text-muted">Container details (from Q — auto-filled, not editable)</div>
+                    </div>
                     <div class="row g-3 mb-4" id="qfQ"></div>
                     <div class="d-flex align-items-center mb-1">
+                        <button type="button" class="qf-sec-toggle" data-target="qfQuoteBody" aria-expanded="true" title="Hide / show"><i class="fas fa-chevron-down"></i></button>
                         <div class="fw-bold text-uppercase small text-muted">Forwarder quote</div>
                         @if ($canEdit)
                             <button type="button" class="btn btn-sm btn-primary ms-auto" id="qfAddQuote" title="Add another forwarder quote"><i class="fas fa-plus me-1"></i> Add</button>
                         @endif
                     </div>
+                    <div id="qfQuoteBody">
                     <div class="text-muted small mb-2">Forwarders fill this in through the link emailed to them. Use <b>+ Add</b> to enter another forwarder's quote yourself.</div>
                     <div class="row g-3 mb-4">
                         <div class="col-md-4"><label class="form-label small fw-semibold">Forwarder</label><input class="form-control qf-locked" disabled></div>
@@ -355,8 +364,12 @@
                         <div class="col-md-4"><label class="form-label small fw-semibold">Freight ($)</label><input class="form-control qf-locked" disabled></div>
                         <div class="col-md-4"><label class="form-label small fw-semibold">Total ($) <span class="text-muted fw-normal">(incl. of all charges)</span></label><input class="form-control qf-locked" disabled></div>
                     </div>
-                    <div class="fw-bold text-uppercase small text-muted mb-2">Requests sent for this container</div>
-                    <div class="table-responsive">
+                    </div>
+                    <div class="d-flex align-items-center mb-2">
+                        <button type="button" class="qf-sec-toggle" data-target="qfRequestsWrap" aria-expanded="true" title="Hide / show"><i class="fas fa-chevron-down"></i></button>
+                        <div class="fw-bold text-uppercase small text-muted">Requests sent for this container</div>
+                    </div>
+                    <div class="table-responsive" id="qfRequestsWrap">
                         <table class="table table-sm align-middle mb-0">
                             <thead class="table-light"><tr>
                                 <th>Rank</th><th>Forwarder</th><th>Email</th><th>Sent</th><th>Status</th>
@@ -807,6 +820,32 @@
                           if (rankedQuotes(d.quotes).length) openLModal(d);
                           else alert('No quotes received yet for ' + d.container_number + '.');
                       } },
+                    // Accepted: the forwarder whose quote was approved for this container.
+                    { title: 'Accepted', field: 'quotes', minWidth: 140, hozAlign: 'center', headerHozAlign: 'center',
+                      headerSort: false,
+                      formatter: function (cell) {
+                          const ap = (cell.getValue() || []).find(q => q.approved_at);
+                          if (!ap) return '<span class="text-muted">—</span>';
+                          return '<div style="line-height:1.3"><div class="fw-semibold">' + esc(ap.forwarder || '') + '</div>' +
+                              (ap.shipping_line ? '<div class="small text-muted">' + esc(ap.shipping_line) + '</div>' : '') + '</div>';
+                      } },
+                    // Accepted Amount: the approved quote's total, with its rate (freight) underneath.
+                    { title: 'Accepted Amount', field: 'quotes', minWidth: 150, hozAlign: 'center', headerHozAlign: 'center',
+                      sorter: function (a, b) {
+                          const f = qs => { const ap = (qs || []).find(q => q.approved_at); return ap && ap.total !== null && ap.total !== undefined ? Number(ap.total) : null; };
+                          const x = f(a), y = f(b);
+                          if (x === null && y === null) return 0;
+                          if (x === null) return 1;
+                          if (y === null) return -1;
+                          return x - y;
+                      },
+                      formatter: function (cell) {
+                          const ap = (cell.getValue() || []).find(q => q.approved_at);
+                          if (!ap || ap.total === null || ap.total === undefined) return '<span class="text-muted">—</span>';
+                          const usd = v => '$' + Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          return '<div style="line-height:1.3"><div class="fw-bold">' + usd(ap.total) + '</div>' +
+                              (ap.freight !== null && ap.freight !== undefined ? '<div class="small text-muted">Rate (freight): ' + usd(ap.freight) + '</div>' : '') + '</div>';
+                      } },
                 ],
             });
 
@@ -1236,6 +1275,17 @@
                         '<td><button type="button" class="btn btn-sm btn-outline-secondary qf-copy" data-url="' + esc(r.url || '') + '" title="Copy the forwarder\'s form link"><i class="fas fa-link"></i></button></td></tr>' + alertRow;
                 }).join('');
             }
+            // Open / close toggle for the "Requests sent for this container" list
+            // Chevron (v) buttons: hide / show each section of the QR Form
+            qfModalEl.addEventListener('click', function (e) {
+                const t = e.target.closest('.qf-sec-toggle');
+                if (!t) return;
+                const target = document.getElementById(t.dataset.target);
+                if (!target) return;
+                const open = target.classList.toggle('d-none') === false;
+                t.setAttribute('aria-expanded', open ? 'true' : 'false');
+                t.classList.toggle('collapsed', !open);
+            });
             // "+ Add": enter one more forwarder quote by hand (opens the quotes table with a fresh empty row)
             document.getElementById('qfAddQuote')?.addEventListener('click', function () {
                 const cn = document.getElementById('qfContainer').textContent;

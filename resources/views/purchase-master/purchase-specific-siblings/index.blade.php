@@ -23,6 +23,9 @@
         #pss-table .tabulator-header { background: #D8F3F3; border-bottom: 1px solid #403f3f; }
         #pss-table .tabulator-header .tabulator-col { background: #3bc0c3; color: #fff; font-weight: 700; border-right: 1px solid #fff; }
         #pss-table .tabulator-header .tabulator-col .tabulator-col-content { padding: 10px 8px; }
+        #pss-table .tabulator-header .tabulator-header-filter input {
+            width: 100%; font-size: .8rem; font-weight: 400; padding: 3px 6px; border: 1px solid #cbd5e1; border-radius: 4px; color: #1e293b;
+        }
         #pss-table .tabulator-row:nth-child(even) { background-color: #f8fafc; }
         #pss-table .tabulator-row:hover { background-color: #dbeafe; }
         #pss-table .tabulator-row.tabulator-selected { background-color: #ede9fe !important; }
@@ -282,12 +285,15 @@
                                 return v ? '<img class="pss-img" loading="lazy" src="' + esc(v) + '" alt="">' : '-';
                             }},
                         {title: 'Parent', field: 'parent', sorter: 'string', minWidth: 160, widthGrow: 2,
+                            headerFilter: 'input', headerFilterPlaceholder: 'Search parent…',
                             sorterParams: {locale: true},
                             formatter: (cell) => esc(cell.getValue()) || '-'},
                         {title: 'SKU', field: 'sku', sorter: 'string', minWidth: 200, widthGrow: 3,
+                            headerFilter: 'input', headerFilterPlaceholder: 'Search SKU…',
                             sorterParams: {locale: true},
                             formatter: (cell) => esc(cell.getValue()) || '-'},
                         {title: 'Purchase Specific Siblings', field: 'sibling', sorter: 'string', minWidth: 260, widthGrow: 3,
+                            headerFilter: 'input', headerFilterPlaceholder: 'Search sibling name…',
                             sorterParams: {locale: true, alignEmptyValues: 'bottom'},
                             formatter: (cell) => {
                                 const row = cell.getRow().getData();
