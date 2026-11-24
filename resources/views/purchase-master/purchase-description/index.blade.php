@@ -217,10 +217,10 @@
                                 const v = cell.getValue();
                                 return v ? '<img class="pd-img" loading="lazy" src="' + esc(v) + '" alt="">' : '-';
                             }},
-                        {title: 'Parent', field: 'parent', sorter: 'string', minWidth: 160, widthGrow: 2,
+                        {title: 'Parent', field: 'parent', sorter: 'string', minWidth: 128, widthGrow: 1.6,
                             sorterParams: {locale: true},
                             formatter: (cell) => esc(cell.getValue()) || '-'},
-                        {title: 'SKU', field: 'sku', sorter: 'string', minWidth: 200, widthGrow: 3,
+                        {title: 'SKU', field: 'sku', sorter: 'string', minWidth: 160, widthGrow: 2.4,
                             sorterParams: {locale: true},
                             formatter: (cell) => esc(cell.getValue()) || '-'},
                         {title: 'Inv', field: 'inv', sorter: 'number', hozAlign: 'center', width: 100,
@@ -253,14 +253,14 @@
                         {title: 'Edit', field: 'edit', headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 80,
                             formatter: (cell) => cell.getRow().getData().isParent
                                 ? '<span class="text-muted">-</span>'
-                                : '<button type="button" class="pd-edit-btn" title="Edit (applies to all selected SKUs when this row is selected)"><i class="fas fa-pen"></i></button>',
+                                : '<button type="button" class="pd-edit-btn" title="Edit (applies to all selected SKUs when multiple rows are selected)"><i class="fas fa-pen"></i></button>',
                             cellClick: (e, cell) => {
                                 if (!e.target.closest('.pd-edit-btn')) return;
                                 e.stopPropagation();
                                 const row = cell.getRow();
                                 const selected = table.getSelectedData().filter((r) => !r.isParent);
-                                // Edit icon on a selected row edits every selected SKU at once (bulk).
-                                if (row.isSelected() && selected.length > 1) openEdit(selected);
+                                // With multiple rows selected, any row's edit icon edits all selected SKUs (bulk).
+                                if (selected.length > 1) openEdit(selected);
                                 else openEdit([row.getData()]);
                             }},
                     ],
