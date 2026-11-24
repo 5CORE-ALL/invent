@@ -485,6 +485,9 @@
     #comparisonQrSendModal .qr-send-status-cell { white-space: nowrap; }
     #comparisonQrSendModal .qr-send-email.qr-email-missing::placeholder { color: #dc3545; font-weight: 600; opacity: 1; }
     #comparisonQrSendModal .qr-send-email.qr-email-missing { border-color: #f1aeb5; }
+    #comparisonQrSendModal .qr-comm-icons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 1.05rem; min-height: 30px; }
+    #comparisonQrSendModal .qr-comm-ico { cursor: pointer; text-decoration: none; line-height: 1; border-radius: 4px; }
+    #comparisonQrSendModal .qr-comm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
     /* Supplier / Company columns: wide enough to show the full name on one line (the table scrolls sideways if needed). */
     #comparisonQrSendModal .qr-send-name-cell,
     #comparisonQrSendModal .qr-send-company-cell { white-space: nowrap; }
@@ -3347,7 +3350,7 @@
                             <label class="form-check-label small fw-semibold" for="qrSendAll">Select all shown</label>
                         </div>
                         <span class="small text-muted ms-auto" id="qrSendCount"></span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendSyncBtn" title="Reload the emails from the Suppliers page"><i class="mdi mdi-sync"></i> Sync emails</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendSyncBtn" title="Reload emails and communication details from the Suppliers page"><i class="mdi mdi-sync"></i> Sync</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendLinksBtn"><i class="mdi mdi-link-variant"></i> Create links</button>
                         <button type="button" class="btn btn-sm btn-success" id="qrSendEmailExceptMissingBtn" title="Send to every shown supplier that has an email (or only the ticked ones, if any are ticked). Suppliers with a missing email are skipped."><i class="mdi mdi-email-check-outline me-1" aria-hidden="true"></i> Send mail except missing</button>
                         <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-send me-1" aria-hidden="true"></i> Send Email</button>
@@ -3360,6 +3363,7 @@
                                     <th class="qr-send-name-cell">Supplier</th>
                                     <th class="qr-send-company-cell">Company</th>
                                     <th style="min-width:230px">Email</th>
+                                    <th style="min-width:240px">Communication</th>
                                     <th>Status</th>
                                     <th style="width:110px">Link</th>
                                 </tr>
@@ -14716,6 +14720,66 @@ document.addEventListener('DOMContentLoaded', function () {
         if (countEl) countEl.textContent = `${shown} of ${total} suppliers`;
     }
 
+    // ── Communication column (phone / WhatsApp / WeChat / QQ / Alibaba / 1688 from the Suppliers page) ──
+    const QR_COMM_FIELDS = [
+        { key: 'phone', label: 'Phone', ph: 'Phone' },
+        { key: 'whatsapp', label: 'WhatsApp', ph: 'WhatsApp number' },
+        { key: 'wechat', label: 'WeChat', ph: 'WeChat id' },
+        { key: 'qq', label: 'QQ', ph: 'QQ number' },
+        { key: 'alibaba', label: 'Alibaba', ph: 'Alibaba link' },
+        { key: 'link_1688', label: '1688', ph: '1688 link' },
+    ];
+
+    function qrCommIconsHtml(comm) {
+        comm = comm || {};
+        const out = [];
+        QR_COMM_FIELDS.forEach(function (f) {
+            const v = String(comm[f.key] || '').trim();
+            if (!v) return;
+            const icon = COMM_PLAT_ICON[f.label] || 'fas fa-link';
+            const color = COMM_PLAT_COLOR[f.label] || '#6b7280';
+            const tip = escapeHtmlAttr(f.label + ': ' + v);
+            let href = '';
+            if (f.key === 'phone') {
+                const d = v.replace(/[^\d+]/g, '');
+                href = d ? 'tel:' + d : '';
+            } else if (f.key === 'whatsapp') {
+                const d = v.replace(/\D/g, '');
+                href = d ? 'https://wa.me/' + d : '';
+            } else if (f.key === 'alibaba' || f.key === 'link_1688') {
+                href = asHttpUrl(v);
+            }
+            if (href) {
+                out.push(`<a class="qr-comm-ico" href="${escapeHtmlAttr(href)}" ${/^https?:/.test(href) ? 'target="_blank" rel="noopener noreferrer"' : ''} title="${tip}"><i class="${icon}" style="color:${color};"></i></a>`);
+            } else {
+                // WeChat / QQ have no web link: click copies the id.
+                out.push(`<span class="qr-comm-ico qr-comm-copy" role="button" data-copy="${escapeHtmlAttr(v)}" title="${tip} (click to copy)"><i class="${icon}" style="color:${color};"></i></span>`);
+            }
+        });
+        return out.length ? out.join('') : '<span class="small text-danger fw-semibold">Missing</span>';
+    }
+
+    function qrCommCellHtml(s) {
+        const comm = s.comm || {};
+        if (!s.id) {
+            return `<div class="qr-comm-icons">${qrCommIconsHtml(comm)}</div>`;
+        }
+        const inputs = QR_COMM_FIELDS.map(f =>
+            `<input type="text" class="form-control form-control-sm qr-comm-input" data-field="${f.key}" value="${escapeHtmlAttr(comm[f.key] || '')}" placeholder="${escapeHtmlAttr(f.ph)}" autocomplete="off">`
+        ).join('');
+        return `<div class="d-flex align-items-center gap-1">
+                <div class="qr-comm-icons flex-grow-1">${qrCommIconsHtml(comm)}</div>
+                <button type="button" class="btn btn-sm btn-outline-secondary qr-comm-edit" title="Edit communication details (saved to the Suppliers page)" aria-label="Edit communication"><i class="mdi mdi-pencil-outline"></i></button>
+            </div>
+            <div class="qr-comm-form d-none mt-2" data-comm="${escapeHtmlAttr(JSON.stringify(comm))}">
+                <div class="qr-comm-grid">${inputs}</div>
+                <div class="mt-1 d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-success qr-comm-save"><i class="mdi mdi-check"></i> Save</button>
+                    <button type="button" class="btn btn-sm btn-light qr-comm-cancel">Cancel</button>
+                </div>
+            </div>`;
+    }
+
     function renderQrSend(data) {
         qrSendCurrent = data;
         document.getElementById('qrSendLoading').classList.add('d-none');
@@ -14734,7 +14798,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const body = document.getElementById('qrSendBody');
         if (!data.suppliers.length) {
-            body.innerHTML = '<tr><td colspan="6" class="text-muted">No suppliers are tagged with this product\'s Mfr Category. Set the Mfr Category on the product, or tag suppliers on the Suppliers page.</td></tr>';
+            body.innerHTML = '<tr><td colspan="7" class="text-muted">No suppliers are tagged with this product\'s Mfr Category. Set the Mfr Category on the product, or tag suppliers on the Suppliers page.</td></tr>';
             document.getElementById('qrSendCount').textContent = '';
             return;
         }
@@ -14766,6 +14830,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td class="fw-semibold qr-send-name-cell">${escapeHtml(s.name)}</td>
                 <td class="qr-send-company-cell">${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
                 <td><div class="d-flex gap-1"><input type="text" class="form-control form-control-sm qr-send-email${emailVal ? '' : ' qr-email-missing'}" value="${escapeHtmlAttr(s.email || '')}" placeholder="Missing" autocomplete="off">${emailEditBtn}</div></td>
+                <td class="qr-send-comm-cell">${qrCommCellHtml(s)}</td>
                 <td class="qr-send-status-cell">${status}</td>
                 <td>${link}</td>
             </tr>`;
@@ -14940,6 +15005,59 @@ document.addEventListener('DOMContentLoaded', function () {
         const inp = tr.querySelector('.qr-send-email');
         inp.focus();
         inp.select();
+    });
+    // Communication edit (saved to the Suppliers page record).
+    const qrSupplierCommUrl = @json(route('comparison.qr.supplier-comm'));
+    document.getElementById('qrSendBody')?.addEventListener('click', async function (e) {
+        const copy = e.target.closest('.qr-comm-copy');
+        if (copy) {
+            const text = copy.dataset.copy || '';
+            const done = () => { copy.style.outline = '2px solid #16a34a'; setTimeout(() => { copy.style.outline = ''; }, 900); };
+            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => window.prompt('Copy:', text));
+            else window.prompt('Copy:', text);
+            return;
+        }
+        const tr = e.target.closest('tr[data-name]');
+        if (!tr) return;
+        const form = tr.querySelector('.qr-comm-form');
+        if (!form) return;
+        if (e.target.closest('.qr-comm-edit')) {
+            form.classList.toggle('d-none');
+            if (!form.classList.contains('d-none')) form.querySelector('.qr-comm-input')?.focus();
+            return;
+        }
+        if (e.target.closest('.qr-comm-cancel')) {
+            let saved = {};
+            try { saved = JSON.parse(form.dataset.comm || '{}'); } catch (err) { saved = {}; }
+            form.querySelectorAll('.qr-comm-input').forEach(i => { i.value = saved[i.dataset.field] || ''; });
+            form.classList.add('d-none');
+            return;
+        }
+        const saveBtn = e.target.closest('.qr-comm-save');
+        if (!saveBtn || !tr.dataset.supplierId) return;
+        const payload = { supplier_id: Number(tr.dataset.supplierId) };
+        form.querySelectorAll('.qr-comm-input').forEach(i => { payload[i.dataset.field] = i.value; });
+        saveBtn.disabled = true;
+        try {
+            const res = await fetch(qrSupplierCommUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                const firstErr = data.errors ? Object.values(data.errors)[0]?.[0] : '';
+                throw new Error(data.message || firstErr || 'Could not save.');
+            }
+            form.dataset.comm = JSON.stringify(data.comm || {});
+            tr.querySelector('.qr-comm-icons').innerHTML = qrCommIconsHtml(data.comm || {});
+            form.classList.add('d-none');
+            qrSendSetResult(`<span class="text-success"><strong>${escapeHtml(tr.dataset.name)}</strong> — ${escapeHtml(data.message || 'Saved.')}</span>`);
+        } catch (err) {
+            qrSendSetResult(`<span class="text-danger"><strong>${escapeHtml(tr.dataset.name)}</strong> — ${escapeHtml(err.message || 'Could not save.')}</span>`);
+        } finally {
+            saveBtn.disabled = false;
+        }
     });
     // Reload every email from the Suppliers page (picks up changes made there).
     document.getElementById('qrSendSyncBtn')?.addEventListener('click', async function () {
