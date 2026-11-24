@@ -755,6 +755,11 @@ class PlsController extends Controller
             $currentValue = [];
         }
         
+        // A hand-set price (Price Increase modal) stays manual only while the page re-saves that same price
+        if (! isset($currentValue['sprice']) || ! is_numeric($currentValue['sprice'])
+            || abs((float) $currentValue['sprice'] - floatval($sprice)) > 0.004) {
+            unset($currentValue['SPRICE_MANUAL']);
+        }
         $currentValue['sprice'] = floatval($sprice);
         $currentValue['sgpft'] = round($sgpft_percent, 2);
         $currentValue['sroi'] = round($sroi_percent, 2);
@@ -795,7 +800,7 @@ class PlsController extends Controller
                 $currentValue = [];
             }
 
-            unset($currentValue['sprice'], $currentValue['sgpft'], $currentValue['sroi']);
+            unset($currentValue['sprice'], $currentValue['sgpft'], $currentValue['sroi'], $currentValue['SPRICE_MANUAL']);
             $dataView->value = $currentValue;
             $dataView->save();
             $cleared++;

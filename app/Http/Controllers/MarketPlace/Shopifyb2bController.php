@@ -353,6 +353,8 @@ class Shopifyb2bController extends Controller
             }
 
             $processedItem['has_custom_sprice'] = is_numeric($savedSprice) && (float) $savedSprice > 0;
+            // Set by hand in the Price Increase modal: shown as saved, the server run leaves it alone
+            $processedItem['sprice_manual'] = $processedItem['has_custom_sprice'] && ! empty($valuesArr['SPRICE_MANUAL']);
 
             // B2B: S PRC = saved value, else live website Price. Metrics exclude Ship.
             $sprice = (is_numeric($savedSprice) && (float) $savedSprice > 0)
@@ -722,6 +724,9 @@ class Shopifyb2bController extends Controller
             ? $dataView->value
             : (json_decode($dataView->value, true) ?: []);
 
+        if (! isset($existing['SPRICE']) || ! is_numeric($existing['SPRICE']) || abs((float) $existing['SPRICE'] - (float) $sprice) > 0.004) {
+            unset($existing['SPRICE_MANUAL']); // a hand-set price stays manual only while the page re-saves that same price
+        }
         $merged = array_merge($existing, [
             'SPRICE' => $sprice,
             'calc_price' => $sprice > 0 ? $sprice : 0,

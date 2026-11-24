@@ -764,6 +764,8 @@
     }
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
+        // Set by hand in the Price Increase modal: the page shows the saved price, not the rule price
+        if (data.sprice_manual && (parseFloat(data.SPRICE) || 0) > 0) return parseFloat(data.SPRICE);
         if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
             return typeof window.ebayClearancePriceForRow === 'function' ? window.ebayClearancePriceForRow(data) : 0;
         }

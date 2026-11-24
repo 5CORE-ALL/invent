@@ -140,7 +140,7 @@ class ChannelSpriceRuleService
     {
         $groups = $cvr->pricingChannelsByType()['byType'] ?? [];
         // Same moves as the Channels modal: Alibaba -> B2B, Dropship -> B2B, Sheets -> C2C
-        $override = ['alibaba' => 'B2B'];
+        $override = ['alibaba' => 'B2B', 'vinted' => 'B2C', 'depop' => 'B2C', 'mercariwship' => 'B2C', 'mercariwoship' => 'B2C'];
         $moves = ['dropship' => 'B2B', 'ds' => 'B2B', 'sheets' => 'C2C'];
 
         $out = [];

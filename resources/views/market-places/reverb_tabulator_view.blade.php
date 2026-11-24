@@ -1207,6 +1207,8 @@
     /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or the row has none. */
     function reverbLiveRuleSprice(data) {
         if (!data || isReverbParentRow(data)) return 0;
+        // Hand-set S PRC (Price Increase modal): no rule price on top — the page shows the saved price
+        if (data.sprice_manual && reverbSavedSprice(data) > 0) return 0;
         try {
             // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No Diff, LMP or Std rule.
             if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {

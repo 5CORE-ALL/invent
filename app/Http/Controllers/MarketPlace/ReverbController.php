@@ -1357,12 +1357,14 @@ class ReverbController extends Controller
             $processedItem["SPRICE_PUSHED_BY"] = null;
             $processedItem["ZERO_SOLD_PRC_APPLIED"] = false;
             $processedItem["ZERO_SOLD_PRC_GROI"] = null;
+            $processedItem["sprice_manual"] = false; // set by hand in the Price Increase modal: shown as saved, server run leaves it
 
             if (isset($reverbViewData[$skuNorm])) {
                 $viewData = $reverbViewData[$skuNorm];
                 $valuesArr = $viewData->values ?: [];
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
+                $processedItem["sprice_manual"] = $processedItem["SPRICE"] > 0 && !empty($valuesArr["SPRICE_MANUAL"]);
                 // Bump Req like NRA: column first, fallback to values
                 $processedItem["bump_req"] = $viewData->bump_req ?? $valuesArr["bump_req"] ?? 'REQ';
                 // Price push status fields
@@ -1555,6 +1557,10 @@ class ReverbController extends Controller
                     ? $reverbViewData->values 
                     : (json_decode($reverbViewData->values, true) ?: []);
 
+                // A hand-set price (Price Increase modal) stays manual only while the page re-saves that same price
+                if (! isset($values['SPRICE']) || ! is_numeric($values['SPRICE']) || abs((float) $values['SPRICE'] - $sprice) > 0.004) {
+                    unset($values['SPRICE_MANUAL']);
+                }
                 // Update SPRICE
                 $values['SPRICE'] = $sprice;
 
@@ -1730,7 +1736,8 @@ class ReverbController extends Controller
             $values['SPRICE_PUSHED_BY_ID'],
             $values['SPRICE_EDITED_AT'],
             $values['ZERO_SOLD_PRC_APPLIED'],
-            $values['ZERO_SOLD_PRC_GROI']
+            $values['ZERO_SOLD_PRC_GROI'],
+            $values['SPRICE_MANUAL']
         );
 
         return $values;

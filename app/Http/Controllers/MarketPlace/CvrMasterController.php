@@ -9441,8 +9441,9 @@ class CvrMasterController extends Controller
                 $value['SPRICE'] = $price;
                 $value['sgpft'] = round($sgpft, 2);
                 $value['sroi'] = round($sroi, 2);
+                $value['SPRICE_MANUAL'] = true; // pls:sprc-dil-auto-push / pls:push-blue-prices leave a hand-set price alone
             } else {
-                unset($value['sprice'], $value['SPRICE'], $value['sgpft'], $value['sroi']);
+                unset($value['sprice'], $value['SPRICE'], $value['sgpft'], $value['sroi'], $value['SPRICE_MANUAL']);
             }
             $row->value = $value;
             $row->save();

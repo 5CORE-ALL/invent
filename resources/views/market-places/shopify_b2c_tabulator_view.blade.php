@@ -1317,6 +1317,8 @@
     function shopifyB2cDisplayedSprice(data) {
         const v = shopifyB2cRawSavedSprice(data);
         if (!(v > 0)) return 0;
+        // Set by hand in the Price Increase modal: shown exactly as saved (no Amz raise)
+        if (data && data.sprice_manual) return v;
         // Clearance: only the Clearance Target NROI% applies, so no Amz raise (the server saved the final price).
         if (shopifyB2cIsClearance(data)) return v;
         const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;

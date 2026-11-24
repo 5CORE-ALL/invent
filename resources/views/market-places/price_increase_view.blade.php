@@ -10226,8 +10226,8 @@
         /** B2C channels with no shipping applied: own "B2C without ship" column, price = SPRICE − Ship. */
         const CHPUSH_B2C_NOSHIP_KEYS = new Set(['faire']);
         const CHPUSH_B2C_NOSHIP_GROUP = 'B2C without ship';
-        /** Per-channel type overrides for this modal (normalized channel name → type). Shopify and Faire are shown under B2C. */
-        const CHPUSH_TYPE_OVERRIDES = { alibaba: 'B2B', shopify: 'B2C', faire: 'B2C' };
+        /** Per-channel type overrides for this modal (normalized channel name → type). Shopify, Faire, Vinted, Depop and both Mercari channels are shown under B2C (full SPRICE). */
+        const CHPUSH_TYPE_OVERRIDES = { alibaba: 'B2B', shopify: 'B2C', faire: 'B2C', vinted: 'B2C', depop: 'B2C', mercariwship: 'B2C', mercariwoship: 'B2C' };
         const CHPUSH_NOSHIP_GROUP = 'B2B without ship';
         /** Shipping $ of the open SKU (AliExpress row, else Amazon row); 0 when unknown. */
         function chpushShipAmount() {

@@ -537,6 +537,10 @@ class Shopifyb2cController extends Controller
             ? $shopifyDataView->value
             : (json_decode($shopifyDataView->value, true) ?: []);
 
+        // A hand-set price (Price Increase modal) stays manual only while the page re-saves that same price
+        if (! isset($existing['SPRICE']) || ! is_numeric($existing['SPRICE']) || abs((float) $existing['SPRICE'] - (float) $sprice) > 0.004) {
+            unset($existing['SPRICE_MANUAL']);
+        }
         $merged = array_merge($existing, [
             'SPRICE' => $sprice,
             'SGPFT' => $sgpft,
@@ -1089,6 +1093,7 @@ class Shopifyb2cController extends Controller
             $processedItem["has_custom_sprice"] = false;
             $processedItem["AMZ_SUGG_APPLIED"] = false;
             $processedItem["AMZ_CAPPED"] = false;
+            $processedItem["sprice_manual"] = false;
             // The rule price before the LMP / Std Prc / Amz caps (saved by shopify-b2c:sprc-dil-auto-push). 0 = not saved yet.
             $processedItem["SPRICE_RULE_PRICE"] = 0;
             $processedItem["cpn_pct"] = 0;
@@ -1098,6 +1103,8 @@ class Shopifyb2cController extends Controller
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
+                // Set by hand in the Price Increase modal: shown as saved (no Amz raise), the server run leaves it alone
+                $processedItem["sprice_manual"] = $processedItem["SPRICE"] > 0 && !empty($valuesArr["SPRICE_MANUAL"]);
                 $processedItem["AMZ_SUGG_APPLIED"] = !empty($valuesArr["AMZ_SUGG_APPLIED"]);
                 $processedItem["AMZ_CAPPED"] = !empty($valuesArr["AMZ_CAPPED"]);
                 $processedItem["SPRICE_RULE_PRICE"] = isset($valuesArr["SPRICE_RULE_PRICE"]) ? floatval($valuesArr["SPRICE_RULE_PRICE"]) : 0;
