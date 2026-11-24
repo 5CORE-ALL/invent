@@ -947,6 +947,11 @@ class Temu3Controller extends TemuController
         $existingValue = $this->decodeDataViewValue($dataView);
 
         if ($sprice > 0) {
+            // A hand-set price (Price Increase modal) stays "manual" only while this page re-saves that same price
+            $prev = $existingValue['SPRICE'] ?? $existingValue['sprice'] ?? null;
+            if (! is_numeric($prev) || abs((float) $prev - $sprice) > 0.004) {
+                unset($existingValue['SPRICE_MANUAL']);
+            }
             $existingValue['sprice'] = $sprice;
             $existingValue['SPRICE'] = $sprice;
             $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
@@ -958,7 +963,8 @@ class Temu3Controller extends TemuController
                 $existingValue['sprice'], $existingValue['SPRICE'],
                 $existingValue['sgprft_percent'], $existingValue['sroi_percent'],
                 $existingValue['SGPFT'], $existingValue['SROI'],
-                $existingValue['SPFT'], $existingValue['spft']
+                $existingValue['SPFT'], $existingValue['spft'],
+                $existingValue['SPRICE_MANUAL']
             );
         }
 
@@ -988,7 +994,7 @@ class Temu3Controller extends TemuController
             $fieldsToRemove = [
                 'sprice', 'SPRICE', 'sgprft_percent', 'sroi_percent',
                 'SGPFT', 'SROI', 'SPFT', 'spft', 'ship',
-                'amazon_price_applied_at', 'r_price_applied_at', 'sprice_status',
+                'amazon_price_applied_at', 'r_price_applied_at', 'sprice_status', 'SPRICE_MANUAL',
             ];
             $wasModified = false;
             foreach ($fieldsToRemove as $field) {

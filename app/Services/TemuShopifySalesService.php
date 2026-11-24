@@ -444,14 +444,16 @@ class TemuShopifySalesService
     }
 
     /**
-     * Push base from SPRICE — inverse of Temu Price (same as /temu-decrease S Temu B Prc).
+     * Push base from SPRICE for every Temu channel (Temu 1, 2, 3):
+     * base = (S PRC × 0.88) − $2.99 when that is under $30, else S PRC × 0.88.
+     * Same as S Base Prc on /new-temuone, /new-temu2 and /temu3-decrease (newTemuoneSBasePrice).
      */
     public static function computePushBaseFromSprice(float $sprice): ?float
     {
         if ($sprice <= 0) {
             return null;
         }
-        $base = self::computeBaseFromFullTemuPrice($sprice);
+        $base = self::newTemuoneSBasePrice($sprice);
 
         return $base > 0 ? round($base, 2) : null;
     }

@@ -190,6 +190,10 @@ class DilRuleSpriceApplyService
                     break;
                 }
                 try {
+                    if (! empty($row['manual_sprice'])) {
+                        $stats['skipped']++;
+                        continue;
+                    }
                     $computed = $this->computeTarget($row, $dilRules, $cvrAdj, $margin);
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -264,6 +268,9 @@ class DilRuleSpriceApplyService
         $margin = $this->takeHome();
         $out = [];
         foreach ($this->hydrateAll($onlySkus) as $row) {
+            if (! empty($row['manual_sprice'])) {
+                continue;
+            }
             $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin);
             if ($computed === null) {
                 continue;
@@ -611,6 +618,7 @@ class DilRuleSpriceApplyService
             ProductMaster::query()->whereIn('sku', $skus)->get(['sku', 'parent', 'Values'])
         );
         $savedBySku = [];
+        $manualBySku = [];
         $pushedBySku = [];
         $lmpBySku = [];
         foreach ($viewClass::query()->whereIn('sku', $skus)->get(['sku', 'value']) as $view) {
@@ -621,6 +629,10 @@ class DilRuleSpriceApplyService
             $sprice = $val['SPRICE'] ?? null;
             if (is_numeric($sprice) && (float) $sprice > 0) {
                 $savedBySku[$key] = round((float) $sprice, 2);
+                // Set from the Price Increase modal (Temu 3): kept as typed, the rules do not recompute it
+                if (! empty($val['SPRICE_MANUAL'])) {
+                    $manualBySku[$key] = true;
+                }
             }
             $pushed = PushedListingPrice::fromValue(is_array($val) ? $val : []);
             if ($pushed !== null) {
@@ -722,6 +734,7 @@ class DilRuleSpriceApplyService
                 'std_price' => $stdBySku[$sku] ?? 0.0,
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
+                'manual_sprice' => ! empty($manualBySku[$sku]),
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
                 'age_days' => $ageDaysBySku[$sku] ?? null,
                 'dil' => $inv > 0 ? round((((float) ($shopify->quantity ?? 0)) / $inv) * 100, 2) : 0.0,

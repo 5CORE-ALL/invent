@@ -101,6 +101,11 @@ class NewTemutwoSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
+                    if (! empty($row['manual_sprice'])) {
+                        // S PRC set by hand in the Price Increase modal: not recomputed, not pushed by this run
+                        $stats['skipped']++;
+                        continue;
+                    }
                     $computed = $this->computeTarget($row, $pricer);
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -705,6 +710,7 @@ class NewTemutwoSprcDilAutoPushService
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['sprice'] ?? 0),
+                'manual_sprice' => ! empty($r['nto_manual_sprice']),
                 'pushed_base' => isset($r['nto_pushed_base']) && is_numeric($r['nto_pushed_base'])
                     ? (float) $r['nto_pushed_base']
                     : null,

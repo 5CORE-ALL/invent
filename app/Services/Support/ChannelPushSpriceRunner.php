@@ -905,10 +905,8 @@ class ChannelPushSpriceRunner
         }
 
         if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
-            // Temu 3 Analytics pushes S Base Prc (S PRC × 0.88, − $2.99 under $30). Temu 1 / 2 keep the Temu Price inverse.
-            $base = $this->channel === 'temu3'
-                ? \App\Services\TemuShopifySalesService::newTemuoneSBasePrice($price)
-                : \App\Services\TemuShopifySalesService::computePushBaseFromSprice($price);
+            // Every Temu channel pushes S Base Prc: S PRC × 0.88, − $2.99 when that is under $30.
+            $base = \App\Services\TemuShopifySalesService::newTemuoneSBasePrice($price);
             if ($base !== null && $base > 0) {
                 $pushPrice = $base;
             }

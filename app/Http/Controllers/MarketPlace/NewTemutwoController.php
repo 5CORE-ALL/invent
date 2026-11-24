@@ -863,6 +863,8 @@ class NewTemutwoController extends Controller
                     'sroi_percent' => $sroiPercent,
                     'sgroi_percent' => $sgroiPercent,
                     'nto_use_saved' => (bool) ($suggested['use_saved'] ?? false),
+                    // Set by hand in the Price Increase modal: the server run leaves this S PRC alone
+                    'nto_manual_sprice' => (bool) ($suggested['manual'] ?? false),
                     'nto_capped' => (bool) ($suggested['capped'] ?? false),
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,

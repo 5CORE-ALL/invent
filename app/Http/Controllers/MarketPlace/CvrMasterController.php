@@ -8459,6 +8459,11 @@ class CvrMasterController extends Controller
             }
             $dataView->save();
 
+            // Temu 1 / Temu 2: the New Temu One / Two analytics pages have their own S PRC — keep it equal to this one
+            if ($marketplace === 'temu' || $marketplace === 'temu2') {
+                $this->syncNewTemuoneSpriceFromSuggested((string) $fullSku, $productMaster, $sprice, $marketplace);
+            }
+
             // When saving Amazon suggested price, also sync to FBA if this SKU has FBA (so FBA page shows same sprice)
             if ($marketplace === 'amazon' && $sprice > 0) {
                 $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
@@ -8720,6 +8725,11 @@ class CvrMasterController extends Controller
         }
         $dataView->save();
 
+        // Temu 1 / Temu 2 (also reached via Temu ↔ Temu2 pairing and Siblings Apply): New Temu One / Two pages follow this price
+        if ($marketplace === 'temu' || $marketplace === 'temu2') {
+            $this->syncNewTemuoneSpriceFromSuggested((string) $fullSku, $productMaster, $sprice, $marketplace);
+        }
+
         if ($marketplace === 'amazon') {
             $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
             if ($fbaSellerSku) {
@@ -8757,6 +8767,79 @@ class CvrMasterController extends Controller
         }
 
         return [];
+    }
+
+    /**
+     * /new-temuone (Temu 1 analytics page) keeps its own S PRC (NTO_SPRICE: Dil + CVR + LMP rules) and ignores the
+     * sprice / SPRICE keys this modal writes, so the two pages showed different prices for the same SKU.
+     * A price saved for Temu here is written there as a MANUAL S PRC (the page keeps a manual value as it is and the Dil rule
+     * does not recompute it); clearing it hands the SKU back to the rules. Nothing is pushed — the page's own push queue
+     * still decides that from the S Promo Base Prc it paints.
+     *
+     * @param  mixed  $productMaster  ProductMaster|null
+     */
+    private function syncNewTemuoneSpriceFromSuggested(string $fullSku, $productMaster, float $sprice, string $marketplace = 'temu'): void
+    {
+        $fullSku = trim($fullSku);
+        if ($fullSku === '') {
+            return;
+        }
+        try {
+            // Temu 2 (/new-temu2) has the same kind of store (NT2_* keys on temu2_data_view) with the same manual flag.
+            $store = $marketplace === 'temu2'
+                ? new \App\Services\Support\NewTemutwoSuggestedPriceStore()
+                : new \App\Services\Support\NewTemuoneSuggestedPriceStore();
+            $store->loadForSkus([$fullSku]);
+            if ($sprice > 0) {
+                $values = $productMaster ? ($productMaster->Values ?: []) : [];
+                $values = is_array($values) ? $values : [];
+                $lp = 0.0;
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp' && is_numeric($v)) {
+                        $lp = (float) $v;
+                    }
+                }
+                if ($lp == 0.0 && $productMaster && isset($productMaster->lp) && is_numeric($productMaster->lp)) {
+                    $lp = (float) $productMaster->lp;
+                }
+                $temuShip = $productMaster ? ProductMasterTemuShip::forPricing($values, $productMaster) : 0.0;
+                $store->writeExactSprice($fullSku, round($sprice, 2), $lp, (float) $temuShip, 0.0, [], true);
+            } else {
+                $store->clearSprice($fullSku);
+            }
+            $store->flush();
+        } catch (\Throwable $e) {
+            Log::warning('CVR SPRICE → New Temu One/Two sync failed', ['sku' => $fullSku, 'marketplace' => $marketplace, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Temu 3 (/temu3-decrease) repaints S PRC from the Dil / Std rules and ignores the stored value unless the row is flagged.
+     * A price set from the modal is flagged SPRICE_MANUAL on temu3_data_view (the page shows it as saved, and the 05:55 / 21:55
+     * dil:rule-sprice-apply run leaves it alone). Clearing it, or saving a different price from the page, removes the flag.
+     */
+    private function markTemu3SpriceManual(string $sku, bool $manual): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('temu3_data_view')) {
+            return;
+        }
+        try {
+            $row = \App\Models\Temu3DataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+            if (! $row) {
+                return;
+            }
+            $value = is_array($row->value) ? $row->value : (json_decode((string) $row->value, true) ?: []);
+            if ($manual) {
+                $value['SPRICE_MANUAL'] = true;
+            } else {
+                unset($value['SPRICE_MANUAL']);
+            }
+            $row->value = $value;
+            $row->save();
+        } catch (\Throwable $e) {
+            Log::warning('CVR SPRICE → Temu 3 manual flag failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -8817,6 +8900,11 @@ class CvrMasterController extends Controller
         );
         $dataView->value = $value;
         $dataView->save();
+
+        // Temu 1 / Temu 2 cleared here → the New Temu One / Two page goes back to its rule price
+        if ($marketplace === 'temu' || $marketplace === 'temu2') {
+            $this->syncNewTemuoneSpriceFromSuggested((string) $fullSku, $productMaster ?? null, 0.0, $marketplace);
+        }
 
         return true;
     }
@@ -9299,6 +9387,10 @@ class CvrMasterController extends Controller
             }
             if (empty($body['success'])) {
                 return response()->json(['success' => false, 'message' => "Could not save price for {$label}: " . ($body['message'] ?? $body['error'] ?? 'failed')], 500);
+            }
+            if ($key === 'temu3') {
+                // Page repaints from its rules; flag this row so /temu3-decrease shows the price saved here
+                $this->markTemu3SpriceManual($sku, $price > 0);
             }
 
             return response()->json([

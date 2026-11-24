@@ -30,6 +30,12 @@ class NewTemutwoSuggestedPriceStore
 
     public const KEY_LMP_ALERT = 'NT2_LMP_ALERT';
 
+    /**
+     * The S PRC was set by hand (Price Increase modal "SPRICE $"). The server run keeps it as it is instead of
+     * recomputing it from the Dil / Std rules. Saving or clearing the price from the page resets it.
+     */
+    public const KEY_MANUAL = 'NT2_MANUAL_SPRICE';
+
     public const KEY_PUSHED_BASE = 'NT2_PUSHED_BASE';
 
     public const KEY_PUSHED_AT = 'NT2_PUSHED_AT';
@@ -236,6 +242,7 @@ class NewTemutwoSuggestedPriceStore
             'lmp_alert' => false,
             'capped' => false,
             'use_saved' => false,
+            'manual' => false,
         ], '');
     }
 
@@ -251,7 +258,8 @@ class NewTemutwoSuggestedPriceStore
         float $ship = 0.0,
         float $sprcDil = 0.0,
         array $labels = [],
-        bool $lmpAlert = false
+        bool $lmpAlert = false,
+        bool $manual = false
     ): void {
         $sku = trim($sku);
         $sprice = round($sprice, 2);
@@ -283,6 +291,7 @@ class NewTemutwoSuggestedPriceStore
             'lmp_alert' => $lmpAlert,
             'capped' => abs($uncapped - $sprice) > 0.01,
             'use_saved' => true,
+            'manual' => $manual,
         ], $fp);
     }
 
@@ -325,6 +334,7 @@ class NewTemutwoSuggestedPriceStore
             'lmp_alert' => (bool) ($saved[self::KEY_LMP_ALERT] ?? false),
             'capped' => (bool) ($saved[self::KEY_CAPPED] ?? false),
             'use_saved' => $sprice > 0 && $sgroi !== null,
+            'manual' => $sprice > 0 && ! empty($saved[self::KEY_MANUAL]),
         ];
     }
 
@@ -394,6 +404,7 @@ class NewTemutwoSuggestedPriceStore
             self::KEY_CAPPED => $computed['capped'] ? true : null,
             self::KEY_LABELS => $computed['labels'] !== [] ? $computed['labels'] : null,
             self::KEY_LMP_ALERT => $computed['lmp_alert'] ? true : null,
+            self::KEY_MANUAL => ! empty($computed['manual']) ? true : null,
         ];
         if ($this->samePersisted($saved, $patch, $fp)) {
             return;
@@ -408,6 +419,9 @@ class NewTemutwoSuggestedPriceStore
     private function samePersisted(array $saved, array $patch, string $fp): bool
     {
         if (($saved[self::KEY_FINGERPRINT] ?? null) !== $fp) {
+            return false;
+        }
+        if (! empty($saved[self::KEY_MANUAL]) !== ! empty($patch[self::KEY_MANUAL])) {
             return false;
         }
         foreach ([self::KEY_SGROI, self::KEY_SPRICE, self::KEY_S_BASE, self::KEY_SPRICE_DIL] as $field) {

@@ -2158,6 +2158,12 @@
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
         extra = extra || {};
+        // Hand-set S PRC (Price Increase modal "SPRICE $" / Temu 3 box): shown exactly as saved — no rule, LMP cap or Std cap on top.
+        // Only the display path (no explicit candidate) honours it, so Apply LMP / clear-and-apply tools can still replace it.
+        if (row && row.sprice_manual && rawSprice === undefined && !extra.use_passed_as_discounted) {
+            const hand = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+            if (hand > 0) return { sprice: +hand.toFixed(2), labels: [], lmpAlert: false, lmp: 0 };
+        }
         // Clearance (Inv days clearance = YES): only the Clearance Target NROI% (last row of the Sprc Dil modal) prices it, in either
         // mode, the same Temu price formula the Sprc Dil column uses. No discount, Diff, Std or LMP rule applies.
         if (row && !isTemu3ParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) {
@@ -2220,10 +2226,11 @@
         extra = extra || {};
         const passed = parseFloat(candidate);
         if (row && typeof row.update === 'function') {
-            row.update({ sprice: null, SPRICE: null });
+            row.update({ sprice: null, SPRICE: null, sprice_manual: false });
         } else if (row) {
             row.sprice = null;
             row.SPRICE = null;
+            row.sprice_manual = false;
         }
         const data = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (row || {});
         const start = (isFinite(passed) && passed > 0) ? passed : temuDiscountedPrice(data);

@@ -3635,6 +3635,8 @@ class TemuController extends Controller
                     'npft_percent' => round($npftPercent, 2),
                     'nroi_percent' => round($nroiPercent, 2),
                     'sprice' => $sprice,
+                    // Price Increase modal set this S PRC by hand (Temu 3 page shows it as saved, no rule recompute)
+                    'sprice_manual' => $channel === 'temu3' && ! empty($temuDataViewValue['SPRICE_MANUAL']),
                     'starget' => $starget,
                     'recommended_base_price' => $recommendedBasePrice,
                     'nr_req' => $nr_req,

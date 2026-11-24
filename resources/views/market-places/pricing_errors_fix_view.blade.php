@@ -3785,12 +3785,14 @@
     }
 
     /** Temu / Temu2 push base — inverse of Temu Price (same as /temu-decrease). */
+    // Same push base for every Temu channel: (SPRICE × 0.88) − $2.99 when that is under $30, else SPRICE × 0.88.
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const push = pefTemuBaseFromFullPrice(s);
-        if (!(push > 0)) return null;
-        return +push.toFixed(2);
+        const sR = Math.round(s * 0.88 * 100) / 100;
+        if (!(sR > 0)) return null;
+        const base = sR < 30 ? Math.round((sR - 2.99) * 100) / 100 : sR;
+        return base > 0 ? +base.toFixed(2) : null;
     }
 
     function ajaxErrorMessage(xhr, fallback) {
