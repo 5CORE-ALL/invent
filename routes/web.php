@@ -8447,6 +8447,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/', 'index')->name('ebay.listing.errors');
         Route::get('/data', 'data')->name('ebay.listing.errors.data');
         Route::post('/check', 'check')->name('ebay.listing.errors.check');
+        Route::post('/refresh', 'refresh')->name('ebay.listing.errors.refresh');
         Route::post('/push', 'push')->name('ebay.listing.errors.push');
     });
 
