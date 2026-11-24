@@ -2,6 +2,8 @@
 
 @section('css')
 <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+{{-- Font Awesome: the Communication icons (WhatsApp, WeChat, Email, Alibaba…) use fas/fab classes, same as /mfrg-in-progress. --}}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
     /* Playback (parent navigation) controls */
     .comparison-playback-group button {
