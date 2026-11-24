@@ -978,7 +978,17 @@ class VariationMasterController extends Controller
             'file' => 'required|file|mimes:xlsx,xls,csv,txt|max:20480',
         ]);
 
-        $spreadsheet = IOFactory::load($request->file('file')->getPathname());
+        $path = $request->file('file')->getPathname();
+        $ext = strtolower((string) $request->file('file')->getClientOriginalExtension());
+        if (in_array($ext, ['csv', 'txt'], true) && ! mb_check_encoding((string) file_get_contents($path), 'UTF-8')) {
+            // A CSV saved by Excel is Windows-1252, not UTF-8: a non-breaking space inside a SKU (byte A0) or a curly quote
+            // would come out as a broken character, and that SKU then could not be found on CP master.
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv;
+            $reader->setInputEncoding('CP1252');
+            $spreadsheet = $reader->load($path);
+        } else {
+            $spreadsheet = IOFactory::load($path);
+        }
         $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
         if ($rows === [] || $rows === null) {
             return response()->json(['success' => false, 'message' => 'The file is empty.'], 422);
@@ -987,7 +997,7 @@ class VariationMasterController extends Controller
         $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $rows[0] ?? []);
         $parentIdx = $this->columnIndex($headers, ['parent sku', 'parentsku', 'parent']);
         $skuIdx = $this->columnIndex($headers, ['child sku', 'childsku', 'sku']);
-        $typeIdx = $this->columnIndex($headers, ['variation type', 'variationtype', 'type']);
+        $typeIdx = $this->columnIndex($headers, ['variation type', 'variationtype', 'variation style', 'variationstyle', 'type', 'style']);
         $nameIdx = $this->columnIndex($headers, ['variation name', 'variationname']);
         $titleIdx = $this->columnIndex($headers, ['title']);
         $descriptionIdx = $this->columnIndex($headers, ['description']);
