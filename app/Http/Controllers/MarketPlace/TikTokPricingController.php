@@ -697,6 +697,8 @@ class TikTokPricingController extends Controller
             $processedItem["SPRICE_PUSHED_VALUE"] = null;
             $processedItem["SPRICE_PUSHED_BY"] = null;
             $processedItem["SPRICE_PUSHED_AT"] = null;
+            // Set by hand in the Price Increase modal: the page shows it as saved and the server run leaves it alone
+            $processedItem["sprice_manual"] = false;
             $tiktokValArr = [];
 
             // Buyer / Seller links default (TikTok 2 reads from its shop data view value below)
@@ -756,6 +758,7 @@ class TikTokPricingController extends Controller
                 $processedItem["SPRICE_PUSHED_BY"] = $tiktokValArr["SPRICE_PUSHED_BY"] ?? null;
                 $processedItem["SPRICE_PUSHED_AT"] = $tiktokValArr["SPRICE_PUSHED_AT"] ?? null;
                 $processedItem["has_custom_sprice"] = floatval($processedItem["SPRICE"] ?? 0) > 0;
+                $processedItem["sprice_manual"] = floatval($processedItem["SPRICE"] ?? 0) > 0 && ! empty($tiktokValArr["SPRICE_MANUAL"]);
             }
             if (!isset($processedItem["NR"]) && isset($reverbViewData[$sku])) {
                 $valuesArr = $reverbViewData[$sku]->values ?: [];
@@ -1593,6 +1596,11 @@ class TikTokPricingController extends Controller
                 $view = $viewModel::firstOrNew(['sku' => $sku]);
                 $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
 
+                // A hand-set price (Price Increase modal) stays manual only while the page re-saves that same price
+                $prevSprice = $values['SPRICE'] ?? null;
+                if (! (floatval($sprice) > 0) || ! is_numeric($prevSprice) || abs((float) $prevSprice - floatval($sprice)) > 0.004) {
+                    unset($values['SPRICE_MANUAL']);
+                }
                 $values['SPRICE'] = floatval($sprice);
 
                 $productMaster = ProductMaster::where('sku', $sku)->first();

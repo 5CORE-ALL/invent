@@ -145,6 +145,12 @@ class TiktokSprcDilAutoPushService
         try {
             foreach ($rows as $i => $row) {
                 try {
+                    if (! empty($row['manual_sprice'])) {
+                        // S PRC set by hand in the Price Increase modal: not recomputed, not pushed by this run
+                        // (the 10-minute blue catch-up used to push the rule price right back over it)
+                        $stats['skipped']++;
+                        continue;
+                    }
                     $computed = $this->computeTarget($row, $pricer, $adsFrac, $dilContext);
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -632,6 +638,7 @@ class TiktokSprcDilAutoPushService
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'lmp' => is_numeric($r['lmp_price'] ?? null) ? (float) $r['lmp_price'] : 0.0,
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
+                'manual_sprice' => ! empty($r['sprice_manual']),
                 'pushed_value' => isset($r['SPRICE_PUSHED_VALUE']) && is_numeric($r['SPRICE_PUSHED_VALUE'])
                     ? (float) $r['SPRICE_PUSHED_VALUE']
                     : null,

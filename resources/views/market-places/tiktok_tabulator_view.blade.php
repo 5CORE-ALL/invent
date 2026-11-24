@@ -1443,6 +1443,8 @@
         /** The rule price of the ON switch, with its caps, worked out live. 0 while the rules are loading or when the row has none. */
         function ttLiveRuleSprice(d) {
             if (!d || ttIsParentRow(d)) return 0;
+            // Hand-set S PRC (Price Increase modal): no rule price on top — the page shows the saved price
+            if (d.sprice_manual && ttSavedSprice(d) > 0) return 0;
             try {
                 // Clearance (Inv days clearance = YES): only the Clearance Target NROI% prices it, in either mode. No slab, Diff, LMP or Std rule.
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {

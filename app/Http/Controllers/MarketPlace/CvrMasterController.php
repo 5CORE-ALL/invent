@@ -8427,6 +8427,11 @@ class CvrMasterController extends Controller
                 }
                 // Track SPRICE edit time (used by Push History same-day hide)
                 $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
+                // TikTok pages repaint S PRC from the Dil / Std rules and the server run pushes that rule price every 10 min:
+                // a price set here is flagged manual so both leave it as it is (cleared again below / from the page).
+                if ($marketplace === 'tiktok' || $marketplace === 'tiktok2') {
+                    $value['SPRICE_MANUAL'] = true;
+                }
 
                 // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
                 // TopDawg: lowercase sprice only (same as /topdawg-pricing)
@@ -8447,7 +8452,7 @@ class CvrMasterController extends Controller
                     $value['SGPFT'], $value['sgpft'], $value['sgprft_percent'],
                     $value['SROI'], $value['sroi'], $value['sroi_percent'],
                     $value['SPFT'], $value['spft'],
-                    $value['SPRICE_EDITED_AT']
+                    $value['SPRICE_EDITED_AT'], $value['SPRICE_MANUAL']
                 );
             }
             
@@ -8706,6 +8711,9 @@ class CvrMasterController extends Controller
         $value['SROI'] = $sroi;
         $value['SPFT'] = $spft;
         $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
+        if ($marketplace === 'tiktok' || $marketplace === 'tiktok2' || $marketplace === 'tiktok 2' || $marketplace === 'tiktokshop2') {
+            $value['SPRICE_MANUAL'] = true; // siblings: same manual flag as the main SKU (TikTok pages / server run keep it)
+        }
 
         if ($marketplace === 'walmart' || $marketplace === 'topdawg') {
             unset($value['SPRICE']);
