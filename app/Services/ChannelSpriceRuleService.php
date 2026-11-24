@@ -100,7 +100,8 @@ class ChannelSpriceRuleService
             $row = $byKey[$key] ?? null;
             $mp = $row ? (string) ($row['marketplace'] ?? $key) : $key;
             $mpCompact = preg_replace('/\s+/', '', strtolower($mp)) ?? '';
-            if (! in_array(strtolower($mp), self::SAVE_SUPPORTED, true) && ! in_array($mpCompact, self::SAVE_SUPPORTED, true)) {
+            $mpAlnum = preg_replace('/[^a-z0-9]/', '', strtolower($mp)) ?? ''; // "Mercari w/o Ship" -> mercariwoship
+            if (! in_array(strtolower($mp), self::SAVE_SUPPORTED, true) && ! in_array($mpCompact, self::SAVE_SUPPORTED, true) && ! in_array($mpAlnum, self::SAVE_SUPPORTED, true)) {
                 $skipped++;
                 continue;
             }

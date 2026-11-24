@@ -8463,6 +8463,11 @@ class CvrMasterController extends Controller
             }
             $dataView->save();
 
+            // /shopify-b2c-tabulator-view serves a 60s cached payload — drop it so the saved SPRICE shows at once
+            if ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
+                \App\Http\Controllers\MarketPlace\Shopifyb2cController::forgetTabularDataCache();
+            }
+
             // Temu 1 / Temu 2: the New Temu One / Two analytics pages have their own S PRC — keep it equal to this one
             if ($marketplace === 'temu' || $marketplace === 'temu2') {
                 $this->syncNewTemuoneSpriceFromSuggested((string) $fullSku, $productMaster, $sprice, $marketplace);
