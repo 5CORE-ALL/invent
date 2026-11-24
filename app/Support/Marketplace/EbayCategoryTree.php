@@ -199,6 +199,27 @@ class EbayCategoryTree
         return ['total' => $total, 'results' => $results, 'fetched_at' => (string) $data['fetched_at']];
     }
 
+    /** The leaf category with exactly this path (case and spacing around ">" ignored). */
+    public static function byPath(string $path): ?array
+    {
+        $want = self::flatPath($path);
+        if ($want === '') {
+            return null;
+        }
+        foreach (self::load()['categories'] as $cat) {
+            if (self::flatPath((string) $cat[1]) === $want) {
+                return ['id' => (string) $cat[0], 'path' => (string) $cat[1]];
+            }
+        }
+
+        return null;
+    }
+
+    private static function flatPath(string $path): string
+    {
+        return mb_strtolower(trim(preg_replace('/\s*>\s*/u', '>', preg_replace('/\s+/u', ' ', $path) ?? $path) ?? $path));
+    }
+
     public static function byId(string $id): ?array
     {
         foreach (self::load()['categories'] as $cat) {

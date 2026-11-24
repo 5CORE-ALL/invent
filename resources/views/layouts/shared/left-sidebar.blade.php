@@ -1738,6 +1738,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('category.specifics') }}">Category Specifics</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay2.item.data') }}">Ebay2 Data</a>
                                     </li>
 
