@@ -98,8 +98,10 @@
                                 <i class="mdi mdi-barcode me-1"></i> SKUs: <span id="badge-skus">0</span>
                             </span>
                             <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle px-3 py-2 fs-6"
-                                title="Categories listed on this page">
-                                <i class="mdi mdi-shape-outline me-1"></i> Categories: <span id="badge-categories">0</span>
+                                id="badge-categories-btn" role="button" tabindex="0"
+                                style="cursor:pointer;user-select:none;"
+                                title="Click to show one category at a time. Click again for the next category; after the last one all categories are shown again.">
+                                <i class="mdi mdi-shape-outline me-1"></i> Categories: <span id="badge-categories">0</span><span id="badge-category-pos" class="ms-1"></span>
                             </span>
                         </div>
                         <div class="d-flex gap-2 align-items-center">
@@ -1175,9 +1177,82 @@
                 document.getElementById('category-footer').textContent =
                     'Showing ' + nCategories + (nCategories === 1 ? ' category' : ' categories') +
                     (uncategorized ? ' and ' + uncategorized + (uncategorized === 1 ? ' SKU' : ' SKUs') + ' not in any category' : '');
+                renderCategoryCycle();
             }
             ['dataLoaded', 'rowDeleted', 'rowUpdated'].forEach(function(name) {
                 table.on(name, function() { setTimeout(updateBadges, 0); });
+            });
+
+            // ---- "Categories: N" badge: click = show one category at a time, click again = next category ----
+            // The filter is done in the browser on the loaded rows; after the last category the next click
+            // shows every category again. (A function filter is used so the header-box filters are untouched.)
+            let cycleCategoryId = null;
+
+            function categoryOrder() {
+                const seen = {}, list = [];
+                table.getData().forEach(function(r) {
+                    if (r.category_id > 0 && !seen[r.category_id]) {
+                        seen[r.category_id] = true;
+                        list.push({ id: r.category_id, name: r.category_name });
+                    }
+                });
+                return list;
+            }
+
+            function cycleFilter(data) { return data.category_id === cycleCategoryId; }
+
+            function applyCategoryCycle() {
+                table.removeFilter(cycleFilter);
+                if (cycleCategoryId !== null) table.addFilter(cycleFilter);
+                setTimeout(updateBadges, 0);
+            }
+
+            function renderCategoryCycle() {
+                const pos = document.getElementById('badge-category-pos');
+                const btn = document.getElementById('badge-categories-btn');
+                const list = categoryOrder();
+                let idx = -1;
+                if (cycleCategoryId !== null) {
+                    idx = list.findIndex(function(c) { return c.id === cycleCategoryId; });
+                    if (idx < 0) { // the category is gone after a reload / delete
+                        cycleCategoryId = null;
+                        table.removeFilter(cycleFilter);
+                    }
+                }
+                if (idx >= 0) {
+                    pos.textContent = '\u00b7 ' + (idx + 1) + '/' + list.length + ' ' + sentenceCase(list[idx].name);
+                    btn.classList.add('border-primary');
+                    document.getElementById('category-footer').textContent =
+                        'Category ' + (idx + 1) + ' of ' + list.length + ': ' + sentenceCase(list[idx].name) +
+                        ' - click the Categories badge for the next one';
+                } else {
+                    pos.textContent = '';
+                    btn.classList.remove('border-primary');
+                }
+            }
+
+            function nextCategory() {
+                const list = categoryOrder();
+                if (!list.length) return;
+                const idx = cycleCategoryId === null ? -1 : list.findIndex(function(c) { return c.id === cycleCategoryId; });
+                const next = idx + 1;
+                cycleCategoryId = next < list.length ? list[next].id : null; // past the last one = show all again
+                applyCategoryCycle();
+            }
+
+            (function() {
+                const btn = document.getElementById('badge-categories-btn');
+                btn.addEventListener('click', nextCategory);
+                btn.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nextCategory(); }
+                });
+            })();
+
+            // Clear filters also leaves the one-category view
+            document.getElementById('category-clear-filters').addEventListener('click', function() {
+                if (cycleCategoryId === null) return;
+                cycleCategoryId = null;
+                applyCategoryCycle();
             });
 
             // ---- selection (header checkbox selects every listed row) ----
