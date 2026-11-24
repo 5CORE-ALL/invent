@@ -1425,6 +1425,19 @@
         border-radius: 8px;
     }
 
+    #comparisonColumnEditModal .cd-col-edit-counts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 0.75rem; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt {
+        display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 12px; border-radius: 999px;
+        background: #f1f5f9; color: #475569; font-size: .78rem; border: 1px solid #e2e8f0;
+    }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt b { font-size: .95rem; color: #0f172a; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-ok { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-ok b { color: #047857; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-warn { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-warn b { color: #b45309; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-sel { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+    #comparisonColumnEditModal .cd-col-edit-counts .cd-cnt-sel b { color: #1d4ed8; }
+
     #comparisonColumnEditModal .cd-spec-pick-wrap { display: block; min-width: 0; }
     #comparisonColumnEditModal .cd-spec-pick-btn {
         display: flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -5062,11 +5075,9 @@ document.addEventListener('DOMContentLoaded', function () {
         </span>`;
     }
 
+    // Edit column drawer rows: the field only (Copy/Cut/Paste buttons were removed).
     function wrapFieldWithClipboardActions(fieldHtml, fieldId) {
-        return `<div class="cd-field-clip-wrap">
-            ${fieldHtml}
-            ${fieldClipboardActionsHtml(fieldId)}
-        </div>`;
+        return `<div class="cd-field-clip-wrap">${fieldHtml}</div>`;
     }
 
     function resolveClipboardField(btn) {
@@ -5797,7 +5808,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const bulk = specPanelEl('comparison-column-edit-bulk-value');
         const bulkBtn = specPanelEl('comparison-column-edit-bulk-pick');
         if (bulk && bulkBtn && bulk.dataset.mode === 'spec') setSpecPickBtnText(bulkBtn, bulk.value);
+        updateColumnEditCounts();
     }
+
+    (function bindColumnEditCountEvents() {
+        const modal = document.getElementById('comparisonColumnEditModal');
+        if (!modal) return;
+        ['input', 'change', 'click'].forEach((ev) => {
+            modal.addEventListener(ev, () => setTimeout(updateColumnEditCounts, 0));
+        });
+    })();
 
     function specCurrentValueFor(target) {
         if (target === 'bulk') return specPanelEl('comparison-column-edit-bulk-value')?.value || '';
@@ -6101,7 +6121,26 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function updateColumnEditCounts() {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+        const rows = document.querySelectorAll('#comparison-column-edit-tbody tr[data-edit-row]');
+        let total = 0;
+        let filled = 0;
+        rows.forEach((tr) => {
+            const f = tr.querySelector('.cd-col-edit-field');
+            if (!f) return;
+            total++;
+            if (String(f.value || '').trim() !== '') filled++;
+        });
+        set('cd-cnt-total', total);
+        set('cd-cnt-filled', filled);
+        set('cd-cnt-empty', total - filled);
+        set('cd-cnt-selected', columnEditSelectedRows ? columnEditSelectedRows.size : 0);
+        refreshBlankRowsButton();
+    }
+
     function refreshColumnEditBulkBar() {
+        updateColumnEditCounts();
         const col = columnEditTargetCol;
         const bulkBar = document.getElementById('comparison-column-edit-bulk-bar');
         const countEl = document.getElementById('comparison-column-edit-bulk-count');
@@ -10371,6 +10410,65 @@ document.addEventListener('DOMContentLoaded', function () {
         selectedSheetRow = idx;
         deleteSheetRow();
         return true;
+    }
+
+    // Rows with no value in any column (Supplier Name row is never counted).
+    function blankSheetRowIndexes(cells) {
+        const out = [];
+        const specCol = detectSpecColumnIndex(cells);
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        const qcCol = detectQcColumnIndex(cells, specCol);
+        (cells || []).forEach((row, idx) => {
+            if (!Array.isArray(row)) return;
+            if (isFixedSupplierNameRow(idx, cells)) return;
+            const blank = row.every((v, c) => {
+                const s = String(v ?? '').trim();
+                if (s === '') return true;
+                // Critical / QC columns default to "Normal" on an empty row.
+                return (c === criticalCol || c === qcCol) && s.toLowerCase() === 'normal';
+            });
+            if (blank) out.push(idx);
+        });
+        return out;
+    }
+
+    function refreshBlankRowsButton() {
+        const btn = document.getElementById('comparison-column-edit-del-blank-btn');
+        if (!btn) return;
+        const n = blankSheetRowIndexes(currentSheetCells).length;
+        const badge = document.getElementById('cd-cnt-blank');
+        if (badge) badge.textContent = String(n);
+        btn.disabled = n === 0;
+        btn.title = n ? `Delete ${n} completely blank row(s) from the sheet` : 'No completely blank rows';
+    }
+
+    function deleteBlankSheetRows() {
+        readCellsFromEditor({ expandImages: false });
+        let idxs = blankSheetRowIndexes(currentSheetCells);
+        if (!idxs.length) {
+            setSheetStatus('No blank rows to delete.', false);
+            refreshBlankRowsButton();
+            return false;
+        }
+        if (idxs.length >= currentSheetCells.length) {
+            idxs = idxs.slice(1);
+        }
+        if (!idxs.length) return false;
+        const rowNos = idxs.map(i => i + 1).join(', ');
+        if (!window.confirm(`Delete ${idxs.length} blank row(s) (row ${rowNos})? This removes them for every supplier.`)) {
+            return false;
+        }
+        idxs.slice().sort((a, b) => b - a).forEach((idx) => {
+            currentSheetCells.splice(idx, 1);
+            currentSheetFormats.rows = shiftNumericFormatMap(currentSheetFormats.rows, idx, -1);
+            currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, idx, 'row', -1);
+        });
+        selectedSheetCell = null;
+        selectedSheetRow = null;
+        renderSheetEditor(currentSheetCells);
+        setSheetStatus(`${idxs.length} blank row(s) deleted.`, false);
+        scheduleAutoSaveComparisonSheet(400);
+        return idxs;
     }
 
     function insertSheetColumn() {
@@ -16618,6 +16716,37 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshColumnEditBulkBar();
     });
 
+    // "Delete blank rows" button in the Edit column modal.
+    document.getElementById('comparisonColumnEditModal')?.addEventListener('click', function (e) {
+        if (!e.target.closest('#comparison-column-edit-del-blank-btn')) return;
+        e.preventDefault();
+        const remap = (r, gone) => r - gone.filter(g => g < r).length;
+        const drafts = [];
+        document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-field:not([type="hidden"])').forEach((field) => {
+            const r = parseInt(field.dataset.row, 10);
+            if (Number.isNaN(r)) return;
+            const original = field.tagName === 'SELECT' ? (field.dataset.current ?? null) : field.defaultValue;
+            if (original !== null && String(field.value) !== String(original) && field.value !== SPEC_ADD_VALUE) {
+                drafts.push({ row: r, value: field.value });
+            }
+        });
+        const selected = [...columnEditSelectedRows];
+        const gone = deleteBlankSheetRows();
+        if (!gone) return;
+        columnEditSelectedRows = new Set(selected.filter(r => !gone.includes(r)).map(r => remap(r, gone)));
+        renderColumnEditModalRows();
+        drafts.filter(d => !gone.includes(d.row)).forEach((d) => {
+            const field = document.querySelector(`#comparison-column-edit-tbody .cd-col-edit-field[data-row="${remap(d.row, gone)}"]:not([type="hidden"]):not([readonly])`);
+            if (!field) return;
+            if (field.tagName === 'SELECT' && ![...field.options].some(o => o.value === d.value)) {
+                field.add(new Option(d.value, d.value));
+            }
+            field.value = d.value;
+        });
+        syncSpecPickButtons();
+        refreshColumnEditBulkBar();
+    });
+
     document.getElementById('comparisonColumnEditModal')?.addEventListener('change', function (e) {
         const selectAll = e.target.closest('#comparison-column-edit-select-all');
         if (selectAll) {
@@ -17186,14 +17315,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="cd-col-edit-bulk-bar cd-col-edit-supplier-bar" id="comparison-column-edit-supplier-bar">
-                    <label class="cd-col-edit-bulk-label" for="comparison-column-edit-supplier-input">Supplier</label>
-                    <div class="cd-supp-combo" id="comparison-column-edit-supplier-combo">
-                        <input type="text" id="comparison-column-edit-supplier-input" class="form-control form-control-sm" placeholder="— Select supplier (type to search) —" autocomplete="off" aria-label="Supplier">
-                        <i class="mdi mdi-chevron-down cd-supp-combo-caret" aria-hidden="true"></i>
-                        <div class="cd-supp-combo-list d-none" id="comparison-column-edit-supplier-list" role="listbox"></div>
-                    </div>
-                    <span class="cd-col-edit-bulk-count" id="comparison-column-edit-supplier-hint">Fills this column's Supplier Name row</span>
+                <div class="cd-col-edit-counts" id="comparison-column-edit-counts" aria-live="polite">
+                    <span class="cd-cnt"><b id="cd-cnt-total">0</b> rows</span>
+                    <span class="cd-cnt cd-cnt-ok"><b id="cd-cnt-filled">0</b> filled</span>
+                    <span class="cd-cnt cd-cnt-warn"><b id="cd-cnt-empty">0</b> empty</span>
+                    <span class="cd-cnt cd-cnt-sel"><b id="cd-cnt-selected">0</b> selected</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" id="comparison-column-edit-del-blank-btn" title="Delete completely blank rows">
+                        <i class="mdi mdi-delete-sweep-outline me-1" aria-hidden="true"></i> Delete blank rows (<span id="cd-cnt-blank">0</span>)
+                    </button>
                 </div>
                 <div class="cd-col-edit-bulk-bar" id="comparison-column-edit-bulk-bar">
                     <label class="cd-col-edit-bulk-label" for="comparison-column-edit-bulk-value">Apply to selected</label>
