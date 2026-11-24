@@ -8433,6 +8433,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('org.mails.data');
 
+    Route::middleware('auth')->prefix('category-specifics')->controller(\App\Http\Controllers\CategorySpecificsController::class)->group(function () {
+        Route::get('/', 'index')->name('category.specifics');
+        Route::get('/data', 'data')->name('category.specifics.data');
+        Route::get('/aspects', 'aspects')->name('category.specifics.aspects');
+        Route::post('/map', 'saveMap')->name('category.specifics.map');
+        Route::post('/unmap', 'removeMap')->name('category.specifics.unmap');
+    });
+
     Route::get('/indeed', [IndeedController::class, 'index'])
         ->middleware('auth')
         ->name('indeed');
