@@ -6173,6 +6173,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/category/rows/add', [CategoryController::class, 'categoryRowsAdd'])->name('category.rows.add');
     Route::post('/category/merge', [CategoryController::class, 'mergeCategories'])->name('category.merge');
     Route::post('/category/delete-many', [CategoryController::class, 'deleteCategories'])->name('category.delete-many');
+    Route::post('/category/rename', [CategoryController::class, 'renameCategory'])->name('category.rename');
 
     // To Order Analysis routes
     Route::controller(ToOrderAnalysisController::class)->group(function () {

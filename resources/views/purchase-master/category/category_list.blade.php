@@ -418,6 +418,29 @@
                             </div>
                         </div>
                     </div>
+                    {{-- Edit (rename) a category (Category - Supplier tab) --}}
+                    <div class="modal fade" id="categoryEditTabModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered modal-sm shadow-none">
+                            <div class="modal-content border-0 rounded-3">
+                                <div class="modal-header bg-primary text-white rounded-top">
+                                    <h5 class="modal-title"><i class="mdi mdi-square-edit-outline me-1"></i> Edit category</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <label class="form-label fw-semibold" for="cem-name">Category name <span class="text-danger">*</span></label>
+                                    <input type="text" id="cem-name" class="form-control" maxlength="255" autocomplete="off">
+                                    <div class="form-text">Its SKUs stay in the category. To change its suppliers, click the supplier count in the table.</div>
+                                    <div class="text-danger small mt-2" id="cem-error" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="cem-save" disabled>
+                                        <i class="mdi mdi-content-save me-1"></i> Update
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     {{-- Parents (Product column) of a category --}}
                     <div class="modal fade" id="productsModal" tabindex="-1" aria-hidden="true">
                         <div class="modal-dialog modal-dialog-centered modal-sm shadow-none">
@@ -1656,17 +1679,25 @@
                           sorter: function(a, b, aRow, bRow) { return aRow.getData().supplier_count - bRow.getData().supplier_count; },
                           formatter: function(cell) {
                               const d = cell.getRow().getData();
-                              if (!d.suppliers.length) return '<span class="text-muted">-</span>';
+                              // the count opens the same Suppliers modal as in the Category list tab (add / edit / remove suppliers)
+                              const opener = '<button type="button" class="btn btn-sm supplier-count-btn border border-info-subtle bg-info-subtle text-info-emphasis rounded-pill px-2 py-0 me-2" ' +
+                                  'data-category-id="' + d.category_id + '" data-category-name="' + esc(d.category_name) + '" title="View / add / edit suppliers">' +
+                                  (d.suppliers.length ? d.supplier_count : '<i class="mdi mdi-plus"></i> Add') + '</button>';
+                              if (!d.suppliers.length) return opener + '<span class="text-muted">-</span>';
                               const el = cell.getElement();
                               el.style.whiteSpace = 'normal';
-                              return '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle me-2">' + d.supplier_count + '</span>' +
+                              return opener +
                                   d.suppliers.map(function(s) {
                                       return '<span class="d-inline-block border rounded-pill bg-light px-2 py-0 me-1 mb-1 small">' + esc(s.name) + '</span>';
                                   }).join('');
                           } },
-                        { title: 'Action', field: 'key', width: 90, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
+                        { title: 'Action', field: 'key', width: 110, hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                           formatter: function(cell) {
-                              return '<button type="button" class="btn btn-sm btn-soft-danger cs-delete-row" title="Delete this category" data-key="' + esc(cell.getValue()) + '"><i class="mdi mdi-delete"></i></button>';
+                              const k = esc(cell.getValue());
+                              return '<div class="d-flex justify-content-center gap-1">' +
+                                  '<button type="button" class="btn btn-sm btn-soft-primary cs-edit-row" title="Edit this category" data-key="' + k + '"><i class="mdi mdi-square-edit-outline"></i></button>' +
+                                  '<button type="button" class="btn btn-sm btn-soft-danger cs-delete-row" title="Delete this category" data-key="' + k + '"><i class="mdi mdi-delete"></i></button>' +
+                                  '</div>';
                           } },
                     ],
                 });
@@ -1781,6 +1812,59 @@
                     $('#ccm-error').text(errMsg(xhr)).show();
                     $btn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Save');
                 });
+            });
+
+            // ---- Edit (rename) ----
+            const editModal = document.getElementById('categoryEditTabModal');
+            const $cemName = $('#cem-name');
+            let editRow = null;
+            function cemState() {
+                const name = $cemName.val().trim();
+                const dupe = name && editRow && csTable.getData().some(function(r) {
+                    return r.key !== editRow.key && r.category_name.trim().toLowerCase() === name.toLowerCase();
+                });
+                if (dupe) $('#cem-error').text('A category named "' + name + '" already exists.').show(); else $('#cem-error').hide();
+                const changed = editRow && name !== editRow.category_name.trim();
+                $('#cem-save').prop('disabled', !name || dupe || !changed);
+            }
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest ? e.target.closest('.cs-edit-row') : null;
+                if (!btn || !csTable) return;
+                const row = csTable.getRow(btn.getAttribute('data-key'));
+                if (!row) return;
+                editRow = row.getData();
+                $cemName.val(editRow.category_name);
+                $('#cem-error').hide();
+                $('#cem-save').prop('disabled', true).html('<i class="mdi mdi-content-save me-1"></i> Update');
+                bootstrap.Modal.getOrCreateInstance(editModal).show();
+            });
+            editModal.addEventListener('shown.bs.modal', function() { $cemName.trigger('focus').select(); });
+            editModal.addEventListener('hidden.bs.modal', function() { editRow = null; });
+            $cemName.on('input', cemState).on('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); $('#cem-save').trigger('click'); }
+            });
+            $('#cem-save').on('click', function() {
+                const name = $cemName.val().trim();
+                if (!editRow || !name || $(this).prop('disabled')) return;
+                const $btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+                $.ajax({
+                    url: '{{ route('category.rename') }}',
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: csrf(), new_name: name, category_ids: editRow.category_ids }
+                }).done(function(res) {
+                    if (res && res.success) { window.location.reload(); return; }
+                    $('#cem-error').text((res && res.message) || 'Could not update the category.').show();
+                    $btn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Update');
+                }).fail(function(xhr) {
+                    $('#cem-error').text(errMsg(xhr)).show();
+                    $btn.prop('disabled', false).html('<i class="mdi mdi-content-save me-1"></i> Update');
+                });
+            });
+
+            // Suppliers edited in the Suppliers modal: refresh this tab's list when the modal closes
+            document.getElementById('categorySuppliersModal').addEventListener('hidden.bs.modal', function() {
+                if (csTable) load();
             });
 
             // Tabs: build tab 2 the first time it is shown (a hidden Tabulator cannot measure itself),

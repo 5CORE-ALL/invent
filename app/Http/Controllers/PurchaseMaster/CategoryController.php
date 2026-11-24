@@ -1108,6 +1108,76 @@ class CategoryController extends Controller
     }
 
     /**
+     * Rename a category (Category - Supplier tab). A category is linked to its CP Master SKUs by NAME
+     * (through the MFR category of the same name), so the MFR category is renamed with it and the SKUs
+     * stay in the category. Refused when the new name is already used by another category or by another
+     * MFR category in CP Master - merging those is what "Category merge" is for.
+     */
+    public function renameCategory(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'new_name' => 'required|string|max:255',
+            'category_ids' => 'required|array|min:1|max:50',
+            'category_ids.*' => 'required|integer',
+        ], ['new_name.required' => 'Enter the category name.']);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $newName = trim((string) $request->input('new_name'));
+        if ($newName === '') {
+            return response()->json(['success' => false, 'message' => 'Enter the category name.'], 422);
+        }
+        $newKey = mb_strtolower($newName);
+
+        $ids = array_values(array_unique(array_map('intval', $request->input('category_ids'))));
+        $categories = Category::query()->whereIn('id', $ids)->get();
+        if ($categories->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'The category was not found (already deleted?).'], 404);
+        }
+
+        $duplicate = Category::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$newKey])
+            ->whereNotIn('id', $categories->pluck('id')->all())
+            ->first();
+        if ($duplicate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A category named "'.$duplicate->name.'" already exists. Pick a different name, or use Category merge to combine them.',
+            ], 422);
+        }
+
+        $oldMfrIds = [];
+        foreach ($categories as $category) {
+            $oldMfrIds = array_merge($oldMfrIds, $this->mfrCategoryIdsForName($category->name));
+        }
+        $oldMfrIds = array_values(array_unique($oldMfrIds));
+        $clash = array_diff($this->mfrCategoryIdsForName($newName), $oldMfrIds);
+        if ($clash !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An MFR category named "'.$newName.'" already exists in CP Master. Pick a different name, or use Category merge to combine them.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($categories, $oldMfrIds, $newName) {
+            if ($oldMfrIds !== []) {
+                ProductCategory::query()->whereIn('id', $oldMfrIds)->update(['category_name' => $newName]);
+            }
+            foreach ($categories as $category) {
+                $category->name = $newName;
+                $category->save();
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category renamed to "'.$newName.'".',
+            'category' => ['id' => (int) $categories->first()->id, 'name' => $newName],
+        ]);
+    }
+
+    /**
      * Delete categories (Category - Supplier tab). Only the category itself is deleted: each of its
      * suppliers just loses the link to it (the supplier stays in Supplier List, with its other
      * categories), and CP Master SKUs are left alone (they stay in CP Master and are simply listed as
