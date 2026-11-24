@@ -261,7 +261,6 @@
             line-height: 1.2;
             margin: 0;
         }
-        #nto-reload-push-wrap { display: none !important; }
         .nto-reload-push-switch {
             display: inline-flex;
             align-items: center;
@@ -2470,10 +2469,10 @@
     function ntoPushCsrf() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     }
-    // Temu 1 auto push is OFF for good: the background cron is disabled and the page never queues pushes on its
-    // own. Only manual actions (Push buttons, Dil Save & push) queue a push.
+    // Auto push switch: when ON the page queues blue-triangle S Base Prc pushes on load / when flipped on.
+    // When OFF only manual actions (Push buttons, Dil Save & push) queue a push.
     function ntoPageReloadPushAllowed() {
-        return false;
+        return ntoPageReloadPushEnabled === true;
     }
     function syncNtoReloadPushSwitchUi() {
         const on = ntoPageReloadPushAllowed();

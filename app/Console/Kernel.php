@@ -1897,15 +1897,13 @@ class Kernel extends ConsoleKernel
         // NTO_SPRICE where it changed, pushes blue-triangle SKUs (INV > 0, S Base ≠ Temu base). Every 10 min, 24/7
         // on purpose (no $ist()), so a price change is pushed with the page closed.
         // --respect-switch: the page Auto push switch decides; when it is OFF this job does nothing.
-        // DISABLED: Temu 1 background price push is off. Prices push only from the manual push button on /new-temuone.
-        if (false) {
-            $schedule->command('newtemuone:push-blue-prices --respect-switch')
-                ->everyTenMinutes()
-                ->name('newtemuone-push-blue-prices')
-                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
-                ->runInBackground()
-                ->appendOutputTo($log);
-        }
+        // The switch defaults to OFF, so nothing is pushed in the background until it is turned on on /new-temuone.
+        $schedule->command('newtemuone:push-blue-prices --respect-switch')
+            ->everyTenMinutes()
+            ->name('newtemuone-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         // The twice-daily command below is replaced by the 10-minute job above.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
