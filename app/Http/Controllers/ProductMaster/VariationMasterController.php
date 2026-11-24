@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\ListingManagerProductPublisher;
 use App\Support\Marketplace\VariationListingContent;
+use App\Support\Marketplace\VariationTypeSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,10 @@ class VariationMasterController extends Controller
             }
             $product->Values = $values;
             $product->save();
+            if ($request->exists('variation_type')) {
+                // The eBay 2 Variation Type page shows this type in the New Type cell of the parent's listing.
+                VariationTypeSync::typeToEbayPage((string) $product->parent, (string) ($values['variation_type'] ?? ''));
+            }
         }
 
         $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request)
@@ -455,6 +460,17 @@ class VariationMasterController extends Controller
                 }
             }
         });
+
+        if ($childChanged && $request->exists('variation_type')) {
+            $syncType = $this->normalizeDisplay($request->input('variation_type'));
+            $syncParents = [];
+            foreach ($products as $product) {
+                $syncParents[VariationTypeSync::parentKey((string) $product->parent)] = true;
+            }
+            foreach (array_keys($syncParents) as $syncParent) {
+                VariationTypeSync::typeToEbayPage((string) $syncParent, $syncType);
+            }
+        }
 
         $parts = [];
         if ($childChanged) {
@@ -1003,8 +1019,10 @@ class VariationMasterController extends Controller
         $missing = 0;
         // Every row that was not imported, with the reason: [row number in the file, sku, parent, kind, reason].
         $issues = [];
+        // parent => variation type from the file, put on the eBay 2 Variation Type page after the import.
+        $typeByParent = [];
 
-        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing, &$issues) {
+        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing, &$issues, &$typeByParent) {
             foreach (array_slice($rows, 1, null, true) as $rowIndex => $row) {
                 if (! is_array($row)) {
                     continue;
@@ -1050,6 +1068,7 @@ class VariationMasterController extends Controller
                     $values = is_array($product->Values) ? $product->Values : [];
                     if ($typeIdx !== null && array_key_exists($typeIdx, $row)) {
                         $values['variation_type'] = $this->normalizeDisplay($row[$typeIdx] ?? null);
+                        $typeByParent[VariationTypeSync::parentKey((string) $product->parent)] = (string) $values['variation_type'];
                         $changed = true;
                     }
                     if ($nameIdx !== null && array_key_exists($nameIdx, $row)) {
@@ -1102,6 +1121,10 @@ class VariationMasterController extends Controller
                 $updated++;
             }
         });
+
+        foreach ($typeByParent as $syncParent => $syncType) {
+            VariationTypeSync::typeToEbayPage((string) $syncParent, $syncType);
+        }
 
         $failed = count($issues);
 
