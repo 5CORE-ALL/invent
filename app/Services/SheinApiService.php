@@ -2592,6 +2592,7 @@ class SheinApiService
 
         $missingSkus = array_keys($missing);
         $this->mergeStockHitsIntoSkuCodeMap($this->safeGetStock(array_values($missingSkus)), $wanted, $out);
+        $this->resolveViaSkcNames($missingSkus, $out);
 
         $still = [];
         foreach ($missingSkus as $sku) {
@@ -2648,6 +2649,132 @@ class SheinApiService
         }
 
         $this->persistResolvedSheinSkuCodes($out);
+
+        return $out;
+    }
+
+    /**
+     * Some listings have an SKC name (sh2411..., sw2611...) saved where the skuCode should be, and Shein refuses it for
+     * inventory. Ask Shein which skuCode(s) belong to that SKC (stock-query by skcNameList) and bind the real one.
+     *
+     * @param  list<string>  $sellerSkus
+     * @param  array<string, array{sku_code: string, seller_sku: string, warehouse_code?: string}>  $out
+     */
+    protected function resolveViaSkcNames(array $sellerSkus, array &$out): void
+    {
+        foreach ($this->localSkcNamesForSellerSkus($sellerSkus) as $sku => $skc) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $slot = $norm !== '' ? $norm : $sku;
+            if (isset($out[$slot])) {
+                continue;
+            }
+            $rows = $this->queryStockBySkcName($skc);
+            $codes = [];
+            $exact = null;
+            foreach ($rows as $row) {
+                $code = trim((string) ($row['sku_code'] ?? ''));
+                if (! $this->isPlatformSkuCode($code, $sku)) {
+                    continue;
+                }
+                $codes[$code] = $row;
+                $seller = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['seller_sku'] ?? ''));
+                if ($seller !== '' && $seller === $norm) {
+                    $exact = $row;
+                }
+            }
+            // The row whose seller SKU matches, else the only skuCode that SKC has.
+            $pick = $exact ?? (count($codes) === 1 ? reset($codes) : null);
+            if ($pick === null) {
+                continue;
+            }
+            $warehouse = trim((string) ($pick['warehouse_code'] ?? ''));
+            $out[$slot] = array_filter([
+                'sku_code' => trim((string) $pick['sku_code']),
+                'seller_sku' => $sku,
+                'warehouse_code' => $warehouse !== '' ? $warehouse : null,
+            ]);
+        }
+    }
+
+    /**
+     * @param  list<string>  $sellerSkus
+     * @return array<string, string> seller SKU => the SKC name saved as its "skuCode" in shein_metrics / shein_metric
+     */
+    protected function localSkcNamesForSellerSkus(array $sellerSkus): array
+    {
+        $alias = [];
+        foreach ($sellerSkus as $sku) {
+            $sku = trim((string) $sku);
+            foreach ($this->sellerSkuIndexKeys($sku) as $key) {
+                $alias[strtoupper($key)] = $sku;
+            }
+        }
+        if ($alias === []) {
+            return [];
+        }
+
+        $out = [];
+        $isSkc = static fn (string $code): bool => (bool) preg_match('/^(?!i)[a-z]{1,2}\d{10,}$/i', $code);
+        $keys = array_keys($alias);
+        $read = function (string $table, string $codeColumn) use (&$out, $alias, $isSkc, $keys): void {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $codeColumn)) {
+                    return;
+                }
+                foreach (array_chunk($keys, 200) as $chunk) {
+                    foreach (DB::table($table)->whereIn('sku', $chunk)->whereNotNull($codeColumn)->get(['sku', $codeColumn]) as $row) {
+                        $code = trim((string) $row->{$codeColumn});
+                        if (! $isSkc($code)) {
+                            continue;
+                        }
+                        foreach ($this->sellerSkuIndexKeys((string) $row->sku) as $key) {
+                            if (isset($alias[strtoupper($key)])) {
+                                $out[$alias[strtoupper($key)]] ??= $code;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Shein localSkcNamesForSellerSkus failed', ['table' => $table, 'error' => $e->getMessage()]);
+            }
+        };
+        $read('shein_metrics', 'shein_sku_code');
+        $read('shein_metric', 'product_id');
+
+        return $out;
+    }
+
+    /**
+     * stock-query by one SKC name: the skuCode(s) of that SKC.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function queryStockBySkcName(string $skc): array
+    {
+        $endpoint = '/open-api/stock/stock-query';
+        $out = [];
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(90)
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                ->post($this->baseUrl.$endpoint, [
+                    'languageList' => ['en'],
+                    'skuCodeList' => [],
+                    'skcNameList' => [$skc],
+                    'spuNameList' => [],
+                    'warehouseType' => '3',
+                ]);
+            $json = is_array($response->json()) ? $response->json() : null;
+            if (! $response->successful()) {
+                Log::warning('Shein stock-query by SKC failed', ['skc' => $skc, 'status' => $response->status(), 'body' => substr((string) $response->body(), 0, 300)]);
+
+                return [];
+            }
+            $this->flattenSheinStockRows($json['info'] ?? $json, $out);
+        } catch (\Throwable $e) {
+            Log::warning('Shein stock-query by SKC exception', ['skc' => $skc, 'error' => $e->getMessage()]);
+        }
 
         return $out;
     }

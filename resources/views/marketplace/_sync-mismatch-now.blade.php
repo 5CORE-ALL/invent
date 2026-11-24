@@ -119,7 +119,9 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
             totals.pending += data.pending_review || 0;
-            if (((data.failed || 0) > 0 || (data.pending_review || 0) > 0) && data.message
+            // A SKU that was only skipped (nothing updated or failed) says why, so it is not a silent "Skipped: N".
+            var onlySkipped = (data.skipped || 0) > 0 && !(data.updated || 0) && !(data.failed || 0);
+            if (((data.failed || 0) > 0 || (data.pending_review || 0) > 0 || onlySkipped) && data.message
                 && problems.indexOf(data.message) === -1) {
                 problems.push(data.message);
             }
