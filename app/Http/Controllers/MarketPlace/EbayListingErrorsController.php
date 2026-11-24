@@ -48,61 +48,105 @@ class EbayListingErrorsController extends Controller
             }
         }
 
+        // Listings of CP Master SKUs that are on eBay (they have an item id) and have an error, active or not.
         $catalog = $this->catalog();
         $skuByItem = $this->skuByItemId($channel);
+        $inv = $this->invBySku();
         $raw = DB::table($table)->select($cols)
-            ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) IN ('INACTIVE', 'ENDED', 'UNSOLD', 'COMPLETED', 'SOLD')")
+            ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) IN ('ACTIVE', 'INACTIVE', 'ENDED', 'UNSOLD', 'COMPLETED', 'SOLD')")
             ->orderBy('sku')
-            ->limit(8000)
+            ->limit(20000)
             ->get();
 
+        // Real SKU per item, from any row of the table, for rows that only carry the item id as SKU.
         $realByItem = [];
-        foreach ($raw as $row) {
-            $itemId = trim((string) $row->item_id);
-            $sku = trim((string) $row->sku);
-            if ($itemId !== '' && $sku !== '' && ! ctype_digit($sku) && stripos($sku, 'PARENT') === false) {
-                $realByItem[$itemId] = $sku;
+        foreach (DB::table($table)->select('item_id', 'sku')->whereNotNull('sku')->get() as $r) {
+            $sku = trim((string) $r->sku);
+            $id = trim((string) $r->item_id);
+            if ($id !== '' && $sku !== '' && ! ctype_digit($sku) && stripos($sku, 'PARENT') === false) {
+                $realByItem[$id] = $sku;
             }
+        }
+
+        $rowsPerItem = [];
+        foreach (DB::table($table)->selectRaw('item_id, COUNT(*) AS n')->groupBy('item_id')->get() as $c) {
+            $rowsPerItem[trim((string) $c->item_id)] = (int) $c->n;
         }
 
         $rows = [];
         foreach ($raw as $row) {
             $status = strtoupper(trim((string) $row->listing_status));
             $itemId = trim((string) $row->item_id);
-            if (str_starts_with($itemId, 'UNSOLD-')) {
-                continue;
+            if (! ctype_digit($itemId)) {
+                continue; // not a real eBay listing (UNSOLD-… placeholders, blanks)
             }
             $ebaySku = trim((string) $row->sku);
-            if ($ebaySku === '' && $itemId === '') {
-                continue;
-            }
             if (stripos($ebaySku, 'PARENT') !== false) {
                 continue;
             }
-            $display = $skuByItem[$itemId] ?? (($ebaySku !== '' && ctype_digit($ebaySku)) ? ($realByItem[$itemId] ?? $ebaySku) : $ebaySku);
+            $hasSku = $ebaySku !== '' && ! ctype_digit($ebaySku);
+            // A variation row keeps its own SKU; only rows that carry just the item id borrow a SKU.
+            $display = $hasSku ? $ebaySku : ($skuByItem[$itemId] ?? $realByItem[$itemId] ?? $ebaySku);
             $norm = ShopifySku::normalizeSkuForShopifyLookup($display);
-            if (isset($catalog['name'][$norm])) {
-                $display = $catalog['name'][$norm];
-                $norm = ShopifySku::normalizeSkuForShopifyLookup($display);
+            if (! isset($catalog['name'][$norm])) {
+                continue; // not a CP Master SKU
             }
+            $display = $catalog['name'][$norm];
+            $parent = $catalog['parent'][$norm] ?? '';
+            $title = trim((string) ($row->ebay_title ?? ''));
             $storedImage = property_exists($row, 'image_urls') ? $row->image_urls : null;
-            $image = $catalog['image'][$norm] ?? $this->firstImage($storedImage);
+            // The listing photo belongs to the whole item, so it is only a fallback when the item has a single SKU.
+            $image = $catalog['image'][$norm] ?? (($rowsPerItem[$itemId] ?? 0) > 1 ? '' : $this->firstImage($storedImage));
+            $stock = isset($row->ebay_stock) ? (int) $row->ebay_stock : null;
+            $cpInv = $inv[$norm] ?? null;
+
+            // Each problem carries a code so the Fix button can offer the matching action.
+            $issues = [];
+            if ($status !== 'ACTIVE') {
+                $issues[] = ['code' => 'inactive', 'text' => trim((string) ($row->inactive_reason ?? '')) ?: 'Listed, but not active ('.$status.').'];
+            }
+            if ($issues === []) {
+                continue;
+            }
+
             $rows[] = [
                 'id' => (int) $row->id,
                 'sku' => $display,
-                'ebay_sku' => $ebaySku,
+                'parent' => $parent,
                 'image' => $image,
                 'item_id' => $itemId,
-                'title' => trim((string) ($row->ebay_title ?? '')),
+                'title' => $title,
                 'link' => trim((string) ($row->ebay_link ?? '')),
                 'status' => $status,
-                'stock' => isset($row->ebay_stock) ? (int) $row->ebay_stock : null,
+                'stock' => $stock,
+                'inv' => $cpInv,
                 'price' => isset($row->ebay_price) && $row->ebay_price !== null ? (float) $row->ebay_price : null,
-                'error' => trim((string) ($row->inactive_reason ?? '')) ?: 'Listed, but not active ('.$status.').',
+                'issues' => $issues,
+                'codes' => array_values(array_unique(array_column($issues, 'code'))),
+                'error' => implode(' • ', array_column($issues, 'text')),
             ];
         }
 
-        return response()->json(['success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows)]);
+        return response()->json([
+            'success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows),
+        ]);
+    }
+
+    /** CP Master inventory by normalized SKU (shopify_skus.inv). @return array<string, int> */
+    private function invBySku(): array
+    {
+        $out = [];
+        if (! Schema::hasTable('shopify_skus') || ! Schema::hasColumn('shopify_skus', 'inv')) {
+            return $out;
+        }
+        foreach (DB::table('shopify_skus')->select('sku', 'inv')->get() as $r) {
+            $key = ShopifySku::normalizeSkuForShopifyLookup((string) $r->sku);
+            if ($key !== '' && is_numeric($r->inv)) {
+                $out[$key] = (int) $r->inv;
+            }
+        }
+
+        return $out;
     }
 
     /** Pull Active / Unsold from eBay and store the statuses, then the page reloads. */
@@ -169,7 +213,6 @@ class EbayListingErrorsController extends Controller
         $itemId = trim($data['item_id']);
         $sku = trim((string) ($data['sku'] ?? ''));
         $service = app(self::CHANNELS[$channel]['service']);
-
         if ($data['action'] === 'relist') {
             $result = $channel === 'ebay2'
                 ? $service->relistFixedPriceItem($itemId, $sku !== '' ? $sku : null, isset($data['quantity']) ? (int) $data['quantity'] : null)
@@ -207,26 +250,36 @@ class EbayListingErrorsController extends Controller
     /**
      * CP Master SKU (the name) and its first photo, keyed by the normalized SKU.
      *
-     * @return array{name: array<string, string>, image: array<string, string>}
+     * @return array{name: array<string, string>, image: array<string, string>, parent: array<string, string>}
      */
     private function catalog(): array
     {
         $name = [];
         $image = [];
+        $parent = [];
         if (Schema::hasTable('product_master')) {
-            $select = ['sku'];
+            $select = ['sku', 'Values'];
+            if (Schema::hasColumn('product_master', 'parent')) {
+                $select[] = 'parent';
+            }
             foreach (['image1', 'main_image'] as $col) {
                 if (Schema::hasColumn('product_master', $col)) {
                     $select[] = $col;
                 }
             }
             foreach (DB::table('product_master')->whereNull('deleted_at')->whereNotNull('sku')->select($select)->get() as $p) {
+                // Only the SKUs CP Master lists (status Active, DC or Coming).
+                $values = is_string($p->Values ?? null) ? (json_decode($p->Values, true) ?: []) : (array) ($p->Values ?? []);
+                if (! in_array(strtolower(trim((string) ($values['status'] ?? ''))), ['active', 'dc', 'upcoming'], true)) {
+                    continue;
+                }
                 $sku = trim((string) $p->sku);
                 $key = ShopifySku::normalizeSkuForShopifyLookup($sku);
                 if ($key === '' || stripos($sku, 'PARENT') !== false) {
                     continue;
                 }
                 $name[$key] = $sku;
+                $parent[$key] = trim((string) ($p->parent ?? ''));
                 $photo = trim((string) ($p->image1 ?? ''));
                 if ($photo === '') {
                     $photo = trim((string) ($p->main_image ?? ''));
@@ -246,7 +299,7 @@ class EbayListingErrorsController extends Controller
             }
         }
 
-        return ['name' => $name, 'image' => $image];
+        return ['name' => $name, 'image' => $image, 'parent' => $parent];
     }
 
     /** Real SKU saved on the campaign ad for an item whose metric row only has the item id. @return array<string, string> */
