@@ -2746,6 +2746,61 @@ class SheinApiService
     }
 
     /**
+     * Read-only diagnosis for one seller SKU: what is saved locally and what Shein answers to each lookup that is
+     * used to find its skuCode. Used by `php artisan shein:probe-sku`.
+     *
+     * @return array<string, mixed>
+     */
+    public function probeSku(string $sellerSku): array
+    {
+        $sellerSku = trim($sellerSku);
+        $out = ['seller_sku' => $sellerSku, 'local' => [], 'shein' => []];
+
+        foreach ([['shein_metrics', 'shein_sku_code'], ['shein_metric', 'product_id']] as [$table, $col]) {
+            try {
+                if (Schema::hasTable($table)) {
+                    $rows = DB::table($table)->whereIn('sku', self::skuAliasesForLookup($sellerSku))->get(['sku', $col]);
+                    $out['local'][$table] = $rows->map(fn ($r) => $r->sku.' => '.$r->{$col})->all();
+                }
+            } catch (\Throwable $e) {
+                $out['local'][$table] = 'error: '.$e->getMessage();
+            }
+        }
+        $codes = [];
+        foreach ($out['local'] as $list) {
+            foreach ((array) $list as $line) {
+                $codes[] = trim((string) substr((string) strrchr((string) $line, '>'), 1));
+            }
+        }
+        $codes = array_values(array_unique(array_filter($codes)));
+
+        $call = function (string $label, string $endpoint, array $payload) use (&$out): void {
+            try {
+                $response = Http::withoutVerifying()->timeout(90)
+                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                    ->post($this->baseUrl.$endpoint, $payload);
+                $out['shein'][$label] = [
+                    'http' => $response->status(),
+                    'body' => mb_substr((string) $response->body(), 0, 1800),
+                ];
+            } catch (\Throwable $e) {
+                $out['shein'][$label] = ['error' => $e->getMessage()];
+            }
+        };
+
+        $query = ['pageNum' => 1, 'pageSize' => 20, 'insertTimeEnd' => '', 'insertTimeStart' => '', 'updateTimeEnd' => '', 'updateTimeStart' => ''];
+        $call('product/query sellerSkuList', '/open-api/openapi-business-backend/product/query', $query + ['sellerSkuList' => [$sellerSku]]);
+        $call('stock-query skuCodeList=[seller sku]', '/open-api/stock/stock-query', ['languageList' => ['en'], 'skuCodeList' => [$sellerSku], 'skcNameList' => [], 'spuNameList' => [], 'warehouseType' => '3']);
+        foreach ($codes as $code) {
+            $call('stock-query skcNameList=['.$code.']', '/open-api/stock/stock-query', ['languageList' => ['en'], 'skuCodeList' => [], 'skcNameList' => [$code], 'spuNameList' => [], 'warehouseType' => '3']);
+            $call('stock-query skuCodeList=['.$code.']', '/open-api/stock/stock-query', ['languageList' => ['en'], 'skuCodeList' => [$code], 'skcNameList' => [], 'spuNameList' => [], 'warehouseType' => '3']);
+            $call('full-detail skuCodes=['.$code.']', '/open-api/openapi-business-backend/product/full-detail', ['skuCodes' => [$code]]);
+        }
+
+        return $out;
+    }
+
+    /**
      * stock-query by one SKC name: the skuCode(s) of that SKC.
      *
      * @return list<array<string, mixed>>
