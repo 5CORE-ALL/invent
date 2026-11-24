@@ -6338,7 +6338,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/qr-form/draft', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'draft'])->name('comparison.qr.draft');
         Route::post('/qr-form/send', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'send'])->name('comparison.qr.send');
         Route::post('/qr-form/supplier-email', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'saveSupplierEmail'])->name('comparison.qr.supplier-email');
-        Route::post('/qr-form/supplier-comm', [\App\Http\Controllers\PurchaseMaster\ComparisonQuoteRequestController::class, 'saveSupplierComm'])->name('comparison.qr.supplier-comm');
         Route::post('/linked-skus/add', 'addLinkedSku')->name('comparison.linked-skus.add');
         Route::post('/linked-skus/bulk-link', 'bulkLinkSkus')->name('comparison.linked-skus.bulk-link');
         Route::post('/linked-skus/remove', 'removeLinkedSku')->name('comparison.linked-skus.remove');

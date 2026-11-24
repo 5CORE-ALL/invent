@@ -4042,7 +4042,7 @@ class ComparisonController extends Controller
                 ->where('name', '!=', '')
                 ->whereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$supplierCategory->id])
                 ->orderBy('name')
-                ->get(['id', 'name', 'company', 'email', 'phone', 'whatsapp', 'wechat', 'qq', 'alibaba', 'link_1688']);
+                ->get(['id', 'name', 'company', 'email', 'website', 'whatsapp', 'wechat', 'alibaba']);
             foreach ($rows as $s) {
                 if (isset($seen[$s->id])) {
                     continue;
@@ -4053,15 +4053,10 @@ class ComparisonController extends Controller
                     'name' => trim((string) $s->name, " \t\n\r\0\x0B\"'"),
                     'company' => trim((string) ($s->company ?? '')),
                     'email' => trim((string) ($s->email ?? '')),
-                    // Communication details (same Suppliers page record as the email).
-                    'comm' => [
-                        'phone' => trim((string) ($s->phone ?? '')),
-                        'whatsapp' => trim((string) ($s->whatsapp ?? '')),
-                        'wechat' => trim((string) ($s->wechat ?? '')),
-                        'qq' => trim((string) ($s->qq ?? '')),
-                        'alibaba' => trim((string) ($s->alibaba ?? '')),
-                        'link_1688' => trim((string) ($s->link_1688 ?? '')),
-                    ],
+                    // Same communication links as the Communication column on /mfrg-in-progress.
+                    'platform_links' => array_values(
+                        \App\Http\Controllers\PurchaseMaster\MFRGInProgressController::buildPlatformsByNameFromSupplierRows(collect([$s]))[trim((string) $s->name)] ?? []
+                    ),
                 ];
             }
         }

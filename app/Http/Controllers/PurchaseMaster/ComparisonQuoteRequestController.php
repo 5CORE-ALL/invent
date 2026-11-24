@@ -80,7 +80,7 @@ class ComparisonQuoteRequestController extends Controller
                 'company' => $s['company'],
                 // Same source as the Suppliers page: its email wins; a past per-send override is only a fallback.
                 'email' => ($emails[0] ?? '') ?: ($req?->supplier_email ?: ''),
-                'comm' => $s['comm'] ?? [],
+                'platform_links' => $s['platform_links'] ?? [],
                 'on_sheet' => isset($onSheet[$key]),
                 'url' => $req ? route('comparison.qr.form', $req->token) : null,
                 'sent_at' => $req?->sent_at?->format('d M Y, H:i'),
@@ -185,44 +185,6 @@ class ComparisonQuoteRequestController extends Controller
             'email' => $emails[0] ?? '',
             'message' => $emails ? 'Email saved to the Suppliers page.' : 'Email cleared.',
         ]);
-    }
-
-    /**
-     * Edit a supplier's communication details (phone, WhatsApp, WeChat, QQ, Alibaba, 1688) from the Send QR
-     * form modal. Written to the Suppliers page record, so both places show the same values.
-     */
-    public function saveSupplierComm(Request $request): JsonResponse
-    {
-        if ($deny = $this->denyUnlessInternal()) {
-            return $deny;
-        }
-        $data = $request->validate([
-            'supplier_id' => 'required|integer',
-            'phone' => 'nullable|string|max:255',
-            'whatsapp' => 'nullable|string|max:255',
-            'wechat' => 'nullable|string|max:255',
-            'qq' => 'nullable|string|max:255',
-            'alibaba' => 'nullable|string|max:1000',
-            'link_1688' => 'nullable|string|max:1000',
-        ]);
-
-        $supplier = Supplier::whereNull('deleted_at')->find($data['supplier_id']);
-        if (! $supplier) {
-            return response()->json(['success' => false, 'message' => 'Supplier not found.'], 404);
-        }
-
-        $saved = [];
-        foreach (['phone', 'whatsapp', 'wechat', 'qq', 'alibaba', 'link_1688'] as $field) {
-            if (! array_key_exists($field, $data)) {
-                continue;
-            }
-            $value = trim((string) ($data[$field] ?? ''));
-            $supplier->{$field} = $value !== '' ? $value : null;
-            $saved[$field] = $value;
-        }
-        $supplier->save();
-
-        return response()->json(['success' => true, 'comm' => $saved, 'message' => 'Communication details saved to the Suppliers page.']);
     }
 
     /**

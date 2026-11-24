@@ -211,7 +211,7 @@ class MFRGInProgressController extends Controller
      * @param  \Illuminate\Support\Collection<int, \App\Models\Supplier>  $supplierRows
      * @return array<string, list<array{label: string, url: ?string, external?: bool, display?: string}>>
      */
-    private static function buildPlatformsByNameFromSupplierRows(Collection $supplierRows): array
+    public static function buildPlatformsByNameFromSupplierRows(Collection $supplierRows): array
     {
         $byName = [];
         foreach ($supplierRows as $s) {
