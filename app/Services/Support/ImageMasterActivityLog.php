@@ -69,7 +69,25 @@ class ImageMasterActivityLog
                 if ($except !== []) {
                     $query->whereNotIn('action', $except);
                 }
-                $rows = $query
+                // Only pull the newest $perSku rows per SKU in SQL (the log grows forever; loading it all is slow).
+                $limited = null;
+                try {
+                    $ids = DB::query()
+                        ->fromSub(
+                            (clone $query)->selectRaw('id, ROW_NUMBER() OVER (PARTITION BY sku ORDER BY id DESC) AS rn'),
+                            'ranked'
+                        )
+                        ->where('rn', '<=', $perSku)
+                        ->pluck('id')
+                        ->all();
+                    $limited = $ids === []
+                        ? collect()
+                        : DB::table(self::TABLE)->whereIn('id', $ids)->orderByDesc('id')
+                            ->get(['id', 'sku', 'action', 'user_name', 'user_email', 'summary', 'details', 'created_at']);
+                } catch (\Throwable $e) {
+                    $limited = null; // DB without window functions: fall back to the plain query below
+                }
+                $rows = $limited ?? $query
                     ->orderByDesc('id')
                     ->get(['id', 'sku', 'action', 'user_name', 'user_email', 'summary', 'details', 'created_at']);
 

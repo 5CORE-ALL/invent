@@ -87,6 +87,9 @@ class ImageMasterController extends Controller
     public function getData(Request $request)
     {
         try {
+            @set_time_limit(120);
+            // Image Master only needs SKU/parent/status/image columns — skip titles, bullets, freight, website prices.
+            $request->merge(['lite' => 1]);
             $baseResponse = app(PMController::class)->getViewProductData($request);
             $baseData = $baseResponse->getData(true);
             $products = $baseData['data'] ?? [];
@@ -2157,34 +2160,42 @@ class ImageMasterController extends Controller
     private function loadImageMetricsBySku(string $table): array
     {
         try {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
-                return [];
-            }
-            $hasMasterJson = Schema::hasColumn($table, 'image_master_json');
-            $hasImageUrls = Schema::hasColumn($table, 'image_urls');
-            if (! $hasMasterJson && ! $hasImageUrls) {
-                return [];
-            }
-            $valueColumn = $hasMasterJson ? 'image_master_json' : 'image_urls';
+            // Schema::hasTable/hasColumn each run an information_schema query; resolve once per table and cache.
+            $valueColumn = \Illuminate\Support\Facades\Cache::remember(
+                'image_master:metrics_col:'.$table,
+                now()->addHour(),
+                function () use ($table) {
+                    if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sku')) {
+                        return '';
+                    }
+                    if (Schema::hasColumn($table, 'image_master_json')) {
+                        return 'image_master_json';
+                    }
 
-            return DB::table($table)
+                    return Schema::hasColumn($table, 'image_urls') ? 'image_urls' : '';
+                }
+            );
+            if ($valueColumn === '') {
+                return [];
+            }
+
+            // Only rows that actually hold images; empty ones default to '' on the caller side.
+            $out = [];
+            $query = DB::table($table)
                 ->select('sku', $valueColumn)
                 ->whereNotNull('sku')
-                ->get()
-                ->mapWithKeys(function ($row) use ($valueColumn) {
-                    $raw = (string) ($row->{$valueColumn} ?? '');
-                    $trim = trim($raw);
-                    if ($trim === '' || $trim === '[]') {
-                        return [$this->normalizeSku($row->sku) => ''];
-                    }
-                    $decoded = json_decode($trim, true);
-                    if (is_array($decoded) && $decoded === []) {
-                        return [$this->normalizeSku($row->sku) => ''];
-                    }
+                ->whereNotNull($valueColumn)
+                ->where($valueColumn, '!=', '')
+                ->where($valueColumn, '!=', '[]');
+            foreach ($query->cursor() as $row) {
+                $trim = trim((string) ($row->{$valueColumn} ?? ''));
+                if ($trim === '' || $trim === '[]') {
+                    continue;
+                }
+                $out[$this->normalizeSku($row->sku)] = $trim;
+            }
 
-                    return [$this->normalizeSku($row->sku) => $trim];
-                })
-                ->toArray();
+            return $out;
         } catch (\Throwable $e) {
             Log::warning("ImageMaster: load metrics failed for {$table}", ['error' => $e->getMessage()]);
 

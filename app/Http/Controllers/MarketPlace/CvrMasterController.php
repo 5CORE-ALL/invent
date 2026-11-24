@@ -828,6 +828,11 @@ class CvrMasterController extends Controller
      */
     public function getCvrDataJson(Request $request)
     {
+        // The full table build needs ~250MB+; the 128M default of php -S / artisan serve dies with a fatal
+        // "Allowed memory size exhausted" and /price-increase never gets its data.
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(300);
+
         try {
             // When true: attach per-SKU pef_channels[] for Pricing Errors Fix cache (bulk, not channel tabulators)
             $forPef = filter_var($request->query('for_pricing_errors_fix', false), FILTER_VALIDATE_BOOLEAN);

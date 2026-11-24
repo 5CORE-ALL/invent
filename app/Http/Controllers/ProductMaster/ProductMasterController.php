@@ -269,11 +269,20 @@ class ProductMasterController extends Controller
 
     public function getViewProductData(Request $request)
     {
+        // `lite` (used by Image Master): only identity + image columns, no website prices / freight work.
+        $lite = $request->boolean('lite');
+
         // Fetch all products from the database ordered by parent and SKU
-        $products = ProductMaster::orderBy('parent', 'asc')
+        $productQuery = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+            ->orderBy('sku', 'asc');
+        if ($lite) {
+            $productQuery->select(array_merge(
+                ['id', 'parent', 'sku', 'main_image', 'Values'],
+                array_map(fn ($i) => 'image'.$i, range(1, 20))
+            ));
+        }
+        $products = $productQuery->get();
 
         // Same row match as before (NBSP → space, last id wins). Only the columns this table reads.
         $shopifySkus = ShopifySku::query()
@@ -284,7 +293,7 @@ class ProductMasterController extends Controller
             });
 
         $storePricesByNorm = [];
-        if (Schema::hasTable('store_listing_prices')) {
+        if (! $lite && Schema::hasTable('store_listing_prices')) {
             foreach (StoreListingPrice::query()->get() as $storeRow) {
                 $storeKey = ShopifySku::normalizeSkuForShopifyLookup((string) $storeRow->sku);
                 if ($storeKey === '') {
@@ -300,6 +309,17 @@ class ProductMasterController extends Controller
         // Prepare data in the same format as your sheet (flatten Values)
         $result = [];
         foreach ($products as $product) {
+            if ($lite) {
+                $row = [
+                    'id' => $product->id,
+                    'Parent' => $product->parent,
+                    'SKU' => $product->sku,
+                    'main_image' => $product->main_image,
+                ];
+                for ($i = 1; $i <= 20; $i++) {
+                    $row['image'.$i] = $product->{'image'.$i};
+                }
+            } else {
             $row = [
                 'id' => $product->id,
                 'Parent' => $product->parent,
@@ -356,17 +376,25 @@ class ProductMasterController extends Controller
                 'video_product_benefits' => $product->video_product_benefits,
                 'video_product_benefits_status' => $product->video_product_benefits_status,
             ];
+            }
 
             // Merge the Values array (if not null)
+            $valuesArr = null;
             if (is_array($product->Values)) {
-                $row = array_merge($row, $product->Values);
+                $valuesArr = $product->Values;
             } elseif (is_string($product->Values)) {
-                $values = json_decode($product->Values, true);
-                if (is_array($values)) {
-                    $row = array_merge($row, $values);
+                $decodedValues = json_decode($product->Values, true);
+                if (is_array($decodedValues)) {
+                    $valuesArr = $decodedValues;
                 }
             }
-            $row = $this->applyFreightAlias($row);
+            if ($valuesArr !== null) {
+                // Lite rows only need the status / image_path keys, not the whole Values blob.
+                $row = array_merge($row, $lite ? array_intersect_key($valuesArr, ['status' => 1, 'image_path' => 1]) : $valuesArr);
+            }
+            if (! $lite) {
+                $row = $this->applyFreightAlias($row);
+            }
 
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
@@ -383,14 +411,16 @@ class ProductMasterController extends Controller
                 $shopifyImage = null;
             }
 
-            $storePrice = $storePricesByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $product->sku)] ?? null;
-            $row['website_price'] = $storePrice?->price;
-            $row['website_special_price'] = $storePrice?->special_price;
-            $row['website_selling_price'] = $storePrice?->selling_price;
-            $row['website_views'] = $storePrice?->views;
-            $row['website_sold'] = $storePrice?->sold;
-            $row['website_qty'] = $storePrice?->qty;
-            $row['website_slug'] = $storePrice?->slug;
+            if (! $lite) {
+                $storePrice = $storePricesByNorm[ShopifySku::normalizeSkuForShopifyLookup((string) $product->sku)] ?? null;
+                $row['website_price'] = $storePrice?->price;
+                $row['website_special_price'] = $storePrice?->special_price;
+                $row['website_selling_price'] = $storePrice?->selling_price;
+                $row['website_views'] = $storePrice?->views;
+                $row['website_sold'] = $storePrice?->sold;
+                $row['website_qty'] = $storePrice?->qty;
+                $row['website_slug'] = $storePrice?->slug;
+            }
 
             $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
             // image_path is inside $row (from Values JSON)
@@ -415,7 +445,9 @@ class ProductMasterController extends Controller
             $result[] = $row;
         }
 
-        $result = ProductMaster::applyComboFreightToRows($result);
+        if (! $lite) {
+            $result = ProductMaster::applyComboFreightToRows($result);
+        }
 
         return response()->json([
             'message' => 'Data loaded from database',

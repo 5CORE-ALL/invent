@@ -123,8 +123,16 @@
         #lmp-play-backward:disabled:hover,
         #lmp-play-forward:disabled:hover { color: #adb5bd; background-color: #f8f9fa !important; }
         #lmp-overall-wrap .lmp-sprice-box { display: inline-flex; align-items: center; gap: 4px; }
-        #lmp-overall-wrap .lmp-sprice-input { width: 72px; height: 26px; padding: 2px 6px; font-size: 12px; text-align: right; }
-        #lmp-overall-wrap .lmp-sprice-box .btn { height: 26px; padding: 0 8px; line-height: 1; }
+        #lmp-overall-wrap .lmp-sprice-input {
+            width: 72px; height: 26px; padding: 2px 6px; font-size: 12px; text-align: right;
+            border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important;
+        }
+        #lmp-overall-wrap .lmp-sprice-input:focus { border-bottom: 1px solid #198754 !important; }
+        #lmp-overall-wrap .lmp-sprice-box .btn {
+            height: 26px; padding: 0 8px; line-height: 1;
+            border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important; color: #198754;
+        }
+        #lmp-overall-wrap .lmp-sprice-box .btn:hover:not(:disabled) { color: #0f5132; }
         #lmp-overall-wrap .lmp-sprice-alert { color: #dc3545; font-size: 13px; }
         .lmp-sprice-toast {
             position: fixed; right: 18px; bottom: 18px; z-index: 30000; display: none; max-width: 420px;

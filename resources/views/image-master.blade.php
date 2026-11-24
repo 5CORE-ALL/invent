@@ -1146,6 +1146,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             tableData.forEach(r => {
                 r._inv = String(r.SKU).toUpperCase().includes('PARENT') ? (parentInv[r.Parent] || 0) : (Number(r.shopify_inv) || 0);
+                // Pre-compute per-row values once (they were recalculated for every row on every render / sort comparison).
+                r._skuLc = String(r.SKU || '').toLowerCase();
+                r._parentLc = String(r.Parent || '').toLowerCase();
+                r._isParent = String(r.SKU || '').toUpperCase().includes('PARENT');
+                r._statusLc = pmStatusRaw(r).toLowerCase();
+                r._imgs = pmImageUrls(r);
+                r._audit = auditState(r);
+                r._hist = historyLatest(r);
             });
             bySku.clear();
             tableData.forEach(r => bySku.set(String(r.SKU), r));
@@ -1462,23 +1470,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function imSortValue(key, r) {
         const sku = String(r.SKU || '');
-        if (/^slot\d+$/.test(key)) {
-            const u = pmImageUrls(r)[Number(key.slice(4))];
+        if (key.charCodeAt(0) === 115 && /^slot\d+$/.test(key)) {
+            const u = rowImgs(r)[Number(key.slice(4))];
             return u ? String(u).split('?')[0].split('/').pop().toLowerCase() : null;
         }
         switch (key) {
             case 'selected': return selectedSkus.has(sku) ? 1 : 0;
             case 'inv': return r._inv;
-            case 'status': return pmStatusRaw(r).toLowerCase() || null;
+            case 'status': return (r._statusLc ?? pmStatusRaw(r).toLowerCase()) || null;
             case 'parent': return String(r.Parent || '') || null;
             case 'sku': return sku;
-            case 'images': return pmImageUrls(r).length;
+            case 'images': return rowImgs(r).length;
             case 'name': return String(r.Parent || sku);
             case 'history': {
-                const l = historyLatest(r);
+                const l = r._hist !== undefined ? r._hist : historyLatest(r);
                 return l ? l.ts : null;
             }
-            case 'auditst': return { green: 1, yellow: 2, red: 3 }[auditState(r)];
+            case 'auditst': return { green: 1, yellow: 2, red: 3 }[r._audit || auditState(r)];
             case 'audit': {
                 const a = Array.isArray(r.audits) && r.audits[0] ? histTs(r.audits[0].at) : null;
                 return a;
@@ -1493,18 +1501,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
+    function rowImgs(r) { return r._imgs || pmImageUrls(r); }
+
+    const imCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
     function sortRows(rows) {
         if (!imSort.key) return rows;
         const dir = imSort.dir === 'desc' ? -1 : 1;
-        return rows.slice().sort((a, b) => {
-            const va = imSortValue(imSort.key, a), vb = imSortValue(imSort.key, b);
+        // Compute each row's sort key once (not on every comparison) and use a shared Collator (much faster than localeCompare).
+        const decorated = rows.map(r => ({ r, v: imSortValue(imSort.key, r) }));
+        decorated.sort((a, b) => {
+            const va = a.v, vb = b.v;
             // empty values always last
             if (va === null && vb === null) return 0;
             if (va === null) return 1;
             if (vb === null) return -1;
             if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
-            return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+            return imCollator.compare(String(va), String(vb)) * dir;
         });
+        return decorated.map(d => d.r);
     }
 
     function updateSortIndicators() {
@@ -1586,16 +1600,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderTable(rows) {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
-        if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
+        if (q) rows = rows.filter(r => (r._skuLc ?? String(r.SKU||'').toLowerCase()).includes(q));
         const pq = (document.getElementById('parentSearchIm')?.value || '').trim().toLowerCase();
-        if (pq) rows = rows.filter(r => String(r.Parent || '').toLowerCase().includes(pq));
+        if (pq) rows = rows.filter(r => (r._parentLc ?? String(r.Parent || '').toLowerCase()).includes(pq));
         const rowType = document.getElementById('rowTypeFilter')?.value || 'sku';
         if (rowType !== 'both') {
             const wantParent = rowType === 'parent';
-            rows = rows.filter(r => String(r.SKU || '').toUpperCase().includes('PARENT') === wantParent);
+            rows = rows.filter(r => (r._isParent ?? String(r.SKU || '').toUpperCase().includes('PARENT')) === wantParent);
         }
         const stFilter = document.getElementById('statusFilter')?.value || 'all';
-        if (stFilter !== 'all') rows = rows.filter(r => { const raw = pmStatusRaw(r).toLowerCase(); return stFilter === '__none' ? !raw : raw === stFilter; });
+        if (stFilter !== 'all') rows = rows.filter(r => { const raw = r._statusLc ?? pmStatusRaw(r).toLowerCase(); return stFilter === '__none' ? !raw : raw === stFilter; });
         const invMode = document.getElementById('invFilter')?.value || 'gt0';
         if (invMode === 'gt0') rows = rows.filter(r => (r._inv || 0) > 0);
         else if (invMode === 'eq0') rows = rows.filter(r => !(r._inv > 0));
@@ -1606,13 +1620,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // "Missing images" badge: rows whose Images count is red (below 14). Red when any, green when none.
         const missingBadge = document.getElementById('missingImagesBadge');
         if (missingBadge) {
-            const missing = rows.filter(r => pmImageUrls(r).length < 14).length;
+            const missing = rows.filter(r => rowImgs(r).length < 14).length;
             missingBadge.textContent = 'Missing images: ' + missing;
             missingBadge.classList.toggle('bg-danger', missing > 0);
             missingBadge.classList.toggle('bg-success', missing === 0);
         }
         // Audit badges: rows with an open audit task (red triangle) / not audited in 30+ days (yellow dot).
-        const auditStates = rows.map(auditState);
+        const auditStates = rows.map(r => r._audit || auditState(r));
         const aRed = auditStates.filter(s => s === 'red').length;
         const aYellow = auditStates.filter(s => s === 'yellow').length;
         const aRedBadge = document.getElementById('auditAlertBadge');
@@ -1634,15 +1648,80 @@ document.addEventListener('DOMContentLoaded', () => {
             syncSelectAllCheckbox();
             return;
         }
-        tbody.innerHTML = rows.map(r => {
+        // Render only the first chunk now; the rest is appended as the user scrolls (thousands of rows × ~30 cells froze the page).
+        // A re-render with the same filters/sort (e.g. after a reload) keeps as many rows as were already on screen.
+        const sig = [q, pq, rowType, stFilter, invMode, imSort.key, imSort.dir].join('\u0001');
+        const keep = sig === imRenderSig ? Math.max(IM_RENDER_CHUNK, imRenderedCount) : IM_RENDER_CHUNK;
+        imRenderSig = sig;
+        imRenderedCount = 0;
+        tbody.innerHTML = '';
+        imAppendRows(keep);
+        updateSelectedCount();
+        syncSelectAllCheckbox();
+    }
+
+    const IM_RENDER_CHUNK = 100;
+    let imRenderSig = '';
+    let imRenderedCount = 0;
+    let imMoreObserver = null;
+
+    /** Append the next chunk of rows (default one chunk) and arm a sentinel that loads more when scrolled near. */
+    function imAppendRows(count = IM_RENDER_CHUNK) {
+        const tbody = document.getElementById('table-body');
+        if (!tbody) return;
+        if (imMoreObserver) { imMoreObserver.disconnect(); imMoreObserver = null; }
+        tbody.querySelector('#imMoreRows')?.remove();
+        const next = visibleFilteredRows.slice(imRenderedCount, imRenderedCount + count);
+        if (next.length) {
+            tbody.insertAdjacentHTML('beforeend', next.map(imRowHtml).join(''));
+            imRenderedCount += next.length;
+        }
+        if (imRenderedCount < visibleFilteredRows.length) {
+            tbody.insertAdjacentHTML('beforeend', `<tr id="imMoreRows"><td colspan="27" class="text-center text-muted small py-2">Showing ${imRenderedCount} of ${visibleFilteredRows.length} — scroll for more…</td></tr>`);
+            const sentinel = tbody.querySelector('#imMoreRows');
+            if ('IntersectionObserver' in window && sentinel) {
+                imMoreObserver = new IntersectionObserver((entries) => {
+                    if (entries.some(en => en.isIntersecting)) imAppendRows();
+                }, { root: document.querySelector('.table-responsive'), rootMargin: '900px 0px' });
+                imMoreObserver.observe(sentinel);
+            } else {
+                imAppendRows(visibleFilteredRows.length); // very old browser: no lazy loading
+            }
+        }
+    }
+
+    // One set of delegated listeners for every row (instead of re-binding thousands of buttons on each render).
+    (function bindTableDelegates() {
+        const tbody = document.getElementById('table-body');
+        if (!tbody) return;
+        tbody.addEventListener('change', (e) => {
+            const cb = e.target.closest('.row-select-im[data-sku]');
+            if (!cb) return;
+            const sku = String(cb.dataset.sku || '');
+            if (!sku) return;
+            if (cb.checked) selectedSkus.add(sku); else selectedSkus.delete(sku);
+            updateSelectedCount();
+            syncSelectAllCheckbox();
+        });
+        tbody.addEventListener('click', (e) => {
+            let b;
+            if ((b = e.target.closest('.im-mp-open[data-mp-open]'))) return openMpPicker(b.dataset.mpOpen);
+            if ((b = e.target.closest('.im-ai-edit-btn[data-ai-edit]'))) return openAiEditModal(b.dataset.aiEdit, parseInt(b.dataset.slot, 10));
+            if ((b = e.target.closest('.edit-btn[data-edit]'))) return openEditModal(b.dataset.edit);
+            if ((b = e.target.closest('.shopify-row-pull-btn[data-shopify-pull-sku]'))) return startSingleShopifyPull(b.dataset.shopifyPullSku, b);
+            if ((b = e.target.closest('.bp-mp-stack[data-push-mp]:not(:disabled)'))) return quickPush(b.dataset.sku, b.dataset.pushMp);
+        });
+    })();
+
+    function imRowHtml(r) {
             const sku = String(r.SKU||'');
             const checked = selectedSkus.has(sku) ? 'checked' : '';
-            const slotUrls = pmImageUrls(r);
+            const slotUrls = rowImgs(r);
             const slotCells = Array.from({ length: IM_SLOT_COUNT }, (_, i) => {
                 const u = slotUrls[i];
                 if (!u) return '<td class="text-center"><span class="text-muted">—</span></td>';
                 return `<td class="text-center"><div class="im-slot-cell">
-                    <img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy">
+                    <img class="im-slot-thumb" src="${esc(imgSrc(u))}" alt="${esc(imSlotNames[i])}" title="${esc(imSlotNames[i])}" loading="lazy" decoding="async">
                     <button type="button" class="im-ai-edit-btn" data-ai-edit="${esc(sku)}" data-slot="${i + 1}" title="Edit ${esc(imSlotNames[i])} with AI" aria-label="Edit ${esc(imSlotNames[i])}"><i class="fas fa-pen"></i></button>
                 </div></td>`;
             }).join('');
@@ -1669,17 +1748,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${historyCellHtml(sku, r)}</td>
                 <td>${auditCellHtml(sku, r)}</td>
             </tr>`;
-        }).join('');
-        bindRowCheckboxEvents(tbody);
-        updateSelectedCount();
-        syncSelectAllCheckbox();
-        document.querySelectorAll('.im-mp-open[data-mp-open]').forEach(b => b.addEventListener('click', () => openMpPicker(b.dataset.mpOpen)));
-        document.querySelectorAll('.im-ai-edit-btn[data-ai-edit]').forEach(b => b.addEventListener('click', () => openAiEditModal(b.dataset.aiEdit, parseInt(b.dataset.slot, 10))));
-        document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
-        document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
-        document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
-            quickPush(b.dataset.sku, b.dataset.pushMp);
-        }));
     }
 
 
@@ -3455,8 +3523,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    document.getElementById('skuSearchIm')?.addEventListener('input', () => renderTable(tableData));
-    document.getElementById('parentSearchIm')?.addEventListener('input', () => renderTable(tableData));
+    // Debounce typing so the table is filtered once the user pauses, not on every keystroke.
+    let imSearchTimer = null;
+    const imSearchDebounced = () => { clearTimeout(imSearchTimer); imSearchTimer = setTimeout(() => renderTable(tableData), 250); };
+    document.getElementById('skuSearchIm')?.addEventListener('input', imSearchDebounced);
+    document.getElementById('parentSearchIm')?.addEventListener('input', imSearchDebounced);
     document.getElementById('rowTypeFilter')?.addEventListener('change', () => renderTable(tableData));
     document.getElementById('invFilter')?.addEventListener('change', () => renderTable(tableData));
     document.getElementById('statusFilter')?.addEventListener('change', () => renderTable(tableData));
