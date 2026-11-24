@@ -1202,6 +1202,13 @@
         max-width: 100%;
     }
 
+    .cd-sheet-table .cd-hdr-co-dot {
+        flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, .85);
+    }
+    .cd-sheet-table .cd-hdr-co-dot.is-ok { background: #16a34a; }
+    .cd-sheet-table .cd-hdr-co-dot.is-missing { background: #dc2626; }
+
     .cd-sheet-table .cd-col-header-label {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -5053,11 +5060,72 @@ document.addEventListener('DOMContentLoaded', function () {
         if (colIndex === specCol) return 'Spec';
         if (criticalCol !== null && colIndex === criticalCol) return 'Critical';
         if (qcCol !== null && colIndex === qcCol) return 'QC';
-        const supplierName = getSupplierNameForColumn(colIndex, sheetCells);
-        if (supplierName) return supplierName;
+        const meta = columnSupplierMeta(colIndex, sheetCells);
+        if (meta.name) return meta.name;
         const headerCell = String((sheetCells[0] || [])[colIndex] || '').trim();
         if (headerCell) return headerCell;
         return columnLetter(colIndex);
+    }
+
+    // Supplier column header: show the SUPPLIER name (Supplier page), not the company name.
+    // Sheets imported from Google only have company names in the header row, so look the supplier up by company.
+    // hasCompany -> green dot in the header, otherwise red.
+    function columnSupplierMeta(colIndex, cells) {
+        const sheetCells = cells || currentSheetCells;
+        const raw = getSupplierNameForColumn(colIndex, sheetCells);
+        if (!raw) return { name: '', company: '', hasCompany: false, isSupplier: false };
+        const specCol = detectSpecColumnIndex(sheetCells);
+        const companyRow = findRowIndexByLabel(sheetCells, 'company name', specCol);
+        const companyCell = companyRow !== null ? String((sheetCells[companyRow] || [])[colIndex] || '').trim() : '';
+        let name = raw;
+        let company = companyCell;
+        const byName = supplierInfoForName(raw);
+        if (byName) {
+            name = String(byName.name || raw).trim() || raw;
+            company = company || String(byName.company || '').trim();
+        } else {
+            // The text may be a company name: find the supplier that owns it.
+            const key = supplierCompanyKey(companyCell || raw);
+            let owner = null;
+            if (key) {
+                comparisonSupplierCompanyMap.forEach((info) => {
+                    if (!owner && supplierCompanyKey(info && info.company) === key) owner = info;
+                });
+            }
+            if (owner) {
+                name = String(owner.name || raw).trim() || raw;
+                company = company || String(owner.company || '').trim() || raw;
+            } else if (!company) {
+                company = '';
+            }
+        }
+        return { name, company, hasCompany: company !== '', isSupplier: true };
+    }
+
+    function columnHeaderDotHtml(meta) {
+        if (!meta || !meta.isSupplier) return '';
+        const ok = !!meta.hasCompany;
+        const tip = ok ? `Company name: ${meta.company}` : 'Company name missing';
+        return `<span class="cd-hdr-co-dot ${ok ? 'is-ok' : 'is-missing'}" title="${escapeHtmlAttr(tip)}" aria-label="${escapeHtmlAttr(tip)}"></span>`;
+    }
+
+    // Re-draw the supplier header labels/dots without re-rendering the sheet (supplier list may load after the table).
+    function refreshSheetHeaderSuppliers() {
+        if (!currentSheetCells || !currentSheetCells.length) return;
+        document.querySelectorAll('#comparison-cd-sheet-head th.cd-col-header[data-col]').forEach((th) => {
+            const c = parseInt(th.dataset.col, 10);
+            if (Number.isNaN(c)) return;
+            const meta = columnSupplierMeta(c, currentSheetCells);
+            if (!meta.isSupplier) return;
+            const label = th.querySelector('.cd-col-header-label');
+            if (label && label.textContent !== meta.name) {
+                label.textContent = meta.name;
+                label.title = meta.name;
+                th.title = meta.name;
+            }
+            th.querySelector('.cd-hdr-co-dot')?.remove();
+            label?.insertAdjacentHTML('beforebegin', columnHeaderDotHtml(meta));
+        });
     }
 
     function fieldClipboardActionsHtml(fieldId) {
@@ -5408,6 +5476,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     .map(x => String((x && x.name) ?? '').trim().replace(/^["'“”]+|["'“”]+$/g, '').trim())
                     .filter(n => n !== '' && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()))
                     .sort((a, b) => a.localeCompare(b));
+                try { refreshSheetHeaderSuppliers(); } catch (e) { /* header refresh is cosmetic */ }
                 return comparisonSupplierList;
             })
             .catch(() => null)
@@ -10175,7 +10244,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             headHtml += `<th class="cd-col-header cd-select-col${c === specCol ? ' cd-spec-col' : ''}${isPriorityCol ? ' cd-priority-col' : ''}${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}${selectedClass}" data-col="${c}" draggable="true" title="${escapeHtmlAttr(headerText)}">
                 <span class="cd-col-header-inner">
-                    <span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
+                    ${isPriorityCol ? '' : columnHeaderDotHtml(columnSupplierMeta(c, currentSheetCells))}<span class="cd-col-header-label" title="${escapeHtmlAttr(headerText)}">${escapeHtml(headerText)}</span>
                     <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
                         <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
                     </button>${(c > specCol && !isPriorityCol) ? `<button type="button" class="cd-sheet-col-add-btn" data-col="${c}" draggable="false" title="Add a new column after ${escapeHtmlAttr(headerText)}" aria-label="Add column after ${escapeHtmlAttr(headerText)}">

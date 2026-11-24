@@ -127,6 +127,9 @@
                             <a href="{{ route('comparison.index') }}">Purchase Comparison</a>
                         </li>
                         <li>
+                            <a href="{{ route('purchase.specific.index') }}">Purchase Specific</a>
+                        </li>
+                        <li>
                             <a href="{{ route('ready.to.ship') }}">Purchase Ready To Ship</a>
                         </li>
                             <li>

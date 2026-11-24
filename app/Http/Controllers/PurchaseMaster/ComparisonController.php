@@ -1227,7 +1227,7 @@ class ComparisonController extends Controller
         return $this->mergeSpecificationNames($data['names'], $data['new_name']);
     }
 
-    private function mergeSpecificationNames(array $names, string $newName)
+    public function mergeSpecificationNames(array $names, string $newName)
     {
         if (! Schema::hasTable('comparison_specifications')) {
             return response()->json([

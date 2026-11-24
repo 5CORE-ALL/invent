@@ -3251,6 +3251,9 @@
                             <a href="{{ route('comparison.index') }}">Purchase Comparison</a>
                         </li>
                         <li>
+                            <a href="{{ route('purchase.specific.index') }}">Purchase Specific</a>
+                        </li>
+                        <li>
                             <a href="{{ url('/purchase-master/sku-link-lmp') }}">Purchase SKU Link LMP</a>
                         </li>
                         <li>

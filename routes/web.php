@@ -6337,6 +6337,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/linked-skus/remove', 'removeLinkedSku')->name('comparison.linked-skus.remove');
     });
 
+    // Purchase Specific (Spec column of every Purchase Comparison form)
+    Route::controller(\App\Http\Controllers\PurchaseMaster\PurchaseSpecificController::class)->prefix('purchase-master/purchase-specific')->group(function () {
+        Route::get('/', 'index')->name('purchase.specific.index');
+        Route::get('/data', 'data')->name('purchase.specific.data');
+        Route::post('/rename', 'rename')->name('purchase.specific.rename');
+        Route::post('/merge', 'merge')->name('purchase.specific.merge');
+        Route::post('/normalize-all', 'normalizeAll')->name('purchase.specific.normalize-all');
+    });
+
     // Ready To Ship
     Route::get('/ready-to-ship', [ReadyToShipController::class, 'index'])->name('ready.to.ship');
     Route::get('/ready-to-ship/packing-list-links', [ReadyToShipController::class, 'packingListLinksJson'])->name('ready.to.ship.packing.list.links');
