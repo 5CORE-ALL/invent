@@ -13,6 +13,7 @@ use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\VariationTypeSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -881,7 +882,69 @@ class Ebay2VariationTypeController extends Controller
             ];
         }
 
-        return $out;
+        return $this->dropStaleDuplicates($out);
+    }
+
+    /**
+     * A relisted parent gets a new item id, and the status sync never sees the SKUs of the ended variation listing,
+     * so its old rows stay in ebay_2_metrics and the same "PARENT xxx" showed up twice. When one main listing has
+     * several item ids, keep the ones live on eBay (Active list); if none is, keep the one with the most SKUs, then
+     * the newest item id.
+     *
+     * @param array<string, array{main_listing: string, parent_key: string, children: int, skus: list<string>}> $listings
+     * @return array<string, array{main_listing: string, parent_key: string, children: int, skus: list<string>}>
+     */
+    private function dropStaleDuplicates(array $listings): array
+    {
+        $byLabel = [];
+        foreach ($listings as $itemId => $listing) {
+            $byLabel[mb_strtolower(trim((string) $listing['main_listing']))][] = (string) $itemId;
+        }
+
+        $live = null;
+        foreach ($byLabel as $ids) {
+            if (count($ids) < 2) {
+                continue;
+            }
+            $live ??= $this->liveActiveItemIds();
+            // Two listings that are both Active on eBay are two real listings: keep both. Only the ones eBay no longer lists go.
+            $keep = array_values(array_filter($ids, static fn (string $id) => isset($live[$id])));
+            if ($keep === []) {
+                $best = $ids;
+                usort($best, static function (string $a, string $b) use ($listings) {
+                    $byCount = count($listings[$b]['skus']) <=> count($listings[$a]['skus']);
+
+                    return $byCount !== 0 ? $byCount : strcmp(str_pad($b, 20, '0', STR_PAD_LEFT), str_pad($a, 20, '0', STR_PAD_LEFT));
+                });
+                $keep = [$best[0]];
+            }
+            foreach ($ids as $id) {
+                if (! in_array($id, $keep, true)) {
+                    unset($listings[$id]);
+                }
+            }
+        }
+
+        return $listings;
+    }
+
+    /** @return array<string, true> item ids of the parent listings that are Active on eBay 2 right now (cached 10 minutes) */
+    private function liveActiveItemIds(): array
+    {
+        try {
+            $ids = Cache::remember('ebay2_vt_live_parent_ids', 600, function () {
+                $out = [];
+                foreach (app(\App\Services\MarketplaceManager\EbayPortalListingStatusSync::class)->activeParentListings(2) as $parent) {
+                    $out[] = (string) $parent['id'];
+                }
+
+                return $out;
+            });
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return array_fill_keys(array_map('strval', (array) $ids), true);
     }
 
     /**
