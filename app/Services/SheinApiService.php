@@ -38,6 +38,9 @@ class SheinApiService
     /** @var array<string, float>|null */
     private ?array $pushedPriceLookup = null;
 
+    /** @var array<string, true> upper-cased skuCodes Shein refused during this run as not existing / not ours */
+    private array $deadSkuCodes = [];
+
     /**
      * @return array<string, float>
      */
@@ -2449,6 +2452,15 @@ class SheinApiService
         if ($code === '' || preg_match('/\s/', $code)) {
             return false;
         }
+        // A code Shein just refused as unknown / not ours (see updateItemInventoryBulk).
+        if (isset($this->deadSkuCodes[strtoupper($code)])) {
+            return false;
+        }
+        // SKC names (sh2411..., sw2611...: two letters and a long run of digits) are not skuCodes either. skuCodes start
+        // with "I", so those are left alone.
+        if (preg_match('/^(?!i)[a-z]{1,2}\d{10,}$/i', $code)) {
+            return false;
+        }
         $sellerSku = trim($sellerSku);
         if ($sellerSku !== '' && strcasecmp($code, $sellerSku) === 0) {
             return false;
@@ -3047,7 +3059,9 @@ class SheinApiService
                         ->orWhere('shein_sku_code', $code)
                         ->first();
                     if ($existing) {
-                        if (trim((string) $existing->shein_sku_code) === '') {
+                        $oldCode = trim((string) $existing->shein_sku_code);
+                        // A stored code that is not a live skuCode (refused by Shein, or an SKC name) is replaced.
+                        if ($oldCode === '' || ($oldCode !== $code && ! $this->isPlatformSkuCode($oldCode, $seller))) {
                             $existing->shein_sku_code = $code;
                             $existing->save();
                         }
@@ -3756,6 +3770,9 @@ class SheinApiService
         $m = mb_strtolower($message);
 
         return str_contains($m, 'sku does not exist')
+            || str_contains($m, 'does not belong to the current supplier')
+            || str_contains($message, '商品SKU不存在')
+            || str_contains($message, '并非当前供应商')
             || str_contains($m, 'invalid skucode')
             || str_contains($message, '无效的skuCode');
     }
@@ -3892,7 +3909,7 @@ class SheinApiService
      * @param  list<array{seller_part_number?: string, sku?: string, sku_code?: string, quantity: int|string, warehouse_code?: string}>  $items
      * @return array{ok: bool, pushed: int, failed: int, blocked_by_cloudflare: bool, error_message: ?string, results: list<array<string, mixed>>}
      */
-    public function updateItemInventoryBulk(array $items): array
+    public function updateItemInventoryBulk(array $items, bool $isRetry = false): array
     {
         $results = [];
         $pushed = 0;
@@ -4069,6 +4086,65 @@ class SheinApiService
                         'error' => $lastError,
                         'raw' => null,
                     ];
+                }
+            }
+        }
+
+        // Shein answers "Product SKU does not exist -- SKC is not owned by the current supplier" when the stored code is
+        // not a live skuCode (a leftover / replaced listing, or an SKC name saved as the code). Forget that code, look the
+        // real skuCode up on Shein by seller SKU and push those rows once more.
+        if (! $isRetry) {
+            $retryItems = [];
+            $retrySkus = [];
+            $codeBySku = [];
+            foreach ($normalized as $row) {
+                $codeBySku[$row['sku']] = $row;
+            }
+            foreach ($results as $res) {
+                $sku = (string) ($res['seller_part_number'] ?? '');
+                if (! empty($res['success']) || $sku === '' || ! isset($codeBySku[$sku]) || ! self::isDeadSkuCodeMessage((string) ($res['error'] ?? ''))) {
+                    continue;
+                }
+                $this->deadSkuCodes[strtoupper($codeBySku[$sku]['sku_code'])] = true;
+                $retrySkus[$sku] = $codeBySku[$sku];
+            }
+            if ($retrySkus !== []) {
+                $fresh = $this->resolvePlatformSkuCodesForSellerSkus(array_keys($retrySkus), [], true);
+                foreach ($retrySkus as $sku => $row) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                    $newCode = trim((string) (($norm !== '' ? ($fresh[$norm]['sku_code'] ?? null) : null) ?? ($fresh[$sku]['sku_code'] ?? '')));
+                    if ($newCode === '' || strcasecmp($newCode, $row['sku_code']) === 0 || ! $this->isPlatformSkuCode($newCode, $sku)) {
+                        continue;
+                    }
+                    $retryItems[] = [
+                        'sku' => $sku,
+                        'sku_code' => $newCode,
+                        'quantity' => $row['quantity'],
+                        'warehouse_code' => (string) (($norm !== '' ? ($fresh[$norm]['warehouse_code'] ?? '') : '') ?: $row['warehouse_code']),
+                    ];
+                }
+                if ($retryItems !== []) {
+                    $again = $this->updateItemInventoryBulk($retryItems, true);
+                    $bySku = [];
+                    foreach ((array) ($again['results'] ?? []) as $res) {
+                        $bySku[(string) ($res['seller_part_number'] ?? '')] = $res;
+                    }
+                    foreach ($results as $i => $res) {
+                        $sku = (string) ($res['seller_part_number'] ?? '');
+                        if (empty($res['success']) && isset($bySku[$sku]) && in_array($sku, array_column($retryItems, 'sku'), true)) {
+                            $results[$i] = $bySku[$sku];
+                            $failed--;
+                            if (! empty($bySku[$sku]['success'])) {
+                                $pushed++;
+                            } else {
+                                $failed++;
+                                $lastError = (string) ($bySku[$sku]['error'] ?? $lastError);
+                            }
+                        }
+                    }
+                    if ($pushed > 0 && $failed === 0) {
+                        $lastError = null;
+                    }
                 }
             }
         }
