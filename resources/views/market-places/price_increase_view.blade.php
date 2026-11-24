@@ -7821,6 +7821,8 @@
                 success: function(res) {
                     input.css('border-color', '#28a745');
                     setTimeout(() => input.css('border-color', ''), 1000);
+                    // A manual Amazon edit replaces the remembered box price (the box follows Amazon's saved SPRICE)
+                    if (mpLower === 'amazon') rememberSameSprice(sku, sprice);
                     if (isTemuMp) {
                         syncTemuPairedSpriceInModal(mpLower, sprice);
                     }
@@ -7882,6 +7884,7 @@
                 showToast('No SKU loaded in modal', 'error');
                 return;
             }
+            forgetSameSprice(sku); // cleared SPRICE must not come back from the "last saved price" memory
             const $rows = [];
             $('#ovl30DetailsTableBody tr').each(function() {
                 const $tr = $(this);
@@ -8708,11 +8711,49 @@
             }
             return 0;
         }
+        // ---- "Last saved price" memory for the SPRICE $ box ----
+        // The ✓ / auto-save write every channel one after another (slow), and the box is refilled from server data on reopen.
+        // Remember the price the moment it is fed so reopening right away shows it, even while those saves are still running.
+        // Kept per SKU in localStorage; after SAME_SPRICE_MEM_TTL_MS the server's saved SPRICE is the only truth again.
+        const SAME_SPRICE_MEM_KEY = 'pi_last_same_sprice_v1';
+        const SAME_SPRICE_MEM_TTL_MS = 5 * 60 * 1000;
+        function sameSpriceMemRead() {
+            try { return JSON.parse(localStorage.getItem(SAME_SPRICE_MEM_KEY) || '{}') || {}; } catch (e) { return {}; }
+        }
+        function rememberSameSprice(sku, x) {
+            const key = String(sku || '').trim().toUpperCase();
+            x = parseFloat(x);
+            if (!key || key === 'NOT LISTED' || !(x > 0)) return;
+            try {
+                const m = sameSpriceMemRead();
+                m[key] = { x: +x.toFixed(2), at: Date.now() };
+                const keys = Object.keys(m);
+                if (keys.length > 300) { // keep the newest 300
+                    keys.sort(function(a, b) { return (m[a].at || 0) - (m[b].at || 0); })
+                        .slice(0, keys.length - 300).forEach(function(k) { delete m[k]; });
+                }
+                localStorage.setItem(SAME_SPRICE_MEM_KEY, JSON.stringify(m));
+            } catch (e) { /* storage full / disabled: the server value is still used */ }
+        }
+        function forgetSameSprice(sku) {
+            try {
+                const m = sameSpriceMemRead();
+                delete m[String(sku || '').trim().toUpperCase()];
+                localStorage.setItem(SAME_SPRICE_MEM_KEY, JSON.stringify(m));
+            } catch (e) { /* ignore */ }
+        }
+        function getRememberedSameSprice(sku) {
+            const e = sameSpriceMemRead()[String(sku || '').trim().toUpperCase()];
+            if (!e || !(parseFloat(e.x) > 0)) return 0;
+            if (Date.now() - (e.at || 0) > SAME_SPRICE_MEM_TTL_MS) return 0;
+            return parseFloat(e.x);
+        }
+
         /** Put the saved price in the SPRICE $ box (never over something the user is typing) and refresh the profit badges. */
         function syncSameSpriceBoxFromSaved() {
             const $same = $('#modal-sprice-same-input');
             if (!$same.length || $same.is(':focus') || samePriceDirty) { refreshSpriceSummarySoon(); return; }
-            const v = getSavedSameSprice();
+            const v = getRememberedSameSprice(getModalPrimarySku()) || getSavedSameSprice();
             $same.val(v > 0 ? v.toFixed(2) : '');
             refreshSpriceSummarySoon();
             syncTableSpriceFromModal();
@@ -8978,6 +9019,7 @@
                 return;
             }
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
+            rememberSameSprice(sku, basePrice); // remembered at once; reopening shows it even while the channel saves still run
             clearTimeout(sameAutoTimer); // the ✓ saves everything itself
 
             function runPushAll() {
@@ -10373,6 +10415,7 @@
             const sku = String(getModalPrimarySku() || '');
             if (!(x > 0) || !sku || sku.toUpperCase() === 'NOT LISTED' || sku.indexOf('PARENT') !== -1) return;
             if ((chpushRunning[sku] || 0) > 0 || $('#ovl30ChannelsPushModal').hasClass('show')) return; // a push / the Channels modal handles it
+            rememberSameSprice(sku, x); // typed price is kept as the last saved price straight away
             if (sameAutoSaving) { sameAutoTimer = setTimeout(saveSameSpriceAlways, 600); return; }
             // Put the saved SPRICEs back under the live preview so "changed?" compares against real saved values
             samePricePv.restore();
