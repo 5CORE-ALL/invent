@@ -122,6 +122,17 @@
         #lmp-play-forward:disabled,
         #lmp-play-backward:disabled:hover,
         #lmp-play-forward:disabled:hover { color: #adb5bd; background-color: #f8f9fa !important; }
+        #lmp-overall-wrap .lmp-sprice-box { display: inline-flex; align-items: center; gap: 4px; }
+        #lmp-overall-wrap .lmp-sprice-input { width: 72px; height: 26px; padding: 2px 6px; font-size: 12px; text-align: right; }
+        #lmp-overall-wrap .lmp-sprice-box .btn { height: 26px; padding: 0 8px; line-height: 1; }
+        #lmp-overall-wrap .lmp-sprice-alert { color: #dc3545; font-size: 13px; }
+        .lmp-sprice-toast {
+            position: fixed; right: 18px; bottom: 18px; z-index: 30000; display: none; max-width: 420px;
+            padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #fff;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+        }
+        .lmp-sprice-toast.is-ok { background: #198754; }
+        .lmp-sprice-toast.is-error { background: #dc3545; }
         .lmp-std-filter,
         .lmp-missing-filter { cursor: pointer; }
         .lmp-std-filter.is-active,
@@ -790,12 +801,12 @@
                     if (!row.is_parent_summary) return;
                     const kids = kidsByParent[row.parent] || [];
                     const next = { sku: row.sku };
-                    ['std_price', 'my_lmp', 'lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google', 'lp'].forEach(function (field) {
+                    ['std_price', 'my_lmp', 'sprice', 'lmp_amz', 'lmp_ebay', 'lmp_temu', 'lmp_google', 'lp'].forEach(function (field) {
                         const vals = kids.map(function (kid) { return parseFloat(kid[field]); })
                             .filter(function (n) { return isFinite(n) && n > 0; });
                         next[field] = vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
                     });
-                    ['std_nroi', 'std_npft'].forEach(function (field) {
+                    ['std_nroi', 'std_npft', 's_gpft', 's_groi', 's_npft', 's_nroi'].forEach(function (field) {
                         const vals = kids.map(function (kid) { return parseFloat(kid[field]); })
                             .filter(function (n) { return isFinite(n); });
                         next[field] = vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
@@ -1445,6 +1456,213 @@
                 updateLmpStdBadges();
             }
 
+            // ==================== SPRICE $ (same box / rules as the SKU modal on /price-increase) ====================
+            // Typed price X is saved on every channel by the channel rules (B2C = X, B2B / C2C = 0.75 X,
+            // B2B w/o ship = 0.75 X - Ship, High Shipping = X + Diff, Doba -25%) - the same stores /price-increase reads,
+            // so a price saved here shows there and a price saved there shows here. Saved only, never pushed live.
+            const SPRICE_RULE_TIP = 'SPRICE saved on every channel by its rule. B2C = price; B2B / C2C = 0.75 x price; '
+                + 'SB2B / TopDawg / Faire = 0.75 x price - Ship; High Shipping = price + Diff; Doba = -25%. '
+                + 'Same as SPRICE $ on /price-increase. Saved only, not pushed.';
+            const spriceDrafts = {};
+            const spriceSaving = {};
+            const spriceSync = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('invent-sprice-sync') : null;
+
+            function normSku(sku) {
+                return String(sku || '').replace(/\s+/g, ' ').trim().toUpperCase();
+            }
+
+            // Amazon formulas of the SPRICE $ readout on /price-increase: GPFT / GROI / NPFT / NROI at the price.
+            function spriceMetricFields(sprice, row) {
+                const empty = { s_gpft: null, s_groi: null, s_npft: null, s_nroi: null };
+                const p = parseFloat(sprice);
+                const lp = parseFloat(row && row.lp);
+                if (!(p > 0) || !(lp > 0)) return empty;
+                const ship = parseFloat(row.ship) || 0;
+                const ads = parseFloat(LMP_OV_ADS_PCT) || 0;
+                const gross = (p * 0.80) - ship - lp;
+                const gpft = (gross / p) * 100;
+                return {
+                    s_gpft: round2(gpft),
+                    s_groi: round2((gross / lp) * 100),
+                    s_npft: round2(gpft - ads),
+                    s_nroi: round2(((gross - p * (ads / 100)) / lp) * 100),
+                };
+            }
+
+            function avgOf(rows, field) {
+                const vals = rows.map(function (r) { return parseFloat(r[field]); }).filter(function (n) { return isFinite(n); });
+                return vals.length ? round2(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length) : null;
+            }
+
+            function decorateSpriceRows(rows) {
+                const kids = {};
+                rows.forEach(function (row) {
+                    if (row.is_parent_summary) return;
+                    Object.assign(row, spriceMetricFields(row.sprice, row));
+                    if (row.parent) (kids[row.parent] = kids[row.parent] || []).push(row);
+                });
+                rows.forEach(function (row) {
+                    if (!row.is_parent_summary) return;
+                    const list = kids[row.parent] || [];
+                    ['s_gpft', 's_groi', 's_npft', 's_nroi'].forEach(function (f) { row[f] = avgOf(list, f); });
+                });
+                return rows;
+            }
+
+            // Same rule as the SKU modal on /price-increase: red triangle when SPRICE is above the lowest LMP
+            function spriceLmpAlertHtml(price, lmp) {
+                const p = parseFloat(price);
+                const l = parseFloat(lmp);
+                if (!(p > 0) || !(l > 0) || !(p > l)) return '';
+                return '<i class="fas fa-exclamation-triangle lmp-sprice-alert" title="SPRICE $' + p.toFixed(2)
+                    + ' &gt; LMP $' + l.toFixed(2) + '"></i>';
+            }
+
+            function spriceCell(cell) {
+                const d = cell.getRow().getData();
+                if (d.is_parent_summary) return money(d.sprice);
+                const sku = String(d.sku || '');
+                const saved = parseFloat(d.sprice);
+                const draft = Object.prototype.hasOwnProperty.call(spriceDrafts, sku) ? spriceDrafts[sku] : null;
+                const val = draft !== null ? draft : ((isFinite(saved) && saved > 0) ? saved.toFixed(2) : '');
+                const busy = !!spriceSaving[sku];
+                return '<div class="lmp-sprice-box">'
+                    + '<input type="number" class="form-control form-control-sm lmp-sprice-input" step="0.01" min="0.01"'
+                    + ' placeholder="19.99" data-sku="' + escHtml(sku) + '" value="' + escHtml(val) + '"'
+                    + ' title="' + escHtml(SPRICE_RULE_TIP) + '"' + (busy ? ' disabled' : '') + '>'
+                    + '<button type="button" class="btn btn-sm btn-outline-success lmp-sprice-save" data-sku="' + escHtml(sku) + '"'
+                    + ' title="Save SPRICE on every channel (by rule)"' + (busy ? ' disabled' : '') + '>'
+                    + '<i class="fas ' + (busy ? 'fa-spinner fa-spin' : 'fa-check') + '" style="pointer-events:none;"></i></button>'
+                    + spriceLmpAlertHtml(val, d.ov_lmp)
+                    + '</div>';
+            }
+
+            function spriceToast(text, kind) {
+                let el = document.getElementById('lmp-sprice-toast');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'lmp-sprice-toast';
+                    document.body.appendChild(el);
+                }
+                el.className = 'lmp-sprice-toast ' + (kind === 'error' ? 'is-error' : 'is-ok');
+                el.textContent = text;
+                el.style.display = 'block';
+                clearTimeout(spriceToast.timer);
+                spriceToast.timer = setTimeout(function () { el.style.display = 'none'; }, kind === 'error' ? 6000 : 3000);
+            }
+
+            function findRowBySku(sku) {
+                let row = null;
+                try { row = table.getRow(sku); } catch (e) { row = null; }
+                if (row) return row;
+                const want = normSku(sku);
+                return table.getRows().find(function (r) {
+                    const d = r.getData();
+                    return !d.is_parent_summary && normSku(d.sku) === want;
+                }) || null;
+            }
+
+            /** Put a SPRICE (saved elsewhere or here) into the row + its profit columns. */
+            function setRowSprice(sku, sprice) {
+                const row = findRowBySku(sku);
+                if (!row) return;
+                const d = row.getData();
+                const v = parseFloat(sprice);
+                const next = (isFinite(v) && v > 0) ? round2(v) : null;
+                delete spriceDrafts[d.sku];
+                row.update(Object.assign({ sprice: next }, spriceMetricFields(next, d)));
+            }
+
+            function saveSpriceForSku(sku) {
+                const row = findRowBySku(sku);
+                if (!row || spriceSaving[sku]) return;
+                const d = row.getData();
+                const el = document.querySelector('#lmp-overall-wrap .lmp-sprice-input[data-sku="' + CSS.escape(sku) + '"]');
+                const raw = el ? el.value : (Object.prototype.hasOwnProperty.call(spriceDrafts, sku) ? spriceDrafts[sku] : '');
+                const v = parseFloat(String(raw == null ? '' : raw).replace(/[$,\s]/g, '').replace(',', '.'));
+                if (!isFinite(v) || !(v > 0)) {
+                    spriceToast('Enter SPRICE $ greater than 0', 'error');
+                    if (el) el.focus();
+                    return;
+                }
+                const price = round2(v);
+                spriceSaving[sku] = true;
+                row.reformat();
+                postJson(@json(route('lmp.overall.sprice')), { sku: sku, sprice: price }).then(function (body) {
+                    delete spriceSaving[sku];
+                    setRowSprice(sku, price);
+                    row.reformat(); // same value as before does not re-render the cell on its own - drop the spinner
+                    refreshParentSummaries();
+                    if (spriceSync) spriceSync.postMessage({ type: 'sprice', sku: sku, sprice: price, from: 'lmp-overall' });
+                    spriceToast('SPRICE $' + price.toFixed(2) + ' saved for ' + sku + ' on ' + ((body && body.saved) || 0)
+                        + ' channel(s)' + (body && body.skipped ? ' (' + body.skipped + ' unchanged / n.a.)' : ''), 'ok');
+                }).catch(function (err) {
+                    delete spriceSaving[sku];
+                    row.reformat();
+                    spriceToast((err && err.message) || 'Could not save SPRICE', 'error');
+                    spriceMapAt = 0;
+                    refreshSpriceFromServer(); // a partly saved price (e.g. Amazon saved, one channel failed) still shows what is stored
+                });
+            }
+
+            // Live readout while typing (same as the badges next to SPRICE $ on /price-increase)
+            function previewSprice(sku, rawValue) {
+                const row = findRowBySku(sku);
+                if (!row) return;
+                const d = row.getData();
+                spriceDrafts[sku] = String(rawValue == null ? '' : rawValue);
+                const typed = parseFloat(rawValue);
+                const base = (isFinite(typed) && typed > 0) ? typed : parseFloat(d.sprice);
+                row.update(spriceMetricFields(base, d)); // profit columns only - the input itself is not re-rendered
+                const input = document.querySelector('#lmp-overall-wrap .lmp-sprice-input[data-sku="' + CSS.escape(sku) + '"]');
+                const box = input ? input.closest('.lmp-sprice-box') : null;
+                if (box) {
+                    const old = box.querySelector('.lmp-sprice-alert');
+                    if (old) old.remove();
+                    box.insertAdjacentHTML('beforeend', spriceLmpAlertHtml(base, d.ov_lmp));
+                }
+            }
+
+            // A price saved on /price-increase (or another tab of this page) shows here at once
+            if (spriceSync) {
+                spriceSync.onmessage = function (event) {
+                    const msg = event && event.data;
+                    if (!msg || msg.type !== 'sprice' || msg.from === 'lmp-overall' || !msg.sku) return;
+                    setRowSprice(msg.sku, msg.sprice);
+                    refreshParentSummaries();
+                };
+            }
+
+            let spriceMapAt = 0;
+            function refreshSpriceFromServer() {
+                if (typeof table === 'undefined' || !table || Date.now() - spriceMapAt < 15000) return;
+                spriceMapAt = Date.now();
+                fetch(@json(route('lmp.overall.sprice-map')), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                }).then(function (r) { return r.json(); }).then(function (body) {
+                    const map = (body && body.sprice) || {};
+                    const updates = [];
+                    table.getData().forEach(function (d) {
+                        if (d.is_parent_summary) return;
+                        if (Object.prototype.hasOwnProperty.call(spriceDrafts, d.sku)) return; // do not touch what is being typed
+                        const server = parseFloat(map[normSku(d.sku)]);
+                        const next = (isFinite(server) && server > 0) ? round2(server) : null;
+                        const cur = parseFloat(d.sprice);
+                        const curN = (isFinite(cur) && cur > 0) ? round2(cur) : null;
+                        if (next === curN) return;
+                        updates.push(Object.assign({ sku: d.sku, sprice: next }, spriceMetricFields(next, d)));
+                    });
+                    if (updates.length) {
+                        table.updateData(updates);
+                        refreshParentSummaries();
+                    }
+                }).catch(function () { /* next focus retries */ });
+            }
+            window.addEventListener('focus', refreshSpriceFromServer);
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) refreshSpriceFromServer();
+            });
+
             const table = new Tabulator('#lmp-overall-table', {
                 index: 'sku',
                 height: '70vh',
@@ -1459,7 +1677,7 @@
                 ajaxURL: @json(route('lmp.overall.data')),
                 ajaxConfig: 'GET',
                 ajaxResponse: function (url, params, response) {
-                    return (response && response.data) ? response.data : [];
+                    return decorateSpriceRows((response && response.data) ? response.data : []);
                 },
                 rowFormatter: function (row) {
                     const el = row.getElement();
@@ -1638,6 +1856,20 @@
                         formatter: function (cell) { return money(cell.getValue()); },
                     },
                     {
+                        title: 'SPRICE $',
+                        field: 'sprice',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        minWidth: 118,
+                        sorter: 'number',
+                        headerTooltip: SPRICE_RULE_TIP,
+                        formatter: spriceCell,
+                    },
+                    percentColumn('SP GPFT%', 's_gpft', 'gpftStyle', 'GPFT% at SPRICE $ = (SPRICE x 0.80 - Ship - LP) / SPRICE x 100 (same readout as SPRICE $ on /price-increase)'),
+                    percentColumn('SP GROI%', 's_groi', 'groiStyle', 'GROI% at SPRICE $ = (SPRICE x 0.80 - Ship - LP) / LP x 100'),
+                    percentColumn('SP NPFT%', 's_npft', 'npftStyle', 'NPFT% at SPRICE $ = GPFT% - Amazon Ads%'),
+                    percentColumn('SP NROI%', 's_nroi', 'nroiStyle', 'NROI% at SPRICE $ = (SPRICE x 0.80 - Ship - LP - SPRICE x Ads%) / LP x 100'),
+                    {
                         title: 'Edit',
                         field: 'row_edit',
                         hozAlign: 'center',
@@ -1767,6 +1999,13 @@
                     openSoldModal(soldBtn.getAttribute('data-sku'));
                     return;
                 }
+                const spBtn = e.target.closest('.lmp-sprice-save');
+                if (spBtn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    saveSpriceForSku(spBtn.getAttribute('data-sku') || '');
+                    return;
+                }
                 const btn = e.target.closest('.lmp-overall-edit');
                 if (!btn) return;
                 e.preventDefault();
@@ -1774,6 +2013,22 @@
                 const sku = btn.getAttribute('data-sku');
                 const row = sku ? table.getRow(sku) : null;
                 if (row) openStdModal(row);
+            }, true);
+
+            // SPRICE $ box: live profit readout while typing, Enter = ✓ (same as the box on /price-increase)
+            document.getElementById('lmp-overall-wrap').addEventListener('input', function (e) {
+                const input = e.target.closest ? e.target.closest('.lmp-sprice-input') : null;
+                if (!input) return;
+                previewSprice(input.getAttribute('data-sku') || '', input.value);
+            });
+            document.getElementById('lmp-overall-wrap').addEventListener('keydown', function (e) {
+                const input = e.target.closest ? e.target.closest('.lmp-sprice-input') : null;
+                if (!input) return;
+                e.stopPropagation(); // keep Tabulator's keyboard navigation out of the input
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveSpriceForSku(input.getAttribute('data-sku') || '');
+                }
             }, true);
 
             table.on('dataProcessed', updateCounts);

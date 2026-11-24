@@ -10,6 +10,7 @@ use App\Models\GoogleSkuCompetitor;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuLmp;
+use App\Services\ChannelSpriceRuleService;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -137,6 +138,7 @@ class LmpOverallController extends Controller
         $manual = $this->amazonManualPrices();
         $stdBySku = $manual['std'];
         $myLmpBySku = $manual['my_lmp'];
+        $spriceBySku = $manual['sprice'];
 
         $rows = [];
         foreach ($products as $product) {
@@ -170,6 +172,7 @@ class LmpOverallController extends Controller
                 'dil' => $dil,
                 'std_price' => $this->priceForGroup($members, $stdBySku),
                 'my_lmp' => $this->priceForGroup($members, $myLmpBySku),
+                'sprice' => $spriceBySku[$skuKey] ?? null,
                 'linked_lmp_skus' => array_values($members),
                 'avg_price' => $cvr['avg_price'] ?? null,
                 'groi' => $cvr['avg_roi'] ?? null,
@@ -564,6 +567,7 @@ class LmpOverallController extends Controller
             'ship' => $this->avgNumeric($children, 'ship'),
             'std_price' => $this->avgPositive($children, 'std_price'),
             'my_lmp' => $this->avgPositive($children, 'my_lmp'),
+            'sprice' => $this->avgPositive($children, 'sprice'),
             'linked_lmp_skus' => [],
             'avg_price' => $this->avgPositive($children, 'avg_price'),
             'groi' => $this->avgNumeric($children, 'groi'),
@@ -759,13 +763,64 @@ class LmpOverallController extends Controller
     }
 
     /**
+     * Saved SPRICE (Amazon, the value shown in the SPRICE $ box on /price-increase) for every SKU.
+     * Lets /lmp-overall pick up prices that were saved on /price-increase without reloading the whole table.
+     */
+    public function spriceMap(): JsonResponse
+    {
+        $bySku = $this->amazonManualPrices()['sprice'];
+
+        return response()->json(['success' => true, 'sprice' => (object) $bySku]);
+    }
+
+    /**
+     * SPRICE $ on /lmp-overall = SPRICE $ on /price-increase: the typed price is saved on every channel by the
+     * channel rules (B2C = X, B2B/C2C = 0.75 X, B2B w/o ship = 0.75 X - Ship, High Shipping = X + Diff, Doba -25%).
+     * Same stores as /price-increase, so both pages always show the same value. Saves only - nothing is pushed live.
+     */
+    public function saveSprice(Request $request): JsonResponse
+    {
+        $sku = trim((string) $request->input('sku', ''));
+        $raw = $request->input('sprice');
+
+        if ($sku === '' || str_starts_with(strtoupper($sku), 'PARENT')) {
+            return response()->json(['success' => false, 'error' => 'A SKU row is required.'], 422);
+        }
+        if (! is_numeric($raw) || (float) $raw <= 0) {
+            return response()->json(['success' => false, 'error' => 'SPRICE must be greater than 0.'], 422);
+        }
+
+        $price = round((float) $raw, 2);
+        try {
+            $result = app(ChannelSpriceRuleService::class)->applyToSku($sku, $price);
+        } catch (\Throwable $e) {
+            Log::warning('LMP Overall: SPRICE save failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'error' => 'Could not save SPRICE: '.$e->getMessage()], 500);
+        }
+
+        $ok = $result['failed'] === 0;
+
+        return response()->json([
+            'success' => $ok,
+            'sku' => $sku,
+            'sprice' => $price,
+            'saved' => $result['saved'],
+            'failed' => $result['failed'],
+            'skipped' => $result['skipped'],
+            'channels' => $result['channels'],
+            'error' => $ok ? null : ('Could not save SPRICE on '.$result['failed'].' channel(s).'),
+        ], $ok ? 200 : 207);
+    }
+
+    /**
      * Std Price and My LMP from amazon_data_view (same store as /amazon-tabulator-view).
      *
-     * @return array{std: array<string, float>, my_lmp: array<string, float>}
+     * @return array{std: array<string, float>, my_lmp: array<string, float>, sprice: array<string, float>}
      */
     private function amazonManualPrices(): array
     {
-        $out = ['std' => [], 'my_lmp' => []];
+        $out = ['std' => [], 'my_lmp' => [], 'sprice' => []];
         if (! Schema::hasTable('amazon_data_view')) {
             return $out;
         }
@@ -788,6 +843,11 @@ class LmpOverallController extends Controller
                         $mine = $val['MY_LMP'] ?? null;
                         if (is_numeric($mine) && (float) $mine > 0) {
                             $out['my_lmp'][$key] = round((float) $mine, 2);
+                        }
+                        // Amazon SPRICE - the same value the SPRICE $ box on /price-increase shows and saves
+                        $sprice = $val['SPRICE'] ?? null;
+                        if (is_numeric($sprice) && (float) $sprice > 0) {
+                            $out['sprice'][$key] = round((float) $sprice, 2);
                         }
                     }
                 });
@@ -873,6 +933,9 @@ class LmpOverallController extends Controller
     private function pricingCvrAvgFromLive(): array
     {
         try {
+            // The live pricing-master-cvr build needs ~250MB; the 128M default (php -S / artisan serve) dies with a
+            // fatal "Allowed memory size exhausted", the table then never loads and nothing is cached.
+            @ini_set('memory_limit', '1024M');
             set_time_limit(180);
             $response = app(CvrMasterController::class)->getCvrDataJson(
                 Request::create('/cvr-master-data-json', 'GET')

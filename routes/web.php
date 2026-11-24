@@ -4613,6 +4613,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
     Route::get('/lmp-overall/sku-metrics', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'skuMetrics'])->name('lmp.overall.sku-metrics');
     Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
+    Route::get('/lmp-overall/sprice-map', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'spriceMap'])->name('lmp.overall.sprice-map');
+    Route::post('/lmp-overall/sprice', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'saveSprice'])->name('lmp.overall.sprice');
 
     // Std pricing — parent/SKU inventory, ovl30, dil, and Amazon Std Price
     Route::get('/std-pricing', [\App\Http\Controllers\MarketPlace\StdPricingController::class, 'index'])->name('std.pricing');

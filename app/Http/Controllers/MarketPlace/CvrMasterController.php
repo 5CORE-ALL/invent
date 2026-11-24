@@ -221,7 +221,28 @@ class CvrMasterController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        // Active channels from Channel Master, grouped by type (B2C, B2B, C2C, Dropship, Wholesale, ...)
+        ['byType' => $channelsByType, 'logos' => $channelLogos] = $this->pricingChannelsByType();
+
+        return view("market-places.price_increase_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+            "channelsByType" => $channelsByType,
+            "channelLogos" => $channelLogos,
+            "ebayTakeHomeMap" => array_merge(
+                MarketplacePercentage::ebayTakeHomeMap(),
+                MarketplacePercentage::temuTakeHomeMap()
+            ),
+        ]);
+    }
+
+    /**
+     * Active Channel Master channels grouped by type (B2C, B2B, C2C, Dropship, Wholesale, High Shipping ...).
+     * Shared by /price-increase (Channels modal) and /lmp-overall (SPRICE $ rules) so both use the same grouping.
+     *
+     * @return array{byType: array<string, list<string>>, logos: array<string, string>}
+     */
+    public function pricingChannelsByType(): array
+    {
         $channelsByType = [];
         $channelLogos = []; // channel name => logo URL (Channel Master "logo"), shown next to the channel name in the SKU modal
         try {
@@ -260,16 +281,7 @@ class CvrMasterController extends Controller
             Log::warning('Price Increase channels list failed: '.$e->getMessage());
         }
 
-        return view("market-places.price_increase_view", [
-            "mode" => $mode,
-            "demo" => $demo,
-            "channelsByType" => $channelsByType,
-            "channelLogos" => $channelLogos,
-            "ebayTakeHomeMap" => array_merge(
-                MarketplacePercentage::ebayTakeHomeMap(),
-                MarketplacePercentage::temuTakeHomeMap()
-            ),
-        ]);
+        return ['byType' => $channelsByType, 'logos' => $channelLogos];
     }
 
     /**

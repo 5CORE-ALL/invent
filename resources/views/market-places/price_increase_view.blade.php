@@ -8010,6 +8010,8 @@
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
+                    // Amazon's SPRICE is the one /lmp-overall shows: tell its open tabs
+                    if (mpLower === 'amazon' && sprice > 0) announceSpriceSaved(sku, sprice);
                     // Promo/CPN applies set skipPairSync so Temu does not copy to Temu2 / all.
                     // Background saves (opts.sku) must not touch the modal once it shows another SKU.
                     if (!opts.skipPairSync && (!opts.sku || opts.sku === getModalPrimarySku())) {
@@ -8737,6 +8739,46 @@
                 });
                 try { row.reformat(); } catch (e2) {}
             } catch (e) { /* the table refresh on the next load fixes it */ }
+        }
+
+        // ---- Live sync with /lmp-overall (SPRICE $ there = SPRICE $ here; both save the same stores) ----
+        // A SPRICE saved here is announced to open /lmp-overall tabs; one saved there updates this table's Amz SPRICE at once.
+        const spriceSyncChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('invent-sprice-sync') : null;
+        function announceSpriceSaved(sku, sprice) {
+            try {
+                if (spriceSyncChannel && sku && sprice > 0) {
+                    spriceSyncChannel.postMessage({ type: 'sprice', sku: String(sku), sprice: +Number(sprice).toFixed(2), from: 'price-increase' });
+                }
+            } catch (e) { /* other tabs pick it up on their next refresh */ }
+        }
+        function applyExternalAmazonSprice(sku, v) {
+            try {
+                if (typeof table === 'undefined' || !table) return;
+                const want = String(sku || '').trim().toUpperCase();
+                v = parseFloat(v);
+                if (!want || !(v > 0)) return;
+                const row = table.getRows().find(function(r) {
+                    const d = r.getData() || {};
+                    return d.is_parent_summary !== true && String(d.sku || '').trim().toUpperCase() === want;
+                });
+                if (!row) return;
+                const d = row.getData();
+                const ads = (d.amazon_ads != null && d.amazon_ads !== '') ? (parseFloat(d.amazon_ads) || 0) : (parseFloat(d.amazon_ad) || 0);
+                const m = computeAmzSpriceMetrics(v, d.amazon_lp, d.amazon_ship, ads, d.amazon_margin);
+                const r2 = function(x) { return x == null ? null : Math.round(x * 100) / 100; };
+                row.update({
+                    amazon_sprice: r2(v), amazon_sprice_from: null,
+                    amazon_sgpft: r2(m.sgpft), amazon_sroi: r2(m.sgroi), amazon_spft: r2(m.spft), amazon_snroi: r2(m.snroi)
+                });
+                try { row.reformat(); } catch (e2) {}
+            } catch (e) { /* the next table load fixes it */ }
+        }
+        if (spriceSyncChannel) {
+            spriceSyncChannel.onmessage = function(event) {
+                const msg = event && event.data;
+                if (!msg || msg.type !== 'sprice' || msg.from === 'price-increase') return;
+                applyExternalAmazonSprice(msg.sku, msg.sprice);
+            };
         }
         const samePricePv = makeSpricePreview({
             input: '#modal-sprice-same-input', out: '#modal-same-sprice-metrics',
