@@ -80,8 +80,6 @@
         <div class="ele-bar">
             <div class="ele-chip"><b id="ele-count">–</b><span>with errors</span></div>
             <button type="button" class="ele-pull" id="ele-pull">Pull from eBay</button>
-            <button type="button" class="ele-pull" id="ele-viol" style="background:#7c3aed">Check eBay violations</button>
-            <span class="ele-pulled" id="ele-pulled"></span>
             <input id="ele-search" class="ele-search" placeholder="Search SKU, item id, error…">
         </div>
         <div id="ele-table"></div>
@@ -94,13 +92,11 @@
             <h3 id="ele-fix-title">Fix listing</h3>
             <div class="small text-muted" id="ele-fix-sub"></div>
             <div id="ele-fix-issues"></div>
-            <div class="hint" id="ele-hint-violation">eBay flags this listing itself (see above). These are fixed on the eBay listing page: open it, correct the flagged item, then use Check live error.</div>
             <div id="ele-qty-box">
                 <label>Quantity to push <span id="ele-qty-note" class="text-muted"></span></label>
                 <input id="ele-qty" type="number" min="0" placeholder="e.g. 5">
             </div>
             <div class="actions">
-                <button type="button" id="ele-push-qty" style="background:#6d28d9;color:#fff">Push quantity</button>
                 <button type="button" id="ele-relist" style="background:#db2777;color:#fff">Relist</button>
                 <a id="ele-open" href="#" target="_blank" rel="noopener" class="ele-openbtn">Open on eBay</a>
                 <button type="button" id="ele-check" style="background:#eef2ff;color:#3730a3">Check live error</button>
@@ -144,19 +140,15 @@
                 }).then(function (r) { return r.json().catch(function () { return {}; }); });
             }
 
-            // The Fix button follows the error: inactive listings are relisted, stock mismatches get a quantity push,
-            // eBay violations are reviewed on eBay.
+            // The Fix button follows the error: a listing that is not active is relisted.
             function primary(codes) {
-                codes = codes || [];
-                if (codes.indexOf('inactive') !== -1) return { cls: 'relist', label: 'Relist' };
-                if (codes.indexOf('stock') !== -1) return { cls: 'stock', label: 'Sync qty' };
-                return { cls: 'violation', label: 'Review' };
+                return { cls: 'relist', label: 'Relist' };
             }
             function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
             const table = new Tabulator('#ele-table', {
                 index: 'id', layout: 'fitColumns', height: 'calc(100vh - 280px)',
-                placeholder: 'Nothing to show here. Use Pull from eBay (or Check eBay violations for active listings).',
+                placeholder: 'No CP Master listing with an error. Use Pull from eBay to refresh.',
                 columns: [
                     { title: '', field: 'image', width: 62, headerSort: false, hozAlign: 'center', formatter: function (cell) {
                         const src = String(cell.getValue() || '');
@@ -166,9 +158,9 @@
                     { title: 'SKU', field: 'sku', width: 180, headerFilter: 'input', formatter: function (cell) {
                         const d = cell.getData();
                         const name = String(d.sku || '');
-                        const ebay = String(d.ebay_sku || '');
-                        const extra = ebay && ebay !== name ? '<div class="small text-muted">' + ebay + '</div>' : '';
-                        return '<strong>' + name.replace(/[&<>]/g, function (s) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[s]; }) + '</strong>' + extra;
+                        const parent = String(d.parent || '');
+                        const extra = parent && parent !== name ? '<div class="small text-muted">' + esc(parent) + '</div>' : '';
+                        return '<strong>' + esc(name) + '</strong>' + extra;
                     }},
                     { title: 'Item ID', field: 'item_id', width: 130, formatter: function (cell) {
                         const d = cell.getData();
@@ -178,7 +170,6 @@
                     { title: 'Status', field: 'status', width: 110, hozAlign: 'center', formatter: function (c) { const v = String(c.getValue() || ''); return '<span class="ele-status' + (v === 'ACTIVE' ? ' live' : '') + '">' + v + '</span>'; } },
                     { title: 'Price', field: 'price', width: 90, hozAlign: 'right', formatter: function (c) { const v = c.getValue(); return v == null ? '' : '$' + Number(v).toFixed(2); } },
                     { title: 'Error', field: 'error', minWidth: 220, formatter: function (c) { return '<span class="ele-err">' + String(c.getValue() || '').replace(/[&<>]/g, function (s) { return { '&':'&amp;','<':'&lt;','>':'&gt;' }[s]; }) + '</span>'; } },
-                    { title: 'Stock / INV', field: 'inv', width: 100, hozAlign: 'right', formatter: function (c) { const d = c.getData(); return (d.stock == null ? '–' : d.stock) + ' / ' + (d.inv == null ? '–' : d.inv); }, headerSort: false },
                     { title: '', field: 'id', width: 110, hozAlign: 'center', headerSort: false, formatter: function (c) { const k = primary(c.getData().codes); return '<button type="button" class="ele-fix ' + k.cls + '">' + k.label + '</button>'; }, cellClick: function (e, cell) { if (e.target.closest('.ele-fix')) openFix(cell.getData()); } }
                 ]
             });
@@ -191,7 +182,6 @@
                         const rows = (j && j.rows) || [];
                         table.setData(rows);
                         document.getElementById('ele-count').textContent = rows.length;
-                        document.getElementById('ele-pulled').textContent = j && j.violations_pulled_at ? 'Violations checked ' + j.violations_pulled_at : '';
                     })
                     .catch(function () { toast(false, 'Could not load the listings.'); })
                     .finally(idle);
@@ -220,20 +210,15 @@
                 document.getElementById('ele-fix-title').textContent = row.sku || row.item_id;
                 document.getElementById('ele-fix-sub').textContent = 'Item ' + row.item_id + ' · ' + (row.status || '');
                 document.getElementById('ele-fix-issues').innerHTML = (row.issues || []).map(function (i) {
-                    return '<div class="iss"><i>' + esc(i.code === 'inactive' ? 'not active' : (i.code === 'stock' ? 'stock' : 'eBay')) + '</i><span>' + esc(i.text) + '</span></div>';
+                    return '<div class="iss"><i>not active</i><span>' + esc(i.text) + '</span></div>';
                 }).join('');
-                const needQty = codes.indexOf('stock') !== -1;
                 const needRelist = codes.indexOf('inactive') !== -1;
-                const needReview = codes.indexOf('violation') !== -1;
-                show('ele-qty-box', needQty || needRelist);
-                show('ele-push-qty', needQty);
+                show('ele-qty-box', needRelist);
                 show('ele-relist', needRelist);
-                document.getElementById('ele-hint-violation').style.display = needReview ? 'block' : 'none';
-                show('ele-open', needReview);
                 document.getElementById('ele-open').href = row.link || ('https://www.ebay.com/itm/' + row.item_id);
                 const suggested = row.inv != null && row.inv > 0 ? row.inv : (row.stock != null ? row.stock : '');
                 document.getElementById('ele-qty').value = suggested;
-                document.getElementById('ele-qty-note').textContent = row.inv != null ? '(CP Master INV: ' + row.inv + ', eBay: ' + (row.stock == null ? '–' : row.stock) + ')' : '';
+                document.getElementById('ele-qty-note').textContent = row.inv != null ? '(CP Master INV: ' + row.inv + ')' : '';
             }
             function openFix(row) {
                 current = row;
@@ -263,17 +248,14 @@
                 if (!current) return;
                 const qty = document.getElementById('ele-qty').value;
                 busy(action === 'check' ? 'Asking eBay…' : (action === 'relist' ? 'Relisting on ' : 'Pushing to ') + (action === 'check' ? '' : channel + '…'));
-                const payload = { channel: channel, item_id: current.item_id, sku: current.ebay_sku || current.sku, action: action };
+                const payload = { channel: channel, item_id: current.item_id, sku: current.sku, action: action };
                 if (qty !== '') payload.quantity = Number(qty);
                 post(action === 'check' ? URLS.check : URLS.push, payload).then(function (j) {
                     const ok = !!(j && j.success);
                     toast(ok, (j && (j.message || j.error)) || (ok ? 'Done.' : 'Failed.'));
                     if (!ok) return;
                     if (j.item_id) current.item_id = j.item_id;
-                    if (action === 'qty') {
-                        if (qty !== '') current.stock = Number(qty);
-                        settle('stock');
-                    } else if (action === 'relist') {
+                    if (action === 'relist') {
                         current.status = 'ACTIVE';
                         if (qty !== '') current.stock = Number(qty);
                         settle('inactive');
@@ -284,17 +266,8 @@
                     }
                 }).catch(function () { toast(false, 'The request failed.'); }).finally(idle);
             }
-            document.getElementById('ele-push-qty').addEventListener('click', function () { run('qty'); });
             document.getElementById('ele-relist').addEventListener('click', function () { run('relist'); });
             document.getElementById('ele-check').addEventListener('click', function () { run('check'); });
-            document.getElementById('ele-viol').addEventListener('click', function () {
-                busy('Asking eBay for listing violations… this can take a minute');
-                post(URLS.refresh, { channel: channel, what: 'violations' }).then(function (j) {
-                    toast(!!(j && j.success), (j && j.message) || 'Check finished.');
-                    load();
-                }).catch(function () { idle(); toast(false, 'The check failed.'); });
-            });
-
             document.getElementById('ele-pull').addEventListener('click', function () {
                 busy('Pulling inactive listings from ' + channel + '… this can take a minute');
                 post(URLS.refresh, { channel: channel }).then(function (j) {

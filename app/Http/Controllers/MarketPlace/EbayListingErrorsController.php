@@ -10,7 +10,6 @@ use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -52,7 +51,6 @@ class EbayListingErrorsController extends Controller
         // Listings of CP Master SKUs that are on eBay (they have an item id) and have an error, active or not.
         $catalog = $this->catalog();
         $skuByItem = $this->skuByItemId($channel);
-        $violations = Cache::get('ebay_listing_violations:'.$channel, ['pulled_at' => null, 'items' => []]);
         $inv = $this->invBySku();
         $raw = DB::table($table)->select($cols)
             ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) IN ('ACTIVE', 'INACTIVE', 'ENDED', 'UNSOLD', 'COMPLETED', 'SOLD')")
@@ -70,6 +68,11 @@ class EbayListingErrorsController extends Controller
             }
         }
 
+        $rowsPerItem = [];
+        foreach (DB::table($table)->selectRaw('item_id, COUNT(*) AS n')->groupBy('item_id')->get() as $c) {
+            $rowsPerItem[trim((string) $c->item_id)] = (int) $c->n;
+        }
+
         $rows = [];
         foreach ($raw as $row) {
             $status = strtoupper(trim((string) $row->listing_status));
@@ -82,15 +85,18 @@ class EbayListingErrorsController extends Controller
                 continue;
             }
             $hasSku = $ebaySku !== '' && ! ctype_digit($ebaySku);
-            $display = $skuByItem[$itemId] ?? ($hasSku ? $ebaySku : ($realByItem[$itemId] ?? $ebaySku));
+            // A variation row keeps its own SKU; only rows that carry just the item id borrow a SKU.
+            $display = $hasSku ? $ebaySku : ($skuByItem[$itemId] ?? $realByItem[$itemId] ?? $ebaySku);
             $norm = ShopifySku::normalizeSkuForShopifyLookup($display);
             if (! isset($catalog['name'][$norm])) {
                 continue; // not a CP Master SKU
             }
             $display = $catalog['name'][$norm];
+            $parent = $catalog['parent'][$norm] ?? '';
             $title = trim((string) ($row->ebay_title ?? ''));
             $storedImage = property_exists($row, 'image_urls') ? $row->image_urls : null;
-            $image = $catalog['image'][$norm] ?? $this->firstImage($storedImage);
+            // The listing photo belongs to the whole item, so it is only a fallback when the item has a single SKU.
+            $image = $catalog['image'][$norm] ?? (($rowsPerItem[$itemId] ?? 0) > 1 ? '' : $this->firstImage($storedImage));
             $stock = isset($row->ebay_stock) ? (int) $row->ebay_stock : null;
             $cpInv = $inv[$norm] ?? null;
 
@@ -99,12 +105,6 @@ class EbayListingErrorsController extends Controller
             if ($status !== 'ACTIVE') {
                 $issues[] = ['code' => 'inactive', 'text' => trim((string) ($row->inactive_reason ?? '')) ?: 'Listed, but not active ('.$status.').'];
             }
-            foreach ((array) ($violations['items'][$itemId] ?? []) as $message) {
-                $issues[] = ['code' => 'violation', 'text' => 'eBay: '.$message];
-            }
-            if ($stock === 0 && $cpInv !== null && $cpInv > 0) {
-                $issues[] = ['code' => 'stock', 'text' => 'eBay shows 0 in stock but CP Master has '.$cpInv.' in inventory.'];
-            }
             if ($issues === []) {
                 continue;
             }
@@ -112,7 +112,7 @@ class EbayListingErrorsController extends Controller
             $rows[] = [
                 'id' => (int) $row->id,
                 'sku' => $display,
-                'ebay_sku' => $ebaySku,
+                'parent' => $parent,
                 'image' => $image,
                 'item_id' => $itemId,
                 'title' => $title,
@@ -129,7 +129,6 @@ class EbayListingErrorsController extends Controller
 
         return response()->json([
             'success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows),
-            'violations_pulled_at' => $violations['pulled_at'] ?? null,
         ]);
     }
 
@@ -150,86 +149,12 @@ class EbayListingErrorsController extends Controller
         return $out;
     }
 
-    /**
-     * eBay Sell Compliance API: the listing violations eBay shows on active listings, kept for a day.
-     *
-     * @return array{success: bool, message: string}
-     */
-    private function pullViolations(string $channel): array
-    {
-        $token = (string) app(self::CHANNELS[$channel]['service'])->generateBearerToken();
-        if ($token === '') {
-            return ['success' => false, 'message' => 'No eBay access token for '.self::CHANNELS[$channel]['label'].'.'];
-        }
-        $headers = ['X-EBAY-C-MARKETPLACE-ID' => 'EBAY_US', 'Accept-Language' => 'en-US'];
-        $http = fn () => Http::timeout(60)->withToken($token)->acceptJson()->withHeaders($headers);
-
-        $summary = $http()->get('https://api.ebay.com/sell/compliance/v1/listing_violation_summary');
-        if (! $summary->successful()) {
-            $why = trim((string) ($summary->json('errors.0.message') ?? ''));
-
-            return ['success' => false, 'message' => 'eBay compliance answered '.$summary->status().($why !== '' ? ': '.$why : '').'. The eBay token may lack the sell.inventory scope.'];
-        }
-
-        $items = [];
-        $total = 0;
-        foreach ((array) $summary->json('violationSummaries', []) as $entry) {
-            $type = (string) ($entry['complianceType'] ?? '');
-            if ($type === '') {
-                continue;
-            }
-            for ($offset = 0; $offset < 5000; $offset += 200) {
-                $res = $http()->get('https://api.ebay.com/sell/compliance/v1/listing_violation', [
-                    'compliance_type' => $type, 'limit' => 200, 'offset' => $offset,
-                ]);
-                if (! $res->successful()) {
-                    break;
-                }
-                $list = (array) $res->json('listingViolations', []);
-                foreach ($list as $listing) {
-                    $id = trim((string) ($listing['listingId'] ?? ''));
-                    if ($id === '') {
-                        continue;
-                    }
-                    $found = false;
-                    foreach ((array) ($listing['violations'] ?? []) as $v) {
-                        $text = trim((string) ($v['message'] ?? $v['ruleOperationalDescription'] ?? $v['reasonCode'] ?? ''));
-                        $items[$id][] = ($text !== '' ? $text : $type).' ['.$type.']';
-                        $found = true;
-                    }
-                    if (! $found) {
-                        $items[$id][] = $type;
-                    }
-                    $total++;
-                }
-                if (count($list) < 200) {
-                    break;
-                }
-            }
-        }
-        foreach ($items as $id => $messages) {
-            $items[$id] = array_values(array_unique($messages));
-        }
-        Cache::put('ebay_listing_violations:'.$channel, ['pulled_at' => now()->format('d M Y H:i'), 'items' => $items], now()->addDay());
-
-        return ['success' => true, 'message' => $items === []
-            ? 'eBay reports no listing violations for '.self::CHANNELS[$channel]['label'].'.'
-            : count($items).' active listing(s) have violations on '.self::CHANNELS[$channel]['label'].'.'];
-    }
-
     /** Pull Active / Unsold from eBay and store the statuses, then the page reloads. */
     public function refresh(Request $request): JsonResponse
     {
         @set_time_limit(300);
         $channel = $this->channel($request->input('channel'));
         $store = ['ebay1' => 1, 'ebay2' => 2, 'ebay3' => 3][$channel];
-        if ($request->input('what') === 'violations') {
-            try {
-                return response()->json($this->pullViolations($channel));
-            } catch (\Throwable $e) {
-                return response()->json(['success' => false, 'message' => 'eBay compliance check failed: '.$e->getMessage()]);
-            }
-        }
         $result = app(EbayPortalListingStatusSync::class)->sync($store);
 
         return response()->json([
@@ -325,14 +250,18 @@ class EbayListingErrorsController extends Controller
     /**
      * CP Master SKU (the name) and its first photo, keyed by the normalized SKU.
      *
-     * @return array{name: array<string, string>, image: array<string, string>}
+     * @return array{name: array<string, string>, image: array<string, string>, parent: array<string, string>}
      */
     private function catalog(): array
     {
         $name = [];
         $image = [];
+        $parent = [];
         if (Schema::hasTable('product_master')) {
             $select = ['sku', 'Values'];
+            if (Schema::hasColumn('product_master', 'parent')) {
+                $select[] = 'parent';
+            }
             foreach (['image1', 'main_image'] as $col) {
                 if (Schema::hasColumn('product_master', $col)) {
                     $select[] = $col;
@@ -350,6 +279,7 @@ class EbayListingErrorsController extends Controller
                     continue;
                 }
                 $name[$key] = $sku;
+                $parent[$key] = trim((string) ($p->parent ?? ''));
                 $photo = trim((string) ($p->image1 ?? ''));
                 if ($photo === '') {
                     $photo = trim((string) ($p->main_image ?? ''));
@@ -369,7 +299,7 @@ class EbayListingErrorsController extends Controller
             }
         }
 
-        return ['name' => $name, 'image' => $image];
+        return ['name' => $name, 'image' => $image, 'parent' => $parent];
     }
 
     /** Real SKU saved on the campaign ad for an item whose metric row only has the item id. @return array<string, string> */
