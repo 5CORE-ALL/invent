@@ -605,10 +605,63 @@
                 });
             }
 
+            // Bulk: when the row whose delete button is clicked is one of the ticked rows (and more than one row is
+            // ticked), the delete applies to ALL ticked rows. SKU rows are removed from their MFR category; rows
+            // that are an empty category delete that category; "no category" rows have nothing to delete.
+            // Returns true when it handled the click (so the single-row code below is skipped).
+            function deleteTickedRows(clickedKey) {
+                if (!window.categoryTable) return false;
+                const ticked = window.categoryTable.getSelectedData();
+                if (ticked.length < 2 || !ticked.some(function(r) { return r.key === clickedKey; })) return false;
+
+                const selection = {};
+                let skuCount = 0;
+                const emptyCategories = {};
+                let skipped = 0;
+                ticked.forEach(function(r) {
+                    if (r.kind === 'sku') {
+                        (selection[r.category_id] = selection[r.category_id] || []).push(r.sku);
+                        skuCount++;
+                    } else if (r.kind === 'empty') {
+                        emptyCategories[r.category_id] = r.category_name;
+                    } else {
+                        skipped++;
+                    }
+                });
+                const catIds = Object.keys(emptyCategories);
+                if (!skuCount && !catIds.length) {
+                    alert('Nothing to delete in the ticked rows (rows with no category cannot be deleted).');
+                    return true;
+                }
+
+                let text = 'Delete ' + (skuCount + catIds.length) + ' ticked rows?\n';
+                if (skuCount) text += '\n- ' + skuCount + ' SKU row' + (skuCount === 1 ? '' : 's') + ': removed from their MFR category (the SKUs stay in CP Master).';
+                if (catIds.length) text += '\n- ' + catIds.length + ' empty categor' + (catIds.length === 1 ? 'y' : 'ies') + ' (' + catIds.map(function(id) { return emptyCategories[id]; }).slice(0, 5).join(', ') + (catIds.length > 5 ? ', ...' : '') + ') deleted; their supplier links are removed.';
+                if (skipped) text += '\n- ' + skipped + ' row' + (skipped === 1 ? '' : 's') + ' with no category skipped.';
+                if (!confirm(text)) return true;
+
+                const token = $('meta[name="csrf-token"]').attr('content');
+                const requests = Object.keys(selection).map(function(categoryId) {
+                    return $.ajax({ url: rowDeleteUrl(categoryId), method: 'POST', dataType: 'json', data: { _token: token, skus: selection[categoryId] } });
+                });
+                if (catIds.length) {
+                    requests.push($.ajax({ url: '{{ route('category.delete-many') }}', method: 'POST', dataType: 'json', data: { _token: token, category_ids: catIds.map(Number) } }));
+                }
+                $.when.apply($, requests).done(function() {
+                    if (catIds.length) location.reload(); else window.reloadCategoryTable();
+                }).fail(function(xhr) {
+                    const msg = xhr && xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Server error occurred.';
+                    alert('Error: ' + msg);
+                    if (catIds.length) location.reload(); else window.reloadCategoryTable();
+                });
+                return true;
+            }
+
             // Delete a row that has no SKU: the row is just the (empty) category, so this deletes the category.
             $(document).on('click', '.delete-category-btn', function() {
                 const id = $(this).data('category-id');
                 const name = String($(this).data('category-name'));
+                if (deleteTickedRows('c' + id)) return;
                 if (!confirm('This row has no SKUs, so deleting it deletes the category "' + name + '". Continue?')) return;
                 $.ajax({
                     url: '{{ url('/category/delete') }}/' + id,
@@ -623,6 +676,7 @@
             $(document).on('click', '.delete-row-btn', function() {
                 const categoryId = $(this).data('category-id');
                 const sku = String($(this).data('sku'));
+                if (deleteTickedRows('c' + categoryId + '|' + sku)) return;
                 const selection = {};
                 selection[categoryId] = [sku];
                 deleteRows(selection, 'Delete the row "' + sku + '"? It will be removed from this MFR category (the SKU stays in CP Master).');
@@ -1378,9 +1432,9 @@
                     html += btn('btn-soft-primary', 'Edit category', 'mdi-square-edit-outline', 'data-bs-toggle="modal" data-bs-target="#editCategoryModal' + cid + '" data-sku="' + (d.kind === 'sku' ? sku : '') + '" data-key="' + key + '"');
                     html += btn('btn-soft-success add-products-btn', 'Add products (SKUs) to this category', 'mdi-plus-box-outline', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
                     if (d.kind === 'sku') {
-                        html += btn('btn-soft-danger delete-row-btn', 'Delete this row (removes the SKU from this MFR category)', 'mdi-delete', 'data-category-id="' + cid + '" data-sku="' + sku + '"');
+                        html += btn('btn-soft-danger delete-row-btn', 'Delete this row (removes the SKU from this MFR category). If this row is ticked along with others, all ticked rows are deleted.', 'mdi-delete', 'data-category-id="' + cid + '" data-sku="' + sku + '"');
                     } else {
-                        html += btn('btn-soft-danger delete-category-btn', 'Delete this row (it has no SKUs, so this deletes the category)', 'mdi-delete', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
+                        html += btn('btn-soft-danger delete-category-btn', 'Delete this row (it has no SKUs, so this deletes the category). If this row is ticked along with others, all ticked rows are deleted.', 'mdi-delete', 'data-category-id="' + cid + '" data-category-name="' + cname + '"');
                     }
                 }
                 return html + '</div>';
