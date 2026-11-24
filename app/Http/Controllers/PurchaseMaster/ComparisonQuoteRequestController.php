@@ -78,7 +78,8 @@ class ComparisonQuoteRequestController extends Controller
                 'id' => $s['id'],
                 'name' => $s['name'],
                 'company' => $s['company'],
-                'email' => $req?->supplier_email ?: ($emails[0] ?? ''),
+                // Same source as the Suppliers page: its email wins; a past per-send override is only a fallback.
+                'email' => ($emails[0] ?? '') ?: ($req?->supplier_email ?: ''),
                 'on_sheet' => isset($onSheet[$key]),
                 'url' => $req ? route('comparison.qr.form', $req->token) : null,
                 'sent_at' => $req?->sent_at?->format('d M Y, H:i'),
@@ -140,6 +141,48 @@ class ComparisonQuoteRequestController extends Controller
             'html' => $mail['html'],
             'has_sheet' => $sheet['cells'] !== [],
             'critical_count' => count($rows),
+        ]);
+    }
+
+    /**
+     * Edit a supplier's email from the Send QR form modal. It is written to the Suppliers page record
+     * (the single source of the email), so both places always show the same value.
+     */
+    public function saveSupplierEmail(Request $request): JsonResponse
+    {
+        if ($deny = $this->denyUnlessInternal()) {
+            return $deny;
+        }
+        $data = $request->validate([
+            'supplier_id' => 'required|integer',
+            'email' => 'nullable|string|max:500',
+        ]);
+
+        $supplier = Supplier::whereNull('deleted_at')->find($data['supplier_id']);
+        if (! $supplier) {
+            return response()->json(['success' => false, 'message' => 'Supplier not found.'], 404);
+        }
+
+        $raw = trim((string) ($data['email'] ?? ''));
+        $emails = $this->extractEmails($raw);
+        if ($raw !== '' && ! $emails) {
+            return response()->json(['success' => false, 'message' => 'That is not a valid email address.'], 422);
+        }
+
+        $supplier->email = $emails ? implode(', ', $emails) : null;
+        $supplier->save();
+
+        // Quote requests remember the address they were sent to; keep them on the same value.
+        if (Schema::hasColumn('comparison_quote_requests', 'supplier_email')) {
+            ComparisonQuoteRequest::where('supplier_key', $this->sheetService->supplierKey((string) $supplier->name))
+                ->whereNull('submitted_at')
+                ->update(['supplier_email' => $emails[0] ?? null]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'email' => $emails[0] ?? '',
+            'message' => $emails ? 'Email saved to the Suppliers page.' : 'Email cleared.',
         ]);
     }
 
@@ -342,7 +385,7 @@ class ComparisonQuoteRequestController extends Controller
             $req = $requests->get($sc['key']);
             $suppliers[] = [
                 'name' => $sc['name'],
-                'email' => $req?->supplier_email ?: (($emails[$sc['key']][0] ?? '')),
+                'email' => ($emails[$sc['key']][0] ?? '') ?: ($req?->supplier_email ?: ''),
                 'url' => $req ? route('comparison.qr.form', $req->token) : null,
                 'sent_at' => $req?->sent_at?->format('d M Y, H:i'),
                 'sent_by' => $req?->sent_by,

@@ -56,9 +56,9 @@
         .qc-send-btn.filled { background: #2563eb; border-color: #2563eb; color: #fff; }
         .qc-qf-btn[disabled], .qc-send-btn[disabled], .qc-draft-btn[disabled] { opacity: .5; cursor: not-allowed; }
         .qf-locked { background: #f8fafc !important; }
-        .qf-sec-toggle { border: 0; background: transparent; padding: 0 8px 0 0; color: #64748b; line-height: 1; cursor: pointer; }
-        .qf-sec-toggle:hover { color: #0f172a; }
-        .qf-sec-toggle i { transition: transform .15s; font-size: .8rem; }
+        .qf-sec-toggle { border: 1px solid #cbd5e1; background: #fff; width: 28px; height: 28px; margin-right: 10px; border-radius: 6px; color: #334155; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+        .qf-sec-toggle:hover { background: #f1f5f9; color: #0f172a; }
+        .qf-sec-toggle i { transition: transform .15s; font-size: .9rem; }
         .qf-sec-toggle.collapsed i { transform: rotate(-90deg); }
         #qrModal .modal-dialog { max-width: 98vw; width: 98vw; margin-left: auto; margin-right: auto; }
         #qrTable input { min-width: 110px; }

@@ -71,6 +71,17 @@ class ComparisonController extends Controller
         ]);
     }
 
+    /**
+     * Transposed comparison sheet: one row per supplier (Amz / 5 Core / suppliers),
+     * one column per spec. Reads and saves the same sheet as sheetPage().
+     */
+    public function sheetTransposedPage(Request $request)
+    {
+        return view('purchase-master.comparison.sheet-transposed', [
+            'sheetSku' => trim((string) $request->query('sku', '')),
+        ]);
+    }
+
     public function getData(Request $request)
     {
         try {

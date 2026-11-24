@@ -3347,6 +3347,7 @@
                             <label class="form-check-label small fw-semibold" for="qrSendAll">Select all shown</label>
                         </div>
                         <span class="small text-muted ms-auto" id="qrSendCount"></span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendSyncBtn" title="Reload the emails from the Suppliers page"><i class="mdi mdi-sync"></i> Sync emails</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendLinksBtn"><i class="mdi mdi-link-variant"></i> Create links</button>
                         <button type="button" class="btn btn-sm btn-success" id="qrSendEmailExceptMissingBtn" title="Send to every shown supplier that has an email (or only the ticked ones, if any are ticked). Suppliers with a missing email are skipped."><i class="mdi mdi-email-check-outline me-1" aria-hidden="true"></i> Send mail except missing</button>
                         <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-send me-1" aria-hidden="true"></i> Send Email</button>
@@ -3469,6 +3470,9 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-qr-send-btn" title="Send the QR form to the suppliers of this product's Mfr Category">
                                     <i class="mdi mdi-send"></i> Send
                                 </button>
+                                <a class="btn btn-sm btn-outline-secondary" id="comparison-cd-transposed-link" href="#" title="Open this sheet with suppliers as rows and specs as columns">
+                                    <i class="mdi mdi-table-pivot"></i> Transposed
+                                </a>
                             </div>
 
                             {{-- Line 2: filters, insights, layout & fill --}}
@@ -14515,6 +14519,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── QR Form: product + Critical specs (part 1) and the supplier quotation form (part 2) ──
     const qrDataUrl = @json(route('comparison.qr.data'));
     const qrSendUrl = @json(route('comparison.qr.send'));
+    const qrSupplierEmailUrl = @json(route('comparison.qr.supplier-email'));
     let qrCurrent = null;
     let qrPreselect = '';
     const qrNameKey = (n) => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -14752,11 +14757,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? `<button type="button" class="btn btn-sm btn-outline-secondary qr-copy-btn" data-url="${escapeHtmlAttr(s.url)}" title="Copy link"><i class="mdi mdi-content-copy"></i></button>
                    <a class="btn btn-sm btn-outline-secondary" href="${escapeHtmlAttr(s.url)}" target="_blank" rel="noopener" title="Open form"><i class="mdi mdi-open-in-new"></i></a>`
                 : '<span class="text-muted">—</span>';
-            return `<tr data-name="${escapeHtmlAttr(s.name)}" data-search="${escapeHtmlAttr((s.name + ' ' + s.company + ' ' + s.email).toLowerCase())}">
+            const emailVal = String(s.email || '').trim();
+            const emailEditBtn = s.id
+                ? `<button type="button" class="btn btn-sm btn-outline-secondary qr-email-edit" title="Edit email (saved to the Suppliers page)" aria-label="Edit email"><i class="mdi mdi-pencil-outline"></i></button>`
+                : '';
+            return `<tr data-name="${escapeHtmlAttr(s.name)}" data-supplier-id="${s.id ? Number(s.id) : ''}" data-saved-email="${escapeHtmlAttr(emailVal)}" data-search="${escapeHtmlAttr((s.name + ' ' + s.company + ' ' + s.email).toLowerCase())}">
                 <td><input type="checkbox" class="form-check-input qr-send-check" aria-label="Select ${escapeHtmlAttr(s.name)}"></td>
                 <td class="fw-semibold qr-send-name-cell">${escapeHtml(s.name)}</td>
                 <td class="qr-send-company-cell">${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
-                <td><input type="text" class="form-control form-control-sm qr-send-email${String(s.email || '').trim() ? '' : ' qr-email-missing'}" value="${escapeHtmlAttr(s.email || '')}" placeholder="Missing" autocomplete="off"></td>
+                <td><div class="d-flex gap-1"><input type="text" class="form-control form-control-sm qr-send-email${emailVal ? '' : ' qr-email-missing'}" value="${escapeHtmlAttr(s.email || '')}" placeholder="Missing" autocomplete="off">${emailEditBtn}</div></td>
                 <td class="qr-send-status-cell">${status}</td>
                 <td>${link}</td>
             </tr>`;
@@ -14870,9 +14879,80 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('qrSendLinksBtn')?.addEventListener('click', () => qrSendSubmit(false));
     document.getElementById('qrSendEmailBtn')?.addEventListener('click', () => qrSendSubmit(true));
     document.getElementById('qrSendEmailExceptMissingBtn')?.addEventListener('click', () => qrSendSubmit(true, true));
+    // Email edit: the Edit button saves the address to the Suppliers page record (the one shared source).
+    function qrEmailBtnState(tr) {
+        const inp = tr.querySelector('.qr-send-email');
+        const btn = tr.querySelector('.qr-email-edit');
+        if (!inp) return;
+        const val = String(inp.value || '').trim();
+        inp.classList.toggle('qr-email-missing', !val);
+        if (!btn) return;
+        const dirty = val !== String(tr.dataset.savedEmail || '').trim();
+        btn.classList.toggle('btn-success', dirty);
+        btn.classList.toggle('btn-outline-secondary', !dirty);
+        btn.dataset.mode = dirty ? 'save' : 'edit';
+        btn.title = dirty ? 'Save email to the Suppliers page' : 'Edit email (saved to the Suppliers page)';
+        btn.innerHTML = dirty ? '<i class="mdi mdi-check"></i>' : '<i class="mdi mdi-pencil-outline"></i>';
+    }
+    async function qrEmailSave(tr) {
+        const inp = tr.querySelector('.qr-send-email');
+        const btn = tr.querySelector('.qr-email-edit');
+        if (!inp || !btn || !tr.dataset.supplierId) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch(qrSupplierEmailUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({ supplier_id: Number(tr.dataset.supplierId), email: inp.value }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                const firstErr = data.errors ? Object.values(data.errors)[0]?.[0] : '';
+                throw new Error(data.message || firstErr || 'Could not save the email.');
+            }
+            inp.value = data.email || '';
+            tr.dataset.savedEmail = data.email || '';
+            tr.dataset.search = (tr.dataset.name + ' ' + (tr.querySelector('.qr-send-company-cell')?.textContent || '') + ' ' + (data.email || '')).toLowerCase();
+            qrSendSetResult(`<span class="text-success"><strong>${escapeHtml(tr.dataset.name)}</strong> — ${escapeHtml(data.message || 'Saved.')}</span>`);
+        } catch (err) {
+            qrSendSetResult(`<span class="text-danger"><strong>${escapeHtml(tr.dataset.name)}</strong> — ${escapeHtml(err.message || 'Could not save the email.')}</span>`);
+        } finally {
+            btn.disabled = false;
+            qrEmailBtnState(tr);
+        }
+    }
     document.getElementById('qrSendBody')?.addEventListener('input', function (e) {
         const inp = e.target.closest('.qr-send-email');
-        if (inp) inp.classList.toggle('qr-email-missing', !String(inp.value || '').trim());
+        if (inp) qrEmailBtnState(inp.closest('tr'));
+    });
+    document.getElementById('qrSendBody')?.addEventListener('keydown', function (e) {
+        const inp = e.target.closest('.qr-send-email');
+        if (!inp) return;
+        const tr = inp.closest('tr');
+        if (e.key === 'Enter') { e.preventDefault(); if (tr.querySelector('.qr-email-edit')) qrEmailSave(tr); }
+        if (e.key === 'Escape') { inp.value = tr.dataset.savedEmail || ''; qrEmailBtnState(tr); }
+    });
+    document.getElementById('qrSendBody')?.addEventListener('click', function (e) {
+        const btn = e.target.closest('.qr-email-edit');
+        if (!btn) return;
+        const tr = btn.closest('tr');
+        if (btn.dataset.mode === 'save') { qrEmailSave(tr); return; }
+        const inp = tr.querySelector('.qr-send-email');
+        inp.focus();
+        inp.select();
+    });
+    // Reload every email from the Suppliers page (picks up changes made there).
+    document.getElementById('qrSendSyncBtn')?.addEventListener('click', async function () {
+        if (!qrSendCurrent) return;
+        const dirtyRows = Array.from(document.querySelectorAll('#qrSendBody tr[data-name]')).filter(tr =>
+            String(tr.querySelector('.qr-send-email')?.value || '').trim() !== String(tr.dataset.savedEmail || '').trim());
+        if (dirtyRows.length && !window.confirm(dirtyRows.length + ' email(s) were edited but not saved. Reload from the Suppliers page and discard them?')) return;
+        try {
+            await loadQrSend(qrSendCurrent.sku);
+            qrSendSetResult('<span class="text-success">Emails reloaded from the Suppliers page.</span>');
+        } catch (err) {
+            qrSendSetResult(`<span class="text-danger">${escapeHtml(err.message || 'Could not reload.')}</span>`);
+        }
     });
     document.getElementById('qrSendSearch')?.addEventListener('input', qrSendFilterRows);
     document.getElementById('qrSendAll')?.addEventListener('change', function () {
@@ -14891,6 +14971,11 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
             window.prompt('Copy this link:', url);
         }
+    });
+    document.getElementById('comparison-cd-transposed-link')?.addEventListener('click', function (e) {
+        e.preventDefault();
+        const sku = String(currentCdRow?.sku || COMPARISON_CD_PAGE_SKU || '').trim();
+        if (sku) window.location.href = @json(route('comparison.sheet.transposed')) + '?sku=' + encodeURIComponent(sku);
     });
     document.getElementById('comparison-cd-qr-send-btn')?.addEventListener('click', function () {
         openQrSendModal(currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || ''));
