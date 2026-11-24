@@ -4689,6 +4689,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Promotions — active channel_master rows (Img + Channels + Status)
     Route::get('/promotions', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'index'])->name('promotions');
     Route::get('/promotions/data', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'data'])->name('promotions.data');
+    Route::get('/promotions/prmt-summary', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'prmtSummary'])->name('promotions.prmt.summary');
     Route::post('/promotions/columns', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'storeColumn'])->name('promotions.columns.store');
     Route::get('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponShow'])->name('promotions.amazon.coupon.show');
     Route::post('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponSave'])->name('promotions.amazon.coupon.save');

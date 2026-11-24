@@ -107,6 +107,85 @@ class PromotionsController extends Controller
         return self::COUPON_RULE_MODAL[$key] ?? null;
     }
 
+    /**
+     * Channels that get the "Prmt%" column (Dil vs PRMT rule + applied/total SKU badge),
+     * same as the Prmt% button on /ebay-tabulator-view. Value = ChannelPromoPricingService key.
+     * Exact match on the normalized channel name.
+     */
+    private const PRMT_RULE_CHANNEL = [
+        'ebay' => 'ebay1',
+        'ebay1' => 'ebay1',
+        'ebay2' => 'ebay2',
+        'ebaytwo' => 'ebay2',
+        'ebay3' => 'ebay3',
+        'ebaythree' => 'ebay3',
+    ];
+
+    private function prmtRuleChannel(string $channel): ?string
+    {
+        $key = preg_replace('/[^a-z0-9]/', '', strtolower($channel));
+
+        return self::PRMT_RULE_CHANNEL[$key] ?? null;
+    }
+
+    /**
+     * Prmt% badge counts per channel: SKUs with PRMT% > 0 / total SKUs.
+     * Same rule as the eBay pages' badge (child SKUs only, each SKU counted once;
+     * PRMT% read from the channel's data_view PEF_PRMT_PCT).
+     */
+    public function prmtSummary()
+    {
+        $out = [];
+        try {
+            $service = app(\App\Services\ChannelPromoPricingService::class);
+
+            $skus = [];
+            ProductMaster::query()
+                ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
+                ->select('sku')
+                ->chunkById(2000, function ($chunk) use (&$skus) {
+                    foreach ($chunk as $pm) {
+                        $s = strtoupper(trim((string) $pm->sku));
+                        if ($s !== '') {
+                            $skus[$s] = true;
+                        }
+                    }
+                }, 'id');
+            $total = count($skus);
+
+            foreach (array_values(array_unique(self::PRMT_RULE_CHANNEL)) as $key) {
+                $modelClass = $service->dataViewModel($key);
+                $applied = 0;
+                if ($modelClass && Schema::hasTable((new $modelClass)->getTable())) {
+                    $seen = [];
+                    $modelClass::query()->select(['sku', 'value'])->orderBy('sku')->cursor()->each(
+                        function ($row) use (&$applied, &$seen, $skus) {
+                            $s = strtoupper(trim((string) $row->sku));
+                            if ($s === '' || ! isset($skus[$s]) || isset($seen[$s])) {
+                                return;
+                            }
+                            $seen[$s] = true;
+                            $val = is_array($row->value)
+                                ? $row->value
+                                : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                            $pct = $val['PEF_PRMT_PCT'] ?? null;
+                            if (is_numeric($pct) && round((float) $pct) > 0) {
+                                $applied++;
+                            }
+                        }
+                    );
+                }
+                $out[$key] = ['applied' => $applied, 'total' => $total];
+            }
+
+            return response()->json(['success' => true, 'data' => (object) $out]);
+        } catch (\Throwable $e) {
+            Log::error('Promotions prmt summary failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     private function storageReady(): bool
     {
         return Schema::hasTable('promotion_columns') && Schema::hasTable('promotion_channel_data');
@@ -171,6 +250,7 @@ class PromotionsController extends Controller
                     'status' => 'Active',
                     'coupon_allowed' => $this->couponSupport((string) $row->channel),
                     'coupon_rule' => $this->couponRuleModal((string) $row->channel),
+                    'prmt_rule' => $this->prmtRuleChannel((string) $row->channel),
                     'notes_remarks' => $stored->notes_remarks ?? '',
                     'values' => (object) $values,
                 ];
@@ -213,7 +293,7 @@ class PromotionsController extends Controller
             return response()->json(['success' => false, 'message' => 'Column name is required.'], 422);
         }
 
-        $reserved = ['img', 'channels', 'channel', 'status', 'notes and remarks', 'edit'];
+        $reserved = ['img', 'channels', 'channel', 'status', 'prmt%', 'rule', 'notes and remarks', 'edit'];
         $lower = mb_strtolower($name);
         $exists = DB::table('promotion_columns')->whereRaw('LOWER(name) = ?', [$lower])->exists();
         if ($exists || in_array($lower, $reserved, true)) {

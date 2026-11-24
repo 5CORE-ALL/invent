@@ -190,6 +190,49 @@
         #promotions-table .promo-frozen-last {
             border-right: 2px solid #cbd5e1 !important;
         }
+
+        /* Prmt% column — same green button + applied/total badge as /ebay-tabulator-view */
+        .promo-prmt-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 1px 8px;
+            border: 1px solid #198754;
+            border-radius: 6px;
+            background: #198754;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.5;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .promo-prmt-btn:hover {
+            background: #157347;
+            border-color: #146c43;
+        }
+        .promo-prmt-btn .badge {
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .promo-prmt-btn.is-disabled {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #cbd5e1;
+            cursor: not-allowed;
+        }
+        #promo-prmt-table .promo-prmt-input,
+        #promo-prmt-table .promo-prmt-range {
+            background: #198754;
+            border-color: #198754;
+            color: #fff;
+            text-align: center;
+        }
+        #promo-prmt-table .promo-prmt-range {
+            background: #fff;
+            border-color: #ced4da;
+            color: #212529;
+        }
     </style>
 @endsection
 
@@ -244,6 +287,56 @@
     @endforeach
     {{-- Amazon: Dil % x Price coupon rule (reuses the .el30cpn-* styles from the eBay modals above) --}}
     @include('partials.amazon-dil-price-coupon', ['amazonCouponPart' => 'modal'])
+
+    {{-- Prmt% modal: shared Dil vs PRMT rule (same store/endpoints as the Prmt% button on the eBay pages) --}}
+    <div class="modal fade" id="promo-prmt-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6">
+                        <i class="fas fa-sliders-h me-1"></i> Dil vs PRMT
+                        <span class="badge bg-light text-dark ms-1" id="promo-prmt-modal-channel"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Shared Dil vs PRMT for <strong>all marketplaces</strong>:
+                        <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>.
+                        Changing the first row sets the following slabs to &minus;1 each (minimum 0).
+                        <strong>Save</strong> stores the slabs for every marketplace; PRMT% is applied to the SKUs
+                        when the eBay page loads. If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="promo-prmt-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:62%;">Dil%</th>
+                                    <th style="width:38%;" class="text-end">PRMT %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="promo-prmt-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                        <button type="button" class="btn btn-sm btn-outline-success" id="promo-prmt-add-row">
+                            <i class="fas fa-plus me-1"></i>Add more row
+                        </button>
+                        <span class="badge bg-secondary" id="promo-prmt-row-count">0 rows</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="promo-prmt-restore" title="Bring back deleted rows">
+                            <i class="fas fa-undo me-1"></i>Restore <span id="promo-prmt-deleted-count">0</span> deleted
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-2" id="promo-prmt-status"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="promo-prmt-save">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- Add Column modal --}}
     <div class="modal fade" id="promo-add-column-modal" tabindex="-1" aria-hidden="true">
@@ -327,6 +420,11 @@
     }
 
     let dynamicColumns = [];
+    // Prmt% badge counts per channel key: { ebay1: {applied, total}, ... }
+    let prmtSummary = {};
+    // Shared Dil vs PRMT rules (same list the eBay pages edit) + modal state
+    let prmtRules = [];
+    let prmtModal = null;
     const csrf = $('meta[name="csrf-token"]').attr('content');
 
     // First three columns: active channels (Img | Channels | Status)
@@ -491,9 +589,46 @@
             },
         };
 
-        // Rule sits right after the Coupons column (or after Status if there is none yet).
+        // "Prmt%": same green button + applied/total badge as /ebay-tabulator-view; opens Dil vs PRMT.
+        const prmt = {
+            title: 'Prmt%',
+            field: 'prmt_rule',
+            width: 110,
+            hozAlign: 'center',
+            headerHozAlign: 'center',
+            headerSort: true,
+            sorter: function (a, b, aRow, bRow) {
+                const rank = function (row) {
+                    const s = prmtSummary[row.getData().prmt_rule];
+                    return s ? s.applied : -1;
+                };
+                return rank(aRow) - rank(bRow);
+            },
+            formatter: function (cell) {
+                const key = cell.getValue();
+                if (!key) {
+                    return '<span class="promo-prmt-btn is-disabled" title="No Prmt% rule for this channel"><i class="fas fa-sliders-h"></i> Prmt%</span>';
+                }
+                const s = prmtSummary[key];
+                const badge = s ? (s.applied + '/' + s.total) : '…';
+                const tip = s
+                    ? (s.applied + ' of ' + s.total + ' SKUs have PRMT% applied')
+                    : 'SKUs with PRMT% applied / total SKUs';
+                return '<button type="button" class="promo-prmt-btn" title="Shared Dil vs PRMT rule (all marketplaces)">'
+                    + '<i class="fas fa-sliders-h"></i> Prmt% '
+                    + '<span class="badge bg-light text-dark" title="' + escapeHtml(tip) + '">' + badge + '</span></button>';
+            },
+            cellClick: function (e, cell) {
+                e.stopPropagation();
+                const key = cell.getValue();
+                if (key) openPrmtModal(cell.getRow().getData());
+            },
+        };
+
+        // Prmt% sits right after Status; Rule sits right after the Coupons column (or after Prmt% if none yet).
         const couponIdx = dynamicColumns.findIndex(isCouponColumn);
         const cols = startColumns.slice();
+        cols.push(prmt);
         if (couponIdx === -1) {
             cols.push(rule);
         }
@@ -538,6 +673,7 @@
                 const rows = ok && Array.isArray(response.data) ? response.data : [];
                 table.setColumns(buildColumns());
                 table.setData(rows.map(flattenRow)).then(applyFilters);
+                if (rows.some(function (r) { return r.prmt_rule; })) loadPrmtSummary();
             },
             error: function () {
                 table.setData([]);
@@ -681,6 +817,249 @@
             },
             complete: function () { $btn.prop('disabled', false); },
         });
+    });
+
+    // ---------- Prmt% (shared Dil vs PRMT rule) ----------
+    function loadPrmtSummary() {
+        $.ajax({
+            url: '{{ route("promotions.prmt.summary") }}',
+            type: 'GET',
+            dataType: 'json',
+            success: function (res) {
+                if (!res || !res.success) return;
+                prmtSummary = res.data || {};
+                if (table) {
+                    table.getRows().forEach(function (r) {
+                        if (r.getData().prmt_rule) r.reformat();
+                    });
+                }
+            },
+        });
+    }
+
+    function getPrmtModal() {
+        if (!prmtModal) prmtModal = new bootstrap.Modal(document.getElementById('promo-prmt-modal'));
+        return prmtModal;
+    }
+
+    function prmtIsZeroSoldKey(key) {
+        return String(key || '').indexOf('0-sold-') === 0;
+    }
+
+    function prmtFmt(n) {
+        return String(Math.round(Number(n) * 100) / 100);
+    }
+
+    // Built-in slab range comes from the saved min/max, else from its key ("3-6" → 3…6).
+    function prmtBuiltinRange(r) {
+        const key = String(r.key || '');
+        if (key.indexOf('custom-') === 0 || r.deleted) return null;
+        const m = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(key);
+        if (!m || prmtIsZeroSoldKey(key)) return null;
+        let lo = parseFloat(m[1]);
+        let hi = parseFloat(m[2]);
+        if (r.min != null && r.min !== '' && isFinite(Number(r.min))) lo = Number(r.min);
+        if (key === '0-3' && Math.abs(lo - 0.01) < 0.0001) lo = 0;
+        if (r.max != null && r.max !== '' && isFinite(Number(r.max))) hi = Number(r.max);
+        if (!(hi >= lo)) return null;
+        return { min: lo, max: hi };
+    }
+
+    function prmtDefaultRules() {
+        const rules = [];
+        let prmt = 12;
+        for (let min = 0; min < 24; min += 3) {
+            rules.push({ key: min + '-' + (min + 3), label: min + '–' + (min + 3) + '%', prmt: prmt });
+            prmt -= 1;
+        }
+        rules.push({ key: '24-25', label: '24–25%', prmt: 1 });
+        return rules;
+    }
+
+    function renderPrmtTable() {
+        const $tb = $('#promo-prmt-tbody').empty();
+        let rowNo = 0;
+        let deleted = 0;
+        let firstShown = true;
+        prmtRules.forEach(function (r, idx) {
+            if (prmtIsZeroSoldKey(r.key) || r.key === 'eq-0') return;
+            if (r.deleted) { deleted++; return; }
+            rowNo++;
+            const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
+            const isCustom = String(r.key).indexOf('custom-') === 0;
+            const range = isCustom ? { min: r.min, max: r.max } : (prmtBuiltinRange(r) || { min: '', max: '' });
+            const lo = (range.min != null && range.min !== '' && isFinite(Number(range.min))) ? Number(range.min) : '';
+            const hi = (range.max != null && range.max !== '' && isFinite(Number(range.max))) ? Number(range.max) : '';
+            const rangeCell = '<td><div class="d-flex align-items-center gap-1">'
+                + '<span class="text-muted small" style="min-width:20px;">' + rowNo + '.</span>'
+                + '<input type="number" class="form-control form-control-sm promo-prmt-range" data-bound="min" min="0" step="0.1" style="width:78px;" value="' + lo + '" title="Dil% from (inclusive)">'
+                + '<span>–</span>'
+                + '<input type="number" class="form-control form-control-sm promo-prmt-range" data-bound="max" min="0" step="0.1" style="width:78px;" value="' + hi + '" title="Dil% to (exclusive)">'
+                + '<span>%</span>'
+                + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto promo-prmt-remove" title="Delete this row"><i class="fas fa-trash"></i></button>'
+                + '</div></td>';
+            $tb.append(
+                '<tr data-key="' + escapeHtml(r.key) + '"' + (isCustom ? ' class="promo-prmt-custom"' : '') + '>'
+                + rangeCell
+                + '<td class="text-end"><input type="number" class="form-control form-control-sm promo-prmt-input" min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
+                + ((!isCustom && firstShown) ? ' title="Changing this sets following slabs to −1 each, minimum 0"' : '')
+                + '></td></tr>'
+            );
+            if (!isCustom) firstShown = false;
+        });
+        $('#promo-prmt-row-count').text(rowNo + (rowNo === 1 ? ' row' : ' rows'));
+        $('#promo-prmt-restore').toggleClass('d-none', deleted === 0);
+        $('#promo-prmt-deleted-count').text(deleted);
+    }
+
+    // Copy what is typed in the modal back into prmtRules, and return the list to save.
+    function readPrmtRules() {
+        $('#promo-prmt-tbody tr').each(function () {
+            const key = String($(this).attr('data-key') || '');
+            const rule = prmtRules.find(function (r) { return r.key === key; });
+            if (!rule) return;
+            const val = parseFloat($(this).find('.promo-prmt-input').val());
+            rule.prmt = (isFinite(val) && val >= 0) ? val : 0;
+            const lo = parseFloat($(this).find('.promo-prmt-range[data-bound="min"]').val());
+            const hi = parseFloat($(this).find('.promo-prmt-range[data-bound="max"]').val());
+            rule.min = isFinite(lo) ? Math.max(0, lo) : null;
+            rule.max = isFinite(hi) ? hi : null;
+            if (isFinite(rule.min) && isFinite(rule.max) && rule.max >= rule.min) {
+                rule.label = prmtFmt(rule.min) + '–' + prmtFmt(rule.max) + '%';
+            }
+        });
+        return prmtRules.map(function (r) {
+            const out = { key: r.key, label: r.label, prmt: Number(r.prmt) || 0 };
+            if (String(r.key).indexOf('custom-') === 0) {
+                out.min = r.min;
+                out.max = r.max;
+            } else {
+                const range = prmtBuiltinRange(r);
+                if (range) { out.min = range.min; out.max = range.max; }
+                out.deleted = !!r.deleted;
+            }
+            return out;
+        });
+    }
+
+    // First row drives the rest: each following built-in slab is 1 lower (min 0).
+    function cascadePrmtFromFirst() {
+        const $rows = $('#promo-prmt-tbody tr').not('.promo-prmt-custom');
+        if (!$rows.length) return;
+        const firstVal = parseFloat($rows.eq(0).find('.promo-prmt-input').val());
+        if (!isFinite(firstVal)) return;
+        $rows.each(function (i) {
+            if (i > 0) $(this).find('.promo-prmt-input').val(Math.max(0, firstVal - i));
+        });
+    }
+
+    function openPrmtModal(row) {
+        $('#promo-prmt-modal-channel').text(row.channel || '');
+        $('#promo-prmt-status').text('Loading…');
+        prmtRules = prmtDefaultRules();
+        renderPrmtTable();
+        getPrmtModal().show();
+        $.ajax({
+            url: '/channel-promo-pricing/' + encodeURIComponent(row.prmt_rule) + '/dil-prmt',
+            method: 'GET',
+            dataType: 'json',
+        }).done(function (res) {
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                prmtRules = res.rules.map(function (r) { return Object.assign({}, r); });
+            }
+            renderPrmtTable();
+            $('#promo-prmt-status').text(res && res.is_default
+                ? 'Using first-time defaults (0–3 … 21–24, 24–25). Save to store them.'
+                : 'Loaded shared Dil vs PRMT rules (all marketplaces).');
+        }).fail(function () {
+            $('#promo-prmt-status').text('Could not load saved rules — showing defaults.');
+        });
+        $('#promo-prmt-save').data('channel', row.prmt_rule);
+    }
+
+    $('#promo-prmt-tbody').on('input change', '.promo-prmt-input', function () {
+        if (this === $('#promo-prmt-tbody .promo-prmt-input').get(0)) cascadePrmtFromFirst();
+    });
+    $('#promo-prmt-tbody').on('change', '.promo-prmt-range', function () {
+        readPrmtRules();
+    });
+    $('#promo-prmt-tbody').on('click', '.promo-prmt-remove', function (e) {
+        e.preventDefault();
+        readPrmtRules();
+        const key = String($(this).closest('tr').attr('data-key') || '');
+        const rule = prmtRules.find(function (r) { return r.key === key; });
+        if (!rule) return;
+        if (!window.confirm('Delete the ' + String(rule.label || rule.key) + ' row?')) return;
+        if (key.indexOf('custom-') === 0) {
+            prmtRules = prmtRules.filter(function (r) { return r.key !== key; });
+        } else {
+            rule.deleted = true;
+        }
+        renderPrmtTable();
+        $('#promo-prmt-status').text('Row deleted. Click Save to store.');
+    });
+    $('#promo-prmt-restore').on('click', function (e) {
+        e.preventDefault();
+        readPrmtRules();
+        prmtRules.forEach(function (r) { if (r.deleted) r.deleted = false; });
+        renderPrmtTable();
+        $('#promo-prmt-status').text('Deleted rows restored. Click Save to store.');
+    });
+    $('#promo-prmt-add-row').on('click', function (e) {
+        e.preventDefault();
+        readPrmtRules();
+        let customCount = 0;
+        let start = 25;
+        prmtRules.forEach(function (r) {
+            if (String(r.key).indexOf('custom-') !== 0) return;
+            customCount++;
+            if (isFinite(Number(r.max))) start = Math.max(start, Number(r.max));
+        });
+        if (customCount >= 30) {
+            $('#promo-prmt-status').text('Maximum 30 extra rows.');
+            return;
+        }
+        prmtRules.push({
+            key: 'custom-' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36),
+            label: prmtFmt(start) + '–' + prmtFmt(start + 5) + '%',
+            min: start,
+            max: start + 5,
+            prmt: 0,
+        });
+        renderPrmtTable();
+        $('#promo-prmt-tbody tr.promo-prmt-custom').last().find('.promo-prmt-range[data-bound="min"]').trigger('focus').trigger('select');
+        $('#promo-prmt-status').text('Row added — set Dil% range and PRMT %, then Save.');
+    });
+    $('#promo-prmt-save').on('click', function () {
+        const channel = $(this).data('channel') || 'ebay1';
+        const rules = readPrmtRules();
+        let bad = false;
+        $('#promo-prmt-tbody tr').each(function () {
+            const lo = parseFloat($(this).find('.promo-prmt-range[data-bound="min"]').val());
+            const hi = parseFloat($(this).find('.promo-prmt-range[data-bound="max"]').val());
+            if (!isFinite(lo) || !isFinite(hi) || lo < 0 || hi < lo) bad = true;
+        });
+        if (bad) {
+            $('#promo-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To ≥ From).');
+            return;
+        }
+        const $btn = $(this).prop('disabled', true);
+        $.ajax({
+            url: '/channel-promo-pricing/' + encodeURIComponent(channel) + '/dil-prmt',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            contentType: 'application/json',
+            data: JSON.stringify({ rules: rules, _token: csrf }),
+        }).done(function (res) {
+            if (res && Array.isArray(res.rules)) {
+                prmtRules = res.rules.map(function (r) { return Object.assign({}, r); });
+                renderPrmtTable();
+            }
+            $('#promo-prmt-status').text('Saved — applies to all marketplaces.');
+            loadPrmtSummary();
+        }).fail(function (xhr) {
+            $('#promo-prmt-status').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save.');
+        }).always(function () { $btn.prop('disabled', false); });
     });
 
     $('#promo-search').on('keyup', applyFilters);
