@@ -67,6 +67,12 @@
         #e2vt-modal .e2vt-m-body { padding: 14px 18px; overflow-y: auto; }
         #e2vt-modal .e2vt-m-foot { padding: 12px 18px; border-top: 1px solid #e2e8f0; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
         #e2vt-modal h6 { margin: 0; font-weight: 700; }
+        .e2vt-cols { position: relative; }
+        .e2vt-cols-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 1500; width: 270px; max-height: 360px; overflow-y: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 10px 28px rgba(15,23,42,.18); padding: 8px 10px; }
+        .e2vt-cols-panel[hidden] { display: none; }
+        .e2vt-cols-actions { display: flex; justify-content: space-between; font-size: 12px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid #e2e8f0; }
+        .e2vt-cols-group { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; margin: 8px 0 2px; }
+        .e2vt-cols-item { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: 13px; cursor: pointer; }
         .e2vt-m-aspect { font-weight: 700; color: #4338ca; margin: 10px 0 6px; }
         .e2vt-m-row { display: grid; grid-template-columns: 1fr 24px 1fr; align-items: center; gap: 6px; margin-bottom: 5px; }
         .e2vt-m-old { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 9px; font-size: 13px; overflow-wrap: anywhere; }
@@ -99,6 +105,18 @@
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                         <button type="button" id="e2vt-refresh" class="btn btn-sm btn-outline-primary" title="Reload the table"><i class="ri-refresh-line"></i></button>
+                        <div class="e2vt-cols" id="e2vt-cols">
+                            <button type="button" id="e2vt-cols-btn" class="btn btn-sm btn-primary" title="Show or hide columns" aria-haspopup="true" aria-expanded="false">
+                                <i class="ri-layout-column-line me-1"></i><span id="e2vt-cols-count">–</span>
+                            </button>
+                            <div class="e2vt-cols-panel" id="e2vt-cols-panel" hidden>
+                                <div class="e2vt-cols-actions">
+                                    <button type="button" class="btn btn-sm btn-link p-0" id="e2vt-cols-all">Show all</button>
+                                    <button type="button" class="btn btn-sm btn-link p-0" id="e2vt-cols-none">Hide all</button>
+                                </div>
+                                <div id="e2vt-cols-list"></div>
+                            </div>
+                        </div>
                         <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="For the parents ticked in the Selection Box column, pull from eBay 2 (Trading API GetItem): the child SKUs that exist on the listing, the variation type, and each SKU's variation name. Nothing is changed on eBay.">
                             <i class="ri-download-2-line me-1"></i> Pull <span id="e2vt-pull-count">(0)</span>
                         </button>
@@ -869,6 +887,84 @@
                 });
                 table.on('rowSelectionChanged', syncSelection);
                 table.on('dataLoaded', syncSelection);
+
+                // Columns button: tick a column to show it, untick to hide it. The choice is remembered in this browser.
+                table.on('tableBuilt', function () {
+                    const STORE = 'e2vt_hidden_columns';
+                    const btn = document.getElementById('e2vt-cols-btn');
+                    const panel = document.getElementById('e2vt-cols-panel');
+                    const listEl = document.getElementById('e2vt-cols-list');
+                    const countEl = document.getElementById('e2vt-cols-count');
+                    const plain = (t) => { const d = document.createElement('div'); d.innerHTML = String(t == null ? '' : t); return (d.textContent || '').trim(); };
+                    const leaves = [];
+                    (function collect(cols, group) {
+                        cols.forEach(function (col) {
+                            const def = col.getDefinition();
+                            const subs = typeof col.getSubColumns === 'function' ? col.getSubColumns() : [];
+                            if (subs.length) { collect(subs, plain(def.title)); return; }
+                            const label = plain(def.title) || def.field || 'Column';
+                            leaves.push({ col: col, group: group, label: label, key: group + '|' + label + '|' + (def.field || '') });
+                        });
+                    })(table.getColumns(true), '');
+
+                    let hidden = [];
+                    try { hidden = JSON.parse(localStorage.getItem(STORE) || '[]') || []; } catch (e) { hidden = []; }
+                    const save = () => { try { localStorage.setItem(STORE, JSON.stringify(leaves.filter((l) => !l.col.isVisible()).map((l) => l.key))); } catch (e) { /* storage full or blocked */ } };
+                    leaves.forEach((l) => { if (hidden.indexOf(l.key) !== -1) l.col.hide(); });
+
+                    function refreshCount() {
+                        countEl.textContent = leaves.filter((l) => l.col.isVisible()).length + '/' + leaves.length;
+                        listEl.querySelectorAll('input[data-key]').forEach(function (box) {
+                            const l = leaves.find((x) => x.key === box.dataset.key);
+                            if (l) box.checked = l.col.isVisible();
+                        });
+                    }
+                    function render() {
+                        let lastGroup = null;
+                        listEl.innerHTML = '';
+                        leaves.forEach(function (l) {
+                            if (l.group !== lastGroup && l.group) {
+                                const g = document.createElement('div');
+                                g.className = 'e2vt-cols-group';
+                                g.textContent = l.group;
+                                listEl.appendChild(g);
+                            }
+                            lastGroup = l.group;
+                            const row = document.createElement('label');
+                            row.className = 'e2vt-cols-item';
+                            const box = document.createElement('input');
+                            box.type = 'checkbox';
+                            box.dataset.key = l.key;
+                            box.checked = l.col.isVisible();
+                            box.addEventListener('change', function () {
+                                if (box.checked) l.col.show(); else l.col.hide();
+                                save();
+                                refreshCount();
+                                table.redraw(true);
+                            });
+                            row.appendChild(box);
+                            row.appendChild(document.createTextNode(l.label));
+                            listEl.appendChild(row);
+                        });
+                        refreshCount();
+                    }
+                    function setAll(on) {
+                        leaves.forEach((l) => { if (on) l.col.show(); else l.col.hide(); });
+                        save();
+                        refreshCount();
+                        table.redraw(true);
+                    }
+                    render();
+                    btn.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        panel.hidden = !panel.hidden;
+                        btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+                    });
+                    panel.addEventListener('click', (e) => e.stopPropagation());
+                    document.addEventListener('click', function () { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); });
+                    document.getElementById('e2vt-cols-all').addEventListener('click', () => setAll(true));
+                    document.getElementById('e2vt-cols-none').addEventListener('click', () => setAll(false));
+                });
 
                 document.getElementById('e2vt-pull').addEventListener('click', async function () {
                     if (busy) return;
