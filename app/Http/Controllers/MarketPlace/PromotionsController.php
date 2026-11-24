@@ -129,6 +129,61 @@ class PromotionsController extends Controller
     }
 
     /**
+     * "Save & Apply" on the Prmt% modal. The rules themselves are saved by
+     * POST /channel-promo-pricing/{channel}/dil-prmt; this starts the same headless job the eBay pages use
+     * (ebay:dil-prmt-auto-apply): listing Dil → shared PRMT% slab → saved PRMT% on every SKU → markdown-sale push.
+     * It loads the whole tabulator, so it runs in the background and the page polls the badge.
+     */
+    public function prmtApply(Request $request)
+    {
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+        if (! in_array($channel, array_values(array_unique(self::PRMT_RULE_CHANNEL)), true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $lock = \Illuminate\Support\Facades\Cache::lock('ebay-dil-prmt-auto-apply-run-'.$channel, 1800);
+        if (! $lock->get()) {
+            return response()->json([
+                'success' => true,
+                'running' => true,
+                'message' => 'An apply is already running for '.$channel.'. The badge will update when it finishes.',
+            ]);
+        }
+        // Only probing: the command takes its own lock when it starts.
+        $lock->release();
+
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/'.$channel.'-dil-prmt-apply-manual.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' ebay:dil-prmt-auto-apply '.escapeshellarg($channel), 'r'));
+            } else {
+                // pclose(popen) returns immediately; exec() can wait for the worker on macOS/XAMPP.
+                pclose(popen('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                    .' ebay:dil-prmt-auto-apply '.escapeshellarg($channel)
+                    .' >> '.escapeshellarg($log).' 2>&1 &', 'r'));
+            }
+
+            return response()->json([
+                'success' => true,
+                'running' => false,
+                'message' => 'Applying Dil→PRMT% to '.$channel.' in the background.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Promotions Prmt% apply spawn failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Could not start apply: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Prmt% badge counts per channel: SKUs with PRMT% > 0 / total SKUs.
      * Same rule as the eBay pages' badge (child SKUs only, each SKU counted once;
      * PRMT% read from the channel's data_view PEF_PRMT_PCT).

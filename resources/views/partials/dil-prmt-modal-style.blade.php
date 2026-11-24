@@ -293,7 +293,7 @@
         background: transparent;
     }
     #ch-promo-dil-prmt-apply-btn,
-    #promo-prmt-save {
+    #promo-prmt-save-apply {
         padding: 9px 26px;
         border: 0;
         border-radius: 999px;
@@ -304,12 +304,25 @@
         transition: transform .15s, box-shadow .15s;
     }
     #ch-promo-dil-prmt-apply-btn:hover,
-    #promo-prmt-save:hover {
+    #promo-prmt-save-apply:hover {
         color: #fff;
         transform: translateY(-2px);
         box-shadow: 0 10px 24px rgba(5, 150, 105, .5);
     }
     #ch-promo-dil-prmt-apply-btn:disabled,
+    #promo-prmt-save-apply:disabled { opacity: .65; transform: none; }
+
+    /* Plain "Save" (rules only) next to "Save & Apply" */
+    #promo-prmt-save {
+        padding: 9px 22px;
+        border: 2px solid #10b981;
+        border-radius: 999px;
+        font-weight: 800;
+        color: #047857;
+        background: #fff;
+        transition: transform .15s, background .15s, color .15s;
+    }
+    #promo-prmt-save:hover { color: #fff; background: #10b981; transform: translateY(-2px); }
     #promo-prmt-save:disabled { opacity: .65; transform: none; }
 
     @media (max-width: 575.98px) {

@@ -319,8 +319,13 @@
                     <div class="small text-muted mt-2" id="promo-prmt-status"></div>
                 </div>
                 <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-primary" id="promo-prmt-save">
+                    <button type="button" class="btn btn-sm" id="promo-prmt-save"
+                        title="Store the Dil vs PRMT slabs for all marketplaces. SKUs are not changed until you Apply (or the 10-minute auto job runs).">
                         <i class="fas fa-save me-1"></i>Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="promo-prmt-save-apply"
+                        title="Save the slabs, then apply PRMT% to every SKU of this eBay channel (listing Dil → slab) and push the changed % as markdown sales.">
+                        <i class="fas fa-bolt me-1"></i>Save &amp; Apply
                     </button>
                 </div>
             </div>
@@ -963,7 +968,7 @@
         }).fail(function () {
             $('#promo-prmt-status').text('Could not load saved rules — showing defaults.');
         });
-        $('#promo-prmt-save').data('channel', row.prmt_rule);
+        $('#promo-prmt-save-apply').data('channel', row.prmt_rule);
     }
 
     $('#promo-prmt-tbody').on('input change', '.promo-prmt-input', function () {
@@ -1019,8 +1024,9 @@
         $('#promo-prmt-tbody tr.promo-prmt-custom').last().find('.promo-prmt-range[data-bound="min"]').trigger('focus').trigger('select');
         $('#promo-prmt-status').text('Row added — set Dil% range and PRMT %, then Save.');
     });
-    $('#promo-prmt-save').on('click', function () {
-        const channel = $(this).data('channel') || 'ebay1';
+    // Validate the ranges and POST the shared slabs. Resolves with the server response, rejects when invalid / failed.
+    function savePrmtRules(channel) {
+        const dfd = $.Deferred();
         const rules = readPrmtRules();
         let bad = false;
         $('#promo-prmt-tbody tr').each(function () {
@@ -1030,9 +1036,8 @@
         });
         if (bad) {
             $('#promo-prmt-status').text('Each row needs a valid Dil% range (From ≥ 0 and To ≥ From).');
-            return;
+            return dfd.reject().promise();
         }
-        const $btn = $(this).prop('disabled', true);
         $.ajax({
             url: '/channel-promo-pricing/' + encodeURIComponent(channel) + '/dil-prmt',
             method: 'POST',
@@ -1044,11 +1049,53 @@
                 prmtRules = res.rules.map(function (r) { return Object.assign({}, r); });
                 renderPrmtTable();
             }
-            $('#promo-prmt-status').text('Saved — applies to all marketplaces.');
-            loadPrmtSummary();
+            dfd.resolve(res);
         }).fail(function (xhr) {
             $('#promo-prmt-status').text((xhr.responseJSON && xhr.responseJSON.message) || 'Failed to save.');
-        }).always(function () { $btn.prop('disabled', false); });
+            dfd.reject();
+        });
+        return dfd.promise();
+    }
+
+    // After Apply the job runs in the background: refresh the badge a few times while it works.
+    function pollPrmtSummaryAfterApply() {
+        [8000, 25000, 60000, 120000].forEach(function (ms) { setTimeout(loadPrmtSummary, ms); });
+    }
+
+    function setPrmtBusy(busy) {
+        $('#promo-prmt-save, #promo-prmt-save-apply').prop('disabled', busy);
+    }
+
+    // Save: store the slabs only.
+    $('#promo-prmt-save').on('click', function () {
+        const channel = $('#promo-prmt-save-apply').data('channel') || 'ebay1';
+        setPrmtBusy(true);
+        savePrmtRules(channel).done(function () {
+            $('#promo-prmt-status').text('Saved — applies to all marketplaces. Click Save & Apply to update the SKUs now.');
+        }).always(function () { setPrmtBusy(false); });
+    });
+
+    // Save & Apply: store the slabs, then apply PRMT% to every SKU of this channel (server job).
+    $('#promo-prmt-save-apply').on('click', function () {
+        const channel = $(this).data('channel') || 'ebay1';
+        setPrmtBusy(true);
+        savePrmtRules(channel).done(function () {
+            $('#promo-prmt-status').text('Saved. Starting apply…');
+            $.ajax({
+                url: '{{ route("promotions.prmt.apply") }}',
+                method: 'POST',
+                dataType: 'json',
+                data: { channel: channel, _token: csrf },
+            }).done(function (res) {
+                $('#promo-prmt-status').text(
+                    (res && res.message) || 'Applying in the background.'
+                );
+                pollPrmtSummaryAfterApply();
+            }).fail(function (xhr) {
+                $('#promo-prmt-status').text('Saved, but apply failed: '
+                    + ((xhr.responseJSON && xhr.responseJSON.message) || 'error'));
+            }).always(function () { setPrmtBusy(false); });
+        }).fail(function () { setPrmtBusy(false); });
     });
 
     $('#promo-search').on('keyup', applyFilters);
