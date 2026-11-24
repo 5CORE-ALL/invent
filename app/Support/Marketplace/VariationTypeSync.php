@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Keeps Variation Master (product_master.Values variation_type / variation_name) and the eBay 2 Variation Type page
  * (ebay2_variation_type_pushes) in step:
- *  - a type or value name changed on eBay from the eBay 2 Variation Type page is written to Variation Master;
+ *  - a type or value name changed on eBay from an eBay 2 / eBay 3 Variation Type page is written to Variation Master;
  *  - a type changed in Variation Master is put in the New Type cell of that parent's eBay 2 listing.
  * Variation Master names need nothing stored on the page side: the page reads them live.
  */
@@ -120,7 +120,7 @@ class VariationTypeSync
     }
 
     /**
-     * Variation Master -> eBay 2 Variation Type page: the New Type cell of the parent's listing follows the type.
+     * Variation Master -> eBay 2 / eBay 3 Variation Type pages: the New Type cell of the parent's listing follows the type.
      * Nothing is sent to eBay; the Add button still does that.
      */
     public static function typeToEbayPage(string $parentKey, string $type): int
@@ -132,13 +132,30 @@ class VariationTypeSync
         }
         try {
             $changed = 0;
+            // SKUs of the Variation Master family: a listing whose parent name is spelled differently is still found by them.
+            $familySkus = [];
+            foreach (self::family($parentKey) as $row) {
+                if (! preg_match('/^PARENT/i', trim((string) $row->sku))) {
+                    $familySkus[self::skuKey((string) $row->sku)] = true;
+                }
+            }
             // The eBay 2 and eBay 3 Variation Type pages.
             foreach ([Ebay2VariationTypePush::class, Ebay3VariationTypePush::class] as $model) {
                 if (! Schema::hasTable((new $model)->getTable())) {
                     continue;
                 }
                 foreach ($model::query()->whereNotNull('parent_sku')->get() as $rec) {
-                    if (self::parentKey((string) $rec->parent_sku) !== $parentKey) {
+                    $sameName = self::parentKey((string) $rec->parent_sku) === $parentKey;
+                    $sameSkus = false;
+                    if (! $sameName && $familySkus !== []) {
+                        foreach ((array) ($rec->live_variations ?? []) as $v) {
+                            if (isset($familySkus[self::skuKey((string) ($v['sku'] ?? ''))])) {
+                                $sameSkus = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (! $sameName && ! $sameSkus) {
                         continue;
                     }
                     $new = $type === '' ? null : $type;
@@ -153,7 +170,7 @@ class VariationTypeSync
 
             return $changed;
         } catch (\Throwable $e) {
-            Log::warning('Variation type sync to the eBay 2 Variation Type page failed', ['parent' => $parentKey, 'error' => $e->getMessage()]);
+            Log::warning('Variation type sync to the Variation Type pages failed', ['parent' => $parentKey, 'error' => $e->getMessage()]);
 
             return 0;
         }

@@ -106,7 +106,7 @@ class VariationMasterController extends Controller
             $product->Values = $values;
             $product->save();
             if ($request->exists('variation_type')) {
-                // The eBay 2 Variation Type page shows this type in the New Type cell of the parent's listing.
+                // The eBay 2 and eBay 3 Variation Type pages show this type in the New Type cell of the parent's listing.
                 VariationTypeSync::typeToEbayPage((string) $product->parent, (string) ($values['variation_type'] ?? ''));
             }
         }
@@ -1029,7 +1029,7 @@ class VariationMasterController extends Controller
         $missing = 0;
         // Every row that was not imported, with the reason: [row number in the file, sku, parent, kind, reason].
         $issues = [];
-        // parent => variation type from the file, put on the eBay 2 Variation Type page after the import.
+        // parent => variation type from the file, put on the eBay 2 / eBay 3 Variation Type pages after the import.
         $typeByParent = [];
 
         DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing, &$issues, &$typeByParent) {

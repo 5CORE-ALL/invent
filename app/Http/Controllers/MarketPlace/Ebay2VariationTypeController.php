@@ -294,7 +294,7 @@ class Ebay2VariationTypeController extends Controller
         $rec->pushed_by = (string) ($request->user()->name ?? 'unknown');
         if ($result['success'] && is_array($result['aspects'] ?? null)) {
             // Variation Master follows what is now live on eBay.
-            VariationTypeSync::typeToMaster((string) ($listing['parent_key'] ?? ''), $newType);
+            VariationTypeSync::typeToMaster($listing ? $this->masterFamily($listing, $allMaster) : '', $newType);
             // The listing now varies by the new type only, with the new variations.
             $rec->current_values = $result['aspects'];
             $rec->current_type = implode(' / ', array_keys($result['aspects']));
@@ -524,6 +524,31 @@ class Ebay2VariationTypeController extends Controller
 
         return $key;
     }
+    /**
+     * Parent name of the Variation Master family that a listing belongs to, for writing a type or names back to
+     * Variation Master. The listing's own parent name, or the CP Masters Parent of its SKUs when that is the family
+     * Variation Master really has (see masterKey()).
+     *
+     * @param  array{main_listing: string, parent_key: string, skus: list<string>}  $listing
+     * @param  array<string, array{type: string, skus: list<string>, names: array<string, string>}>  $master
+     */
+    private function masterFamily(array $listing, array $master): string
+    {
+        $key = $this->masterKey($listing, $master);
+        if ($key === ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])) {
+            return (string) $listing['parent_key'];
+        }
+
+        $cp = $this->cpMasterSkuKeys();
+        foreach ((array) ($listing['skus'] ?? []) as $sku) {
+            $parent = $cp[$this->skuKey((string) $sku)] ?? '';
+            if ($parent !== '' && ShopifySku::normalizeSkuForShopifyLookup(ListingManagerFamily::normalizeParentKey($parent)) === $key) {
+                return $parent;
+            }
+        }
+
+        return (string) $listing['parent_key'];
+    }
     /** The row as the page shows it, including the SKU columns (they depend on the pulled live variations). */
     private function rowWithSkus(Model $rec): array
     {
@@ -695,7 +720,7 @@ class Ebay2VariationTypeController extends Controller
             }
             $listingNow = $this->mainListings()[$itemId] ?? null;
             VariationTypeSync::namesToMaster(
-                (string) ($listingNow['parent_key'] ?? preg_replace('/^PARENT\s+/i', '', (string) $rec->parent_sku)),
+                $listingNow ? $this->masterFamily($listingNow, $this->variationMasterInfo()) : (string) preg_replace('/^PARENT\s+/i', '', (string) $rec->parent_sku),
                 $namesBySku,
                 array_map(static fn ($e) => ['old' => (string) $e['old'], 'new' => (string) $e['new']], $applied)
             );
