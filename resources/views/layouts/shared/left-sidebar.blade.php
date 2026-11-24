@@ -1742,6 +1742,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay.listing.errors') }}">Ebay Listing Errors</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay2.item.data') }}">Ebay2 Data</a>
                                     </li>
 
