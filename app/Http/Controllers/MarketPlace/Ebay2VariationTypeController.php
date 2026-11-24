@@ -7,8 +7,10 @@ use App\Models\Ebay2VariationTypePush;
 use App\Models\ShopifySku;
 use App\Services\Ebay2ApiService;
 use App\Services\Support\EbayTradingReviseItem;
+use App\Support\Marketplace\EbayCategoryAspects;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\VariationTypeSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -202,6 +204,8 @@ class Ebay2VariationTypeController extends Controller
         $rec->pushed_at = now();
         $rec->pushed_by = (string) ($request->user()->name ?? 'unknown');
         if ($result['success'] && is_array($result['aspects'] ?? null)) {
+            // Variation Master follows what is now live on eBay.
+            VariationTypeSync::typeToMaster((string) ($listing['parent_key'] ?? ''), $newType);
             // The listing now varies by the new type only, with the new variations.
             $rec->current_values = $result['aspects'];
             $rec->current_type = implode(' / ', array_keys($result['aspects']));
@@ -257,7 +261,48 @@ class Ebay2VariationTypeController extends Controller
         $creds = [$ctx['endpoint'], $ctx['compatLevel'], $ctx['devId'], $ctx['appId'], $ctx['certId'], $ctx['siteId'], $ctx['authToken']];
 
         // The new type replaces the old one: the new variations are added first, then the old ones deleted.
-        return EbayTradingReviseItem::replaceVariationAspect(...$creds, getItemResponse: $item, newName: $newType, valuesBySku: $valuesBySku);
+        $result = EbayTradingReviseItem::replaceVariationAspect(...$creds, getItemResponse: $item, newName: $newType, valuesBySku: $valuesBySku);
+
+        // eBay 21916672: the name is not allowed as a variation type in this category. Say which names are.
+        if (! $result['success'] && str_contains((string) $result['message'], '21916672')) {
+            $result['message'] = rtrim((string) $result['message']).$this->allowedNamesHint($item, $newType, (string) $ctx['appId'], (string) $ctx['certId']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $getItemResponse
+     */
+    private function allowedNamesHint(array $getItemResponse, string $newType, string $appId, string $certId): string
+    {
+        try {
+            $item = EbayTradingReviseItem::itemFromGetItem($getItemResponse);
+            $rawCategory = $item['PrimaryCategory']['CategoryID'] ?? '';
+            $categoryId = trim((string) (is_array($rawCategory) ? ($rawCategory['value'] ?? ($rawCategory['@value'] ?? reset($rawCategory))) : $rawCategory));
+            if ($categoryId === '') {
+                return '';
+            }
+            $names = [];
+            foreach (EbayCategoryAspects::forCategory($categoryId, '', $appId, $certId) as $aspect) {
+                if (! empty($aspect['variations'])) {
+                    $names[] = (string) $aspect['name'];
+                }
+            }
+            if ($names === []) {
+                return ' "'.$newType.'" cannot be used as a variation type in eBay category '.$categoryId.'; pick another name.';
+            }
+            usort($names, static function ($a, $b) {
+                $score = static fn (string $n): int => preg_match('/pack|quantity|number|count|set|size|type|model|style/i', $n) ? 0 : 1;
+
+                return $score($a) <=> $score($b) ?: strcasecmp($a, $b);
+            });
+
+            return ' eBay does not allow "'.$newType.'" as a variation type in category '.$categoryId.'. Names it allows there: '
+                .implode(', ', array_slice($names, 0, 20)).'. Type one of them in New Type and press Add again (the old type is deleted and the new one added in the same request).';
+        } catch (\Throwable) {
+            return '';
+        }
     }
 
     /**
@@ -357,7 +402,10 @@ class Ebay2VariationTypeController extends Controller
     {
         $listing = $this->mainListings()[(string) $rec->item_id] ?? null;
 
-        return $this->rowPayload($rec) + $this->skuColumns($listing, $rec, $listing ? $this->variationMasterInfo() : []);
+        $master = $listing ? $this->variationMasterInfo() : [];
+        $masterType = $listing ? ($master[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])]['type'] ?? '') : '';
+
+        return ['master_type' => $masterType] + $this->rowPayload($rec) + $this->skuColumns($listing, $rec, $master);
     }
 
     /**
@@ -506,6 +554,24 @@ class Ebay2VariationTypeController extends Controller
         // Only the renames eBay really applied move into the current values; a failed one stays as a waiting edit.
         $applied = (array) ($result['applied'] ?? []);
         if ($applied !== []) {
+            // Variation Master follows the value names that are now live on eBay.
+            $namesBySku = [];
+            foreach ((array) ($rec->live_variations ?? []) as $v) {
+                $sku = trim((string) ($v['sku'] ?? ''));
+                foreach ((array) ($v['specifics'] ?? []) as $aspect => $value) {
+                    foreach ($applied as $e) {
+                        if ($sku !== '' && mb_strtolower((string) $aspect) === mb_strtolower((string) $e['aspect']) && (string) $value === $e['old']) {
+                            $namesBySku[$sku] = (string) $e['new'];
+                        }
+                    }
+                }
+            }
+            $listingNow = $this->mainListings()[$itemId] ?? null;
+            VariationTypeSync::namesToMaster(
+                (string) ($listingNow['parent_key'] ?? preg_replace('/^PARENT\s+/i', '', (string) $rec->parent_sku)),
+                $namesBySku,
+                array_map(static fn ($e) => ['old' => (string) $e['old'], 'new' => (string) $e['new']], $applied)
+            );
             $values = is_array($rec->current_values) ? $rec->current_values : [];
             foreach ($applied as $e) {
                 foreach (($values[$e['aspect']] ?? []) as $i => $v) {

@@ -8443,6 +8443,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('org.mails.data');
 
+    Route::middleware('auth')->prefix('ebay-listing-errors')->controller(\App\Http\Controllers\MarketPlace\EbayListingErrorsController::class)->group(function () {
+        Route::get('/', 'index')->name('ebay.listing.errors');
+        Route::get('/data', 'data')->name('ebay.listing.errors.data');
+        Route::post('/check', 'check')->name('ebay.listing.errors.check');
+        Route::post('/push', 'push')->name('ebay.listing.errors.push');
+    });
+
     Route::middleware('auth')->prefix('category-specifics')->controller(\App\Http\Controllers\CategorySpecificsController::class)->group(function () {
         Route::get('/', 'index')->name('category.specifics');
         Route::get('/data', 'data')->name('category.specifics.data');
