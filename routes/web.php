@@ -6320,6 +6320,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
         Route::get('/specifications', 'specifications')->name('comparison.specifications');
         Route::post('/specifications', 'addSpecification')->name('comparison.specifications.add');
+        Route::post('/specifications/rename', 'renameSpecification')->name('comparison.specifications.rename');
+        Route::post('/specifications/merge', 'mergeSpecifications')->name('comparison.specifications.merge');
         Route::post('/sheet/import-google', 'importGoogleSheet')->name('comparison.sheet.import-google');
         Route::post('/sheet/sync-clink', 'syncFromClink')->name('comparison.sheet.sync-clink');
         Route::get('/shipping-slab-rate', 'shippingSlabRate')->name('comparison.shipping-slab-rate');

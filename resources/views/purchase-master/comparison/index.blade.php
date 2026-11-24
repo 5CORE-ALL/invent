@@ -483,6 +483,12 @@
     /* Send QR form modal: full width so the supplier table is not squeezed. */
     #comparisonQrSendModal .modal-dialog { max-width: none; width: calc(100vw - 24px); margin-left: auto; margin-right: auto; }
     #comparisonQrSendModal .qr-send-status-cell { white-space: nowrap; }
+    /* Supplier / Company columns: wide enough to show the full name on one line (the table scrolls sideways if needed). */
+    #comparisonQrSendModal .qr-send-name-cell,
+    #comparisonQrSendModal .qr-send-company-cell { white-space: nowrap; }
+    #comparisonQrSendModal .qr-send-name-cell { min-width: 150px; }
+    #comparisonQrSendModal .qr-send-company-cell { min-width: 340px; }
+    #comparisonQrSendModal .table-responsive > table { width: 100%; min-width: 1000px; }
     .comparison-send-btn, .comparison-draft-btn { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 32px; border-radius: 999px; border: 2px solid #94a3b8; background: #fff; color: #64748b; cursor: pointer; transition: all .15s ease; }
     .comparison-send-btn:hover, .comparison-draft-btn:hover { border-color: #2563eb; color: #2563eb; }
     .comparison-qr-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; color: #2a9d9f; }
@@ -1419,6 +1425,33 @@
         border-radius: 8px;
     }
 
+    #comparisonColumnEditModal .cd-spec-pick-wrap { display: block; min-width: 0; }
+    #comparisonColumnEditModal .cd-spec-pick-btn {
+        display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        width: 100%; text-align: left; background: #fff; color: #0f172a; border-color: #cbd5e1; font-weight: 500;
+    }
+    #comparisonColumnEditModal .cd-spec-pick-btn.is-empty { color: #94a3b8; font-weight: 400; }
+    #comparisonColumnEditModal .cd-spec-pick-btn .cd-spec-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #comparisonColumnEditModal .cd-spec-panel {
+        margin-bottom: 0.75rem; border: 1px solid #93c5fd; border-radius: 8px; background: #f8fbff;
+    }
+    #comparisonColumnEditModal .cd-spec-panel.cd-spec-busy { opacity: .6; pointer-events: none; }
+    #comparisonColumnEditModal .cd-spec-panel-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; }
+    #comparisonColumnEditModal .cd-spec-panel-head strong { white-space: nowrap; font-size: .82rem; color: #1e3a8a; }
+    #comparisonColumnEditModal .cd-spec-panel-head input { flex: 1 1 auto; }
+    #comparisonColumnEditModal .cd-spec-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 10px 6px; }
+    #comparisonColumnEditModal .cd-spec-all { display: flex; align-items: center; gap: 4px; margin: 0; font-size: .78rem; color: #475569; }
+    #comparisonColumnEditModal .cd-spec-list { max-height: 240px; overflow-y: auto; border-top: 1px solid #dbeafe; background: #fff; border-radius: 0 0 8px 8px; }
+    #comparisonColumnEditModal .cd-spec-item { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid #f1f5f9; }
+    #comparisonColumnEditModal .cd-spec-item:hover { background: #f1f5f9; }
+    #comparisonColumnEditModal .cd-spec-item.is-current { background: #eff6ff; }
+    #comparisonColumnEditModal .cd-spec-item-name { flex: 1 1 auto; cursor: pointer; font-size: .85rem; }
+    #comparisonColumnEditModal .cd-spec-item-edit { border: 0; background: transparent; color: #64748b; padding: 2px 6px; border-radius: 4px; }
+    #comparisonColumnEditModal .cd-spec-item-edit:hover { background: #e2e8f0; color: #0f172a; }
+    #comparisonColumnEditModal .cd-spec-item-new { cursor: pointer; color: #15803d; font-weight: 600; font-size: .85rem; background: #f0fdf4; }
+    #comparisonColumnEditModal .cd-spec-item.is-editing .cd-spec-edit-input { flex: 1 1 auto; }
+    #comparisonColumnEditModal .cd-spec-empty { padding: 10px; color: #94a3b8; font-size: .82rem; text-align: center; }
+
     #comparisonColumnEditModal .cd-col-edit-bulk-bar .cd-col-edit-bulk-label {
         font-size: 0.8rem;
         font-weight: 600;
@@ -1998,38 +2031,6 @@
     }
 
     /* Spec (label) column: 182px reduced by another 20% (-> 146px). Long labels are cut with "…" and shown in full on hover / while editing. */
-    /* Per-supplier QR Form / Draft / Send action row (second header row). */
-    .cd-sheet-table tr.cd-qr-action-row th {
-        top: auto !important;
-        position: static;
-        padding: 3px 2px;
-        background: #f8fafc;
-        font-weight: 400;
-        white-space: nowrap;
-    }
-    .cd-sheet-table tr.cd-qr-action-row th.cd-row-num,
-    .cd-sheet-table tr.cd-qr-action-row th.cd-row-select-col,
-    .cd-sheet-table tr.cd-qr-action-row th.cd-row-edit-col { position: sticky; }
-    .cd-qr-act-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 24px;
-        margin: 0 1px;
-        padding: 0;
-        border: 1px solid #9aa5b8;
-        border-radius: 12px;
-        background: #fff;
-        color: #4b5563;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-    }
-    .cd-qr-act-btn:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
-    .cd-qr-act-btn.cd-qr-act-form { border-color: transparent; background: transparent; color: #0d9488; font-size: 17px; }
-    .cd-qr-act-btn.cd-qr-act-form:hover { background: #ccfbf1; }
-
     .cd-sheet-table th.cd-spec-col,
     .cd-sheet-table td.cd-label-cell {
         width: 146px;
@@ -2821,6 +2822,281 @@
         font-size: 12px;
         color: #6c757d;
     }
+
+    /* =====================================================================
+       NEXT-GEN SKIN (visual only, no behaviour change). Clean light theme,
+       teal accent, soft cards, rounded controls. Light mode only: the dark
+       theme keeps its own look. Remove this block to go back to the old look.
+       ===================================================================== */
+    html:not([data-bs-theme="dark"]) {
+        --ng-teal: #0d9488;
+        --ng-teal-2: #14b8a6;
+        --ng-teal-dark: #0f766e;
+        --ng-ink: #0f172a;
+        --ng-mute: #64748b;
+        --ng-line: #e6ebf2;
+        --ng-soft: #f4f7fb;
+        --ng-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 10px 28px -10px rgba(15, 23, 42, .16);
+        --ng-ring: 0 0 0 .2rem rgba(20, 184, 166, .2);
+    }
+
+    /* ---- Page canvas + main card ---- */
+    html:not([data-bs-theme="dark"]) body.cd-page-mode {
+        background: linear-gradient(180deg, #e9f3f4 0, #f5f8fb 340px, #f5f8fb 100%) fixed;
+    }
+    html:not([data-bs-theme="dark"]) body.cd-page-mode #comparisonCdModal { padding: 14px 18px 26px !important; }
+    html:not([data-bs-theme="dark"]) body.cd-page-mode #comparisonCdModal .modal-content {
+        min-height: calc(100vh - 150px);
+        border: 1px solid var(--ng-line);
+        border-radius: 22px;
+        box-shadow: var(--ng-shadow);
+        overflow: hidden;
+        background: #fff;
+    }
+    html:not([data-bs-theme="dark"]) #comparisonCdModal .modal-body { padding: 18px 22px 24px; }
+
+    /* ---- Header bar ---- */
+    html:not([data-bs-theme="dark"]) #comparisonCdModal .modal-header {
+        background: linear-gradient(115deg, var(--ng-teal-dark) 0%, var(--ng-teal) 55%, var(--ng-teal-2) 100%) !important;
+        border: 0;
+        padding: 14px 22px;
+    }
+    html:not([data-bs-theme="dark"]) #comparisonCdModalLabel { gap: 12px !important; flex-wrap: wrap; font-weight: 700; letter-spacing: .01em; }
+    html:not([data-bs-theme="dark"]) #comparisonCdModalLabel > span:first-of-type { font-weight: 700; }
+    html:not([data-bs-theme="dark"]) #comparison-cd-back-btn {
+        background: rgba(255, 255, 255, .16);
+        border: 1px solid rgba(255, 255, 255, .38);
+        color: #fff;
+        border-radius: 999px;
+        padding: .3rem .85rem;
+        font-weight: 600;
+        backdrop-filter: blur(4px);
+        transition: background-color .15s, transform .15s;
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-back-btn:hover { background: rgba(255, 255, 255, .3); transform: translateX(-1px); }
+    html:not([data-bs-theme="dark"]) #comparison-cd-modal-sku-badge {
+        background: #fff !important;
+        color: var(--ng-teal-dark) !important;
+        border-radius: 999px;
+        padding: .45em .9em;
+        font-weight: 800;
+        letter-spacing: .02em;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, .15);
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-mfr-input {
+        border: 0;
+        border-radius: 999px;
+        padding-left: .95rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, .14);
+        min-width: 190px;
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-mfr-input:focus { box-shadow: 0 0 0 .22rem rgba(255, 255, 255, .45), 0 2px 8px rgba(15, 23, 42, .14); }
+    html:not([data-bs-theme="dark"]) .cd-mfr-results {
+        border: 1px solid var(--ng-line);
+        border-radius: 14px;
+        box-shadow: 0 18px 40px -12px rgba(15, 23, 42, .3);
+        overflow: hidden;
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-modal-image {
+        border-radius: 12px;
+        border: 2px solid rgba(255, 255, 255, .7);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, .2);
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-image-refresh-btn {
+        border-radius: 999px;
+        border-color: rgba(255, 255, 255, .5);
+        background: rgba(255, 255, 255, .14);
+        color: #fff;
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-image-refresh-btn:hover { background: rgba(255, 255, 255, .3); }
+
+    /* ---- Tabs ---- */
+    html:not([data-bs-theme="dark"]) #comparison-cd-tabs { border-bottom: 1px solid var(--ng-line); gap: 4px; }
+    html:not([data-bs-theme="dark"]) #comparison-cd-tabs .nav-link {
+        position: relative;
+        border: 0;
+        background: transparent;
+        color: var(--ng-mute);
+        font-weight: 600;
+        padding: .6rem 1.05rem;
+        border-radius: 10px 10px 0 0;
+        transition: color .15s, background-color .15s;
+    }
+    html:not([data-bs-theme="dark"]) #comparison-cd-tabs .nav-link:hover { color: var(--ng-teal-dark); background: #f1f8f8; }
+    html:not([data-bs-theme="dark"]) #comparison-cd-tabs .nav-link.active { color: var(--ng-teal-dark); background: transparent; }
+    html:not([data-bs-theme="dark"]) #comparison-cd-tabs .nav-link.active::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: -1px;
+        height: 3px;
+        border-radius: 3px;
+        background: linear-gradient(90deg, var(--ng-teal), var(--ng-teal-2));
+    }
+
+    /* ---- Toolbar ---- */
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar {
+        background: #fff;
+        border: 1px solid var(--ng-line);
+        border-radius: 16px;
+        box-shadow: var(--ng-shadow);
+        padding: 10px 12px;
+        gap: 8px;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn,
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-sm {
+        font-size: .74rem;
+        font-weight: 600;
+        padding: .34rem .7rem;
+        border-radius: 10px;
+        box-shadow: 0 1px 1px rgba(15, 23, 42, .05);
+        transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease, border-color .12s ease;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px -6px rgba(15, 23, 42, .3);
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn:active { transform: translateY(0); box-shadow: none; }
+    /* Solid buttons get a soft top-light for depth (colours stay as they were). */
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-info,
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-primary,
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-success,
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-warning {
+        background-image: linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, 0));
+        border-color: transparent;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-secondary,
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-primary {
+        background: #fff;
+        border-color: #d8e1ec;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-secondary { color: #334155; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-secondary:hover { background: #f1f5f9; border-color: #c3cfde; color: var(--ng-ink); }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-primary { color: var(--ng-teal-dark); border-color: #a7dcd6; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .btn-outline-primary:hover { background: #ecfdfa; border-color: var(--ng-teal); color: var(--ng-teal-dark); }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar-divider { background: var(--ng-line); margin: 3px 4px; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .dropdown-menu {
+        border: 1px solid var(--ng-line);
+        border-radius: 14px;
+        box-shadow: 0 18px 40px -12px rgba(15, 23, 42, .3);
+        padding: 6px;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .dropdown-item { border-radius: 8px; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-toolbar .dropdown-item:hover { background: #f1f8f8; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-status { color: var(--ng-mute); font-weight: 500; }
+
+    /* ---- Sheet table ---- */
+    html:not([data-bs-theme="dark"]) .cd-sheet-wrap {
+        border: 1px solid var(--ng-line);
+        border-radius: 16px;
+        box-shadow: var(--ng-shadow);
+        background: #fff;
+        scrollbar-width: thin;
+        scrollbar-color: #c7d2e0 transparent;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-wrap::-webkit-scrollbar-thumb { background: #c7d2e0; border-radius: 10px; border: 2px solid #fff; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-wrap::-webkit-scrollbar-thumb:hover { background: #9fb0c6; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table th,
+    html:not([data-bs-theme="dark"]) .cd-sheet-table td { border-color: #e8edf4; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table thead th {
+        background: linear-gradient(180deg, #f9fbfd, #eef3f9);
+        color: var(--ng-ink);
+        font-weight: 700;
+        border-color: #dde5f0;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table tbody tr:hover > td:not([style*="background"]):not(.cd-label-cell):not(.cd-priority-col) { background-color: #f6fafd; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table .cd-row-num { color: var(--ng-mute); font-weight: 600; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-row-edit-btn,
+    html:not([data-bs-theme="dark"]) .cd-sheet-supplier-edit-btn,
+    html:not([data-bs-theme="dark"]) .cd-sheet-row-delete-btn,
+    html:not([data-bs-theme="dark"]) .cd-sheet-col-edit-btn,
+    html:not([data-bs-theme="dark"]) .cd-sheet-col-add-btn {
+        border-radius: 8px;
+        transition: background-color .12s ease, transform .12s ease;
+    }
+    html:not([data-bs-theme="dark"]) .cd-sheet-row-edit-btn:hover,
+    html:not([data-bs-theme="dark"]) .cd-sheet-supplier-edit-btn:hover,
+    html:not([data-bs-theme="dark"]) .cd-sheet-col-edit-btn:hover,
+    html:not([data-bs-theme="dark"]) .cd-sheet-col-add-btn:hover { background: #e7f5f4; transform: scale(1.08); }
+    html:not([data-bs-theme="dark"]) .cd-sheet-row-delete-btn:hover { background: #fee2e2; transform: scale(1.08); }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table .cd-sheet-supplier-select { border-radius: 8px; }
+    html:not([data-bs-theme="dark"]) .cd-sheet-table .cd-sheet-supplier-select:hover,
+    html:not([data-bs-theme="dark"]) .cd-sheet-table .cd-sheet-supplier-select:focus { border-color: var(--ng-teal-2); box-shadow: var(--ng-ring); }
+
+    /* ---- Drawers + modals (all comparison popups) ---- */
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .modal-content { border: 0; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"]:not(#comparisonCdModal) .modal-header {
+        background: linear-gradient(115deg, var(--ng-teal-dark) 0%, var(--ng-teal) 60%, var(--ng-teal-2) 100%) !important;
+        color: #fff;
+        border: 0;
+        padding: 12px 18px;
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"]:not(#comparisonCdModal) .modal-header .modal-title,
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"]:not(#comparisonCdModal) .modal-header .modal-title * { color: #fff; font-weight: 700; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"]:not(#comparisonCdModal) .modal-header .btn-close {
+        filter: invert(1) grayscale(100%) brightness(200%);
+        opacity: .9;
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .modal-body { background: #fff; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .modal-footer { background: #f8fafc; border-top: 1px solid var(--ng-line); }
+    html:not([data-bs-theme="dark"]) #comparisonQrSendModal .modal-content,
+    html:not([data-bs-theme="dark"]) #comparisonQrFormModal .modal-content,
+    html:not([data-bs-theme="dark"]) #comparisonQrDraftModal .modal-content {
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 30px 70px -20px rgba(15, 23, 42, .45);
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .form-control,
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .form-select {
+        border-radius: 10px;
+        border-color: #d8e1ec;
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .form-control:focus,
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .form-select:focus {
+        border-color: var(--ng-teal-2);
+        box-shadow: var(--ng-ring);
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .form-check-input:checked { background-color: var(--ng-teal); border-color: var(--ng-teal); }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .btn { border-radius: 10px; font-weight: 600; transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -6px rgba(15, 23, 42, .3); }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .btn:active { transform: none; box-shadow: none; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .btn-primary,
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .btn-info {
+        background-image: linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0));
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .table thead th {
+        background: #eef4fb;
+        color: #334155;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        border-bottom: 1px solid #dbe5f1;
+    }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .table > :not(caption) > * > * { border-color: #eef2f7; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .table tbody tr { transition: background-color .12s ease; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .table tbody tr:hover > * { background-color: #f6fafd; }
+    html:not([data-bs-theme="dark"]) .modal[id^="comparison"] .badge { border-radius: 999px; font-weight: 600; }
+    html:not([data-bs-theme="dark"]) #comparisonColumnEditModal .cd-col-edit-bulk-bar,
+    html:not([data-bs-theme="dark"]) #comparisonColumnEditModal .cd-spec-panel {
+        border-radius: 14px;
+        border-color: var(--ng-line);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+    html:not([data-bs-theme="dark"]) #comparisonColumnEditModal .cd-spec-panel { border-color: #99dcd5; background: #f4fcfb; }
+    html:not([data-bs-theme="dark"]) #comparisonColumnEditModal .cd-spec-panel-head strong { color: var(--ng-teal-dark); }
+    html:not([data-bs-theme="dark"]) #comparisonColumnEditModal .cd-spec-item.is-current { background: #e8f7f5; }
+    html:not([data-bs-theme="dark"]) #comparisonQrSendModal .table-responsive { border: 1px solid var(--ng-line); border-radius: 14px; }
+    html:not([data-bs-theme="dark"]) #comparisonQrFormModal .qr-item-img { border-radius: 16px; box-shadow: var(--ng-shadow); }
+
+    /* Respect users who prefer less motion. */
+    @media (prefers-reduced-motion: reduce) {
+        .cd-sheet-toolbar .btn,
+        .modal[id^="comparison"] .btn,
+        #comparison-cd-back-btn { transition: none !important; transform: none !important; }
+    }
 </style>
 @endsection
 
@@ -3032,15 +3308,15 @@
                         </div>
                         <span class="small text-muted ms-auto" id="qrSendCount"></span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="qrSendLinksBtn"><i class="mdi mdi-link-variant"></i> Create links</button>
-                        <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-email-send-outline"></i> Email selected</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="qrSendEmailBtn"><i class="mdi mdi-send me-1" aria-hidden="true"></i> Send Email</button>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr>
                                     <th style="width:34px"></th>
-                                    <th>Supplier</th>
-                                    <th>Company</th>
+                                    <th class="qr-send-name-cell">Supplier</th>
+                                    <th class="qr-send-company-cell">Company</th>
                                     <th style="min-width:230px">Email</th>
                                     <th>Status</th>
                                     <th style="width:110px">Link</th>
@@ -5451,6 +5727,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (bulk && bulk.dataset.mode === 'spec') {
             bulk.innerHTML = specOptionsHtml(selectValue);
             bulk.value = selectValue;
+            syncSpecPickButtons();
         }
     }
 
@@ -5460,6 +5737,7 @@ document.addEventListener('DOMContentLoaded', function () {
             sel.innerHTML = specOptionsHtml(keep);
             sel.value = keep;
         });
+        syncSpecPickButtons();
     }
 
     // Prompt for a new specification, store it in the DB table, refresh every spec dropdown. Resolves to the saved name or ''.
@@ -5489,6 +5767,305 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    // ---- Specification picker panel (Spec column of the Edit column modal) ----
+    // Quick search + multi-select + add new + rename (pen) + merge. Rename / merge update the master list AND
+    // every stored sheet that used the old name(s).
+    const specRenameUrl = @json(route('comparison.specifications.rename'));
+    const specMergeUrl = @json(route('comparison.specifications.merge'));
+    const specPanel = { open: false, target: null, checked: new Set(), query: '', editing: null, busy: false };
+
+    function specKeyOf(s) {
+        return String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function specPanelEl(id) {
+        return document.getElementById(id);
+    }
+
+    function setSpecPickBtnText(btn, value) {
+        const v = value === SPEC_ADD_VALUE ? '' : String(value ?? '').trim();
+        btn.innerHTML = `<span class="cd-spec-pick-text">${v ? escapeHtml(v) : '— Select specification —'}</span><i class="mdi mdi-chevron-down" aria-hidden="true"></i>`;
+        btn.classList.toggle('is-empty', !v);
+        btn.title = v ? `${v} — click to change` : 'Click to search / choose a specification';
+    }
+
+    function syncSpecPickButtons() {
+        document.querySelectorAll('#comparisonColumnEditModal select.cd-spec-dd').forEach((sel) => {
+            const btn = sel.parentElement?.querySelector('.cd-spec-pick-btn');
+            if (btn) setSpecPickBtnText(btn, sel.value);
+        });
+        const bulk = specPanelEl('comparison-column-edit-bulk-value');
+        const bulkBtn = specPanelEl('comparison-column-edit-bulk-pick');
+        if (bulk && bulkBtn && bulk.dataset.mode === 'spec') setSpecPickBtnText(bulkBtn, bulk.value);
+    }
+
+    function specCurrentValueFor(target) {
+        if (target === 'bulk') return specPanelEl('comparison-column-edit-bulk-value')?.value || '';
+        if (target === null || target === undefined) return '';
+        const sel = document.querySelector(`#comparison-column-edit-tbody select.cd-spec-dd[data-row="${target}"]`);
+        return sel ? sel.value : '';
+    }
+
+    function specPanelCheckedNames() {
+        return (comparisonSpecList || []).filter(n => specPanel.checked.has(specKeyOf(n)));
+    }
+
+    function renderSpecPanelList() {
+        const listEl = specPanelEl('comparison-spec-list');
+        if (!listEl) return;
+        const all = comparisonSpecList || [];
+        const q = specPanel.query.trim().toLowerCase();
+        const shown = all.filter(n => !q || n.toLowerCase().includes(q));
+        const cur = specKeyOf(specCurrentValueFor(specPanel.target));
+        const canPick = specPanel.target !== null;
+        let html = '';
+        const typed = specPanel.query.trim();
+        if (typed && !all.some(n => specKeyOf(n) === specKeyOf(typed))) {
+            html += `<div class="cd-spec-item cd-spec-item-new" data-add-name="${escapeHtmlAttr(typed)}" role="button"><i class="mdi mdi-plus-circle-outline me-1" aria-hidden="true"></i> Add new specification “${escapeHtml(typed)}”</div>`;
+        }
+        html += shown.map((n) => {
+            const key = specKeyOf(n);
+            if (specPanel.editing && specKeyOf(specPanel.editing) === key) {
+                return `<div class="cd-spec-item is-editing" data-name="${escapeHtmlAttr(n)}">
+                    <input type="text" class="form-control form-control-sm cd-spec-edit-input" value="${escapeHtmlAttr(n)}" maxlength="120" aria-label="New name">
+                    <button type="button" class="btn btn-sm btn-primary cd-spec-edit-save" title="Rename everywhere"><i class="mdi mdi-check" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-sm btn-light cd-spec-edit-cancel" title="Cancel"><i class="mdi mdi-close" aria-hidden="true"></i></button>
+                </div>`;
+            }
+            return `<div class="cd-spec-item${key === cur && cur ? ' is-current' : ''}" data-name="${escapeHtmlAttr(n)}">
+                <input type="checkbox" class="form-check-input cd-spec-item-check" data-name="${escapeHtmlAttr(n)}" ${specPanel.checked.has(key) ? 'checked' : ''} aria-label="Select ${escapeHtmlAttr(n)}">
+                <span class="cd-spec-item-name" title="${canPick ? 'Use this specification' : 'Tick to select'}">${escapeHtml(n)}</span>
+                <button type="button" class="cd-spec-item-edit" data-name="${escapeHtmlAttr(n)}" title="Rename (updates every sheet)" aria-label="Rename ${escapeHtmlAttr(n)}"><i class="mdi mdi-pencil-outline" aria-hidden="true"></i></button>
+            </div>`;
+        }).join('');
+        if (!html) {
+            html = `<div class="cd-spec-empty">${comparisonSpecList ? 'No specification found' : 'Loading…'}</div>`;
+        }
+        listEl.innerHTML = html;
+        updateSpecPanelActions(shown);
+    }
+
+    function updateSpecPanelActions(shown) {
+        shown = shown || (comparisonSpecList || []).filter(n => !specPanel.query.trim() || n.toLowerCase().includes(specPanel.query.trim().toLowerCase()));
+        const n = specPanelCheckedNames().length;
+        const merge = specPanelEl('comparison-spec-merge-btn');
+        const rows = specPanelEl('comparison-spec-addrows-btn');
+        const all = specPanelEl('comparison-spec-all');
+        const count = specPanelEl('comparison-spec-sel-count');
+        if (merge) merge.disabled = n < 2 || specPanel.busy;
+        if (rows) rows.disabled = n < 1 || specPanel.busy;
+        if (count) count.textContent = n ? `${n} selected` : 'Tick several to merge / add';
+        if (all) {
+            const shownChecked = shown.filter(x => specPanel.checked.has(specKeyOf(x))).length;
+            all.checked = shown.length > 0 && shownChecked === shown.length;
+            all.indeterminate = shownChecked > 0 && shownChecked < shown.length;
+            all.disabled = shown.length === 0;
+        }
+        specPanelEl('comparison-spec-panel')?.classList.toggle('cd-spec-busy', !!specPanel.busy);
+    }
+
+    function openSpecPanel(target) {
+        const panel = specPanelEl('comparison-spec-panel');
+        if (!panel) return;
+        specPanel.target = target === undefined ? null : target;
+        specPanel.open = true;
+        specPanel.editing = null;
+        specPanel.query = '';
+        const search = specPanelEl('comparison-spec-search');
+        if (search) search.value = '';
+        const title = specPanelEl('comparison-spec-panel-title');
+        if (title) {
+            title.textContent = specPanel.target === null ? 'Manage specifications'
+                : (specPanel.target === 'bulk' ? 'Choose specification to apply'
+                    : `Choose specification for row ${parseInt(specPanel.target, 10) + 1}`);
+        }
+        panel.classList.remove('d-none');
+        renderSpecPanelList();
+        loadComparisonSpecifications().then(() => { if (specPanel.open) renderSpecPanelList(); });
+        search?.focus();
+    }
+
+    function closeSpecPanel() {
+        specPanel.open = false;
+        specPanel.editing = null;
+        specPanelEl('comparison-spec-panel')?.classList.add('d-none');
+    }
+
+    function pickSpecForTarget(name) {
+        const target = specPanel.target;
+        if (target === null) {
+            // Manage mode: clicking the name just ticks / unticks it.
+            const key = specKeyOf(name);
+            if (specPanel.checked.has(key)) specPanel.checked.delete(key); else specPanel.checked.add(key);
+            renderSpecPanelList();
+            return;
+        }
+        if (target === 'bulk') {
+            const bulk = specPanelEl('comparison-column-edit-bulk-value');
+            if (!bulk) return;
+            if (![...bulk.options].some(o => o.value === name)) bulk.add(new Option(name, name));
+            bulk.value = name;
+        } else {
+            const sel = document.querySelector(`#comparison-column-edit-tbody select.cd-spec-dd[data-row="${target}"]`);
+            if (!sel) return;
+            if (![...sel.options].some(o => o.value === name)) sel.add(new Option(name, name));
+            sel.value = name;
+            sel.dataset.current = name;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncSpecPickButtons();
+        closeSpecPanel();
+    }
+
+    async function createSpecificationByName(name) {
+        const res = await fetch(specificationsUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            credentials: 'same-origin',
+            body: JSON.stringify({ name }),
+        }).then(r => r.json());
+        if (!res || !res.success) throw new Error((res && res.message) || 'Could not save specification.');
+        comparisonSpecList = (res.specifications || []).map(String);
+        return String(res.name);
+    }
+
+    async function addSpecFromPanel(typedName) {
+        let name = String(typedName || '').trim();
+        if (!name) {
+            name = (window.prompt('New specification name (added for all comparison pages):', '') || '').trim();
+        }
+        if (!name) return;
+        try {
+            name = await createSpecificationByName(name);
+            setSheetStatus(`Specification "${name}" added to the master list.`, false);
+            refreshSpecSelectsInColumnEditModal();
+            refreshSpecBulkSelect(specCurrentValueFor('bulk'));
+            if (specPanel.target !== null) {
+                pickSpecForTarget(name);
+            } else {
+                specPanel.query = '';
+                const search = specPanelEl('comparison-spec-search');
+                if (search) search.value = '';
+                specPanel.checked.add(specKeyOf(name));
+                renderSpecPanelList();
+            }
+        } catch (err) {
+            setSheetStatus(err.message || 'Could not save specification.', true);
+        }
+    }
+
+    // Relabel the Spec column of the open sheet (memory) after the server updated every stored sheet.
+    function relabelSpecInSheet(oldNames, target) {
+        const keys = new Set(oldNames.map(specKeyOf));
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        let n = 0;
+        currentSheetCells.forEach((row) => {
+            if (!Array.isArray(row)) return;
+            const label = String(row[specCol] ?? '');
+            if (label !== '' && label !== target && keys.has(specKeyOf(label))) {
+                row[specCol] = target;
+                n += 1;
+            }
+        });
+        return n;
+    }
+
+    // Rename (one name) / merge (several names) -> target. Updates the master list and every sheet.
+    async function runSpecMerge(names, target, verb) {
+        if (specPanel.busy) return;
+        target = String(target || '').trim();
+        if (!target || !names.length) return;
+        specPanel.busy = true;
+        updateSpecPanelActions();
+        readCellsFromEditor({ expandImages: false });
+        applyColumnEditModalDrafts();
+        try {
+            const res = await fetch(names.length === 1 ? specRenameUrl : specMergeUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                credentials: 'same-origin',
+                body: JSON.stringify(names.length === 1 ? { name: names[0], new_name: target } : { names, new_name: target }),
+            }).then(r => r.json());
+            if (!res || !res.success) throw new Error((res && res.message) || 'Could not update the specification.');
+            comparisonSpecList = (res.specifications || []).map(String);
+            const changed = relabelSpecInSheet(names, res.name);
+            if (changed) {
+                renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+                scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            }
+            specPanel.checked.clear();
+            specPanel.editing = null;
+            renderColumnEditModalRows();
+            syncSpecPickButtons();
+            setSheetStatus(`${verb} "${res.name}": ${res.updated_cells} row(s) on ${res.updated_sheets} sheet(s) updated.`, false);
+        } catch (err) {
+            setSheetStatus(err.message || 'Could not update the specification.', true);
+        } finally {
+            specPanel.busy = false;
+            renderSpecPanelList();
+        }
+    }
+
+    function renameSpecFromPanel(oldName, newName) {
+        newName = String(newName || '').trim().replace(/\s+/g, ' ');
+        if (!newName || newName === oldName) {
+            specPanel.editing = null;
+            renderSpecPanelList();
+            return;
+        }
+        const clash = (comparisonSpecList || []).some(n => specKeyOf(n) === specKeyOf(newName) && specKeyOf(n) !== specKeyOf(oldName));
+        const msg = clash
+            ? `"${newName}" already exists. Merge "${oldName}" into it?\n\nEvery sheet that uses "${oldName}" will use "${newName}".`
+            : `Rename "${oldName}" to "${newName}"?\n\nEvery sheet that uses "${oldName}" will be updated.`;
+        if (!window.confirm(msg)) return;
+        runSpecMerge([oldName], newName, clash ? 'Merged into' : 'Renamed to');
+    }
+
+    function mergeCheckedSpecs() {
+        const names = specPanelCheckedNames();
+        if (names.length < 2) {
+            setSheetStatus('Tick two or more specifications to merge.', true);
+            return;
+        }
+        const typed = window.prompt(`Merge ${names.length} specifications into one.\nNew specification name:`, names[0]);
+        const target = String(typed || '').trim().replace(/\s+/g, ' ');
+        if (!target) return;
+        if (!window.confirm(`Merge ${names.map(n => `"${n}"`).join(', ')} into "${target}"?\n\nThe old names are removed and every sheet using them is updated.`)) return;
+        runSpecMerge(names, target, 'Merged into');
+    }
+
+    // Ticked specifications that this sheet does not have yet become new rows of the sheet.
+    function addCheckedSpecsAsRows() {
+        const names = specPanelCheckedNames();
+        if (!names.length) return;
+        readCellsFromEditor({ expandImages: false });
+        applyColumnEditModalDrafts();
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const have = new Set(currentSheetCells.map(r => specKeyOf((r || [])[specCol])).filter(Boolean));
+        const colCount = Math.max(...currentSheetCells.map(r => (Array.isArray(r) ? r.length : 0)), specCol + 1);
+        let added = 0;
+        names.forEach((n) => {
+            if (have.has(specKeyOf(n))) return;
+            const row = Array.from({ length: colCount }, () => '');
+            row[specCol] = n;
+            currentSheetCells.push(row);
+            have.add(specKeyOf(n));
+            added += 1;
+        });
+        specPanel.checked.clear();
+        if (!added) {
+            renderSpecPanelList();
+            setSheetStatus('Those specifications are already on this sheet.', false);
+            return;
+        }
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+        renderColumnEditModalRows();
+        syncSpecPickButtons();
+        renderSpecPanelList();
+        setSheetStatus(`${added} specification row(s) added to this sheet.`, false);
+    }
+
     function setupColumnEditBulkValueControl(isPriorityCol) {
         const bulkValueWrap = document.getElementById('comparison-column-edit-bulk-value-wrap');
         if (!bulkValueWrap) {
@@ -5505,6 +6082,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const keep = existing.value;
                 existing.innerHTML = specOptionsHtml(keep);
                 existing.value = keep;
+                syncSpecPickButtons();
             }
             return;
         }
@@ -5516,7 +6094,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 <option value="Critical" selected>Critical</option>
             </select>`;
         } else if (mode === 'spec') {
-            bulkValueWrap.innerHTML = `<select id="comparison-column-edit-bulk-value" data-mode="spec" class="form-select form-select-sm cd-col-edit-bulk-value" title="Specification to apply to selected rows">${specOptionsHtml('')}</select>`;
+            bulkValueWrap.innerHTML = `<span class="cd-spec-pick-wrap cd-col-edit-bulk-value"><button type="button" id="comparison-column-edit-bulk-pick" class="btn btn-sm btn-outline-secondary cd-spec-pick-btn is-empty" data-row="bulk"></button><select id="comparison-column-edit-bulk-value" data-mode="spec" class="d-none" title="Specification to apply to selected rows">${specOptionsHtml('')}</select></span>`;
+            syncSpecPickButtons();
         } else {
             bulkValueWrap.innerHTML = `<input type="text" id="comparison-column-edit-bulk-value" data-mode="text" class="form-control form-control-sm cd-col-edit-bulk-value" value="" placeholder="Value for selected rows" title="Value to apply to selected rows">`;
         }
@@ -5542,6 +6121,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const selectableCount = selectableChecks.length;
 
         bulkBar.classList.remove('d-none');
+        const isSpecColNow = col === detectSpecColumnIndex(currentSheetCells) && Array.isArray(comparisonSpecList);
+        document.getElementById('comparison-column-edit-spec-manage-btn')?.classList.toggle('d-none', !isSpecColNow);
+        if (!isSpecColNow && specPanel.open) closeSpecPanel();
         if (countEl) {
             countEl.textContent = selectedCount
                 ? `${selectedCount} selected`
@@ -5721,7 +6303,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 : '';
             const useSpecDropdown = isSpecCol && !isImage && Array.isArray(comparisonSpecList);
             const fieldHtml = useSpecDropdown
-                ? `<select class="form-select form-select-sm cd-col-edit-field cd-spec-dd" data-row="${r}" data-current="${escapeHtmlAttr(displayValue.trim())}">${specOptionsHtml(displayValue)}</select>`
+                ? `<span class="cd-spec-pick-wrap"><button type="button" class="btn btn-sm btn-outline-secondary cd-spec-pick-btn${displayValue.trim() ? '' : ' is-empty'}" data-row="${r}"><span class="cd-spec-pick-text">${displayValue.trim() ? escapeHtml(displayValue.trim()) : '— Select specification —'}</span><i class="mdi mdi-chevron-down" aria-hidden="true"></i></button><select class="cd-col-edit-field cd-spec-dd d-none" data-row="${r}" data-current="${escapeHtmlAttr(displayValue.trim())}">${specOptionsHtml(displayValue)}</select></span>`
                 : `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
             const thumbHtml = isImage ? sheetEditThumbHtml(r, col, rawValue) : '';
             parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
@@ -5784,6 +6366,8 @@ document.addEventListener('DOMContentLoaded', function () {
         columnEditSelectedRows = new Set();
         selectedSheetCol = col;
         applySheetSelectionHighlight();
+        closeSpecPanel();
+        specPanel.checked.clear();
         const supplierInput = document.getElementById('comparison-column-edit-supplier-input');
         if (supplierInput) supplierInput.value = '';
         closeSupplierComboList();
@@ -9566,25 +10150,7 @@ document.addEventListener('DOMContentLoaded', function () {
         headHtml += '<th class="cd-row-edit-col cd-row-delete-col" title="Delete row">Del</th>';
         headHtml += '</tr>';
 
-        // Second header row: QR Form / Draft / Send for each supplier column.
-        let actHtml = '<tr class="cd-qr-action-row"><th class="cd-row-num"></th><th class="cd-row-select-col"></th>';
-        for (let c = 0; c < colCount; c++) {
-            const isPriorityCol = (criticalCol !== null && c === criticalCol) || (qcCol !== null && c === qcCol);
-            const hiddenCls = `${(qcCol !== null && c === qcCol) ? ' cd-qc-col' : ''}${c >= visibleColCount ? ' cd-blank-hidden' : ''}`;
-            const supName = (c > specCol && !isPriorityCol) ? String(getSupplierNameForColumn(c, currentSheetCells) || '').trim() : '';
-            if (!supName) {
-                actHtml += `<th class="${hiddenCls.trim()}"></th>`;
-                continue;
-            }
-            const nm = escapeHtmlAttr(supName);
-            actHtml += `<th class="cd-qr-act-cell${hiddenCls}" data-col="${c}">`
-                + `<button type="button" class="cd-qr-act-btn cd-qr-act-form" data-act="form" data-supplier="${nm}" title="QR Form for ${nm}" aria-label="QR Form for ${nm}"><i class="mdi mdi-file-document-edit-outline"></i></button>`
-                + `<button type="button" class="cd-qr-act-btn" data-act="draft" data-supplier="${nm}" title="Draft email for ${nm}" aria-label="Draft email for ${nm}"><i class="mdi mdi-email-open-outline"></i></button>`
-                + `<button type="button" class="cd-qr-act-btn" data-act="send" data-supplier="${nm}" title="Send QR form to ${nm}" aria-label="Send QR form to ${nm}"><i class="mdi mdi-send"></i></button>`
-                + `</th>`;
-        }
-        actHtml += '<th class="cd-row-edit-col"></th><th class="cd-row-edit-col cd-supplier-edit-col"></th><th class="cd-row-edit-col cd-row-delete-col"></th></tr>';
-        head.innerHTML = headHtml + actHtml;
+        head.innerHTML = headHtml;
 
         const parts = [];
         // Display order: Critical -> Important -> Normal (stable; data order is untouched).
@@ -13665,8 +14231,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 : '<span class="text-muted">—</span>';
             return `<tr data-name="${escapeHtmlAttr(s.name)}" data-search="${escapeHtmlAttr((s.name + ' ' + s.company + ' ' + s.email).toLowerCase())}">
                 <td><input type="checkbox" class="form-check-input qr-send-check" aria-label="Select ${escapeHtmlAttr(s.name)}"></td>
-                <td class="fw-semibold">${escapeHtml(s.name)}</td>
-                <td>${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
+                <td class="fw-semibold qr-send-name-cell">${escapeHtml(s.name)}</td>
+                <td class="qr-send-company-cell">${s.company ? escapeHtml(s.company) : '<span class="text-muted">—</span>'}</td>
                 <td><input type="text" class="form-control form-control-sm qr-send-email" value="${escapeHtmlAttr(s.email || '')}" placeholder="supplier@email.com" autocomplete="off"></td>
                 <td class="qr-send-status-cell">${status}</td>
                 <td>${link}</td>
@@ -13788,19 +14354,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('comparison-cd-qr-send-btn')?.addEventListener('click', function () {
         openQrSendModal(currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || ''));
     });
-    // Per-supplier QR Form / Draft / Send buttons in the sheet's second header row.
-    document.addEventListener('click', function (e) {
-        const btn = e.target.closest('.cd-qr-act-btn');
-        if (!btn) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const sku = currentSheetSku() || String(COMPARISON_CD_PAGE_SKU || '');
-        const name = btn.dataset.supplier || '';
-        if (btn.dataset.act === 'form') openQrFormModal(sku, name);
-        else if (btn.dataset.act === 'draft') openQrDraftModal(sku, name);
-        else if (btn.dataset.act === 'send') openQrSendModal(sku, name);
-    });
-
     function cdFormatter(cell) {
         const row = cell.getRow().getData();
         const hasSheet = !!row.has_sheet_data;
@@ -15872,6 +16425,107 @@ document.addEventListener('DOMContentLoaded', function () {
 
     loadComparisonSpecifications();
 
+    // Specification picker panel: quick search, multi-select, add, rename (pen), merge.
+    (function () {
+        const modal = document.getElementById('comparisonColumnEditModal');
+        if (!modal) return;
+
+        modal.addEventListener('click', function (e) {
+            const pickBtn = e.target.closest('.cd-spec-pick-btn');
+            if (pickBtn) {
+                e.preventDefault();
+                const t = pickBtn.dataset.row === 'bulk' ? 'bulk' : parseInt(pickBtn.dataset.row, 10);
+                if (specPanel.open && specPanel.target === t) closeSpecPanel(); else openSpecPanel(t);
+                return;
+            }
+            if (e.target.closest('#comparison-column-edit-spec-manage-btn')) {
+                e.preventDefault();
+                if (specPanel.open && specPanel.target === null) closeSpecPanel(); else openSpecPanel(null);
+                return;
+            }
+            if (!e.target.closest('#comparison-spec-panel')) return;
+
+            if (e.target.closest('#comparison-spec-close')) { e.preventDefault(); closeSpecPanel(); return; }
+            const addItem = e.target.closest('[data-add-name]');
+            if (addItem) { e.preventDefault(); addSpecFromPanel(addItem.dataset.addName); return; }
+            if (e.target.closest('#comparison-spec-add-btn')) { e.preventDefault(); addSpecFromPanel(''); return; }
+            if (e.target.closest('#comparison-spec-merge-btn')) { e.preventDefault(); mergeCheckedSpecs(); return; }
+            if (e.target.closest('#comparison-spec-addrows-btn')) { e.preventDefault(); addCheckedSpecsAsRows(); return; }
+            const editBtn = e.target.closest('.cd-spec-item-edit');
+            if (editBtn) {
+                e.preventDefault();
+                specPanel.editing = editBtn.dataset.name || null;
+                renderSpecPanelList();
+                const input = document.querySelector('#comparison-spec-list .cd-spec-edit-input');
+                if (input) { input.focus(); input.select(); }
+                return;
+            }
+            const saveBtn = e.target.closest('.cd-spec-edit-save');
+            if (saveBtn) {
+                e.preventDefault();
+                const item = saveBtn.closest('.cd-spec-item');
+                renameSpecFromPanel(item?.dataset.name || '', item?.querySelector('.cd-spec-edit-input')?.value || '');
+                return;
+            }
+            if (e.target.closest('.cd-spec-edit-cancel')) {
+                e.preventDefault();
+                specPanel.editing = null;
+                renderSpecPanelList();
+                return;
+            }
+            const nameEl = e.target.closest('.cd-spec-item-name');
+            if (nameEl) {
+                e.preventDefault();
+                pickSpecForTarget(nameEl.closest('.cd-spec-item')?.dataset.name || '');
+            }
+        });
+
+        modal.addEventListener('input', function (e) {
+            if (e.target.id !== 'comparison-spec-search') return;
+            specPanel.query = e.target.value || '';
+            renderSpecPanelList();
+        });
+
+        modal.addEventListener('change', function (e) {
+            const check = e.target.closest('.cd-spec-item-check');
+            if (check) {
+                const key = specKeyOf(check.dataset.name);
+                if (check.checked) specPanel.checked.add(key); else specPanel.checked.delete(key);
+                updateSpecPanelActions();
+                return;
+            }
+            if (e.target.id === 'comparison-spec-all') {
+                const q = specPanel.query.trim().toLowerCase();
+                (comparisonSpecList || []).filter(n => !q || n.toLowerCase().includes(q)).forEach((n) => {
+                    if (e.target.checked) specPanel.checked.add(specKeyOf(n)); else specPanel.checked.delete(specKeyOf(n));
+                });
+                renderSpecPanelList();
+            }
+        });
+
+        modal.addEventListener('keydown', function (e) {
+            if (e.target.classList?.contains('cd-spec-edit-input')) {
+                const item = e.target.closest('.cd-spec-item');
+                if (e.key === 'Enter') { e.preventDefault(); renameSpecFromPanel(item?.dataset.name || '', e.target.value); }
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); specPanel.editing = null; renderSpecPanelList(); }
+                return;
+            }
+            if (e.target.id === 'comparison-spec-search') {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSpecPanel(); return; }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const add = document.querySelector('#comparison-spec-list [data-add-name]');
+                    const first = document.querySelector('#comparison-spec-list .cd-spec-item[data-name] .cd-spec-item-name');
+                    const exact = [...document.querySelectorAll('#comparison-spec-list .cd-spec-item[data-name]')]
+                        .find(el => specKeyOf(el.dataset.name) === specKeyOf(specPanel.query));
+                    if (exact) pickSpecForTarget(exact.dataset.name);
+                    else if (add && specPanel.target !== null) addSpecFromPanel(add.dataset.addName);
+                    else if (first && specPanel.target !== null) pickSpecForTarget(first.closest('.cd-spec-item').dataset.name);
+                }
+            }
+        });
+    })();
+
     // Typing a supplier name directly in the sheet: Company Name follows (from the suppliers table).
     document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('focusout', function (e) {
         const cell = e.target.closest ? e.target.closest('.cd-sheet-cell') : null;
@@ -15960,6 +16614,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             field.value = d.value;
         });
+        syncSpecPickButtons();
         refreshColumnEditBulkBar();
     });
 
@@ -15994,6 +16649,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             specSelect.dataset.current = specSelect.value;
+            syncSpecPickButtons();
             return;
         }
 
@@ -16552,6 +17208,24 @@ document.addEventListener('DOMContentLoaded', function () {
                         <i class="mdi mdi-checkbox-multiple-marked-outline me-1"></i> Apply
                     </button>
                     <span class="cd-col-edit-bulk-count" id="comparison-column-edit-bulk-count">Select rows to apply</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto d-none" id="comparison-column-edit-spec-manage-btn" title="Search, add, rename (pen) and merge specifications">
+                        <i class="mdi mdi-format-list-checks me-1"></i> Manage specifications
+                    </button>
+                </div>
+                <div class="cd-spec-panel d-none" id="comparison-spec-panel">
+                    <div class="cd-spec-panel-head">
+                        <strong id="comparison-spec-panel-title">Specifications</strong>
+                        <input type="search" id="comparison-spec-search" class="form-control form-control-sm" placeholder="Quick search specification…" autocomplete="off" aria-label="Search specification">
+                        <button type="button" class="btn-close" id="comparison-spec-close" aria-label="Close"></button>
+                    </div>
+                    <div class="cd-spec-panel-actions">
+                        <label class="cd-spec-all"><input type="checkbox" class="form-check-input" id="comparison-spec-all"> All shown</label>
+                        <span class="cd-col-edit-bulk-count" id="comparison-spec-sel-count">Tick several to merge / add</span>
+                        <button type="button" class="btn btn-sm btn-outline-success ms-auto" id="comparison-spec-add-btn" title="Add a new specification to the master list"><i class="mdi mdi-plus me-1"></i> Add new</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-spec-addrows-btn" disabled title="Add the ticked specifications as new rows of this sheet"><i class="mdi mdi-table-row-plus-after me-1"></i> Add as rows</button>
+                        <button type="button" class="btn btn-sm btn-warning" id="comparison-spec-merge-btn" disabled title="Merge the ticked specifications into one name and update every sheet"><i class="mdi mdi-call-merge me-1"></i> Merge selected…</button>
+                    </div>
+                    <div class="cd-spec-list" id="comparison-spec-list"></div>
                 </div>
                 <div class="table-responsive" style="max-height: min(65vh, 560px); overflow-x: auto;">
                     <table class="table table-sm table-bordered align-middle cd-col-edit-table">

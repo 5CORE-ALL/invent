@@ -1183,6 +1183,210 @@ class ComparisonController extends Controller
         ]);
     }
 
+    private function specListPayload(): array
+    {
+        return ComparisonSpecification::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->pluck('name')
+            ->values()
+            ->all();
+    }
+
+    private function specKey(string $label): string
+    {
+        return mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $label)));
+    }
+
+    /**
+     * Rename one specification everywhere. When the new name already exists in the master list the two
+     * are merged. Body: {name: current name, new_name: new name}.
+     */
+    public function renameSpecification(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:120',
+            'new_name' => 'required|string|max:120',
+        ]);
+
+        return $this->mergeSpecificationNames([$data['name']], $data['new_name']);
+    }
+
+    /**
+     * Merge several specifications into one (new or existing) name and update every sheet that used
+     * any of the old names. Body: {names: [..], new_name}.
+     */
+    public function mergeSpecifications(Request $request)
+    {
+        $data = $request->validate([
+            'names' => 'required|array|min:1|max:100',
+            'names.*' => 'required|string|max:120',
+            'new_name' => 'required|string|max:120',
+        ]);
+
+        return $this->mergeSpecificationNames($data['names'], $data['new_name']);
+    }
+
+    private function mergeSpecificationNames(array $names, string $newName)
+    {
+        if (! Schema::hasTable('comparison_specifications')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Specification table is missing. Run php artisan migrate.',
+            ], 500);
+        }
+
+        $target = trim((string) preg_replace('/\s+/u', ' ', $newName));
+        if ($target === '') {
+            return response()->json(['success' => false, 'message' => 'New name is required.'], 422);
+        }
+        $targetKey = $this->specKey($target);
+
+        $fromKeys = [];
+        foreach ($names as $n) {
+            $k = $this->specKey((string) $n);
+            if ($k !== '') {
+                $fromKeys[$k] = trim((string) $n);
+            }
+        }
+        if ($fromKeys === []) {
+            return response()->json(['success' => false, 'message' => 'Pick the specifications first.'], 422);
+        }
+
+        DB::transaction(function () use ($fromKeys, $target, $targetKey) {
+            $rows = ComparisonSpecification::query()->get()
+                ->filter(fn ($r) => isset($fromKeys[$this->specKey($r->name)]) || $this->specKey($r->name) === $targetKey);
+            $targetRow = $rows->first(fn ($r) => $this->specKey($r->name) === $targetKey);
+            $minOrder = $rows->isNotEmpty() ? (int) $rows->min('sort_order') : (int) ComparisonSpecification::query()->max('sort_order') + 1;
+
+            if ($targetRow) {
+                if ($targetRow->name !== $target && count($fromKeys) === 1 && isset($fromKeys[$targetKey])) {
+                    $targetRow->update(['name' => $target]); // only the casing / spacing changed
+                }
+            } else {
+                $targetRow = ComparisonSpecification::query()->create([
+                    'name' => $target,
+                    'sort_order' => $minOrder,
+                    'created_by' => (string) (Auth::user()->name ?? Auth::id() ?? ''),
+                ]);
+            }
+            foreach ($rows as $r) {
+                if ((int) $r->id !== (int) $targetRow->id) {
+                    $r->delete();
+                }
+            }
+        });
+
+        $stats = $this->rewriteSpecLabelsEverywhere(array_keys($fromKeys), $target);
+
+        return response()->json([
+            'success' => true,
+            'name' => $target,
+            'specifications' => $this->specListPayload(),
+            'updated_sheets' => $stats['sheets'],
+            'updated_cells' => $stats['cells'],
+        ]);
+    }
+
+    /**
+     * Replace the Spec-column label of every stored comparison sheet (database copy + file copy).
+     *
+     * @param  list<string>  $fromKeys  normalised old names
+     * @return array{sheets: int, cells: int}
+     */
+    private function rewriteSpecLabelsEverywhere(array $fromKeys, string $target): array
+    {
+        @set_time_limit(300);
+        $fromSet = array_flip($fromKeys);
+        $sheets = 0;
+        $cellsChanged = 0;
+
+        $rewrite = function (array $cells) use ($fromSet, $target, &$cellsChanged): array {
+            $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+            $n = 0;
+            foreach ($cells as $r => $row) {
+                if (! is_array($row) || ! array_key_exists($specCol, $row)) {
+                    continue;
+                }
+                $label = (string) $row[$specCol];
+                if ($label === '' || $label === $target) {
+                    continue;
+                }
+                if (isset($fromSet[$this->specKey($label)])) {
+                    $cells[$r][$specCol] = $target;
+                    $n++;
+                }
+            }
+            $cellsChanged += $n;
+
+            return [$cells, $n];
+        };
+
+        // Cheap pre-filter on the raw JSON so untouched sheets are not decoded.
+        $needles = [];
+        foreach ($fromKeys as $k) {
+            $needles[] = trim((string) json_encode($k), '"');
+            $needles[] = trim((string) json_encode($k, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), '"');
+            $needles[] = trim((string) json_encode($k, JSON_UNESCAPED_UNICODE), '"');
+        }
+        $needles = array_values(array_unique(array_filter($needles, fn ($s) => $s !== '')));
+        $mayContain = function (string $raw) use ($needles): bool {
+            foreach ($needles as $needle) {
+                if (stripos($raw, $needle) !== false) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Database copies.
+        DB::table('comparison_data')->select('id', 'sku', 'sheet_data')->orderBy('id')->chunkById(50, function ($rows) use ($rewrite, $mayContain, &$sheets) {
+            foreach ($rows as $row) {
+                $raw = (string) $row->sheet_data;
+                if ($raw === '' || ! $mayContain($raw)) {
+                    continue;
+                }
+                $data = json_decode($raw, true);
+                if (! is_array($data) || ! is_array($data['cells'] ?? null)) {
+                    continue;
+                }
+                [$cells, $n] = $rewrite($data['cells']);
+                if ($n > 0) {
+                    $data['cells'] = $cells;
+                    DB::table('comparison_data')->where('id', $row->id)->update([
+                        'sheet_data' => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                    ]);
+                    $sheets++;
+                }
+            }
+        });
+
+        // File copies (the sheet editor reads these first).
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        foreach ($disk->files('comparison-sheets') as $path) {
+            if (! str_ends_with($path, '.json')) {
+                continue;
+            }
+            $raw = (string) $disk->get($path);
+            if ($raw === '' || ! $mayContain($raw)) {
+                continue;
+            }
+            $payload = json_decode($raw, true);
+            if (! is_array($payload) || ! is_array($payload['cells'] ?? null)) {
+                continue;
+            }
+            [$cells, $n] = $rewrite($payload['cells']);
+            if ($n > 0) {
+                $payload['cells'] = $cells;
+                $disk->put($path, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+                $sheets++;
+            }
+        }
+
+        return ['sheets' => $sheets, 'cells' => $cellsChanged];
+    }
+
     public function saveSheet(Request $request)
     {
         $validated = $request->validate([

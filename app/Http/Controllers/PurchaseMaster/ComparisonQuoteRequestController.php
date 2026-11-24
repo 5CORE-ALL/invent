@@ -127,7 +127,7 @@ class ComparisonQuoteRequestController extends Controller
             }
         }
 
-        $sender = app(ContainerQuoteRequestController::class)->sender();
+        $sender = $this->mailSender();
         $mail = $this->renderMail($sender, $supplier !== '' ? $supplier : '[Supplier name]', $sku, $this->comparison->qrProductImage($sku), $rows, $url);
 
         return response()->json([
@@ -186,11 +186,11 @@ class ComparisonQuoteRequestController extends Controller
 
         $mailer = null;
         if ($sendEmail) {
-            $mailer = app(ContainerQuoteRequestController::class)->sender();
+            $mailer = $this->mailSender();
             if (str_starts_with($mailer['mailer'], 'quotes') && trim((string) config('mail.mailers.'.$mailer['mailer'].'.password')) === '') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'The sourcing1@5core.com mailbox is not connected yet: QUOTE_MAIL_PASSWORD is missing in .env.',
+                    'message' => 'The mail server login is not connected yet: QUOTE_MAIL_PASSWORD is missing in .env.',
                 ], 422);
             }
         }
@@ -465,6 +465,13 @@ class ComparisonQuoteRequestController extends Controller
 
         Mail::mailer($sender['mailer'])->html($html, function ($m) use ($sender, $toEmails, $toName, $subject) {
             $m->from($sender['email'], $sender['name'])->subject($subject);
+            if (! empty($sender['reply_to'])) {
+                $m->replyTo($sender['reply_to'], $sender['name']);
+            }
+            // Delivered through this mailbox (SMTP login) when the visible sender is the user's own address.
+            if (! empty($sender['smtp_email']) && strcasecmp($sender['smtp_email'], $sender['email']) !== 0) {
+                $m->sender($sender['smtp_email']);
+            }
             foreach ($toEmails as $i => $addr) {
                 $m->to($addr, $i === 0 ? $toName : null);
             }
@@ -536,13 +543,48 @@ class ComparisonQuoteRequestController extends Controller
         ]);
     }
 
+    /** Every logged-in user may use the QR form / draft / send tools. */
     private function denyUnlessInternal(): ?JsonResponse
     {
-        $user = Auth::user();
-        if ($user && method_exists($user, 'is5CoreMember') && $user->is5CoreMember()) {
+        if (Auth::check()) {
             return null;
         }
 
-        return response()->json(['success' => false, 'message' => 'Only 5Core users can do this.'], 403);
+        return response()->json(['success' => false, 'message' => 'Please log in.'], 401);
+    }
+
+    /**
+     * Who the mail comes from: the logged-in user (their name + email). Replies go to the user's email.
+     * A user with their own connected mailbox (config mail.quote_senders) sends straight from it. Everybody
+     * else goes out through the shared sourcing mailbox (that is the SMTP login) with the user's name and
+     * email on From / Reply-To; Gmail may show the shared address as the technical sender unless the user's
+     * address is added there as a "Send mail as" alias, but replies always reach the user.
+     *
+     * @return array{mailer: string, email: string, name: string, reply_to: string, smtp_email: string}
+     */
+    private function mailSender(): array
+    {
+        $base = app(ContainerQuoteRequestController::class)->sender();
+        $user = Auth::user();
+        $userEmail = trim((string) ($user->email ?? ''));
+        $userName = trim((string) ($user->name ?? ''));
+        $validEmail = $userEmail !== '' && filter_var($userEmail, FILTER_VALIDATE_EMAIL);
+
+        $personal = $base['mailer'] !== (string) config('mail.quote_mailer', 'quotes');
+        if ($personal) {
+            // Own mailbox: from that mailbox, replies to the same mailbox (or the user's login email).
+            return $base + ['reply_to' => $validEmail ? $userEmail : $base['email'], 'smtp_email' => $base['email']];
+        }
+        if (! $validEmail) {
+            return $base + ['reply_to' => $base['email'], 'smtp_email' => $base['email']];
+        }
+
+        return [
+            'mailer' => $base['mailer'],
+            'email' => $userEmail,
+            'name' => $userName !== '' ? $userName : $userEmail,
+            'reply_to' => $userEmail,
+            'smtp_email' => $base['email'],
+        ];
     }
 }
