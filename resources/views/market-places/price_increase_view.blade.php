@@ -9914,6 +9914,10 @@
                 linkMp = 'ebay';
             } else if (mp === 'fba') {
                 linkMp = 'amazon';
+            } else if (mp === 'temu2') {
+                linkMp = 'temu';
+            } else if (mp === 'tiktok2' || mp === 'tiktok 2') {
+                linkMp = 'tiktok';
             }
             const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
                 return String($(this).attr('data-marketplace') || '').toLowerCase() === mp;
@@ -10456,6 +10460,17 @@
             'mercari w/o ship', 'fbmarketplace', 'fb marketplace'
         ]);
 
+        // Same list ignoring spaces / punctuation: a row named "TikTok 2" or "Mercari w/o ship" must match 'tiktok2' / 'mercariwoship'.
+        // (The exact-match check silently skipped TikTok 2 — its SPRICE never reached /tiktok-two pricing from the SPRICE $ box.)
+        const CHSAVE_SUPPORTED_COMPACT = new Set(Array.from(CHSAVE_SUPPORTED).map(function(k) {
+            return String(k).replace(/[^a-z0-9]/g, '');
+        }));
+        function chsaveIsSupported(mp) {
+            const lower = String(mp || '').toLowerCase().trim();
+            if (!lower) return false;
+            return CHSAVE_SUPPORTED.has(lower) || CHSAVE_SUPPORTED_COMPACT.has(lower.replace(/[^a-z0-9]/g, ''));
+        }
+
         /** idle | busy | ok (green tick) | fail (red alert triangle) for a Channels-modal push button. */
         function chpushSetBtnState($btn, state, msg) {
             if (!$btn || !$btn.length) return;
@@ -10597,7 +10612,7 @@
                 const $row = chpushFindRow($chTr.attr('data-channel'));
                 // No SKU-modal row for this channel: save by the channel's own key (every input must be stored)
                 const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey($chTr.attr('data-channel'));
-                if (!CHSAVE_SUPPORTED.has(mp.toLowerCase())) return;
+                if (!chsaveIsSupported(mp)) return;
                 const current = chpushSavedSprice($chTr.attr('data-channel'), $row);
                 if (current != null && Math.abs(current - price) < 0.005) return; // already saved with this value
                 jobs.push({ $row: $row, mp: mp, price: price });
@@ -10657,7 +10672,7 @@
                 if (price == null) return;
                 const $row = chpushFindRow($chTr.attr('data-channel'));
                 const mp = $row ? String($row.attr('data-marketplace') || '') : chpushKey($chTr.attr('data-channel'));
-                if (!CHSAVE_SUPPORTED.has(mp.toLowerCase())) return;
+                if (!chsaveIsSupported(mp)) return;
                 out.push({ mp: mp, price: price });
             });
             return out;
@@ -10723,7 +10738,7 @@
                 ? opts.siblingPrices
                 : targets.map(function(t) { return { mp: t.marketplace, price: t.price }; });
             const sibPrices = sibBasePrices
-                .filter(function(p) { return p.mp && CHSAVE_SUPPORTED.has(String(p.mp).toLowerCase()); })
+                .filter(function(p) { return p.mp && chsaveIsSupported(p.mp); })
                 .map(function(p) { return { mp: p.mp, price: +(p.price + sibAdd).toFixed(2) }; });
             const sibSaveDfd = sibSkus.length
                 ? chpushSaveToSiblings(sibSkus, sibPrices)
@@ -11299,6 +11314,58 @@
             return lowest;
         }
 
+        /** Patch a single *_lmp_price field on the main grid (+ cached dataset) for a SKU. */
+        function patchPriceIncreaseLmpField(sku, field, value) {
+            if (!sku || !field) return;
+            const key = String(sku).trim().toUpperCase();
+            const patch = {};
+            patch[field] = value;
+            patch.lmp_channels = Date.now(); // virtual field: re-renders the "LMP by Channel" cell
+            if (table) {
+                (table.getRows() || []).forEach(function(r) {
+                    const d = r.getData();
+                    if (!d || d.is_parent_summary) return;
+                    if (String(d.sku || '').trim().toUpperCase() !== key) return;
+                    r.update(patch);
+                });
+            }
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(row) {
+                    if (!row || row.is_parent_summary) return;
+                    if (String(row.sku || '').trim().toUpperCase() !== key) return;
+                    row[field] = value;
+                });
+            }
+        }
+
+        /**
+         * After any LMP add / edit / delete / ignore: recompute the channel's lowest LMP from the
+         * freshly loaded drawer data and push it to every outer place that shows it
+         * (OV L30 breakdown rows for all aliased channels + main grid column) — no page refresh.
+         */
+        function syncLmpToOuterUi(sku, channel) {
+            const ch = String(channel || '').toLowerCase();
+            if (!ch) return;
+            const lowest = lowestLmpFromModalCache(ch);
+            const value = (lowest != null && lowest > 0) ? +Number(lowest).toFixed(2) : null;
+
+            // OV L30 channel names that share this LMP channel
+            const ovlAliases = {
+                amazon: ['amazon', 'fba'],
+                ebay: ['ebay', 'ebay1', 'ebay2', 'ebay3', 'ebaytwo', 'ebaythree'],
+                temu: ['temu', 'temu2'],
+                tiktok: ['tiktok', 'tiktok2', 'tiktok 2'],
+                bestbuy: ['bestbuy', 'bestbuyusa'],
+                macy: ['macy', 'macys']
+            };
+            (ovlAliases[ch] || [ch]).forEach(function(mp) { patchOvl30LmpCell(mp, value); });
+
+            // Main grid column (only channels that have an *_lmp_price column)
+            if (['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'tiktok'].indexOf(ch) !== -1) {
+                patchPriceIncreaseLmpField(sku, ch + '_lmp_price', value);
+            }
+        }
+
         /**
          * After Pull: refresh open LMP drawer + patch OV L30 LMP cells in place
          * (no page reload, no closing/reopening modals).
@@ -11427,6 +11494,11 @@
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
                 updateLmpPullBtnTitle(initialFilter);
+
+                // Cache is now fresh → let callers (add/edit/delete) sync outer UI with real data
+                if (typeof options.onLoaded === 'function') {
+                    try { options.onLoaded(rows); } catch (e) { console.error('LMP onLoaded failed', e); }
+                }
 
                 // Ensure drawer stayed open after DOM rebuild
                 if (lmpEl && !lmpEl.classList.contains('show')) {
@@ -12631,26 +12703,13 @@
 
         function refreshLmpAfterMutation(sku, channel) {
             resetLmpEditState();
-            // Refresh LMP drawer only — do NOT reload full OV L30 breakdown (too slow)
-            loadLmpCompetitorsModal(sku, channel, true);
-            // Patch OV L30 LMP cell from updated cache when available
-            setTimeout(function() {
-                const ch = String(channel || 'amazon').toLowerCase();
-                const rows = (lmpModalCache.rows || []).filter(function(r) {
-                    return r.channel === ch && !r.ignored;
-                });
-                let lowest = null;
-                rows.forEach(function(r) {
-                    const ranked = (typeof lmpRankValue === 'function' ? lmpRankValue(r) : null)
-                        || r.price;
-                    if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
-                });
-                patchOvl30LmpCell(ch, lowest);
-                if (ch === 'tiktok') {
-                    patchOvl30LmpCell('tiktok2', lowest);
-                    patchOvl30LmpCell('tiktok 2', lowest);
-                }
-            }, 400);
+            // Refresh LMP drawer only — do NOT reload full OV L30 breakdown (too slow).
+            // Outer LMP cells are synced once the drawer data has actually been re-fetched
+            // (a fixed timeout raced the 9 parallel requests and re-applied the stale value).
+            const ch = String(channel || 'amazon').toLowerCase();
+            loadLmpCompetitorsModal(sku, channel, true, {
+                onLoaded: function() { syncLmpToOuterUi(sku, ch); }
+            });
         }
 
         function saveTemuLmpEntries(sku, entries, done) {
@@ -12814,18 +12873,8 @@
                         });
                         renderLmpMergedTable();
                         showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
-                        // Patch OV L30 LMP cell only (no full breakdown reload)
-                        const ch = String(marketplace || '').toLowerCase();
-                        const active = (lmpModalCache.rows || []).filter(function(r) {
-                            return r.channel === ch && !r.ignored;
-                        });
-                        let lowest = null;
-                        active.forEach(function(r) {
-                            const ranked = (typeof lmpRankValue === 'function' ? lmpRankValue(r) : null)
-                                || r.price;
-                            if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
-                        });
-                        patchOvl30LmpCell(ch, lowest);
+                        // Patch OV L30 + main grid LMP (no full breakdown reload)
+                        syncLmpToOuterUi(sku, String(marketplace || '').toLowerCase());
                     } else {
                         $cb.prop('checked', !ignored);
                         showToast((res && res.error) || 'Failed to update ignore', 'error');
