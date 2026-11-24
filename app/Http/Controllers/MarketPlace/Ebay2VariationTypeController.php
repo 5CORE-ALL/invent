@@ -137,7 +137,7 @@ class Ebay2VariationTypeController extends Controller
         $rows = [];
         foreach ($listings as $itemId => $listing) {
             $rec = $saved->get($itemId);
-            $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
+            $parentNorm = $this->masterKey($listing, $master);
             $rows[] = [
                 'item_id' => (string) $itemId,
                 'main_listing' => $listing['main_listing'],
@@ -264,7 +264,8 @@ class Ebay2VariationTypeController extends Controller
         set_time_limit(300);
         $itemId = trim($data['item_id']);
         $listing = $this->mainListings()[$itemId] ?? null;
-        $masterInfo = $listing ? ($this->variationMasterInfo()[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])] ?? null) : null;
+        $allMaster = $listing ? $this->variationMasterInfo() : [];
+        $masterInfo = $listing ? ($allMaster[$this->masterKey($listing, $allMaster)] ?? null) : null;
         $newType = trim((string) ($data['new_type'] ?? ''));
         if ($newType === '') {
             $newType = trim((string) ($masterInfo['type'] ?? ''));
@@ -411,7 +412,7 @@ class Ebay2VariationTypeController extends Controller
         if ($listing === null) {
             return [];
         }
-        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
+        $parentNorm = $this->masterKey($listing, $master);
         $live = is_array($rec?->live_variations) ? $rec->live_variations : [];
         $liveSkus = array_values(array_filter(array_map(static fn ($v) => trim((string) ($v['sku'] ?? '')), $live)));
         $liveBySku = [];
@@ -485,13 +486,51 @@ class Ebay2VariationTypeController extends Controller
         return $this->rowPayload($rec) + ($master !== null ? $this->skuColumns($listing, $rec, $master) : []);
     }
 
+    /**
+     * Key of the Variation Master family of a listing. Normally the listing's own parent name. When Variation Master
+     * has no family by that name (the eBay parent SKU is spelled differently), the Parent that CP Masters holds for
+     * the listing's child SKUs is used, so the type and the SKU names still come through.
+     *
+     * @param  array{main_listing: string, parent_key: string, skus: list<string>}  $listing
+     * @param  array<string, array{type: string, skus: list<string>, names: array<string, string>}>  $master
+     */
+    private function masterKey(array $listing, array $master): string
+    {
+        $key = ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key']);
+        if (isset($master[$key])) {
+            return $key;
+        }
+
+        $cp = $this->cpMasterSkuKeys();
+        $counts = [];
+        foreach ((array) ($listing['skus'] ?? []) as $sku) {
+            if (preg_match('/^PARENT\b/i', (string) $sku)) {
+                continue;
+            }
+            $parent = $cp[$this->skuKey((string) $sku)] ?? '';
+            if ($parent === '') {
+                continue;
+            }
+            $candidate = ShopifySku::normalizeSkuForShopifyLookup(ListingManagerFamily::normalizeParentKey($parent));
+            if ($candidate !== '' && isset($master[$candidate])) {
+                $counts[$candidate] = ($counts[$candidate] ?? 0) + 1;
+            }
+        }
+        if ($counts !== []) {
+            arsort($counts);
+
+            return (string) array_key_first($counts);
+        }
+
+        return $key;
+    }
     /** The row as the page shows it, including the SKU columns (they depend on the pulled live variations). */
     private function rowWithSkus(Model $rec): array
     {
         $listing = $this->mainListings()[(string) $rec->item_id] ?? null;
 
         $master = $listing ? $this->variationMasterInfo() : [];
-        $masterType = $listing ? ($master[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])]['type'] ?? '') : '';
+        $masterType = $listing ? ($master[$this->masterKey($listing, $master)]['type'] ?? '') : '';
 
         return ['master_type' => $masterType] + $this->rowPayload($rec) + $this->skuColumns($listing, $rec, $master);
     }
@@ -739,7 +778,8 @@ class Ebay2VariationTypeController extends Controller
         if ($listing === null) {
             return ['success' => false, 'message' => 'This listing is not in the live '.$this->label().' list any more. Refresh the page.'];
         }
-        $info = $this->variationMasterInfo()[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])] ?? null;
+        $allMaster = $this->variationMasterInfo();
+        $info = $allMaster[$this->masterKey($listing, $allMaster)] ?? null;
         $names = $info['names'] ?? [];
         if ($names === []) {
             return ['success' => false, 'message' => 'Variation Master has no Variation Name for any SKU of this parent.'];
