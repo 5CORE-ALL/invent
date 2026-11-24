@@ -1909,14 +1909,15 @@ class ComparisonController extends Controller
         string $tab,
         string $user,
         ?string $clink = null,
-        ?array $formats = null
+        ?array $formats = null,
+        bool $allowBlank = false
     ): void {
         $cells = ComparisonData::normalizeCells($cells);
         $existingSources = $this->loadSheetSources($sku);
         $existing = $this->richerSheetCells($existingSources['file_cells'], $existingSources['db_cells']);
         if (
             $this->isDestructiveSheetOverwrite($existing, $cells)
-            || ! $this->sheetService->hasMeaningfulContent($cells)
+            || (! $allowBlank && ! $this->sheetService->hasMeaningfulContent($cells))
         ) {
             return;
         }
@@ -4233,5 +4234,147 @@ class ComparisonController extends Controller
         );
 
         return ['ok' => true, 'message' => 'Saved.', 'updated' => $updated];
+    }
+
+    // ── Copy specs (Purchase Specific Siblings page) ─────────────────────────
+
+    /**
+     * Copy the Critical spec rows (label + Amazon / 5 Core values + Critical status) of one SKU's
+     * sheet onto other SKUs' sheets. A spec the destination already has (same label, any priority)
+     * is never touched. A destination without a sheet gets the default template first.
+     *
+     * @param  list<string>  $toSkus
+     * @return array{ok: bool, message: string, source_specs: int, results: list<array{sku: string, status: string, copied: int, skipped: int, message: string}>}
+     */
+    public function copyCriticalSpecs(string $fromSku, array $toSkus, string $user): array
+    {
+        $fromSku = trim($fromSku);
+        $sources = $this->loadSheetSources($fromSku);
+        $fromCells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        if ($fromSku === '' || ! $this->sheetService->hasMeaningfulContent($fromCells)) {
+            return ['ok' => false, 'message' => 'The "copy from" SKU has no comparison sheet.', 'source_specs' => 0, 'results' => []];
+        }
+
+        $specs = $this->sheetService->criticalSpecRows($this->sheetService->ensureLeadColumns($fromCells));
+        if ($specs === []) {
+            return ['ok' => false, 'message' => 'The "copy from" SKU has no Critical specs to copy.', 'source_specs' => 0, 'results' => []];
+        }
+
+        $results = [];
+        $seen = [];
+        foreach ($toSkus as $toSku) {
+            $toSku = trim((string) $toSku);
+            $key = strtoupper($toSku);
+            if ($toSku === '' || isset($seen[$key]) || strcasecmp($toSku, $fromSku) === 0) {
+                continue;
+            }
+            $seen[$key] = true;
+            $this->linkedSkuGroupService->reset();
+            $results[] = $this->copySpecsToSku($specs, $fromSku, $toSku, $user);
+        }
+
+        return ['ok' => true, 'message' => 'Done.', 'source_specs' => count($specs), 'results' => $results];
+    }
+
+    /**
+     * @param  list<array{row: int, label: string, amazon: string, five_core: string}>  $specs
+     * @return array{sku: string, status: string, copied: int, skipped: int, message: string}
+     */
+    private function copySpecsToSku(array $specs, string $fromSku, string $toSku, string $user): array
+    {
+        $labelKey = fn (string $label): string => mb_strtolower(PurchaseSpecificController::normalizeLabel($label));
+        $fail = fn (string $message): array => ['sku' => $toSku, 'status' => 'failed', 'copied' => 0, 'skipped' => 0, 'message' => $message];
+
+        $sources = $this->loadSheetSources($toSku);
+        $cells = $this->richerSheetCells($sources['file_cells'], $sources['db_cells']);
+        $isNew = ! $this->sheetService->hasMeaningfulContent($cells);
+        if ($isNew) {
+            $cells = ComparisonData::defaultSheetCells();
+        }
+        $cells = $this->sheetService->ensureLeadColumns($cells);
+
+        $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+        $criticalCol = $this->sheetService->detectCriticalColumnIndex($cells, $specCol);
+        if ($criticalCol === null || $specCol < 2) {
+            return $fail('Could not find the Spec / Critical columns on this sheet.');
+        }
+
+        $existing = [];
+        foreach ($cells as $row) {
+            if (is_array($row)) {
+                $key = $labelKey(trim((string) ($row[$specCol] ?? '')));
+                if ($key !== '') {
+                    $existing[$key] = true;
+                }
+            }
+        }
+
+        // Drop trailing blank rows so the copied specs land right under the last real row.
+        while (count($cells) > 1) {
+            $last = array_key_last($cells);
+            if (array_filter($cells[$last], fn ($v) => trim((string) $v) !== '') !== []) {
+                break;
+            }
+            array_pop($cells);
+        }
+
+        $colCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells));
+        $copied = [];
+        $skipped = 0;
+        foreach ($specs as $spec) {
+            $key = $labelKey($spec['label']);
+            if ($key === '' || isset($existing[$key])) {
+                $skipped++;
+
+                continue;
+            }
+            $row = array_fill(0, $colCount, '');
+            $row[$specCol - 2] = $spec['amazon'];
+            $row[$specCol - 1] = $spec['five_core'];
+            $row[$specCol] = $spec['label'];
+            $row[$criticalCol] = 'Critical';
+            $cells[] = $row;
+            $existing[$key] = true;
+            $copied[] = $spec['label'];
+        }
+
+        if ($copied === []) {
+            return ['sku' => $toSku, 'status' => 'skipped', 'copied' => 0, 'skipped' => $skipped, 'message' => 'All specs already there.'];
+        }
+
+        $record = $sources['record'];
+        $filePayload = $sources['file_payload'];
+        $formats = $this->sheetStorage->formatsFromPayload($filePayload);
+        if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
+            $formats = ComparisonData::normalizeFormats($record->sheet_data['formats'] ?? []);
+        }
+        $parent = (string) ($record?->parent ?? ($filePayload['parent'] ?? ''));
+        if ($parent === '') {
+            $parent = (string) (ProductMaster::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($toSku)])
+                ->value('parent') ?? '');
+        }
+        $url = $record?->google_sheet_url ?? ($filePayload['google_sheet_url'] ?? null);
+        $tab = (string) ($record?->google_sheet_tab ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'));
+
+        try {
+            $this->persistSheetForSku($toSku, $parent, $cells, $url, $tab, $user, $this->clinkForSku($toSku), $formats, true);
+        } catch (\Throwable $e) {
+            return $fail('Could not save: '.$e->getMessage());
+        }
+
+        try {
+            ComparisonHistory::logChange($toSku, $parent, 'copy_specs', '', 'Copied from '.$fromSku.': '.implode('; ', $copied), $user);
+        } catch (\Throwable $e) {
+            // History is best-effort; never block the copy.
+        }
+
+        return [
+            'sku' => $toSku,
+            'status' => 'copied',
+            'copied' => count($copied),
+            'skipped' => $skipped,
+            'message' => count($copied).' copied'.($skipped ? ', '.$skipped.' already there' : '').($isNew ? ' (new sheet)' : '').'.',
+        ];
     }
 }

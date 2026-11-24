@@ -19,6 +19,10 @@ class PurchaseSpecificSiblingsController extends Controller
 
     private const TABLE = 'purchase_specific_siblings';
 
+    public function __construct(private ComparisonController $comparison)
+    {
+    }
+
     public function index()
     {
         return view('purchase-master.purchase-specific-siblings.index', ['max' => self::MAX]);
@@ -132,6 +136,47 @@ class PurchaseSpecificSiblingsController extends Controller
             'updated' => $updated,
             'skus' => array_values($skus),
             'name' => $name,
+        ]);
+    }
+
+    /**
+     * Copy the Critical specs of `from_sku` onto `to_skus` (this SKU and/or its siblings).
+     * Specs a destination already has are skipped, never overwritten.
+     * Body: { from_sku: string, to_skus: string[] }
+     */
+    public function copySpecs(Request $request)
+    {
+        $validated = $request->validate([
+            'from_sku' => 'required|string|max:191',
+            'to_skus' => 'required|array|min:1|max:500',
+            'to_skus.*' => 'required|string|max:191',
+        ]);
+
+        @set_time_limit(300);
+        $user = Auth::user()?->name ?? 'N/A';
+        $out = $this->comparison->copyCriticalSpecs($validated['from_sku'], $validated['to_skus'], $user);
+
+        if (! $out['ok']) {
+            return response()->json(['success' => false, 'message' => $out['message']], 422);
+        }
+
+        $copiedSkus = collect($out['results'])->where('status', 'copied');
+        $skippedSkus = collect($out['results'])->where('status', 'skipped');
+        $failedSkus = collect($out['results'])->where('status', 'failed');
+
+        $message = $copiedSkus->count().' SKU(s) updated ('.$copiedSkus->sum('copied').' spec(s) copied)';
+        if ($skippedSkus->count()) {
+            $message .= ', '.$skippedSkus->count().' already had every spec';
+        }
+        if ($failedSkus->count()) {
+            $message .= ', '.$failedSkus->count().' failed';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message.'.',
+            'source_specs' => $out['source_specs'],
+            'results' => $out['results'],
         ]);
     }
 

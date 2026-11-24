@@ -6363,6 +6363,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/', 'index')->name('purchase.specific.siblings.index');
         Route::get('/data', 'data')->name('purchase.specific.siblings.data');
         Route::post('/save', 'save')->name('purchase.specific.siblings.save');
+        Route::post('/copy-specs', 'copySpecs')->name('purchase.specific.siblings.copy-specs');
     });
 
     // Ready To Ship

@@ -38,6 +38,13 @@
         .pss-name { flex: 1 1 auto; font-weight: 600; white-space: normal; word-break: break-word; }
         .pss-plus-btn { border: 0; background: #ede9fe; color: #6d28d9; border-radius: 50%; width: 28px; height: 28px; line-height: 1; padding: 0; }
         .pss-plus-btn:hover { background: #ddd6fe; }
+        .pss-copy-btn { border: 0; background: #fef3c7; color: #b45309; border-radius: 6px; padding: 3px 9px; }
+        .pss-copy-btn:hover { background: #fde68a; }
+        #pssCopyModal .select2-container { width: 100% !important; }
+        .pss-result-list { max-height: 200px; overflow-y: auto; font-size: .85rem; }
+        .pss-result-list .ok { color: #166534; }
+        .pss-result-list .skip { color: #92400e; }
+        .pss-result-list .fail { color: #b91c1c; }
         .pss-members { display: flex; flex-wrap: wrap; gap: 4px; max-height: 110px; overflow-y: auto; }
         .pss-member { background: #e2e8f0; color: #334155; border-radius: 4px; padding: 1px 7px; font-size: .78rem; }
         #pssSiblingModal .select2-container { width: 100% !important; }
@@ -136,6 +143,33 @@
             </div>
         </div>
     </div>
+
+    {{-- Copy specs modal --}}
+    <div class="modal fade" id="pssCopyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Copy specs</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 small" id="pss-copy-info"></div>
+                    <label class="form-label fw-semibold" for="pss-copy-from">Copy from</label>
+                    <select id="pss-copy-from" class="form-select"></select>
+                    <div class="small text-muted mt-2">
+                        Copies the <b>Critical</b> specs (with their Amazon / 5 Core values) of the chosen SKU.
+                        A spec the destination already has is skipped, never overwritten.
+                    </div>
+                    <div class="pss-result-list mt-3 d-none" id="pss-copy-results"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="pss-copy-self-btn">Copy</button>
+                    <button type="button" class="btn btn-success" id="pss-copy-siblings-btn">Copy to siblings</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
@@ -147,6 +181,7 @@
             const URLS = {
                 siblings: @json(route('purchase.specific.siblings.data')),
                 save: @json(route('purchase.specific.siblings.save')),
+                copySpecs: @json(route('purchase.specific.siblings.copy-specs')),
             };
             const CSRF = @json(csrf_token());
             const MAX = @json($max);
@@ -281,6 +316,15 @@
                                 if (!e.target.closest('.pss-plus-btn')) return;
                                 e.stopPropagation();
                                 openSiblingModal(cell.getRow().getData());
+                            }},
+                        {title: 'Copy Specs', field: 'copySpecs', headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 110, resizable: false,
+                            formatter: (cell) => cell.getRow().getData().isParent
+                                ? '<span class="text-muted">-</span>'
+                                : '<button type="button" class="pss-copy-btn" title="Copy specs from another SKU"><i class="fas fa-copy"></i></button>',
+                            cellClick: (e, cell) => {
+                                if (!e.target.closest('.pss-copy-btn')) return;
+                                e.stopPropagation();
+                                openCopyModal(cell.getRow().getData());
                             }},
                     ],
                 });
@@ -477,6 +521,96 @@
             }
 
             $('pss-sib-save').addEventListener('click', saveSiblings);
+
+            // ---------------------------------------------------------------- copy specs
+            let copyRow = null; // row whose copy icon was clicked
+            const $copyFrom = window.jQuery ? window.jQuery('#pss-copy-from') : null;
+
+            // SKUs that share the clicked row's sibling name (including the row itself).
+            function siblingSkusOf(rowData) {
+                if (!rowData.sibling) return [];
+                const out = [];
+                const seen = new Set();
+                table.getData().forEach((r) => {
+                    if (r.isParent || !r.sku || r.sibling !== rowData.sibling || seen.has(r.sku)) return;
+                    seen.add(r.sku);
+                    out.push(r.sku);
+                });
+                return out;
+            }
+
+            function openCopyModal(rowData) {
+                if (!$copyFrom) { flash('danger', 'jQuery / Select2 failed to load.'); return; }
+                copyRow = rowData;
+                $('pss-copy-results').classList.add('d-none');
+                $('pss-copy-results').innerHTML = '';
+                $('pss-copy-info').innerHTML = 'Copy specs into SKU <b>' + esc(rowData.sku) + '</b>'
+                    + (rowData.sibling ? ' · sibling <b>' + esc(rowData.sibling) + '</b>' : '');
+
+                const seen = new Set([rowData.sku]);
+                const opts = ['<option value=""></option>'];
+                table.getData().forEach((r) => {
+                    if (r.isParent || !r.sku || seen.has(r.sku)) return;
+                    seen.add(r.sku);
+                    opts.push('<option value="' + esc(r.sku) + '">' + esc(r.sku) + (r.sibling ? ' — ' + esc(r.sibling) : '') + '</option>');
+                });
+                $copyFrom.html(opts.join(''));
+                if (!$copyFrom.data('select2')) {
+                    $copyFrom.select2({
+                        theme: 'bootstrap-5',
+                        dropdownParent: window.jQuery('#pssCopyModal'),
+                        placeholder: 'Search and select a SKU to copy from…',
+                        allowClear: true,
+                        width: '100%',
+                    });
+                }
+                $copyFrom.val(null).trigger('change');
+
+                const sibs = siblingSkusOf(rowData);
+                const btn = $('pss-copy-siblings-btn');
+                btn.disabled = sibs.length < 1;
+                btn.textContent = 'Copy to siblings' + (sibs.length ? ' (' + sibs.length + ')' : '');
+                btn.title = rowData.sibling ? 'Copy to every SKU under "' + rowData.sibling + '"' : 'This SKU has no purchase sibling name yet';
+                bootstrap.Modal.getOrCreateInstance($('pssCopyModal')).show();
+            }
+
+            async function runCopy(targets) {
+                const from = $copyFrom.val();
+                if (!from) { flash('warning', 'Select a SKU to copy from.'); return; }
+                const toSkus = targets.filter((s) => s !== from);
+                if (!toSkus.length) { flash('warning', 'Nothing to copy to (the source SKU is the only target).'); return; }
+                const btns = [$('pss-copy-self-btn'), $('pss-copy-siblings-btn')];
+                const wasDisabled = btns.map((b) => b.disabled);
+                btns.forEach((b) => { b.disabled = true; });
+                const box = $('pss-copy-results');
+                box.classList.remove('d-none');
+                box.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Copying…</span>';
+                try {
+                    const res = await fetch(URLS.copySpecs, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF},
+                        credentials: 'same-origin',
+                        body: JSON.stringify({from_sku: from, to_skus: toSkus}),
+                    });
+                    let json = {};
+                    try { json = await res.json(); } catch (e) {}
+                    if (!res.ok || json.success === false) {
+                        throw new Error(json.message || (json.errors ? Object.values(json.errors).flat().join(' ') : 'Request failed (' + res.status + ').'));
+                    }
+                    box.innerHTML = '<div class="fw-semibold mb-1">' + esc(json.message) + '</div>' + (json.results || []).map((r) =>
+                        '<div class="' + (r.status === 'copied' ? 'ok' : r.status === 'skipped' ? 'skip' : 'fail') + '"><b>' + esc(r.sku) + '</b> — ' + esc(r.message) + '</div>'
+                    ).join('');
+                    flash('success', json.message);
+                } catch (err) {
+                    box.innerHTML = '<div class="fail">' + esc(err.message) + '</div>';
+                    flash('danger', err.message);
+                } finally {
+                    btns.forEach((b, i) => { b.disabled = wasDisabled[i]; });
+                }
+            }
+
+            $('pss-copy-self-btn').addEventListener('click', () => runCopy([copyRow.sku]));
+            $('pss-copy-siblings-btn').addEventListener('click', () => runCopy(siblingSkusOf(copyRow)));
 
             $('pss-modal-input').addEventListener('input', updateModalCount);
             $('pss-modal-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveEdit(); } });
