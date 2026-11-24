@@ -119,6 +119,8 @@ class PromotionsController extends Controller
         'ebaytwo' => 'ebay2',
         'ebay3' => 'ebay3',
         'ebaythree' => 'ebay3',
+        // Amazon: PRMT% / S PRC live on amazon_data_view (applied by amazon:dil-prmt-auto-push).
+        'amazon' => 'amazon',
     ];
 
     private function prmtRuleChannel(string $channel): ?string
@@ -141,7 +143,11 @@ class PromotionsController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
-        $lock = \Illuminate\Support\Facades\Cache::lock('ebay-dil-prmt-auto-apply-run-'.$channel, 1800);
+        // Only probing the job's own lock: the command takes it again when it starts.
+        $lockName = $channel === 'amazon'
+            ? 'amazon-dil-prmt-auto-push-run'
+            : 'ebay-dil-prmt-auto-apply-run-'.$channel;
+        $lock = \Illuminate\Support\Facades\Cache::lock($lockName, 1800);
         if (! $lock->get()) {
             return response()->json([
                 'success' => true,
@@ -149,8 +155,13 @@ class PromotionsController extends Controller
                 'message' => 'An apply is already running for '.$channel.'. The badge will update when it finishes.',
             ]);
         }
-        // Only probing: the command takes its own lock when it starts.
         $lock->release();
+
+        // eBay: PRMT% saved on every SKU + markdown-sale push.
+        // Amazon: PRMT% + S PRC saved (--skip-push); live Amazon prices still go out with the 4 AM / 8 PM job.
+        $artisanCmd = $channel === 'amazon'
+            ? 'amazon:dil-prmt-auto-push --skip-push'
+            : 'ebay:dil-prmt-auto-apply '.escapeshellarg($channel);
 
         try {
             $php = PHP_BINARY ?: 'php';
@@ -163,23 +174,59 @@ class PromotionsController extends Controller
             $artisan = base_path('artisan');
             $log = storage_path('logs/'.$channel.'-dil-prmt-apply-manual.log');
             if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' ebay:dil-prmt-auto-apply '.escapeshellarg($channel), 'r'));
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' '.$artisanCmd, 'r'));
             } else {
                 // pclose(popen) returns immediately; exec() can wait for the worker on macOS/XAMPP.
                 pclose(popen('nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
-                    .' ebay:dil-prmt-auto-apply '.escapeshellarg($channel)
+                    .' '.$artisanCmd
                     .' >> '.escapeshellarg($log).' 2>&1 &', 'r'));
             }
 
             return response()->json([
                 'success' => true,
                 'running' => false,
-                'message' => 'Applying Dil→PRMT% to '.$channel.' in the background.',
+                'message' => $channel === 'amazon'
+                    ? 'Applying Dil→PRMT% and S PRC to Amazon in the background (not pushed to Amazon yet — the 4 AM / 8 PM job pushes).'
+                    : 'Applying Dil→PRMT% to '.$channel.' in the background.',
             ]);
         } catch (\Throwable $e) {
             Log::warning('Promotions Prmt% apply spawn failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Could not start apply: '.$e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Dil of every SKU with INV > 0 on a channel (eBay: listing Dil; Amazon: SKU Dil).
+     * The Prmt% modal buckets these into its Dil% slabs live, so the Count column follows the numbers being edited.
+     * Cached for 5 minutes (eBay loads the whole tabulator); ?refresh=1 skips the cache.
+     */
+    public function prmtDils(Request $request)
+    {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
+        $channel = strtolower(trim((string) $request->input('channel', '')));
+        if (! in_array($channel, array_values(array_unique(self::PRMT_RULE_CHANNEL)), true)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        try {
+            $cacheKey = 'promotions-prmt-dils:'.$channel;
+            if ($request->boolean('refresh')) {
+                \Illuminate\Support\Facades\Cache::forget($cacheKey);
+            }
+            $dils = \Illuminate\Support\Facades\Cache::remember($cacheKey, 300, function () use ($channel) {
+                return $channel === 'amazon'
+                    ? app(\App\Services\AmazonDilPrmtAutoPushService::class)->skuDils()
+                    : app(\App\Services\EbayDilPrmtAutoApplyService::class)->listingDils($channel);
+            });
+
+            return response()->json(['success' => true, 'channel' => $channel, 'dils' => array_values($dils)]);
+        } catch (\Throwable $e) {
+            Log::error('Promotions prmt dils failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -209,7 +256,7 @@ class PromotionsController extends Controller
             $total = count($skus);
 
             foreach (array_values(array_unique(self::PRMT_RULE_CHANNEL)) as $key) {
-                $modelClass = $service->dataViewModel($key);
+                $modelClass = $key === 'amazon' ? \App\Models\AmazonDataView::class : $service->dataViewModel($key);
                 $applied = 0;
                 if ($modelClass && Schema::hasTable((new $modelClass)->getTable())) {
                     $seen = [];

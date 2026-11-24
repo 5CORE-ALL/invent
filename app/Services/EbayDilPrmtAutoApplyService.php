@@ -191,6 +191,46 @@ class EbayDilPrmtAutoApplyService
     }
 
     /**
+     * Listing Dil of every child SKU that has INV > 0 (one entry per SKU). Read-only: nothing is saved or pushed.
+     * Same grouping as run() (Σ OV L30 ÷ Σ INV by eBay item id, else Parent) — feeds the Promotions "Count" column.
+     *
+     * @return list<float>
+     */
+    public function listingDils(string $channel): array
+    {
+        $channel = strtolower(trim($channel));
+        if (! in_array($channel, EbayRuleSprice::CHANNELS, true)) {
+            throw new \InvalidArgumentException('channel must be one of: '.implode(', ', EbayRuleSprice::CHANNELS));
+        }
+        $children = $this->childRows($this->tabulator->tabulatorRows($channel));
+        $keyOf = $this->variationKeyFn($children);
+
+        $groups = [];
+        foreach ($children as $row) {
+            $key = $keyOf($row);
+            if ($key === '') {
+                continue;
+            }
+            $groups[$key] ??= ['inv' => 0.0, 'l30' => 0.0, 'kids' => []];
+            $groups[$key]['inv'] += (float) ($row['INV'] ?? 0);
+            $groups[$key]['l30'] += $this->ovL30($row);
+            $groups[$key]['kids'][] = $row;
+        }
+
+        $out = [];
+        foreach ($groups as $group) {
+            $dil = $group['inv'] > 0 ? round(($group['l30'] / $group['inv']) * 100, 4) : 0.0;
+            foreach ($group['kids'] as $kid) {
+                if ((float) ($kid['INV'] ?? 0) > 0) {
+                    $out[] = $dil;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<array{sku:string,prmt:int}>  $tasks
      * @param  list<string>  $throttleKeys
      * @param  array<string, mixed>  $stats

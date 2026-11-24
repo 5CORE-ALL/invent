@@ -293,15 +293,18 @@
                         Shared Dil vs PRMT for <strong>all marketplaces</strong>:
                         <strong>0–3%</strong> … <strong>21–24%</strong>, then <strong>24–25%</strong>.
                         Changing the first row sets the following slabs to &minus;1 each (minimum 0).
-                        <strong>Save</strong> stores the slabs for every marketplace; PRMT% is applied to the SKUs
-                        when the eBay page loads. If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
+                        <strong>Save</strong> stores the slabs for every marketplace.
+                        <strong>Save &amp; Apply</strong> also applies PRMT% to every SKU of this channel
+                        (eBay: pushes the changed % as markdown sales; Amazon: updates S PRC, which the 4 AM / 8 PM job pushes).
+                        If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                     </p>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="promo-prmt-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:62%;">Dil%</th>
-                                    <th style="width:38%;" class="text-end">PRMT %</th>
+                                    <th style="width:52%;">Dil%</th>
+                                    <th style="width:18%;" class="text-center" title="SKUs currently getting this row's PRMT %">Count</th>
+                                    <th style="width:30%;" class="text-end">PRMT %</th>
                                 </tr>
                             </thead>
                             <tbody id="promo-prmt-tbody"></tbody>
@@ -312,6 +315,7 @@
                             <i class="fas fa-plus me-1"></i>Add more row
                         </button>
                         <span class="badge bg-secondary" id="promo-prmt-row-count">0 rows</span>
+                        <span class="small text-muted" id="promo-prmt-count-total"></span>
                         <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="promo-prmt-restore" title="Bring back deleted rows">
                             <i class="fas fa-undo me-1"></i>Restore <span id="promo-prmt-deleted-count">0</span> deleted
                         </button>
@@ -324,7 +328,7 @@
                         <i class="fas fa-save me-1"></i>Save
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="promo-prmt-save-apply"
-                        title="Save the slabs, then apply PRMT% to every SKU of this eBay channel (listing Dil → slab) and push the changed % as markdown sales.">
+                        title="Save the slabs, then apply PRMT% to every SKU of this channel. eBay: listing Dil → slab, changed % pushed as markdown sales. Amazon: SKU Dil → slab → S PRC (pushed by the 4 AM / 8 PM job).">
                         <i class="fas fa-bolt me-1"></i>Save &amp; Apply
                     </button>
                 </div>
@@ -419,6 +423,9 @@
     // Shared Dil vs PRMT rules (same list the eBay pages edit) + modal state
     let prmtRules = [];
     let prmtModal = null;
+    // Dil of every SKU with INV > 0 for the channel in the modal, cached per channel key
+    const prmtDilCache = {};
+    let prmtDilChannel = null;
     const csrf = $('meta[name="csrf-token"]').attr('content');
 
     // First three columns: active channels (Img | Channels | Status)
@@ -831,6 +838,13 @@
         });
     }
 
+    // The Dil vs PRMT slabs are one shared store; /channel-promo-pricing only accepts a data-view channel
+    // for the rules URL, so Amazon reads/saves them through ebay1 (same rows, same store).
+    function prmtRulesUrl(key) {
+        const c = key === 'amazon' ? 'ebay1' : key;
+        return '/channel-promo-pricing/' + encodeURIComponent(c) + '/dil-prmt';
+    }
+
     function getPrmtModal() {
         if (!prmtModal) prmtModal = new bootstrap.Modal(document.getElementById('promo-prmt-modal'));
         return prmtModal;
@@ -892,9 +906,12 @@
                 + '<span>%</span>'
                 + '<button type="button" class="btn btn-sm btn-outline-danger ms-auto promo-prmt-remove" title="Delete this row"><i class="fas fa-trash"></i></button>'
                 + '</div></td>';
+            const countCell = '<td class="text-center"><span class="badge ch-promo-dil-prmt-count promo-prmt-count" '
+                + 'title="SKUs currently getting this row\'s PRMT %">…</span></td>';
             $tb.append(
                 '<tr data-key="' + escapeHtml(r.key) + '"' + (isCustom ? ' class="promo-prmt-custom"' : '') + '>'
                 + rangeCell
+                + countCell
                 + '<td class="text-end"><input type="number" class="form-control form-control-sm promo-prmt-input" min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '"'
                 + ((!isCustom && firstShown) ? ' title="Changing this sets following slabs to −1 each, minimum 0"' : '')
                 + '></td></tr>'
@@ -904,6 +921,75 @@
         $('#promo-prmt-row-count').text(rowNo + (rowNo === 1 ? ' row' : ' rows'));
         $('#promo-prmt-restore').toggleClass('d-none', deleted === 0);
         $('#promo-prmt-deleted-count').text(deleted);
+        refreshPrmtCounts();
+    }
+
+    // Which slab a Dil falls in — same order as the eBay/Amazon pages: custom rows first, then built-in
+    // ranges (min ≤ Dil < max; "24-25" and From = To include max).
+    function prmtSlabKey(dil, list) {
+        if (!isFinite(dil)) return 'none';
+        for (let i = 0; i < list.length; i++) {
+            const c = list[i];
+            if (String(c.key).indexOf('custom-') !== 0) continue;
+            const lo = Number(c.min), hi = Number(c.max);
+            if (c.min != null && c.max != null && isFinite(lo) && isFinite(hi) && dil >= lo
+                && (hi === lo ? dil <= hi : dil < hi)) return c.key;
+        }
+        for (let i = 0; i < list.length; i++) {
+            const c = list[i];
+            if (String(c.key).indexOf('custom-') === 0 || c.deleted || prmtIsZeroSoldKey(c.key)) continue;
+            const range = prmtBuiltinRange(c);
+            if (!range) continue;
+            const inclusiveMax = c.key === '24-25' || range.max === range.min;
+            if (dil >= range.min && (dil < range.max || (inclusiveMax && dil <= range.max))) return c.key;
+        }
+        return 'none';
+    }
+
+    // Fill the Count column (and the "Applied SKUs" total) from the cached Dil list and the slabs as currently typed.
+    function refreshPrmtCounts() {
+        const dils = prmtDilCache[prmtDilChannel];
+        const $rows = $('#promo-prmt-tbody tr');
+        if (!$rows.length) return;
+        if (!Array.isArray(dils)) {
+            $rows.find('.promo-prmt-count').text('…');
+            $('#promo-prmt-count-total').text('');
+            return;
+        }
+        const list = readPrmtRules();
+        const counts = { none: 0 };
+        dils.forEach(function (d) {
+            const k = prmtSlabKey(Number(d), list);
+            counts[k] = (counts[k] || 0) + 1;
+        });
+        $rows.each(function () {
+            $(this).find('.promo-prmt-count').text(counts[String($(this).attr('data-key') || '')] || 0);
+        });
+        const total = dils.length;
+        $('#promo-prmt-count-total').text('Applied SKUs: ' + (total - counts.none) + ' of ' + total
+            + (counts.none ? ' (' + counts.none + ' outside all ranges)' : ''));
+    }
+
+    function loadPrmtDils(key, force) {
+        prmtDilChannel = key;
+        if (!force && Array.isArray(prmtDilCache[key])) {
+            refreshPrmtCounts();
+            return;
+        }
+        delete prmtDilCache[key];
+        refreshPrmtCounts();
+        $.ajax({
+            url: '{{ route("promotions.prmt.dils") }}',
+            type: 'GET',
+            dataType: 'json',
+            data: { channel: key, refresh: force ? 1 : 0 },
+        }).done(function (res) {
+            if (res && res.success && Array.isArray(res.dils)) prmtDilCache[key] = res.dils;
+        }).fail(function () {
+            $('#promo-prmt-count-total').text('Could not load SKU counts.');
+        }).always(function () {
+            if (prmtDilChannel === key && Array.isArray(prmtDilCache[key])) refreshPrmtCounts();
+        });
     }
 
     // Copy what is typed in the modal back into prmtRules, and return the list to save.
@@ -951,10 +1037,12 @@
         $('#promo-prmt-modal-channel').text(row.channel || '');
         $('#promo-prmt-status').text('Loading…');
         prmtRules = prmtDefaultRules();
+        prmtDilChannel = row.prmt_rule;
         renderPrmtTable();
         getPrmtModal().show();
+        loadPrmtDils(row.prmt_rule, false);
         $.ajax({
-            url: '/channel-promo-pricing/' + encodeURIComponent(row.prmt_rule) + '/dil-prmt',
+            url: prmtRulesUrl(row.prmt_rule),
             method: 'GET',
             dataType: 'json',
         }).done(function (res) {
@@ -975,7 +1063,7 @@
         if (this === $('#promo-prmt-tbody .promo-prmt-input').get(0)) cascadePrmtFromFirst();
     });
     $('#promo-prmt-tbody').on('change', '.promo-prmt-range', function () {
-        readPrmtRules();
+        refreshPrmtCounts();
     });
     $('#promo-prmt-tbody').on('click', '.promo-prmt-remove', function (e) {
         e.preventDefault();
@@ -1039,7 +1127,7 @@
             return dfd.reject().promise();
         }
         $.ajax({
-            url: '/channel-promo-pricing/' + encodeURIComponent(channel) + '/dil-prmt',
+            url: prmtRulesUrl(channel),
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
             contentType: 'application/json',
@@ -1091,6 +1179,7 @@
                     (res && res.message) || 'Applying in the background.'
                 );
                 pollPrmtSummaryAfterApply();
+                loadPrmtDils(channel, true);
             }).fail(function (xhr) {
                 $('#promo-prmt-status').text('Saved, but apply failed: '
                     + ((xhr.responseJSON && xhr.responseJSON.message) || 'error'));

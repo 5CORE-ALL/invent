@@ -163,6 +163,23 @@ class AmazonDilPrmtAutoPushService
     }
 
     /**
+     * Dil of every listed SKU that has INV > 0. Read-only — feeds the Promotions "Count" column.
+     *
+     * @return list<float>
+     */
+    public function skuDils(): array
+    {
+        $out = [];
+        foreach ($this->loadCandidates(null, null) as $row) {
+            if ((float) ($row['inv'] ?? 0) > 0) {
+                $out[] = (float) ($row['dil'] ?? 0);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<string>|null  $onlySkus
      * @return list<array{sku:string,seller_sku:string,asin:string,price:float,inv:float,l30:float,dil:float,standard_price:float,sprice:float,pushed_value:?float,prmt_pct:?float}>
      */

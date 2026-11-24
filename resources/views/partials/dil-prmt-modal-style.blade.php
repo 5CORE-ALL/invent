@@ -254,7 +254,8 @@
         font-weight: 800;
         background: #064e3b !important;
     }
-    #ch-promo-dil-prmt-count-total {
+    #ch-promo-dil-prmt-count-total,
+    #promo-prmt-count-total {
         font-weight: 700;
         color: #047857 !important;
     }

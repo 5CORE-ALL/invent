@@ -4690,6 +4690,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/promotions', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'index'])->name('promotions');
     Route::get('/promotions/data', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'data'])->name('promotions.data');
     Route::post('/promotions/prmt-apply', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'prmtApply'])->name('promotions.prmt.apply');
+    Route::get('/promotions/prmt-dils', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'prmtDils'])->name('promotions.prmt.dils');
     Route::get('/promotions/prmt-summary', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'prmtSummary'])->name('promotions.prmt.summary');
     Route::post('/promotions/columns', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'storeColumn'])->name('promotions.columns.store');
     Route::get('/promotions/amazon-coupon', [\App\Http\Controllers\MarketPlace\PromotionsController::class, 'amazonCouponShow'])->name('promotions.amazon.coupon.show');
