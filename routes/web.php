@@ -6033,6 +6033,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Catategory routes
     Route::get('/category.list', [CategoryController::class, 'categoryList'])->name('category.list');
     Route::get('/category.list/data', [CategoryController::class, 'categoryListData'])->name('category.list.data');
+    Route::get('/category.list/supplier-data', [CategoryController::class, 'categorySupplierData'])->name('category.list.supplier.data');
     Route::get('/mfr-category-supplier', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'index'])->name('mfr.category.supplier');
     Route::get('/mfr-category-supplier/data', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'data'])->name('mfr.category.supplier.data');
     Route::get('/mfr-category-supplier/low-count', [\App\Http\Controllers\PurchaseMaster\MfrCategorySupplierController::class, 'lowCount'])->name('mfr.category.supplier.low-count');

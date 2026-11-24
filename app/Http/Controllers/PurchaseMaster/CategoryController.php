@@ -121,6 +121,59 @@ class CategoryController extends Controller
         return response()->json($rows);
     }
 
+    /**
+     * JSON rows for the "Category - Supplier" tab on /category.list: ONE row per unique category (names
+     * are compared case-insensitively, so a name that is saved twice is still one row) with the
+     * suppliers linked to it. A supplier is linked to a category through suppliers.category_id.
+     */
+    public function categorySupplierData(Request $request)
+    {
+        $suppliersByCategoryId = [];
+        Supplier::query()
+            ->whereNotNull('category_id')
+            ->where('category_id', '!=', '')
+            ->get(['id', 'name', 'company', 'category_id'])
+            ->each(function ($supplier) use (&$suppliersByCategoryId) {
+                $label = trim((string) ($supplier->name ?? ''));
+                if ($label === '') {
+                    $label = trim((string) ($supplier->company ?? ''));
+                }
+                if ($label === '') {
+                    $label = '#'.$supplier->id;
+                }
+                foreach ($this->supplierCategoryIds($supplier) as $categoryId) {
+                    $suppliersByCategoryId[$categoryId][(int) $supplier->id] = ['id' => (int) $supplier->id, 'name' => $label];
+                }
+            });
+
+        $rows = [];
+        foreach (Category::query()->orderBy('name')->orderBy('id')->get(['id', 'name']) as $category) {
+            $name = trim((string) $category->name);
+            if ($name === '') {
+                continue;
+            }
+            $key = mb_strtolower($name);
+            if (! isset($rows[$key])) {
+                $rows[$key] = ['key' => $key, 'category_id' => (int) $category->id, 'category_ids' => [], 'category_name' => $name, 'suppliers' => []];
+            }
+            $rows[$key]['category_ids'][] = (int) $category->id;
+            foreach ($suppliersByCategoryId[(int) $category->id] ?? [] as $supplierId => $supplier) {
+                $rows[$key]['suppliers'][$supplierId] = $supplier;
+            }
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $suppliers = array_values($row['suppliers']);
+            usort($suppliers, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+            $row['suppliers'] = $suppliers;
+            $row['supplier_count'] = count($suppliers);
+            $out[] = $row;
+        }
+
+        return response()->json($out);
+    }
+
     private function buildCategoryList(Request $request): array
     {
         $parentFilter = trim((string) $request->query('parent', ''));

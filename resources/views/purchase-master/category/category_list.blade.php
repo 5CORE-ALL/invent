@@ -114,6 +114,22 @@
                         </div>
                     </div>
 
+                    <ul class="nav nav-tabs mb-3" id="category-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="tab-category-list" data-bs-toggle="tab" data-bs-target="#pane-category-list"
+                                type="button" role="tab" aria-controls="pane-category-list" aria-selected="true">
+                                <i class="mdi mdi-format-list-bulleted me-1"></i> Category list
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tab-category-supplier" data-bs-toggle="tab" data-bs-target="#pane-category-supplier"
+                                type="button" role="tab" aria-controls="pane-category-supplier" aria-selected="false">
+                                <i class="mdi mdi-account-group me-1"></i> Category - Supplier
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                    <div class="tab-pane fade show active" id="pane-category-list" role="tabpanel" aria-labelledby="tab-category-list">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <div class="text-muted small">
                             Type in the <strong>Parent</strong>, <strong>SKU</strong> or <strong>MFR category</strong> header boxes to filter.
@@ -124,6 +140,26 @@
                         </button>
                     </div>
                     <div id="category-tabulator"></div>
+                    </div>
+                    {{-- Tab 2: one row per unique category (1st column) with its suppliers (2nd column) --}}
+                    <div class="tab-pane fade" id="pane-category-supplier" role="tabpanel" aria-labelledby="tab-category-supplier">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <div class="text-muted small">
+                                One row per category. Tick categories and press <strong>Category merge</strong> to merge them into one new category.
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-light text-dark border" id="cs-count">0 categories</span>
+                                <button type="button" class="btn btn-light border btn-sm" id="cs-clear-filters">
+                                    <i class="mdi mdi-close me-1"></i> Clear filters
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="cs-merge-btn" title="Merge the ticked categories into one new category">
+                                    <i class="mdi mdi-call-merge me-1"></i> Category merge <span id="cs-merge-count"></span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="category-supplier-tabulator"></div>
+                    </div>
+                    </div>
                     {{-- Suppliers modal (opened from the Suppliers count on any SKU / parent row) --}}
                     <div class="modal fade" id="categorySuppliersModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
                         <div class="modal-dialog modal-dialog-centered shadow-none" style="max-width: 98vw; width: 98vw;">
@@ -1119,8 +1155,24 @@
                 renderPicked();
             }
 
-            $modal.on('show.bs.modal', reset);
-            $modal.on('shown.bs.modal', function() { $name.trigger('focus'); });
+            // The "Category - Supplier" tab opens the modal with its ticked categories already chosen.
+            let preselect = null;
+            // native listeners: Bootstrap always dispatches these, jQuery's .on('show.bs.modal') is not reliable here
+            $modal[0].addEventListener('show.bs.modal', function() {
+                reset();
+                if (preselect) {
+                    preselect.forEach(function(id) { picked[id] = true; });
+                    preselect = null;
+                    renderList();
+                    renderPicked();
+                }
+            });
+            window.openCategoryMerge = function(ids) {
+                preselect = (ids || []).map(Number);
+                bootstrap.Modal.getOrCreateInstance($modal[0]).show();
+            };
+            $modal[0].addEventListener('shown.bs.modal', function() { $name.trigger('focus'); });
+            $modal[0].addEventListener('hidden.bs.modal', function() { preselect = null; });
             $name.on('input', refreshState);
             $('#cmg-search').on('input', renderList);
 
@@ -1494,6 +1546,144 @@
                 }).join('');
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('productsModal')).show();
             });
+        })();
+    </script>
+    <script>
+        // ---- Tab 2 "Category - Supplier": one row per unique category + its suppliers, with Category merge ----
+        (function() {
+            const dataUrl = '{{ route('category.list.supplier.data') }}';
+            const TAB_KEY = 'categoryListActiveTab';
+            const esc = function(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            };
+            const sentenceCase = function(s) {
+                const t = String(s == null ? '' : s).trim().toLowerCase();
+                return t.charAt(0).toUpperCase() + t.slice(1);
+            };
+            let csTable = null;
+            let filters = { category: '', supplier: '' };
+
+            const containsFilter = function(headerValue, rowValue) {
+                const q = String(headerValue || '').trim().toLowerCase();
+                return !q || String(rowValue == null ? '' : rowValue).toLowerCase().indexOf(q) !== -1;
+            };
+            const supplierText = function(d) { return (d.suppliers || []).map(function(s) { return s.name; }).join(', '); };
+
+            let shownCount = null; // set by the dataFiltered event (Tabulator's own 'active' count lags behind it)
+
+            function updateCounts() {
+                if (!csTable) return;
+                const total = csTable.getDataCount();
+                const shown = shownCount === null ? total : shownCount;
+                document.getElementById('cs-count').textContent =
+                    (shown === total ? total : shown + ' of ' + total) + (total === 1 ? ' category' : ' categories');
+                const picked = csTable.getSelectedRows().length;
+                document.getElementById('cs-merge-count').textContent = picked ? '(' + picked + ')' : '';
+                const all = document.getElementById('cs-select-all');
+                if (all) {
+                    all.checked = shown > 0 && picked === shown;
+                    all.indeterminate = picked > 0 && picked < shown;
+                }
+                csTable.getRows().forEach(function(row) {
+                    const cell = row.getCell('sel');
+                    const input = cell && cell.getElement().querySelector('input');
+                    if (input) input.checked = row.isSelected();
+                });
+            }
+
+            function build() {
+                if (csTable) return;
+                csTable = new Tabulator('#category-supplier-tabulator', {
+                    index: 'key',
+                    layout: 'fitColumns',
+                    height: '72vh',
+                    selectableRows: 'highlight',
+                    columnDefaults: { vertAlign: 'middle' },
+                    placeholder: 'No categories found',
+                    initialSort: [{ column: 'category_name', dir: 'asc' }],
+                    columns: [
+                        { title: '', field: 'sel', width: 46, hozAlign: 'center', headerHozAlign: 'center', headerSort: false, frozen: true,
+                          titleFormatter: function() { return '<input type="checkbox" class="form-check-input" id="cs-select-all" title="Select all listed categories" style="cursor:pointer;width:1.1rem;height:1.1rem;margin:0;">'; },
+                          formatter: function(cell) {
+                              const input = document.createElement('input');
+                              input.type = 'checkbox';
+                              input.className = 'form-check-input';
+                              input.style.cssText = 'cursor:pointer;width:1.1rem;height:1.1rem;margin:0;';
+                              input.checked = cell.getRow().isSelected();
+                              input.addEventListener('click', function(e) { e.stopPropagation(); });
+                              input.addEventListener('change', function() {
+                                  if (input.checked) cell.getRow().select(); else cell.getRow().deselect();
+                              });
+                              return input;
+                          } },
+                        { title: 'Category', field: 'category_name', width: 320, headerFilter: 'input', headerFilterPlaceholder: 'Filter...',
+                          headerFilterFunc: containsFilter,
+                          formatter: function(cell) { return '<span class="fw-semibold">' + esc(sentenceCase(cell.getValue())) + '</span>'; } },
+                        { title: 'Supplier', field: 'suppliers', headerFilter: 'input', headerFilterPlaceholder: 'Filter...',
+                          headerFilterFunc: function(headerValue, rowValue, rowData) { return containsFilter(headerValue, supplierText(rowData)); },
+                          sorter: function(a, b, aRow, bRow) { return aRow.getData().supplier_count - bRow.getData().supplier_count; },
+                          formatter: function(cell) {
+                              const d = cell.getRow().getData();
+                              if (!d.suppliers.length) return '<span class="text-muted">-</span>';
+                              const el = cell.getElement();
+                              el.style.whiteSpace = 'normal';
+                              return '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle me-2">' + d.supplier_count + '</span>' +
+                                  d.suppliers.map(function(s) {
+                                      return '<span class="d-inline-block border rounded-pill bg-light px-2 py-0 me-1 mb-1 small">' + esc(s.name) + '</span>';
+                                  }).join('');
+                          } },
+                    ],
+                });
+                csTable.on('rowSelectionChanged', updateCounts);
+                csTable.on('dataLoaded', function() { shownCount = null; setTimeout(updateCounts, 0); });
+                csTable.on('dataFiltered', function(f, rows) { shownCount = (rows || []).length; setTimeout(updateCounts, 0); });
+                csTable.on('tableBuilt', load);
+            }
+
+            function load() {
+                return fetch(dataUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                    .then(function(res) {
+                        if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+                        return res.json();
+                    })
+                    .then(function(rows) { return csTable.setData(rows); })
+                    .catch(function(e) { alert('Could not load the categories: ' + e.message); });
+            }
+
+            document.addEventListener('change', function(e) {
+                if (!e.target || e.target.id !== 'cs-select-all' || !csTable) return;
+                if (e.target.checked) csTable.selectRow('active'); else csTable.deselectRow();
+            });
+            document.getElementById('cs-clear-filters').addEventListener('click', function() {
+                if (csTable) csTable.clearHeaderFilter();
+            });
+            // Category merge: the modal opens with the ticked categories already chosen
+            document.getElementById('cs-merge-btn').addEventListener('click', function() {
+                const ids = [];
+                if (csTable) csTable.getSelectedData().forEach(function(r) { (r.category_ids || []).forEach(function(id) { ids.push(id); }); });
+                window.openCategoryMerge(ids);
+            });
+
+            // Tabs: build tab 2 the first time it is shown (a hidden Tabulator cannot measure itself),
+            // and remember the tab so the page reload after a merge stays on it.
+            const footer = document.getElementById('category-footer');
+            document.getElementById('category-tabs').addEventListener('shown.bs.tab', function(e) {
+                const isSupplier = e.target.id === 'tab-category-supplier';
+                try { sessionStorage.setItem(TAB_KEY, isSupplier ? 'supplier' : 'list'); } catch (err) {}
+                if (footer) footer.style.visibility = isSupplier ? 'hidden' : '';
+                if (isSupplier) {
+                    if (!csTable) build(); else csTable.redraw(true);
+                } else if (window.categoryTable) {
+                    window.categoryTable.redraw(true);
+                }
+            });
+            let saved = null;
+            try { saved = sessionStorage.getItem(TAB_KEY); } catch (err) {}
+            if (saved === 'supplier') {
+                bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-category-supplier')).show();
+            }
         })();
     </script>
 @endsection
