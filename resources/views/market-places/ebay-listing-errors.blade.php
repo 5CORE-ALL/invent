@@ -24,6 +24,8 @@
         #ele .ele-chip b { display:block; font-size:18px; }
         #ele .ele-chip span { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
         #ele .ele-search { margin-left:auto; border:1px solid var(--line); border-radius:999px; padding:8px 14px; min-width:240px; }
+        #ele .ele-pull { border:0; border-radius:999px; background:#111827; color:#fff; font-weight:700; font-size:13px; padding:8px 14px; cursor:pointer; }
+        #ele .ele-thumb { width:42px; height:42px; object-fit:cover; border-radius:10px; background:#f4f2fb; display:block; }
         #ele .tabulator { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; }
         #ele .tabulator .tabulator-header { background:#f7f5ff; font-size:12px; }
         #ele .ele-err { color:#9f1239; font-size:12px; }
@@ -66,6 +68,7 @@
         </div>
         <div class="ele-bar">
             <div class="ele-chip"><b id="ele-count">–</b><span>not active</span></div>
+            <button type="button" class="ele-pull" id="ele-pull">Pull from eBay</button>
             <input id="ele-search" class="ele-search" placeholder="Search SKU, item id, error…">
         </div>
         <div id="ele-table"></div>
@@ -100,6 +103,7 @@
         document.addEventListener('DOMContentLoaded', function () {
             const URLS = {
                 data: @json(route('ebay.listing.errors.data')),
+                refresh: @json(route('ebay.listing.errors.refresh')),
                 check: @json(route('ebay.listing.errors.check')),
                 push: @json(route('ebay.listing.errors.push'))
             };
@@ -128,9 +132,20 @@
 
             const table = new Tabulator('#ele-table', {
                 index: 'id', layout: 'fitColumns', height: 'calc(100vh - 280px)',
-                placeholder: 'No inactive listings on this account.',
+                placeholder: 'No inactive listings stored for this account. Use Pull from eBay.',
                 columns: [
-                    { title: 'SKU', field: 'sku', width: 170, headerFilter: 'input' },
+                    { title: '', field: 'image', width: 62, headerSort: false, hozAlign: 'center', formatter: function (cell) {
+                        const src = String(cell.getValue() || '');
+                        if (!src) return '';
+                        return '<img class="ele-thumb" src="' + src.replace(/"/g, '') + '" alt="">';
+                    }},
+                    { title: 'SKU', field: 'sku', width: 180, headerFilter: 'input', formatter: function (cell) {
+                        const d = cell.getData();
+                        const name = String(d.sku || '');
+                        const ebay = String(d.ebay_sku || '');
+                        const extra = ebay && ebay !== name ? '<div class="small text-muted">' + ebay + '</div>' : '';
+                        return '<strong>' + name.replace(/[&<>]/g, function (s) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[s]; }) + '</strong>' + extra;
+                    }},
                     { title: 'Item ID', field: 'item_id', width: 130, formatter: function (cell) {
                         const d = cell.getData();
                         return d.link ? '<a href="' + d.link + '" target="_blank" rel="noopener">' + d.item_id + '</a>' : d.item_id;
@@ -189,7 +204,7 @@
                 const price = document.getElementById('ele-price').value;
                 busy(action === 'check' ? 'Asking eBay…' : 'Pushing to ' + channel + '…');
                 const url = action === 'check' ? URLS.check : URLS.push;
-                const payload = { channel: channel, item_id: current.item_id, sku: current.sku, action: action };
+                const payload = { channel: channel, item_id: current.item_id, sku: current.ebay_sku || current.sku, action: action };
                 if (qty !== '') payload.quantity = Number(qty);
                 if (price !== '') payload.price = Number(price);
                 post(url, payload).then(function (j) {
@@ -216,6 +231,14 @@
             document.getElementById('ele-push-price').addEventListener('click', function () { run('price'); });
             document.getElementById('ele-relist').addEventListener('click', function () { run('relist'); });
             document.getElementById('ele-check').addEventListener('click', function () { run('check'); });
+
+            document.getElementById('ele-pull').addEventListener('click', function () {
+                busy('Pulling inactive listings from ' + channel + '… this can take a minute');
+                post(URLS.refresh, { channel: channel }).then(function (j) {
+                    toast(!!(j && j.success), (j && j.message) || 'Pull finished.');
+                    load();
+                }).catch(function () { idle(); toast(false, 'The pull failed.'); });
+            });
 
             load();
         });
