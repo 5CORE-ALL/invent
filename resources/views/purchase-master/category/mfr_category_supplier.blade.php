@@ -133,6 +133,12 @@
         });
     }
 
+    // Category names are shown in sentence case ("CAR SPK" -> "Car spk"); the saved name is not changed.
+    const toSentenceCase = function(s) {
+        const t = String(s == null ? '' : s).trim().toLowerCase();
+        return t.charAt(0).toUpperCase() + t.slice(1);
+    };
+
     // A category with fewer suppliers than this is shown in red.
     const LOW_SUPPLIER_COUNT = 13;
     let table = null;
@@ -169,7 +175,7 @@
                 headerFilter: 'input',
                 headerFilterPlaceholder: 'Search category...',
                 sorter: 'string',
-                formatter: function(cell) { return '<strong>' + esc(cell.getValue()) + '</strong>'; },
+                formatter: function(cell) { return '<strong>' + esc(toSentenceCase(cell.getValue())) + '</strong>'; },
             },
             {
                 title: 'Count',
@@ -309,7 +315,7 @@
     }
 
     function renderModal(payload) {
-        document.getElementById('mcs-modal-category').textContent = payload.category.name;
+        document.getElementById('mcs-modal-category').textContent = toSentenceCase(payload.category.name);
         document.getElementById('mcs-modal-count').textContent = payload.suppliers.length;
         const body = document.getElementById('mcs-modal-body');
         if (!payload.suppliers.length) {
@@ -347,7 +353,7 @@
         chosenSupplier = null;
         document.getElementById('mcs-add-search').value = '';
         document.getElementById('mcs-add-list').style.display = 'none';
-        document.getElementById('mcs-modal-category').textContent = row.getData().mfr_category;
+        document.getElementById('mcs-modal-category').textContent = toSentenceCase(row.getData().mfr_category);
         document.getElementById('mcs-modal-count').textContent = row.getData().count;
         document.getElementById('mcs-modal-body').innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading...</td></tr>';
         modal.show();
@@ -396,7 +402,7 @@
         if (link) { e.preventDefault(); openSupplierModal(link.getAttribute('data-supplier-id'), link.textContent.trim()); return; }
         const btn = e.target.closest('.mcs-remove-btn');
         if (!btn || !currentRow) return;
-        const category = currentRow.getData().mfr_category;
+        const category = toSentenceCase(currentRow.getData().mfr_category);
         if (!confirm('Remove this supplier from "' + category + '"? The supplier stays in the supplier list.')) return;
         btn.disabled = true;
         showError('');
