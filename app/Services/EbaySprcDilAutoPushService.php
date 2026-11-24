@@ -72,9 +72,20 @@ class EbaySprcDilAutoPushService
                 return ['stats' => $stats, 'changes' => []];
             }
             $log($channel.': S PRC rule = '.($cvrOnly ? 'CVR Price Rule only (off Std Prc)' : ($ruleContext['rule'] === 'dil' ? 'Sprc Dil' : 'Std prc vs dil')));
+            // Prices set by hand in the Price Increase modal are kept (not recomputed from the rule)
+            $manualSkus = $only === [] ? \App\Services\Support\ManualSpriceFlag::skus(match ($channel) {
+                'ebay2' => \App\Models\EbayTwoDataView::class,
+                'ebay3' => \App\Models\EbayThreeDataView::class,
+                default => \App\Models\EbayDataView::class,
+            }) : [];
             foreach ($this->tabulatorRows($channel) as $row) {
                 $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
                 if ($input === null) {
+                    continue;
+                }
+                if ($manualSkus !== [] && isset($manualSkus[strtoupper(trim((string) $input['sku']))])) {
+                    $stats['skipped']++;
+
                     continue;
                 }
                 if ($only !== [] && ! in_array(strtoupper($input['sku']), $only, true)) {

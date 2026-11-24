@@ -110,6 +110,10 @@ class MacysRuleSpriceApplyService
                             return false;
                         }
                         try {
+                            if (! empty($row['manual_sprice'])) {
+                                $stats['skipped_unchanged']++;
+                                continue;
+                            }
                             $row['lmp'] = $this->lmpBySku[strtoupper((string) ($row['sku'] ?? ''))] ?? 0.0;
                             $computed = $this->computeTarget($row, $dilRules, $margin, $this->dilContext);
                             $saved = (float) ($row['saved_sprice'] ?? 0);
@@ -322,8 +326,13 @@ class MacysRuleSpriceApplyService
         }
 
         $savedBySku = [];
+        $manualBySku = [];
         foreach (MacyDataView::query()->whereIn('sku', $lookup)->get(['sku', 'value']) as $view) {
             $val = $this->decodeValue($view->value);
+            // Set by hand in the Price Increase modal: the rule does not recompute / clear it
+            if (is_numeric($val['SPRICE'] ?? null) && (float) $val['SPRICE'] > 0 && ! empty($val['SPRICE_MANUAL'])) {
+                $manualBySku[strtoupper(trim((string) $view->sku))] = true;
+            }
             $savedBySku[strtoupper(trim((string) $view->sku))] = is_numeric($val['SPRICE'] ?? null)
                 ? (float) $val['SPRICE']
                 : 0.0;
@@ -365,6 +374,7 @@ class MacysRuleSpriceApplyService
                 'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
                 'std' => $stdBySku[$sku] ?? 0.0,
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
+                'manual_sprice' => ! empty($manualBySku[$sku]),
                 'age_days' => $withAge ? $this->ageDaysFor($sku, $inv) : null,
             ];
         }

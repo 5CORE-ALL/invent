@@ -89,6 +89,10 @@ class BestBuySprcDilAutoPushService
 
         try {
             $rows = $this->loadCandidates($limit, $onlySkus);
+            // Prices set by hand in the Price Increase modal are not recomputed / overwritten by this run
+            if (empty($onlySkus)) {
+                $rows = \App\Services\Support\ManualSpriceFlag::withoutManual($rows, \App\Models\BestbuyUSADataView::class, 'value');
+            }
         } catch (Throwable $e) {
             $stats['errors'][] = 'load: '.$e->getMessage();
             $this->log($logger, '✗ Load failed: '.$e->getMessage());

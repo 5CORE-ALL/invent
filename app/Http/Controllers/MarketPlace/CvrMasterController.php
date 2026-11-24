@@ -8427,11 +8427,10 @@ class CvrMasterController extends Controller
                 }
                 // Track SPRICE edit time (used by Push History same-day hide)
                 $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
-                // TikTok pages repaint S PRC from the Dil / Std rules and the server run pushes that rule price every 10 min:
-                // a price set here is flagged manual so both leave it as it is (cleared again below / from the page).
-                if ($marketplace === 'tiktok' || $marketplace === 'tiktok2') {
-                    $value['SPRICE_MANUAL'] = true;
-                }
+                // Every channel's Sprc Dil auto-push (twice a day) and "push-blue-prices" catch-up (every 10 min) recompute the rule
+                // price and overwrite the saved one. A price set here is flagged manual so those jobs (and the TikTok / Temu pages)
+                // leave it as it is; clearing the price removes the flag again (below).
+                $value['SPRICE_MANUAL'] = true;
 
                 // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
                 // TopDawg: lowercase sprice only (same as /topdawg-pricing)
@@ -8711,9 +8710,7 @@ class CvrMasterController extends Controller
         $value['SROI'] = $sroi;
         $value['SPFT'] = $spft;
         $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
-        if ($marketplace === 'tiktok' || $marketplace === 'tiktok2' || $marketplace === 'tiktok 2' || $marketplace === 'tiktokshop2') {
-            $value['SPRICE_MANUAL'] = true; // siblings: same manual flag as the main SKU (TikTok pages / server run keep it)
-        }
+        $value['SPRICE_MANUAL'] = true; // siblings: same manual flag as the main SKU (rule jobs / TikTok pages keep the price)
 
         if ($marketplace === 'walmart' || $marketplace === 'topdawg') {
             unset($value['SPRICE']);

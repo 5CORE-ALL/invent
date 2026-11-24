@@ -1822,6 +1822,7 @@
                                     title="Show only the channels of this Type (the Type column)">
                                     <option value="">All</option>
                                     <option value="b2c">B2C</option>
+                                    <option value="b2c w/o">B2C W/o</option>
                                     <option value="b2b">B2B</option>
                                     <option value="b2b w/o">B2B W/o</option>
                                     <option value="c2c">C2C</option>
@@ -1874,6 +1875,7 @@
                             title="Show only the channels of this Type (the Type column)">
                             <option value="">All</option>
                             <option value="b2c">B2C</option>
+                            <option value="b2c w/o">B2C W/o</option>
                             <option value="b2b">B2B</option>
                             <option value="b2b w/o">B2B W/o</option>
                             <option value="c2c">C2C</option>
@@ -1962,7 +1964,7 @@
                             <thead>
                                 <tr class="modal-vertical-header">
                                     <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Marketplace"><span>Channel</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-type-th" title="Channel type — same grouping as the Channels modal (B2C, B2B, B2B W/o = B2B without ship, C2C, Hs = High Shipping)"><span>Type</span></th>
+                                    <th class="ovl30-type-th" title="Channel type — same grouping as the Channels modal (B2C, B2C W/o = B2C without ship, B2B, B2B W/o = B2B without ship, C2C, Hs = High Shipping)"><span>Type</span></th>
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -4094,6 +4096,7 @@
             if (!group) return '';
             const g = String(group).toLowerCase().trim();
             if (g === CHPUSH_NOSHIP_GROUP.toLowerCase()) return 'b2b w/o';
+            if (g === CHPUSH_B2C_NOSHIP_GROUP.toLowerCase()) return 'b2c w/o';
             if (g === 'high shipping') return 'hs';
             return g;
         }
@@ -8414,8 +8417,9 @@
          */
         function chModalGroupOfKey(key) {
             if (CHPUSH_NOSHIP_KEYS.has(key)) return CHPUSH_NOSHIP_GROUP;
+            if (CHPUSH_B2C_NOSHIP_KEYS.has(key)) return CHPUSH_B2C_NOSHIP_GROUP;
             const src = window.PI_CHANNELS_BY_TYPE || {};
-            const overrides = { alibaba: 'B2B' };
+            const overrides = CHPUSH_TYPE_OVERRIDES;
             const moves = { dropship: 'B2B', ds: 'B2B', sheets: 'C2C' };
             let found = null;
             Object.keys(src).forEach(function(t) {
@@ -8450,12 +8454,14 @@
             const g = String(group).toLowerCase().trim();
             let label = String(group);
             if (g === CHPUSH_NOSHIP_GROUP.toLowerCase()) label = 'B2B W/o';
+            else if (g === CHPUSH_B2C_NOSHIP_GROUP.toLowerCase()) label = 'B2C W/o';
             else if (g === 'high shipping') label = 'Hs';
             // One colour per type
             const colors = {
                 'b2c': 'background:#0d6efd;color:#fff;',          // blue
                 'b2b': 'background:#198754;color:#fff;',          // green
                 'b2b w/o': 'background:#20c997;color:#000;',      // teal
+                'b2c w/o': 'background:#0dcaf0;color:#000;',      // cyan
                 'c2c': 'background:#6f42c1;color:#fff;',          // purple
                 'hs': 'background:#fd7e14;color:#000;'            // orange
             };
@@ -8467,6 +8473,7 @@
             const x = Math.max(0.01, +Number(base).toFixed(2));
             const group = String(chModalGroupOfKey(chpushKey($tr && $tr.attr('data-marketplace'))) || '').toLowerCase().trim();
             if (group === CHPUSH_NOSHIP_GROUP.toLowerCase()) return chpushNoShipPrice(x);
+            if (group === CHPUSH_B2C_NOSHIP_GROUP.toLowerCase()) return chpushB2cNoShipPrice(x);
             if (group === 'b2b' || group === 'c2c') return Math.max(0.01, +(x * 0.75).toFixed(2));
             if (group === 'high shipping') {
                 const d = chpushShipDiff();
@@ -8495,6 +8502,7 @@
                 'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)?\n\n'
                 + 'B2C = $' + basePrice.toFixed(2)
                 + '\nB2B / C2C = $' + (basePrice * 0.75).toFixed(2) + ' (× 0.75)'
+                + '\nB2C without ship = $' + chpushB2cNoShipPrice(basePrice).toFixed(2) + ' (SPRICE − Ship $' + chpushShipAmount().toFixed(2) + ')'
                 + '\nB2B without ship = $' + chpushNoShipPrice(basePrice).toFixed(2) + ' (× 0.75 − Ship $' + chpushShipAmount().toFixed(2) + ')'
                 + '\nHigh Shipping = $' + (hsDiff != null ? Math.max(0, basePrice + hsDiff).toFixed(2) + ' (+ Diff ' + hsDiff.toFixed(2) + ')' : basePrice.toFixed(2))
                 + siblingsApplyLabel()
@@ -10214,7 +10222,12 @@
         }
 
         /** Channels where no shipping is applied in the SKU modal (ship = 0): they get their own "B2B without ship" column. */
-        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg', 'faire']); // Purchasing Power stays in High Shipping
+        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg']); // Purchasing Power stays in High Shipping
+        /** B2C channels with no shipping applied: own "B2C without ship" column, price = SPRICE − Ship. */
+        const CHPUSH_B2C_NOSHIP_KEYS = new Set(['faire']);
+        const CHPUSH_B2C_NOSHIP_GROUP = 'B2C without ship';
+        /** Per-channel type overrides for this modal (normalized channel name → type). Shopify and Faire are shown under B2C. */
+        const CHPUSH_TYPE_OVERRIDES = { alibaba: 'B2B', shopify: 'B2C', faire: 'B2C' };
         const CHPUSH_NOSHIP_GROUP = 'B2B without ship';
         /** Shipping $ of the open SKU (AliExpress row, else Amazon row); 0 when unknown. */
         function chpushShipAmount() {
@@ -10228,6 +10241,10 @@
                 }
             }
             return 0;
+        }
+        /** B2C price less ship: X − Ship (never below $0.01). */
+        function chpushB2cNoShipPrice(x) {
+            return Math.max(0.01, +(x - chpushShipAmount()).toFixed(2));
         }
         /** B2B price less ship: 0.75 × X − Ship (never below $0.01). */
         function chpushNoShipPrice(x) {
@@ -10272,18 +10289,19 @@
             const groups = {};
             const srcGroups = window.PI_CHANNELS_BY_TYPE || {};
             // Per-channel overrides (by normalized name) and whole-type moves for this modal:
-            //   Alibaba → B2B, Dropship → B2B, Sheets (Mercari, Vinted) → C2C
-            const channelOverride = { alibaba: 'B2B' };
+            //   Alibaba → B2B, Shopify/Faire → B2C, Dropship → B2B, Sheets (Mercari, Vinted) → C2C
+            const channelOverride = CHPUSH_TYPE_OVERRIDES;
             const typeMoves = { dropship: 'B2B', ds: 'B2B', sheets: 'C2C' };
             Object.keys(srcGroups).forEach(function(t) {
                 (srcGroups[t] || []).forEach(function(name) {
                     const nameKey = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
                     let target = channelOverride[nameKey] || typeMoves[String(t).toLowerCase().trim()] || t;
                     if (CHPUSH_NOSHIP_KEYS.has(chpushKey(name))) target = CHPUSH_NOSHIP_GROUP; // no ship applied
+                    if (CHPUSH_B2C_NOSHIP_KEYS.has(chpushKey(name))) target = CHPUSH_B2C_NOSHIP_GROUP; // no ship applied
                     (groups[target] = groups[target] || []).push(name);
                 });
             });
-            ['B2B', 'C2C', CHPUSH_NOSHIP_GROUP].forEach(function(t) {
+            ['B2B', 'C2C', CHPUSH_NOSHIP_GROUP, CHPUSH_B2C_NOSHIP_GROUP].forEach(function(t) {
                 if (groups[t]) {
                     groups[t].sort(function(a, b) { return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }); });
                 }
@@ -10294,6 +10312,12 @@
                 types = types.filter(function(t) { return t !== CHPUSH_NOSHIP_GROUP; });
                 const bi = types.findIndex(function(t) { return String(t).toLowerCase() === 'b2b'; });
                 types.splice(bi >= 0 ? bi + 1 : types.length, 0, CHPUSH_NOSHIP_GROUP);
+            }
+            // "B2C without ship" sits right after B2C
+            if (groups[CHPUSH_B2C_NOSHIP_GROUP]) {
+                types = types.filter(function(t) { return t !== CHPUSH_B2C_NOSHIP_GROUP; });
+                const ci = types.findIndex(function(t) { return String(t).toLowerCase() === 'b2c'; });
+                types.splice(ci >= 0 ? ci + 1 : 0, 0, CHPUSH_B2C_NOSHIP_GROUP);
             }
             $('#chpush-sku').text(getModalPrimarySku() || '');
             if (!types.length) {
@@ -10337,7 +10361,9 @@
                         })()
                         : (type === CHPUSH_NOSHIP_GROUP
                             ? ' <small class="text-muted fw-normal" title="0.75 × price − Ship (no shipping applied on these channels)">Ship −$' + chpushShipAmount().toFixed(2) + '</small>'
-                            : ''))
+                            : (type === CHPUSH_B2C_NOSHIP_GROUP
+                                ? ' <small class="text-muted fw-normal" title="SPRICE − Ship (no shipping applied on these channels)">Ship −$' + chpushShipAmount().toFixed(2) + '</small>'
+                                : '')))
                     + '</span><span class="d-flex align-items-center gap-2"><span class="badge bg-secondary">' + names.length + '</span>'
                     + '<button type="button" class="btn btn-sm btn-primary chpush-col-btn" data-pushable="' + (anyPushable ? '1' : '0') + '"'
                     + (anyPushable ? ' title="Push all ' + chpushEsc(type) + ' channels"' : ' disabled title="No pushable channels in this column"')
@@ -10361,7 +10387,7 @@
                 // A price typed in the SPRICE $ box fills (and overwrites) every box once, as soon as this modal opens
                 chpushApplySameBase();
             } else {
-                // Otherwise every box follows the SPRICE $ box by its column rule (B2C = X, B2B / C2C = 0.75 × X, B2B w/o ship = 0.75 × X − Ship,
+                // Otherwise every box follows the SPRICE $ box by its column rule (B2C = X, B2B / C2C = 0.75 × X, B2B w/o ship = 0.75 × X − Ship, B2C w/o ship = X − Ship,
                 // High Shipping = X + Diff, Doba −25%). Shown only — nothing is saved until you push or type.
                 const boxX = parseOvl30PushPrice($('#modal-sprice-same-input').val());
                 if (boxX > 0) {
@@ -10401,6 +10427,7 @@
             const t = String(type || '').toLowerCase().trim();
             if (t === 'b2b' || t === 'c2c') return +(x * 0.75).toFixed(2);          // 0.75 × X
             if (t === CHPUSH_NOSHIP_GROUP.toLowerCase()) return chpushNoShipPrice(x); // 0.75 × X − Ship
+            if (t === CHPUSH_B2C_NOSHIP_GROUP.toLowerCase()) return chpushB2cNoShipPrice(x); // X − Ship
             if (t === 'high shipping') {                                              // X + Shipping Master Diff
                 const d = chpushShipDiff();
                 // No Diff (Ship BB / Ship missing in Product Master): use X itself — never leave PPower / BestBuy untouched
@@ -10493,6 +10520,8 @@
                 typeInputs('c2c').val(b2bVal); // C2C follows the B2B price
                 // B2B without ship = B2B price less ship
                 typeInputs(CHPUSH_NOSHIP_GROUP.toLowerCase()).val((isFinite(x) && x > 0) ? chpushNoShipPrice(x).toFixed(2) : '');
+                // B2C without ship = Aliexpress (B2C) price less ship
+                typeInputs(CHPUSH_B2C_NOSHIP_GROUP.toLowerCase()).val((isFinite(x) && x > 0) ? chpushB2cNoShipPrice(x).toFixed(2) : '');
 
                 // High Shipping channels = Aliexpress price + Shipping Master Diff (Ship BB − Ship)
                 const diff = chpushShipDiff();
