@@ -1146,6 +1146,8 @@ class VariationMasterController extends Controller
         $listingByParent = [];
         $parentRows = [];
         $children = [];
+        $kidsTotal = [];
+        $kidsVisible = [];
         foreach ($products as $product) {
             $sku = $this->normalizeDisplay($product->sku);
             if ($sku === '') {
@@ -1165,7 +1167,14 @@ class VariationMasterController extends Controller
                 continue;
             }
 
-            $children[] = $product;
+            // Only the SKUs CP Master lists (status Active, DC or Coming) are shown here; a SKU with any other or no status is not in CP Master.
+            $childKey = ListingManagerFamily::normalizeParentKey($this->normalizeDisplay($product->parent));
+            $kidsTotal[$childKey] = ($kidsTotal[$childKey] ?? 0) + 1;
+            $status = strtolower(trim((string) ($values['status'] ?? '')));
+            if (in_array($status, ['active', 'dc', 'upcoming'], true)) {
+                $kidsVisible[$childKey] = true;
+                $children[] = $product;
+            }
         }
 
         $rows = [];
@@ -1174,6 +1183,10 @@ class VariationMasterController extends Controller
         foreach ($parentRows as $entry) {
             $product = $entry['product'];
             $key = $entry['key'];
+            // Same rule as CP Master: a parent follows its child SKUs, so it is hidden when none of them is listed there.
+            if (($kidsTotal[$key] ?? 0) > 0 && ! isset($kidsVisible[$key])) {
+                continue;
+            }
             $values = is_array($product->Values) ? $product->Values : [];
             $listing = $listingByParent[$key] ?? $this->emptyListingText();
             $rows[] = [
