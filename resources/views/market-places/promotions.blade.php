@@ -221,18 +221,6 @@
             color: #cbd5e1;
             cursor: not-allowed;
         }
-        #promo-prmt-table .promo-prmt-input,
-        #promo-prmt-table .promo-prmt-range {
-            background: #198754;
-            border-color: #198754;
-            color: #fff;
-            text-align: center;
-        }
-        #promo-prmt-table .promo-prmt-range {
-            background: #fff;
-            border-color: #ced4da;
-            color: #212529;
-        }
     </style>
 @endsection
 
@@ -289,8 +277,9 @@
     @include('partials.amazon-dil-price-coupon', ['amazonCouponPart' => 'modal'])
 
     {{-- Prmt% modal: shared Dil vs PRMT rule (same store/endpoints as the Prmt% button on the eBay pages) --}}
-    <div class="modal fade" id="promo-prmt-modal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+    @include('partials.dil-prmt-modal-style')
+    <div class="modal fade dpm" id="promo-prmt-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6">

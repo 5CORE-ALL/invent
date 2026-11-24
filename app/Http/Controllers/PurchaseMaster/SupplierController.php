@@ -438,10 +438,17 @@ class SupplierController extends Controller
     private function categoriesWithSupplierCounts(): Collection
     {
         $categories = Category::orderBy('name')->get();
+        // One query instead of one COUNT per category.
+        $counts = [];
+        foreach (DB::table('suppliers')->whereNotNull('category_id')->pluck('category_id') as $csv) {
+            foreach (array_unique(array_map('trim', explode(',', (string) $csv))) as $cid) {
+                if ($cid !== '') {
+                    $counts[$cid] = ($counts[$cid] ?? 0) + 1;
+                }
+            }
+        }
         foreach ($categories as $category) {
-            $category->supplier_count = DB::table('suppliers')
-                ->whereRaw('FIND_IN_SET(?, category_id)', [$category->id])
-                ->count();
+            $category->supplier_count = $counts[(string) $category->id] ?? 0;
         }
 
         return $categories;

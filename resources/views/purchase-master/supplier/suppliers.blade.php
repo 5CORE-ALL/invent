@@ -1317,6 +1317,13 @@
                 if (!$(this).hasClass('select2-hidden-accessible')) {
                     const $select = $(this);
                     const $modal = $select.closest('.modal');
+
+                    // Per-row edit modals (20+ on the page, each with a big category list) are
+                    // initialised lazily when they are opened (shown.bs.modal). Initialising all
+                    // of them up-front is what froze the page.
+                    if (!container && $modal.length && String($modal.attr('id') || '').indexOf('editSupplierModal') === 0) {
+                        return;
+                    }
                     
                     // Get selected values from HTML options before initializing Select2
                     const selectedValues = [];
@@ -1968,7 +1975,74 @@
                 }
                 
                 console.log('✅ All validations passed - submitting form');
+
+                // Bulk-edit handler already took over this submit.
+                if (e.isDefaultPrevented()) {
+                    return;
+                }
+
+                // Save via AJAX (no full page reload of the heavy supplier page),
+                // then refresh only the table.
+                e.preventDefault();
+
+                const $btn = form.find('button[type="submit"]');
+                if ($btn.data('saving')) {
+                    return false;
+                }
+                const origLabel = $btn.html();
+                $btn.data('saving', true).prop('disabled', true)
+                    .html('<i class="mdi mdi-loading mdi-spin"></i> Saving...');
+
+                $.ajax({
+                    url: form.attr('action'),
+                    method: 'POST',
+                    data: form.serialize(),
+                    dataType: 'json',
+                    timeout: 60000,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+                }).done(function (response) {
+                    if (response && response.success) {
+                        const isAdd = form.attr('id') === 'addSupplierForm';
+                        const modalEl = form.closest('.modal')[0];
+                        if (modalEl) {
+                            const inst = bootstrap.Modal.getInstance(modalEl);
+                            if (inst) { inst.hide(); }
+                        }
+                        showSupplierToast(response.message || 'Supplier saved.', 'success');
+                        const page = parseInt(new URLSearchParams(window.location.search).get('page'), 10) || 1;
+                        setTimeout(function () {
+                            loadSuppliers(isAdd ? 1 : page);
+                        }, 350);
+                    } else {
+                        alert((response && response.message) || 'Could not save supplier.');
+                    }
+                }).fail(function (xhr, status) {
+                    let msg = 'Could not save supplier. Please try again.';
+                    if (status === 'timeout') {
+                        msg = 'Saving timed out. Please check the list and try again.';
+                    } else if (xhr.responseJSON) {
+                        if (xhr.responseJSON.errors) {
+                            msg = Object.values(xhr.responseJSON.errors).flat().join('\n');
+                        } else if (xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                    } else if (xhr.status === 419) {
+                        msg = 'Session expired. Please refresh the page and try again.';
+                    }
+                    alert(msg);
+                }).always(function () {
+                    $btn.data('saving', false).prop('disabled', false).html(origLabel);
+                });
+
+                return false;
             });
+
+            function showSupplierToast(message, type) {
+                const $t = $('<div class="alert alert-' + (type || 'success') + ' shadow"' +
+                    ' style="position:fixed;top:20px;right:20px;z-index:20000;min-width:260px;"></div>').text(message);
+                $('body').append($t);
+                setTimeout(function () { $t.fadeOut(300, function () { $t.remove(); }); }, 3000);
+            }
 
             function initToolbarFilterSelect2($el, placeholder) {
                 if (!$el.length || $el.hasClass('select2-hidden-accessible')) {

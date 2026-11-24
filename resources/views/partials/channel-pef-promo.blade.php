@@ -872,8 +872,9 @@
     @endif
 
     @unless((!empty($channelPromoUsesSprcDil) && empty($channelPromoShowSaleUi)) || !empty($channelPromoHideDilPrmt))
-    <div class="modal fade" id="chPromoDilVsPrmtModal" tabindex="-1" aria-labelledby="chPromoDilVsPrmtModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
+    @include('partials.dil-prmt-modal-style')
+    <div class="modal fade dpm" id="chPromoDilVsPrmtModal" tabindex="-1" aria-labelledby="chPromoDilVsPrmtModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title fs-6" id="chPromoDilVsPrmtModalLabel">
