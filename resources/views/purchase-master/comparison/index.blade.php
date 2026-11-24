@@ -2078,6 +2078,22 @@
         text-align: center;
     }
 
+    /* Compact sheet: supplier / Amazon / 5 Core columns capped at 150px, slimmer rows. Text that does not fit is cut with "…"
+       and shown in full in the hover tooltip (and while the cell is being edited). */
+    .cd-sheet-table td[data-sheet-col]:not(.cd-label-cell):not(.cd-priority-col),
+    .cd-sheet-table th.cd-col-header:not(.cd-spec-col):not(.cd-priority-col) { max-width: 150px; }
+    .cd-sheet-table .cd-sheet-cell:not(.cd-sheet-cell-image):not(.cd-sheet-cell-priority):not(.cd-sheet-comm-cell) {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cd-sheet-table .cd-sheet-cell:not(.cd-sheet-cell-image):not(.cd-sheet-cell-priority):not(.cd-sheet-comm-cell):focus {
+        white-space: pre-wrap; overflow: visible; text-overflow: clip;
+    }
+    .cd-sheet-table .cd-sheet-cell { padding: 3px 6px; }
+    .cd-sheet-table .cd-sheet-row-edit-btn,
+    .cd-sheet-table .cd-sheet-supplier-edit-btn { width: 22px; height: 22px; }
+    .cd-sheet-table td.cd-row-edit-col,
+    .cd-sheet-table td.cd-row-select-col { padding: 1px; }
+
     /* Profit Calculator modal — full-width end-to-end (comparison page only) */
     #comparisonRoiModal.modal {
         padding-left: 0 !important;
@@ -17319,7 +17335,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if (headerLabel && headerLabel.getAttribute('title')) {
             return headerLabel;
         }
-        const cell = target.closest('.cd-sheet-cell-company, .cd-sheet-cell-supplier-name, .cd-sheet-cell-full-hover, .cd-sheet-cell-link');
+        let cell = target.closest('.cd-sheet-cell-company, .cd-sheet-cell-supplier-name, .cd-sheet-cell-full-hover, .cd-sheet-cell-link');
+        if (!cell) {
+            // Any other cell whose text is cut with "…" gets the full-text hover too.
+            const plain = target.closest('.cd-sheet-cell');
+            if (plain && !plain.classList.contains('cd-sheet-cell-image') && plain.scrollWidth > plain.clientWidth + 1) {
+                cell = plain;
+            }
+        }
         if (!cell) {
             return null;
         }
