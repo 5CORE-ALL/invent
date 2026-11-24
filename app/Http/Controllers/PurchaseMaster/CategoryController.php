@@ -1055,6 +1055,169 @@ class CategoryController extends Controller
     }
 
     /**
+     * Merge categories ("Category merge" on /category.list): everything that belongs to the chosen
+     * categories (their CP Master SKUs and their suppliers) is moved under ONE category with the new
+     * name, and the chosen categories are then removed.
+     *
+     * - The new name must be free, unless it is the name of one of the chosen categories: then that
+     *   category is the one that is kept and the others are merged into it.
+     * - SKUs: every CP Master product linked to one of the merged MFR categories is linked to the
+     *   merged MFR category instead (its other MFR categories are left alone).
+     * - Suppliers: the merged category ids on a supplier are replaced by the merged category id.
+     * - The merged MFR categories in CP Master are soft-deleted (restorable); nothing else is deleted.
+     */
+    public function mergeCategories(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'new_name' => 'required|string|max:255',
+            'category_ids' => 'required|array|min:1|max:500',
+            'category_ids.*' => 'required|integer',
+        ], [
+            'new_name.required' => 'Enter the new MFR category name.',
+            'category_ids.required' => 'Pick at least one MFR category to merge.',
+            'category_ids.min' => 'Pick at least one MFR category to merge.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+
+        $newName = trim((string) $request->input('new_name'));
+        if ($newName === '') {
+            return response()->json(['success' => false, 'message' => 'Enter the new MFR category name.'], 422);
+        }
+        $nameKey = mb_strtolower($newName);
+
+        $chosen = Category::query()->whereIn('id', array_unique($request->input('category_ids')))->get();
+        if ($chosen->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'The chosen categories were not found.'], 404);
+        }
+
+        $existing = Category::query()->whereRaw('LOWER(TRIM(name)) = ?', [$nameKey])->first();
+        if ($existing && ! $chosen->contains('id', $existing->id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A category named "'.$existing->name.'" already exists. Pick a different name, or tick it in the list to merge into it.',
+            ], 422);
+        }
+
+        $result = DB::transaction(function () use ($existing, $chosen, $newName) {
+            $target = $existing;
+            if (! $target) {
+                $target = new Category;
+                $target->name = $newName;
+                $target->status = 'active';
+                $target->code = strtoupper(Str::slug($newName, '_'));
+                $target->save();
+            }
+            $targetId = (int) $target->id;
+            $sources = $chosen->reject(fn ($c) => (int) $c->id === $targetId)->values();
+
+            // The CP Master MFR category that stands for the merged category (created when missing).
+            $targetMfrIds = $this->mfrCategoryIdsForName($target->name);
+            if ($targetMfrIds === []) {
+                $created = ProductCategory::create([
+                    'category_name' => trim((string) $target->name),
+                    'status' => 'active',
+                ]);
+                $targetMfrIds = [(int) $created->id];
+            }
+            $targetMfr = $targetMfrIds[0];
+
+            $sourceMfrIds = [];
+            foreach ($sources as $source) {
+                $sourceMfrIds = array_merge($sourceMfrIds, $this->mfrCategoryIdsForName($source->name));
+            }
+            $sourceMfrIds = array_values(array_diff(array_unique($sourceMfrIds), $targetMfrIds));
+
+            // SKUs
+            $skusMoved = 0;
+            if ($sourceMfrIds !== []) {
+                ProductMaster::query()->select(['id', 'category_id', 'mfr_category_ids'])
+                    ->chunkById(500, function ($products) use ($sourceMfrIds, $targetMfr, &$skusMoved) {
+                        foreach ($products as $product) {
+                            $ids = $this->normalizeProductCategoryIds($product->mfr_category_ids, $product->category_id);
+                            if (count(array_intersect($ids, $sourceMfrIds)) === 0) {
+                                continue;
+                            }
+                            $merged = [];
+                            $placed = false;
+                            foreach ($ids as $cid) {
+                                if (in_array($cid, $sourceMfrIds, true)) {
+                                    if (! $placed) {
+                                        $merged[] = $targetMfr;
+                                        $placed = true;
+                                    }
+                                } else {
+                                    $merged[] = $cid;
+                                }
+                            }
+                            $merged = array_values(array_unique($merged));
+                            // Query-builder update: avoids the model's saving hooks; JSON is encoded by hand.
+                            ProductMaster::query()->whereKey($product->id)->update([
+                                'mfr_category_ids' => json_encode($merged),
+                                'category_id' => $merged[0] ?? null,
+                            ]);
+                            $skusMoved++;
+                        }
+                    });
+            }
+
+            // Suppliers
+            $sourceIds = $sources->pluck('id')->map(fn ($i) => (int) $i)->all();
+            $suppliersMoved = 0;
+            if ($sourceIds !== []) {
+                $suppliers = Supplier::query()->where(function ($q) use ($sourceIds) {
+                    foreach ($sourceIds as $sid) {
+                        $q->orWhereRaw('FIND_IN_SET(?, REPLACE(category_id, " ", ""))', [$sid]);
+                    }
+                })->get();
+                foreach ($suppliers as $supplier) {
+                    $merged = [];
+                    $placed = false;
+                    foreach ($this->supplierCategoryIds($supplier) as $cid) {
+                        if (in_array($cid, $sourceIds, true)) {
+                            if (! $placed) {
+                                $merged[] = $targetId;
+                                $placed = true;
+                            }
+                        } else {
+                            $merged[] = $cid;
+                        }
+                    }
+                    $supplier->category_id = implode(',', array_values(array_unique($merged)));
+                    $supplier->save();
+                    $suppliersMoved++;
+                }
+            }
+
+            // The merged-away categories (and their now-empty MFR categories in CP Master)
+            if ($sourceIds !== []) {
+                Category::query()->whereIn('id', $sourceIds)->delete();
+            }
+            if ($sourceMfrIds !== []) {
+                ProductCategory::query()->whereIn('id', $sourceMfrIds)->delete();
+            }
+
+            return [
+                'target' => $target,
+                'merged' => $sources->count(),
+                'skus' => $skusMoved,
+                'suppliers' => $suppliersMoved,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Merged '.$result['merged'].' categor'.($result['merged'] === 1 ? 'y' : 'ies')
+                .' into "'.$result['target']->name.'" ('.$result['skus'].' SKUs, '.$result['suppliers'].' suppliers moved).',
+            'category' => ['id' => (int) $result['target']->id, 'name' => $result['target']->name],
+            'merged' => $result['merged'],
+            'skus_moved' => $result['skus'],
+            'suppliers_moved' => $result['suppliers'],
+        ]);
+    }
+
+    /**
      * @return list<int> ids of CP Master MFR categories whose name matches the category name
      */
     private function mfrCategoryIdsForName($name): array

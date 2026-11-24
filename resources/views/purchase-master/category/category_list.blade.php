@@ -105,6 +105,11 @@
                             </span>
                         </div>
                         <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-primary btn-sm" id="category-merge-btn"
+                                data-bs-toggle="modal" data-bs-target="#categoryMergeModal"
+                                title="Merge several MFR categories into one new category">
+                                <i class="mdi mdi-call-merge me-1"></i> Category merge
+                            </button>
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'categories'])
                         </div>
                     </div>
@@ -288,6 +293,62 @@
                                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                                     <button type="button" class="btn btn-primary" id="acm-submit" disabled>
                                         <i class="mdi mdi-plus me-1"></i> Add to category
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- Category merge: a new MFR category name + the MFR categories to merge into it --}}
+                    <div class="modal fade" id="categoryMergeModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+                        <div class="modal-dialog modal-dialog-centered shadow-none">
+                            <div class="modal-content border-0 rounded-3">
+                                <div class="modal-header bg-primary text-white rounded-top">
+                                    <h5 class="modal-title"><i class="mdi mdi-call-merge me-1"></i> Category merge</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold" for="cmg-name">
+                                            1. New MFR category name <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="text" id="cmg-name" class="form-control" maxlength="255" autocomplete="off"
+                                            placeholder="Type the new MFR category name">
+                                        <div class="form-text text-danger" id="cmg-name-hint" style="display:none;"></div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label fw-semibold" for="cmg-toggle">
+                                            2. Add MFR category <span class="text-danger">*</span>
+                                        </label>
+                                        <div class="dropdown" id="cmg-dropdown">
+                                            <button type="button" id="cmg-toggle" class="form-select text-start" data-bs-toggle="dropdown"
+                                                data-bs-auto-close="outside" aria-expanded="false">
+                                                <span id="cmg-toggle-label" class="text-muted">Select MFR categories...</span>
+                                            </button>
+                                            <div class="dropdown-menu w-100 p-2" id="cmg-menu">
+                                                <input type="text" id="cmg-search" class="form-control form-control-sm mb-2" autocomplete="off"
+                                                    placeholder="Search MFR categories...">
+                                                <div class="d-flex justify-content-between align-items-center small px-1 mb-1">
+                                                    <div class="form-check mb-0">
+                                                        <input class="form-check-input" type="checkbox" id="cmg-select-all">
+                                                        <label class="form-check-label" for="cmg-select-all">Select all shown</label>
+                                                    </div>
+                                                    <a href="#" id="cmg-clear">Clear</a>
+                                                </div>
+                                                <div id="cmg-list" style="max-height:240px; overflow-y:auto;"></div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-1 mt-2" id="cmg-chips"></div>
+                                    </div>
+                                    <div class="alert alert-warning py-2 small mb-0 mt-3">
+                                        The SKUs and suppliers of the selected categories move to the new category, and the selected
+                                        categories are then removed.
+                                    </div>
+                                    <div class="text-danger small mt-2" id="cmg-error" style="display:none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="cmg-save" disabled>
+                                        <i class="mdi mdi-content-save me-1"></i> Save
                                     </button>
                                 </div>
                             </div>
@@ -979,6 +1040,142 @@
                     if (res && res.success && res.category && res.category.id) addSku(res.category.id);
                     else showError({ responseJSON: { message: (res && res.message) || 'Could not create the category.' } });
                 }).fail(showError);
+            });
+        })();
+    </script>
+    <script>
+        // ---- Category merge: new MFR category name + multi-select of the MFR categories to merge into it ----
+        (function() {
+            const categories = @json($allCategories->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name])->values());
+            const mergeUrl = '{{ route('category.merge') }}';
+            const esc = function(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+                });
+            };
+            const label = function(s) {
+                const t = String(s == null ? '' : s).trim().toLowerCase();
+                return t.charAt(0).toUpperCase() + t.slice(1);
+            };
+            const picked = {}; // id -> true (kept while searching)
+            const $modal = $('#categoryMergeModal');
+            const $name = $('#cmg-name');
+
+            function pickedList() {
+                return categories.filter(function(c) { return picked[c.id]; });
+            }
+            function shownList() {
+                const q = $('#cmg-search').val().trim().toLowerCase();
+                return categories.filter(function(c) { return !q || c.name.toLowerCase().indexOf(q) !== -1; });
+            }
+
+            function renderList() {
+                const shown = shownList();
+                $('#cmg-list').html(shown.length ? shown.map(function(c) {
+                    return '<div class="form-check py-1 px-4"><input class="form-check-input cmg-item" type="checkbox" id="cmg-i-' + c.id + '" data-id="' + c.id + '"' +
+                        (picked[c.id] ? ' checked' : '') + '><label class="form-check-label w-100" for="cmg-i-' + c.id + '">' + esc(label(c.name)) + '</label></div>';
+                }).join('') : '<div class="text-muted small px-2 py-2">No MFR categories found</div>');
+                const all = $('#cmg-select-all')[0];
+                const n = shown.filter(function(c) { return picked[c.id]; }).length;
+                all.checked = shown.length > 0 && n === shown.length;
+                all.indeterminate = n > 0 && n < shown.length;
+            }
+
+            function renderPicked() {
+                const list = pickedList();
+                $('#cmg-toggle-label')
+                    .toggleClass('text-muted', !list.length)
+                    .text(list.length ? list.length + ' selected' : 'Select MFR categories...');
+                $('#cmg-chips').html(list.map(function(c) {
+                    return '<span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle d-inline-flex align-items-center gap-1">' +
+                        esc(label(c.name)) + '<a href="#" class="cmg-chip-x text-primary-emphasis text-decoration-none" data-id="' + c.id + '" title="Remove">&times;</a></span>';
+                }).join(''));
+                refreshState();
+            }
+
+            // The new name may not be used by a category that is not in the selection.
+            function nameClash() {
+                const key = $name.val().trim().toLowerCase();
+                if (!key) return null;
+                const hit = categories.find(function(c) { return c.name.trim().toLowerCase() === key; });
+                return hit && !picked[hit.id] ? hit : null;
+            }
+
+            function refreshState() {
+                const clash = nameClash();
+                const $hint = $('#cmg-name-hint');
+                if (clash) $hint.text('"' + label(clash.name) + '" already exists. Pick a different name, or select it below to merge into it.').show();
+                else $hint.hide();
+                $('#cmg-save').prop('disabled', !($name.val().trim() && pickedList().length && !clash));
+            }
+
+            function reset() {
+                Object.keys(picked).forEach(function(k) { delete picked[k]; });
+                $name.val('');
+                $('#cmg-search').val('');
+                $('#cmg-error').hide();
+                $('#cmg-save').html('<i class="mdi mdi-content-save me-1"></i> Save');
+                renderList();
+                renderPicked();
+            }
+
+            $modal.on('show.bs.modal', reset);
+            $modal.on('shown.bs.modal', function() { $name.trigger('focus'); });
+            $name.on('input', refreshState);
+            $('#cmg-search').on('input', renderList);
+
+            $(document).on('change', '.cmg-item', function() {
+                const id = parseInt(this.getAttribute('data-id'), 10);
+                if (this.checked) picked[id] = true; else delete picked[id];
+                renderList();
+                renderPicked();
+            });
+            $('#cmg-select-all').on('change', function() {
+                const on = this.checked;
+                shownList().forEach(function(c) { if (on) picked[c.id] = true; else delete picked[c.id]; });
+                renderList();
+                renderPicked();
+            });
+            $('#cmg-clear').on('click', function(e) {
+                e.preventDefault();
+                Object.keys(picked).forEach(function(k) { delete picked[k]; });
+                renderList();
+                renderPicked();
+            });
+            $(document).on('click', '.cmg-chip-x', function(e) {
+                e.preventDefault();
+                delete picked[parseInt(this.getAttribute('data-id'), 10)];
+                renderList();
+                renderPicked();
+            });
+
+            $('#cmg-save').on('click', function() {
+                const ids = pickedList().map(function(c) { return c.id; });
+                const newName = $name.val().trim();
+                if (!newName || !ids.length || nameClash()) return;
+                const $btn = $(this);
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+                $('#cmg-error').hide();
+                $.ajax({
+                    url: mergeUrl,
+                    method: 'POST',
+                    dataType: 'json',
+                    data: { _token: $('meta[name="csrf-token"]').attr('content'), new_name: newName, category_ids: ids }
+                }).done(function(res) {
+                    $btn.html('<i class="mdi mdi-check me-1"></i> Merged');
+                    alert((res && res.message) || 'Categories merged.');
+                    // The page carries category lists in several modals: reload so everything is current.
+                    window.location.reload();
+                }).fail(function(xhr) {
+                    let msg = 'Server error occurred.';
+                    if (xhr && xhr.responseJSON) {
+                        if (xhr.responseJSON.errors) msg = Object.values(xhr.responseJSON.errors).flat().join(' ');
+                        else if (xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    }
+                    $('#cmg-error').text(msg).show();
+                    $btn.html('<i class="mdi mdi-content-save me-1"></i> Save');
+                    refreshState();
+                });
             });
         })();
     </script>
