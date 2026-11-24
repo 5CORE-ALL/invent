@@ -3487,6 +3487,7 @@
             samePricePv.clear();
             $('#modal-sprice-same-input').val('');
             $('#modal-same-sprice-metrics').hide().empty();
+            loadSameSpriceBox(sku); // the box's own saved price (not Amazon's) refills the box when it arrives
             // Wire totals-row Price / CVR chart dots + header INV/L30/Dil badges to this SKU
             const chartSku = String(sku || '').trim();
             const isParentSku = chartSku.toUpperCase().indexOf('PARENT ') === 0;
@@ -7821,8 +7822,6 @@
                 success: function(res) {
                     input.css('border-color', '#28a745');
                     setTimeout(() => input.css('border-color', ''), 1000);
-                    // A manual Amazon edit replaces the remembered box price (the box follows Amazon's saved SPRICE)
-                    if (mpLower === 'amazon') rememberSameSprice(sku, sprice);
                     if (isTemuMp) {
                         syncTemuPairedSpriceInModal(mpLower, sprice);
                     }
@@ -7884,7 +7883,7 @@
                 showToast('No SKU loaded in modal', 'error');
                 return;
             }
-            forgetSameSprice(sku); // cleared SPRICE must not come back from the "last saved price" memory
+            forgetSameSprice(sku); // Clear SPRICE also clears the box's own price
             const $rows = [];
             $('#ovl30DetailsTableBody tr').each(function() {
                 const $tr = $(this);
@@ -8711,49 +8710,57 @@
             }
             return 0;
         }
-        // ---- "Last saved price" memory for the SPRICE $ box ----
-        // The ✓ / auto-save write every channel one after another (slow), and the box is refilled from server data on reopen.
-        // Remember the price the moment it is fed so reopening right away shows it, even while those saves are still running.
-        // Kept per SKU in localStorage; after SAME_SPRICE_MEM_TTL_MS the server's saved SPRICE is the only truth again.
-        const SAME_SPRICE_MEM_KEY = 'pi_last_same_sprice_v1';
-        const SAME_SPRICE_MEM_TTL_MS = 5 * 60 * 1000;
-        function sameSpriceMemRead() {
-            try { return JSON.parse(localStorage.getItem(SAME_SPRICE_MEM_KEY) || '{}') || {}; } catch (e) { return {}; }
-        }
-        function rememberSameSprice(sku, x) {
-            const key = String(sku || '').trim().toUpperCase();
-            x = parseFloat(x);
-            if (!key || key === 'NOT LISTED' || !(x > 0)) return;
-            try {
-                const m = sameSpriceMemRead();
-                m[key] = { x: +x.toFixed(2), at: Date.now() };
-                const keys = Object.keys(m);
-                if (keys.length > 300) { // keep the newest 300
-                    keys.sort(function(a, b) { return (m[a].at || 0) - (m[b].at || 0); })
-                        .slice(0, keys.length - 300).forEach(function(k) { delete m[k]; });
-                }
-                localStorage.setItem(SAME_SPRICE_MEM_KEY, JSON.stringify(m));
-            } catch (e) { /* storage full / disabled: the server value is still used */ }
-        }
-        function forgetSameSprice(sku) {
-            try {
-                const m = sameSpriceMemRead();
-                delete m[String(sku || '').trim().toUpperCase()];
-                localStorage.setItem(SAME_SPRICE_MEM_KEY, JSON.stringify(m));
-            } catch (e) { /* ignore */ }
-        }
-        function getRememberedSameSprice(sku) {
-            const e = sameSpriceMemRead()[String(sku || '').trim().toUpperCase()];
-            if (!e || !(parseFloat(e.x) > 0)) return 0;
-            if (Date.now() - (e.at || 0) > SAME_SPRICE_MEM_TTL_MS) return 0;
-            return parseFloat(e.x);
+        // ---- The SPRICE $ box has its OWN data store (table price_increase_box_sprices, one row per SKU) ----
+        // It is NOT read from the Amazon analytics page / any channel SPRICE: the price fed in the box is saved here
+        // (on ✓ and on the auto-save) and is what the box shows after a refresh / reopen.
+        // Only when a SKU has never had a box price is it seeded from the channels' saved SPRICE (Amazon's, else any).
+        const sameSpriceBox = {}; // SKU (UPPER) -> { loaded: bool, price: number }
+        function sameBoxKey(sku) { return String(sku || '').trim().toUpperCase(); }
+
+        /** Fetch this SKU's own box price; the box is refilled as soon as it arrives. */
+        function loadSameSpriceBox(sku) {
+            const key = sameBoxKey(sku);
+            if (!key || key === 'NOT LISTED') return;
+            delete sameSpriceBox[key]; // always re-read (another tab / user may have changed it)
+            $.ajax({ url: '/price-increase-box-sprice', method: 'GET', data: { sku: sku }, timeout: 15000 })
+                .done(function(res) {
+                    const p = res && res.sprice != null ? parseFloat(res.sprice) : 0;
+                    sameSpriceBox[key] = { loaded: true, price: p > 0 ? p : 0 };
+                })
+                .fail(function() { sameSpriceBox[key] = { loaded: true, price: 0 }; }) // fall back to the seed, never block the box
+                .always(function() {
+                    if (sameBoxKey(getModalPrimarySku()) === key) syncSameSpriceBoxFromSaved();
+                });
         }
 
-        /** Put the saved price in the SPRICE $ box (never over something the user is typing) and refresh the profit badges. */
+        /** Save the price fed in the box as this SKU's own box price (sprice 0 / empty clears it). */
+        function persistSameSpriceBox(sku, x) {
+            const key = sameBoxKey(sku);
+            if (!key || key === 'NOT LISTED') return;
+            const p = parseFloat(x);
+            sameSpriceBox[key] = { loaded: true, price: p > 0 ? +p.toFixed(2) : 0 }; // immediately, before the request returns
+            $.ajax({
+                url: '/price-increase-box-sprice', method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, sprice: p > 0 ? p.toFixed(2) : '' }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save the SPRICE $ box price';
+                showToast(msg, 'error');
+            });
+        }
+        function rememberSameSprice(sku, x) {
+            if (parseFloat(x) > 0) persistSameSpriceBox(sku, x);
+        }
+        function forgetSameSprice(sku) { persistSameSpriceBox(sku, 0); }
+
+        /** Put the box's own price in the SPRICE $ box (never over something the user is typing) and refresh the profit badges. */
         function syncSameSpriceBoxFromSaved() {
             const $same = $('#modal-sprice-same-input');
             if (!$same.length || $same.is(':focus') || samePriceDirty) { refreshSpriceSummarySoon(); return; }
-            const v = getRememberedSameSprice(getModalPrimarySku()) || getSavedSameSprice();
+            const own = sameSpriceBox[sameBoxKey(getModalPrimarySku())];
+            // Own price not fetched yet: leave the box alone — loadSameSpriceBox() refills it as soon as it arrives
+            if (!own || !own.loaded) { refreshSpriceSummarySoon(); return; }
+            const v = own.price > 0 ? own.price : getSavedSameSprice(); // seed only when never fed
             $same.val(v > 0 ? v.toFixed(2) : '');
             refreshSpriceSummarySoon();
             syncTableSpriceFromModal();
@@ -9019,7 +9026,7 @@
                 return;
             }
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
-            rememberSameSprice(sku, basePrice); // remembered at once; reopening shows it even while the channel saves still run
+            rememberSameSprice(sku, basePrice); // saved at once in the box's own table
             clearTimeout(sameAutoTimer); // the ✓ saves everything itself
 
             function runPushAll() {
@@ -10415,7 +10422,6 @@
             const sku = String(getModalPrimarySku() || '');
             if (!(x > 0) || !sku || sku.toUpperCase() === 'NOT LISTED' || sku.indexOf('PARENT') !== -1) return;
             if ((chpushRunning[sku] || 0) > 0 || $('#ovl30ChannelsPushModal').hasClass('show')) return; // a push / the Channels modal handles it
-            rememberSameSprice(sku, x); // typed price is kept as the last saved price straight away
             if (sameAutoSaving) { sameAutoTimer = setTimeout(saveSameSpriceAlways, 600); return; }
             // Put the saved SPRICEs back under the live preview so "changed?" compares against real saved values
             samePricePv.restore();
@@ -10442,7 +10448,14 @@
             if (!e.originalEvent) return; // programmatic prefill
             samePriceDirty = true; // the user's own value from here on (never overwritten by the saved-price prefill)
             clearTimeout(sameAutoTimer);
-            sameAutoTimer = setTimeout(saveSameSpriceAlways, 1000);
+            const typedSku = String(getModalPrimarySku() || '');
+            sameAutoTimer = setTimeout(function() {
+                // The typed price is the box's own saved price — stored even when the channel auto-save below is skipped
+                // (push running / Channels modal open). Empty box clears it.
+                const typed = parseOvl30PushPrice($('#modal-sprice-same-input').val());
+                if (typedSku && typedSku === String(getModalPrimarySku() || '')) persistSameSpriceBox(typedSku, typed > 0 ? typed : 0);
+                saveSameSpriceAlways();
+            }, 1000);
             const x = parseOvl30PushPrice($(this).val());
             chpushSameBase = { sku: String(getModalPrimarySku() || ''), x: x || 0, applied: false };
             if ($('#ovl30ChannelsPushModal').hasClass('show') && chpushRenderedSku === chpushSameBase.sku) {

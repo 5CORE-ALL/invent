@@ -4384,6 +4384,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-channel-l30-chart', [CvrMasterController::class, 'getChannelL30ChartData'])->name('cvr.master.channel.l30.chart');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
+    // "SPRICE $" box of the SKU modal: its own saved value per SKU (independent of Amazon / any channel SPRICE)
+    Route::get('/price-increase-box-sprice', [\App\Http\Controllers\MarketPlace\PriceIncreaseBoxSpriceController::class, 'show'])->name('price.increase.box.sprice.show');
+    Route::post('/price-increase-box-sprice', [\App\Http\Controllers\MarketPlace\PriceIncreaseBoxSpriceController::class, 'save'])->name('price.increase.box.sprice.save');
     // Same push, but remembers the result: failed pushes are retried hourly, e-mailed and shown as a red alert on /price-increase
     Route::post('/price-push-tracked', [\App\Http\Controllers\MarketPlace\PricePushPendingController::class, 'push'])->name('price.push.tracked');
     // Several channels pushed on the server in the background (keeps going after a page refresh) + its progress
