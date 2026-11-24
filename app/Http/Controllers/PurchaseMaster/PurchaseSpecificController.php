@@ -40,6 +40,16 @@ class PurchaseSpecificController extends Controller
         return view('purchase-master.purchase-specific.index');
     }
 
+    /**
+     * Specification names exactly as listed on this page (used by the comparison sheet's specification pickers).
+     *
+     * @return list<string>
+     */
+    public function specificationNames(bool $fresh = false): array
+    {
+        return array_values(array_map(fn (array $g) => (string) $g['name'], $this->groups($fresh)));
+    }
+
     public function data(Request $request)
     {
         if ($request->boolean('fresh')) {
@@ -76,6 +86,60 @@ class PurchaseSpecificController extends Controller
         ]);
 
         return $this->mergeKeys($data['keys'], $data['new_name']);
+    }
+
+    /**
+     * Delete one specification: removed from the master list and its label cleared from the Spec column
+     * of every Purchase Comparison form that used any of its spellings (the rows themselves stay).
+     */
+    public function destroy(Request $request)
+    {
+        $data = $request->validate([
+            'key' => 'required|string|max:200',
+        ]);
+
+        $key = mb_strtolower(trim($data['key']));
+        $group = collect($this->groups(true))->firstWhere('key', $key);
+        if (! $group) {
+            return response()->json(['success' => false, 'message' => 'Specification no longer exists. Refresh the list.'], 422);
+        }
+
+        @set_time_limit(300);
+        $looseKeys = array_flip(array_map(fn ($v) => $this->looseKey($v), $group['variants']));
+
+        $stats = ['sheets' => 0, 'cells' => 0];
+        if ($group['count'] > 0) {
+            $stats = $this->rewriteSheets(function (array $cells) use ($looseKeys): array {
+                $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+                $n = 0;
+                foreach ($cells as $r => $row) {
+                    if (! is_array($row) || ! array_key_exists($specCol, $row)) {
+                        continue;
+                    }
+                    $label = (string) $row[$specCol];
+                    if ($label !== '' && isset($looseKeys[$this->looseKey($label)])) {
+                        $cells[$r][$specCol] = '';
+                        $n++;
+                    }
+                }
+
+                return [$cells, $n];
+            });
+        }
+
+        if (Schema::hasTable('comparison_specifications')) {
+            ComparisonSpecification::query()->get()
+                ->filter(fn ($r) => $this->groupKey((string) $r->name) === $key)
+                ->each(fn ($r) => $r->delete());
+        }
+        Cache::forget(self::CACHE_KEY);
+
+        return response()->json([
+            'success' => true,
+            'name' => $group['name'],
+            'updated_sheets' => $stats['sheets'],
+            'updated_cells' => $stats['cells'],
+        ]);
     }
 
     /** Persist the sentence-case / de-duplicated spelling of every specification into all sheets + master list. */

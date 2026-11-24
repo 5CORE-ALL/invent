@@ -1136,11 +1136,7 @@ class ComparisonController extends Controller
 
         return response()->json([
             'success' => true,
-            'specifications' => ComparisonSpecification::query()
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->pluck('name')
-                ->values(),
+            'specifications' => $this->specListPayload(),
         ]);
     }
 
@@ -1175,22 +1171,29 @@ class ComparisonController extends Controller
         return response()->json([
             'success' => true,
             'name' => $existing->name,
-            'specifications' => ComparisonSpecification::query()
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->pluck('name')
-                ->values(),
+            'specifications' => $this->specListPayload(true),
         ]);
     }
 
-    private function specListPayload(): array
+    /**
+     * Specification list for every picker on the comparison sheet: always the list shown on
+     * /purchase-master/purchase-specific (all Spec labels of all sheets + the master list, sentence-cased).
+     * $fresh = rebuild it now (after a write); otherwise the page's short cache is used.
+     */
+    private function specListPayload(bool $fresh = false): array
     {
-        return ComparisonSpecification::query()
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->pluck('name')
-            ->values()
-            ->all();
+        try {
+            return app(PurchaseSpecificController::class)->specificationNames($fresh);
+        } catch (\Throwable $e) {
+            Log::warning('Purchase specific list unavailable, using master list: ' . $e->getMessage());
+
+            return ComparisonSpecification::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->pluck('name')
+                ->values()
+                ->all();
+        }
     }
 
     private function specKey(string $label): string
@@ -1282,7 +1285,7 @@ class ComparisonController extends Controller
         return response()->json([
             'success' => true,
             'name' => $target,
-            'specifications' => $this->specListPayload(),
+            'specifications' => $this->specListPayload(true),
             'updated_sheets' => $stats['sheets'],
             'updated_cells' => $stats['cells'],
         ]);

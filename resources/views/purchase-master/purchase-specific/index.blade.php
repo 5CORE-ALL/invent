@@ -35,6 +35,8 @@
         .ps-ok { color: #94a3b8; }
         .ps-edit-btn { border: 0; background: #e0f2fe; color: #0369a1; border-radius: 6px; padding: 3px 9px; }
         .ps-edit-btn:hover { background: #bae6fd; }
+        .ps-del-btn { border: 0; background: #fee2e2; color: #b91c1c; border-radius: 6px; padding: 3px 9px; }
+        .ps-del-btn:hover { background: #fecaca; }
         .ps-preview { font-size: .85rem; color: #475569; margin-top: 6px; }
         .ps-preview strong { color: #0f172a; }
     </style>
@@ -138,6 +140,7 @@
                 data: @json(route('purchase.specific.data')),
                 rename: @json(route('purchase.specific.rename')),
                 merge: @json(route('purchase.specific.merge')),
+                del: @json(route('purchase.specific.delete')),
                 normalizeAll: @json(route('purchase.specific.normalize-all')),
             };
 
@@ -193,6 +196,9 @@
                 $('ps-merge-count').textContent = selected >= 2 ? '(' + selected + ')' : '';
             }
 
+            const otherSpellings = (row) => (row.variants || []).filter((v) => v !== row.name);
+            const byName = (x, y) => String(x.name).localeCompare(String(y.name), undefined, {sensitivity: 'base', numeric: true});
+
             function buildTable() {
                 table = new Tabulator('#ps-table', {
                     data: [],
@@ -211,16 +217,35 @@
                             sorterParams: {locale: true},
                             formatter: (cell) => '<strong>' + esc(cell.getValue()) + '</strong>'},
                         {title: 'Used in forms', field: 'count', sorter: 'number', hozAlign: 'center', width: 140},
-                        {title: 'Other spellings found', field: 'variants', headerSort: false, widthGrow: 3, minWidth: 220,
+                        {title: 'Other spellings found', field: 'variants', widthGrow: 3, minWidth: 220,
+                            // Most other spellings first when descending; ties alphabetical.
+                            sorter: (a, b, aRow, bRow) => {
+                                const x = aRow.getData(), y = bRow.getData();
+                                const diff = otherSpellings(x).length - otherSpellings(y).length;
+                                return diff || byName(x, y);
+                            },
                             formatter: (cell) => {
                                 const row = cell.getRow().getData();
                                 const others = (row.variants || []).filter((v) => v !== row.name);
                                 if (!others.length) return '<span class="ps-ok">—</span>';
                                 return others.map((v) => '<span class="ps-chip">' + esc(v) + '</span>').join('');
                             }},
-                        {title: 'Edit', field: 'key', headerSort: false, hozAlign: 'center', width: 90,
+                        {title: 'Edit', field: 'needs_normalize', hozAlign: 'center', width: 90,
+                            // Rows that still need normalizing group together; ties alphabetical.
+                            sorter: (a, b, aRow, bRow) => {
+                                const x = aRow.getData(), y = bRow.getData();
+                                return (Number(!!x.needs_normalize) - Number(!!y.needs_normalize)) || byName(x, y);
+                            },
                             formatter: () => '<button type="button" class="ps-edit-btn" title="Edit"><i class="fas fa-pen"></i></button>',
                             cellClick: (e, cell) => { e.stopPropagation(); openEdit(cell.getRow().getData()); }},
+                        {title: 'Delete', field: 'delete', hozAlign: 'center', width: 90,
+                            // Least-used first when ascending (unused specifics are the safest to delete).
+                            sorter: (a, b, aRow, bRow) => {
+                                const x = aRow.getData(), y = bRow.getData();
+                                return ((Number(x.count) || 0) - (Number(y.count) || 0)) || byName(x, y);
+                            },
+                            formatter: () => '<button type="button" class="ps-del-btn" title="Delete"><i class="fas fa-trash"></i></button>',
+                            cellClick: (e, cell) => { e.stopPropagation(); deleteSpec(cell.getRow().getData()); }},
                     ],
                 });
                 table.on('rowSelectionChanged', updateBadges);
@@ -236,7 +261,6 @@
                     if (!res.ok || !json.success) throw new Error(json.message || 'Could not load specifications.');
                     ACRONYMS = new Set(json.acronyms || []);
                     await table.setData(json.rows || []);
-                    table.setSort([{column: 'name', dir: 'asc'}]);
                     applySearch();
                     updateBadges();
                 } catch (err) {
@@ -284,6 +308,21 @@
                     btn.disabled = false;
                 }
             });
+
+            // ---------------------------------------------------------------- delete
+            async function deleteSpec(row) {
+                const msg = row.count > 0
+                    ? 'Delete "' + row.name + '"?\n\nIt will be removed from the list and its label cleared in ' + row.count + ' Purchase Comparison form(s). This cannot be undone.'
+                    : 'Delete "' + row.name + '" from the list?';
+                if (!confirm(msg)) return;
+                try {
+                    const json = await post(URLS.del, {key: row.key});
+                    flash('success', 'Deleted "' + json.name + '" — ' + (json.updated_cells || 0) + ' cell(s) in ' + (json.updated_sheets || 0) + ' form(s) cleared.');
+                    await load(true);
+                } catch (err) {
+                    flash('danger', err.message);
+                }
+            }
 
             // ---------------------------------------------------------------- merge
             function openMerge() {

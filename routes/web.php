@@ -6343,6 +6343,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/data', 'data')->name('purchase.specific.data');
         Route::post('/rename', 'rename')->name('purchase.specific.rename');
         Route::post('/merge', 'merge')->name('purchase.specific.merge');
+        Route::post('/delete', 'destroy')->name('purchase.specific.delete');
         Route::post('/normalize-all', 'normalizeAll')->name('purchase.specific.normalize-all');
     });
 
