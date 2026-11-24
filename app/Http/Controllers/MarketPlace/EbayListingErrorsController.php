@@ -132,7 +132,7 @@ class EbayListingErrorsController extends Controller
             ];
         }
 
-        $rows = $this->applyPolicyRemovals($channel, $rows, $catalog, $activeNorms);
+        $rows = $this->addLiveUnsold($channel, $rows, $catalog, $activeNorms, $inv);
 
         return response()->json([
             'success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows),
@@ -163,19 +163,10 @@ class EbayListingErrorsController extends Controller
         $channel = $this->channel($request->input('channel'));
         $store = ['ebay1' => 1, 'ebay2' => 2, 'ebay3' => 3][$channel];
         $result = app(EbayPortalListingStatusSync::class)->sync($store);
-        $removed = ['count' => 0, 'note' => ''];
-        if ($result['ok'] ?? false) {
-            try {
-                $removed = $this->pullPolicyRemovals($channel);
-            } catch (\Throwable $e) {
-                $removed = ['count' => 0, 'note' => 'Policy check failed: '.$e->getMessage()];
-            }
-        }
+        $live = ($result['ok'] ?? false) ? count($this->liveUnsold($channel, true)) : 0;
 
         $message = ($result['ok'] ?? false)
-            ? 'eBay '.substr($channel, 4).': '.($result['inactive'] ?? 0).' inactive, '.($result['active'] ?? 0).' active.'
-                .($removed['count'] > 0 ? ' '.$removed['count'].' listing(s) eBay removed for a policy violation.' : '')
-                .($removed['note'] !== '' ? ' '.$removed['note'] : '')
+            ? 'eBay '.substr($channel, 4).': '.($result['inactive'] ?? 0).' inactive, '.($result['active'] ?? 0).' active, '.$live.' ended listing(s) read live from eBay.'
             : (string) ($result['error'] ?? 'eBay did not return the listing list.');
 
         return response()->json([
@@ -209,8 +200,8 @@ class EbayListingErrorsController extends Controller
             $reason = $policy;
         } elseif ($ending === 'ProductDeleted') {
             $reason = 'eBay removed this listing because its catalog product was deleted.';
-        } elseif ($ending === 'CustomCode' || strtolower((string) $this->text($node['SellingStatus']['AdminEnded'] ?? '')) === 'true') {
-            $reason = 'This listing was removed for violating an eBay policy.';
+        } elseif (strtolower((string) $this->text($node['SellingStatus']['AdminEnded'] ?? '')) === 'true') {
+            $reason = 'eBay ended this listing (administratively). Open it in Seller Hub > Inactive to see why.';
         } else {
             $parts = array_filter([
                 $status !== '' ? 'eBay status: '.$status : '',
@@ -461,39 +452,65 @@ class EbayListingErrorsController extends Controller
     }
 
     /**
-     * Unsold listings eBay itself ended (policy removal). Seller Hub shows the policy name,
-     * for example "product safety policy"; the Trading API only reports that eBay ended it.
+     * Live list of the listings that are ended and not relisted on eBay (GetMyeBaySelling Unsold list), with
+     * the SKUs of their variations. Kept for 15 minutes so the page can add listings the status sync missed.
+     * eBay's API does not say WHY a listing ended (the Seller Hub "removed for violating a policy" text is not
+     * returned by GetItem, GetSellerList or the Compliance API), so no reason is guessed here.
      *
-     * @return array{count: int, note: string}
+     * @return array<string, array{parent_sku: string, title: string, skus: list<string>}>
      */
-    private function pullPolicyRemovals(string $channel): array
+    private function liveUnsold(string $channel, bool $force = false): array
     {
-        $service = app(self::CHANNELS[$channel]['service']);
-        $ctx = $service->tradingReviseContext();
-        if (($ctx['authToken'] ?? '') === '') {
-            return ['count' => 0, 'note' => ''];
+        $key = 'ebay_live_unsold:'.$channel;
+        $cached = Cache::get($key);
+        if (! $force && is_array($cached) && (int) ($cached['at'] ?? 0) > time() - 900) {
+            return (array) ($cached['items'] ?? []);
         }
 
-        $unsold = $this->unsoldListings($ctx);
-        $cached = Cache::get('ebay_policy_removed:'.$channel, ['items' => []]);
-        $previous = (array) ($cached['items'] ?? []);
+        try {
+            $ctx = app(self::CHANNELS[$channel]['service'])->tradingReviseContext();
+            if (($ctx['authToken'] ?? '') === '') {
+                return (array) ($cached['items'] ?? []);
+            }
+            $items = $this->unsoldListings($ctx);
+            $items = $this->fillVariationSkus($channel, $ctx, $items);
+        } catch (\Throwable $e) {
+            return (array) ($cached['items'] ?? []);
+        }
+        Cache::put($key, ['at' => time(), 'items' => $items], now()->addHours(6));
+
+        return $items;
+    }
+
+    /**
+     * The Unsold list does not carry the SKU of each variation, so a variation listing comes back with no SKUs.
+     * Read them with GetItem, once per listing (the SKUs of an ended listing do not change, so they are kept).
+     *
+     * @param array{authToken: string, endpoint: string, compatLevel: string, devId: string, appId: string, certId: string, siteId: string} $ctx
+     * @param array<string, array{parent_sku: string, title: string, skus: list<string>}> $items
+     * @return array<string, array{parent_sku: string, title: string, skus: list<string>}>
+     */
+    private function fillVariationSkus(string $channel, array $ctx, array $items): array
+    {
         $need = [];
-        foreach ($unsold as $id => $item) {
-            if (! isset($previous[$id]['error'])) {
-                $need[] = $id;
+        foreach ($items as $id => $item) {
+            if ($item['skus'] !== []) {
+                continue;
+            }
+            $known = Cache::get('ebay_item_skus:'.$channel.':'.$id);
+            if (is_array($known)) {
+                $items[$id]['skus'] = $known;
+            } else {
+                $need[] = (string) $id;
             }
         }
 
-        $reasons = [];
-        foreach (array_chunk($need, 6) as $chunk) {
+        foreach (array_chunk(array_slice($need, 0, 120), 8) as $chunk) {
             $responses = Http::pool(function ($pool) use ($chunk, $ctx) {
                 foreach ($chunk as $id) {
                     $xml = '<?xml version="1.0" encoding="utf-8"?><GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
                         .'<RequesterCredentials><eBayAuthToken>'.htmlspecialchars((string) $ctx['authToken'], ENT_XML1).'</eBayAuthToken></RequesterCredentials>'
                         .'<ErrorLanguage>en_US</ErrorLanguage><ItemID>'.$id.'</ItemID>'
-                        .'<OutputSelector>Item.ListingDetails.EndingReason</OutputSelector>'
-                        .'<OutputSelector>Item.SellingStatus.AdminEnded</OutputSelector>'
-                        .'<OutputSelector>Item.ItemPolicyViolation.PolicyText</OutputSelector>'
                         .'<OutputSelector>Item.Variations.Variation.SKU</OutputSelector>'
                         .'</GetItemRequest>';
                     $pool->as($id)->timeout(40)->withHeaders($this->tradingHeaders($ctx, 'GetItem'))->withBody($xml, 'text/xml')->post($ctx['endpoint']);
@@ -505,88 +522,23 @@ class EbayListingErrorsController extends Controller
                     continue;
                 }
                 $xml = @simplexml_load_string($response->body());
-                if ($xml === false || ! isset($xml->Item)) {
+                if ($xml === false || strtoupper(trim((string) ($xml->Ack ?? ''))) === 'FAILURE') {
                     continue;
                 }
-                $kids = [];
+                $skus = [];
                 foreach ($xml->Item->Variations->Variation ?? [] as $variation) {
                     $sku = trim((string) ($variation->SKU ?? ''));
                     if ($sku !== '' && stripos($sku, 'PARENT') === false) {
-                        $kids[] = $sku;
+                        $skus[] = $sku;
                     }
                 }
-                $reasons[$id] = [
-                    'ending' => trim((string) ($xml->Item->ListingDetails->EndingReason ?? '')),
-                    'policy' => trim((string) ($xml->Item->ItemPolicyViolation->PolicyText ?? '')),
-                    'admin' => strtolower(trim((string) ($xml->Item->SellingStatus->AdminEnded ?? ''))) === 'true',
-                    'skus' => $kids,
-                ];
+                $skus = array_values(array_unique($skus));
+                $items[$id]['skus'] = $skus;
+                Cache::put('ebay_item_skus:'.$channel.':'.$id, $skus, now()->addDays(14));
             }
         }
 
-        $items = [];
-        foreach ($unsold as $id => $item) {
-            $reason = $reasons[$id] ?? (isset($previous[$id]['error']) ? [
-                'ending' => (string) ($previous[$id]['ending'] ?? ''),
-                'policy' => (string) ($previous[$id]['policy'] ?? ''),
-                'admin' => (bool) ($previous[$id]['admin'] ?? false),
-                'skus' => (array) ($previous[$id]['skus'] ?? []),
-            ] : null);
-            if ($reason === null) {
-                continue;
-            }
-            $text = $this->policyText($reason);
-            if ($text === '') {
-                continue;
-            }
-            $skus = $item['skus'] !== [] ? $item['skus'] : (array) $reason['skus'];
-            $items[$id] = [
-                'parent_sku' => $item['parent_sku'],
-                'title' => $item['title'],
-                'skus' => array_values(array_unique($skus)),
-                'error' => $text,
-                'ending' => (string) ($reason['ending'] ?? ''),
-                'policy' => (string) ($reason['policy'] ?? ''),
-                'admin' => (bool) ($reason['admin'] ?? false),
-            ];
-        }
-
-        Cache::put('ebay_policy_removed:'.$channel, ['items' => $items], now()->addDays(7));
-        $this->storePolicyReason(self::CHANNELS[$channel]['table'], $items);
-
-        return ['count' => count($items), 'note' => ''];
-    }
-
-    /** @param array{ending: string, policy: string, admin: bool} $reason */
-    private function policyText(array $reason): string
-    {
-        if (($reason['policy'] ?? '') !== '') {
-            return (string) $reason['policy'];
-        }
-        if (($reason['ending'] ?? '') === 'ProductDeleted') {
-            return 'eBay removed this listing because its catalog product was deleted.';
-        }
-        if (($reason['ending'] ?? '') === 'CustomCode' || ! empty($reason['admin'])) {
-            return 'This listing was removed for violating an eBay policy.';
-        }
-
-        return '';
-    }
-
-    /** @param array<string, array{skus: list<string>, error: string}> $items */
-    private function storePolicyReason(string $table, array $items): void
-    {
-        if ($items === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'inactive_reason')) {
-            return;
-        }
-        foreach ($items as $item) {
-            $skus = array_values(array_filter($item['skus']));
-            foreach (array_chunk($skus, 200) as $chunk) {
-                DB::table($table)->whereIn('sku', $chunk)
-                    ->whereRaw("UPPER(TRIM(COALESCE(listing_status, ''))) <> 'ACTIVE'")
-                    ->update(['inactive_reason' => $item['error']]);
-            }
-        }
+        return $items;
     }
 
     /**
@@ -606,7 +558,7 @@ class EbayListingErrorsController extends Controller
                 .'<OutputSelector>UnsoldList.ItemArray.Item.ItemID</OutputSelector>'
                 .'<OutputSelector>UnsoldList.ItemArray.Item.SKU</OutputSelector>'
                 .'<OutputSelector>UnsoldList.ItemArray.Item.Title</OutputSelector>'
-                .'<OutputSelector>UnsoldList.ItemArray.Item.Variations.Variation.SKU</OutputSelector>'
+                .'<OutputSelector>UnsoldList.ItemArray.Item.Variations</OutputSelector>'
                 .'<OutputSelector>UnsoldList.PaginationResult</OutputSelector>'
                 .'</GetMyeBaySellingRequest>';
             $response = Http::timeout(60)->withHeaders($this->tradingHeaders($ctx, 'GetMyeBaySelling'))->withBody($xml, 'text/xml')->post($ctx['endpoint']);
@@ -625,6 +577,7 @@ class EbayListingErrorsController extends Controller
                 if ($id === '') {
                     continue;
                 }
+                $parent = trim((string) ($item->SKU ?? ''));
                 $skus = [];
                 foreach ($item->Variations->Variation ?? [] as $variation) {
                     $sku = trim((string) ($variation->SKU ?? ''));
@@ -632,8 +585,11 @@ class EbayListingErrorsController extends Controller
                         $skus[] = $sku;
                     }
                 }
+                if ($skus === [] && $parent !== '' && stripos($parent, 'PARENT') === false) {
+                    $skus[] = $parent;
+                }
                 $out[$id] = [
-                    'parent_sku' => trim((string) ($item->SKU ?? '')),
+                    'parent_sku' => $parent,
                     'title' => trim((string) ($item->Title ?? '')),
                     'skus' => array_values(array_unique($skus)),
                 ];
@@ -659,96 +615,51 @@ class EbayListingErrorsController extends Controller
         ];
     }
 
+    private const ENDED_TEXT = 'Ended on eBay and not relisted. eBay gives no reason through its API: open the listing in Seller Hub > Inactive to see it.';
+
     /**
-     * Add the SKUs of listings eBay removed, and use the policy text as their error.
+     * Add the CP Master SKUs of listings that are ended on eBay but missing from the rows built from the
+     * stored statuses (a SKU that is Active somewhere is not added).
      *
      * @param list<array<string, mixed>> $rows
      * @param array{name: array<string, string>, image: array<string, string>, parent: array<string, string>} $catalog
      * @param array<string, bool> $activeNorms
+     * @param array<string, int> $inv
      * @return list<array<string, mixed>>
      */
-    private function applyPolicyRemovals(string $channel, array $rows, array $catalog, array $activeNorms): array
+    private function addLiveUnsold(string $channel, array $rows, array $catalog, array $activeNorms, array $inv = []): array
     {
-        $items = (array) (Cache::get('ebay_policy_removed:'.$channel, [])['items'] ?? []);
-        if ($items === []) {
-            return $rows;
-        }
-
-        $bySku = [];
-        foreach ($items as $itemId => $item) {
-            foreach ((array) ($item['skus'] ?? []) as $sku) {
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($norm !== '') {
-                    $bySku[$norm] = $item + ['item_id' => (string) $itemId];
-                }
-            }
-        }
-
         $seen = [];
-        foreach ($rows as &$row) {
-            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''));
-            $seen[$norm] = true;
-            $item = $bySku[$norm] ?? ($items[$row['item_id']] ?? null);
-            if (! is_array($item) || trim((string) ($item['error'] ?? '')) === '') {
-                continue;
-            }
-            $text = (string) $item['error'];
-            $row['error'] = $text;
-            $row['issues'] = [['code' => 'inactive', 'text' => $text]];
-            $row['codes'] = ['inactive'];
-            $row['status'] = 'INACTIVE';
-            if (($row['parent'] ?? '') === '' && ! empty($item['parent_sku'])) {
-                $row['parent'] = (string) $item['parent_sku'];
-            }
+        foreach ($rows as $row) {
+            $seen[ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''))] = true;
         }
-        unset($row);
-
-        foreach ($items as $itemId => $item) {
-            $text = trim((string) ($item['error'] ?? ''));
-            if ($text === '') {
-                continue;
-            }
-            $matched = false;
-            foreach ((array) ($item['skus'] ?? []) as $sku) {
-                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
-                if ($norm === '' || ! isset($catalog['name'][$norm])) {
-                    continue;
-                }
-                $matched = true;
-                if (isset($seen[$norm]) || isset($activeNorms[$norm])) {
+        foreach ($this->liveUnsold($channel) as $itemId => $item) {
+            foreach ($item['skus'] as $sku) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm === '' || ! isset($catalog['name'][$norm]) || isset($seen[$norm]) || isset($activeNorms[$norm])) {
                     continue;
                 }
                 $seen[$norm] = true;
-                $rows[] = $this->policyRow((string) $itemId, $catalog['name'][$norm], $catalog['parent'][$norm] ?: (string) ($item['parent_sku'] ?? ''), $catalog['image'][$norm] ?? '', (string) ($item['title'] ?? ''), $text);
-            }
-            $parent = trim((string) ($item['parent_sku'] ?? ''));
-            if (! $matched && $parent !== '' && ! isset($seen['item:'.$itemId])) {
-                $rows[] = $this->policyRow((string) $itemId, $parent, '', '', (string) ($item['title'] ?? ''), $text);
+                $rows[] = [
+                    'id' => 'u-'.substr(md5($itemId.'|'.$norm), 0, 16),
+                    'sku' => $catalog['name'][$norm],
+                    'parent' => $catalog['parent'][$norm] ?: $item['parent_sku'],
+                    'image' => $catalog['image'][$norm] ?? '',
+                    'item_id' => (string) $itemId,
+                    'title' => $item['title'],
+                    'link' => 'https://www.ebay.com/itm/'.$itemId,
+                    'status' => 'INACTIVE',
+                    'stock' => null,
+                    'inv' => $inv[$norm] ?? null,
+                    'price' => null,
+                    'issues' => [['code' => 'inactive', 'text' => self::ENDED_TEXT]],
+                    'codes' => ['inactive'],
+                    'error' => self::ENDED_TEXT,
+                ];
             }
         }
 
         return $rows;
-    }
-
-    /** @return array<string, mixed> */
-    private function policyRow(string $itemId, string $sku, string $parent, string $image, string $title, string $error): array
-    {
-        return [
-            'id' => 'rm-'.substr(md5($itemId.'|'.$sku), 0, 16),
-            'sku' => $sku,
-            'parent' => $parent,
-            'image' => $image,
-            'item_id' => $itemId,
-            'title' => $title,
-            'link' => 'https://www.ebay.com/itm/'.$itemId,
-            'status' => 'INACTIVE',
-            'stock' => null,
-            'inv' => null,
-            'price' => null,
-            'issues' => [['code' => 'inactive', 'text' => $error]],
-            'codes' => ['inactive'],
-            'error' => $error,
-        ];
     }
 
     private function text(mixed $value): string

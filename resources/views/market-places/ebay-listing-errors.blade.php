@@ -69,7 +69,7 @@
         <div class="ele-hero">
             <div>
                 <h1>Ebay Listing Errors</h1>
-                <p>CP Master SKUs that are on eBay and not active, including listings eBay removed for a policy violation. Press Pull from eBay to refresh them.</p>
+                <p>CP Master SKUs that are on eBay but ended or not active, read live from eBay (the first load can take a few seconds). eBay's API does not give the reason for a removal; Seller Hub shows it.</p>
             </div>
             <div class="ele-tabs">
                 <button type="button" class="ele-tab active" data-ch="ebay1">eBay 1</button>
