@@ -132,10 +132,11 @@ class EbayListingErrorsController extends Controller
             ];
         }
 
-        $rows = $this->addLiveUnsold($channel, $rows, $catalog, $activeNorms, $inv);
+        $added = $this->addLiveUnsold($channel, $rows, $catalog, $activeNorms, $inv);
+        $rows = $added['rows'];
 
         return response()->json([
-            'success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows),
+            'success' => true, 'channel' => $channel, 'rows' => $rows, 'count' => count($rows), 'hidden' => $added['hidden'],
         ]);
     }
 
@@ -494,12 +495,13 @@ class EbayListingErrorsController extends Controller
     {
         $need = [];
         foreach ($items as $id => $item) {
-            if ($item['skus'] !== []) {
-                continue;
-            }
-            $known = Cache::get('ebay_item_skus:'.$channel.':'.$id);
+            $items[$id]['reason'] = '';
+            $known = Cache::get('ebay_item_info:'.$channel.':'.$id);
             if (is_array($known)) {
-                $items[$id]['skus'] = $known;
+                if ($item['skus'] === []) {
+                    $items[$id]['skus'] = (array) ($known['skus'] ?? []);
+                }
+                $items[$id]['reason'] = (string) ($known['reason'] ?? '');
             } else {
                 $need[] = (string) $id;
             }
@@ -522,7 +524,23 @@ class EbayListingErrorsController extends Controller
                     continue;
                 }
                 $xml = @simplexml_load_string($response->body());
-                if ($xml === false || strtoupper(trim((string) ($xml->Ack ?? ''))) === 'FAILURE') {
+                if ($xml === false) {
+                    continue;
+                }
+                if (strtoupper(trim((string) ($xml->Ack ?? ''))) === 'FAILURE') {
+                    // A listing eBay removed answers GetItem with the policy it broke, e.g.
+                    // "This listing was removed for violating our Electronic equipment policy."
+                    $message = '';
+                    foreach ($xml->Errors ?? [] as $err) {
+                        $message = trim((string) ($err->LongMessage ?: $err->ShortMessage));
+                        if ($message !== '') {
+                            break;
+                        }
+                    }
+                    if ($message !== '' && (stripos($message, 'removed') !== false || stripos($message, 'violat') !== false || stripos($message, 'policy') !== false)) {
+                        $items[$id]['reason'] = $message;
+                        Cache::put('ebay_item_info:'.$channel.':'.$id, ['skus' => $items[$id]['skus'], 'reason' => $message], now()->addDays(14));
+                    }
                     continue;
                 }
                 $skus = [];
@@ -533,8 +551,10 @@ class EbayListingErrorsController extends Controller
                     }
                 }
                 $skus = array_values(array_unique($skus));
-                $items[$id]['skus'] = $skus;
-                Cache::put('ebay_item_skus:'.$channel.':'.$id, $skus, now()->addDays(14));
+                if ($items[$id]['skus'] === []) {
+                    $items[$id]['skus'] = $skus;
+                }
+                Cache::put('ebay_item_info:'.$channel.':'.$id, ['skus' => $items[$id]['skus'], 'reason' => ''], now()->addDays(14));
             }
         }
 
@@ -615,51 +635,90 @@ class EbayListingErrorsController extends Controller
         ];
     }
 
-    private const ENDED_TEXT = 'Ended on eBay and not relisted. eBay gives no reason through its API: open the listing in Seller Hub > Inactive to see it.';
+    private const ENDED_TEXT = 'Ended on eBay and not relisted. eBay gives no reason for this one through its API: open the listing in Seller Hub > Inactive to see it.';
 
     /**
      * Add the CP Master SKUs of listings that are ended on eBay but missing from the rows built from the
-     * stored statuses (a SKU that is Active somewhere is not added).
+     * stored statuses, and use the reason eBay gives (GetItem answers a removed listing with the policy it broke).
+     * A SKU that is Active somewhere is not added. Everything left out is returned with the reason, so the page
+     * can say why a listing eBay shows as ended is not in the table.
      *
      * @param list<array<string, mixed>> $rows
      * @param array{name: array<string, string>, image: array<string, string>, parent: array<string, string>} $catalog
      * @param array<string, bool> $activeNorms
      * @param array<string, int> $inv
-     * @return list<array<string, mixed>>
+     * @return array{rows: list<array<string, mixed>>, hidden: list<array{item_id: string, sku: string, why: string}>}
      */
     private function addLiveUnsold(string $channel, array $rows, array $catalog, array $activeNorms, array $inv = []): array
     {
         $seen = [];
-        foreach ($rows as $row) {
+        $liveByItem = $this->liveUnsold($channel);
+        foreach ($rows as &$row) {
             $seen[ShopifySku::normalizeSkuForShopifyLookup((string) ($row['sku'] ?? ''))] = true;
+            $reason = trim((string) ($liveByItem[$row['item_id'] ?? '']['reason'] ?? ''));
+            if ($reason !== '') {
+                $row['error'] = $reason;
+                $row['issues'] = [['code' => 'inactive', 'text' => $reason]];
+                $row['codes'] = ['inactive'];
+            }
         }
-        foreach ($this->liveUnsold($channel) as $itemId => $item) {
+        unset($row);
+
+        $hidden = [];
+        foreach ($liveByItem as $itemId => $item) {
+            $itemId = (string) $itemId;
+            $text = trim((string) ($item['reason'] ?? '')) ?: self::ENDED_TEXT;
+            $shown = false;
             foreach ($item['skus'] as $sku) {
                 $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-                if ($norm === '' || ! isset($catalog['name'][$norm]) || isset($seen[$norm]) || isset($activeNorms[$norm])) {
+                if ($norm === '') {
+                    continue;
+                }
+                if (! isset($catalog['name'][$norm])) {
+                    $hidden[] = ['item_id' => $itemId, 'sku' => $sku, 'why' => 'not a CP Master SKU (status must be Active, DC or Coming)'];
+                    continue;
+                }
+                if (isset($activeNorms[$norm])) {
+                    $hidden[] = ['item_id' => $itemId, 'sku' => $sku, 'why' => 'the SKU is active in another listing'];
+                    continue;
+                }
+                $shown = true;
+                if (isset($seen[$norm])) {
                     continue;
                 }
                 $seen[$norm] = true;
-                $rows[] = [
-                    'id' => 'u-'.substr(md5($itemId.'|'.$norm), 0, 16),
-                    'sku' => $catalog['name'][$norm],
-                    'parent' => $catalog['parent'][$norm] ?: $item['parent_sku'],
-                    'image' => $catalog['image'][$norm] ?? '',
-                    'item_id' => (string) $itemId,
-                    'title' => $item['title'],
-                    'link' => 'https://www.ebay.com/itm/'.$itemId,
-                    'status' => 'INACTIVE',
-                    'stock' => null,
-                    'inv' => $inv[$norm] ?? null,
-                    'price' => null,
-                    'issues' => [['code' => 'inactive', 'text' => self::ENDED_TEXT]],
-                    'codes' => ['inactive'],
-                    'error' => self::ENDED_TEXT,
-                ];
+                $rows[] = $this->liveRow($itemId, $catalog['name'][$norm], $catalog['parent'][$norm] ?: (string) $item['parent_sku'], $catalog['image'][$norm] ?? '', (string) $item['title'], $text, $inv[$norm] ?? null);
+            }
+            // eBay removed the listing and would not show its variations: list the listing itself.
+            $parentKey = 'item:'.$itemId;
+            if (! $shown && $item['skus'] === [] && trim((string) $item['parent_sku']) !== '' && ! isset($seen[$parentKey])) {
+                $seen[$parentKey] = true;
+                $rows[] = $this->liveRow($itemId, (string) $item['parent_sku'], '', '', (string) $item['title'], $text, null);
             }
         }
 
-        return $rows;
+        return ['rows' => $rows, 'hidden' => $hidden];
+    }
+
+    /** @return array<string, mixed> */
+    private function liveRow(string $itemId, string $sku, string $parent, string $image, string $title, string $error, ?int $inv): array
+    {
+        return [
+            'id' => 'u-'.substr(md5($itemId.'|'.$sku), 0, 16),
+            'sku' => $sku,
+            'parent' => $parent,
+            'image' => $image,
+            'item_id' => $itemId,
+            'title' => $title,
+            'link' => 'https://www.ebay.com/itm/'.$itemId,
+            'status' => 'INACTIVE',
+            'stock' => null,
+            'inv' => $inv,
+            'price' => null,
+            'issues' => [['code' => 'inactive', 'text' => $error]],
+            'codes' => ['inactive'],
+            'error' => $error,
+        ];
     }
 
     private function text(mixed $value): string
