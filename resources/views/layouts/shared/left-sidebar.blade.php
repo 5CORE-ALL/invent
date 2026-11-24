@@ -2265,6 +2265,9 @@
                                     <li>
                                         <a href="{{ route('ebay3.listing.variation.verify') }}">Ebay 3 Listing Variation Verify</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('ebay3.variation.type') }}">Ebay 3 Variation Type</a>
+                                    </li>
 
 
                                     {{-- <li>

@@ -11,6 +11,7 @@ use App\Support\Marketplace\EbayCategoryAspects;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\VariationTypeSync;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -31,7 +32,93 @@ class Ebay2VariationTypeController extends Controller
 
     public function index()
     {
-        return view('market-places.ebay2_variation_type');
+        return view('market-places.ebay2_variation_type', ['vt' => $this->pageConfig()]);
+    }
+
+    /*
+     * The channel this page works on. eBay 3 (Ebay3VariationTypeController) overrides these and shares everything else.
+     */
+
+    /** @return int 2 or 3 */
+    protected function channelNo(): int
+    {
+        return 2;
+    }
+
+    /** Name shown to the user. */
+    protected function label(): string
+    {
+        return 'eBay 2';
+    }
+
+    protected function metricsTable(): string
+    {
+        return 'ebay_2_metrics';
+    }
+
+    protected function pushTable(): string
+    {
+        return 'ebay2_variation_type_pushes';
+    }
+
+    /** @return class-string<Model> */
+    protected function pushModel(): string
+    {
+        return Ebay2VariationTypePush::class;
+    }
+
+    /** @return Ebay2ApiService|\App\Services\EbayThreeApiService  getItem(), lastGetItemError and tradingReviseContext() */
+    protected function ebayService(): object
+    {
+        return app(Ebay2ApiService::class);
+    }
+
+    /** What the Blade page needs to point at this channel. */
+    protected function pageConfig(): array
+    {
+        return [
+            'title' => 'Ebay 2 Variation Type',
+            'label' => 'eBay 2',
+            'route' => 'ebay2.variation.type',
+            'store' => 'e2vt_hidden_columns',
+        ];
+    }
+
+    /**
+     * Create the push table when the server has not run the migration yet, so a new channel page works straight after
+     * a git pull. Same columns as the migrations.
+     */
+    private function ensureTable(): void
+    {
+        $table = $this->pushTable();
+        if (Schema::hasTable($table)) {
+            return;
+        }
+        try {
+            Schema::create($table, function (\Illuminate\Database\Schema\Blueprint $t) {
+                $t->id();
+                $t->string('item_id', 40)->unique();
+                $t->string('parent_sku', 191)->nullable();
+                $t->string('current_type', 191)->nullable();
+                $t->timestamp('imported_at')->nullable();
+                $t->text('import_error')->nullable();
+                $t->string('new_type', 65)->nullable();
+                $t->string('push_status', 16)->nullable();
+                $t->text('push_message')->nullable();
+                $t->timestamp('pushed_at')->nullable();
+                $t->string('pushed_by', 191)->nullable();
+                $t->longText('current_values')->nullable();
+                $t->longText('value_edits')->nullable();
+                $t->longText('live_variations')->nullable();
+                $t->string('values_status', 16)->nullable();
+                $t->text('values_message')->nullable();
+                $t->timestamp('values_pushed_at')->nullable();
+                $t->string('values_pushed_by', 191)->nullable();
+                $t->timestamps();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Could not create '.$table, ['error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -40,12 +127,12 @@ class Ebay2VariationTypeController extends Controller
     public function data(): JsonResponse
     {
         if (! $this->tableReady()) {
-            return response()->json(['data' => [], 'meta' => ['message' => 'Run php artisan migrate (ebay2_variation_type_pushes table is missing).']], 500);
+            return response()->json(['data' => [], 'meta' => ['message' => 'Run php artisan migrate ('.$this->pushTable().' table is missing).']], 500);
         }
 
         $listings = $this->mainListings();
         $master = $this->variationMasterInfo();
-        $saved = Ebay2VariationTypePush::query()->get()->keyBy('item_id');
+        $saved = $this->pushModel()::query()->get()->keyBy('item_id');
 
         $rows = [];
         foreach ($listings as $itemId => $listing) {
@@ -92,7 +179,7 @@ class Ebay2VariationTypeController extends Controller
         set_time_limit(300);
         $listings = $this->mainListings();
         $master = $this->variationMasterInfo();
-        $service = app(Ebay2ApiService::class);
+        $service = $this->ebayService();
         $results = [];
 
         foreach (array_values(array_unique($data['item_ids'])) as $itemId) {
@@ -147,7 +234,7 @@ class Ebay2VariationTypeController extends Controller
 
         $itemId = trim($data['item_id']);
         $newType = trim((string) ($data['new_type'] ?? ''));
-        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
+        $rec = $this->pushModel()::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists) {
             $rec->parent_sku = $this->mainListings()[$itemId]['main_listing'] ?? null;
         }
@@ -183,7 +270,7 @@ class Ebay2VariationTypeController extends Controller
             $newType = trim((string) ($masterInfo['type'] ?? ''));
         }
 
-        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
+        $rec = $this->pushModel()::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
             $rec->parent_sku = $listing['main_listing'] ?? $rec->parent_sku;
         }
@@ -237,7 +324,7 @@ class Ebay2VariationTypeController extends Controller
      */
     private function addToEbay(string $itemId, string $newType, array $masterNames): array
     {
-        $service = app(Ebay2ApiService::class);
+        $service = $this->ebayService();
         $item = $service->getItem($itemId);
         if (! is_array($item)) {
             $why = trim((string) ($service->lastGetItemError ?? ''));
@@ -319,7 +406,7 @@ class Ebay2VariationTypeController extends Controller
      * @param  array<string, array{type: string, skus: list<string>, names: array<string, string>}>  $master
      * @return array<string, mixed>
      */
-    private function skuColumns(?array $listing, ?Ebay2VariationTypePush $rec, array $master): array
+    private function skuColumns(?array $listing, ?Model $rec, array $master): array
     {
         if ($listing === null) {
             return [];
@@ -376,7 +463,7 @@ class Ebay2VariationTypeController extends Controller
      */
     private function saveImport(string $itemId, ?array $listing, ?string $currentType, ?string $error, ?array $values = null, ?array $variations = null, ?array $master = null): array
     {
-        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
+        $rec = $this->pushModel()::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
             $rec->parent_sku = $listing['main_listing'] ?? $rec->parent_sku;
         }
@@ -399,7 +486,7 @@ class Ebay2VariationTypeController extends Controller
     }
 
     /** The row as the page shows it, including the SKU columns (they depend on the pulled live variations). */
-    private function rowWithSkus(Ebay2VariationTypePush $rec): array
+    private function rowWithSkus(Model $rec): array
     {
         $listing = $this->mainListings()[(string) $rec->item_id] ?? null;
 
@@ -412,7 +499,7 @@ class Ebay2VariationTypeController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function rowPayload(Ebay2VariationTypePush $rec): array
+    private function rowPayload(Model $rec): array
     {
         return [
             'item_id' => (string) $rec->item_id,
@@ -498,7 +585,7 @@ class Ebay2VariationTypeController extends Controller
             return $this->missingTable();
         }
 
-        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => trim($data['item_id'])]);
+        $rec = $this->pushModel()::firstOrNew(['item_id' => trim($data['item_id'])]);
         if (! $rec->exists) {
             $rec->parent_sku = $this->mainListings()[$rec->item_id]['main_listing'] ?? null;
         }
@@ -528,7 +615,7 @@ class Ebay2VariationTypeController extends Controller
 
         set_time_limit(300);
         $itemId = trim($data['item_id']);
-        $rec = Ebay2VariationTypePush::firstOrNew(['item_id' => $itemId]);
+        $rec = $this->pushModel()::firstOrNew(['item_id' => $itemId]);
         if (! $rec->exists || ! $rec->parent_sku) {
             $rec->parent_sku = $this->mainListings()[$itemId]['main_listing'] ?? $rec->parent_sku;
         }
@@ -623,7 +710,7 @@ class Ebay2VariationTypeController extends Controller
      */
     private function pushValuesToEbay(string $itemId, array $edits): array
     {
-        $service = app(Ebay2ApiService::class);
+        $service = $this->ebayService();
         $item = $service->getItem($itemId);
         if (! is_array($item)) {
             $why = trim((string) ($service->lastGetItemError ?? ''));
@@ -650,7 +737,7 @@ class Ebay2VariationTypeController extends Controller
     {
         $listing = $this->mainListings()[$itemId] ?? null;
         if ($listing === null) {
-            return ['success' => false, 'message' => 'This listing is not in the live eBay 2 list any more. Refresh the page.'];
+            return ['success' => false, 'message' => 'This listing is not in the live '.$this->label().' list any more. Refresh the page.'];
         }
         $info = $this->variationMasterInfo()[ShopifySku::normalizeSkuForShopifyLookup($listing['parent_key'])] ?? null;
         $names = $info['names'] ?? [];
@@ -658,7 +745,7 @@ class Ebay2VariationTypeController extends Controller
             return ['success' => false, 'message' => 'Variation Master has no Variation Name for any SKU of this parent.'];
         }
 
-        $service = app(Ebay2ApiService::class);
+        $service = $this->ebayService();
         $item = $service->getItem($itemId);
         if (! is_array($item)) {
             $why = trim((string) ($service->lastGetItemError ?? ''));
@@ -740,8 +827,10 @@ class Ebay2VariationTypeController extends Controller
 
     private function tableReady(): bool
     {
-        return Schema::hasTable('ebay2_variation_type_pushes')
-            && Schema::hasColumn('ebay2_variation_type_pushes', 'current_values');
+        $this->ensureTable();
+
+        return Schema::hasTable($this->pushTable())
+            && Schema::hasColumn($this->pushTable(), 'current_values');
     }
 
     /**
@@ -750,7 +839,7 @@ class Ebay2VariationTypeController extends Controller
      */
     private function liveColumnReady(): bool
     {
-        return Schema::hasColumn('ebay2_variation_type_pushes', 'live_variations');
+        return Schema::hasColumn($this->pushTable(), 'live_variations');
     }
 
     private const LIVE_MIGRATE_NOTICE = 'The child SKUs and variation names could not be saved: run php artisan migrate on the server (it adds the live_variations column).';
@@ -759,7 +848,7 @@ class Ebay2VariationTypeController extends Controller
     {
         return response()->json([
             'success' => false,
-            'message' => 'Run php artisan migrate (ebay2_variation_type_pushes table is missing).',
+            'message' => 'Run php artisan migrate ('.$this->pushTable().' table is missing).',
         ], 500);
     }
 
@@ -816,12 +905,13 @@ class Ebay2VariationTypeController extends Controller
      */
     protected function mainListings(): array
     {
-        $hasStatus = Schema::hasColumn('ebay_2_metrics', 'listing_status');
-        $hasRange = Schema::hasColumn('ebay_2_metrics', 'report_range');
+        $metrics = $this->metricsTable();
+        $hasStatus = Schema::hasColumn($metrics, 'listing_status');
+        $hasRange = Schema::hasColumn($metrics, 'report_range');
 
         $latestRange = null;
         if ($hasRange) {
-            $max = DB::table('ebay_2_metrics')->max('report_range');
+            $max = DB::table($metrics)->max('report_range');
             $latestRange = $max !== null && $max !== '' ? (string) $max : null;
         }
 
@@ -834,7 +924,7 @@ class Ebay2VariationTypeController extends Controller
         }
 
         $items = [];
-        $rows = DB::table('ebay_2_metrics')
+        $rows = DB::table($metrics)
             ->whereNotNull('sku')->where('sku', '!=', '')
             ->whereNotNull('item_id')->where('item_id', '!=', '')
             ->get($columns);
@@ -880,6 +970,26 @@ class Ebay2VariationTypeController extends Controller
                 'children' => $childCount,
                 'skus' => array_values(array_map('strval', $skus)),
             ];
+        }
+
+        if ($this->includeLiveParents() && $this->liveParents() !== []) {
+            // eBay's Active list is the truth: a parent that is not in it any more (ended, relisted under a new id) goes.
+            $live = $this->liveActiveItemIds();
+            $out = array_intersect_key($out, $live);
+            foreach ($this->liveParents() as $parent) {
+                $itemId = trim((string) ($parent['id'] ?? ''));
+                $label = trim((string) ($parent['parent'] ?? ''));
+                if ($itemId === '' || $label === '' || isset($out[$itemId])) {
+                    continue;
+                }
+                $skus = array_values(array_filter(array_map('strval', (array) ($parent['skus'] ?? [])), static fn ($s) => ! preg_match('/^PARENT\s+/i', $s)));
+                $out[$itemId] = [
+                    'main_listing' => $label,
+                    'parent_key' => trim((string) preg_replace('/^PARENT\s+/i', '', $label)),
+                    'children' => count($skus),
+                    'skus' => $skus,
+                ];
+            }
         }
 
         return $this->dropStaleDuplicates($out);
@@ -928,23 +1038,37 @@ class Ebay2VariationTypeController extends Controller
         return $listings;
     }
 
-    /** @return array<string, true> item ids of the parent listings that are Active on eBay 2 right now (cached 10 minutes) */
-    private function liveActiveItemIds(): array
+    /**
+     * The parent listings that are Active on this eBay account right now, straight from eBay (cached 10 minutes).
+     *
+     * @return list<array{id: string, title: string, parent: string, skus: list<string>, sku_count: int}>
+     */
+    private function liveParents(): array
     {
         try {
-            $ids = Cache::remember('ebay2_vt_live_parent_ids', 600, function () {
-                $out = [];
-                foreach (app(\App\Services\MarketplaceManager\EbayPortalListingStatusSync::class)->activeParentListings(2) as $parent) {
-                    $out[] = (string) $parent['id'];
-                }
-
-                return $out;
+            return (array) Cache::remember('ebay'.$this->channelNo().'_vt_live_parents', 600, function () {
+                return app(\App\Services\MarketplaceManager\EbayPortalListingStatusSync::class)->activeParentListings($this->channelNo());
             });
         } catch (\Throwable $e) {
             return [];
         }
+    }
 
-        return array_fill_keys(array_map('strval', (array) $ids), true);
+    /** @return array<string, true> item ids of the parent listings that are Active on this eBay account right now */
+    private function liveActiveItemIds(): array
+    {
+        $ids = [];
+        foreach ($this->liveParents() as $parent) {
+            $ids[(string) $parent['id']] = true;
+        }
+
+        return $ids;
+    }
+
+    /** Add the live Active parents that the metrics table does not have yet (the page then lists every live parent). */
+    protected function includeLiveParents(): bool
+    {
+        return false;
     }
 
     /**

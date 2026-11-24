@@ -5595,6 +5595,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay2-variation-type/save-values', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'saveValues'])->name('ebay2.variation.type.save.values');
     Route::post('/ebay2-variation-type/push-values', [\App\Http\Controllers\MarketPlace\Ebay2VariationTypeController::class, 'pushValues'])->name('ebay2.variation.type.push.values');
 
+    // Ebay 3 Variation Type: same page and actions as Ebay 2, on the eBay 3 account
+    Route::get('/ebay3-variation-type', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'index'])->name('ebay3.variation.type');
+    Route::get('/ebay3-variation-type/data', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'data'])->name('ebay3.variation.type.data');
+    Route::post('/ebay3-variation-type/import', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'import'])->name('ebay3.variation.type.import');
+    Route::post('/ebay3-variation-type/save', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'save'])->name('ebay3.variation.type.save');
+    Route::post('/ebay3-variation-type/push', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'push'])->name('ebay3.variation.type.push');
+    Route::post('/ebay3-variation-type/save-values', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'saveValues'])->name('ebay3.variation.type.save.values');
+    Route::post('/ebay3-variation-type/push-values', [\App\Http\Controllers\MarketPlace\Ebay3VariationTypeController::class, 'pushValues'])->name('ebay3.variation.type.push.values');
+
     // Listing Audit ebay2
     Route::get('/analytics/dil-badge-chart-data', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'chart'])->name('analytics.dil.badge.chart');
     Route::get('/analytics/dil-badge-prev-day', [\App\Http\Controllers\MarketPlace\AnalyticsDilBadgeController::class, 'prevDay'])->name('analytics.dil.badge.prev');

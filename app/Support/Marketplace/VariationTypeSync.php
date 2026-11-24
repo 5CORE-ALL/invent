@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\Ebay2VariationTypePush;
+use App\Models\Ebay3VariationTypePush;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Log;
@@ -130,21 +131,24 @@ class VariationTypeSync
             return 0;
         }
         try {
-            if (! Schema::hasTable('ebay2_variation_type_pushes')) {
-                return 0;
-            }
             $changed = 0;
-            foreach (Ebay2VariationTypePush::query()->whereNotNull('parent_sku')->get() as $rec) {
-                if (self::parentKey((string) $rec->parent_sku) !== $parentKey) {
+            // The eBay 2 and eBay 3 Variation Type pages.
+            foreach ([Ebay2VariationTypePush::class, Ebay3VariationTypePush::class] as $model) {
+                if (! Schema::hasTable((new $model)->getTable())) {
                     continue;
                 }
-                $new = $type === '' ? null : $type;
-                if ((string) $rec->new_type === (string) $new) {
-                    continue;
+                foreach ($model::query()->whereNotNull('parent_sku')->get() as $rec) {
+                    if (self::parentKey((string) $rec->parent_sku) !== $parentKey) {
+                        continue;
+                    }
+                    $new = $type === '' ? null : $type;
+                    if ((string) $rec->new_type === (string) $new) {
+                        continue;
+                    }
+                    $rec->new_type = $new;
+                    $rec->save();
+                    $changed++;
                 }
-                $rec->new_type = $new;
-                $rec->save();
-                $changed++;
             }
 
             return $changed;

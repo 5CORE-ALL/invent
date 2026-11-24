@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay 2 Variation Type', 'skipHighcharts' => true])
+@extends('layouts.vertical', ['title' => $vt['title'], 'skipHighcharts' => true])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -85,8 +85,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 2 Variation Type',
-        'sub_title'  => 'eBay 2 Listings',
+        'page_title' => $vt['title'],
+        'sub_title'  => $vt['label'].' Listings',
     ])
 
     <div class="row">
@@ -94,7 +94,7 @@
             <div class="card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <span class="e2vt-stat e2vt-stat--total" title="Live eBay 2 parents (main listings with variations). While a search or filter is on it reads shown / total.">PARENTS:<span id="e2vt-b-total">0</span></span>
+                        <span class="e2vt-stat e2vt-stat--total" title="Live {{ $vt['label'] }} parents (main listings with variations). While a search or filter is on it reads shown / total.">PARENTS:<span id="e2vt-b-total">0</span></span>
                         <span class="e2vt-stat e2vt-stat--missing" title="Listings with no CP Parent: CP Masters holds no Parent for any of their SKUs (shown as Missing in the CP Parent column). While a search or filter is on it reads shown / total.">MISSING PARENTS:<span id="e2vt-b-missing">0</span></span>
                         <span class="e2vt-stat e2vt-stat--cp" title="Different Parents that CP Masters holds for the listings' SKUs (the CP Parent column). While a search or filter is on it reads shown / total.">CP PARENTS:<span id="e2vt-b-cp">0</span></span>
                         <span class="e2vt-stat e2vt-stat--imported" title="Listings whose variation type and values were imported from eBay">IMPORTED:<span id="e2vt-b-imported">0</span></span>
@@ -117,10 +117,10 @@
                                 <div id="e2vt-cols-list"></div>
                             </div>
                         </div>
-                        <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="For the parents ticked in the Selection Box column, pull from eBay 2 (Trading API GetItem): the child SKUs that exist on the listing, the variation type, and each SKU's variation name. Nothing is changed on eBay.">
+                        <button type="button" id="e2vt-pull" class="btn btn-sm btn-primary" title="For the parents ticked in the Selection Box column, pull from {{ $vt['label'] }} (Trading API GetItem): the child SKUs that exist on the listing, the variation type, and each SKU's variation name. Nothing is changed on eBay.">
                             <i class="ri-download-2-line me-1"></i> Pull <span id="e2vt-pull-count">(0)</span>
                         </button>
-                        <button type="button" id="e2vt-import-all" class="btn btn-sm btn-warning text-dark" title="Read the current variation type and values of every listing in the filtered view from eBay 2 (Trading API GetItem)">
+                        <button type="button" id="e2vt-import-all" class="btn btn-sm btn-warning text-dark" title="Read the current variation type and values of every listing in the filtered view from {{ $vt['label'] }} (Trading API GetItem)">
                             <i class="ri-download-cloud-2-line me-1"></i> Import Current Types
                         </button>
                         <button type="button" id="e2vt-push-changed" class="btn btn-sm btn-success" title="For every listing in the view with a typed New Type that it does not have yet: add the variations under the new type first, then delete the old ones (same SKU, price, quantity, UPC and pictures; the value is the Variation Master Variation Name)">
@@ -203,12 +203,12 @@
     <script>
         (function () {
             const URLS = {
-                data: @json(route('ebay2.variation.type.data')),
-                import: @json(route('ebay2.variation.type.import')),
-                save: @json(route('ebay2.variation.type.save')),
-                push: @json(route('ebay2.variation.type.push')),
-                saveValues: @json(route('ebay2.variation.type.save.values')),
-                pushValues: @json(route('ebay2.variation.type.push.values')),
+                data: @json(route($vt['route'].'.data')),
+                import: @json(route($vt['route'].'.import')),
+                save: @json(route($vt['route'].'.save')),
+                push: @json(route($vt['route'].'.push')),
+                saveValues: @json(route($vt['route'].'.save.values')),
+                pushValues: @json(route($vt['route'].'.push.values')),
             };
             const csrf = document.querySelector('meta[name="csrf-token"]').content;
             const IMPORT_BATCH = 10;
@@ -581,7 +581,7 @@
                     paginationSize: 100,
                     paginationSizeSelector: [25, 50, 100, 250, 500],
                     paginationCounter: 'rows',
-                    placeholder: 'No live eBay 2 listings with variations found. Pull listings on the Variation Verify page first.',
+                    placeholder: 'No live {{ $vt['label'] }} listings with variations found. Pull listings on the Variation Verify page first.',
                     columns: [
                         {
                             // Selection Box: tick a row, or tick the header box to select every row in the current view.
@@ -716,7 +716,7 @@
                                         const d = c.getData();
                                         const ok = canAdd(d);
                                         const tip = ok
-                                            ? 'Change this parent to the variation type "' + typeToAdd(d) + '" on eBay 2: the variations are added under it first (value = Variation Master Variation Name, same SKU, price, quantity, UPC and pictures), then the old ones are deleted.'
+                                            ? 'Change this parent to the variation type "' + typeToAdd(d) + '" on {{ $vt['label'] }}: the variations are added under it first (value = Variation Master Variation Name, same SKU, price, quantity, UPC and pictures), then the old ones are deleted.'
                                             : (typeToAdd(d) === '' ? 'Type a New Type first (this parent has no Variation Master type).'
                                                 : (isMultiType(d) ? 'This listing varies by several types (' + d.current_type + '); only a one-type listing can be changed from here.' : 'The listing already has the variation type "' + typeToAdd(d) + '".'));
                                         return '<button type="button" class="btn btn-sm ' + (ok ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-type" title="' + esc(tip) + '"><i class="ri-add-line me-1"></i>Add</button>';
@@ -726,7 +726,7 @@
                                         const d = cell.getData();
                                         if (typeToAdd(d) === '') { alert('Type a New Type first. This parent has no Variation Master type to use.'); return; }
                                         if (hasAspect(d, typeToAdd(d)) && !confirm('The listing already has the variation type "' + typeToAdd(d) + '". Try to add it anyway?')) return;
-                                        if (!confirm('Change ' + d.main_listing + ' to the variation type "' + typeToAdd(d) + '" on eBay 2?\n\nThe variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old "' + (d.current_type || 'current') + '" variations are DELETED.\n\nThis changes the live listing.')) return;
+                                        if (!confirm('Change ' + d.main_listing + ' to the variation type "' + typeToAdd(d) + '" on {{ $vt['label'] }}?\n\nThe variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old "' + (d.current_type || 'current') + '" variations are DELETED.\n\nThis changes the live listing.')) return;
                                         const btn = e.target.closest('.e2vt-push-type');
                                         const typeName = typeToAdd(d);
                                         // Loader on the button while eBay is called (can take a few seconds).
@@ -802,7 +802,7 @@
                                     },
                                 },
                                 {
-                                    // The variation value each child SKU has on the live eBay 2 listing, pulled with Pull / Import.
+                                    // The variation value each child SKU has on the live {{ $vt['label'] }} listing, pulled with Pull / Import.
                                     // One entry per SKU of the SKU column, same order. A dashed dash means that SKU is not on the listing.
                                     title: 'Variation Name (eBay, SKU wise)', field: 'ebay_names', width: 260, headerHozAlign: 'center', headerSort: false,
                                     formatter: function (c) {
@@ -814,7 +814,7 @@
                                         const live = names.filter((n) => n).length;
                                         const master = Array.isArray(d.sku_names) ? d.sku_names : [];
                                         const chip = (i) => {
-                                            if (!names[i]) return '<span class="e2vt-chip e2vt-chip--none" title="' + esc(skus[i]) + ': not on the live eBay 2 listing">—</span>';
+                                            if (!names[i]) return '<span class="e2vt-chip e2vt-chip--none" title="' + esc(skus[i]) + ': not on the live {{ $vt['label'] }} listing">—</span>';
                                             const differs = master[i] && norm(master[i]) !== norm(names[i]);
                                             return '<span class="e2vt-chip e2vt-chip--name' + (differs ? ' e2vt-chip--differs' : '') + '" title="' + esc(skus[i] + (differs ? ': Variation Master has "' + master[i] + '"' : '')) + '">' + esc(names[i]) + '</span>';
                                         };
@@ -848,13 +848,13 @@
                                         const d = c.getData();
                                         const can = (Array.isArray(d.sku_names) ? d.sku_names : []).some((n) => n);
                                         return '<button type="button" class="btn btn-sm ' + (can ? 'btn-success' : 'btn-outline-secondary') + ' e2vt-push-values"' + (can ? '' : ' disabled')
-                                            + ' title="' + (can ? 'Add the Variation Master variation names to this parent on eBay 2: each SKU whose name differs is deleted and added again with the name from the Variation Name (SKU wise) column (same SKU, price, quantity, UPC and pictures)' : 'No SKU of this parent has a Variation Name in Variation Master.') + '"><i class="ri-add-line me-1"></i>Add</button>';
+                                            + ' title="' + (can ? 'Add the Variation Master variation names to this parent on {{ $vt['label'] }}: each SKU whose name differs is deleted and added again with the name from the Variation Name (SKU wise) column (same SKU, price, quantity, UPC and pictures)' : 'No SKU of this parent has a Variation Name in Variation Master.') + '"><i class="ri-add-line me-1"></i>Add</button>';
                                     },
                                     cellClick: async function (e, cell) {
                                         const btn = e.target.closest('.e2vt-push-values');
                                         if (busy || !btn || btn.disabled) return;
                                         const d = cell.getData();
-                                        if (!confirm('Add the Variation Master variation names to ' + d.main_listing + ' on eBay 2?\n\nFor every SKU whose eBay name differs from the Variation Name (SKU wise) column, the old variation is DELETED and added again with the new name, using the same SKU, price, quantity, UPC and pictures.\n\nThis changes the live listing.')) return;
+                                        if (!confirm('Add the Variation Master variation names to ' + d.main_listing + ' on {{ $vt['label'] }}?\n\nFor every SKU whose eBay name differs from the Variation Name (SKU wise) column, the old variation is DELETED and added again with the new name, using the same SKU, price, quantity, UPC and pictures.\n\nThis changes the live listing.')) return;
                                         // Loader on the button while eBay is called (can take a few seconds).
                                         btn.disabled = true;
                                         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Adding...';
@@ -890,7 +890,7 @@
 
                 // Columns button: tick a column to show it, untick to hide it. The choice is remembered in this browser.
                 table.on('tableBuilt', function () {
-                    const STORE = 'e2vt_hidden_columns';
+                    const STORE = @json($vt['store']);
                     const btn = document.getElementById('e2vt-cols-btn');
                     const panel = document.getElementById('e2vt-cols-panel');
                     const listEl = document.getElementById('e2vt-cols-list');
@@ -970,7 +970,7 @@
                     if (busy) return;
                     const rows = table.getSelectedRows().map((r) => r.getData());
                     if (!rows.length) { alert('Tick at least one row in the Selection Box column first.'); return; }
-                    if (!confirm('Pull the child SKUs, variation type and variation names of ' + rows.length + ' selected parent(s) from eBay 2? This calls GetItem once per listing and does not change eBay.')) return;
+                    if (!confirm('Pull the child SKUs, variation type and variation names of ' + rows.length + ' selected parent(s) from {{ $vt['label'] }}? This calls GetItem once per listing and does not change eBay.')) return;
                     stopRequested = false;
                     setBusy(true, 'Pulling...');
                     const done = await importRows(rows);
@@ -992,7 +992,7 @@
                     if (busy) return;
                     const rows = visibleRows();
                     if (!rows.length) return;
-                    if (!confirm('Import the current variation type and values of ' + rows.length + ' listing(s) from eBay 2? This calls GetItem once per listing.')) return;
+                    if (!confirm('Import the current variation type and values of ' + rows.length + ' listing(s) from {{ $vt['label'] }}? This calls GetItem once per listing.')) return;
                     stopRequested = false;
                     setBusy(true, 'Importing...');
                     const done = await importRows(rows);
@@ -1018,7 +1018,7 @@
                     if (busy) return;
                     const rows = visibleRows().filter(isChanged);
                     if (!rows.length) { alert('Nothing to add: no listing in this view has a typed New Type that the listing does not have yet.'); return; }
-                    if (!confirm('Change ' + rows.length + ' listing(s) to their typed New Type on eBay 2?\n\nFor each one the variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old variations are DELETED.\n\nThis changes live listings.')) return;
+                    if (!confirm('Change ' + rows.length + ' listing(s) to their typed New Type on {{ $vt['label'] }}?\n\nFor each one the variations are ADDED under the new type first (value = each SKU\'s Variation Master Variation Name, same SKU, price, quantity, UPC and pictures) and then the old variations are DELETED.\n\nThis changes live listings.')) return;
                     await pushMany(rows, pushType, 'type');
                 });
 
@@ -1026,7 +1026,7 @@
                     if (busy) return;
                     const rows = visibleRows().filter((d) => editsOf(d).length > 0);
                     if (!rows.length) { alert('Nothing to push: no listing in this view has value edits waiting.'); return; }
-                    if (!confirm('Push renamed values to eBay 2 for ' + rows.length + ' listing(s)? This changes live listings.')) return;
+                    if (!confirm('Push renamed values to {{ $vt['label'] }} for ' + rows.length + ' listing(s)? This changes live listings.')) return;
                     await pushMany(rows, pushValues, 'values');
                 });
             });
