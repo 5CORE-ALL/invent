@@ -9,8 +9,10 @@ use App\Services\ComparisonSheetService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -448,7 +450,18 @@ class ComparisonQuoteRequestController extends Controller
             $specs .= '<li>'.e($r['label']).'</li>';
         }
 
-        $html = '<p>Dear '.e($toName).',</p>'
+        // Purchase description (Description button on the sheet, max 180 chars) goes above the greeting.
+        $desc = '';
+        if (Schema::hasTable('comparison_purchase_descriptions')) {
+            $desc = trim((string) (DB::table('comparison_purchase_descriptions')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+                ->value('description') ?? ''));
+        }
+        $header = '<p><strong>Subject: Product description required'.($desc !== '' ? ' - '.e($desc) : '').'</strong><br>'
+            .'Required in Our Own brand Name</p>';
+
+        $html = $header
+            .'<p>Dear '.e($toName).',</p>'
             .'<p>Please share your best quotation for the following product:</p>'
             .'<p><strong>Product: '.e($sku).'</strong></p>'
             .($image ? '<p><img src="'.e($image).'" alt="Product" style="max-width:260px;border-radius:8px"></p>' : '')

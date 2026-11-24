@@ -679,6 +679,7 @@ class ComparisonController extends Controller
             'google_sheet_url' => $sheetUrl,
             'google_sheet_tab' => $record?->google_sheet_tab ?? 'Sheet1',
             'has_sheet_data' => $hasSheetData,
+            'purchase_description' => $this->purchaseDescriptionFor($sku),
             'sheet_file' => $this->sheetStorage->pathForSku($sheetSku),
             'updated_by' => $record?->updated_by,
             'updated_at' => $record?->updated_at?->format('m-d-Y H:i'),
@@ -1128,6 +1129,94 @@ class ComparisonController extends Controller
     /**
      * Master list of specification labels shared by every comparison sheet.
      */
+    private const PURCHASE_DESCRIPTION_MAX = 180;
+
+    private function purchaseDescriptionFor(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('comparison_purchase_descriptions')) {
+            return '';
+        }
+
+        return (string) (DB::table('comparison_purchase_descriptions')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->value('description') ?? '');
+    }
+
+    public function purchaseDescription(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'description' => $this->purchaseDescriptionFor($sku),
+            'max' => self::PURCHASE_DESCRIPTION_MAX,
+        ]);
+    }
+
+    public function savePurchaseDescription(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:191',
+            'description' => 'nullable|string|max:'.self::PURCHASE_DESCRIPTION_MAX,
+        ], [
+            'description.max' => 'Purchase description can be at most '.self::PURCHASE_DESCRIPTION_MAX.' characters.',
+        ]);
+
+        if (! Schema::hasTable('comparison_purchase_descriptions')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Purchase description table is missing — run php artisan migrate on the server.',
+            ], 500);
+        }
+
+        $sku = trim($validated['sku']);
+        $description = trim((string) ($validated['description'] ?? ''));
+        $user = Auth::user()?->name ?? 'N/A';
+
+        $existing = DB::table('comparison_purchase_descriptions')
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        $old = (string) ($existing->description ?? '');
+
+        if ($existing) {
+            DB::table('comparison_purchase_descriptions')->where('id', $existing->id)->update([
+                'description' => $description,
+                'updated_by' => $user,
+                'updated_at' => now(),
+            ]);
+        } else {
+            DB::table('comparison_purchase_descriptions')->insert([
+                'sku' => $sku,
+                'description' => $description,
+                'updated_by' => $user,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        if ($old !== $description) {
+            try {
+                $parent = (string) (ProductMaster::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+                    ->value('parent') ?? '');
+                ComparisonHistory::logChange($sku, $parent, 'purchase_description', $old, $description, $user);
+            } catch (\Throwable $e) {
+                // History is best-effort; never block the save.
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Purchase description saved.',
+            'description' => $description,
+        ]);
+    }
+
     public function specifications()
     {
         if (! Schema::hasTable('comparison_specifications')) {

@@ -494,11 +494,15 @@
     .comparison-qr-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; color: #2a9d9f; }
     .comparison-qr-btn:hover { background: #e6f4f4; }
     html body #comparisonSupplierEditModal.modal { --cmp-drawer-w: 392px; }
+    html body #comparisonPurchaseDescModal.modal { --cmp-drawer-w: 380px; }
+    .cd-purchase-desc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #14b8a6; margin-left: 4px; vertical-align: middle; }
+    #comparisonPurchaseDescModal .cd-purchase-desc-count { font-size: .75rem; color: #64748b; }
+    #comparisonPurchaseDescModal .cd-purchase-desc-count.is-full { color: #dc2626; font-weight: 600; }
     html body #comparisonCategoryPickerModal.modal { --cmp-drawer-w: 364px; }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal {
         padding: 0 !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal .modal-dialog {
         position: fixed !important;
         top: 0 !important;
         right: 0 !important;
@@ -517,10 +521,10 @@
         transform: translateX(100%) !important;
         transition: transform 0.3s ease-out !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal.show .modal-dialog {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal.show .modal-dialog {
         transform: translateX(0) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-content {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal .modal-content {
         width: 100% !important;
         max-width: 100% !important;
         height: 100% !important;
@@ -532,11 +536,11 @@
         flex-direction: column !important;
         box-shadow: -8px 0 28px rgba(15, 23, 42, 0.22) !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-header,
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-footer {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal .modal-header,
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal .modal-footer {
         flex: 0 0 auto !important;
     }
-    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal).modal .modal-body {
+    html body :is(#comparisonLinkedSkuModal,#comparisonCategoryPickerModal,#comparisonCommModal,#comparisonLmpModal,#comparisonHistoryModal,#comparisonPriorityBulkEditModal,#comparisonColumnEditModal,#comparisonReviewsChartModal,#comparisonRoiPriceChartModal,#comparisonQcIssuesModal,#comparisonQcIssueTextModal,#comparisonSupplierEditModal,#comparisonPurchaseDescModal).modal .modal-body {
         flex: 1 1 auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -3592,6 +3596,10 @@
                                         </li>
                                     </ul>
                                 </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-purchase-desc-btn" title="Purchase description (max 180 characters)">
+                                    <i class="mdi mdi-text-box-edit-outline"></i> Description
+                                    <span class="cd-purchase-desc-dot d-none" id="comparison-cd-purchase-desc-dot" aria-hidden="true"></span>
+                                </button>
                             </div>
                             <div class="cd-sheet-status d-none" id="comparison-cd-sheet-status" aria-hidden="true"></div>
                         </div>
@@ -3792,6 +3800,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const sheetGetUrl = @json(route('comparison.sheet.get'));
     const sheetSaveUrl = @json(route('comparison.sheet.save'));
     const specificationsUrl = @json(route('comparison.specifications'));
+    const purchaseDescriptionUrl = @json(route('comparison.purchase-description'));
+    const purchaseDescriptionSaveUrl = @json(route('comparison.purchase-description.save'));
     const supplierNamesJsonUrl = @json(route('supplier.list.json'));
     const sheetImageUrl = @json(route('comparison.sheet.image'));
     const sheetPhotoUploadUrl = @json(route('comparison.sheet.photo'));
@@ -4893,6 +4903,77 @@ document.addEventListener('DOMContentLoaded', function () {
         const cur = list.querySelector('.cd-supp-edit-item.is-current');
         if (cur) setTimeout(() => cur.scrollIntoView({ block: 'center' }), 60);
     }
+
+    // ---- Purchase description (max 180 characters, stored per SKU) ----
+    const PURCHASE_DESC_MAX = 180;
+    let purchaseDescSaved = '';
+
+    function setPurchaseDescriptionSaved(text) {
+        purchaseDescSaved = String(text || '');
+        const dot = document.getElementById('comparison-cd-purchase-desc-dot');
+        if (dot) dot.classList.toggle('d-none', purchaseDescSaved.trim() === '');
+    }
+
+    function updatePurchaseDescCount() {
+        const input = document.getElementById('comparison-purchase-desc-input');
+        const count = document.getElementById('comparison-purchase-desc-count');
+        if (!input || !count) return;
+        const n = input.value.length;
+        count.textContent = n + ' / ' + PURCHASE_DESC_MAX;
+        count.classList.toggle('is-full', n >= PURCHASE_DESC_MAX);
+    }
+
+    function openPurchaseDescriptionModal() {
+        const sku = String(currentCdRow?.sku || '').trim();
+        if (!sku) return;
+        const input = document.getElementById('comparison-purchase-desc-input');
+        const skuEl = document.getElementById('comparison-purchase-desc-sku');
+        if (!input) return;
+        if (skuEl) skuEl.textContent = sku;
+        input.value = purchaseDescSaved.slice(0, PURCHASE_DESC_MAX);
+        updatePurchaseDescCount();
+        const modalEl = document.getElementById('comparisonPurchaseDescModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            setTimeout(() => input.focus(), 250);
+        }
+    }
+
+    function savePurchaseDescription() {
+        const sku = String(currentCdRow?.sku || '').trim();
+        const input = document.getElementById('comparison-purchase-desc-input');
+        const btn = document.getElementById('comparison-purchase-desc-save-btn');
+        if (!sku || !input) return;
+        const text = input.value.trim().slice(0, PURCHASE_DESC_MAX);
+        if (btn) btn.disabled = true;
+        fetch(purchaseDescriptionSaveUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+            credentials: 'same-origin',
+            body: JSON.stringify({ sku: sku, description: text }),
+        })
+            .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, json: j }; }); })
+            .then(function (r) {
+                if (!r.ok || !r.json || r.json.success === false) {
+                    const errs = r.json && r.json.errors ? Object.values(r.json.errors).flat().join(' ') : '';
+                    throw new Error(errs || (r.json && r.json.message) || 'Could not save the description.');
+                }
+                setPurchaseDescriptionSaved(r.json.description || '');
+                showComparisonToast('success', 'Purchase description saved.');
+                const modalEl = document.getElementById('comparisonPurchaseDescModal');
+                if (modalEl && typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            })
+            .catch(function (err) { showComparisonToast('error', err.message || 'Could not save the description.'); })
+            .finally(function () { if (btn) btn.disabled = false; });
+    }
+
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#comparison-cd-purchase-desc-btn')) { openPurchaseDescriptionModal(); return; }
+        if (e.target.closest('#comparison-purchase-desc-save-btn')) { savePurchaseDescription(); }
+    });
+    document.addEventListener('input', function (e) {
+        if (e.target && e.target.id === 'comparison-purchase-desc-input') updatePurchaseDescCount();
+    });
 
     // rowIndex = row whose pen was clicked (highlighted in the list); null = opened from the toolbar "Supplier" button.
     function openSupplierEditModal(rowIndex) {
@@ -11349,6 +11430,7 @@ document.addEventListener('DOMContentLoaded', function () {
         sheetReadyForAutoSave = false;
         cancelScheduledAutoSave();
         sheetExpectedUpdatedAt = String(data?.updated_at_iso || data?.updated_at || '');
+        setPurchaseDescriptionSaved(data?.purchase_description || '');
 
         const clink = (row?.clink || data.clink || '').trim();
         // Same C link as the comparison table / Forecast column — never a leftover google_sheet_url.
@@ -17608,6 +17690,33 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-sm btn-primary" id="comparison-priority-bulk-save-btn">
                     <i class="mdi mdi-content-save-outline me-1"></i> Save to selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonPurchaseDescModal" tabindex="-1" aria-labelledby="comparisonPurchaseDescModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonPurchaseDescModalLabel">
+                    <i class="mdi mdi-text-box-edit-outline me-1"></i> Purchase description <span class="text-muted fw-normal" id="comparison-purchase-desc-sku"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <textarea id="comparison-purchase-desc-input" class="form-control form-control-sm" rows="6" maxlength="180"
+                    placeholder="Short purchase description (max 180 characters)" aria-label="Purchase description"></textarea>
+                <div class="d-flex justify-content-between mt-1">
+                    <span class="cd-purchase-desc-count text-muted">Max 180 characters</span>
+                    <span class="cd-purchase-desc-count" id="comparison-purchase-desc-count">0 / 180</span>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="comparison-purchase-desc-save-btn">
+                    <i class="mdi mdi-content-save-outline me-1"></i> Save
                 </button>
             </div>
         </div>

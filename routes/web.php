@@ -6320,6 +6320,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/sheet/image', 'getSheetImage')->name('comparison.sheet.image');
         Route::post('/sheet/photo', 'uploadSheetPhoto')->name('comparison.sheet.photo');
         Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
+        Route::get('/purchase-description', 'purchaseDescription')->name('comparison.purchase-description');
+        Route::post('/purchase-description', 'savePurchaseDescription')->name('comparison.purchase-description.save');
         Route::get('/specifications', 'specifications')->name('comparison.specifications');
         Route::post('/specifications', 'addSpecification')->name('comparison.specifications.add');
         Route::post('/specifications/rename', 'renameSpecification')->name('comparison.specifications.rename');
@@ -6347,6 +6349,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/merge', 'merge')->name('purchase.specific.merge');
         Route::post('/delete', 'destroy')->name('purchase.specific.delete');
         Route::post('/normalize-all', 'normalizeAll')->name('purchase.specific.normalize-all');
+    });
+
+    // Purchase Description (Tabulator; rows come from the CP Master data feed)
+    Route::controller(\App\Http\Controllers\PurchaseMaster\PurchaseDescriptionController::class)->prefix('purchase-master/purchase-description')->group(function () {
+        Route::get('/', 'index')->name('purchase.description.index');
+        Route::get('/data', 'data')->name('purchase.description.data');
+        Route::post('/save-bulk', 'saveBulk')->name('purchase.description.save-bulk');
+    });
+
+    // Purchase Specific Siblings (Tabulator; rows come from the CP Master data feed)
+    Route::controller(\App\Http\Controllers\PurchaseMaster\PurchaseSpecificSiblingsController::class)->prefix('purchase-master/purchase-specific-siblings')->group(function () {
+        Route::get('/', 'index')->name('purchase.specific.siblings.index');
+        Route::get('/data', 'data')->name('purchase.specific.siblings.data');
+        Route::post('/save', 'save')->name('purchase.specific.siblings.save');
     });
 
     // Ready To Ship
