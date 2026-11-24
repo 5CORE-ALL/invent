@@ -19,6 +19,9 @@
             background: rgba(255,255,255,.18); color:#fff; transition: transform .15s, background .15s;
         }
         #ele .ele-tab.active { background:#fff; color:#6d28d9; transform: translateY(-1px); }
+        #ele .ele-hidden { background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:12px; padding:8px 12px; font-size:12px; margin-bottom:10px; }
+        #ele .ele-hidden summary { cursor:pointer; font-weight:700; }
+        #ele .ele-hidden[hidden] { display:none; }
         #ele .ele-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
         #ele .ele-chip { background:#fff; border:1px solid var(--line); border-radius:12px; padding:8px 12px; min-width:110px; }
         #ele .ele-chip b { display:block; font-size:18px; }
@@ -82,6 +85,7 @@
             <button type="button" class="ele-pull" id="ele-pull">Pull from eBay</button>
             <input id="ele-search" class="ele-search" placeholder="Search SKU, item id, error…">
         </div>
+        <div id="ele-hidden" class="ele-hidden" hidden></div>
         <div id="ele-table"></div>
     </div>
 
@@ -182,6 +186,16 @@
                         const rows = (j && j.rows) || [];
                         table.setData(rows);
                         document.getElementById('ele-count').textContent = rows.length;
+                        const hid = (j && j.hidden) || [];
+                        const box = document.getElementById('ele-hidden');
+                        if (hid.length) {
+                            box.hidden = false;
+                            box.innerHTML = '<details><summary>' + hid.length + ' ended listing' + (hid.length === 1 ? '' : 's') + ' on eBay not shown here (click to see why)</summary><ul class="mb-0 mt-1">'
+                                + hid.map(function (h) { return '<li><b>' + esc(h.sku) + '</b> (item ' + esc(h.item_id) + '): ' + esc(h.why) + '</li>'; }).join('') + '</ul></details>';
+                        } else {
+                            box.hidden = true;
+                            box.innerHTML = '';
+                        }
                     })
                     .catch(function () { toast(false, 'Could not load the listings.'); })
                     .finally(idle);
