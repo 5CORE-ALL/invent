@@ -673,9 +673,10 @@
             border-color: #a16207;
             background: #fff;
         }
+        /* Forecast sits directly below Others (right-hand column); INV spans the three columns to their left. */
         #summary-stats .amm-badge-block--forecast {
-            grid-column: 3;
-            grid-row: 2;
+            grid-column: 4;
+            grid-row: 3;
             background: #fef9c3;
             border-color: #facc15;
         }
@@ -688,8 +689,8 @@
         }
         #summary-stats .amm-badge-block--others .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--inv {
-            grid-column: 1 / 3;
-            grid-row: 2;
+            grid-column: 1 / 4;
+            grid-row: 2 / 4;
             background: #fef9c3;
             border-color: #facc15;
         }
@@ -767,13 +768,13 @@
         #summary-stats .amm-badge-block--today .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--forecast .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--others .ebay2-summary-badge-row {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             align-items: stretch;
         }
         #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row,
-        #summary-stats .amm-badge-block--forecast .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--inv .ebay2-summary-badge-row {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
