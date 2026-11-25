@@ -6662,7 +6662,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Rules 2-4 count data: red campaigns now (lifetime, spend >= $30) and how many still run.
+     * Rules 2-4 count data: red campaigns now (lifetime, spend > $30) and how many still run.
      *
      * @return array<string, array{red: int, active: int}>
      */
