@@ -57,6 +57,9 @@ class Ebay1PromotionService
     /** @var array{0:int,1:list<string>}|null [fetchedAt, promotion ids] */
     private ?array $mdIdsCache = null;
 
+    /** True when the last sale-list call to eBay failed (so an empty list must not be trusted). */
+    private bool $markdownListFailed = false;
+
     /** @var array<string, array{0:int,1:?array<string,mixed>}> promo api id => [fetchedAt, detail] */
     private array $mdDetailCache = [];
 
@@ -712,6 +715,7 @@ class Ebay1PromotionService
             ];
         }
 
+        \Illuminate\Support\Facades\Cache::forget('ebay-live-sale-ids:'.($this->channel === 'ebay2op' ? 'ebay2' : $this->channel));
         $ended = 0;
         $failed = 0;
         $skipped = 0;
@@ -948,6 +952,39 @@ class Ebay1PromotionService
         return ['success' => false, 'message' => 'Inventory replace failed: '.$this->ebayErrorMessage($resp)];
     }
 
+    /**
+     * Ids of the sale events that are live on eBay right now (RUNNING / SCHEDULED / PAUSED / DRAFT).
+     * Ended sales are not in the list. Returns null when eBay could not be read, so callers keep what they have
+     * instead of treating every listing as "not on sale".
+     *
+     * @return array<string, true>|null keyed by promotion id without the "@EBAY_US" suffix
+     */
+    public function liveSalePromotionIds(): ?array
+    {
+        try {
+            $token = $this->ebay->generateBearerToken();
+        } catch (\Throwable $e) {
+            Log::warning($this->label.' live sale ids: token failed — '.$e->getMessage());
+
+            return null;
+        }
+        $ids = $this->fetchMarkdownIds($token);
+        if ($this->markdownListFailed) {
+            return null;
+        }
+        $this->mdIdsCache = [time(), $ids];
+
+        $out = [];
+        foreach ($ids as $id) {
+            $key = strtok((string) $id, '@');
+            if ($key !== false && $key !== '') {
+                $out[$key] = true;
+            }
+        }
+
+        return $out;
+    }
+
     public function campaignNameForPercent(int $percent): string
     {
         return 'PEF SALE '.$percent.'%';
@@ -1106,6 +1143,7 @@ class Ebay1PromotionService
         $ids = [];
         $offset = 0;
         $limit = 50;
+        $this->markdownListFailed = false;
 
         for ($page = 0; $page < 20; $page++) {
             $resp = $this->http($token)->get('https://api.ebay.com/sell/marketing/v1/promotion', [
@@ -1119,6 +1157,7 @@ class Ebay1PromotionService
                     'status' => $resp->status(),
                     'body' => mb_substr($resp->body(), 0, 400),
                 ]);
+                $this->markdownListFailed = true;
                 break;
             }
             $json = $resp->json();
@@ -1232,6 +1271,8 @@ class Ebay1PromotionService
         }
 
         $this->resumeIfNeeded($token, $promoId);
+        // Page / job read the live sale ids from a short cache: drop it so the new sale counts as live at once.
+        \Illuminate\Support\Facades\Cache::forget('ebay-live-sale-ids:'.($this->channel === 'ebay2op' ? 'ebay2' : $this->channel));
         // New sale: add it to the cached list so later SKUs can join it without re-listing everything.
         if ($this->mdIdsCache !== null) {
             $this->mdIdsCache[1][] = $promoId;

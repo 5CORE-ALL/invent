@@ -173,6 +173,7 @@ class ChannelPromoPricingService
 
         $out = [];
         $liveCoupons = false; // false = not loaded yet, null = eBay unreadable, array = live promotion ids
+        $liveSales = false; // same, for markdown (PRMT%) sale events
         foreach ($rows as $row) {
             $key = strtoupper(trim((string) $row->sku));
             if ($key === '' || ! isset($norm[$key])) {
@@ -180,6 +181,7 @@ class ChannelPromoPricingService
             }
             $val = $this->decodeValue($row->value);
             $val = $this->withoutEndedZeroSoldCoupon($channel, $val, $liveCoupons);
+            $val = $this->withoutEndedSale($channel, $val, $liveSales);
             $mapped = $this->mapFromValue($val);
             if ($mapped !== null) {
                 $out[$key] = $mapped;
@@ -224,6 +226,53 @@ class ChannelPromoPricingService
             $val['PEF_ZERO_SOLD_COUPON_PCT'],
             $val['PEF_ZERO_SOLD_COUPON_PROMO_ID']
         );
+
+        return $val;
+    }
+
+    /**
+     * A SKU's saved PEF_SALE_PCT only counts while its eBay sale event is still live.
+     * PRMT% sales run 7 days (or are ended by hand with "End all sales"). The saved % was never cleared, so once a
+     * sale ended every SKU still looked "already on the N% sale": Push PRMT% skipped it and only SKUs whose PRMT% changed
+     * were added to a new sale (e.g. 634 listings on the ended PEF SALE 5%, then 1 on the new one).
+     * Dropping the marker for ended sales makes those SKUs push again. When eBay cannot be read the saved value is kept.
+     *
+     * @param  array<string, mixed>  $val
+     * @param  array<string, true>|false|null  $live  loaded on first use, shared across rows
+     * @return array<string, mixed>
+     */
+    private function withoutEndedSale(string $channel, array $val, array|false|null &$live): array
+    {
+        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)) {
+            return $val;
+        }
+        $promoId = trim((string) ($val['PEF_PRMT_PROMOTION_ID'] ?? ''));
+        if ($promoId === '' && ! isset($val['PEF_SALE_PCT'])) {
+            return $val;
+        }
+        if ($promoId === '') {
+            return $val; // no sale id saved (older rows): cannot tell, keep as is
+        }
+        if ($live === false) {
+            $ebayChannel = $channel === 'ebay2op' ? 'ebay2' : $channel;
+            $cached = Cache::get('ebay-live-sale-ids:'.$ebayChannel);
+            if (is_array($cached)) {
+                $live = $cached;
+            } else {
+                $live = \App\Services\Ebay1PromotionService::for($ebayChannel)->liveSalePromotionIds();
+                if (is_array($live)) {
+                    Cache::put('ebay-live-sale-ids:'.$ebayChannel, $live, 120);
+                }
+            }
+        }
+        if ($live === null) {
+            return $val;
+        }
+        $id = strtok($promoId, '@');
+        if ($id !== false && isset($live[$id])) {
+            return $val;
+        }
+        unset($val['PEF_SALE_PCT'], $val['PEF_PRMT_PROMOTION_ID']);
 
         return $val;
     }

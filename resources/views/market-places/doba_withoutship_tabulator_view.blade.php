@@ -657,6 +657,11 @@
         @include('partials.temu-rule-hover', ['temuRuleHoverKind' => 'generic', 'temuRuleLiveLabel' => 'Price'])
         function dwsDisplayedSprice(data) {
             if (!data || isDobaWithoutshipParentRow(data)) return 0;
+            // Set by hand in the Price Increase modal (S Pick = SPRICE - Ship): shown exactly as saved
+            if (data.sprice_manual) {
+                const m = parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
+                if (m > 0) return m;
+            }
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(data)) || 0;
                 if (stdRule > 0) return stdRule;

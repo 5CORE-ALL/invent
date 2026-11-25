@@ -583,6 +583,7 @@ class DobaController extends Controller
 
                 if (is_array($rawSprice)) {
                     $row['SPRICE'] = $rawSprice['SPRICE'] ?? null;
+                    $row['sprice_manual'] = floatval($rawSprice['SPRICE'] ?? 0) > 0 && ! empty($rawSprice['SPRICE_MANUAL']);
                     $row['SPFT'] = $rawSprice['SPFT'] ?? null;
                     $row['SROI'] = $rawSprice['SROI'] ?? null;
                     $row['S_SELF_PICK'] = $rawSprice['S_SELF_PICK'] ?? null;
@@ -610,6 +611,8 @@ class DobaController extends Controller
                     $tabPick = max(0, round($tabSprice - $ship, 2));
                 }
                 $row['doba_tabulator_s_pick'] = $tabPick > 0 ? $tabPick : null;
+                // Set by hand in the Price Increase modal on /doba-tabulator: shown as saved on the pre-paid page too
+                $row['sprice_manual'] = $tabSprice > 0 && is_array($withShipRaw) && ! empty($withShipRaw['SPRICE_MANUAL']);
                 if ($tabPick > 0) {
                     $row['SPRICE'] = $tabPick;
                     $row['S_SELF_PICK'] = $tabPick;
@@ -895,6 +898,13 @@ class DobaController extends Controller
             $existing = is_array($dataView->value)
                 ? $dataView->value
                 : (json_decode($dataView->value, true) ?: []);
+
+            // A price changed from the page itself drops the modal's manual flag (rules apply again)
+            $newSprice = is_numeric($update['sprice'] ?? null) ? (float) $update['sprice'] : 0.0;
+            $oldSprice = isset($existing['SPRICE']) && is_numeric($existing['SPRICE']) ? (float) $existing['SPRICE'] : 0.0;
+            if ($newSprice <= 0 || abs($newSprice - $oldSprice) > 0.004) {
+                unset($existing['SPRICE_MANUAL']);
+            }
 
             $merged = array_merge($existing, [
                 'SPRICE' => $update['sprice'],

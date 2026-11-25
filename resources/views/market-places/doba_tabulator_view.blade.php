@@ -769,6 +769,8 @@
         /** Live rule price first (so a switch or rule edit repaints at once), else the saved S PRC. */
         function dobaDisplayedSprice(data) {
             if (!data || isDobaParentRow(data)) return 0;
+            // Set by hand in the Price Increase modal: shown exactly as saved (the live rule price must not repaint it)
+            if (data.sprice_manual && dobaSavedSprice(data) > 0) return dobaSavedSprice(data);
             const live = dobaLiveRuleSprice(data);
             if (live > 0) return live;
             return dobaSavedSprice(data);

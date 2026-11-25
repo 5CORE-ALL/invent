@@ -8431,6 +8431,13 @@ class CvrMasterController extends Controller
                 // price and overwrite the saved one. A price set here is flagged manual so those jobs (and the TikTok / Temu pages)
                 // leave it as it is; clearing the price removes the flag again (below).
                 $value['SPRICE_MANUAL'] = true;
+                // Doba: /doba_withoutship (Doba Pre-Paid) shows S PRC = S Pick = SPRICE - Ship, kept in S_SELF_PICK on this row
+                if ($marketplace === 'doba') {
+                    $dobaPmValues = $productMaster ? ($productMaster->Values ?? []) : [];
+                    $dobaPmValues = is_array($dobaPmValues) ? $dobaPmValues : (json_decode((string) $dobaPmValues, true) ?: []);
+                    $dobaShip = isset($dobaPmValues['ship']) ? (float) $dobaPmValues['ship'] : (float) ($productMaster->ship ?? 0);
+                    $value['S_SELF_PICK'] = max(0, round($sprice - $dobaShip, 2));
+                }
 
                 // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
                 // TopDawg: lowercase sprice only (same as /topdawg-pricing)
@@ -8453,6 +8460,9 @@ class CvrMasterController extends Controller
                     $value['SPFT'], $value['spft'],
                     $value['SPRICE_EDITED_AT'], $value['SPRICE_MANUAL']
                 );
+                if ($marketplace === 'doba') {
+                    unset($value['S_SELF_PICK']);
+                }
             }
             
             // Save to correct field (Reverb uses 'values', others use 'value')
