@@ -67,6 +67,7 @@ class TaskOverdueHistoryService
             });
 
         $this->store($byUser);
+        $this->pruneReadings();
 
         return ['members' => count($byUser), 'overdue_total' => array_sum($byUser)];
     }
@@ -84,9 +85,11 @@ class TaskOverdueHistoryService
 
         $today = TaskBusinessTime::today()->toDateString();
         $now = now();
+        // opening_overdue keeps the day's first value: it is part of the insert but not of the update list below.
+        $hasOpening = Schema::hasColumn('task_overdue_history', 'opening_overdue');
         $payload = [];
         foreach ($overdueByUserId as $userId => $overdue) {
-            $payload[] = [
+            $row = [
                 'user_id' => (int) $userId,
                 'snap_date' => $today,
                 'overdue' => max(0, (int) $overdue),
@@ -94,6 +97,10 @@ class TaskOverdueHistoryService
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
+            if ($hasOpening) {
+                $row['opening_overdue'] = $row['overdue'];
+            }
+            $payload[] = $row;
         }
 
         try {
@@ -103,6 +110,90 @@ class TaskOverdueHistoryService
         } catch (\Throwable $e) {
             Log::warning('TaskOverdueHistoryService: could not store snapshot', ['error' => $e->getMessage()]);
         }
+
+        $this->storeReadings($overdueByUserId, $now);
+    }
+
+    /**
+     * One point per member for the rolling graph. A member who already has a reading from the last
+     * 9 minutes is skipped, so page visits cannot flood the table.
+     *
+     * @param  array<int, int>  $overdueByUserId
+     */
+    protected function storeReadings(array $overdueByUserId, \Illuminate\Support\Carbon $now): void
+    {
+        if (! Schema::hasTable('task_overdue_readings')) {
+            return;
+        }
+
+        try {
+            $recent = DB::table('task_overdue_readings')
+                ->where('captured_at', '>=', $now->copy()->subMinutes(9))
+                ->distinct()
+                ->pluck('user_id')
+                ->map(fn ($v) => (int) $v)
+                ->flip()
+                ->all();
+
+            $payload = [];
+            foreach ($overdueByUserId as $userId => $overdue) {
+                if (isset($recent[(int) $userId])) {
+                    continue;
+                }
+                $payload[] = ['user_id' => (int) $userId, 'overdue' => max(0, (int) $overdue), 'captured_at' => $now];
+            }
+            foreach (array_chunk($payload, 500) as $chunk) {
+                DB::table('task_overdue_readings')->insert($chunk);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TaskOverdueHistoryService: could not store readings', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Rolling series for the graph: every reading of the last $days days, oldest first.
+     * One user id gives that member; a list gives the sum of those members; null gives everyone.
+     * Falls back to the daily values while no readings exist.
+     *
+     * @param  array<int, int>|null  $userIds
+     * @return list<array{t: string, value: int}>
+     */
+    public function rollingSeries(?array $userIds, int $days): array
+    {
+        if ($userIds === []) {
+            return [];
+        }
+
+        if (Schema::hasTable('task_overdue_readings')) {
+            $query = DB::table('task_overdue_readings')
+                ->where('captured_at', '>=', now()->subDays(max(1, $days)))
+                ->selectRaw('captured_at, SUM(overdue) AS total')
+                ->groupBy('captured_at')
+                ->orderBy('captured_at');
+            if ($userIds !== null) {
+                $query->whereIn('user_id', array_map('intval', $userIds));
+            }
+            $tz = (string) config('app.timezone', 'UTC');
+            $points = $query->get()->map(fn ($r) => [
+                't' => \Illuminate\Support\Carbon::parse((string) $r->captured_at, $tz)->toIso8601String(),
+                'value' => (int) $r->total,
+            ])->all();
+            if ($points !== []) {
+                return $points;
+            }
+        }
+
+        return array_map(fn ($p) => ['t' => $p['date'].'T12:00:00', 'value' => $p['value']], $this->series($userIds, $days));
+    }
+
+    /** Old readings are not needed for the graph (longest range is 90 days). */
+    public function pruneReadings(int $keepDays = 120): int
+    {
+        if (! Schema::hasTable('task_overdue_readings')) {
+            return 0;
+        }
+
+        return (int) DB::table('task_overdue_readings')->where('captured_at', '<', now()->subDays($keepDays))->delete();
     }
 
     /**
@@ -131,6 +222,20 @@ class TaskOverdueHistoryService
                 ->each(function ($r) use (&$out) {
                     $out[(int) $r->user_id] = ['value' => (int) $r->overdue, 'date' => substr((string) $r->snap_date, 0, 10)];
                 });
+
+            // No earlier day yet: compare with the first value saved today, so a change shows up the same day.
+            if (Schema::hasColumn('task_overdue_history', 'opening_overdue')) {
+                DB::table('task_overdue_history')
+                    ->where('snap_date', TaskBusinessTime::today()->toDateString())
+                    ->whereNotNull('opening_overdue')
+                    ->get(['user_id', 'opening_overdue'])
+                    ->each(function ($r) use (&$out) {
+                        $uid = (int) $r->user_id;
+                        if (! isset($out[$uid])) {
+                            $out[$uid] = ['value' => (int) $r->opening_overdue, 'date' => 'the first check today'];
+                        }
+                    });
+            }
 
             return $out;
         } catch (\Throwable $e) {

@@ -91,12 +91,13 @@
                             <i class="ri-line-chart-line me-2" aria-hidden="true"></i>
                             <span id="ts-oh-user">O-Due history</span>
                         </h5>
-                        <div class="oh-meta">Overdue tasks per day · rolling</div>
+                        <div class="oh-meta">Overdue tasks · rolling graph, a point every hour</div>
                     </div>
                     <div class="d-flex align-items-center gap-2 ms-2">
                         <select id="ts-oh-days" class="form-select form-select-sm" style="width: 92px;" aria-label="Days">
+                            <option value="1">24 hours</option>
+                            <option value="7" selected>7 days</option>
                             <option value="30">30 days</option>
-                            <option value="60">60 days</option>
                             <option value="90">90 days</option>
                         </select>
                         <span class="oh-current" id="ts-oh-current">—</span>
@@ -112,15 +113,16 @@
                 <div id="ts-oh-error" class="alert alert-danger d-none" role="alert"></div>
                 <div id="ts-oh-content" class="d-none">
                     <div id="ts-oh-chart"></div>
+                    <div id="ts-oh-note" class="alert alert-light border small mb-0 mt-2 d-none"></div>
                 </div>
                 <div id="ts-oh-empty" class="d-none">
                     <i class="ri-line-chart-line d-block mb-2" style="font-size:2rem;color:#94a3b8;"></i>
                     <div class="fw-semibold mb-1">No history yet</div>
-                    <p class="small mb-0">Overdue counts are saved every hour starting now, so the graph fills in as days pass.</p>
+                    <p class="small mb-0">Overdue counts are saved every hour, so the line fills in as time passes.</p>
                 </div>
             </div>
             <div class="modal-footer">
-                <small class="text-muted me-auto"><i class="ri-information-line me-1"></i> One point per day (the latest count of that day).</small>
+                <small class="text-muted me-auto"><i class="ri-information-line me-1"></i> Rolling: every saved reading in the selected range (hourly, plus page visits).</small>
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -151,7 +153,7 @@
             }
         }
 
-        function renderChart(points) {
+        function renderChart(points, single) {
             var mount = el('ts-oh-chart');
             if (!mount || typeof ApexCharts === 'undefined') {
                 var empty = el('ts-oh-empty');
@@ -173,17 +175,17 @@
                 series: [{
                     name: 'Overdue',
                     data: points.map(function (p) {
-                        return { x: new Date(p.date + 'T12:00:00').getTime(), y: p.value };
+                        return { x: new Date(p.t).getTime(), y: p.value };
                     })
                 }],
                 stroke: { curve: 'smooth', width: 3, colors: ['#dc2626'] },
-                markers: { size: 4, colors: ['#dc2626'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } },
+                markers: { size: single ? 7 : 4, colors: ['#dc2626'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 8 } },
                 colors: ['#dc2626'],
-                xaxis: { type: 'datetime', labels: { style: { fontSize: '11px' }, datetimeUTC: false } },
+                xaxis: { type: 'datetime', labels: { style: { fontSize: '11px' }, datetimeUTC: false, datetimeFormatter: { year: 'yyyy', month: "MMM 'yy", day: 'dd MMM', hour: 'dd MMM HH:mm' } } },
                 yaxis: { min: 0, forceNiceScale: true, decimalsInFloat: 0, labels: { style: { fontSize: '12px' } } },
                 grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
-                dataLabels: { enabled: false },
-                tooltip: { theme: 'light', x: { format: 'dd MMM yyyy' } }
+                dataLabels: { enabled: !!single, offsetY: -8, style: { fontSize: '13px', colors: ['#b91c1c'] }, background: { enabled: false } },
+                tooltip: { theme: 'light', x: { format: 'dd MMM yyyy, hh:mm TT' } }
             });
             chart.render();
         }
@@ -194,7 +196,7 @@
             var emptyEl = el('ts-oh-empty');
             var errEl = el('ts-oh-error');
             var curEl = el('ts-oh-current');
-            var days = el('ts-oh-days') ? el('ts-oh-days').value : '30';
+            var days = el('ts-oh-days') ? el('ts-oh-days').value : '7';
 
             if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
             if (loading) loading.classList.remove('d-none');
@@ -226,8 +228,18 @@
                         return;
                     }
                     if (content) content.classList.remove('d-none');
-                    // A single day cannot draw a line yet: show it as two identical points.
-                    renderChart(pts.length === 1 ? pts.concat(pts) : pts);
+                    var noteEl = el('ts-oh-note');
+                    if (noteEl) {
+                        if (pts.length === 1) {
+                            noteEl.textContent = 'Only one reading is saved so far (' + new Date(pts[0].t).toLocaleString() + ': ' + pts[0].value
+                                + '). The line grows by one point every hour.';
+                            noteEl.classList.remove('d-none');
+                        } else {
+                            noteEl.classList.add('d-none');
+                        }
+                    }
+                    // A single reading cannot draw a line yet: show it as a labelled dot.
+                    renderChart(pts, pts.length === 1);
                 })
                 .catch(function (err) {
                     if (loading) loading.classList.add('d-none');

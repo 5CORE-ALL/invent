@@ -9619,9 +9619,9 @@ class TaskController extends Controller
     {
         $validated = $request->validate([
             'user_id' => 'nullable|integer|exists:users,id',
-            'days' => 'nullable|integer|in:30,60,90',
+            'days' => 'nullable|integer|in:1,7,30,90',
         ]);
-        $days = (int) ($validated['days'] ?? 30);
+        $days = (int) ($validated['days'] ?? 7);
 
         $viewer = Auth::user();
         $visible = $this->getTaskSummaryVisibleUserIds($viewer);
@@ -9638,7 +9638,7 @@ class TaskController extends Controller
             $name = 'All team members';
         }
 
-        $points = app(\App\Services\Tasks\TaskOverdueHistoryService::class)->series($ids, $days);
+        $points = app(\App\Services\Tasks\TaskOverdueHistoryService::class)->rollingSeries($ids, $days);
 
         return response()->json([
             'success' => true,
