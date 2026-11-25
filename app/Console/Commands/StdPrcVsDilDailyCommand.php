@@ -45,6 +45,8 @@ class StdPrcVsDilDailyCommand extends Command
                 ['aliexpress:sprc-dil-auto-push', $save],
                 // Temu 2 prices are pushed manually only: save S PRC, never push to Temu.
                 ['newtemutwo:sprc-dil-auto-push', ['--skip-push' => true] + $save],
+                // Temu 1: save NTO_SPRICE only (the S PRC /price-increase now reads); never push.
+                ['newtemuone:sprc-dil-auto-push', ['--skip-push' => true] + $save],
                 ['reverb:sprc-dil-auto-push', $save],
                 ['topdawg:sprc-dil-auto-push', $save],
                 ['purchasing-power:sprc-dil-auto-push', $save],
