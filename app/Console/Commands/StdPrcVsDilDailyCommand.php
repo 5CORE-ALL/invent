@@ -43,7 +43,8 @@ class StdPrcVsDilDailyCommand extends Command
             $steps = [
                 ['amazon:sprc-dil-auto-push', $save],
                 ['aliexpress:sprc-dil-auto-push', $save],
-                ['newtemutwo:sprc-dil-auto-push', $save],
+                // Temu 2 prices are pushed manually only: save S PRC, never push to Temu.
+                ['newtemutwo:sprc-dil-auto-push', ['--skip-push' => true] + $save],
                 ['reverb:sprc-dil-auto-push', $save],
                 ['topdawg:sprc-dil-auto-push', $save],
                 ['purchasing-power:sprc-dil-auto-push', $save],

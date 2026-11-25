@@ -59,11 +59,12 @@ class DilRuleSpriceApplyService
         'walmart',
     ];
 
-    /** Channels the shared push runner can actually send. FB and Doba are save-only (no auto push). */
+    /**
+     * Channels the shared push runner can actually send automatically. FB and Doba are save-only (no auto push).
+     * Temu 1 and Temu 2 are NOT here on purpose: their prices are pushed manually only (push buttons), never by cron.
+     */
     public const PUSH_CHANNELS = [
         'newegg',
-        'temu',
-        'temu2',
         'temu3',
         'wayfair',
         'walmart',

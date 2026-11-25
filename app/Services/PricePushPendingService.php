@@ -21,6 +21,8 @@ class PricePushPendingService
     public const ALERT_EMAIL = 'software5@5core.com';
     public const MAX_ATTEMPTS = 72;     // hourly → about 3 days, then the row is marked "failed" (no more retries)
     public const REALERT_HOURS = 6;     // digest e-mail is repeated at most this often while something is pending
+    /** Channels that are pushed by hand only — the hourly retry skips them. */
+    public const MANUAL_ONLY_MARKETPLACES = ['temu', 'temu2'];
     private const EXTRA_KEYS = ['self_pick_price', 'goods_id', 'sku_id', 'product_id'];
 
     public const TASK_ASSIGNEE_NAME = 'Sneha';
@@ -141,7 +143,10 @@ class PricePushPendingService
         $out = [];
         $markers = [];
         foreach ($rows as $r) {
-            $out[$r->id] = ['action' => 'awaited', 'note' => $r->status === 'failed' ? 'Gave up — push it manually' : 'Automatic retry every hour'];
+            $manualOnly = in_array($r->marketplace, self::MANUAL_ONLY_MARKETPLACES, true);
+            $out[$r->id] = ['action' => 'awaited', 'note' => $manualOnly
+                ? 'Temu is pushed manually only — push it again by hand'
+                : ($r->status === 'failed' ? 'Gave up — push it manually' : 'Automatic retry every hour')];
             if (self::isListingNotFound((string) $r->last_error)) {
                 $markers[$r->id] = 'listing-nf-' . md5(strtoupper($r->sku) . '|' . $r->marketplace);
                 $out[$r->id]['note'] = 'Waiting for the listing task (' . self::TASK_ASSIGNEE_NAME . ')';
@@ -273,7 +278,9 @@ class PricePushPendingService
             return [0, 0];
         }
         // "Queued" rows belong to the sequential queue (drainQueue) — never pushed here, so two pushes never run in parallel
+        // Temu / Temu 2 are never re-pushed automatically: they are pushed manually only
         $rows = PricePushPending::outstanding()->where('status', 'pending')
+            ->whereNotIn('marketplace', self::MANUAL_ONLY_MARKETPLACES)
             ->where(function ($q) {
                 $q->whereNull('last_error')->orWhere('last_error', 'not like', PricePushPending::QUEUED_PREFIX . '%');
             })

@@ -1898,12 +1898,15 @@ class Kernel extends ConsoleKernel
         // on purpose (no $ist()), so a price change is pushed with the page closed.
         // --respect-switch: the page Auto push switch decides; when it is OFF this job does nothing.
         // The switch defaults to OFF, so nothing is pushed in the background until it is turned on on /new-temuone.
+        // DISABLED: Temu 1 prices are pushed manually only (push button on /new-temuone, /price-increase).
+        if (false) {
         $schedule->command('newtemuone:push-blue-prices --respect-switch')
             ->everyTenMinutes()
             ->name('newtemuone-push-blue-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
             ->runInBackground()
             ->appendOutputTo($log);
+        }
 
         // The twice-daily command below is replaced by the 10-minute job above.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
