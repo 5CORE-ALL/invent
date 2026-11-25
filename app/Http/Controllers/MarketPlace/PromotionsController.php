@@ -121,6 +121,11 @@ class PromotionsController extends Controller
         'ebaythree' => 'ebay3',
         // Amazon: PRMT% / S PRC live on amazon_data_view (applied by amazon:dil-prmt-auto-push).
         'amazon' => 'amazon',
+        // Temu 1/2/3: saved PRMT% only (Temu prices come from Std Prc vs Dil; nothing is pushed to Temu).
+        'temu' => 'temu',
+        'temu1' => 'temu',
+        'temu2' => 'temu2',
+        'temu3' => 'temu3',
     ];
 
     private function prmtRuleChannel(string $channel): ?string
@@ -144,9 +149,10 @@ class PromotionsController extends Controller
         }
 
         // Only probing the job's own lock: the command takes it again when it starts.
+        $isTemu = str_starts_with($channel, 'temu');
         $lockName = $channel === 'amazon'
             ? 'amazon-dil-prmt-auto-push-run'
-            : 'ebay-dil-prmt-auto-apply-run-'.$channel;
+            : ($isTemu ? 'temu-dil-prmt-apply-run-'.$channel : 'ebay-dil-prmt-auto-apply-run-'.$channel);
         $lock = \Illuminate\Support\Facades\Cache::lock($lockName, 1800);
         if (! $lock->get()) {
             return response()->json([
@@ -159,9 +165,12 @@ class PromotionsController extends Controller
 
         // eBay: PRMT% saved on every SKU + markdown-sale push.
         // Amazon: PRMT% + S PRC saved (--skip-push); live Amazon prices still go out with the 4 AM / 8 PM job.
+        // Temu: PRMT% saved on every SKU only (Temu prices come from Std Prc vs Dil; nothing pushed to Temu).
         $artisanCmd = $channel === 'amazon'
             ? 'amazon:dil-prmt-auto-push --skip-push'
-            : 'ebay:dil-prmt-auto-apply '.escapeshellarg($channel);
+            : ($isTemu
+                ? 'temu:dil-prmt-apply '.escapeshellarg($channel)
+                : 'ebay:dil-prmt-auto-apply '.escapeshellarg($channel));
 
         try {
             $php = PHP_BINARY ?: 'php';
@@ -187,7 +196,9 @@ class PromotionsController extends Controller
                 'running' => false,
                 'message' => $channel === 'amazon'
                     ? 'Applying Dil→PRMT% and S PRC to Amazon in the background (not pushed to Amazon yet — the 4 AM / 8 PM job pushes).'
-                    : 'Applying Dil→PRMT% to '.$channel.' in the background.',
+                    : ($isTemu
+                        ? 'Saving Dil→PRMT% on every '.$channel.' SKU in the background (nothing is pushed to Temu).'
+                        : 'Applying Dil→PRMT% to '.$channel.' in the background.'),
             ]);
         } catch (\Throwable $e) {
             Log::warning('Promotions Prmt% apply spawn failed: '.$e->getMessage());
@@ -217,9 +228,14 @@ class PromotionsController extends Controller
                 \Illuminate\Support\Facades\Cache::forget($cacheKey);
             }
             $dils = \Illuminate\Support\Facades\Cache::remember($cacheKey, 300, function () use ($channel) {
-                return $channel === 'amazon'
-                    ? app(\App\Services\AmazonDilPrmtAutoPushService::class)->skuDils()
-                    : app(\App\Services\EbayDilPrmtAutoApplyService::class)->listingDils($channel);
+                if ($channel === 'amazon') {
+                    return app(\App\Services\AmazonDilPrmtAutoPushService::class)->skuDils();
+                }
+                if (str_starts_with($channel, 'temu')) {
+                    return app(\App\Services\TemuDilPrmtApplyService::class)->skuDils();
+                }
+
+                return app(\App\Services\EbayDilPrmtAutoApplyService::class)->listingDils($channel);
             });
 
             return response()->json(['success' => true, 'channel' => $channel, 'dils' => array_values($dils)]);

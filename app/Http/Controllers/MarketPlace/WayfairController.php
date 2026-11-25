@@ -833,6 +833,7 @@ class WayfairController extends Controller
                     'ship'        => round($ship, 2),
                     'Ship_productmaster' => round($ship, 2),
                     'sprice'      => round($sprice, 2),
+                    'sprice_manual' => $sprice > 0 && ! empty($meta['SPRICE_MANUAL']),
                     'sgpft'       => $sgpft,
                     'sroi'        => $sroi,
                     '_margin'     => round($margin, 4),
@@ -953,6 +954,15 @@ class WayfairController extends Controller
                 $view = WayfairDataView::firstOrNew(['sku' => $sku]);
                 $stored = is_array($view->value) ? $view->value
                     : (json_decode($view->value, true) ?: []);
+
+                // Set by hand in the Price Increase modal ('manual'): the page shows it exactly as saved.
+                // Any other save (the page's own S PRC cell / bulk tools) that changes the price drops the flag.
+                $prevSprice = isset($stored['SPRICE']) ? (float) $stored['SPRICE'] : 0.0;
+                if ($sprice > 0 && $request->boolean('manual')) {
+                    $stored['SPRICE_MANUAL'] = true;
+                } elseif ($sprice <= 0 || abs($prevSprice - $sprice) > 0.004) {
+                    unset($stored['SPRICE_MANUAL']);
+                }
 
                 $stored['SPRICE'] = $sprice;
                 $stored['SGPFT'] = $sgpft;

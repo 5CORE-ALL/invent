@@ -330,6 +330,11 @@
         }
         function fbMpDisplayedSprice(data) {
             if (!data) return 0;
+            // Set by hand in the Price Increase modal: exactly as saved (to the cent), not rounded to whole dollars
+            if (data.sprice_manual) {
+                const m = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+                if (m > 0) return Math.round(m * 100) / 100;
+            }
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return fbMpRoundSprice(saved);

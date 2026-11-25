@@ -140,6 +140,8 @@ class FbMarketplaceAnalyticsController extends Controller
                 'ROI' => round($roi, 2),
                 'sprice' => $sprice,
                 'SPRICE' => $sprice,
+                // Set by hand in the Price Increase modal: shown to the cent, as saved (hand edits on this page are whole dollars)
+                'sprice_manual' => $sprice !== null && $sprice > 0 && ! empty($statusValue['sprice_manual']),
                 'SPFT' => round($spft, 2),
                 'SROI' => round($sroi, 2),
                 'nr_req' => $nrReq,
@@ -232,6 +234,17 @@ class FbMarketplaceAnalyticsController extends Controller
             $value = is_array($status->value)
                 ? $status->value
                 : (json_decode((string) $status->value, true) ?: []);
+            // A different price typed on this page drops the modal's manual flag (status + rule-job flag)
+            if (! isset($value['sprice']) || abs((float) $value['sprice'] - $sprice) > 0.004) {
+                unset($value['sprice_manual']);
+                $dv = \App\Models\FBMarketplaceDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+                if ($dv && is_array($dv->value) && isset($dv->value['SPRICE_MANUAL'])) {
+                    $dvVal = $dv->value;
+                    unset($dvVal['SPRICE_MANUAL']);
+                    $dv->value = $dvVal;
+                    $dv->save();
+                }
+            }
             $value['sprice'] = $sprice;
             $status->value = $value;
             $status->save();

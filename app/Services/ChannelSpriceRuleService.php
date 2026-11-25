@@ -47,7 +47,7 @@ class ChannelSpriceRuleService
     ];
 
     /** Shipping is not applied on these channels (own "B2B without ship" column). */
-    private const NOSHIP_KEYS = ['sb2b', 'topdawg', 'faire'];
+    private const NOSHIP_KEYS = ['sb2b', 'topdawg', 'faire', 'wayfair'];
 
     /** Channels whose SPFT subtracts the channel Ads% (ovl30UsesChannelAdsForSpft on /price-increase). */
     private const CHANNEL_ADS_SPFT = [
@@ -141,7 +141,7 @@ class ChannelSpriceRuleService
     {
         $groups = $cvr->pricingChannelsByType()['byType'] ?? [];
         // Same moves as the Channels modal: Alibaba -> B2B, Dropship -> B2B, Sheets -> C2C
-        $override = ['alibaba' => 'B2B', 'vinted' => 'B2C', 'depop' => 'B2C', 'mercariwship' => 'B2C', 'mercariwoship' => 'B2C'];
+        $override = ['alibaba' => 'B2B', 'vinted' => 'B2C', 'depop' => 'B2C', 'fbmarketplace' => 'B2C', 'mercariwship' => 'B2C', 'mercariwoship' => 'B2C'];
         $moves = ['dropship' => 'B2B', 'ds' => 'B2B', 'sheets' => 'C2C'];
 
         $out = [];

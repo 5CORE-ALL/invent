@@ -1964,9 +1964,9 @@
                             <thead>
                                 <tr class="modal-vertical-header">
                                     <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Marketplace"><span>Channel</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-type-th" title="Channel type — same grouping as the Channels modal (B2C, B2C W/o = B2C without ship, B2B, B2B W/o = B2B without ship, C2C, Hs = High Shipping)"><span>Type</span></th>
+                                    <th class="ovl30-type-th ovl30-sortable" data-sort="type" data-dir="asc" title="Channel type — same grouping as the Channels modal (B2C, B2C W/o = B2C without ship, B2B, B2B W/o = B2B without ship, C2C, Hs = High Shipping)"><span>Type</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
+                                    <th class="ovl30-sortable" data-sort="miss" data-dir="desc" title="Missing Listings – click dot to view channels with no price"><span>Miss</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1975,14 +1975,14 @@
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="NPFT%"><span>NPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Ads% from All Marketplace Master"><span>Ads</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-review-col" title="Rating ★ and review count for this channel"><span>Review</span></th>
-                                    <th title="Lowest Marketplace Price"><span>LMP</span></th>
-                                    <th title="Listing links"><span>Link</span></th>
-                                    <th class="ovl30-select-th" title="Select channels (respects Type filter)">
+                                    <th class="ovl30-review-col ovl30-sortable" data-sort="review" data-dir="desc" title="Rating ★ and review count for this channel"><span>Review</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="lmp" data-dir="desc" title="Lowest Marketplace Price"><span>LMP</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="link" data-dir="desc" title="Listing links"><span>Link</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-select-th ovl30-sortable" data-sort="sel" data-dir="desc" title="Select channels (respects Type filter) — click the header to sort selected first">
                                         <input type="checkbox" id="ovl30-select-all-cb" title="Select as per filter">
                                     </th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-bulk-push-th" title="Bulk push SPRICE to selected / visible marketplaces">
+                                    <th class="ovl30-bulk-push-th ovl30-sortable" data-sort="push" data-dir="desc" title="Bulk push SPRICE to selected / visible marketplaces">
                                         <button type="button" class="btn btn-sm btn-primary ovl30-bulk-push-btn" id="ovl30-bulk-push-btn"
                                             title="Bulk Push — pushes SPRICE marketplace-wise (selected channels, or all visible if none selected)">
                                             <i class="fas fa-upload"></i>
@@ -1992,7 +1992,7 @@
                                     <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="SGPFT%"><span>SGPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="SPFT%"><span>SPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th title="Push history — date, price, user for this marketplace"><span>Hist</span></th>
+                                    <th class="ovl30-sortable" data-sort="hist" data-dir="desc" title="Push history — date, price, user for this marketplace"><span>Hist</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                 </tr>
                                 <tr class="modal-totals-row">
                                     <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; max-width: 36px; max-height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
@@ -3036,6 +3036,7 @@
             // Ignore click after a column resize drag
             if ($(e.target).closest('.ovl30-col-resizer').length) return;
             if (ovl30JustResizedCol) return;
+            if ($(e.target).closest('input, button, a').length) return; // select-all checkbox / bulk push button keep their own action
             const sortField = $(this).data('sort');
             const currentVal = (ovl30ModalSortBy || 'l30_desc').toString();
             const [currentField, currentDir] = currentVal.split('_');
@@ -3043,7 +3044,7 @@
             if (currentField === sortField) {
                 newDir = currentDir === 'asc' ? 'desc' : 'asc';
             } else {
-                newDir = (sortField === 'marketplace') ? 'asc' : 'desc';
+                newDir = (sortField === 'marketplace' || sortField === 'type') ? 'asc' : 'desc';
             }
             ovl30ModalSortBy = sortField + '_' + newDir;
             if (ovl30ModalData.length) {
@@ -4255,6 +4256,28 @@
                     cmp = parseInt(a.l30 || 0) - parseInt(b.l30 || 0);
                 } else if (field === 'marketplace') {
                     cmp = (a.marketplace || '').toLowerCase().localeCompare((b.marketplace || '').toLowerCase());
+                } else if (field === 'type') {
+                    const ta = String(chModalGroupOfKey(chpushKey(a.marketplace)) || '').toLowerCase();
+                    const tb = String(chModalGroupOfKey(chpushKey(b.marketplace)) || '').toLowerCase();
+                    cmp = ta.localeCompare(tb);
+                } else if (field === 'miss') {
+                    // listed (has a price) vs missing
+                    cmp = (parseFloat(a.price || 0) > 0 ? 1 : 0) - (parseFloat(b.price || 0) > 0 ? 1 : 0);
+                } else if (field === 'review') {
+                    cmp = (parseFloat(a.review_rating) || 0) - (parseFloat(b.review_rating) || 0);
+                    if (cmp === 0) cmp = (parseInt(a.review_count, 10) || 0) - (parseInt(b.review_count, 10) || 0);
+                } else if (field === 'lmp') {
+                    cmp = (parseFloat(a.lmp_price) || 0) - (parseFloat(b.lmp_price) || 0);
+                } else if (field === 'link') {
+                    const nl = (r) => (r.buyer_link ? 1 : 0) + (r.seller_link ? 1 : 0);
+                    cmp = nl(a) - nl(b);
+                } else if (field === 'sel') {
+                    cmp = (modalSelectedChannels.has(String(a.marketplace || '')) ? 1 : 0) - (modalSelectedChannels.has(String(b.marketplace || '')) ? 1 : 0);
+                } else if (field === 'push') {
+                    cmp = (parseFloat(a.sprice || 0) > 0 ? 1 : 0) - (parseFloat(b.sprice || 0) > 0 ? 1 : 0);
+                } else if (field === 'hist') {
+                    const hc = (r) => (Array.isArray(r.push_history) ? r.push_history.length : 0);
+                    cmp = hc(a) - hc(b);
                 } else if (field === 'price') {
                     cmp = parseFloat(a.price || 0) - parseFloat(b.price || 0);
                 } else if (field === 'views') {
@@ -10222,12 +10245,12 @@
         }
 
         /** Channels where no shipping is applied in the SKU modal (ship = 0): they get their own "B2B without ship" column. */
-        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg']); // Purchasing Power stays in High Shipping
+        const CHPUSH_NOSHIP_KEYS = new Set(['sb2b', 'topdawg', 'wayfair']); // Purchasing Power stays in High Shipping
         /** B2C channels with no shipping applied: own "B2C without ship" column, price = SPRICE − Ship. */
         const CHPUSH_B2C_NOSHIP_KEYS = new Set(['faire']);
         const CHPUSH_B2C_NOSHIP_GROUP = 'B2C without ship';
-        /** Per-channel type overrides for this modal (normalized channel name → type). Shopify, Faire, Vinted, Depop and both Mercari channels are shown under B2C (full SPRICE). */
-        const CHPUSH_TYPE_OVERRIDES = { alibaba: 'B2B', shopify: 'B2C', faire: 'B2C', vinted: 'B2C', depop: 'B2C', mercariwship: 'B2C', mercariwoship: 'B2C' };
+        /** Per-channel type overrides for this modal (normalized channel name → type). Shopify, Faire, Vinted, Depop, FB Marketplace and both Mercari channels are shown under B2C (full SPRICE). */
+        const CHPUSH_TYPE_OVERRIDES = { alibaba: 'B2B', shopify: 'B2C', faire: 'B2C', vinted: 'B2C', depop: 'B2C', fbmarketplace: 'B2C', mercariwship: 'B2C', mercariwoship: 'B2C' };
         const CHPUSH_NOSHIP_GROUP = 'B2B without ship';
         /** Shipping $ of the open SKU (AliExpress row, else Amazon row); 0 when unknown. */
         function chpushShipAmount() {

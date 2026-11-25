@@ -9374,7 +9374,7 @@ class CvrMasterController extends Controller
         try {
             if ($key === 'wayfair') {
                 $body = app(WayfairController::class)->saveWayfairSpriceUpdates(
-                    Request::create('/wayfair/pricing-save-sprice', 'POST', ['updates' => [['sku' => $sku, 'sprice' => $price]]])
+                    Request::create('/wayfair/pricing-save-sprice', 'POST', ['manual' => 1, 'updates' => [['sku' => $sku, 'sprice' => $price]]])
                 )->getData(true);
             } elseif ($key === 'temu3') {
                 $body = app(Temu3Controller::class)->saveTemu3Sprice(
@@ -9497,8 +9497,12 @@ class CvrMasterController extends Controller
                 $value = is_array($row->value) ? $row->value : [];
                 if ($price > 0) {
                     $value['SPRICE'] = $price;
+                    if (array_key_exists('sprice', $value)) {
+                        $value['sprice'] = $price; // keep the lower-case twin (rule job) in step
+                    }
+                    $value['SPRICE_MANUAL'] = true; // typed by hand: the dil:rule-sprice-apply job (FB) leaves it alone
                 } else {
-                    unset($value['SPRICE']); // 0 / empty clears the saved SPRICE
+                    unset($value['SPRICE'], $value['SPRICE_MANUAL']); // 0 / empty clears the saved SPRICE
                 }
                 $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
                 $row->value = $value;
@@ -9513,8 +9517,9 @@ class CvrMasterController extends Controller
                 $statusVal = is_array($status->value) ? $status->value : (json_decode((string) ($status->value ?? ''), true) ?: []);
                 if ($price > 0) {
                     $statusVal['sprice'] = $price;
+                    $statusVal['sprice_manual'] = true; // the channel page then shows it exactly as saved
                 } else {
-                    unset($statusVal['sprice']);
+                    unset($statusVal['sprice'], $statusVal['sprice_manual']);
                 }
                 $status->value = $statusVal;
                 $status->save();
