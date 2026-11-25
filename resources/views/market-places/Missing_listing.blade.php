@@ -47,6 +47,10 @@
             font-weight: 700;
         }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
+        /* Missing L with 0 Inv / without 0 Inv: click one to pick which number the table and links use. */
+        .ml-mode-badge { cursor: pointer; opacity: 0.6; user-select: none; }
+        .ml-mode-badge:hover { opacity: 0.85; }
+        .ml-mode-badge.is-active { opacity: 1; box-shadow: 0 0 0 3px #212529; }
         .ml-seller-portal-cell {
             display: flex;
             align-items: center;
@@ -213,9 +217,12 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same count as the Missing L badge on each listing page)" style="background-color:#a71d2a !important;">
-                        Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" data-mode="all" role="button" tabindex="0" title="Missing L with 0 Inv: every REQ SKU not listed, including the ones with 0 inventory (same count as the Missing L with 0 Inv badge on each listing page). Click to use this number in the table." style="background-color:#a71d2a !important;">
+                        Missing L with 0 Inv: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
+                    </span>
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" data-mode="inv" role="button" tabindex="0" title="Missing L without 0 Inv (default): REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L without 0 Inv badge on each listing page. Click to use this number in the table." style="background-color:#a71d2a !important;">
+                        Missing L without 0 Inv: <span id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
                     </span>
                     @unless($c2c)
                         <button type="button" class="btn btn-sm btn-primary" id="ml-refresh-all-btn" title="Recount Missing L for every marketplace from the data in the app, the same numbers each listing page shows. Nothing is fetched from the marketplaces.">
@@ -358,7 +365,28 @@
         badge.textContent = Number(count || 0).toLocaleString('en-US');
     }
 
-    function updateStats(rows, totalMissingL) {
+    // 'inv' = Missing L without 0 Inv (default), 'all' = Missing L with 0 Inv.
+    // The mode decides which number the Missing Listing column, its total and its links use.
+    let mlMode = 'inv';
+
+    function mlMissingValue(row) {
+        const field = mlMode === 'inv' ? 'missing_listing_inv' : 'missing_listing';
+        return Number((row && row[field]) || 0);
+    }
+
+    function setMlMode(mode) {
+        mlMode = mode === 'all' ? 'all' : 'inv';
+        $('.ml-mode-badge').removeClass('is-active').filter('[data-mode="' + mlMode + '"]').addClass('is-active');
+        if (!table) return;
+        table.redraw(true);
+        table.recalc();
+        const sorters = table.getSorters ? table.getSorters() : [];
+        if (sorters.length) {
+            table.setSort(sorters.map(function(s) { return { column: s.field, dir: s.dir }; }));
+        }
+    }
+
+    function updateStats(rows, totalMissingL, totalMissingLInv) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
             $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
         } else {
@@ -367,6 +395,15 @@
                 return sum + Number(r.missing_listing || 0);
             }, 0);
             $('#total-missing-listing').text(total.toLocaleString('en-US'));
+        }
+        if (totalMissingLInv !== undefined && totalMissingLInv !== null && !isNaN(Number(totalMissingLInv))) {
+            $('#total-missing-listing-inv').text(Number(totalMissingLInv).toLocaleString('en-US'));
+        } else {
+            const totalInv = (rows || []).reduce((sum, r) => {
+                if (!isCountableRow(r)) return sum;
+                return sum + Number(r.missing_listing_inv || 0);
+            }, 0);
+            $('#total-missing-listing-inv').text(totalInv.toLocaleString('en-US'));
         }
     }
 
@@ -705,6 +742,16 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
+        $('.ml-mode-badge').on('click', function(e) {
+            if ($(e.target).closest('.ml-overall-chart-dot').length) return;
+            setMlMode($(this).data('mode'));
+        }).on('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setMlMode($(this).data('mode'));
+            }
+        });
+
         $('#stat-missing-listing').on('click', '.ml-overall-chart-dot', function(e) {
             e.stopPropagation();
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
@@ -773,7 +820,7 @@
                     return [];
                 }
                 const data = (response && response.data) ? response.data : [];
-                updateStats(data, response && response.total_missing_l);
+                updateStats(data, response && response.total_missing_l, response && response.total_missing_l_inv);
                 paintColumnHeadCounts(data);
                 if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
                     window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
@@ -1027,19 +1074,21 @@
                     field: "missing_listing",
                     width: 180,
                     hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "REQ SKUs not listed on this marketplace (in stock or not) — same number as the Missing L badge on the listing page",
+                    sorter: function(a, b, aRow, bRow) {
+                        return mlMissingValue(aRow.getData()) - mlMissingValue(bRow.getData());
+                    },
+                    headerTooltip: "REQ SKUs not listed on this marketplace. Without 0 Inv (default) counts only SKUs with inventory, with 0 Inv counts all of them. Pick one with the badges above; same numbers as the badges on the listing page",
                     formatter: function(cell) {
                         if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
-                        const v = Number(cell.getValue() || 0);
                         const row = cell.getRow().getData();
+                        const v = mlMissingValue(row);
                         const channel = (row.channel || '').trim();
                         const listingUrl = String(row.listing_url || '').trim();
                         const color = v === 0 ? '#198754' : '#dc3545';
                         const dotColor = v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
                         const chartIcon = `<i class="fas fa-circle ml-metric-chart-icon ms-1" data-channel="${escapeHtml(channel)}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
                         const countHtml = listingUrl
-                            ? `<a href="${escapeHtml(listingUrl)}?missing=1" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
+                            ? `<a href="${escapeHtml(listingUrl)}?missing=${mlMode === 'inv' ? 'inv' : '1'}" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
                             : `<span style="color:${color};font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                         return `${countHtml}${chartIcon}`;
                     },
@@ -1048,19 +1097,26 @@
                         if (!icon) return;
                         e.stopPropagation();
                         const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
-                        const value = Number(cell.getValue() || 0);
+                        // The history chart is the with-0-Inv series, so it gets that value.
+                        const value = Number(cell.getRow().getData().missing_listing || 0);
                         showMlMetricChart(channel, value);
                     },
                     bottomCalc: function(values, data) {
                         return (data || []).reduce((sum, row) => {
                             if (isSheetRow(row)) return sum;
-                            return sum + Number(row.missing_listing || 0);
+                            return sum + mlMissingValue(row);
                         }, 0);
                     },
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
-                }, shortFilter()),
+                }, shortFilter(), {
+                    headerFilterFunc: function(headerValue, _rowValue, rowData) {
+                        const q = String(headerValue || '').trim().toLowerCase();
+                        if (!q) return true;
+                        return String(mlMissingValue(rowData)).toLowerCase().includes(q);
+                    },
+                }),
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",

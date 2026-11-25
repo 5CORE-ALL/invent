@@ -56,7 +56,10 @@ class AutomatedListingPage
      * pages created but not yet live are neither Listed nor Missing L).
      *
      * @param  iterable<int, object>  $rows
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
+     * Pending / MissingL count every missing SKU ("Missing L with 0 Inv"); PendingInv only those with INV above 0
+     * ("Missing L without 0 Inv").
+     *
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int, MissingL: int}
      */
     public static function countsFromRows(iterable $rows, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
@@ -64,6 +67,7 @@ class AutomatedListingPage
         $nrl = 0;
         $listed = 0;
         $missing = 0;
+        $missingInv = 0;
 
         foreach ($rows as $item) {
             $sku = trim((string) ($item->sku ?? ''));
@@ -86,10 +90,13 @@ class AutomatedListingPage
                 $listed++;
             } else {
                 $missing++;
+                if ((float) ($item->INV ?? 0) > 0) {
+                    $missingInv++;
+                }
             }
         }
 
-        return ['REQ' => $req, 'NRL' => $nrl, 'Listed' => $listed, 'Pending' => $missing, 'MissingL' => $missing];
+        return ['REQ' => $req, 'NRL' => $nrl, 'Listed' => $listed, 'Pending' => $missing, 'PendingInv' => $missingInv, 'MissingL' => $missing];
     }
 
     /**

@@ -151,10 +151,11 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
      */
     public static function missingLCountForSidebar(): int
     {
-        // One number everywhere: the Missing Listing page total (sum of every listing page's Missing L).
+        // Same number as the default badge on the Missing Listing page: Missing L without 0 Inv
+        // (sum of every listing page's Missing L SKUs that have inventory).
         // The Active Channel "Miss" sum (MISSING_L_CACHE_KEY) is a different measure and is not used here.
         try {
-            return \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
+            return \App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true);
         } catch (\Throwable $e) {
             // File cache dirs may be missing mid-request after optimize:clear.
             return 0;

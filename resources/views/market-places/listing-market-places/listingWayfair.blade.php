@@ -595,7 +595,8 @@
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed" id="listed-badge" role="button" tabindex="0" title="Listed on Wayfair, including inv=0. Click to show listed SKUs.">Listed:<span id="listed-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--inv0" id="inv0-badge" role="button" tabindex="0" title="Child SKUs with inv=0. Click to show them.">inv=0:<span id="inv0-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs with inv&gt;0. Click again to clear.">Missing L &gt;0:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-all-badge" role="button" tabindex="0" title="Click to show all Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L with 0 Inv:<span id="pending-all-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L without 0 Inv:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--pending-inv0" id="missing-l-inv0-badge" role="button" tabindex="0" title="Click to show Missing L SKUs with inv=0. Click again to clear.">Missing L = 0:<span id="pending-inv0-total">0</span></span>
                             </div>
 
@@ -808,6 +809,7 @@
                 $('#inv0-total').text(inv0Total.toLocaleString());
                 $('#pending-total').text(pendingTotal.toLocaleString());
                 $('#pending-inv0-total').text(pendingInv0Total.toLocaleString());
+                $('#pending-all-total').text((pendingTotal + pendingInv0Total).toLocaleString());
                 $('#without-link-total').text(withoutLinkTotal.toLocaleString());
                 $('#rows-total').text(rows.length.toLocaleString());
             } catch (error) {
@@ -824,6 +826,7 @@
             $('#inv0-total').text('0');
             $('#pending-total').text('0');
             $('#pending-inv0-total').text('0');
+            $('#pending-all-total').text('0');
             $('#rows-total').text('0');
         }
 
@@ -1090,6 +1093,9 @@
                 $('#missing-l-inv0-badge').toggleClass('is-active',
                     dataType === 'sku' && listedFilter === 'Pending' && invFilter === 'eq0' && linkFilter === 'all'
                 );
+                $('#missing-l-all-badge').toggleClass('is-active',
+                    dataType === 'sku' && listedFilter === 'Pending' && invFilter === 'all' && linkFilter === 'all'
+                );
             }
 
             function applyCatalogBadgeFilter(kind) {
@@ -1174,6 +1180,28 @@
                 }
                 applyListingFilters();
                 syncCatalogBadgeActive();
+            });
+            // Missing L with 0 Inv: every missing SKU, whatever its inventory.
+            $(document).on('click', '#missing-l-all-badge', function () {
+                const already = $('#missing-l-all-badge').hasClass('is-active');
+                applyMissingLBadgeFilter(true);
+                $('#link-filter').val('all');
+                $('#inv-filter').val('all');
+                if (already) {
+                    $('#row-data-type').val('all');
+                    $('#listed-filter').val('all');
+                } else {
+                    $('#row-data-type').val('sku');
+                    $('#listed-filter').val('Pending');
+                }
+                applyListingFilters();
+                syncCatalogBadgeActive();
+            });
+            $(document).on('keydown', '#missing-l-all-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    $(this).trigger('click');
+                }
             });
             $(document).on('keydown', '#missing-l-inv0-badge', function (e) {
                 if (e.key === 'Enter' || e.key === ' ') {

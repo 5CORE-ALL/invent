@@ -505,7 +505,7 @@ class ChannelListingRegistry
     /**
      * Shape expected by ListingChannelCounts / controllers.
      *
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}
      */
     public static function nrReqCountArray(string $key): array
     {
@@ -516,6 +516,7 @@ class ChannelListingRegistry
             'NRL' => $c['NRL'],
             'Listed' => $c['Listed'],
             'Pending' => $c['MissingL'],
+            'PendingInv' => $c['PendingInv'] ?? 0,
         ];
     }
 

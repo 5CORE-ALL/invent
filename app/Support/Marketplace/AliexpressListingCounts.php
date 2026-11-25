@@ -22,14 +22,15 @@ use Illuminate\Support\Facades\Schema;
 class AliexpressListingCounts
 {
     /**
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int, MissingL: int}
      */
     public static function counts(bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
         $productMasters = ListingCountsEngine::productMasters();
         $skus = ListingCountsEngine::countUniverseSkus($requirePositiveInv);
 
-        $shopifyData = $requirePositiveInv ? ListingCountsEngine::requestShopifyMap() : collect();
+        // INV is always loaded: "Missing L without 0 Inv" needs it even when 0-inventory SKUs are counted.
+        $shopifyData = ListingCountsEngine::requestShopifyMap();
         $nrValues = ListingCountsEngine::loadNrValues(AliexpressDataView::class, $skus);
         if (! $requirePositiveInv) {
             $nrValues = ChannelListingRegistry::overlayListingStatusNr(
@@ -46,6 +47,7 @@ class AliexpressListingCounts
         $nrlCount = 0;
         $listedCount = 0;
         $missingL = 0;
+        $missingLInv = 0;
 
         foreach ($productMasters as $item) {
             $sku = trim((string) $item->sku);
@@ -75,6 +77,9 @@ class AliexpressListingCounts
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
                 $missingL++;
+                if (ListingCountsEngine::skuInStock($shopifyData, $sku, (string) $item->sku)) {
+                    $missingLInv++;
+                }
             }
         }
 
@@ -83,6 +88,7 @@ class AliexpressListingCounts
             'NRL' => $nrlCount,
             'Listed' => $listedCount,
             'Pending' => $missingL,
+            'PendingInv' => $missingLInv,
             'MissingL' => $missingL,
         ];
     }

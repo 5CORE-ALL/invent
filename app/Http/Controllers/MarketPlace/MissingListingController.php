@@ -43,7 +43,7 @@ class MissingListingController extends Controller
         'tiendamia' => 'https://www.tiendamia.com/',
     ];
 
-    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v9';
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v10';
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 
@@ -84,9 +84,10 @@ class MissingListingController extends Controller
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
                     $cached['count'] = count($cached['data']);
                     $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
+                    $cached['total_missing_l_inv'] = $this->sumMissingL($cached['data'], 'missing_listing_inv');
                     // The sidebar badge is the main page, so C2C counts stay on the C2C page.
                     if (! $c2cOnly) {
-                        ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l']);
+                        ListingChannelCounts::storeTotalMissingL((int) $cached['total_missing_l'], (int) $cached['total_missing_l_inv']);
                     }
                 } catch (\Throwable $e) {
                     Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
@@ -110,8 +111,9 @@ class MissingListingController extends Controller
                 $payload['data'] = $c2cOnly ? $this->onlyC2c($payload['data']) : $this->withoutC2c($payload['data']);
                 $payload['count'] = count($payload['data']);
                 $payload['total_missing_l'] = $this->sumMissingL($payload['data']);
+                $payload['total_missing_l_inv'] = $this->sumMissingL($payload['data'], 'missing_listing_inv');
                 if (! $c2cOnly) {
-                    ListingChannelCounts::storeTotalMissingL((int) $payload['total_missing_l']);
+                    ListingChannelCounts::storeTotalMissingL((int) $payload['total_missing_l'], (int) $payload['total_missing_l_inv']);
                 }
             } catch (\Throwable $e) {
                 Log::warning('Missing Listing csv listed overlay failed: '.$e->getMessage());
@@ -341,6 +343,7 @@ class MissingListingController extends Controller
                 'nrl' => $counts ? (int) ($snap['listing_nrl'] ?? 0) : null,
                 'listed' => $counts ? (int) ($snap['listing_listed'] ?? 0) : null,
                 'missing_listing' => $counts ? (int) ($snap['listing_miss_count'] ?? 0) : null,
+                'missing_listing_inv' => $counts ? (int) ($snap['listing_miss_inv_count'] ?? 0) : null,
                 'inactive_parent' => 0,
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
@@ -358,6 +361,7 @@ class MissingListingController extends Controller
             'data' => $rows,
             'count' => count($rows),
             'total_missing_l' => $totalMissingL,
+            'total_missing_l_inv' => $this->sumMissingL($rows, 'missing_listing_inv'),
             'computed_at' => now()->toIso8601String(),
             'partial' => true,
         ];
@@ -435,6 +439,7 @@ class MissingListingController extends Controller
                     'nrl' => null,
                     'listed' => null,
                     'missing_listing' => null,
+                    'missing_listing_inv' => null,
                     'inactive_parent' => (int) ($inactive['parent'] ?? 0),
                     'inactive_child' => (int) ($inactive['child'] ?? 0),
                     'inactive_listings_url' => $inactive['url'] ?? null,
@@ -456,8 +461,9 @@ class MissingListingController extends Controller
                         'NRL' => (int) ($prev['nrl'] ?? 0),
                         'Listed' => (int) ($prev['listed'] ?? 0),
                         'Pending' => (int) ($prev['missing_listing'] ?? 0),
+                        'PendingInv' => (int) ($prev['missing_listing_inv'] ?? 0),
                     ]
-                    : ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
+                    : ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'PendingInv' => 0];
             }
 
             return [
@@ -474,6 +480,7 @@ class MissingListingController extends Controller
                 'nrl' => (int) ($listingCounts['NRL'] ?? 0),
                 'listed' => (int) ($listingCounts['Listed'] ?? 0),
                 'missing_listing' => (int) ($listingCounts['Pending'] ?? 0),
+                'missing_listing_inv' => (int) ($listingCounts['PendingInv'] ?? 0),
                 'inactive_parent' => (int) ($inactive['parent'] ?? 0),
                 'inactive_child' => (int) ($inactive['child'] ?? 0),
                 'inactive_listings_url' => $inactive['url'] ?? null,
@@ -487,13 +494,15 @@ class MissingListingController extends Controller
 
         $rows = $this->withoutHiddenChannels($data->all());
         $totalMissingL = $this->sumMissingL($rows);
-        ListingChannelCounts::storeTotalMissingL($totalMissingL);
+        $totalMissingLInv = $this->sumMissingL($rows, 'missing_listing_inv');
+        ListingChannelCounts::storeTotalMissingL($totalMissingL, $totalMissingLInv);
 
         return [
             'success' => true,
             'data' => $rows,
             'count' => count($rows),
             'total_missing_l' => $totalMissingL,
+            'total_missing_l_inv' => $totalMissingLInv,
             'computed_at' => now()->toIso8601String(),
             'partial' => false,
         ];
@@ -533,6 +542,7 @@ class MissingListingController extends Controller
     {
         $cp = CpMasterCounts::counts(true);
         $listedByChannel = ListingCountsEngine::csvListedCounts();
+        $listedInvByChannel = ListingCountsEngine::csvListedCounts(true);
         $skuCount = (int) ($cp['SKU'] ?? 0);
         $zeroInv = (int) ($cp['ZeroInv'] ?? 0);
 
@@ -555,6 +565,8 @@ class MissingListingController extends Controller
             $req = (int) ($row['req'] ?? 0);
             if ($req > 0) {
                 $rows[$i]['missing_listing'] = max(0, $req - $listed);
+                // Missing L without 0 Inv: in-stock SKUs that are not marked Listed.
+                $rows[$i]['missing_listing_inv'] = max(0, (int) ($listedInvByChannel['__stock'] ?? 0) - (int) ($listedInvByChannel[$key] ?? 0));
             }
         }
 
@@ -564,12 +576,12 @@ class MissingListingController extends Controller
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    private function sumMissingL(array $rows): int
+    private function sumMissingL(array $rows, string $field = 'missing_listing'): int
     {
         return (int) collect($rows)
             ->filter(fn ($row) => ! ListingChannelCounts::isHiddenFromMissingListing((string) ($row['channel'] ?? '')))
             ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
-            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+            ->sum(fn ($row) => (int) ($row[$field] ?? 0));
     }
 
     /**
@@ -615,6 +627,7 @@ class MissingListingController extends Controller
                 'nrl' => null,
                 'listed' => null,
                 'missing_listing' => null,
+                'missing_listing_inv' => null,
                 'inactive_parent' => 0,
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
@@ -631,6 +644,7 @@ class MissingListingController extends Controller
             'data' => $rows,
             'count' => count($rows),
             'total_missing_l' => 0,
+            'total_missing_l_inv' => 0,
             'computed_at' => now()->toIso8601String(),
             'partial' => true,
         ];
@@ -1147,6 +1161,7 @@ class MissingListingController extends Controller
 
                 ChannelMasterSummary::mergeTodaySummary($channelKey, [
                     'listing_miss_count' => (int) ($row['missing_listing'] ?? 0),
+                    'listing_miss_inv_count' => (int) ($row['missing_listing_inv'] ?? 0),
                     'listing_req' => (int) ($row['req'] ?? 0),
                     'listing_nrl' => (int) ($row['nrl'] ?? 0),
                     'listing_listed' => (int) ($row['listed'] ?? 0),

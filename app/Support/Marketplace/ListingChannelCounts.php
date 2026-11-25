@@ -62,6 +62,12 @@ class ListingChannelCounts
 {
     public const TOTAL_CACHE_KEY = 'listing_pages_missing_l_total_v2';
 
+    /** Missing L without 0 Inv (INV above 0 only) — the number the sidebar shows. */
+    public const TOTAL_INV_CACHE_KEY = 'listing_pages_missing_l_inv_total_v1';
+
+    /** Per-channel counts cache (REQ / NRL / Listed / Pending / PendingInv). */
+    private const COUNTS_CACHE_PREFIX = 'listing_channel_counts_v5:';
+
     /**
      * Normalized channel key → listing controller class.
      *
@@ -470,6 +476,8 @@ class ListingChannelCounts
             $total = self::computeTotalMissingL();
             try {
                 Cache::put($cacheKey, $total, now()->addMinutes(30));
+                // The without-0-Inv total is read from the page payload again on the next request.
+                Cache::forget(self::TOTAL_INV_CACHE_KEY);
             } catch (\Throwable $e) {
                 // ignore cache write failures
             }
@@ -489,7 +497,7 @@ class ListingChannelCounts
         // Same rows as the /missing-listing page, so the sidebar can never show another number.
         $fromPage = self::totalFromPagePayload();
         if ($fromPage !== null) {
-            self::storeTotalMissingL($fromPage);
+            self::storeTotalMissingL($fromPage, self::totalFromPagePayload('missing_listing_inv') ?? 0);
 
             return $fromPage;
         }
@@ -505,7 +513,7 @@ class ListingChannelCounts
     /**
      * Missing L total of the cached /missing-listing payload (API + CSV rows only).
      */
-    private static function totalFromPagePayload(): ?int
+    private static function totalFromPagePayload(string $field = 'missing_listing'): ?int
     {
         try {
             $cached = Cache::get(\App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY);
@@ -513,32 +521,64 @@ class ListingChannelCounts
                 return null;
             }
 
-            return self::sumPageRows($cached['data']);
+            return self::sumPageRows($cached['data'], $field);
         } catch (\Throwable $e) {
             return null;
         }
     }
 
     /**
+     * Missing L without 0 Inv: Missing L SKUs that have inventory (INV above 0), summed over the same
+     * channels as {@see totalMissingL()}. This is the number the sidebar badge shows.
+     */
+    public static function totalMissingLInv(bool $useCache = true): int
+    {
+        if ($useCache) {
+            try {
+                $inv = Cache::get(self::TOTAL_INV_CACHE_KEY);
+                // Publishers clear TOTAL_CACHE_KEY to ask for a recount; the two totals move together.
+                if ($inv !== null && Cache::has(self::TOTAL_CACHE_KEY)) {
+                    return (int) $inv;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ListingChannelCounts totalMissingLInv cache failed: '.$e->getMessage());
+            }
+        }
+
+        $inv = self::totalFromPagePayload('missing_listing_inv');
+        if ($inv === null) {
+            return 0;
+        }
+        self::storeTotalMissingL((int) (self::totalFromPagePayload() ?? 0), $inv);
+
+        return $inv;
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      */
-    private static function sumPageRows(array $rows): int
+    private static function sumPageRows(array $rows, string $field = 'missing_listing'): int
     {
         return (int) collect($rows)
             ->filter(fn ($row) => ! self::isHiddenFromMissingListing((string) ($row['channel'] ?? '')))
             ->filter(fn ($row) => strtoupper(trim((string) ($row['type'] ?? ''))) !== 'C2C')
             ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
-            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
+            ->sum(fn ($row) => (int) ($row[$field] ?? 0));
     }
 
     /**
      * Persist a precomputed total (e.g. after /missing-listing/data loads).
      * Kept as long as the page payload, so the sidebar never falls back to another figure.
+     *
+     * @param  int|null  $totalInv  Missing L without 0 Inv total, stored together with the main total
      */
-    public static function storeTotalMissingL(int $total): void
+    public static function storeTotalMissingL(int $total, ?int $totalInv = null): void
     {
         try {
             Cache::put(self::TOTAL_CACHE_KEY, max(0, $total), now()->addDays(7));
+            if ($totalInv !== null) {
+                Cache::put(self::TOTAL_INV_CACHE_KEY, max(0, $totalInv), now()->addDays(7));
+            }
         } catch (\Throwable $e) {
             // ignore
         }
@@ -548,7 +588,7 @@ class ListingChannelCounts
      * Called by a listing page right after it built its rows: makes the Missing Listing page,
      * the sidebar total and the daily snapshot show exactly what the listing page shows.
      *
-     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv?: int}  $counts
      */
     public static function syncChannelCounts(string $channel, array $counts): void
     {
@@ -561,9 +601,10 @@ class ListingChannelCounts
             'NRL' => (int) ($counts['NRL'] ?? 0),
             'Listed' => (int) ($counts['Listed'] ?? 0),
             'Pending' => (int) ($counts['Pending'] ?? $counts['MissingL'] ?? 0),
+            'PendingInv' => (int) ($counts['PendingInv'] ?? 0),
         ];
 
-        $cacheKey = 'listing_channel_counts_v4:'.(ListingCountsEngine::REQUIRE_POSITIVE_INV ? 'inv' : 'cp').':'.$key;
+        $cacheKey = self::COUNTS_CACHE_PREFIX.(ListingCountsEngine::REQUIRE_POSITIVE_INV ? 'inv' : 'cp').':'.$key;
         $previous = Cache::get($cacheKey);
         Cache::put($cacheKey, $counts, now()->addMinutes(10));
 
@@ -579,7 +620,7 @@ class ListingChannelCounts
     /**
      * Write one channel's counts into the cached /missing-listing payload and refresh the total.
      *
-     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}  $counts
      * @return bool whether any row or the total changed
      */
     private static function patchPageCache(string $key, array $counts): bool
@@ -603,6 +644,7 @@ class ListingChannelCounts
                     'nrl' => $counts['NRL'],
                     'listed' => $counts['Listed'],
                     'missing_listing' => $counts['Pending'],
+                    'missing_listing_inv' => $counts['PendingInv'] ?? 0,
                 ];
                 foreach ($new as $field => $value) {
                     if ((int) ($row[$field] ?? -1) !== $value) {
@@ -613,14 +655,17 @@ class ListingChannelCounts
             }
 
             $total = self::sumPageRows($cached['data']);
-            if ($changed || (int) ($cached['total_missing_l'] ?? -1) !== $total) {
+            $totalInv = self::sumPageRows($cached['data'], 'missing_listing_inv');
+            if ($changed || (int) ($cached['total_missing_l'] ?? -1) !== $total || (int) ($cached['total_missing_l_inv'] ?? -1) !== $totalInv) {
                 $cached['total_missing_l'] = $total;
+                $cached['total_missing_l_inv'] = $totalInv;
                 Cache::put($pageKey, $cached, now()->addDays(7));
                 $changed = true;
             }
             $storedTotal = Cache::get(self::TOTAL_CACHE_KEY);
-            if ($storedTotal === null || (int) $storedTotal !== $total) {
-                self::storeTotalMissingL($total);
+            $storedInv = Cache::get(self::TOTAL_INV_CACHE_KEY);
+            if ($storedTotal === null || (int) $storedTotal !== $total || $storedInv === null || (int) $storedInv !== $totalInv) {
+                self::storeTotalMissingL($total, $totalInv);
                 $changed = true;
             }
 
@@ -680,11 +725,11 @@ class ListingChannelCounts
     }
 
     /**
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}
      */
     public static function forChannel(string $channel, bool $useCache = true, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV, bool $throwOnFailure = false): array
     {
-        $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
+        $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'PendingInv' => 0];
         $key = self::normalize($channel);
         if ($key === '' || (! isset(self::$controllers[$key]) && ChannelListingRegistry::get($key) === null)) {
             return $empty;
@@ -703,7 +748,7 @@ class ListingChannelCounts
             }
         }
 
-        $cacheKey = 'listing_channel_counts_v4:'.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
+        $cacheKey = self::COUNTS_CACHE_PREFIX.($requirePositiveInv ? 'inv' : 'cp').':'.$key;
 
         try {
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($key, $empty, $requirePositiveInv) {
@@ -729,13 +774,13 @@ class ListingChannelCounts
      * Recount one channel and patch its row in the cached /missing-listing payload
      * (so a publish shows up without waiting for the full page rebuild).
      *
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}
      */
     public static function refreshChannelOnMissingListingPage(string $channel): array
     {
         $key = self::normalize($channel);
         foreach (['inv', 'cp'] as $mode) {
-            Cache::forget('listing_channel_counts_v4:'.$mode.':'.$key);
+            Cache::forget(self::COUNTS_CACHE_PREFIX.$mode.':'.$key);
         }
         ListingCountsEngine::forgetCsvListedCounts();
         $counts = self::forChannel($channel, true);
@@ -776,7 +821,7 @@ class ListingChannelCounts
     }
 
     /**
-     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}  $counts
      */
     private static function snapshotMissingListing(string $normalizedKey, array $counts): void
     {
@@ -787,6 +832,7 @@ class ListingChannelCounts
         try {
             ChannelMasterSummary::mergeTodaySummary($normalizedKey, [
                 'listing_miss_count' => (int) ($counts['Pending'] ?? 0),
+                'listing_miss_inv_count' => (int) ($counts['PendingInv'] ?? 0),
                 'listing_req' => (int) ($counts['REQ'] ?? 0),
                 'listing_nrl' => (int) ($counts['NRL'] ?? 0),
                 'listing_listed' => (int) ($counts['Listed'] ?? 0),
@@ -798,7 +844,7 @@ class ListingChannelCounts
     }
 
     /**
-     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int, PendingInv: int}
      */
     private static function loadCounts(string $normalizedKey, bool $requirePositiveInv = ListingCountsEngine::REQUIRE_POSITIVE_INV): array
     {
@@ -811,6 +857,7 @@ class ListingChannelCounts
                 'NRL' => (int) ($c['NRL'] ?? 0),
                 'Listed' => (int) ($c['Listed'] ?? 0),
                 'Pending' => (int) ($c['Pending'] ?? $c['MissingL'] ?? 0),
+                'PendingInv' => (int) ($c['PendingInv'] ?? 0),
             ];
         }
 
@@ -823,6 +870,7 @@ class ListingChannelCounts
                 'NRL' => (int) ($c['NRL'] ?? 0),
                 'Listed' => (int) ($c['Listed'] ?? 0),
                 'Pending' => (int) ($c['Pending'] ?? $c['MissingL'] ?? 0),
+                'PendingInv' => (int) ($c['PendingInv'] ?? 0),
             ];
         }
 
@@ -835,6 +883,7 @@ class ListingChannelCounts
                 'NRL' => (int) ($c['NRL'] ?? 0),
                 'Listed' => (int) ($c['Listed'] ?? 0),
                 'Pending' => (int) ($c['Pending'] ?? $c['MissingL'] ?? 0),
+                'PendingInv' => (int) ($c['PendingInv'] ?? 0),
             ];
         }
 
@@ -847,13 +896,14 @@ class ListingChannelCounts
                 'NRL' => (int) ($c['NRL'] ?? 0),
                 'Listed' => (int) ($c['Listed'] ?? 0),
                 'Pending' => (int) ($c['Pending'] ?? $c['MissingL'] ?? 0),
+                'PendingInv' => (int) ($c['PendingInv'] ?? 0),
             ];
         }
 
         $class = self::$controllers[$normalizedKey];
         $raw = app($class)->getNrReqCount();
         if (! is_array($raw)) {
-            return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
+            return ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0, 'PendingInv' => 0];
         }
 
         return [
@@ -861,6 +911,7 @@ class ListingChannelCounts
             'NRL' => (int) ($raw['NRL'] ?? $raw['NR'] ?? 0),
             'Listed' => (int) ($raw['Listed'] ?? 0),
             'Pending' => (int) ($raw['Pending'] ?? 0),
+            'PendingInv' => (int) ($raw['PendingInv'] ?? 0),
         ];
     }
 
