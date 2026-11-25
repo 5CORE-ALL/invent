@@ -260,7 +260,7 @@ class PromotionsController extends Controller
             $skus = [];
             ProductMaster::query()
                 ->whereRaw("UPPER(TRIM(sku)) NOT LIKE 'PARENT%'")
-                ->select('sku')
+                ->select(['id', 'sku'])
                 ->chunkById(2000, function ($chunk) use (&$skus) {
                     foreach ($chunk as $pm) {
                         $s = strtoupper(trim((string) $pm->sku));
