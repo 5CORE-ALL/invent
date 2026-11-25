@@ -31,6 +31,13 @@ class AmmColumnHistory
         'inv_lp_zero', 'inv_lp_red', 'inv_lp_red1', 'inv_lp_red2', 'inv_lp_green', 'inv_lp_pink',
         // Inv@Amz $ per DIL band (Sales by Dil Slab page).
         'inv_amz_zero', 'inv_amz_red', 'inv_amz_red1', 'inv_amz_red2', 'inv_amz_green', 'inv_amz_pink',
+        // Inv@SP table extras per DIL band: SKUs, Inv units, % of total, Today / Y / L30 sales.
+        'inv_cnt_zero', 'inv_cnt_red1', 'inv_cnt_red2', 'inv_cnt_green', 'inv_cnt_pink',
+        'inv_units_zero', 'inv_units_red1', 'inv_units_red2', 'inv_units_green', 'inv_units_pink',
+        'inv_pct_zero', 'inv_pct_red1', 'inv_pct_red2', 'inv_pct_green', 'inv_pct_pink',
+        'inv_today_zero', 'inv_today_red1', 'inv_today_red2', 'inv_today_green', 'inv_today_pink',
+        'inv_y_zero', 'inv_y_red1', 'inv_y_red2', 'inv_y_green', 'inv_y_pink',
+        'inv_l30_zero', 'inv_l30_red1', 'inv_l30_red2', 'inv_l30_green', 'inv_l30_pink',
     ];
 
     /**
@@ -111,6 +118,11 @@ class AmmColumnHistory
     public static function recordInvBands(array $slices, ?Carbon $day = null): void
     {
         $data = [];
+        $yesterday = [];
+        $totalSp = 0.0;
+        foreach ($slices as $s) {
+            $totalSp += (float) ($s['inv_at_sp'] ?? 0);
+        }
         foreach ($slices as $s) {
             $key = (string) ($s['key'] ?? '');
             if ($key === '') {
@@ -121,9 +133,29 @@ class AmmColumnHistory
             if (array_key_exists('inv_at_amz', $s)) {
                 $data['inv_amz_'.$key] = (float) $s['inv_at_amz'];
             }
+            $data['inv_cnt_'.$key] = (float) ($s['count'] ?? 0);
+            $data['inv_units_'.$key] = (float) ($s['units'] ?? 0);
+            $data['inv_pct_'.$key] = $totalSp > 0
+                ? round(((float) ($s['inv_at_sp'] ?? 0) / $totalSp) * 100, 2)
+                : 0.0;
+            // Sales are null when the order window could not be built: never save that as 0.
+            if (isset($s['sales_today'])) {
+                $data['inv_today_'.$key] = (float) $s['sales_today'];
+            }
+            if (isset($s['sales_l30'])) {
+                $data['inv_l30_'.$key] = (float) $s['sales_l30'];
+            }
+            // Yesterday's sales belong to yesterday's date, so the graph is one point per real day.
+            if (isset($s['sales_y'])) {
+                $yesterday['inv_y_'.$key] = (float) $s['sales_y'];
+            }
         }
         if ($data !== []) {
             BadgeDataHistory::recordPage(self::ALL_PAGE, $data, $day);
+        }
+        if ($yesterday !== []) {
+            $base = $day ? $day->copy() : Carbon::now(BadgeDataHistory::TZ);
+            BadgeDataHistory::recordPage(self::ALL_PAGE, $yesterday, $base->subDay());
         }
     }
 

@@ -990,6 +990,19 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
         }
         #amm-inv-sp-tabulator .amm-inv-row-hist-dot:hover { transform: scale(1.4); }
+        /* Nine columns: horizontal, wrapping headers (the page-wide rotated 80px headers clip these titles). */
+        #amm-inv-sp-tabulator .tabulator-header .tabulator-col {
+            height: auto !important;
+        }
+        #amm-inv-sp-tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb;
+            transform: none;
+            height: auto;
+            white-space: normal;
+            text-align: center;
+            padding: 2px 0;
+        }
+        #amm-inv-sp-tabulator .tabulator-row .tabulator-cell { white-space: nowrap; }
         #ammInvModal .amm-inv-hist-wrap {
             display: none;
             margin: 0 0 6px;
@@ -3495,7 +3508,9 @@
                         }
                         // Saved pies from before Red was split (no red1 slice) are stale: use the live endpoint instead.
                         const piesAreCurrent = response.inventory_pies && Array.isArray(response.inventory_pies.slices)
-                            && response.inventory_pies.slices.some(function(s) { return s && s.key === 'red1'; });
+                            && response.inventory_pies.slices.some(function(s) { return s && s.key === 'red1'; })
+                            // Saved pies from before the Today / Y / L30 sales columns have no sales keys: refetch live.
+                            && response.inventory_pies.slices.some(function(s) { return s && ('sales_l30' in s); });
                         if (piesAreCurrent) {
                             lastInventoryPies = response.inventory_pies;
                         } else if (response.inventory_pies && Array.isArray(response.inventory_pies.slices)) {
@@ -8993,6 +9008,16 @@
                 'reviews': 'Reviews',
                 'rating': 'Rating',
             };
+            // Inv@SP table columns, one history graph per band: <column>_<band>.
+            (function() {
+                const bandLabels = { zero: '0 Sold', red1: 'Red 0.01–10%', red2: 'Red 10–25%', green: 'Green 25–50%', pink: 'Pink ≥50%' };
+                const colLabels = { inv_cnt: 'SKUs', inv_units: 'Inv', inv_pct: '% of total', inv_today: 'Today Sales', inv_y: 'Y Sales', inv_l30: 'L30 Sales' };
+                Object.keys(colLabels).forEach(function(col) {
+                    Object.keys(bandLabels).forEach(function(band) {
+                        metricLabels[col + '_' + band] = 'Inv@SP ' + bandLabels[band] + ' ' + colLabels[col];
+                    });
+                });
+            })();
 
             // Show metric chart (for non-ad-breakdown columns)
             var currentCellValue = null;
@@ -9110,6 +9135,10 @@
                         units: Number(s.units) || 0,
                         inv_at_lp: Number(s.inv_at_lp != null ? s.inv_at_lp : s.inv) || 0,
                         inv_at_sp: Number(s.inv_at_sp) || 0,
+                        // null = order data not available (shown as "—", never as 0)
+                        sales_today: (s.sales_today === null || s.sales_today === undefined) ? null : Number(s.sales_today) || 0,
+                        sales_y: (s.sales_y === null || s.sales_y === undefined) ? null : Number(s.sales_y) || 0,
+                        sales_l30: (s.sales_l30 === null || s.sales_l30 === undefined) ? null : Number(s.sales_l30) || 0,
                     };
                 });
             }
@@ -9142,15 +9171,38 @@
             }
             // Dot colour = latest saved day vs the day before (green = good move, red = bad, gray = flat / no history).
             // 0 Sold and Red inventory growing is bad; Green and Pink growing is good.
-            function ammInvBandDotColor(band, field) {
-                const rows = ammInvBlockHistory || [];
-                if (rows.length < 2) return '#6c757d';
-                const prev = Number(rows[rows.length - 2][field]);
-                const cur = Number(rows[rows.length - 1][field]);
-                if (!isFinite(prev) || !isFinite(cur) || Math.abs(cur - prev) < 0.5) return '#6c757d';
-                const lowerIsBetter = band === 'zero' || band === 'red1' || band === 'red2';
+            // Uses the last two saved days that actually have this field (Y sales is saved under yesterday's date,
+            // so the newest row can lack it). eps = smallest change that counts; sales columns: higher is always good.
+            function ammInvBandDotColor(band, field, eps, higherAlwaysBetter) {
+                const vals = (ammInvBlockHistory || [])
+                    .map(function(r) { return (r && r[field] !== null && r[field] !== undefined) ? Number(r[field]) : NaN; })
+                    .filter(function(v) { return isFinite(v); });
+                if (vals.length < 2) return '#6c757d';
+                const prev = vals[vals.length - 2];
+                const cur = vals[vals.length - 1];
+                if (Math.abs(cur - prev) < (eps === undefined ? 0.5 : eps)) return '#6c757d';
+                const lowerIsBetter = !higherAlwaysBetter && (band === 'zero' || band === 'red1' || band === 'red2');
                 const good = lowerIsBetter ? cur < prev : cur > prev;
                 return good ? '#28a745' : '#dc3545';
+            }
+            // Inv@SP table columns: metric key prefix (history graph = prefix + '_' + band), suffix of the
+            // daily-history row field (<band><suffix>), dot sensitivity, and the slice field for the live value.
+            var ammInvColSpec = {
+                inv_cnt:   { hist: '',       eps: 0.5 },
+                inv_units: { hist: '_units', eps: 0.5 },
+                inv_sp:    { hist: '_sp',    eps: 0.5 },
+                inv_lp:    { hist: '_lp',    eps: 0.5 },
+                inv_pct:   { hist: '_pct',   eps: 0.005 },
+                inv_today: { hist: '_today', eps: 0.005, sales: true },
+                inv_y:     { hist: '_y',     eps: 0.005, sales: true },
+                inv_l30:   { hist: '_l30',   eps: 0.005, sales: true }
+            };
+            function ammInvRowDotHtml(d, metric) {
+                const spec = ammInvColSpec[metric];
+                const color = ammInvBandDotColor(d.key, d.key + spec.hist, spec.eps, !!spec.sales);
+                const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return '<button type="button" class="amm-inv-row-hist-dot" data-metric="' + metric + '" data-chart="' + (metric === 'inv_lp' ? 'lp' : 'sp') + '" data-band="' + d.key + '" '
+                    + 'style="background:' + color + ';" title="' + safeBand + ' — click for daily history"></button>';
             }
             function ammInvBlockBandsHtml(slices, valueKey) {
                 const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
@@ -9220,11 +9272,40 @@
                         band: s.label,
                         color: s.color,
                         count: Number(s.count) || 0,
+                        units: Number(s.units) || 0,
                         inv_at_sp: val,
                         inv_at_lp: Number(s.inv_at_lp) || 0,
                         pct: total > 0 ? Math.round((val / total) * 100) : 0,
+                        sales_today: s.sales_today,
+                        sales_y: s.sales_y,
+                        sales_l30: s.sales_l30,
                     };
                 });
+                // One number cell + the standard history dot (colour = latest saved day vs the day before;
+                // click opens the standard metric history graph). Total row gets a spacer to stay aligned.
+                const intText = function(v) { return (Math.round(Number(v) || 0)).toLocaleString('en-US'); };
+                const salesText = function(v) { return (v === null || v === undefined) ? '—' : '$' + Math.round(Number(v) || 0).toLocaleString('en-US'); };
+                const dotColumn = function(title, field, metric, text, extra) {
+                    return Object.assign({
+                        title: title, field: field, hozAlign: 'right', sorter: 'number',
+                        formatter: function(cell) {
+                            return '<span class="amm-inv-row-val">' + text(cell.getValue()) + '</span>' + ammInvRowDotHtml(cell.getData(), metric);
+                        },
+                        bottomCalc: 'sum',
+                        bottomCalcFormatter: function(cell) {
+                            return '<span class="amm-inv-row-val">' + text(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
+                        },
+                    }, extra || {});
+                };
+                // Sales total: blank ("—") when no band has order data.
+                const salesColumn = function(title, field, metric) {
+                    return dotColumn(title, field, metric, salesText, {
+                        bottomCalc: function(values) {
+                            const known = values.filter(function(v) { return v !== null && v !== undefined; });
+                            return known.length ? known.reduce(function(a, b) { return a + (Number(b) || 0); }, 0) : null;
+                        },
+                    });
+                };
                 if (ammInvSpTable) {
                     ammInvSpTable.setData(rows);
                     return;
@@ -9246,49 +9327,16 @@
                             },
                             bottomCalc: function() { return 'Total'; },
                         },
-                        {
-                            title: 'SKUs', field: 'count', hozAlign: 'right', sorter: 'number',
-                            bottomCalc: 'sum',
-                        },
-                        {
-                            title: 'Inv@SP $', field: 'inv_at_sp', hozAlign: 'right', sorter: 'number',
-                            // Standard history dot after the value: colour = latest saved day vs the day before
-                            // (same rule as the band cards); click opens the standard metric history graph.
-                            formatter: function(cell) {
-                                const d = cell.getData();
-                                const dotColor = ammInvBandDotColor(d.key, d.key + '_sp');
-                                const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span>'
-                                    + '<button type="button" class="amm-inv-row-hist-dot" data-chart="sp" data-band="' + d.key + '" '
-                                    + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
-                            },
-                            bottomCalc: 'sum',
-                            bottomCalcFormatter: function(cell) {
-                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
-                            },
-                        },
-                        {
-                            title: 'Inv@LP $', field: 'inv_at_lp', hozAlign: 'right', sorter: 'number',
-                            // Same dot/history behaviour as Inv@SP $, using the LP series (<band>_lp).
-                            formatter: function(cell) {
-                                const d = cell.getData();
-                                const dotColor = ammInvBandDotColor(d.key, d.key + '_lp');
-                                const safeBand = String(d.band || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span>'
-                                    + '<button type="button" class="amm-inv-row-hist-dot" data-chart="lp" data-band="' + d.key + '" '
-                                    + 'style="background:' + dotColor + ';" title="' + safeBand + ' — click for daily history"></button>';
-                            },
-                            bottomCalc: 'sum',
-                            bottomCalcFormatter: function(cell) {
-                                return '<span class="amm-inv-row-val">' + ammInvMoneyCompact(cell.getValue()) + '</span><span class="amm-inv-row-hist-dot-spacer"></span>';
-                            },
-                        },
-                        {
-                            title: '% of total', field: 'pct', hozAlign: 'right', sorter: 'number',
-                            formatter: function(cell) { return cell.getValue() + '%'; },
+                        dotColumn('SKUs', 'count', 'inv_cnt', intText),
+                        dotColumn('Inv', 'units', 'inv_units', intText),
+                        dotColumn('Inv@SP $', 'inv_at_sp', 'inv_sp', ammInvMoneyCompact),
+                        dotColumn('Inv@LP $', 'inv_at_lp', 'inv_lp', ammInvMoneyCompact),
+                        dotColumn('% of total', 'pct', 'inv_pct', function(v) { return (Number(v) || 0) + '%'; }, {
                             bottomCalc: function(values) { return values.some(function(v) { return v > 0; }) ? 100 : 0; },
-                            bottomCalcFormatter: function(cell) { return cell.getValue() + '%'; },
-                        },
+                        }),
+                        salesColumn('Today Sales', 'sales_today', 'inv_today'),
+                        salesColumn('Y Sales', 'sales_y', 'inv_y'),
+                        salesColumn('L30 Sales', 'sales_l30', 'inv_l30'),
                     ],
                 });
             }
@@ -9510,10 +9558,25 @@
                 e.stopPropagation();
                 const chart = $(this).data('chart') === 'lp' ? 'lp' : 'sp';
                 const band = String($(this).data('band'));
-                const slice = ammInvNormalizeSlices((lastInventoryPies && lastInventoryPies.slices) || [])
-                    .find(function(s) { return s.key === band; });
-                const live = slice ? Number(chart === 'sp' ? slice.inv_at_sp : slice.inv_at_lp) : null;
-                showMetricChart('All', 'inv_' + chart + '_' + band, (live != null && isFinite(live)) ? Math.round(live) : null);
+                // Band cards carry no data-metric (Inv@SP / Inv@LP $); table cells name their own column.
+                const metric = String($(this).data('metric') || ('inv_' + chart));
+                const allSlices = ammInvNormalizeSlices((lastInventoryPies && lastInventoryPies.slices) || []);
+                const slice = allSlices.find(function(s) { return s.key === band; });
+                let live = null;
+                if (slice) {
+                    if (metric === 'inv_cnt') live = Number(slice.count);
+                    else if (metric === 'inv_units') live = Number(slice.units);
+                    else if (metric === 'inv_pct') {
+                        const tot = allSlices.reduce(function(sum, s) { return sum + (Number(s.inv_at_sp) || 0); }, 0);
+                        live = tot > 0 ? Math.round(((Number(slice.inv_at_sp) || 0) / tot) * 10000) / 100 : 0;
+                    }
+                    else if (metric === 'inv_today') live = slice.sales_today === null ? null : Number(slice.sales_today);
+                    else if (metric === 'inv_y') live = slice.sales_y === null ? null : Number(slice.sales_y);
+                    else if (metric === 'inv_l30') live = slice.sales_l30 === null ? null : Number(slice.sales_l30);
+                    else live = Number(metric === 'inv_lp' ? slice.inv_at_lp : slice.inv_at_sp);
+                }
+                const rounded = (live != null && isFinite(live)) ? (metric === 'inv_pct' ? live : Math.round(live)) : null;
+                showMetricChart('All', metric + '_' + band, rounded);
             });
 
             // Badge click handler — show overall (all channels) metric trend
@@ -9614,8 +9677,11 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (/^inv_(sp|lp)_/.test(m)) {
+                    if (/^inv_(sp|lp|today|y|l30)_/.test(m)) {
                         return '$' + Math.round(v).toLocaleString('en-US');
+                    }
+                    if (/^inv_pct_/.test(m)) {
+                        return v.toFixed(1) + '%';
                     }
                     if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'today_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
@@ -9642,7 +9708,9 @@
                 // 0 Sold / Red inventory growing is the bad direction, so those two invert too.
                 const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat',
                     'inv_sp_zero', 'inv_sp_red1', 'inv_sp_red2', 'inv_lp_zero', 'inv_lp_red1', 'inv_lp_red2'];
-                const isInverted = invertedMetrics.includes(currentChartMetric);
+                // SKUs / Inv / % of total in the 0 Sold and Red bands: growing is bad too (sales columns never invert).
+                const isInverted = invertedMetrics.includes(currentChartMetric)
+                    || /^inv_(cnt|units|pct)_(zero|red1|red2)$/.test(currentChartMetric || '');
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {
                     syncAllBadgeDotWithChart(currentChartMetric, values);

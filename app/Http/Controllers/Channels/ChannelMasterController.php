@@ -186,6 +186,14 @@ class ChannelMasterController extends Controller
     /** @var array<string, mixed>|null */
     private ?array $shopifyInvLpMetricsCache = null;
 
+    /**
+     * SKU lookup keys (ShopifySku::compactSkuForLookup) in each INV DIL band, filled by
+     * getShopifyInvLpMetrics() so band sales can be summed from SkuSalesByWindowService.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $invBandSkuKeys = [];
+
     public function __construct(ApiController $apiController)
     {
         $this->apiController = $apiController;
@@ -6258,6 +6266,7 @@ class ChannelMasterController extends Controller
         $invAtAmz = 0.0;
         $dilBands = $emptyBands;
         $seenShopify = [];
+        $this->invBandSkuKeys = [];
         foreach ($shopifyByPmSku as $pmSku => $row) {
             if (stripos((string) $pmSku, 'PARENT') !== false) {
                 continue;
@@ -6296,6 +6305,7 @@ class ChannelMasterController extends Controller
 
             $band = $this->invDilBandKey($l30, $inv);
             $dilBands[$band]['count']++;
+            $this->invBandSkuKeys[$band][] = ShopifySku::compactSkuForLookup((string) $pmSku);
             $dilBands[$band]['units'] += $inv;
             $dilBands[$band]['inv_at_lp'] += $lpValue;
             $dilBands[$band]['inv_at_sp'] += $spValue;
@@ -6517,6 +6527,7 @@ class ChannelMasterController extends Controller
     {
         $bands = is_array($metrics['dil_bands'] ?? null) ? $metrics['dil_bands'] : $this->emptyInvDilBands();
         $slices = [];
+        $bandSales = $this->invBandSalesFromWindow();
         foreach ($this->invDilBandDefs() as $key => $def) {
             $row = is_array($bands[$key] ?? null) ? $bands[$key] : [];
             $slices[] = [
@@ -6528,6 +6539,10 @@ class ChannelMasterController extends Controller
                 'inv_at_lp' => round((float) ($row['inv_at_lp'] ?? 0), 2),
                 'inv_at_sp' => round((float) ($row['inv_at_sp'] ?? 0), 2),
                 'inv_at_amz' => round((float) ($row['inv_at_amz'] ?? 0), 2),
+                // Today / Yesterday / L30 sales of the SKUs in this band (null = order data unavailable).
+                'sales_today' => $bandSales[$key]['today'] ?? null,
+                'sales_y' => $bandSales[$key]['yesterday'] ?? null,
+                'sales_l30' => $bandSales[$key]['l30'] ?? null,
             ];
         }
         $this->rememberInventoryDilHistory($slices);
@@ -6536,6 +6551,50 @@ class ChannelMasterController extends Controller
             'slices' => $slices,
             'history' => $this->inventoryDilHistoryRows(),
         ];
+    }
+
+    /**
+     * Today / Yesterday / L30 sales (all marketplaces, Pacific days) of the SKUs in each INV DIL band,
+     * from the same per-SKU order roll-up the Sales by Dil Slab page uses.
+     *
+     * @return array<string, array{today: float, yesterday: float, l30: float}>|null null when the
+     *                                                                              order data could not be built
+     */
+    private function invBandSalesFromWindow(): ?array
+    {
+        if ($this->invBandSkuKeys === []) {
+            return null;
+        }
+        try {
+            $window = app(\App\Services\Support\SkuSalesByWindowService::class)->build();
+            $bySku = is_array($window['skus'] ?? null) ? $window['skus'] : [];
+            if ($bySku === []) {
+                return null;
+            }
+            $out = [];
+            foreach (array_keys($this->invDilBandDefs()) as $band) {
+                $sum = ['today' => 0.0, 'yesterday' => 0.0, 'l30' => 0.0];
+                foreach (array_unique($this->invBandSkuKeys[$band] ?? []) as $skuKey) {
+                    if (! isset($bySku[$skuKey])) {
+                        continue;
+                    }
+                    $sum['today'] += (float) ($bySku[$skuKey]['today'] ?? 0);
+                    $sum['yesterday'] += (float) ($bySku[$skuKey]['yesterday'] ?? 0);
+                    $sum['l30'] += (float) ($bySku[$skuKey]['l30'] ?? 0);
+                }
+                $out[$band] = [
+                    'today' => round($sum['today'], 2),
+                    'yesterday' => round($sum['yesterday'], 2),
+                    'l30' => round($sum['l30'], 2),
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('INV band sales failed: '.$e->getMessage());
+
+            return null;
+        }
     }
 
     /**
@@ -6550,6 +6609,10 @@ class ChannelMasterController extends Controller
                 $hist = [];
             }
             $day = [];
+            $totalSp = 0.0;
+            foreach ($slices as $s) {
+                $totalSp += (float) ($s['inv_at_sp'] ?? 0);
+            }
             foreach ($slices as $s) {
                 $k = (string) ($s['key'] ?? '');
                 if ($k === '') {
@@ -6560,6 +6623,14 @@ class ChannelMasterController extends Controller
                 $day[$k.'_lp'] = (float) ($s['inv_at_lp'] ?? 0);
                 $day[$k.'_sp'] = (float) ($s['inv_at_sp'] ?? 0);
                 $day[$k.'_amz'] = (float) ($s['inv_at_amz'] ?? 0);
+                $day[$k.'_pct'] = $totalSp > 0 ? round(((float) ($s['inv_at_sp'] ?? 0) / $totalSp) * 100, 2) : 0.0;
+                // Yesterday's sales (_y) is only kept in badges_data_histories, under yesterday's own date.
+                if (isset($s['sales_today'])) {
+                    $day[$k.'_today'] = (float) $s['sales_today'];
+                }
+                if (isset($s['sales_l30'])) {
+                    $day[$k.'_l30'] = (float) $s['sales_l30'];
+                }
             }
             $hist[$today] = $day;
             ksort($hist);
@@ -6631,6 +6702,12 @@ class ChannelMasterController extends Controller
                 $fields['inv_sp_'.$band] = $band.'_sp';
                 $fields['inv_lp_'.$band] = $band.'_lp';
                 $fields['inv_amz_'.$band] = $band.'_amz';
+                $fields['inv_cnt_'.$band] = $band;
+                $fields['inv_units_'.$band] = $band.'_units';
+                $fields['inv_pct_'.$band] = $band.'_pct';
+                $fields['inv_today_'.$band] = $band.'_today';
+                $fields['inv_y_'.$band] = $band.'_y';
+                $fields['inv_l30_'.$band] = $band.'_l30';
             }
             $since = now('America/Los_Angeles')->subDays($days)->toDateString();
             $rows = \App\Models\BadgeDataHistory::query()
