@@ -1509,18 +1509,33 @@
             function refreshPendingTotalBadge() {
                 const el = document.getElementById('ccmrMessagesPendingTotal');
                 if (!el || !window.__ccmrTable) return;
-                let total = 0, n = 0;
+                // total     = sum of counts from channels whose last pull succeeded
+                // channels  = every channel that HAS a message API (anything not
+                //             'unsupported'), so the label no longer shrinks to
+                //             "7 channels" while other channels are still loading
+                //             or failed.
+                // missing   = supported channels without a good count right now.
+                let total = 0, channels = 0, missing = 0;
                 window.__ccmrTable.getRows().forEach(r => {
                     const d = r.getData() || {};
+                    if (d.pending_status === 'unsupported') return;
+                    channels++;
                     if (d.pending_status === 'ok') {
                         total += Number(d.pending_count || 0);
-                        n++;
+                    } else {
+                        missing++;
                     }
                 });
                 const valueEl = el.querySelector('[data-role="value"]');
                 const metaEl  = el.querySelector('[data-role="meta"]');
                 if (valueEl) valueEl.textContent = total.toLocaleString('en-US');
-                if (metaEl)  metaEl.textContent  = 'across ' + n + ' channel' + (n === 1 ? '' : 's');
+                if (metaEl) {
+                    metaEl.textContent = 'across ' + channels + ' channel' + (channels === 1 ? '' : 's')
+                        + (missing > 0 ? ' · ' + missing + ' not loaded' : '');
+                }
+                el.title = 'Total pending marketplace messages from ' + (channels - missing)
+                    + ' of ' + channels + ' channels that have a message API.'
+                    + (missing > 0 ? ' ' + missing + ' channel(s) failed or are still loading and are not included.' : '');
             }
 
             function refreshAvgTatBadges() {

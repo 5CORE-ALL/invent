@@ -34,7 +34,9 @@ class TikTokAdsApiService
 
     public function authorizationUrl(string $state): string
     {
-        return rtrim((string) config('services.tiktok_ads.api_base'), '/').'/portal/auth?'.http_build_query([
+        // The authorization page is opened in the user's browser and only exists on the business-api host,
+        // independent of which host the server uses for API calls (api_base).
+        return rtrim((string) config('services.tiktok_ads.auth_base', 'https://business-api.tiktok.com'), '/').'/portal/auth?'.http_build_query([
             'app_id' => config('services.tiktok_ads.app_id'),
             'state' => $state,
             'redirect_uri' => config('services.tiktok_ads.redirect_uri'),
@@ -241,7 +243,7 @@ class TikTokAdsApiService
     {
         $hint = config('services.tiktok_ads.proxy')
             ? ' (proxy in use: check it is alive and exits outside India)'
-            : ' — TikTok blocks India IPs; set TIKTOK_ADS_PROXY to a non-India proxy/VPN.';
+            : ' — TikTok blocks India IPs on business-api.tiktok.com; try TIKTOK_ADS_API_BASE=https://ads.tiktok.com (answers from the Mumbai server, but some ISPs block it) or set TIKTOK_ADS_PROXY to a non-India proxy.';
 
         return $banned ? ' IP blocked.'.$hint : $hint;
     }
