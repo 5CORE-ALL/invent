@@ -542,7 +542,6 @@ class MissingListingController extends Controller
     {
         $cp = CpMasterCounts::counts(true);
         $listedByChannel = ListingCountsEngine::csvListedCounts();
-        $listedInvByChannel = ListingCountsEngine::csvListedCounts(true);
         $skuCount = (int) ($cp['SKU'] ?? 0);
         $zeroInv = (int) ($cp['ZeroInv'] ?? 0);
 
@@ -562,12 +561,8 @@ class MissingListingController extends Controller
             }
             $listed = (int) $listedByChannel[$key];
             $rows[$i]['listed'] = $listed;
-            $req = (int) ($row['req'] ?? 0);
-            if ($req > 0) {
-                $rows[$i]['missing_listing'] = max(0, $req - $listed);
-                // Missing L without 0 Inv: in-stock SKUs that are not marked Listed.
-                $rows[$i]['missing_listing_inv'] = max(0, (int) ($listedInvByChannel['__stock'] ?? 0) - (int) ($listedInvByChannel[$key] ?? 0));
-            }
+            // Missing L (with and without 0 Inv) is left as the channel's listing page counted it, so this table
+            // shows exactly the numbers the inner page shows.
         }
 
         return $rows;

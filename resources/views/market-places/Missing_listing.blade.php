@@ -47,10 +47,8 @@
             font-weight: 700;
         }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
-        /* Missing L with 0 Inv / without 0 Inv: click one to pick which number the table and links use. */
-        .ml-mode-badge { cursor: pointer; opacity: 0.6; user-select: none; }
-        .ml-mode-badge:hover { opacity: 0.85; }
-        .ml-mode-badge.is-active { opacity: 1; box-shadow: 0 0 0 3px #212529; }
+        /* The without-0-Inv badge is the number the sidebar shows. */
+        .ml-mode-badge.is-active { box-shadow: 0 0 0 3px #212529; }
         .ml-seller-portal-cell {
             display: flex;
             align-items: center;
@@ -217,11 +215,11 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" data-mode="all" role="button" tabindex="0" title="Missing L with 0 Inv: every REQ SKU not listed, including the ones with 0 inventory (same count as the Missing L with 0 Inv badge on each listing page). Click to use this number in the table." style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge" id="stat-missing-listing" data-metric="missing_l" title="Missing L with 0 Inv: every REQ SKU not listed, including the ones with 0 inventory. Same count as the Missing L with 0 Inv badge on each listing page." style="background-color:#a71d2a !important;">
                         Missing L with 0 Inv: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                         <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
-                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" data-mode="inv" role="button" tabindex="0" title="Missing L without 0 Inv (default): REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L without 0 Inv badge on each listing page. Click to use this number in the table." style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat ml-mode-badge is-active" id="stat-missing-listing-inv" data-metric="missing_l_inv" title="Missing L without 0 Inv: REQ SKUs not listed that have inventory (INV above 0). Same count as the sidebar and the Missing L without 0 Inv badge on each listing page." style="background-color:#a71d2a !important;">
                         Missing L without 0 Inv: <span id="total-missing-listing-inv">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingLInv(true)) }}</span>
                     </span>
                     @unless($c2c)
@@ -365,25 +363,50 @@
         badge.textContent = Number(count || 0).toLocaleString('en-US');
     }
 
-    // 'inv' = Missing L without 0 Inv (default), 'all' = Missing L with 0 Inv.
-    // The mode decides which number the Missing Listing column, its total and its links use.
-    let mlMode = 'inv';
-
-    function mlMissingValue(row) {
-        const field = mlMode === 'inv' ? 'missing_listing_inv' : 'missing_listing';
-        return Number((row && row[field]) || 0);
-    }
-
-    function setMlMode(mode) {
-        mlMode = mode === 'all' ? 'all' : 'inv';
-        $('.ml-mode-badge').removeClass('is-active').filter('[data-mode="' + mlMode + '"]').addClass('is-active');
-        if (!table) return;
-        table.redraw(true);
-        table.recalc();
-        const sorters = table.getSorters ? table.getSorters() : [];
-        if (sorters.length) {
-            table.setSort(sorters.map(function(s) { return { column: s.field, dir: s.dir }; }));
-        }
+    // One Missing Listing column per count, both read straight from the channel's listing-page numbers:
+    //   M with 0 Inv    -> missing_listing      (every missing SKU, opens ?missing=1)
+    //   M without 0 Inv -> missing_listing_inv  (missing SKUs with INV above 0, opens ?missing=inv)
+    function mlMissingColumn(title, field, linkParam, withChart, tooltip, filterProps) {
+        const num = function(row) { return Number((row && row[field]) || 0); };
+        return Object.assign({
+            title: title,
+            field: field,
+            width: 150,
+            hozAlign: 'center',
+            sorter: 'number',
+            headerTooltip: tooltip,
+            formatter: function(cell) {
+                const row = cell.getRow().getData();
+                if (isSheetRow(row)) return fromSheetCell(row);
+                const v = num(row);
+                const channel = (row.channel || '').trim();
+                const listingUrl = String(row.listing_url || '').trim();
+                const color = v === 0 ? '#198754' : '#dc3545';
+                const dotColor = v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
+                const chartIcon = withChart
+                    ? `<i class="fas fa-circle ml-metric-chart-icon ms-1" data-channel="${escapeHtml(channel)}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`
+                    : '';
+                const countHtml = listingUrl
+                    ? `<a href="${escapeHtml(listingUrl)}?missing=${linkParam}" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
+                    : `<span style="color:${color};font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                return `${countHtml}${chartIcon}`;
+            },
+            cellClick: function(e, cell) {
+                const icon = e.target.closest ? e.target.closest('.ml-metric-chart-icon') : null;
+                if (!icon) return;
+                e.stopPropagation();
+                const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
+                showMlMetricChart(channel, Number(cell.getValue() || 0));
+            },
+            bottomCalc: function(values, data) {
+                return (data || []).reduce(function(sum, row) {
+                    return isSheetRow(row) ? sum : sum + num(row);
+                }, 0);
+            },
+            bottomCalcFormatter: function(cell) {
+                return Number(cell.getValue() || 0).toLocaleString('en-US');
+            },
+        }, filterProps);
     }
 
     function updateStats(rows, totalMissingL, totalMissingLInv) {
@@ -742,16 +765,6 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
-        $('.ml-mode-badge').on('click', function(e) {
-            if ($(e.target).closest('.ml-overall-chart-dot').length) return;
-            setMlMode($(this).data('mode'));
-        }).on('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setMlMode($(this).data('mode'));
-            }
-        });
-
         $('#stat-missing-listing').on('click', '.ml-overall-chart-dot', function(e) {
             e.stopPropagation();
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
@@ -1069,54 +1082,10 @@
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
                 }, shortFilter()),
-                Object.assign({
-                    title: "Missing Listing",
-                    field: "missing_listing",
-                    width: 180,
-                    hozAlign: "center",
-                    sorter: function(a, b, aRow, bRow) {
-                        return mlMissingValue(aRow.getData()) - mlMissingValue(bRow.getData());
-                    },
-                    headerTooltip: "REQ SKUs not listed on this marketplace. Without 0 Inv (default) counts only SKUs with inventory, with 0 Inv counts all of them. Pick one with the badges above; same numbers as the badges on the listing page",
-                    formatter: function(cell) {
-                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell(cell.getRow().getData());
-                        const row = cell.getRow().getData();
-                        const v = mlMissingValue(row);
-                        const channel = (row.channel || '').trim();
-                        const listingUrl = String(row.listing_url || '').trim();
-                        const color = v === 0 ? '#198754' : '#dc3545';
-                        const dotColor = v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
-                        const chartIcon = `<i class="fas fa-circle ml-metric-chart-icon ms-1" data-channel="${escapeHtml(channel)}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                        const countHtml = listingUrl
-                            ? `<a href="${escapeHtml(listingUrl)}?missing=${mlMode === 'inv' ? 'inv' : '1'}" class="ml-channel-listing-link" style="color:${color};font-weight:600;" title="Open Missing L SKUs">${v.toLocaleString('en-US')}</a>`
-                            : `<span style="color:${color};font-weight:600;">${v.toLocaleString('en-US')}</span>`;
-                        return `${countHtml}${chartIcon}`;
-                    },
-                    cellClick: function(e, cell) {
-                        const icon = e.target.closest ? e.target.closest('.ml-metric-chart-icon') : null;
-                        if (!icon) return;
-                        e.stopPropagation();
-                        const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
-                        // The history chart is the with-0-Inv series, so it gets that value.
-                        const value = Number(cell.getRow().getData().missing_listing || 0);
-                        showMlMetricChart(channel, value);
-                    },
-                    bottomCalc: function(values, data) {
-                        return (data || []).reduce((sum, row) => {
-                            if (isSheetRow(row)) return sum;
-                            return sum + mlMissingValue(row);
-                        }, 0);
-                    },
-                    bottomCalcFormatter: function(cell) {
-                        return Number(cell.getValue() || 0).toLocaleString('en-US');
-                    },
-                }, shortFilter(), {
-                    headerFilterFunc: function(headerValue, _rowValue, rowData) {
-                        const q = String(headerValue || '').trim().toLowerCase();
-                        if (!q) return true;
-                        return String(mlMissingValue(rowData)).toLowerCase().includes(q);
-                    },
-                }),
+                mlMissingColumn('M with 0 Inv', 'missing_listing', '1', true,
+                    'Missing L with 0 Inv: REQ SKUs not listed on this marketplace, including the ones with 0 inventory. Same number as the Missing L with 0 Inv badge on the listing page.', shortFilter()),
+                mlMissingColumn('M without 0 Inv', 'missing_listing_inv', 'inv', false,
+                    'Missing L without 0 Inv: REQ SKUs not listed on this marketplace that have inventory (INV above 0). Same number as the Missing L without 0 Inv badge on the listing page.', shortFilter()),
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",
