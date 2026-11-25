@@ -1098,7 +1098,11 @@ return [
         // TikTok Marketing (Ads Manager) API app — see App\Services\TikTokAdsApiService.
         'app_id' => env('TIKTOK_ADS_APP_ID'),
         'app_secret' => env('TIKTOK_ADS_APP_SECRET'),
+        // Host for server-side API calls. business-api.tiktok.com refuses India IPs;
+        // https://ads.tiktok.com serves the same /open_api/v1.3 endpoints and works from India.
         'api_base' => env('TIKTOK_ADS_API_BASE', 'https://business-api.tiktok.com'),
+        // Host of the browser-side authorization page (/portal/auth) — it only exists here.
+        'auth_base' => env('TIKTOK_ADS_AUTH_BASE', 'https://business-api.tiktok.com'),
         // Must be one of the "Advertiser redirect URLs" saved on the TikTok developer app.
         'redirect_uri' => env('TIKTOK_ADS_REDIRECT_URI', 'https://inventory.5coremanagement.com/'),
         // TikTok rejects India IPs ("Client IP address is in banned Country list").
