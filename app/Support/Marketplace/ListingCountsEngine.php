@@ -80,14 +80,15 @@ class ListingCountsEngine
      *
      * @return array<string, int>
      */
-    public static function csvListedCounts(): array
+    public static function csvListedCounts(bool $inStockOnly = false): array
     {
+        $cacheKey = $inStockOnly ? 'sheet_csv_listed_inv_counts_v1' : 'sheet_csv_listed_counts_v3';
         try {
-            return Cache::remember('sheet_csv_listed_counts_v3', now()->addMinutes(10), function () {
-                return self::loadCsvListedCounts();
+            return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($inStockOnly) {
+                return self::loadCsvListedCounts($inStockOnly);
             });
         } catch (\Throwable $e) {
-            return self::loadCsvListedCounts();
+            return self::loadCsvListedCounts($inStockOnly);
         }
     }
 
@@ -95,27 +96,33 @@ class ListingCountsEngine
     {
         try {
             Cache::forget('sheet_csv_listed_counts_v3');
+            Cache::forget('sheet_csv_listed_inv_counts_v1');
         } catch (\Throwable $e) {
             // ignore
         }
     }
 
     /**
+     * With $inStockOnly only SKUs with INV above 0 are counted, and the result carries the in-stock SKU total
+     * under the key '__stock' (Missing L without 0 Inv = in-stock SKUs - in-stock SKUs marked Listed).
+     *
      * @return array<string, int>
      */
-    private static function loadCsvListedCounts(): array
+    private static function loadCsvListedCounts(bool $inStockOnly = false): array
     {
         $wanted = [];
+        $stock = 0;
         $shopify = self::requestShopifyMap();
         foreach (self::productMasters() as $item) {
             $sku = trim((string) $item->sku);
             if ($sku === '' || stripos($sku, 'PARENT') !== false) {
                 continue;
             }
-            if (self::REQUIRE_POSITIVE_INV
+            if ((self::REQUIRE_POSITIVE_INV || $inStockOnly)
                 && self::shopifyInv(self::shopifyRow($shopify, $sku, (string) $item->sku)) <= 0) {
                 continue;
             }
+            $stock++;
             $id = strtolower($sku);
             foreach (array_merge(self::skuIndexKeys($sku), self::skuLookupKeys($sku)) as $key) {
                 $wanted[$key] = $id;
@@ -155,6 +162,10 @@ class ListingCountsEngine
                     }
                 });
             $out[$slug] = count($seen);
+        }
+
+        if ($inStockOnly) {
+            $out['__stock'] = $stock;
         }
 
         return $out;
@@ -322,6 +333,14 @@ class ListingCountsEngine
         }
 
         return 0.0;
+    }
+
+    /**
+     * Whether the SKU has inventory (Shopify INV above 0). "Missing L without 0 Inv" counts only these.
+     */
+    public static function skuInStock(Collection $shopifyData, string $sku, string $original = ''): bool
+    {
+        return self::shopifyInv(self::shopifyRow($shopifyData, $sku, $original)) > 0;
     }
 
     /**

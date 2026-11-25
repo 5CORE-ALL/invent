@@ -150,6 +150,7 @@ class ListingAliexpressController extends Controller
             'NRL' => $counts['NRL'],
             'Listed' => $counts['Listed'],
             'Pending' => $counts['MissingL'],
+            'PendingInv' => $counts['PendingInv'] ?? 0,
         ];
     }
 

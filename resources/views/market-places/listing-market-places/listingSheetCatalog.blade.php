@@ -40,7 +40,8 @@
                 <span class="badge bg-success sheet-stat p-2">REQ: <span id="sheet-req">{{ number_format((int) ($counts['REQ'] ?? 0)) }}</span></span>
                 <span class="badge bg-danger sheet-stat p-2">NRL: <span id="sheet-nrl">{{ number_format((int) ($counts['NRL'] ?? 0)) }}</span></span>
                 <span class="badge bg-primary sheet-stat p-2">Listed: <span id="sheet-listed">{{ number_format((int) ($counts['Listed'] ?? 0)) }}</span></span>
-                <span class="badge bg-warning text-dark sheet-stat p-2">Missing: <span id="sheet-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark sheet-stat p-2" title="Every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv: <span id="sheet-missing">{{ number_format((int) ($counts['Pending'] ?? 0)) }}</span></span>
+                <span class="badge bg-warning text-dark sheet-stat p-2" title="Missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv: <span id="sheet-missing-inv">{{ number_format((int) ($counts['PendingInv'] ?? 0)) }}</span></span>
             </div>
         </div>
 
@@ -48,7 +49,8 @@
             <div class="card-body">
                 <div id="sheet-listing-toolbar" class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <input type="search" id="sheet-search" class="form-control form-control-sm" style="max-width:220px;" placeholder="Search SKU">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing">Missing only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing" title="Show every missing SKU, including the ones with 0 inventory">Missing L with 0 Inv only</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sheet-filter-missing-inv" title="Show missing SKUs that have inventory (INV above 0)">Missing L without 0 Inv only</button>
                     <a href="{{ url('listing_'.$channel.'/template') }}" class="btn btn-sm btn-outline-primary">Download template</a>
                     <a href="{{ url('listing_'.$channel.'/export') }}" class="btn btn-sm btn-outline-success">Export current sheet</a>
                     <label class="btn btn-sm btn-warning mb-0">
@@ -75,7 +77,17 @@ document.addEventListener('DOMContentLoaded', function () {
     const dataUrl = @json(url('listing_'.$channel.'/view-data'));
     const saveUrl = @json(url('listing_'.$channel.'/save-status'));
     let table = null;
-    let missingOnly = new URLSearchParams(location.search).get('missing') === '1';
+    // '' = no filter, 'all' = Missing L with 0 Inv, 'inv' = Missing L without 0 Inv.
+    const missingParam = new URLSearchParams(location.search).get('missing');
+    let missingMode = missingParam === 'inv' ? 'inv' : (missingParam === '1' ? 'all' : '');
+    function syncMissingButtons() {
+        [['sheet-filter-missing', 'all'], ['sheet-filter-missing-inv', 'inv']].forEach(function (pair) {
+            const btn = document.getElementById(pair[0]);
+            if (!btn) return;
+            btn.classList.toggle('btn-warning', missingMode === pair[1]);
+            btn.classList.toggle('btn-outline-secondary', missingMode !== pair[1]);
+        });
+    }
 
     function shortFilter() {
         return { headerFilter: 'input' };
@@ -93,6 +105,7 @@ document.addEventListener('DOMContentLoaded', function () {
         set('sheet-nrl', counts.NRL);
         set('sheet-listed', counts.Listed);
         set('sheet-missing', counts.Pending);
+        set('sheet-missing-inv', counts.PendingInv);
     }
 
     function saveListed(cell) {
@@ -161,9 +174,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function applyMissingFilter() {
         if (!table) return;
-        if (missingOnly) {
+        if (missingMode) {
             table.setFilter(function (data) {
-                return Number(data.INV || 0) > 0
+                return (missingMode === 'all' || Number(data.INV || 0) > 0)
                     && String(data.nr_req || 'REQ').toUpperCase() === 'REQ'
                     && String(data.listed || '') !== 'Listed';
             });
@@ -201,8 +214,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 ],
             });
             applyMissingFilter();
-            document.getElementById('sheet-filter-missing').classList.toggle('btn-warning', missingOnly);
-            document.getElementById('sheet-filter-missing').classList.toggle('btn-outline-secondary', !missingOnly);
+            syncMissingButtons();
         });
 
     document.getElementById('sheet-search').addEventListener('input', function () {
@@ -215,11 +227,12 @@ document.addEventListener('DOMContentLoaded', function () {
         table.setFilter('sku', 'like', q);
     });
 
-    document.getElementById('sheet-filter-missing').addEventListener('click', function () {
-        missingOnly = !missingOnly;
-        this.classList.toggle('btn-warning', missingOnly);
-        this.classList.toggle('btn-outline-secondary', !missingOnly);
-        applyMissingFilter();
+    [['sheet-filter-missing', 'all'], ['sheet-filter-missing-inv', 'inv']].forEach(function (pair) {
+        document.getElementById(pair[0]).addEventListener('click', function () {
+            missingMode = missingMode === pair[1] ? '' : pair[1];
+            syncMissingButtons();
+            applyMissingFilter();
+        });
     });
 
     document.getElementById('sheet-csv').addEventListener('change', function () {

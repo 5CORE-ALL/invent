@@ -364,7 +364,7 @@
                         $missingListingCount = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar();
                     @endphp
                     @if($missingListingCount > 0)
-                        <span class="badge rounded-pill ms-auto missing-listing-badge" title="Missing L total from each channel listing page">{{ number_format($missingListingCount) }}</span>
+                        <span class="badge rounded-pill ms-auto missing-listing-badge" title="Missing L without 0 Inv: Missing L SKUs with inventory, summed over each channel listing page">{{ number_format($missingListingCount) }}</span>
                     @endif
                 </a>
             </li>

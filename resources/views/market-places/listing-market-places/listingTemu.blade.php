@@ -703,7 +703,8 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L (in stock, REQ, not listed on Temu). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed), including the ones with 0 inventory. Click again to clear.">Missing L with 0 Inv:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-inv-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed) that have inventory (INV above 0). Click again to clear.">Missing L without 0 Inv:<span id="pending-inv-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -983,10 +984,21 @@
                     nrlTotal: 0,
                     withoutLinkTotal: 0,
                     listedTotal: 0,
-                    pendingTotal: 0
+                    pendingTotal: 0,
+                    pendingInvTotal: 0
                 };
 
                 rows.forEach(item => {
+                    // Missing L counts do not follow the INV dropdown: "with 0 Inv" counts every missing SKU, "without 0 Inv" only those with INV above 0.
+                    if (!(item.is_parent || isParentSku(item.sku))) {
+                        const parkedRow = item.listed === 'Created' || item.listed === 'Incomplete' || !!item.page_created;
+                        if (!parkedRow && item.nr_req !== 'NR' && (item.listed === 'Pending' || !item.listed)) {
+                            metrics.pendingTotal++;
+                            if ((parseFloat(item.INV) || 0) > 0) {
+                                metrics.pendingInvTotal++;
+                            }
+                        }
+                    }
                     if (item.is_parent || ($('#inv-filter').val() === 'inv-only' && !(parseFloat(item.INV) > 0))) return;
                     // Incomplete / Created exist on Temu. They stay in REQ and out of Listed and Missing L.
                     const parked = item.listed === 'Incomplete' || item.listed === 'Created';
@@ -1003,8 +1015,6 @@
                     if (parked || item.nr_req === 'NR') return;
                     if (item.listed === 'Listed') {
                         metrics.listedTotal++;
-                    } else if (item.listed === 'Pending' || !item.listed) {
-                        metrics.pendingTotal++;
                     }
                 });
 
@@ -1013,6 +1023,7 @@
                 $('#without-link-total').text(metrics.withoutLinkTotal);
                 $('#listed-total').text(metrics.listedTotal);
                 $('#pending-total').text(metrics.pendingTotal);
+                $('#pending-inv-total').text(metrics.pendingInvTotal);
                 $('#rows-total').text(visible.length.toLocaleString());
             } catch (error) {
                 console.error('Error in calculateTotals:', error);
@@ -1026,6 +1037,7 @@
             $('#without-link-total').text('0');
             $('#listed-total').text('0');
             $('#pending-total').text('0');
+            $('#pending-inv-total').text('0');
             $('#rows-total').text('0');
         }
 
@@ -1459,16 +1471,18 @@
                 ]
             });
 
-            let missingLFilterActive = false;
+            let missingLFilterActive = '';
             temuListingTable.on('dataProcessed', function () {
                 hideLoader();
-                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__temuMissingApplied) {
+                const missingParam = new URLSearchParams(window.location.search).get('missing');
+                if ((missingParam === '1' || missingParam === 'inv') && !window.__temuMissingApplied) {
                     window.__temuMissingApplied = true;
-                    missingLFilterActive = true;
                     $('#row-data-type').val('sku');
                     $('#inv-filter').val('inv-only');
                     $('#listed-filter').val('Pending');
-                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = missingParam === 'inv' ? 'inv' : 'all';
+                    $('#inv-filter').val(missingLFilterActive === 'inv' ? 'inv-only' : 'all');
+                    $(missingLFilterActive === 'inv' ? '#missing-l-inv-badge' : '#missing-l-badge').addClass('is-active');
                 }
                 applyListingFilters();
             });
@@ -1482,44 +1496,42 @@
 
             $('#row-data-type, #inv-filter, #listed-filter').on('change', applyListingFilters);
 
-            // Missing L badge → filter table to in-stock REQ SKUs that are not listed (toggle)
-            function applyMissingLBadgeFilter(forceOff) {
-                if (forceOff === true) {
-                    missingLFilterActive = false;
-                } else {
-                    missingLFilterActive = !missingLFilterActive;
-                }
-                const $badge = $('#missing-l-badge');
+            // Missing L badge → filter table to in-stock REQ SKUs that are not listed (toggle).
+            //   'all' = Missing L with 0 Inv (every missing SKU), 'inv' = Missing L without 0 Inv (INV above 0 only).
+            function applyMissingLBadgeFilter(mode) {
+                missingLFilterActive = missingLFilterActive === mode ? '' : mode;
+                $('#missing-l-badge, #missing-l-inv-badge').removeClass('is-active');
                 if (missingLFilterActive) {
-                    $('#row-data-type').val('sku'); // Missing L never includes parent rows
-                    $('#inv-filter').val('inv-only');
+                    $('#row-data-type').val('sku');
                     $('#listed-filter').val('Pending');
-                    $badge.addClass('is-active');
+                    $('#inv-filter').val(missingLFilterActive === 'inv' ? 'inv-only' : 'all');
+                    $(missingLFilterActive === 'inv' ? '#missing-l-inv-badge' : '#missing-l-badge').addClass('is-active');
                 } else {
                     $('#listed-filter').val('all');
                     $('#inv-filter').val('all');
-                    $badge.removeClass('is-active');
                 }
                 applyListingFilters();
             }
-            $(document).on('click', '#missing-l-badge', function () {
-                applyMissingLBadgeFilter();
-            });
-            $(document).on('keydown', '#missing-l-badge', function (e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    applyMissingLBadgeFilter();
-                }
+            [['#missing-l-badge', 'all'], ['#missing-l-inv-badge', 'inv']].forEach(function (pair) {
+                $(document).on('click', pair[0], function () {
+                    applyMissingLBadgeFilter(pair[1]);
+                });
+                $(document).on('keydown', pair[0], function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        applyMissingLBadgeFilter(pair[1]);
+                    }
+                });
             });
             $('#listed-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
                 if (!missingLFilterActive) return;
                 const stillMissing =
                     $('#listed-filter').val() === 'Pending' &&
-                    $('#inv-filter').val() === 'inv-only' &&
-                    $('#row-data-type').val() === 'sku';
+                    $('#row-data-type').val() === 'sku' &&
+                    ($('#inv-filter').val() === 'inv-only') === (missingLFilterActive === 'inv');
                 if (!stillMissing) {
-                    missingLFilterActive = false;
-                    $('#missing-l-badge').removeClass('is-active');
+                    missingLFilterActive = '';
+                    $('#missing-l-badge, #missing-l-inv-badge').removeClass('is-active');
                 }
             });
 
