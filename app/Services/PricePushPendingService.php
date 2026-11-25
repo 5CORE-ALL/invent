@@ -355,6 +355,45 @@ class PricePushPendingService
         return [$tried, $ok, true];
     }
 
+    /**
+     * Start `php artisan price-push:express <ids>` as a detached background process (survives the web request, a refresh or a
+     * closed tab). Returns false when it could not be started, so the caller can fall back to working inside the request.
+     */
+    public function spawnExpressWorker(array $rowIds): bool
+    {
+        $rowIds = array_values(array_filter(array_map('intval', $rowIds)));
+        if (! $rowIds || ! function_exists('exec')) {
+            return false;
+        }
+        $php = (string) env('PRICE_PUSH_PHP', '');
+        if ($php === '' || ! is_executable($php)) {
+            $php = '';
+            foreach (['/usr/bin/php8.3', '/usr/bin/php', '/usr/local/bin/php'] as $cand) {
+                if (is_executable($cand)) {
+                    $php = $cand;
+                    break;
+                }
+            }
+        }
+        $artisan = base_path('artisan');
+        if ($php === '' || ! is_file($artisan)) {
+            return false;
+        }
+        $log = storage_path('logs/price-push-worker.log');
+        $setsid = is_executable('/usr/bin/setsid') ? '/usr/bin/setsid ' : '';
+        $cmd = 'cd ' . escapeshellarg(base_path()) . ' && ' . $setsid . 'nohup ' . escapeshellarg($php) . ' ' . escapeshellarg($artisan)
+            . ' price-push:express ' . implode(' ', $rowIds) . ' >> ' . escapeshellarg($log) . ' 2>&1 < /dev/null &';
+        try {
+            @exec($cmd, $out, $code);
+
+            return $code === 0;
+        } catch (\Throwable $e) {
+            Log::warning('Price push: could not start the express worker: ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
     private const ROW_CLAIM_SECONDS = 600;
 
     /** One worker per row: the FIFO worker and the express worker never push the same row twice. */

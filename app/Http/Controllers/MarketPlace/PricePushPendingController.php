@@ -65,6 +65,7 @@ class PricePushPendingController extends Controller
         $user = Auth::user();
         $by = optional($user)->name;
         $jobs = [];
+        $rowIds = [];
         foreach ($items as $it) {
             if (! is_array($it)) {
                 continue;
@@ -88,7 +89,10 @@ class PricePushPendingController extends Controller
             $payload = array_merge($it, ['sku' => $itemSku, 'marketplace' => $mp, 'price' => $price]);
             $channel = (string) ($it['channel'] ?? '');
             // "Queued" rows are what the page polls; they also make the hourly retry take over if this process dies
-            $svc->record($itemSku, $mp, $channel, $price, $extras, false, PricePushPending::QUEUED_PREFIX . ' — pushing in the background', $by);
+            $savedRow = $svc->record($itemSku, $mp, $channel, $price, $extras, false, PricePushPending::QUEUED_PREFIX . ' — pushing in the background', $by);
+            if ($savedRow) {
+                $rowIds[] = (int) $savedRow->id;
+            }
             $jobs[] = ['sku' => $itemSku, 'marketplace' => $mp, 'channel' => $channel, 'price' => $price, 'extras' => $extras, 'payload' => $payload];
         }
         if (! $jobs) {
@@ -101,6 +105,12 @@ class PricePushPendingController extends Controller
         //    first, by exactly one worker — this one, or the one already running, or the per-minute price-push:run-queued if
         //    that one died. Rows are claimed one by one, so nothing is ever pushed twice.
         // Runs after the response was sent, so a refresh / closed tab changes nothing.
+        // The worker is started as a DETACHED background process: this site runs on Apache mod_php, where a request cannot be
+        // released before its work ends — pushing inside the request would hold this response (and the page's progress badge)
+        // until every push was finished. Only if the process cannot be started does the work run inside the request instead.
+        if ($svc->spawnExpressWorker($rowIds)) {
+            return response()->json(['success' => true, 'queued' => count($jobs)]);
+        }
         $express = array_map(fn ($j) => ['sku' => $j['sku'], 'marketplace' => $j['marketplace']], $jobs);
         app()->terminating(function () use ($svc, $express) {
             @ignore_user_abort(true);
