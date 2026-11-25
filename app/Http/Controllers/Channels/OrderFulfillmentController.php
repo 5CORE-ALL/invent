@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\MarketplaceManager\TemuOrderAmountParser;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -507,7 +508,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             report($e);
         }
 
-        $rows = $this->attachOrderAmounts($rows);
+        $rows = $this->fillMissingOrderAmounts($this->attachOrderAmounts($rows));
 
         usort($rows, static function (array $a, array $b): int {
             $ak = (string) ($a['order_date'] ?? '');
@@ -1556,6 +1557,174 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         unset($row);
 
         return $rows;
+    }
+
+    /** Same marketplace + order id = one order (one Order Amt). */
+    protected function orderAmtKey(array $row): string
+    {
+        $order = trim((string) ($row['order_id'] ?? ''));
+
+        return $order === '' ? '' : strtolower((string) ($row['mm_slug'] ?? '')).'|'.$order;
+    }
+
+    /**
+     * Second pass for Order Amt, only for what the light query could not price:
+     *
+     *  1. Temu / Temu 2: the amount Seller Center shows (parent estimated revenue = goods + shipping)
+     *     from the stored amount JSON, one row per parent order.
+     *  2. Any order that still has no amount: reload just those orders and use the full fallback
+     *     chain of the heavy fulfillment page (stored JSON payloads, unit price x quantity, ...).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function fillMissingOrderAmounts(array $rows): array
+    {
+        try {
+            $revenue = $this->temuParentRevenues($rows);
+            foreach ($rows as &$row) {
+                if (empty($row['manual']) && ($key = $this->orderAmtKey($row)) !== '' && isset($revenue[$key])) {
+                    $row['order_amt'] = $revenue[$key];
+                }
+            }
+            unset($row);
+
+            $missing = [];
+            foreach ($rows as $row) {
+                if (! empty($row['manual']) || ($row['order_amt'] ?? null) !== null) {
+                    continue;
+                }
+                $key = $this->orderAmtKey($row);
+                $sourceId = (int) ($row['source_id'] ?? 0);
+                if ($key === '' || $sourceId <= 0) {
+                    continue;
+                }
+                $missing[(string) ($row['mm_slug'] ?? '')][$sourceId] = $key;
+            }
+            if ($missing === []) {
+                return $rows;
+            }
+
+            $resolved = $this->resolveOrderAmountsFromFullOrders($missing);
+            foreach ($rows as &$row) {
+                if (! empty($row['manual']) || ($row['order_amt'] ?? null) !== null) {
+                    continue;
+                }
+                $key = $this->orderAmtKey($row);
+                if ($key !== '' && isset($resolved[$key])) {
+                    $row['order_amt'] = $resolved[$key];
+                }
+            }
+            unset($row);
+        } catch (\Throwable $e) {
+            // Order Amt is informational: never break the fulfillment list because of it.
+            \Illuminate\Support\Facades\Log::warning('Order Amt second pass failed: '.$e->getMessage());
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Temu / Temu 2 parent order revenue (Seller Center "Estimated revenue") per order key.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, float>
+     */
+    protected function temuParentRevenues(array $rows): array
+    {
+        $idsBySlug = [];
+        foreach ($rows as $row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            if (! empty($row['manual']) || ! in_array($slug, ['temu', 'temu2'], true)) {
+                continue;
+            }
+            $key = $this->orderAmtKey($row);
+            $sourceId = (int) ($row['source_id'] ?? 0);
+            if ($key !== '' && $sourceId > 0 && ! isset($idsBySlug[$slug][$key])) {
+                $idsBySlug[$slug][$key] = $sourceId;
+            }
+        }
+
+        $out = [];
+        foreach ($idsBySlug as $slug => $byKey) {
+            $query = $this->allOrdersQuery($slug);
+            if ($query === null || ! Schema::hasColumn($query->getModel()->getTable(), 'amount_raw_json')) {
+                continue;
+            }
+            $keyById = array_flip($byKey);
+            foreach (array_chunk(array_values($byKey), 150) as $ids) {
+                $found = $this->allOrdersQuery($slug)
+                    ->whereIn('id', $ids)
+                    ->whereNotNull('amount_raw_json')
+                    ->get(['id', 'amount_raw_json']);
+                foreach ($found as $order) {
+                    $decoded = TemuOrderAmountParser::decodePayload($order->amount_raw_json ?? null);
+                    if ($decoded === null) {
+                        continue;
+                    }
+                    $decoded = TemuOrderAmountParser::unwrapResult($decoded);
+                    $amount = TemuOrderAmountParser::pickMoney(
+                        is_array($decoded['parentOrderMap'] ?? null) ? $decoded['parentOrderMap'] : [],
+                        ['estimatedRevenue']
+                    );
+                    if ($amount === null) {
+                        $sum = 0.0;
+                        foreach ($decoded['orderList'] ?? [] as $entry) {
+                            if (is_array($entry)) {
+                                $sum += (float) (TemuOrderAmountParser::pickMoney($entry, ['basePrice', 'basePriceTotal', 'goodsAmount']) ?? 0)
+                                    + (float) (TemuOrderAmountParser::pickMoney($entry, ['shipAmountTotal', 'shippingAmountTotal', 'shipAmount']) ?? 0);
+                            }
+                        }
+                        $amount = $sum > 0 ? round($sum, 2) : null;
+                    }
+                    $key = $keyById[(int) $order->id] ?? null;
+                    if ($amount !== null && $key !== null) {
+                        $out[$key] = $amount;
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Price orders the light query left blank by reloading them in full and running the heavy
+     * page's amount fallback chain.
+     *
+     * @param  array<string, array<int, string>>  $missing  slug => [source id => order key]
+     * @return array<string, float> order key => amount
+     */
+    protected function resolveOrderAmountsFromFullOrders(array $missing): array
+    {
+        $perRow = [];
+        $budget = 2500;
+        foreach ($missing as $slug => $keyById) {
+            if ($budget <= 0 || $this->allOrdersQuery((string) $slug) === null) {
+                continue;
+            }
+            $ids = array_slice(array_keys($keyById), 0, $budget);
+            $budget -= count($ids);
+            foreach (array_chunk($ids, 150) as $chunk) {
+                foreach ($this->allOrdersQuery((string) $slug)->whereIn('id', $chunk)->get() as $order) {
+                    $amount = $this->resolveNormalizedAmount((string) $slug, $order, null);
+                    $key = $keyById[(int) $order->id] ?? null;
+                    if ($amount !== null && $amount > 0 && $key !== null) {
+                        $perRow[$key][(int) $order->id] = $amount;
+                    }
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($perRow as $key => $amounts) {
+            // These channels store the whole order total on every line: do not add the lines up.
+            $slug = explode('|', $key, 2)[0];
+            $wholeOrderPerLine = in_array($slug, ['amazon', 'tiktok', 'tiktok2', 'temu', 'temu2'], true);
+            $out[$key] = round($wholeOrderPerLine ? max($amounts) : array_sum($amounts), 2);
+        }
+
+        return $out;
     }
 
     /**

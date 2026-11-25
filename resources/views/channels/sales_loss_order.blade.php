@@ -516,6 +516,116 @@
         @media (max-width: 576px) {
             .slo-cs-grid { grid-template-columns: 1fr 1fr; }
         }
+
+        /* ---------- Loss summary badges + modal (lossx) ---------- */
+        .lossx-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .lossx-card {
+            --g1: #7c3aed; --g2: #ec4899;
+            position: relative;
+            overflow: hidden;
+            text-align: left;
+            border: 0;
+            border-radius: 20px;
+            padding: 14px 16px 12px;
+            color: #fff;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+            box-shadow: 0 10px 24px -10px var(--g1);
+            transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        }
+        .lossx-card::after {
+            content: '';
+            position: absolute; right: -30px; top: -30px;
+            width: 110px; height: 110px; border-radius: 50%;
+            background: rgba(255,255,255,.16);
+            filter: blur(2px);
+        }
+        .lossx-card:hover { transform: translateY(-3px) scale(1.01); box-shadow: 0 16px 30px -10px var(--g1); filter: saturate(1.15); }
+        .lossx-card:active { transform: scale(.98); }
+        .lossx-card:focus-visible { outline: 3px solid rgba(255,255,255,.8); outline-offset: 2px; }
+        .lossx-card[data-p="l30"] { --g1: #7c3aed; --g2: #ec4899; }
+        .lossx-card[data-p="l7"] { --g1: #f97316; --g2: #e11d48; }
+        .lossx-card[data-p="yesterday"] { --g1: #0ea5e9; --g2: #6366f1; }
+        .lossx-card[data-p="today"] { --g1: #10b981; --g2: #0ea5e9; }
+        .lossx-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+            padding: 3px 10px; border-radius: 999px;
+            background: rgba(255,255,255,.22); backdrop-filter: blur(6px);
+        }
+        .lossx-big { font-size: 2.1rem; font-weight: 800; line-height: 1.05; margin: 8px 0 2px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+        .lossx-big small { font-size: .8rem; font-weight: 700; opacity: .85; margin-left: 4px; letter-spacing: 0; }
+        .lossx-sub { font-size: .76rem; opacity: .92; }
+        .lossx-bar { height: 6px; border-radius: 99px; background: rgba(255,255,255,.25); margin: 10px 0 8px; overflow: hidden; }
+        .lossx-bar > i { display: block; height: 100%; width: 0; border-radius: 99px; background: #fff; transition: width .7s cubic-bezier(.2,.8,.2,1); }
+        .lossx-chip { display: inline-block; font-size: .74rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: rgba(0,0,0,.22); }
+        .lossx-card.is-loading .lossx-big, .lossx-card.is-loading .lossx-sub, .lossx-card.is-loading .lossx-chip {
+            color: transparent; background: linear-gradient(90deg, rgba(255,255,255,.12), rgba(255,255,255,.32), rgba(255,255,255,.12));
+            background-size: 200% 100%; animation: lossx-shimmer 1.2s infinite; border-radius: 8px;
+        }
+        .lossx-card.is-loading .lossx-big { width: 70px; }
+        @keyframes lossx-shimmer { to { background-position: -200% 0; } }
+        @media (max-width: 992px) { .lossx-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+        .lossx-modal .modal-content {
+            --g1: #7c3aed; --g2: #ec4899;
+            background: #0d0e1c; color: #e9eaff; border: 1px solid rgba(255,255,255,.08);
+            border-radius: 28px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.5);
+        }
+        .lossx-head {
+            position: relative; padding: 22px 24px 18px; color: #fff;
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+        }
+        .lossx-head::after { content: ''; position: absolute; right: -50px; top: -60px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,.14); }
+        .lossx-head h5 { margin: 6px 0 2px; font-weight: 800; font-size: 1.35rem; letter-spacing: -.01em; position: relative; z-index: 1; }
+        .lossx-head .lossx-sub { position: relative; z-index: 1; }
+        .lossx-head .btn-close { position: absolute; right: 18px; top: 18px; z-index: 2; filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+        .lossx-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; position: relative; z-index: 1; }
+        .lossx-stat { background: rgba(255,255,255,.18); backdrop-filter: blur(8px); border-radius: 16px; padding: 8px 14px; min-width: 110px; }
+        .lossx-stat b { display: block; font-size: 1.25rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+        .lossx-stat span { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; opacity: .85; }
+        .lossx-body { padding: 16px 20px 20px; max-height: 62vh; overflow-y: auto; }
+        .lossx-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+        .lossx-search {
+            flex: 1 1 200px; border-radius: 99px; border: 1px solid rgba(255,255,255,.12);
+            background: rgba(255,255,255,.06); color: #fff; padding: 8px 16px; font-size: .86rem; outline: none;
+        }
+        .lossx-search::placeholder { color: rgba(255,255,255,.45); }
+        .lossx-search:focus { border-color: var(--g2); box-shadow: 0 0 0 3px rgba(236,72,153,.25); }
+        .lossx-sort { border: 1px solid rgba(255,255,255,.14); background: transparent; color: #cfd1ff; border-radius: 99px; padding: 6px 13px; font-size: .78rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+        .lossx-sort:hover { background: rgba(255,255,255,.08); }
+        .lossx-sort.is-on { background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; border-color: transparent; }
+        .lossx-item { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); border-radius: 18px; margin-bottom: 10px; overflow: hidden; transition: border-color .15s, transform .15s; }
+        .lossx-item:hover { border-color: rgba(255,255,255,.2); }
+        .lossx-row { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; cursor: pointer; }
+        .lossx-rank { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; font-size: .9rem; }
+        .lossx-sku { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: .92rem; color: #fff; }
+        .lossx-title { font-size: .76rem; color: rgba(233,234,255,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        .lossx-tags { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+        .lossx-tag { font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(255,255,255,.09); color: #d7d9ff; }
+        .lossx-nums { display: flex; gap: 8px; align-items: center; }
+        .lossx-num { text-align: center; min-width: 58px; padding: 6px 10px; border-radius: 14px; background: rgba(255,255,255,.06); }
+        .lossx-num b { display: block; font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .lossx-num span { font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; color: rgba(233,234,255,.55); }
+        .lossx-num.is-loss b { color: #ff7a93; }
+        .lossx-chev { transition: transform .2s; opacity: .6; }
+        .lossx-item.is-open .lossx-chev { transform: rotate(180deg); }
+        .lossx-orders { display: none; padding: 0 14px 12px; }
+        .lossx-item.is-open .lossx-orders { display: block; }
+        .lossx-orders table { width: 100%; font-size: .76rem; border-collapse: separate; border-spacing: 0 4px; }
+        .lossx-orders th { color: rgba(233,234,255,.5); font-weight: 700; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; padding: 0 8px; }
+        .lossx-orders td { background: rgba(255,255,255,.05); padding: 6px 8px; color: #e9eaff; }
+        .lossx-orders td:first-child { border-radius: 10px 0 0 10px; }
+        .lossx-orders td:last-child { border-radius: 0 10px 10px 0; }
+        .lossx-neg { color: #ff7a93; font-weight: 800; }
+        .lossx-empty { text-align: center; padding: 40px 10px; color: rgba(233,234,255,.6); }
+        .lossx-empty big { display: block; font-size: 2.4rem; margin-bottom: 6px; }
+        @media (max-width: 640px) { .lossx-row { grid-template-columns: 34px minmax(0,1fr); } .lossx-nums { grid-column: 1 / -1; justify-content: flex-start; } }
     </style>
 @endsection
 
@@ -529,6 +639,17 @@
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body py-2">
+                    <div class="lossx-strip" id="lossx-strip" aria-label="Orders selling at a loss">
+                        @foreach(['l30' => 'L30', 'l7' => 'L7', 'yesterday' => 'Yesterday', 'today' => 'Today'] as $lossKey => $lossLabel)
+                            <button type="button" class="lossx-card is-loading" data-p="{{ $lossKey }}" title="Click to see which products sell at a loss">
+                                <span class="lossx-pill"><i class="fas fa-fire" aria-hidden="true"></i> {{ $lossLabel }}</span>
+                                <div class="lossx-big"><span data-f="loss_orders">0</span><small>loss orders</small></div>
+                                <div class="lossx-sub" data-f="sub">&nbsp;</div>
+                                <div class="lossx-bar"><i data-f="bar"></i></div>
+                                <span class="lossx-chip" data-f="amount">&nbsp;</span>
+                            </button>
+                        @endforeach
+                    </div>
                     <div id="slo-toolbar" class="mb-2">
                         <div id="slo-toolbar-row1" role="group" aria-label="Summary metrics">
                             <span class="badge slo-summary-badge" style="background:#f8d7da; color:#842029; border:1px solid #f5c2c7;" title="All marketplace orders">
@@ -557,7 +678,16 @@
                                 <input type="date" id="slo-date-to" class="form-control form-control-sm" style="width:140px;" title="To date" value="{{ $sloDateTo ?? '' }}">
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="slo-apply-dates" title="Apply date filter">Apply</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="slo-clear-dates" title="Reset to last 30 days">Last 30 days</button>
+                            <div class="slo-filter-field">
+                                <label class="visually-hidden" for="slo-date-preset">Date range</label>
+                                <select id="slo-date-preset" class="form-select form-select-sm" style="width:120px;" title="Quick date range (EDT)">
+                                    <option value="l30" selected>L30</option>
+                                    <option value="l7">L7</option>
+                                    <option value="yesterday">Last Day</option>
+                                    <option value="today">Today</option>
+                                    <option value="custom" hidden>Custom</option>
+                                </select>
+                            </div>
                             <div class="slo-filter-field">
                                 <label class="visually-hidden" for="slo-channel-filter">Channels</label>
                                 <div class="input-group input-group-sm" style="width:150px;">
@@ -594,6 +724,34 @@
                     </div>
                     <p class="small text-muted mb-2">All marketplace orders — every status. Defaults to the last 30 days.</p>
                     <div id="sales-loss-order-table" style="height: calc(100vh - 320px);"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade lossx-modal" id="lossxModal" tabindex="-1" aria-labelledby="lossxTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+            <div class="modal-content" id="lossxContent">
+                <div class="lossx-head">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <span class="lossx-pill"><i class="fas fa-fire" aria-hidden="true"></i> <span id="lossxPeriod">L30</span></span>
+                    <h5 id="lossxTitle">Products selling at a loss</h5>
+                    <div class="lossx-sub" id="lossxRange"></div>
+                    <div class="lossx-stats">
+                        <div class="lossx-stat"><b id="lossxStatOrders">0</b><span>Loss orders</span></div>
+                        <div class="lossx-stat"><b id="lossxStatSkus">0</b><span>Products</span></div>
+                        <div class="lossx-stat"><b id="lossxStatLoss">$0</b><span>Est. loss</span></div>
+                        <div class="lossx-stat"><b id="lossxStatRate">0%</b><span>Of all orders</span></div>
+                    </div>
+                </div>
+                <div class="lossx-body">
+                    <div class="lossx-tools">
+                        <input type="search" class="lossx-search" id="lossxSearch" placeholder="Search SKU, product or channel…" autocomplete="off">
+                        <button type="button" class="lossx-sort is-on" data-sort="orders">Most orders</button>
+                        <button type="button" class="lossx-sort" data-sort="loss">Biggest loss</button>
+                        <button type="button" class="lossx-sort" data-sort="pct">Worst %</button>
+                    </div>
+                    <div id="lossxList"></div>
                 </div>
             </div>
         </div>
@@ -1502,18 +1660,221 @@
         sloUpdateDateHint();
         table.setData();
     });
-    document.getElementById('slo-clear-dates')?.addEventListener('click', function () {
+    // Quick range dropdown: dates are Eastern calendar days, like the server.
+    function sloEasternDate(offsetDays) {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: SLO_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(new Date()).reduce(function (acc, p) { acc[p.type] = p.value; return acc; }, {});
+        const d = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+        d.setUTCDate(d.getUTCDate() + offsetDays);
+        return d.toISOString().slice(0, 10);
+    }
+    function sloPresetRange(preset) {
+        switch (preset) {
+            case 'l7': return [sloEasternDate(-7), sloEasternDate(0)];
+            case 'yesterday': return [sloEasternDate(-1), sloEasternDate(-1)];
+            case 'today': return [sloEasternDate(0), sloEasternDate(0)];
+            default: return [@json($sloDateFrom ?? ''), @json($sloDateTo ?? '')];
+        }
+    }
+    const sloPresetEl = document.getElementById('slo-date-preset');
+    sloPresetEl?.addEventListener('change', function () {
+        if (sloPresetEl.value === 'custom') return;
+        const range = sloPresetRange(sloPresetEl.value);
         const fromEl = document.getElementById('slo-date-from');
         const toEl = document.getElementById('slo-date-to');
-        if (fromEl) fromEl.value = @json($sloDateFrom ?? '');
-        if (toEl) toEl.value = @json($sloDateTo ?? '');
+        if (fromEl) fromEl.value = range[0];
+        if (toEl) toEl.value = range[1];
         sloUpdateDateHint();
         table.setData();
     });
     ['slo-date-from', 'slo-date-to'].forEach(function (id) {
-        document.getElementById(id)?.addEventListener('change', sloUpdateDateHint);
+        document.getElementById(id)?.addEventListener('change', function () {
+            if (sloPresetEl) sloPresetEl.value = 'custom';
+            sloUpdateDateHint();
+        });
     });
     sloUpdateDateHint();
+})();
+</script>
+<script>
+(function () {
+    const SUMMARY_URL = @json(route('sales.loss.order.summary'));
+    const KEYS = ['l30', 'l7', 'yesterday', 'today'];
+    let data = null;
+    let current = 'l30';
+    let sortBy = 'orders';
+    let query = '';
+
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const num = (n) => Number(n || 0).toLocaleString();
+    const money = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pct = (n) => (n === null || n === undefined || isNaN(Number(n))) ? '—' : Number(n).toFixed(1) + '%';
+
+    function countUp(el, to) {
+        const start = performance.now();
+        const dur = 650;
+        (function step(now) {
+            const t = Math.min(1, (now - start) / dur);
+            el.textContent = num(Math.round(to * (1 - Math.pow(1 - t, 3))));
+            if (t < 1) requestAnimationFrame(step);
+        })(start);
+    }
+
+    function paintCards() {
+        KEYS.forEach(function (k) {
+            const card = document.querySelector('.lossx-card[data-p="' + k + '"]');
+            const p = data && data.periods ? data.periods[k] : null;
+            if (!card || !p) return;
+            card.classList.remove('is-loading');
+            countUp(card.querySelector('[data-f="loss_orders"]'), p.loss_orders);
+            const rate = p.orders > 0 ? (p.loss_orders / p.orders) * 100 : 0;
+            card.querySelector('[data-f="sub"]').textContent = p.orders > 0
+                ? num(p.loss_orders) + ' of ' + num(p.orders) + ' orders (' + rate.toFixed(1) + '%) · ' + num(p.skus) + ' products'
+                : 'No orders in this period';
+            card.querySelector('[data-f="bar"]').style.width = Math.min(100, rate) + '%';
+            card.querySelector('[data-f="amount"]').textContent = p.loss_amount < 0 ? 'Est. ' + money(p.loss_amount) : 'No loss amount';
+        });
+    }
+
+    function load(refresh) {
+        document.querySelectorAll('.lossx-card').forEach(function (c) { c.classList.add('is-loading'); });
+        fetch(SUMMARY_URL + (refresh ? '?refresh=1' : ''), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (!json || !json.success) throw new Error((json && json.message) || 'failed');
+                data = json;
+                paintCards();
+            })
+            .catch(function () {
+                document.querySelectorAll('.lossx-card').forEach(function (c) {
+                    c.classList.remove('is-loading');
+                    c.querySelector('[data-f="sub"]').textContent = 'Could not load. Tap to retry.';
+                    c.querySelector('[data-f="amount"]').textContent = '';
+                });
+            });
+    }
+
+    function periodGroups(key) {
+        const p = data.periods[key];
+        const groups = new Map();
+        data.rows.forEach(function (r) {
+            const d = String(r.date || '').slice(0, 10);
+            if (d < p.from || d > p.to) return;
+            const gk = (r.sku || r.title || '(no sku)').trim() || '(no sku)';
+            let g = groups.get(gk);
+            if (!g) {
+                g = { sku: r.sku || '(no sku)', title: r.title || '', orderKeys: new Set(), qty: 0, loss: 0, worst: null, channels: {}, orders: [] };
+                groups.set(gk, g);
+            }
+            if (!g.title && r.title) g.title = r.title;
+            g.orderKeys.add(r.channel + '|' + r.order_id);
+            g.qty += Number(r.qty || 0);
+            g.loss += Number(r.loss || 0);
+            if (r.pct !== null && (g.worst === null || r.pct < g.worst)) g.worst = r.pct;
+            g.channels[r.channel] = (g.channels[r.channel] || 0) + 1;
+            g.orders.push(r);
+        });
+        return Array.from(groups.values());
+    }
+
+    function renderModal() {
+        const p = data.periods[current];
+        const content = document.getElementById('lossxContent');
+        const gradients = { l30: ['#7c3aed', '#ec4899'], l7: ['#f97316', '#e11d48'], yesterday: ['#0ea5e9', '#6366f1'], today: ['#10b981', '#0ea5e9'] };
+        content.style.setProperty('--g1', gradients[current][0]);
+        content.style.setProperty('--g2', gradients[current][1]);
+        document.getElementById('lossxPeriod').textContent = p.label;
+        document.getElementById('lossxRange').textContent = (p.from === p.to ? p.from : p.from + ' → ' + p.to) + ' · EDT · net profit below 0% (gross when net is missing) · cancelled orders excluded';
+        document.getElementById('lossxStatOrders').textContent = num(p.loss_orders);
+        document.getElementById('lossxStatSkus').textContent = num(p.skus);
+        document.getElementById('lossxStatLoss').textContent = money(p.loss_amount);
+        document.getElementById('lossxStatRate').textContent = (p.orders > 0 ? (p.loss_orders / p.orders) * 100 : 0).toFixed(1) + '%';
+
+        let groups = periodGroups(current);
+        const q = query.trim().toLowerCase();
+        if (q) {
+            groups = groups.filter(function (g) {
+                return g.sku.toLowerCase().includes(q) || g.title.toLowerCase().includes(q)
+                    || Object.keys(g.channels).some(function (c) { return c.toLowerCase().includes(q); });
+            });
+        }
+        groups.sort(function (a, b) {
+            if (sortBy === 'loss') return a.loss - b.loss;
+            if (sortBy === 'pct') return (a.worst === null ? 1e9 : a.worst) - (b.worst === null ? 1e9 : b.worst);
+            return b.orderKeys.size - a.orderKeys.size || a.loss - b.loss;
+        });
+
+        const list = document.getElementById('lossxList');
+        if (!groups.length) {
+            list.innerHTML = '<div class="lossx-empty"><i class="fas fa-circle-check fa-2x mb-2" aria-hidden="true"></i><div><b>' +
+                (q ? 'No products match that search.' : 'No orders sold at a loss in this period.') + '</b></div></div>';
+            return;
+        }
+
+        list.innerHTML = groups.map(function (g, i) {
+            const channels = Object.keys(g.channels).sort().map(function (c) {
+                return '<span class="lossx-tag">' + esc(c) + ' · ' + g.channels[c] + '</span>';
+            }).join('');
+            const orders = g.orders.slice().sort(function (a, b) { return (a.pct ?? 0) - (b.pct ?? 0); }).slice(0, 60).map(function (o) {
+                return '<tr><td>' + esc(o.channel) + '</td><td>' + esc(o.order_id) + '</td><td>' + esc(o.date) + '</td><td>' + esc(o.qty) +
+                    '</td><td>' + (o.amount === null ? '—' : money(o.amount)) + '</td><td class="lossx-neg">' + pct(o.pct) +
+                    '</td><td class="lossx-neg">' + (o.loss ? money(o.loss) : '—') + '</td></tr>';
+            }).join('');
+            const more = g.orders.length > 60 ? '<div class="lossx-title mt-1">Showing the 60 worst of ' + g.orders.length + ' lines.</div>' : '';
+            return '<div class="lossx-item" data-i="' + i + '">' +
+                '<div class="lossx-row" role="button" tabindex="0">' +
+                    '<div class="lossx-rank">' + (i + 1) + '</div>' +
+                    '<div style="min-width:0"><div class="lossx-sku">' + esc(g.sku) + '</div>' +
+                        (g.title ? '<div class="lossx-title" title="' + esc(g.title) + '">' + esc(g.title) + '</div>' : '') +
+                        '<div class="lossx-tags">' + channels + '</div></div>' +
+                    '<div class="lossx-nums">' +
+                        '<div class="lossx-num"><b>' + num(g.orderKeys.size) + '</b><span>Orders</span></div>' +
+                        '<div class="lossx-num"><b>' + num(g.qty) + '</b><span>Units</span></div>' +
+                        '<div class="lossx-num is-loss"><b>' + pct(g.worst) + '</b><span>Worst</span></div>' +
+                        '<div class="lossx-num is-loss"><b>' + (g.loss ? money(g.loss) : '—') + '</b><span>Est. loss</span></div>' +
+                        '<i class="fas fa-chevron-down lossx-chev" aria-hidden="true"></i>' +
+                    '</div></div>' +
+                '<div class="lossx-orders"><table><thead><tr><th>Channel</th><th>Order</th><th>Date</th><th>Qty</th><th>Amount</th><th>Profit %</th><th>Est. loss</th></tr></thead><tbody>' +
+                    orders + '</tbody></table>' + more + '</div></div>';
+        }).join('');
+    }
+
+    function openModal(key) {
+        if (!data) { load(false); return; }
+        current = key;
+        query = '';
+        document.getElementById('lossxSearch').value = '';
+        renderModal();
+        const el = document.getElementById('lossxModal');
+        if (window.bootstrap && bootstrap.Modal) {
+            bootstrap.Modal.getOrCreateInstance(el).show();
+        } else if (window.jQuery) {
+            window.jQuery(el).modal('show');
+        }
+    }
+
+    document.getElementById('lossx-strip')?.addEventListener('click', function (e) {
+        const card = e.target.closest('.lossx-card');
+        if (card) openModal(card.dataset.p);
+    });
+    document.getElementById('lossxSearch')?.addEventListener('input', function (e) {
+        query = e.target.value || '';
+        renderModal();
+    });
+    document.querySelectorAll('.lossx-sort').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            sortBy = btn.dataset.sort;
+            document.querySelectorAll('.lossx-sort').forEach(function (b) { b.classList.toggle('is-on', b === btn); });
+            renderModal();
+        });
+    });
+    document.getElementById('lossxList')?.addEventListener('click', function (e) {
+        const row = e.target.closest('.lossx-row');
+        if (row) row.parentElement.classList.toggle('is-open');
+    });
+
+    load(false);
 })();
 </script>
 @endsection

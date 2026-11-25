@@ -679,6 +679,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
     Route::get('/sales-loss-order', [SalesLossOrderController::class, 'index'])->name('sales.loss.order');
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
+    Route::get('/sales-loss-order/loss-summary', [SalesLossOrderController::class, 'lossSummary'])->name('sales.loss.order.summary');
     Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
     Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
     Route::get('/veeqo-billing', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'index'])->name('veeqo.billing');
@@ -8296,7 +8297,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/summary', [\App\Http\Controllers\TaskController::class, 'taskSummary'])->name('tasks.summary');
     Route::get('/tasks/score-history', [\App\Http\Controllers\TaskController::class, 'scoreHistory'])->name('tasks.scoreHistory');
+    Route::get('/tasks/overdue-history', [\App\Http\Controllers\TaskController::class, 'overdueHistory'])->name('tasks.overdueHistory');
     Route::get('/tasks/summary-stats', [\App\Http\Controllers\TaskController::class, 'taskSummaryStats'])->name('tasks.summaryStats');
+    // Chat Rules (directors only; the controller checks) — bot messages on conditions from the Task Summary columns.
+    Route::get('/chat-rules', [\App\Http\Controllers\ChatRuleController::class, 'index'])->name('chat.rules.index');
+    Route::post('/chat-rules', [\App\Http\Controllers\ChatRuleController::class, 'store'])->name('chat.rules.store');
+    Route::post('/chat-rules/preview', [\App\Http\Controllers\ChatRuleController::class, 'preview'])->name('chat.rules.preview');
+    Route::post('/chat-rules/{id}/toggle', [\App\Http\Controllers\ChatRuleController::class, 'toggle'])->whereNumber('id')->name('chat.rules.toggle');
+    Route::post('/chat-rules/{id}/run', [\App\Http\Controllers\ChatRuleController::class, 'run'])->whereNumber('id')->name('chat.rules.run');
+    Route::delete('/chat-rules/{id}', [\App\Http\Controllers\ChatRuleController::class, 'destroy'])->whereNumber('id')->name('chat.rules.destroy');
     Route::get('/tasks/yesterday-done', [\App\Http\Controllers\TaskController::class, 'yesterdayDone'])->name('tasks.yesterdayDone');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
     Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');

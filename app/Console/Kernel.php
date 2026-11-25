@@ -2275,6 +2275,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Chat Rules set on /tasks/summary: each rule fires once a day inside its send-time window.
+        $schedule->command('chat:run-rules')
+            ->everyTenMinutes()
+            ->timezone(\App\Support\TaskBusinessTime::tz())
+            ->name('chat-run-rules')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('chat:daily-nudges')
             ->dailyAt('10:00')
             ->timezone(\App\Support\TaskBusinessTime::tz())
@@ -2298,6 +2307,15 @@ class Kernel extends ConsoleKernel
             ->timezone($taskTz)
             ->name('purge-archived-tasks')
             ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // O-Due history graph on /tasks/summary: one value per member per day, refreshed every hour.
+        $schedule->command('tasks:snapshot-overdue')
+            ->hourlyAt(7)
+            ->timezone($taskTz)
+            ->name('snapshot-task-overdue-history')
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log);
 

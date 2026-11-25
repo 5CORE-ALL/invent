@@ -96,6 +96,27 @@
     #salaryFabModal .sal-card-sub { font-size: .74rem; color: #8b8aa8; }
     #salaryFabModal .sal-card.future .sal-card-sub { color: rgba(255,255,255,.82); }
 
+    /* performance tiles: DAR % + overdue */
+    #salaryFabModal .sal-perf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    #salaryFabModal .sal-tile { background: #fff; border-radius: 20px; padding: 14px 16px; box-shadow: 0 6px 20px rgba(30, 27, 75, .07); display: flex; align-items: center; gap: 14px; }
+    #salaryFabModal .sal-ring { --p: 0; --c: #ef4444; flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
+        background: conic-gradient(var(--c) calc(var(--p) * 1%), #ede9fe 0); position: relative; }
+    #salaryFabModal .sal-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #fff; }
+    #salaryFabModal .sal-ring span { position: relative; font-weight: 900; font-size: .9rem; color: #1e1b4b; }
+    #salaryFabModal .sal-ring.high { --c: #10b981; } #salaryFabModal .sal-ring.mid { --c: #f59e0b; } #salaryFabModal .sal-ring.low { --c: #ef4444; }
+    #salaryFabModal .sal-badge-num { flex: none; width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; font-size: 1.7rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    #salaryFabModal .sal-badge-num.zero { background: #d1fae5; color: #047857; }
+    #salaryFabModal .sal-badge-num.some { background: #fef3c7; color: #b45309; }
+    #salaryFabModal .sal-badge-num.many { background: #fee2e2; color: #b91c1c; }
+    #salaryFabModal .sal-tile-label { font-size: .68rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #8b8aa8; }
+    #salaryFabModal .sal-tile-main { font-size: 1.05rem; font-weight: 900; color: #1e1b4b; line-height: 1.2; }
+    #salaryFabModal .sal-tile-sub { font-size: .74rem; color: #8b8aa8; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-tile { background: #1f1c3d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-ring::before { background: #1f1c3d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-ring span,
+    html[data-bs-theme="dark"] #salaryFabModal .sal-tile-main { color: #f1efff; }
+    @media (max-width: 420px) { #salaryFabModal .sal-perf { grid-template-columns: 1fr; } }
+
     #salaryFabModal .sal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     #salaryFabModal .sal-chip { font-size: .76rem; font-weight: 800; padding: 6px 12px; border-radius: 999px; background: #fff; color: #4c1d95; box-shadow: 0 3px 10px rgba(30, 27, 75, .06); }
     #salaryFabModal .sal-chip.hot { background: #fff1f7; color: #be185d; }
@@ -212,6 +233,7 @@
                 </div>
 
                 <div class="sal-cards" id="salCards"></div>
+                <div class="sal-perf" id="salPerf"></div>
                 <div class="sal-chips" id="salChips"></div>
 
                 {{-- president@5core.com only --}}
@@ -384,6 +406,27 @@
                 + '<div class="sal-card-sub">Not approved yet' + (m.next_month_label ? ' for ' + esc(m.next_month_label) : '') + '. Keep performing 💪</div></div>';
         }
 
+        // Performance tiles: own DAR % (last 30 days) and overdue task count.
+        function renderPerf(p) {
+            var box = $('salPerf');
+            if (!p) { box.innerHTML = ''; return; }
+            var pct = Math.max(0, Math.min(100, Number(p.dar_pct) || 0));
+            var band = ['high', 'mid', 'low'].indexOf(p.dar_band) >= 0 ? p.dar_band : 'low';
+            var od = Number(p.overdue) || 0;
+            var odCls = od === 0 ? 'zero' : (od < 5 ? 'some' : 'many');
+            var odMsg = od === 0 ? 'All clear, nice 🎉' : (od < 5 ? 'Close them to stay on track' : 'Clear these to protect your raise');
+            var darMsg = pct > 90 ? 'Crushing it 🔥' : (pct >= 80 ? 'Almost there' : 'File daily to level up');
+            box.innerHTML =
+                '<div class="sal-tile"><div class="sal-ring ' + band + '" style="--p:' + pct + '"><span>' + Math.round(Number(p.dar_pct) || 0) + '%</span></div>'
+                + '<div><div class="sal-tile-label">DAR · last 30 days</div>'
+                + '<div class="sal-tile-main">' + esc(p.dar_count) + ' / ' + esc(p.dar_target) + ' days</div>'
+                + '<div class="sal-tile-sub">' + darMsg + '</div></div></div>'
+                + '<div class="sal-tile"><div class="sal-badge-num ' + odCls + '">' + od + '</div>'
+                + '<div><div class="sal-tile-label">Overdue tasks</div>'
+                + '<div class="sal-tile-main">' + (od === 1 ? '1 task' : od + ' tasks') + '</div>'
+                + '<div class="sal-tile-sub">' + odMsg + '</div></div></div>';
+        }
+
         function renderMine() {
             var m = state.me, box = $('salCards'), chips = $('salChips');
             if (!m) return;
@@ -406,6 +449,8 @@
                 + '<div class="sal-card-value">' + esc(money(m.future_salary, cur)) + '</div>'
                 + '<div class="sal-card-sub">' + futureSub + '</div></div>'
                 + nextIncrCard(m);
+
+            renderPerf(m.performance);
 
             var c = '<span class="sal-chip">📈 +' + esc(money(state.stepMin, cur)) + ' to ' + esc(money(state.stepMax, cur)) + ' / month on performance</span>';
             if (m.gap !== null && m.gap > 0) {
@@ -476,7 +521,7 @@
                 if (!res.ok || !res.data || !res.data.success) { showError(firstError(res.data)); return; }
                 var emp = res.data.employee;
                 state.employees = state.employees.map(function (e) { return e.user_id === emp.user_id ? emp : e; });
-                if (state.me && state.me.user_id === emp.user_id) { state.me = emp; renderMine(); renderProgress(); }
+                if (state.me && state.me.user_id === emp.user_id) { emp.performance = state.me.performance; state.me = emp; renderMine(); renderProgress(); }
                 // refresh this row's progress bar without losing what the president typed in other rows
                 var keep = {}; $('salRows').querySelectorAll('.sal-row').forEach(function (r) { keep[r.getAttribute('data-uid')] = r.querySelector('.sal-in').value; });
                 renderRows();

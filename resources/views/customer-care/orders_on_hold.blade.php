@@ -2037,7 +2037,7 @@
                         '<button type="button" class="btn btn-sm hold-action-btn hold-edit-btn" data-id="' + row.id +
                         '" title="Edit"><i class="bi bi-pencil-fill"></i></button>' +
                         (canArchiveRecords ?
-                            '<button type="button" class="btn btn-sm hold-action-btn hold-delete-btn" data-id="' + row.id +
+                        '<button type="button" class="btn btn-sm hold-action-btn hold-delete-btn" data-id="' + row.id +
                             '" title="Archive"><i class="bi bi-trash-fill"></i></button>' : '') +
                         '</div>';
                     return '<tr>' +
@@ -3085,9 +3085,9 @@
                 [skuInput, parentInput].forEach(input => {
                     if (!input) return;
                     input.addEventListener('input', () => {
-                        if (searchTimer) clearTimeout(searchTimer);
-                        searchTimer = setTimeout(apply, 120);
-                    });
+                    if (searchTimer) clearTimeout(searchTimer);
+                    searchTimer = setTimeout(apply, 120);
+                });
                     input.addEventListener('search', apply);
                 });
             })();

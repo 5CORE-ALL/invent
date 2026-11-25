@@ -1557,6 +1557,11 @@
                                         <i class="ri-arrow-up-s-line"></i> Collapse all
                                     </button>
                                 </div>
+                                @if ($tsShowBotCol)
+                                <button type="button" class="ts-chat-rule-btn" id="ts-chat-rule-btn" title="Set rules: the 5 Core Bot messages members when a column matches">
+                                    <i class="ri-robot-2-line" aria-hidden="true"></i> Chat Rule
+                                </button>
+                                @endif
                                 <div class="btn-group task-summary-playback-group" role="group" aria-label="Member playback">
                                     <button type="button" id="ts-play-backward" class="btn btn-light btn-sm" title="Previous member" disabled>
                                         <i class="mdi mdi-skip-previous"></i>
@@ -1669,7 +1674,8 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="task" data-sort-type="number" title="Sort by assignee task count" role="button" tabindex="0">
                                         Task <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable)" role="button" tabindex="0">
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="overdue" data-sort-type="number" title="Overdue — number of overdue tasks (sortable). Click the red dot for the team's rolling history." role="button" tabindex="0">
+                                        <span class="ts-overdue-hist-dot" data-user-id="0" data-user-name="All team members" title="Team O-Due history (rolling graph)" role="button" tabindex="0" aria-label="Team O-Due history"></span>
                                         O-Due <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" title="TM — open Task Manager for this member as assignee (new tab)">
@@ -2021,7 +2027,24 @@
                                             </button>
                                         </td>
                                         <td class="task-summary-num">{{ $row['task'] }}</td>
-                                        <td class="task-summary-num task-summary-col-overdue">{{ $row['overdue'] }}</td>
+                                        <td class="task-summary-num task-summary-col-overdue">
+                                            <span class="ts-overdue-hist-dot"
+                                                  data-user-id="{{ (int) ($row['user_id'] ?? 0) }}"
+                                                  data-user-name="{{ e($row['team_member']) }}"
+                                                  data-current="{{ (int) $row['overdue'] }}"
+                                                  title="O-Due history (rolling graph)" role="button" tabindex="0"
+                                                  aria-label="O-Due history for {{ e($row['team_member']) }}"></span>{{ $row['overdue'] }}
+                                            @php
+                                                $overdueNow = (int) $row['overdue'];
+                                                $overduePrevVal = $row['overdue_prev'] ?? null;
+                                                $overduePrevDay = $row['overdue_prev_date'] ?? null;
+                                            @endphp
+                                            @if ($overduePrevVal !== null && $overdueNow > $overduePrevVal)
+                                                <i class="ri-arrow-up-line ts-overdue-trend is-up" title="Overdue is up by {{ $overdueNow - $overduePrevVal }} since {{ $overduePrevDay }} ({{ $overduePrevVal }} → {{ $overdueNow }})" aria-label="Overdue increased"></i>
+                                            @elseif ($overduePrevVal !== null && $overdueNow < $overduePrevVal)
+                                                <i class="ri-arrow-down-line ts-overdue-trend is-down" title="Overdue is down by {{ $overduePrevVal - $overdueNow }} since {{ $overduePrevDay }} ({{ $overduePrevVal }} → {{ $overdueNow }})" aria-label="Overdue decreased"></i>
+                                            @endif
+                                        </td>
                                         <td class="task-summary-col-tm text-center">
                                             <a href="{{ route('tasks.index', array_filter(['assignee' => $row['team_member'], 'user_id' => (int) ($row['user_id'] ?? 0)])) }}"
                                                target="_blank"
@@ -2323,6 +2346,7 @@
     @include('partials.user-dashboard')
     @include('partials.score-history')
     @include('partials.dar-history')
+    @include('partials.overdue-history')
     @include('partials.team-member-profile')
     @include('partials.user-kpis')
     @include('partials.user-kpi-index')
@@ -2520,6 +2544,9 @@
     @endif
     @if(! empty($tsIsPresident))
         @include('partials.ts-name-edit')
+    @endif
+    @if ($tsShowBotCol)
+        @include('partials.ts-chat-rules')
     @endif
 @endsection
 

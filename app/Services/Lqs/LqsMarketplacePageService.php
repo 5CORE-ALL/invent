@@ -497,7 +497,7 @@ class LqsMarketplacePageService
                 continue;
             }
             $buyer = $this->httpUrl((string) ($state['buyer_link'] ?? $state['B Link'] ?? ''));
-            if ($buyer === '' || preg_match('/shopify\.com|myshopify\.com/i', $buyer)) {
+            if ($buyer === '' || $this->isOwnSite($buyer) || preg_match('/shopify\.com|myshopify\.com/i', $buyer)) {
                 $buyer = $this->shopperUrl($slug, (string) ($state['seller_link'] ?? $state['S Link'] ?? ''));
             }
             if ($buyer === '') {
@@ -529,6 +529,12 @@ class LqsMarketplacePageService
     {
         if ($slug === 'shein') {
             $map = $this->overlaySheinGoodsUrls($map, $normalizeSku);
+        }
+        if ($slug === 'bestbuy') {
+            $map = $this->overlayBestBuyProductUrls($map, $normalizeSku);
+        }
+        if ($slug === 'doba') {
+            $map = $this->overlayDobaProductUrls($map, $normalizeSku);
         }
 
         foreach ($map as $key => $row) {
@@ -606,6 +612,96 @@ class LqsMarketplacePageService
         }
 
         return $map;
+    }
+
+    /**
+     * Best Buy storefront page is /product/{name}/{bsin}. The bsin is bestbuy_price_data.product_sku.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlayBestBuyProductUrls(array $map, callable $normalizeSku): array
+    {
+        if (! Schema::hasTable('bestbuy_price_data')
+            || ! Schema::hasColumn('bestbuy_price_data', 'product_sku')
+            || ! Schema::hasColumn('bestbuy_price_data', 'product_name')) {
+            return $map;
+        }
+
+        $seen = [];
+        foreach (DB::table('bestbuy_price_data')->select('sku', 'product_sku', 'product_name')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
+            $key = $normalizeSku($row->sku);
+            $bsin = strtoupper(trim((string) $row->product_sku));
+            $slug = $this->urlSlug((string) $row->product_name);
+            if ($key === '' || isset($seen[$key]) || ! empty($map[$key]['listing_url']) || ! preg_match('/^[A-Z0-9]{10}$/', $bsin) || $slug === '') {
+                continue;
+            }
+            $seen[$key] = true;
+            $existing = $map[$key] ?? [
+                'l30' => null, 'sessions' => null, 'price' => null,
+                'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+            ];
+            $existing['listing_url'] = 'https://www.bestbuy.com/product/'.$slug.'/'.$bsin;
+            if (empty($existing['listing_id'])) {
+                $existing['listing_id'] = $bsin;
+            }
+            $map = $this->putListingLink($map, $key, $existing);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Doba's product page is the seller goods screen. goodsId and catId live on doba_metrics.
+     *
+     * @param  array<string, array<string, mixed>>  $map
+     * @return array<string, array<string, mixed>>
+     */
+    private function overlayDobaProductUrls(array $map, callable $normalizeSku): array
+    {
+        if (! Schema::hasTable('doba_metrics')
+            || ! Schema::hasColumn('doba_metrics', 'goods_id')
+            || ! Schema::hasColumn('doba_metrics', 'cat_id')) {
+            return $map;
+        }
+
+        $seen = [];
+        foreach (DB::table('doba_metrics')->select('sku', 'item_id', 'goods_id', 'cat_id')->whereNotNull('sku')->where('sku', '!=', '')->orderByDesc('id')->get() as $row) {
+            $key = $normalizeSku($row->sku);
+            $goodsId = trim((string) $row->goods_id);
+            $catId = trim((string) $row->cat_id);
+            if ($key === '' || isset($seen[$key]) || ! empty($map[$key]['listing_url']) || $goodsId === '' || $catId === '') {
+                continue;
+            }
+            $seen[$key] = true;
+            $existing = $map[$key] ?? [
+                'l30' => null, 'sessions' => null, 'price' => null,
+                'listing_id' => null, 'lqs' => null, 'rating' => null, 'reviews' => null,
+            ];
+            $existing['listing_url'] = 'https://seller.doba.com/ds/goods/save?goodsId='.rawurlencode($goodsId).'&catId='.rawurlencode($catId);
+            if (empty($existing['listing_id'])) {
+                $itemId = trim((string) ($row->item_id ?? ''));
+                $existing['listing_id'] = $itemId !== '' ? $itemId : $goodsId;
+            }
+            $map = $this->putListingLink($map, $key, $existing);
+        }
+
+        return $map;
+    }
+
+    private function urlSlug(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? '';
+
+        return trim($value, '-');
+    }
+
+    private function isOwnSite(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $host === '' || str_contains($host, '5coremanagement.com') || $host === 'localhost' || str_ends_with($host, '.localhost');
     }
 
     private function knownProductUrl(string $slug, string $id): string

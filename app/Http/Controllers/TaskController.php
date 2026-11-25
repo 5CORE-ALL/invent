@@ -1361,6 +1361,27 @@ class TaskController extends Controller
         $visibleIds = $this->getTaskSummaryVisibleUserIds($viewer);
 
         $rows = $this->getTaskSummaryMemberRows();
+
+        // O-Due arrow: compare with each member's last snapshot from an earlier day.
+        $overduePrev = app(\App\Services\Tasks\TaskOverdueHistoryService::class)->previousDayByUser();
+        foreach ($rows as &$overdueRow) {
+            $prev = $overduePrev[(int) ($overdueRow['user_id'] ?? 0)] ?? null;
+            $overdueRow['overdue_prev'] = $prev['value'] ?? null;
+            $overdueRow['overdue_prev_date'] = $prev['date'] ?? null;
+        }
+        unset($overdueRow);
+
+        // O-Due history: record today's counts. Only when this viewer sees every task, so the stored
+        // numbers are complete (the hourly tasks:snapshot-overdue job covers every other case).
+        if (\App\Support\SuperAdminAccess::isTaskAdmin($viewer) && \Illuminate\Support\Facades\Cache::add('task_overdue_history_page_snapshot', 1, now()->addMinutes(10))) {
+            $overdueByUser = [];
+            foreach ($rows as $r) {
+                $overdueByUser[(int) ($r['user_id'] ?? 0)] = (int) ($r['overdue'] ?? 0);
+            }
+            unset($overdueByUser[0]);
+            app(\App\Services\Tasks\TaskOverdueHistoryService::class)->store($overdueByUser);
+        }
+
         if ($visibleIds !== null) {
             $allowed = array_flip($visibleIds);
             $rows = array_values(array_filter($rows, function (array $r) use ($allowed) {
@@ -9590,6 +9611,44 @@ class TaskController extends Controller
      * If the table has fewer than 2 points we still include the current
      * computed value as a "today" point so the chart isn't blank.
      */
+    /**
+     * Rolling O-Due history for the dot in the O-Due column.
+     * With user_id: that member. Without: the sum of every member the viewer may see.
+     */
+    public function overdueHistory(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'nullable|integer|exists:users,id',
+            'days' => 'nullable|integer|in:30,60,90',
+        ]);
+        $days = (int) ($validated['days'] ?? 30);
+
+        $viewer = Auth::user();
+        $visible = $this->getTaskSummaryVisibleUserIds($viewer);
+        $userId = isset($validated['user_id']) ? (int) $validated['user_id'] : 0;
+
+        if ($userId > 0) {
+            if ($visible !== null && ! in_array($userId, $visible, true)) {
+                return response()->json(['success' => false, 'message' => 'You do not have access to this user.'], 403);
+            }
+            $ids = [$userId];
+            $name = (string) (User::query()->whereKey($userId)->value('name') ?? 'Member');
+        } else {
+            $ids = $visible;
+            $name = 'All team members';
+        }
+
+        $points = app(\App\Services\Tasks\TaskOverdueHistoryService::class)->series($ids, $days);
+
+        return response()->json([
+            'success' => true,
+            'name' => $name,
+            'days' => $days,
+            'points' => $points,
+            'current' => $points === [] ? null : $points[count($points) - 1]['value'],
+        ]);
+    }
+
     public function getUserScoreHistory(Request $request): JsonResponse
     {
         $validated = $request->validate([

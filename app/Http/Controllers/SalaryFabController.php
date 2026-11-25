@@ -7,6 +7,8 @@ use App\Models\SalaryProjection;
 use App\Models\User;
 use App\Models\UserSalary;
 use App\Services\PayrollService;
+use App\Support\DarL30Metrics;
+use App\Support\UserOverdueNudge;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -166,6 +168,37 @@ class SalaryFabController extends Controller
         ];
     }
 
+    /**
+     * @return array{dar_pct: int, dar_count: int, dar_target: int, dar_band: string, overdue: int}
+     */
+    protected function performance(User $user): array
+    {
+        $out = [
+            'dar_pct' => 0,
+            'dar_count' => 0,
+            'dar_target' => DarL30Metrics::TARGET,
+            'dar_band' => 'low',
+            'overdue' => 0,
+        ];
+
+        try {
+            $dar = DarL30Metrics::forUserId((int) $user->id);
+            $out['dar_pct'] = (int) ($dar['dar_l30_pct'] ?? 0);
+            $out['dar_count'] = (int) ($dar['dar_l30_count'] ?? 0);
+            $out['dar_target'] = (int) ($dar['dar_l30_target'] ?? DarL30Metrics::TARGET);
+            $out['dar_band'] = (string) ($dar['dar_l30_band'] ?? 'low');
+        } catch (\Throwable $e) {
+            // never break the Salary window because of a metrics problem
+        }
+
+        try {
+            $out['overdue'] = UserOverdueNudge::countForUser($user);
+        } catch (\Throwable $e) {
+        }
+
+        return $out;
+    }
+
     public function show(Request $request): JsonResponse
     {
         $me = $request->user();
@@ -177,6 +210,9 @@ class SalaryFabController extends Controller
             $this->latestRows([$me->id])->get($me->id),
             SalaryProjection::where('user_id', $me->id)->first()
         );
+
+        // Performance: the logged-in user's OWN DAR % (last 30 days, same as the top bar) and overdue tasks.
+        $mine['performance'] = $this->performance($me);
 
         $data = [
             'success' => true,
