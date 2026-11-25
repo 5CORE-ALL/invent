@@ -352,9 +352,14 @@ class AmazonSpApiService
      * (services.amazon_sp.b2b_qty_tiers, e.g. "3:15,25:24" = 3+ units 15% off, 25+ units 24% off).
      * Returns null when disabled or empty so the push sends no tier plan.
      *
+     * The configured % is meant off the PUSHED price (S PRC / sale). Amazon applies a tier % to the B2B
+     * price, which is lower (5% below the sale), so when both prices are given the % is converted:
+     *   tier price = sale × (1 − p/100)  →  Amazon % = (1 − tier price / B2B price) × 100
+     * e.g. sale 18.63, B2B 17.70: 3 units at 15% = 15.84 (Amazon % 10.51).
+     *
      * @return list<array{schedule: list<array<string, mixed>>}>|null
      */
-    public static function b2bQuantityDiscountPlan(): ?array
+    public static function b2bQuantityDiscountPlan(float $salePrice = 0, float $businessPrice = 0): ?array
     {
         if (! filter_var(config('services.amazon_sp.b2b_qty_tiers_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
             return null;
@@ -370,6 +375,13 @@ class AmazonSpApiService
             $pct = (float) $bits[1];
             if ($units < 2 || $pct <= 0 || $pct >= 100) {
                 continue;
+            }
+            if ($salePrice > 0 && $businessPrice > 0) {
+                $tierPrice = round($salePrice * (1 - $pct / 100), 2);
+                $pct = round((1 - $tierPrice / $businessPrice) * 100, 2);
+                if ($pct <= 0 || $pct >= 100) {
+                    continue; // tier would not be lower than the B2B price
+                }
             }
             $levels[$units] = ['lower_bound' => $units, 'value' => $pct == floor($pct) ? (int) $pct : $pct];
         }
@@ -851,7 +863,7 @@ class AmazonSpApiService
                     "our_price" => $businessPriceSchedule,
                 ];
                 // "Buy more, save more" tiers (Amazon Business) go out with every push, so pushed SKUs get them.
-                $qtyPlan = self::b2bQuantityDiscountPlan();
+                $qtyPlan = self::b2bQuantityDiscountPlan((float) $salePrice, (float) $businessPrice);
                 if ($qtyPlan !== null) {
                     $b2bOfferValue['quantity_discount_plan'] = $qtyPlan;
                 }
