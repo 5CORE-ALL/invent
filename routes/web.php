@@ -8392,6 +8392,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/user-kpis/generate', [\App\Http\Controllers\TaskController::class, 'generateUserKpis'])->name('tasks.userKpis.generate');
     Route::post('/tasks/user-kpis/suggest', [\App\Http\Controllers\TaskController::class, 'suggestUserKpi'])->name('tasks.userKpis.suggest');
     Route::delete('/tasks/user-kpis', [\App\Http\Controllers\TaskController::class, 'removeUserKpi'])->name('tasks.userKpis.remove');
+    // Floating "Salary" icon: own current + future salary; only president@5core.com can set the future salary
+    Route::get('/salary-fab', [\App\Http\Controllers\SalaryFabController::class, 'show'])->middleware('auth')->name('salaryFab.show');
+    Route::post('/salary-fab/future', [\App\Http\Controllers\SalaryFabController::class, 'setFuture'])->middleware('auth')->name('salaryFab.setFuture');
     Route::get('/tasks/overdue-nudge', [\App\Http\Controllers\TaskController::class, 'getOverdueNudge'])->name('tasks.overdueNudge.get');
     Route::get('/tasks/tat-nudge', [\App\Http\Controllers\TaskController::class, 'getTatNudge'])->name('tasks.tatNudge.get');
     Route::get('/tasks/user-incentives', [\App\Http\Controllers\TaskController::class, 'getUserIncentives'])->name('tasks.userIncentives.get');

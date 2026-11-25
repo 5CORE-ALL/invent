@@ -22,6 +22,16 @@ return [
     ],
 
     /*
+    | Floating "Salary" icon: only this email can set an employee's future (target) salary.
+    | The salary is meant to grow by roughly step_min..step_max each month based on performance.
+    */
+    'future_salary' => [
+        'setter_email' => 'president@5core.com',
+        'step_min' => 500,
+        'step_max' => 1000,
+    ],
+
+    /*
     | Directors omitted from the bank payout / salary sheet download.
     | Matched by email or by full/first name (case-insensitive), in addition to
     | users whose org_level is "director".
