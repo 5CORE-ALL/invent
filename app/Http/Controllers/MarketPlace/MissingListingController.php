@@ -344,6 +344,8 @@ class MissingListingController extends Controller
                 'listed' => $counts ? (int) ($snap['listing_listed'] ?? 0) : null,
                 'missing_listing' => $counts ? (int) ($snap['listing_miss_count'] ?? 0) : null,
                 'missing_listing_inv' => $counts ? (int) ($snap['listing_miss_inv_count'] ?? 0) : null,
+                // Placeholder numbers from the last history snapshot; the table shows them as pending until the real count lands.
+                'counts_pending' => (bool) $counts,
                 'inactive_parent' => 0,
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,

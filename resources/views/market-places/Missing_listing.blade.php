@@ -378,6 +378,9 @@
             formatter: function(cell) {
                 const row = cell.getRow().getData();
                 if (isSheetRow(row)) return fromSheetCell(row);
+                if (row.counts_pending) {
+                    return '<span class="text-muted" title="Counting from the listing page...">&hellip;</span>';
+                }
                 const v = num(row);
                 const channel = (row.channel || '').trim();
                 const listingUrl = String(row.listing_url || '').trim();
@@ -835,7 +838,7 @@
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l, response && response.total_missing_l_inv);
                 paintColumnHeadCounts(data);
-                if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
+                if (response && response.partial && (window.__mlCountsRetries || 0) < 15) {
                     window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
                     setTimeout(function() {
                         if (table) {
