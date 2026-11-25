@@ -2029,6 +2029,19 @@
             return below;
         }
 
+        /**
+         * Amazon Business "Buy more, save more" tiers sent with every price push: N units at P% off the pushed S PRC
+         * (same rule as AmazonSpApiService::b2bQuantityDiscountPlan; config: AMAZON_B2B_QTY_TIERS).
+         */
+        const AMZ_QTY_TIERS = @json(\App\Services\AmazonSpApiService::b2bQuantityTierConfig());
+        function amazonQtyTierPrices(rowData) {
+            const sprice = amazonDisplaySprice(rowData);
+            if (!(sprice > 0) || !Array.isArray(AMZ_QTY_TIERS)) return [];
+            return AMZ_QTY_TIERS.map(function(t) {
+                return { units: t.units, pct: t.pct, price: +Number(sprice * (1 - t.pct / 100)).toFixed(2) };
+            });
+        }
+
         /** Max is 10% above the shown S PRC. */
         function amazonMaxPrice(rowData) {
             const sprice = amazonDisplaySprice(rowData);
@@ -5781,6 +5794,24 @@
                             return '<span>$' + n.toFixed(2) + '</span>';
                         },
                         width: 78
+                    },
+
+                    {
+                        title: "Qty Tiers",
+                        field: "QTY_TIERS",
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerTooltip: "Amazon Business \"Buy more, save more\" prices sent with every push: N units at P% off the S PRC in this row.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const tiers = amazonQtyTierPrices(rowData);
+                            if (!tiers.length) return '';
+                            const tip = tiers.map(function(t) { return t.units + '+ units: ' + t.pct + '% off = $' + t.price.toFixed(2); }).join(' | ');
+                            const html = tiers.map(function(t) { return '<div style="white-space:nowrap;line-height:1.25">' + t.units + '+ <b>$' + t.price.toFixed(2) + '</b> <small style="color:#888">-' + t.pct + '%</small></div>'; }).join('');
+                            return '<span title="' + tip.replace(/"/g, '&quot;') + '">' + html + '</span>';
+                        },
+                        width: 110
                     },
 
                     {

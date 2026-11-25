@@ -348,6 +348,36 @@ class AmazonSpApiService
     }
 
     /**
+     * Configured tiers as [['units' => 3, 'pct' => 15], ...] (percent off the pushed price). Empty when disabled.
+     * Also feeds the "Qty Tiers" column on /amazon-tabulator-view.
+     *
+     * @return list<array{units:int,pct:float}>
+     */
+    public static function b2bQuantityTierConfig(): array
+    {
+        if (! filter_var(config('services.amazon_sp.b2b_qty_tiers_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return [];
+        }
+
+        $out = [];
+        foreach (explode(',', (string) config('services.amazon_sp.b2b_qty_tiers', '')) as $part) {
+            $bits = explode(':', trim($part));
+            if (count($bits) !== 2 || ! is_numeric($bits[0]) || ! is_numeric($bits[1])) {
+                continue;
+            }
+            $units = (int) $bits[0];
+            $pct = (float) $bits[1];
+            if ($units < 2 || $pct <= 0 || $pct >= 100) {
+                continue;
+            }
+            $out[$units] = ['units' => $units, 'pct' => $pct];
+        }
+        ksort($out);
+
+        return array_values($out);
+    }
+
+    /**
      * Amazon Business "Buy more, save more" tiers for the B2B offer, from config
      * (services.amazon_sp.b2b_qty_tiers, e.g. "3:15,25:24" = 3+ units 15% off, 25+ units 24% off).
      * Returns null when disabled or empty so the push sends no tier plan.
@@ -361,21 +391,10 @@ class AmazonSpApiService
      */
     public static function b2bQuantityDiscountPlan(float $salePrice = 0, float $businessPrice = 0): ?array
     {
-        if (! filter_var(config('services.amazon_sp.b2b_qty_tiers_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
-            return null;
-        }
-
         $levels = [];
-        foreach (explode(',', (string) config('services.amazon_sp.b2b_qty_tiers', '')) as $part) {
-            $bits = explode(':', trim($part));
-            if (count($bits) !== 2 || ! is_numeric($bits[0]) || ! is_numeric($bits[1])) {
-                continue;
-            }
-            $units = (int) $bits[0];
-            $pct = (float) $bits[1];
-            if ($units < 2 || $pct <= 0 || $pct >= 100) {
-                continue;
-            }
+        foreach (self::b2bQuantityTierConfig() as $tier) {
+            $units = $tier['units'];
+            $pct = (float) $tier['pct'];
             if ($salePrice > 0 && $businessPrice > 0) {
                 $tierPrice = round($salePrice * (1 - $pct / 100), 2);
                 $pct = round((1 - $tierPrice / $businessPrice) * 100, 2);
