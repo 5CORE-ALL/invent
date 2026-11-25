@@ -942,6 +942,22 @@
                 },
             },
             {
+                title: 'Order Amt',
+                field: 'order_amt',
+                minWidth: 90,
+                width: 105,
+                hozAlign: 'right',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'Total amount of the whole order (all its SKUs)',
+                visible: !createOrdersPage,
+                formatter: function (cell) {
+                    const value = cell.getValue();
+                    if (value === null || value === undefined || value === '' || isNaN(Number(value))) return '—';
+                    return '$' + Number(value).toFixed(2);
+                },
+            },
+            {
                 title: 'Amount',
                 field: 'amount',
                 minWidth: 90,
