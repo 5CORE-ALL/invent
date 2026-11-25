@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Second attempt at a shipment status: ask the marketplace the order came from.
  *
- * The carrier lookup (USPS / UPS / FedEx / GOFO / 17TRACK) is tried first. When it gives nothing,
+ * The carrier lookup (USPS / UPS / FedEx / GOFO) is tried first. When it gives nothing,
  * the order is read from the marketplace: first what we already stored, then, when allowed, a live
  * fetch of that one order through the channel's own API. Only a status the marketplace itself calls
  * delivered (or in transit / out for delivery) is used. "Shipped" and "Fulfilled" only say a label

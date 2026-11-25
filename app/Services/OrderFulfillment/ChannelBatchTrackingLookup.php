@@ -4,6 +4,7 @@ namespace App\Services\OrderFulfillment;
 
 use App\Models\SheinOrderMetric;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Services\MarketplaceManager\WayfairTrackingSyncService;
 use App\Services\SheinApiService;
 use App\Services\Temu2ApiService;
 use App\Services\Temu3ApiService;
@@ -72,6 +73,7 @@ class ChannelBatchTrackingLookup
             'tiktok', 'tiktok2' => $this->tiktok($slug, $pending, $deadline),
             'shein' => $this->shein($pending, $deadline),
             'temu', 'temu2', 'temu3' => $this->temu($slug, $pending, $deadline),
+            'wayfair' => $this->wayfair($pending, $deadline),
             default => [],
         };
         foreach ($fromApi as $id => $hit) {
@@ -169,6 +171,51 @@ class ChannelBatchTrackingLookup
                 if ($hit !== null) {
                     $out[$orderNo] = $hit;
                 }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Wayfair POs (CS…): the label events API answers up to 25 POs per call, and every hit is also saved on the
+     * PO rows, so the page and the Shopify push see it right away.
+     *
+     * @param  list<string>  $ids
+     * @return array<string, array{tracking: string, carrier: string}>
+     */
+    protected function wayfair(array $ids, float $deadline): array
+    {
+        $byPo = [];
+        foreach ($ids as $id) {
+            $po = strtoupper(ltrim(trim((string) $id), '#'));
+            if ($po !== '') {
+                $byPo[$po][] = (string) $id;
+            }
+        }
+        if ($byPo === []) {
+            return [];
+        }
+
+        try {
+            $hits = app(WayfairTrackingSyncService::class)->prefetchLabelTracking(array_keys($byPo), $deadline);
+        } catch (\Throwable $e) {
+            Log::info('ChannelBatchTrackingLookup: Wayfair label lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $out = [];
+        foreach ($hits as $po => $hit) {
+            $number = trim((string) ($hit['tracking'] ?? ''));
+            if ($number === '') {
+                continue;
+            }
+            foreach ($byPo[strtoupper((string) $po)] ?? [] as $id) {
+                $out[$id] = [
+                    'tracking' => $number,
+                    'carrier' => trim((string) ($hit['carrier'] ?? '')) ?: (TrackingCarrierGuesser::labelFromNumber($number) ?? 'Other'),
+                ];
             }
         }
 

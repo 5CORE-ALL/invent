@@ -10,8 +10,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Multi-carrier shipment tracking.
  *
- * Prefer native USPS / UPS / FedEx / GOFO APIs when credentials are configured; fall back to
- * 17TRACK aggregator when available.
+ * Only USPS numbers are looked up, on the USPS API. There is no third-party aggregator.
  */
 class ShipmentTrackingService
 {
@@ -46,26 +45,17 @@ class ShipmentTrackingService
     /** Transient API failure — callers must NOT overwrite a real shipment_status with this. */
     public const STATUS_RATE_LIMITED = 'RateLimited';
 
-    private string $provider;
-
-    private string $apiKey;
-
-    private string $apiBase;
-
     private int $timeout;
 
     public function __construct()
     {
         $cfg = config('services.tracking');
-        $this->provider = $cfg['provider'] ?? '17track';
-        $this->apiKey = $cfg['api_key'] ?? '';
-        $this->apiBase = rtrim($cfg['api_base'] ?? 'https://api.17track.net/track/v2.2', '/');
         $this->timeout = (int) ($cfg['http_timeout'] ?? 30);
     }
 
     public function isConfigured(): bool
     {
-        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex() || $this->hasGofo() || $this->hasVeeqo();
+        return $this->hasUsps() || $this->hasUps() || $this->hasFedex() || $this->hasGofo() || $this->hasVeeqo();
     }
 
     public function hasGofo(): bool
@@ -76,11 +66,6 @@ class ShipmentTrackingService
     public function hasVeeqo(): bool
     {
         return app(VeeqoApiService::class)->isConfigured();
-    }
-
-    public function has17Track(): bool
-    {
-        return $this->apiKey !== '';
     }
 
     public function hasUsps(): bool
@@ -136,10 +121,11 @@ class ShipmentTrackingService
     }
 
     /**
-     * Fetch normalized statuses for a batch of shipments.
+     * Fetch normalized statuses for a batch of shipments. USPS numbers are asked from the USPS API;
+     * any other carrier gets a blank (not saved) result.
      *
      * @param  array  $shipments  list of ['number' => string, 'carrier' => string|null]
-     * @param  array  $options    prefer_native=true forces USPS/UPS/FedEx over 17TRACK
+     * @param  array  $options    kept for old callers, no longer used
      * @return array  map: trackingNumber => ['status' => string, 'detail' => string|null, 'provider' => string, ...]
      */
     public function track(array $shipments, array $options = []): array
@@ -148,225 +134,34 @@ class ShipmentTrackingService
             return [];
         }
 
-        $normalized = [];
+        $byProvider = ['usps' => [], 'other' => []];
         foreach ($shipments as $s) {
             $number = trim((string) ($s['number'] ?? ''));
             if ($number === '') {
                 continue;
             }
             $carrier = trim((string) ($s['carrier'] ?? ''));
-            $normalized[] = [
-                'number' => $number,
-                'carrier' => $carrier !== '' ? $carrier : null,
-            ];
-        }
-        if ($normalized === []) {
-            return [];
-        }
-
-        $preferNative = (bool) ($options['prefer_native'] ?? false);
-        $preferAggregator = (bool) config('services.tracking.prefer_aggregator', true);
-
-        // Bulk / scheduled path: 17TRACK batches up to 40 and avoids burning USPS hourly quota.
-        // GOFO still uses the native Open API when configured (carrier name contains "gofo").
-        if ($this->has17Track() && $preferAggregator && ! $preferNative) {
-            $gofo = [];
-            $rest = [];
-            foreach ($normalized as $s) {
-                if ($this->resolveProvider($s['number'], (string) ($s['carrier'] ?? '')) === 'gofo' && $this->hasGofo()) {
-                    $gofo[] = $s;
-                } else {
-                    $rest[] = $s;
-                }
-            }
-            $out = [];
-            if ($gofo !== []) {
-                $out += $this->trackGofo($gofo);
-            }
-            if ($rest !== []) {
-                $out += $this->track17Track($rest);
-                $out = $this->retryNatively($rest, $out);
-            }
-
-            return $out;
-        }
-
-        $byProvider = [
-            'usps' => [],
-            'ups' => [],
-            'fedex' => [],
-            'gofo' => [],
-            '17track' => [],
-        ];
-
-        foreach ($normalized as $s) {
-            $provider = $this->resolveProvider($s['number'], (string) ($s['carrier'] ?? ''));
-            $byProvider[$provider][] = $s;
+            $entry = ['number' => $number, 'carrier' => $carrier !== '' ? $carrier : null];
+            $byProvider[$this->resolveProvider($number, $carrier) === 'usps' ? 'usps' : 'other'][] = $entry;
         }
 
         $out = [];
-
-        if (! empty($byProvider['usps'])) {
-            if ($this->hasUsps() && $this->uspsCanRequest()) {
-                $uspsOut = $this->trackUsps($byProvider['usps']);
-                $out += $uspsOut;
-                $retry = $this->numbersNeedingAggregatorFallback($byProvider['usps'], $uspsOut);
-                if ($retry !== [] && $this->canAggregate()) {
-                    $out = array_replace($out, $this->track17Track($retry));
-                }
-            } elseif ($this->canAggregate()) {
-                $out += $this->track17Track($byProvider['usps']);
-            }
-        }
-
-        if (! empty($byProvider['ups'])) {
-            if ($this->hasUps()) {
-                $upsOut = $this->trackUps($byProvider['ups']);
-                $out += $upsOut;
-                $retry = $this->numbersNeedingAggregatorFallback($byProvider['ups'], $upsOut);
-                if ($retry !== [] && $this->canAggregate()) {
-                    $out = array_replace($out, $this->track17Track($retry));
-                }
-            } elseif ($this->canAggregate()) {
-                $out += $this->track17Track($byProvider['ups']);
-            }
-        }
-
-        if (! empty($byProvider['fedex'])) {
-            if ($this->hasFedex()) {
-                $out += $this->trackFedex($byProvider['fedex']);
-            } elseif ($this->canAggregate()) {
-                $out += $this->track17Track($byProvider['fedex']);
-            }
-        }
-
-        if (! empty($byProvider['gofo'])) {
-            if ($this->hasGofo()) {
-                $gofoOut = $this->trackGofo($byProvider['gofo']);
-                $out += $gofoOut;
-                $retry = $this->numbersNeedingAggregatorFallback($byProvider['gofo'], $gofoOut);
-                if ($retry !== [] && $this->canAggregate()) {
-                    $out = array_replace($out, $this->track17Track($retry));
-                }
-            } elseif ($this->canAggregate()) {
-                $out += $this->track17Track($byProvider['gofo']);
-            }
-        }
-
-        if (! empty($byProvider['17track'])) {
-            if ($this->canAggregate()) {
-                $out += $this->track17Track($byProvider['17track']);
+        if ($byProvider['usps'] !== []) {
+            if ($this->hasUsps()) {
+                $out += $this->trackUsps($byProvider['usps']);
             } else {
-                foreach ($byProvider['17track'] as $s) {
-                    $guess = $this->guessCarrierFromNumber($s['number']);
-                    if ($guess === 'usps' && $this->hasUsps()) {
-                        $out += $this->trackUsps([$s]);
-                    } elseif ($guess === 'ups' && $this->hasUps()) {
-                        $out += $this->trackUps([$s]);
-                    } elseif ($guess === 'fedex' && $this->hasFedex()) {
-                        $out += $this->trackFedex([$s]);
-                    } else {
-                        $out[$s['number']] = [
-                            'status' => self::STATUS_NOT_FOUND,
-                            'detail' => 'No tracking provider configured for this carrier',
-                            'provider' => 'none',
-                        ];
-                    }
+                foreach ($byProvider['usps'] as $s) {
+                    $out[$s['number']] = $this->transientResult('usps', 'USPS API credentials are not configured', 'not_configured');
                 }
             }
+        }
+
+        // Only USPS is looked up. Every other carrier is left blank, not stored as a status.
+        foreach ($byProvider['other'] as $s) {
+            $out[$s['number']] = $this->transientResult('none', 'Not looked up: only USPS tracking is checked', 'usps_only');
         }
 
         return $out;
-    }
-
-    /** True while a native-only retry runs, so the carrier APIs never loop back into 17TRACK. */
-    private bool $nativeOnly = false;
-
-    protected function canAggregate(): bool
-    {
-        return $this->has17Track() && ! $this->nativeOnly;
-    }
-
-    /**
-     * 17TRACK answers asynchronously, so a number is often "not returned yet" or NotFound there while
-     * the carrier's own API (USPS / UPS / FedEx) already knows it. Ask the carrier for every number the
-     * aggregator could not give a real status for.
-     *
-     * @param  list<array{number: string, carrier: ?string}>  $requested
-     * @param  array<string, array<string, mixed>>  $results
-     * @return array<string, array<string, mixed>>
-     */
-    protected function retryNatively(array $requested, array $results): array
-    {
-        if ($this->nativeOnly) {
-            return $results;
-        }
-
-        $retry = [];
-        foreach ($requested as $s) {
-            $res = $results[$s['number']] ?? null;
-            $res = is_array($res) ? $res : null;
-            if (self::isPersistableResult($res) && ($res['status'] ?? '') !== self::STATUS_NOT_FOUND) {
-                continue;
-            }
-            $provider = $this->resolveProvider($s['number'], (string) ($s['carrier'] ?? ''));
-            if (($provider === 'usps' && $this->hasUsps() && $this->uspsCanRequest())
-                || ($provider === 'ups' && $this->hasUps())
-                || ($provider === 'fedex' && $this->hasFedex())) {
-                $retry[] = $s;
-            }
-        }
-        if ($retry === []) {
-            return $results;
-        }
-
-        $this->nativeOnly = true;
-        try {
-            $native = $this->track($retry, ['prefer_native' => true]);
-        } catch (\Throwable $e) {
-            Log::warning('ShipmentTracking: native retry failed', ['error' => $e->getMessage()]);
-            $native = [];
-        } finally {
-            $this->nativeOnly = false;
-        }
-
-        foreach ($native as $number => $res) {
-            $res = is_array($res) ? $res : null;
-            if (! self::isPersistableResult($res)) {
-                continue;
-            }
-            $before = $results[$number] ?? null;
-            $beforeOk = self::isPersistableResult(is_array($before) ? $before : null);
-            // A native NotFound never replaces an aggregator answer that was already a real status.
-            if (($res['status'] ?? '') === self::STATUS_NOT_FOUND && $beforeOk) {
-                continue;
-            }
-            $results[$number] = $res;
-        }
-
-        return $results;
-    }
-
-    /**
-     * @param  list<array{number: string, carrier: ?string}>  $requested
-     * @param  array<string, array<string, mixed>>  $results
-     * @return list<array{number: string, carrier: ?string}>
-     */
-    protected function numbersNeedingAggregatorFallback(array $requested, array $results): array
-    {
-        $retry = [];
-        foreach ($requested as $s) {
-            $res = $results[$s['number']] ?? null;
-            if ($res === null
-                || ! empty($res['transient'])
-                || ($res['status'] ?? '') === self::STATUS_RATE_LIMITED
-                || self::isUnusableProviderFailure((string) ($res['detail'] ?? ''))
-            ) {
-                $retry[] = $s;
-            }
-        }
-
-        return $retry;
     }
 
     public function uspsCanRequest(): bool
@@ -431,7 +226,7 @@ class ShipmentTrackingService
         if ($provider === 'usps' && self::isUnusableProviderFailure($detail)) {
             $until = now()->addHours(12);
             if (! Cache::has('usps_tracking_unauthorized_until')) {
-                Log::warning('ShipmentTracking: USPS tracking API is not authorized for this mailer — using 17TRACK instead', [
+                Log::warning('ShipmentTracking: USPS tracking API is not authorized for this mailer — USPS lookups paused for 12 hours', [
                     'until' => $until->toIso8601String(),
                 ]);
             }
@@ -468,7 +263,7 @@ class ShipmentTrackingService
                     return $guess;
                 }
 
-                return '17track';
+                return 'none';
             }
             if (str_contains($c, 'ups') && ! str_contains($c, 'usps')) {
                 return 'ups';
@@ -480,7 +275,7 @@ class ShipmentTrackingService
             return $guess;
         }
 
-        return '17track';
+        return 'none';
     }
 
     protected function guessCarrierFromNumber(string $number): ?string
@@ -503,7 +298,13 @@ class ShipmentTrackingService
 
         $token = $this->uspsAccessToken();
         if ($token === null) {
-            return [];
+            // Say why: this is the only lookup left, so a silent miss would look like a package with no status.
+            $failed = [];
+            foreach ($shipments as $s) {
+                $failed[$s['number']] = $this->transientResult('usps', 'USPS OAuth login failed (check USPS_CONSUMER_KEY / SECRET)', 'oauth_failed');
+            }
+
+            return $failed;
         }
 
         $base = rtrim((string) config('services.usps.api_base', 'https://apis.usps.com'), '/');
@@ -647,7 +448,13 @@ class ShipmentTrackingService
     {
         $token = $this->uspsAccessToken();
         if ($token === null) {
-            return [];
+            // Say why: this is the only lookup left, so a silent miss would look like a package with no status.
+            $failed = [];
+            foreach ($shipments as $s) {
+                $failed[$s['number']] = $this->transientResult('usps', 'USPS OAuth login failed (check USPS_CONSUMER_KEY / SECRET)', 'oauth_failed');
+            }
+
+            return $failed;
         }
 
         $base = rtrim((string) config('services.usps.api_base', 'https://apis.usps.com'), '/');
@@ -706,7 +513,7 @@ class ShipmentTrackingService
                     }
 
                     // 403 MID / Tracking API Access Controls is a credential problem, not
-                    // a package exception. Do not persist it — fall back to 17TRACK.
+                    // a package exception. Do not persist it.
                     if ($resp->status() === 403 || self::isUnusableProviderFailure($errMsg)) {
                         $out[$number] = $this->transientResult(
                             'usps',
@@ -1342,13 +1149,13 @@ class ShipmentTrackingService
             }
         }
 
-        if ($lastMile !== [] && $this->has17Track()) {
+        if ($lastMile !== [] && ($this->hasUsps() || $this->hasUps())) {
             $asked = [];
             foreach ($lastMile as $mile) {
                 $asked[] = ['number' => $mile, 'carrier' => null];
             }
             try {
-                $mileResults = $this->track17Track($asked);
+                $mileResults = $this->track($asked);
             } catch (\Throwable $e) {
                 Log::warning('ShipmentTracking: GOFO last-mile lookup failed', ['error' => $e->getMessage()]);
                 $mileResults = [];
@@ -1370,7 +1177,7 @@ class ShipmentTrackingService
                 $out[$gofoNo]['status'] = (string) $mileRes['status'];
                 $extra = trim((string) ($mileRes['detail'] ?? ''));
                 $out[$gofoNo]['detail'] = mb_substr(trim($extra.' (last mile '.$mile.')'), 0, 480);
-                $out[$gofoNo]['provider'] = 'gofo+17track';
+                $out[$gofoNo]['provider'] = 'gofo+carrier';
             }
         }
 
@@ -1448,237 +1255,5 @@ class ShipmentTrackingService
         return $found;
     }
 
-    // ── 17TRACK ──────────────────────────────────────────────────────────────
 
-    private function track17Track(array $shipments): array
-    {
-        $payload = [];
-        foreach ($shipments as $s) {
-            $number = trim((string) ($s['number'] ?? ''));
-            if ($number === '') {
-                continue;
-            }
-            $item = ['number' => $number];
-            $code = $this->carrierCode17Track($s['carrier'] ?? null);
-            if ($code !== null) {
-                $item['carrier'] = $code;
-            }
-            $payload[] = $item;
-        }
-
-        if (empty($payload)) {
-            return [];
-        }
-
-        $this->last17Error = '';
-        $this->post17Track('/register', $payload);
-        $resp = $this->post17Track('/gettrackinfo', $payload);
-
-        $out = [];
-        $accepted = (array) data_get($resp, 'data.accepted', []);
-        foreach ($accepted as $row) {
-            $number = (string) data_get($row, 'number', '');
-            if ($number === '') {
-                continue;
-            }
-            $rawStatus = (string) data_get($row, 'track_info.latest_status.status', '');
-            $detail = (string) (data_get($row, 'track_info.latest_event.description')
-                ?? data_get($row, 'track_info.latest_status.sub_status')
-                ?? '');
-            // Register is async. An empty status means 17TRACK has not heard
-            // back from the carrier yet — do not store that as a real status.
-            if ($rawStatus === '') {
-                $out[$number] = $this->transientResult('17track', 'Carrier has not returned a status yet');
-
-                continue;
-            }
-
-            $out[$number] = [
-                'status' => $this->normalize17TrackStatus($rawStatus),
-                'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
-                'provider' => '17track',
-            ];
-        }
-
-        $rejected = data_get($resp, 'data.rejected', []);
-        foreach ($rejected as $row) {
-            $number = (string) data_get($row, 'number', '');
-            if ($number === '' || isset($out[$number])) {
-                continue;
-            }
-            $errMsg = (string) (
-                data_get($row, 'error.message')
-                ?? data_get($row, 'message')
-                ?? data_get($row, 'error')
-                ?? ''
-            );
-            $errLower = strtolower($errMsg);
-            if ($this->isQuotaOrRateLimitError(0, $errMsg)
-                || str_contains($errLower, 'ran out')
-                || str_contains($errLower, 'not been registered')
-                || str_contains($errLower, 'no tracking information')
-                || str_contains($errLower, 'try again')
-            ) {
-                $out[$number] = $this->transientResult('17track', $errMsg !== '' ? $errMsg : '17TRACK quota exhausted');
-
-                continue;
-            }
-            $out[$number] = [
-                'status' => self::STATUS_NOT_FOUND,
-                'detail' => $errMsg !== '' ? mb_substr($errMsg, 0, 480) : null,
-                'provider' => '17track',
-            ];
-        }
-
-        // Register is async: the first read is often empty. Ask again before giving up,
-        // so a delivered package is not left blank for a whole run.
-        $waiting = [];
-        foreach ($payload as $item) {
-            $res = $out[$item['number']] ?? null;
-            if (! is_array($res) || ! empty($res['transient']) || ($res['status'] ?? '') === self::STATUS_NOT_FOUND) {
-                $waiting[] = $item;
-            }
-        }
-        if ($waiting !== []) {
-            // The page request has a 50 second limit. Only the background sync can wait for 17TRACK.
-            if (app()->runningInConsole()) {
-                sleep(3);
-            }
-            // One bad number can make 17TRACK drop the whole batch, so the retry goes in small groups.
-            $limit = app()->runningInConsole() ? 40 : 10;
-            foreach (array_slice(array_chunk($waiting, 5), 0, (int) ceil($limit / 5)) as $group) {
-                $again = $this->post17Track('/gettrackinfo', $group);
-                foreach ((array) data_get($again, 'data.accepted', []) as $row) {
-                    $number = (string) data_get($row, 'number', '');
-                    $rawStatus = (string) data_get($row, 'track_info.latest_status.status', '');
-                    if ($number === '' || $rawStatus === '') {
-                        continue;
-                    }
-                    $detail = (string) (data_get($row, 'track_info.latest_event.description')
-                        ?? data_get($row, 'track_info.latest_status.sub_status')
-                        ?? '');
-                    $out[$number] = [
-                        'status' => $this->normalize17TrackStatus($rawStatus),
-                        'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
-                        'provider' => '17track',
-                    ];
-                }
-            }
-        }
-
-        // A number 17TRACK never mentioned: say why, so the sync log is no longer just "returned nothing".
-        foreach ($payload as $item) {
-            if (isset($out[$item['number']])) {
-                continue;
-            }
-            $out[$item['number']] = $this->transientResult(
-                '17track',
-                '17TRACK gave no answer for this number'.($this->last17Error !== '' ? ': '.$this->last17Error : '')
-            );
-        }
-
-        return $out;
-    }
-
-    /** Last problem 17TRACK reported (HTTP error, or an error code in the reply body). */
-    private string $last17Error = '';
-
-    /** Raw 17TRACK call for the tracking:check command. */
-    public function raw17Track(string $path, array $body): array
-    {
-        $this->last17Error = '';
-        $resp = $this->post17Track($path, $body);
-
-        return ['response' => $resp, 'error' => $this->last17Error];
-    }
-
-    private function post17Track(string $path, array $body): array
-    {
-        try {
-            $response = Http::withHeaders([
-                '17token' => $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout($this->timeout)
-                ->post($this->apiBase.$path, $body);
-
-            if (! $response->successful()) {
-                Log::warning('ShipmentTracking: 17track HTTP error', [
-                    'path' => $path,
-                    'status' => $response->status(),
-                    'body' => mb_substr($response->body(), 0, 500),
-                ]);
-                $this->last17Error = $path.' HTTP '.$response->status().' '.mb_substr(trim((string) $response->body()), 0, 200);
-
-                return [];
-            }
-
-            $json = $response->json() ?? [];
-            // 17TRACK answers HTTP 200 and puts failures in the body: {"code": <non-zero>, "data": {"errors": [...]}}.
-            $code = data_get($json, 'code');
-            if ($code !== null && (int) $code !== 0) {
-                $msg = (string) (data_get($json, 'data.errors.0.message') ?? data_get($json, 'message') ?? '');
-                $this->last17Error = $path.' code '.$code.($msg !== '' ? ' '.$msg : '');
-                Log::warning('ShipmentTracking: 17track error code', ['path' => $path, 'code' => $code, 'message' => $msg]);
-            } elseif (is_array(data_get($json, 'data.errors')) && data_get($json, 'data.errors') !== []) {
-                $this->last17Error = $path.' '.mb_substr((string) json_encode(data_get($json, 'data.errors')), 0, 200);
-            }
-
-            return $json;
-        } catch (\Throwable $e) {
-            Log::error('ShipmentTracking: 17track request failed', [
-                'path' => $path,
-                'error' => $e->getMessage(),
-            ]);
-            $this->last17Error = $path.' '.$e->getMessage();
-
-            return [];
-        }
-    }
-
-    private function carrierCode17Track(?string $carrier): ?int
-    {
-        $c = strtolower(trim((string) $carrier));
-        if ($c === '') {
-            return null;
-        }
-
-        $map = [
-            'usps' => 21051,
-            'united states postal service' => 21051,
-            'ups' => 100002,
-            'fedex' => 100003,
-            'fedex express' => 100003,
-            'fedex ground' => 100003,
-            'gofo' => 100996,
-            'gofo express' => 100996,
-            'dhl' => 100001,
-            'ontrac' => 100027,
-        ];
-
-        foreach ($map as $needle => $code) {
-            if ($c === $needle || str_contains($c, $needle)) {
-                return $code;
-            }
-        }
-
-        return null;
-    }
-
-    private function normalize17TrackStatus(string $status): string
-    {
-        $known = [
-            'NotFound' => self::STATUS_NOT_FOUND,
-            'InfoReceived' => self::STATUS_INFO_RECEIVED,
-            'InTransit' => self::STATUS_IN_TRANSIT,
-            'Expired' => self::STATUS_EXPIRED,
-            'AvailableForPickup' => self::STATUS_PICKUP,
-            'OutForDelivery' => self::STATUS_OUT_FOR_DELIV,
-            'DeliveryFailure' => self::STATUS_FAILED,
-            'Delivered' => self::STATUS_DELIVERED,
-            'Exception' => self::STATUS_EXCEPTION,
-        ];
-
-        return $known[$status] ?? ($status !== '' ? $status : self::STATUS_PENDING);
-    }
 }

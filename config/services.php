@@ -397,31 +397,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Shipment Tracking (multi-carrier aggregator)
+    | Shipment Tracking (carrier APIs only)
     |--------------------------------------------------------------------------
     |
-    | Used by the "All Orders" Status column to pull live shipment status from
-    | a tracking number across carriers (GOFO, USPS, UPS, FedEx, ...).
-    |
-    | Default driver is 17TRACK (https://api.17track.net) which natively
-    | supports all of the above with a single API key. Get a key from the
-    | 17TRACK dashboard -> Settings -> Security and put it in TRACKING_API_KEY.
-    |
-    | Swap providers by changing TRACKING_PROVIDER and TRACKING_API_BASE.
+    | Used by the All Orders / Scan Pending status columns. Each tracking number is asked from its own
+    | carrier API (USPS, UPS, FedEx, GOFO) using the credentials configured below. There is no third-party
+    | aggregator.
     |
     */
     'tracking' => [
-        'provider'      => env('TRACKING_PROVIDER', '17track'),
-        'api_key'       => env('TRACKING_API_KEY', ''),
-        'api_base'      => env('TRACKING_API_BASE', 'https://api.17track.net/track/v2.2'),
         // Per-run safety limits so a sync can't blow the provider quota
-        'batch_size'    => (int) env('TRACKING_BATCH_SIZE', 40),
+        'batch_size'    => (int) env('TRACKING_BATCH_SIZE', 35),
         // Upper bound per cron tick; native USPS also capped by remaining hourly budget.
         'max_per_run'   => (int) env('TRACKING_MAX_PER_RUN', 200),
         'http_timeout'  => (int) env('TRACKING_HTTP_TIMEOUT', 30),
         'sleep_ms'      => (int) env('TRACKING_SLEEP_MS', 400),
-        // Prefer 17TRACK for scheduled/bulk sync (batch API). Native USPS/UPS are rate-limited.
-        'prefer_aggregator' => filter_var(env('TRACKING_PREFER_AGGREGATOR', true), FILTER_VALIDATE_BOOL),
         // After backlog clears: refresh each open tracking about this often per day.
         'target_passes_per_day' => (int) env('TRACKING_TARGET_PASSES_PER_DAY', 2),
     ],

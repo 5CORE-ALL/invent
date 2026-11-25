@@ -3234,10 +3234,30 @@ class VeeqoShopifyFulfillmentService
                 $decoded = json_decode($raw, true);
                 $raw = is_array($decoded) ? $decoded : null;
             }
-            if (is_array($raw)) {
+                if (is_array($raw)) {
                 $hit = self::trackingFromTikTokOrderPayload($raw);
                 if (is_array($hit) && trim((string) ($hit['tracking'] ?? '')) !== '') {
                     return $hit;
+                }
+            }
+        }
+
+        if ($marketplace === 'wayfair') {
+            // Wayfair label tracking is saved on the PO row (tracking_number, or label_tracking_number while it is
+            // only used for the delivery status). Either one is the real Wayfair number for this PO.
+            $payload = $model->raw_payload ?? null;
+            if (is_string($payload)) {
+                $decoded = json_decode($payload, true);
+                $payload = is_array($decoded) ? $decoded : null;
+            }
+            if (is_array($payload)) {
+                foreach ([['tracking_number', 'tracking_company'], ['label_tracking_number', 'label_tracking_company']] as [$numberKey, $carrierKey]) {
+                    $tn = strtoupper((string) preg_replace('/\s+/', '', (string) ($payload[$numberKey] ?? '')));
+                    if (strlen($tn) >= 8 && $tn !== 'NULL') {
+                        $carrier = trim((string) ($payload[$carrierKey] ?? $payload['carrier'] ?? ''));
+
+                        return ['tracking' => $tn, 'carrier' => $carrier !== '' ? $carrier : 'Other'];
+                    }
                 }
             }
         }

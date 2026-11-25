@@ -17,8 +17,7 @@ class SyncShipmentTrackingStatus extends Command
      *   --limit=       Max tracking numbers this run
      *   --only-open    Skip Delivered/Expired
      *   --stale=       Skip numbers checked within the last N minutes
-     *   --catch-up     Fast bulk mode for large backlogs (17TRACK, low sleep, import channel trackings)
-     *   --prefer-native Force USPS/UPS/FedEx instead of 17TRACK
+     *   --catch-up     Fast bulk mode for large backlogs (low sleep, import channel trackings)
      *   --repair-quota Clear statuses poisoned by prior quota errors
      */
     protected $signature = 'tracking:sync-status
@@ -26,7 +25,6 @@ class SyncShipmentTrackingStatus extends Command
         {--only-open : Skip numbers already Delivered/Expired}
         {--stale= : Skip numbers checked within the last N minutes (omit for auto ~2 passes/day)}
         {--carrier= : Optional carrier filter (USPS, UPS, FEDEX, GOFO, ...)}
-        {--prefer-native : Prefer native carrier APIs over 17TRACK}
         {--scan-pending : Only numbers with no status yet, Label Created / No Scan, Pending or Not Found (the Scan Pending page)}
         {--catch-up : Fast backlog mode (import channel trackings, larger batches, less sleep)}
         {--repair-quota : Reset NotFound rows that only contain quota/rate-limit error text}';
@@ -39,7 +37,7 @@ class SyncShipmentTrackingStatus extends Command
     public function handle(ShipmentTrackingService $tracking): int
     {
         if (! $tracking->isConfigured()) {
-            $this->error('Tracking provider not configured. Set USPS / UPS credentials or TRACKING_API_KEY in .env.');
+            $this->error('Tracking provider not configured. Set USPS / UPS / FedEx credentials in .env.');
             Log::warning('tracking:sync-status aborted — no tracking provider configured');
 
             return self::FAILURE;
@@ -74,8 +72,8 @@ class SyncShipmentTrackingStatus extends Command
             $batchSize = max($batchSize, 40);
             $sleepMs = min($sleepMs, 80);
         }
-        $carrierFilter = strtoupper(trim((string) $this->option('carrier')));
-        $preferNative = (bool) $this->option('prefer-native');
+        // Only USPS is looked up, so the queue never spends time on GOFO / UPS / FedEx numbers.
+        $carrierFilter = strtoupper(trim((string) $this->option('carrier'))) ?: 'USPS';
         $onlyOpen = (bool) $this->option('only-open');
 
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
@@ -90,9 +88,8 @@ class SyncShipmentTrackingStatus extends Command
             return self::SUCCESS;
         }
 
-        $mode = $preferNative ? 'native-first' : 'aggregator-first';
         $uspsLeft = $tracking->uspsRemainingThisHour();
-        $this->info("Syncing {$total} tracking number(s) [{$mode}, stale≥{$staleMin}m, catch-up=".($catchUp ? 'yes' : 'no').", USPS remaining this hour: {$uspsLeft}]...");
+        $this->info("Syncing {$total} tracking number(s) [carrier APIs only, stale≥{$staleMin}m, catch-up=".($catchUp ? 'yes' : 'no').", USPS remaining this hour: {$uspsLeft}]...");
 
         $updated = 0;
         $checked = 0;
@@ -102,10 +99,6 @@ class SyncShipmentTrackingStatus extends Command
         $chunks = $rows->chunk($batchSize);
         $chunkTotal = $chunks->count();
         $chunkIndex = 0;
-
-        if ($carrierFilter === 'GOFO' || $rows->contains(fn ($r) => str_contains(strtolower((string) $r->carrier), 'gofo'))) {
-            $this->comment('  GOFO uses one API call per tracking number — large batches can take several minutes.');
-        }
 
         foreach ($chunks as $chunk) {
             $chunkIndex++;
@@ -123,9 +116,7 @@ class SyncShipmentTrackingStatus extends Command
             ));
 
             try {
-                $results = $tracking->track($shipments, [
-                    'prefer_native' => $preferNative,
-                ]);
+                $results = $tracking->track($shipments);
             } catch (\Throwable $e) {
                 $errors++;
                 Log::error('tracking:sync-status batch failed', ['error' => $e->getMessage()]);
@@ -142,7 +133,7 @@ class SyncShipmentTrackingStatus extends Command
             foreach ($chunk as $r) {
                 $num = (string) $r->tracking_number;
                 $res = $results[$num] ?? null;
-                // 17TRACK sometimes keys with different casing
+                // Carriers can key the number with different casing
                 if ($res === null) {
                     foreach ($results as $k => $v) {
                         if (strcasecmp((string) $k, $num) === 0) {
@@ -323,7 +314,6 @@ class SyncShipmentTrackingStatus extends Command
             'stale_min' => $staleMin,
             'limit' => $maxPerRun,
             'catch_up' => $catchUp,
-            'prefer_native' => $preferNative,
         ]);
 
         return self::SUCCESS;
@@ -702,15 +692,8 @@ class SyncShipmentTrackingStatus extends Command
             return min($configured, 5000);
         }
 
-        $preferAggregator = (bool) config('services.tracking.prefer_aggregator', true);
-        $has17 = $tracking->has17Track();
-        $uspsLeft = max(0, $tracking->uspsRemainingThisHour());
-
-        if ($preferAggregator && $has17) {
-            return min($configured, max($uspsLeft, 80), 200);
-        }
-
-        return min($configured, $uspsLeft + 40, 200);
+        // One USPS call carries up to 35 numbers, so the hourly call budget never limits a 200 number run.
+        return min($configured, 200);
     }
 
     protected function countOpenNeedingStatus(bool $onlyOpen, string $carrierFilter): int
@@ -860,7 +843,10 @@ class SyncShipmentTrackingStatus extends Command
                     ->orWhere('tracking_number', 'like', '1Z%');
             });
         } elseif ($carrierFilter === 'USPS') {
-            $query->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['%USPS%']);
+            $query->where(function ($q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['%USPS%'])
+                    ->orWhereRaw('tracking_number REGEXP ?', ['^9[0-9]{15,25}$']);
+            });
         } elseif ($carrierFilter === 'FEDEX') {
             $query->where(function ($q) {
                 $q->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['%FEDEX%'])

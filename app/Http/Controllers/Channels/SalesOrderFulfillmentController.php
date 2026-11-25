@@ -5689,7 +5689,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Put a pulled tracking number onto the carrier-status queue (USPS / UPS / 17TRACK).
+     * Put a pulled tracking number onto the carrier-status queue (USPS / UPS / FedEx / GOFO).
      */
     protected function enrollCarrierTrackingNumber(string $tracking, string $carrier): void
     {
@@ -5770,14 +5770,14 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Queue a catch-up carrier status sync (returns immediately — does not block the browser).
-     * Processes thousands of channel tracking numbers via 17TRACK in the background.
+     * Processes thousands of channel tracking numbers through the carrier APIs in the background.
      */
     public function refreshShipmentStatus(Request $request, ShipmentTrackingService $tracking): JsonResponse
     {
         if (! $tracking->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No tracking provider configured. Add USPS / UPS credentials or TRACKING_API_KEY in .env.',
+                'message' => 'No tracking provider configured. Add USPS / UPS / FedEx credentials in .env.',
             ], 422);
         }
 
@@ -5809,7 +5809,6 @@ class SalesOrderFulfillmentController extends Controller
                     'ups' => $tracking->hasUps(),
                     'fedex' => $tracking->hasFedex(),
                     'gofo' => $tracking->hasGofo(),
-                    '17track' => $tracking->has17Track(),
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -5839,7 +5838,7 @@ class SalesOrderFulfillmentController extends Controller
         if (! $tracking->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No tracking provider configured. Add USPS / UPS credentials or TRACKING_API_KEY in .env.',
+                'message' => 'No tracking provider configured. Add USPS / UPS / FedEx credentials in .env.',
             ], 422);
         }
         if (! Schema::hasTable('carrier_tracking_statuses')) {
