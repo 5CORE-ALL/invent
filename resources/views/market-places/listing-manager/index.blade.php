@@ -951,12 +951,12 @@
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <label class="form-label mb-0">Title <span class="lc-req">*</span></label>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="title">
-                                <i class="fas fa-heading me-1"></i>Load Title from Title Master
-                            </button>
+                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="title">
+                            <i class="fas fa-heading me-1"></i>Load Title from Title Master
+                        </button>
                             <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-load-variation-btn" title="Title, description, and bullets from the parent row on Variation Master">
                                 <i class="fas fa-sitemap me-1"></i>Load from Variation Master
-                            </button>
+                        </button>
                         </div>
                     </div>
                     <input id="lc-title" class="form-control mt-1">
@@ -5128,8 +5128,8 @@
                 return `<label class="lm-channel-row ${on ? 'is-checked' : ''}" title="${escapeHtml(hint)}">
                     <span class="lm-ch-main">
                         <input type="checkbox" class="form-check-input lm-channel-cb" data-mode="${mode}" value="${c.id}" ${on ? 'checked' : ''}>
-                        ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
-                        <span class="fw-semibold">${escapeHtml(c.channel)}</span>
+                    ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
+                    <span class="fw-semibold">${escapeHtml(c.channel)}</span>
                     </span>
                     ${badge}
                 </label>`;
@@ -5445,10 +5445,10 @@
                     job = await $.ajax({
                         url: "{{ url('/listing-manager/product/push/status') }}/" + encodeURIComponent(token),
                         method: 'GET',
-                        timeout: 30000,
-                    });
+                    timeout: 30000,
+                });
                     misses = 0;
-                } catch (xhr) {
+            } catch (xhr) {
                     if (xhr && xhr.status === 404) {
                         // A single miss happens when cache:clear races the first poll. Keep watching briefly.
                         if (++misses >= 8) {
@@ -5644,7 +5644,7 @@
                     + (out.fail ? (', ' + out.fail + ' failed') : '')
                     + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
                 toast(summary, out.fail === 0 && !draftNote.startsWith('Drafts were not created') ? 'success' : 'error');
-                if (currentProduct) {
+            if (currentProduct) {
                     const patch = Object.assign({}, pushFields);
                     delete patch.aplus;
                     delete patch.variation_type;
@@ -5652,10 +5652,10 @@
                     delete patch.bullets;
                     delete patch.images;
                     currentProduct = Object.assign({}, currentProduct, patch, { images: currentImages.slice() });
-                    $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
+                $('#lm-prod-title').text(currentProduct.title || currentProduct.sku || 'Product');
                     if (!productEditMode) renderProductInfo(currentProduct);
-                }
-                loadTable();
+            }
+            loadTable();
                 finalLabel = '<i class="fas fa-redo me-1"></i>Push Again';
             } catch (err) {
                 const msg = (err && err.message) ? err.message : String(err || 'Unexpected error');
@@ -5666,7 +5666,7 @@
             } finally {
                 pushInFlight = false;
                 $btn.data('loading', false).prop('disabled', false).html(finalLabel);
-                $('#lm-prod-push-btn').prop('disabled', false);
+            $('#lm-prod-push-btn').prop('disabled', false);
                 if (goDrafts) openDraftsForChannels(goDrafts);
             }
         });
@@ -6077,7 +6077,7 @@
                 .fail(xhr => toast(xhr.responseJSON?.message || 'Could not load from Variation Master.', 'error'))
                 .always(function () {
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
-                });
+            });
         });
         $(document).on('click', '.lm-prod-master-btn', function () {
             const sku = currentProductSku;

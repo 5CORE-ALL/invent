@@ -96,6 +96,33 @@
     #salaryFabModal .sal-card-sub { font-size: .74rem; color: #8b8aa8; }
     #salaryFabModal .sal-card.future .sal-card-sub { color: rgba(255,255,255,.82); }
 
+    /* performance tiles: DAR % + overdue */
+    #salaryFabModal .sal-perf { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    #salaryFabModal button.sal-tile { border: 0; width: 100%; text-align: left; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+    #salaryFabModal button.sal-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(30, 27, 75, .14); }
+    #salaryFabModal .sal-si { position: relative; flex: none; width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center;
+        font-size: 1.35rem; font-weight: 900; letter-spacing: .02em; color: #fff; background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 6px 14px rgba(5, 150, 105, .35); }
+    #salaryFabModal .sal-si.has { background: linear-gradient(135deg, #f43f5e, #dc2626); box-shadow: 0 6px 14px rgba(220, 38, 38, .38); }
+    #salaryFabModal .sal-si-count { position: absolute; top: -7px; right: -7px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+        background: #fff; color: #dc2626; font-size: .78rem; font-weight: 900; box-shadow: 0 3px 8px rgba(0,0,0,.2); font-variant-numeric: tabular-nums; }
+    #salaryFabModal .sal-si:not(.has) .sal-si-count { color: #059669; }
+    #salaryFabModal .sal-tile { background: #fff; border-radius: 20px; padding: 14px 16px; box-shadow: 0 6px 20px rgba(30, 27, 75, .07); display: flex; align-items: center; gap: 14px; }
+    #salaryFabModal .sal-ring { --p: 0; --c: #ef4444; flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center;
+        background: conic-gradient(var(--c) calc(var(--p) * 1%), #ede9fe 0); position: relative; }
+    #salaryFabModal .sal-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #fff; }
+    #salaryFabModal .sal-ring span { position: relative; font-weight: 900; font-size: .9rem; color: #1e1b4b; }
+    #salaryFabModal .sal-ring.high { --c: #10b981; } #salaryFabModal .sal-ring.mid { --c: #f59e0b; } #salaryFabModal .sal-ring.low { --c: #ef4444; }
+    #salaryFabModal .sal-badge-num { flex: none; width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center; font-size: 1.7rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    #salaryFabModal .sal-badge-num.zero { background: #d1fae5; color: #047857; }
+    #salaryFabModal .sal-badge-num.some { background: #fef3c7; color: #b45309; }
+    #salaryFabModal .sal-badge-num.many { background: #fee2e2; color: #b91c1c; }
+    #salaryFabModal .sal-tile-label { font-size: .68rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #8b8aa8; }
+    #salaryFabModal .sal-tile-main { font-size: 1.05rem; font-weight: 900; color: #1e1b4b; line-height: 1.2; }
+    #salaryFabModal .sal-tile-sub { font-size: .74rem; color: #8b8aa8; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-tile { background: #1f1c3d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-ring::before { background: #1f1c3d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-ring span,
+    html[data-bs-theme="dark"] #salaryFabModal .sal-tile-main { color: #f1efff; }
     #salaryFabModal .sal-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     #salaryFabModal .sal-chip { font-size: .76rem; font-weight: 800; padding: 6px 12px; border-radius: 999px; background: #fff; color: #4c1d95; box-shadow: 0 3px 10px rgba(30, 27, 75, .06); }
     #salaryFabModal .sal-chip.hot { background: #fff1f7; color: #be185d; }
@@ -123,6 +150,19 @@
     #salaryFabModal .sal-save:hover { transform: scale(1.05); }
     #salaryFabModal .sal-save:disabled { opacity: .55; transform: none; }
     #salaryFabModal .sal-saved { font-size: .72rem; font-weight: 800; color: #059669; min-width: 48px; }
+    /* saved confirmation: row, amount box and button turn green */
+    #salaryFabModal .sal-row.is-saved { background: #dcfce7; box-shadow: 0 0 0 2px #22c55e, 0 6px 16px rgba(34, 197, 94, .3); animation: salSavedPop .5s ease; }
+    #salaryFabModal .sal-row.is-saved .sal-amt { background: #bbf7d0; box-shadow: 0 0 0 2px #22c55e; }
+    #salaryFabModal .sal-row.is-saved .sal-amt span,
+    #salaryFabModal .sal-row.is-saved .sal-amt input { color: #166534; }
+    #salaryFabModal .sal-row.is-saved .sal-save { background: linear-gradient(135deg, #22c55e, #16a34a); }
+    #salaryFabModal .sal-row.is-saved .sal-row-name { color: #166534; }
+    @keyframes salSavedPop { 0% { transform: scale(.98); } 60% { transform: scale(1.015); } 100% { transform: scale(1); } }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-row.is-saved { background: #14532d; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-row.is-saved .sal-amt { background: #166534; }
+    html[data-bs-theme="dark"] #salaryFabModal .sal-row.is-saved .sal-amt span,
+    html[data-bs-theme="dark"] #salaryFabModal .sal-row.is-saved .sal-amt input,
+    html[data-bs-theme="dark"] #salaryFabModal .sal-row.is-saved .sal-row-name { color: #dcfce7; }
     #salaryFabModal .sal-hint-small { font-size: .74rem; color: #8b8aa8; margin-top: 8px; }
     #salaryFabModal .sal-hidden { display: none !important; }
     #salaryFabModal .sal-error { border-radius: 14px; font-size: .85rem; margin-bottom: 10px; }
@@ -212,6 +252,7 @@
                 </div>
 
                 <div class="sal-cards" id="salCards"></div>
+                <div class="sal-perf" id="salPerf"></div>
                 <div class="sal-chips" id="salChips"></div>
 
                 {{-- president@5core.com only --}}
@@ -384,6 +425,33 @@
                 + '<div class="sal-card-sub">Not approved yet' + (m.next_month_label ? ' for ' + esc(m.next_month_label) : '') + '. Keep performing 💪</div></div>';
         }
 
+        // Performance tiles: own DAR % (last 30 days) and overdue task count.
+        function renderPerf(p) {
+            var box = $('salPerf');
+            if (!p) { box.innerHTML = ''; return; }
+            var pct = Math.max(0, Math.min(100, Number(p.dar_pct) || 0));
+            var band = ['high', 'mid', 'low'].indexOf(p.dar_band) >= 0 ? p.dar_band : 'low';
+            var od = Number(p.overdue) || 0;
+            var si = Number(p.si_count) || 0;
+            var odCls = od === 0 ? 'zero' : (od < 5 ? 'some' : 'many');
+            var odMsg = od === 0 ? 'All clear, nice 🎉' : (od < 5 ? 'Close them to stay on track' : 'Clear these to protect your raise');
+            var darMsg = pct > 90 ? 'Crushing it 🔥' : (pct >= 80 ? 'Almost there' : 'File daily to level up');
+            box.innerHTML =
+                '<div class="sal-tile"><div class="sal-ring ' + band + '" style="--p:' + pct + '"><span>' + Math.round(Number(p.dar_pct) || 0) + '%</span></div>'
+                + '<div><div class="sal-tile-label">DAR · last 30 days</div>'
+                + '<div class="sal-tile-main">' + esc(p.dar_count) + ' / ' + esc(p.dar_target) + ' days</div>'
+                + '<div class="sal-tile-sub">' + darMsg + '</div></div></div>'
+                + '<div class="sal-tile"><div class="sal-badge-num ' + odCls + '">' + od + '</div>'
+                + '<div><div class="sal-tile-label">Overdue tasks</div>'
+                + '<div class="sal-tile-main">' + (od === 1 ? '1 task' : od + ' tasks') + '</div>'
+                + '<div class="sal-tile-sub">' + odMsg + '</div></div></div>'
+                + '<button type="button" class="sal-tile" id="salSiTile" title="Open Scope of Improvement">'
+                + '<div class="sal-si' + (si > 0 ? ' has' : '') + '">SI<span class="sal-si-count">' + si + '</span></div>'
+                + '<div><div class="sal-tile-label">Scope of improvement</div>'
+                + '<div class="sal-tile-main">' + (si === 1 ? '1 point' : si + ' points') + '</div>'
+                + '<div class="sal-tile-sub">' + (si > 0 ? 'Tap to view &amp; work on them' : 'Nothing pending 🌟') + '</div></div></button>';
+        }
+
         function renderMine() {
             var m = state.me, box = $('salCards'), chips = $('salChips');
             if (!m) return;
@@ -407,12 +475,13 @@
                 + '<div class="sal-card-sub">' + futureSub + '</div></div>'
                 + nextIncrCard(m);
 
+            renderPerf(m.performance);
+
             var c = '<span class="sal-chip">📈 +' + esc(money(state.stepMin, cur)) + ' to ' + esc(money(state.stepMax, cur)) + ' / month on performance</span>';
             if (m.gap !== null && m.gap > 0) {
-                var est = m.months_min === m.months_max ? m.months_min + ' month' + (m.months_min === 1 ? '' : 's')
-                    : m.months_min + '–' + m.months_max + ' months';
+                var est = m.months_max + ' month' + (m.months_max === 1 ? '' : 's');
                 c += '<span class="sal-chip hot">🎯 ' + esc(money(m.gap, cur)) + ' to go</span>';
-                c += '<span class="sal-chip">⏳ ~' + esc(est) + ' at this pace</span>';
+                c += '<span class="sal-chip">⏳ ~' + esc(est) + ' at ' + esc(money(state.stepMax, cur)) + ' / month</span>';
             } else if (m.gap !== null) {
                 c += '<span class="sal-chip ok">🏆 You hit your planned salary. Legend.</span>';
             }
@@ -476,14 +545,24 @@
                 if (!res.ok || !res.data || !res.data.success) { showError(firstError(res.data)); return; }
                 var emp = res.data.employee;
                 state.employees = state.employees.map(function (e) { return e.user_id === emp.user_id ? emp : e; });
-                if (state.me && state.me.user_id === emp.user_id) { state.me = emp; renderMine(); renderProgress(); }
+                if (state.me && state.me.user_id === emp.user_id) { emp.performance = state.me.performance; state.me = emp; renderMine(); renderProgress(); }
                 // refresh this row's progress bar without losing what the president typed in other rows
                 var keep = {}; $('salRows').querySelectorAll('.sal-row').forEach(function (r) { keep[r.getAttribute('data-uid')] = r.querySelector('.sal-in').value; });
                 renderRows();
                 $('salRows').querySelectorAll('.sal-row').forEach(function (r) {
                     var id = r.getAttribute('data-uid');
                     if (id !== String(uid) && keep[id] !== undefined) r.querySelector('.sal-in').value = keep[id];
-                    if (id === String(uid)) { var t = r.querySelector('.sal-saved'); t.textContent = '✓ saved'; setTimeout(function () { t.textContent = ''; }, 2500); }
+                    if (id === String(uid)) {
+                        // turn the saved row green for a few seconds
+                        var sb = r.querySelector('.sal-save');
+                        r.classList.add('is-saved');
+                        sb.textContent = '✓ Saved';
+                        setTimeout(function () {
+                            // the list may have been re-rendered meanwhile, so look the row up again
+                            var again = $('salRows').querySelector('.sal-row[data-uid="' + uid + '"]');
+                            if (again) { again.classList.remove('is-saved'); var b2 = again.querySelector('.sal-save'); if (b2) b2.textContent = 'Save'; }
+                        }, 3000);
+                    }
                 });
             }).catch(function () { btn.disabled = false; showError('Network error. Please try again.'); });
         }
@@ -494,6 +573,17 @@
         });
         $('salRows').addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && e.target.classList.contains('sal-in')) { e.preventDefault(); save(e.target.closest('.sal-row')); }
+        });
+        // SI tile: close this window, then open the same Scope of Improvement modal as the top-bar SI button.
+        $('salPerf').addEventListener('click', function (e) {
+            if (!e.target.closest('#salSiTile')) return;
+            var topbarSi = document.getElementById('activityTopbarBtn');
+            if (!topbarSi) return;
+            modalEl.addEventListener('hidden.bs.modal', function openSi() {
+                modalEl.removeEventListener('hidden.bs.modal', openSi);
+                topbarSi.click();
+            });
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
         });
         $('salSearch').addEventListener('input', function () {
             var keep = {}; $('salRows').querySelectorAll('.sal-row').forEach(function (r) { keep[r.getAttribute('data-uid')] = r.querySelector('.sal-in').value; });

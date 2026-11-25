@@ -4,12 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\PayrollEmployeeSalary;
 use App\Models\SalaryProjection;
+use App\Models\ScopeOfImprovement;
 use App\Models\User;
 use App\Models\UserSalary;
 use App\Services\PayrollService;
+use App\Support\DarL30Metrics;
+use App\Support\UserOverdueNudge;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Floating "Salary" icon.
@@ -126,8 +130,8 @@ class SalaryFabController extends Controller
         $stepMax = max($stepMin, (int) config('payroll.future_salary.step_max', 1000));
         $monthsMin = $monthsMax = null;
         if ($gap !== null && $gap > 0) {
-            $monthsMin = (int) ceil($gap / $stepMax);
-            $monthsMax = (int) ceil($gap / $stepMin);
+            // Estimate uses the top step (1000 / month) only.
+            $monthsMin = $monthsMax = (int) ceil($gap / $stepMax);
         }
 
         // Progress (0-100) from the salary when the target was set to the target itself.
@@ -166,6 +170,46 @@ class SalaryFabController extends Controller
         ];
     }
 
+    /**
+     * @return array{dar_pct: int, dar_count: int, dar_target: int, dar_band: string, overdue: int, si_count: int}
+     */
+    protected function performance(User $user): array
+    {
+        $out = [
+            'dar_pct' => 0,
+            'dar_count' => 0,
+            'dar_target' => DarL30Metrics::TARGET,
+            'dar_band' => 'low',
+            'overdue' => 0,
+            'si_count' => 0,
+        ];
+
+        try {
+            // Same count as the top-bar SI (Scope of Improvement) button.
+            if (Schema::hasTable('scope_of_improvements')) {
+                $out['si_count'] = (int) ScopeOfImprovement::query()->where('user_id', (int) $user->id)->count();
+            }
+        } catch (\Throwable $e) {
+        }
+
+        try {
+            $dar = DarL30Metrics::forUserId((int) $user->id);
+            $out['dar_pct'] = (int) ($dar['dar_l30_pct'] ?? 0);
+            $out['dar_count'] = (int) ($dar['dar_l30_count'] ?? 0);
+            $out['dar_target'] = (int) ($dar['dar_l30_target'] ?? DarL30Metrics::TARGET);
+            $out['dar_band'] = (string) ($dar['dar_l30_band'] ?? 'low');
+        } catch (\Throwable $e) {
+            // never break the Salary window because of a metrics problem
+        }
+
+        try {
+            $out['overdue'] = UserOverdueNudge::countForUser($user);
+        } catch (\Throwable $e) {
+        }
+
+        return $out;
+    }
+
     public function show(Request $request): JsonResponse
     {
         $me = $request->user();
@@ -177,6 +221,9 @@ class SalaryFabController extends Controller
             $this->latestRows([$me->id])->get($me->id),
             SalaryProjection::where('user_id', $me->id)->first()
         );
+
+        // Performance: the logged-in user's OWN DAR % (last 30 days, same as the top bar) and overdue tasks.
+        $mine['performance'] = $this->performance($me);
 
         $data = [
             'success' => true,
