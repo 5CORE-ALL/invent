@@ -61,6 +61,10 @@ class AmazonCvrCpnAutoPushService
 
         try {
             $rows = $this->loadCandidates($limit, $onlySkus);
+            // Prices set by hand in the Price Increase modal (SPRICE_MANUAL) are not recomputed / overwritten by this run
+            if (empty($onlySkus)) {
+                $rows = \App\Services\Support\ManualSpriceFlag::withoutManual($rows, AmazonDataView::class, 'value');
+            }
         } catch (Throwable $e) {
             $stats['errors'][] = 'load: '.$e->getMessage();
             $this->log($logger, '✗ Load failed: '.$e->getMessage());
