@@ -9012,7 +9012,7 @@
             // Inv@SP table columns, one history graph per band: <column>_<band>.
             (function() {
                 const bandLabels = { zero: '0 Sold', red1: 'Red 0.01–10%', red2: 'Red 10–25%', green: 'Green 25–50%', pink: 'Pink ≥50%' };
-                const colLabels = { inv_cnt: 'SKUs', inv_units: 'Inv', inv_pct: '% of total', inv_today: 'Today Sales', inv_y: 'Y Sales', inv_l30: 'L30 Sales' };
+                const colLabels = { inv_cnt: 'SKUs', inv_units: 'Inv', inv_pct: '% of total', inv_today: 'Today Sales', inv_y: 'Y Sales', inv_l30: 'L30 Sales', inv_ypct: 'Y Sales Inv %', inv_tpct: 'T Sales Inv %' };
                 Object.keys(colLabels).forEach(function(col) {
                     Object.keys(bandLabels).forEach(function(band) {
                         metricLabels[col + '_' + band] = 'Inv@SP ' + bandLabels[band] + ' ' + colLabels[col];
@@ -9196,8 +9196,16 @@
                 inv_pct:   { hist: '_pct',   eps: 0.005 },
                 inv_today: { hist: '_today', eps: 0.005, sales: true },
                 inv_y:     { hist: '_y',     eps: 0.005, sales: true },
-                inv_l30:   { hist: '_l30',   eps: 0.005, sales: true }
+                inv_l30:   { hist: '_l30',   eps: 0.005, sales: true },
+                // Y / Today sales as a % of the band's Inv@SP $ (stock turning into sales: higher is always good).
+                inv_ypct:  { hist: '_ypct',  eps: 0.0005, sales: true },
+                inv_tpct:  { hist: '_tpct',  eps: 0.0005, sales: true }
             };
+            function ammInvSalesPct(sales, invSp) {
+                if (sales === null || sales === undefined) return null;
+                const sp = Number(invSp) || 0;
+                return sp > 0 ? (Number(sales) / sp) * 100 : 0;
+            }
             function ammInvRowDotHtml(d, metric) {
                 const spec = ammInvColSpec[metric];
                 const color = ammInvBandDotColor(d.key, d.key + spec.hist, spec.eps, !!spec.sales);
@@ -9280,6 +9288,8 @@
                         sales_today: s.sales_today,
                         sales_y: s.sales_y,
                         sales_l30: s.sales_l30,
+                        y_pct: ammInvSalesPct(s.sales_y, s.inv_at_sp),
+                        t_pct: ammInvSalesPct(s.sales_today, s.inv_at_sp),
                     };
                 });
                 // One number cell + the standard history dot (colour = latest saved day vs the day before;
@@ -9306,6 +9316,16 @@
                             return known.length ? known.reduce(function(a, b) { return a + (Number(b) || 0); }, 0) : null;
                         },
                     });
+                };
+                const pctText = function(v) { return (v === null || v === undefined) ? '—' : (Number(v) || 0).toFixed(2) + '%'; };
+                const totalSalesPct = function(salesField) {
+                    return function(values, data) {
+                        const known = (data || []).filter(function(r) { return r[salesField] !== null && r[salesField] !== undefined; });
+                        if (!known.length) return null;
+                        const sales = known.reduce(function(a, r) { return a + (Number(r[salesField]) || 0); }, 0);
+                        const sp = known.reduce(function(a, r) { return a + (Number(r.inv_at_sp) || 0); }, 0);
+                        return sp > 0 ? (sales / sp) * 100 : 0;
+                    };
                 };
                 if (ammInvSpTable) {
                     ammInvSpTable.setData(rows);
@@ -9338,6 +9358,9 @@
                         salesColumn('Today Sales', 'sales_today', 'inv_today'),
                         salesColumn('Y Sales', 'sales_y', 'inv_y'),
                         salesColumn('L30 Sales', 'sales_l30', 'inv_l30'),
+                        // Sales ÷ band Inv@SP $; the Total row is Σ sales ÷ Σ Inv@SP $.
+                        dotColumn('Y Sales Inv %', 'y_pct', 'inv_ypct', pctText, { bottomCalc: totalSalesPct('sales_y') }),
+                        dotColumn('T Sales Inv %', 't_pct', 'inv_tpct', pctText, { bottomCalc: totalSalesPct('sales_today') }),
                     ],
                 });
             }
@@ -9574,9 +9597,12 @@
                     else if (metric === 'inv_today') live = slice.sales_today === null ? null : Number(slice.sales_today);
                     else if (metric === 'inv_y') live = slice.sales_y === null ? null : Number(slice.sales_y);
                     else if (metric === 'inv_l30') live = slice.sales_l30 === null ? null : Number(slice.sales_l30);
+                    else if (metric === 'inv_ypct') live = ammInvSalesPct(slice.sales_y, slice.inv_at_sp);
+                    else if (metric === 'inv_tpct') live = ammInvSalesPct(slice.sales_today, slice.inv_at_sp);
                     else live = Number(metric === 'inv_lp' ? slice.inv_at_lp : slice.inv_at_sp);
                 }
-                const rounded = (live != null && isFinite(live)) ? (metric === 'inv_pct' ? live : Math.round(live)) : null;
+                const keepDecimals = metric === 'inv_pct' || metric === 'inv_ypct' || metric === 'inv_tpct';
+                const rounded = (live != null && isFinite(live)) ? (keepDecimals ? Math.round(live * 10000) / 10000 : Math.round(live)) : null;
                 showMetricChart('All', metric + '_' + band, rounded);
             });
 
@@ -9683,6 +9709,9 @@
                     }
                     if (/^inv_pct_/.test(m)) {
                         return v.toFixed(1) + '%';
+                    }
+                    if (/^inv_(ypct|tpct)_/.test(m)) {
+                        return v.toFixed(2) + '%';
                     }
                     if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'today_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');

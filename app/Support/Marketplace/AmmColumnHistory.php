@@ -38,6 +38,9 @@ class AmmColumnHistory
         'inv_today_zero', 'inv_today_red1', 'inv_today_red2', 'inv_today_green', 'inv_today_pink',
         'inv_y_zero', 'inv_y_red1', 'inv_y_red2', 'inv_y_green', 'inv_y_pink',
         'inv_l30_zero', 'inv_l30_red1', 'inv_l30_red2', 'inv_l30_green', 'inv_l30_pink',
+        // Y Sales / T Sales as a % of the band's Inv@SP $.
+        'inv_ypct_zero', 'inv_ypct_red1', 'inv_ypct_red2', 'inv_ypct_green', 'inv_ypct_pink',
+        'inv_tpct_zero', 'inv_tpct_red1', 'inv_tpct_red2', 'inv_tpct_green', 'inv_tpct_pink',
     ];
 
     /**
@@ -139,8 +142,10 @@ class AmmColumnHistory
                 ? round(((float) ($s['inv_at_sp'] ?? 0) / $totalSp) * 100, 2)
                 : 0.0;
             // Sales are null when the order window could not be built: never save that as 0.
+            $sp = (float) ($s['inv_at_sp'] ?? 0);
             if (isset($s['sales_today'])) {
                 $data['inv_today_'.$key] = (float) $s['sales_today'];
+                $data['inv_tpct_'.$key] = $sp > 0 ? round(((float) $s['sales_today'] / $sp) * 100, 4) : 0.0;
             }
             if (isset($s['sales_l30'])) {
                 $data['inv_l30_'.$key] = (float) $s['sales_l30'];
@@ -148,6 +153,7 @@ class AmmColumnHistory
             // Yesterday's sales belong to yesterday's date, so the graph is one point per real day.
             if (isset($s['sales_y'])) {
                 $yesterday['inv_y_'.$key] = (float) $s['sales_y'];
+                $yesterday['inv_ypct_'.$key] = $sp > 0 ? round(((float) $s['sales_y'] / $sp) * 100, 4) : 0.0;
             }
         }
         if ($data !== []) {

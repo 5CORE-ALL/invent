@@ -6627,6 +6627,8 @@ class ChannelMasterController extends Controller
                 // Yesterday's sales (_y) is only kept in badges_data_histories, under yesterday's own date.
                 if (isset($s['sales_today'])) {
                     $day[$k.'_today'] = (float) $s['sales_today'];
+                    $spVal = (float) ($s['inv_at_sp'] ?? 0);
+                    $day[$k.'_tpct'] = $spVal > 0 ? round(((float) $s['sales_today'] / $spVal) * 100, 4) : 0.0;
                 }
                 if (isset($s['sales_l30'])) {
                     $day[$k.'_l30'] = (float) $s['sales_l30'];
@@ -6708,6 +6710,8 @@ class ChannelMasterController extends Controller
                 $fields['inv_today_'.$band] = $band.'_today';
                 $fields['inv_y_'.$band] = $band.'_y';
                 $fields['inv_l30_'.$band] = $band.'_l30';
+                $fields['inv_ypct_'.$band] = $band.'_ypct';
+                $fields['inv_tpct_'.$band] = $band.'_tpct';
             }
             $since = now('America/Los_Angeles')->subDays($days)->toDateString();
             $rows = \App\Models\BadgeDataHistory::query()
