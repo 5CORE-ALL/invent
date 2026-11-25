@@ -539,6 +539,11 @@ return [
         'seller_id' => env('AMAZON_SELLER_ID'),
         'aws_access_key' => env('AWS_ACCESS_KEY_ID'),
         'aws_secret_key' => env('AWS_SECRET_ACCESS_KEY'),
+        // Amazon Business "Buy more, save more" tiers sent with every price push (B2B offer).
+        // Format "units:percent,units:percent" e.g. "3:15,25:24". Empty = send no tiers.
+        // Set AMAZON_B2B_QTY_TIERS_ENABLED=false to switch off without a code change.
+        'b2b_qty_tiers_enabled' => env('AMAZON_B2B_QTY_TIERS_ENABLED', true),
+        'b2b_qty_tiers' => env('AMAZON_B2B_QTY_TIERS', '3:15,25:24'),
     ],
 
     // Dedicated SP-API "B2" credentials used ONLY by the Hero Images Master

@@ -348,6 +348,45 @@ class AmazonSpApiService
     }
 
     /**
+     * Amazon Business "Buy more, save more" tiers for the B2B offer, from config
+     * (services.amazon_sp.b2b_qty_tiers, e.g. "3:15,25:24" = 3+ units 15% off, 25+ units 24% off).
+     * Returns null when disabled or empty so the push sends no tier plan.
+     *
+     * @return list<array{schedule: list<array<string, mixed>>}>|null
+     */
+    public static function b2bQuantityDiscountPlan(): ?array
+    {
+        if (! filter_var(config('services.amazon_sp.b2b_qty_tiers_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $levels = [];
+        foreach (explode(',', (string) config('services.amazon_sp.b2b_qty_tiers', '')) as $part) {
+            $bits = explode(':', trim($part));
+            if (count($bits) !== 2 || ! is_numeric($bits[0]) || ! is_numeric($bits[1])) {
+                continue;
+            }
+            $units = (int) $bits[0];
+            $pct = (float) $bits[1];
+            if ($units < 2 || $pct <= 0 || $pct >= 100) {
+                continue;
+            }
+            $levels[$units] = ['lower_bound' => $units, 'value' => $pct == floor($pct) ? (int) $pct : $pct];
+        }
+        if ($levels === []) {
+            return null;
+        }
+        ksort($levels);
+
+        return [[
+            'schedule' => [[
+                'discount_type' => 'percent',
+                'levels' => array_values($levels),
+            ]],
+        ]];
+    }
+
+    /**
      * Amazon keeps an old Sale if discounted_price is omitted.
      * Send the Sale when it is below Your Price; otherwise send an empty
      * schedule so the leftover Sale is removed.
@@ -811,6 +850,11 @@ class AmazonSpApiService
                     "audience" => "B2B",
                     "our_price" => $businessPriceSchedule,
                 ];
+                // "Buy more, save more" tiers (Amazon Business) go out with every push, so pushed SKUs get them.
+                $qtyPlan = self::b2bQuantityDiscountPlan();
+                if ($qtyPlan !== null) {
+                    $b2bOfferValue['quantity_discount_plan'] = $qtyPlan;
+                }
                 $offerValues = [$offerValue, $b2bOfferValue];
                 $includedB2b = true;
                 $body = [
