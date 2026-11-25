@@ -10616,7 +10616,14 @@
         // snapshotted when it starts and its progress lives in this registry, not in the modal's DOM.
         const chpushRegistry = {};   // sku -> { rows: { channel: {state,msg,price} }, cols: { type: {state,msg} } }
         const chpushRunning = {};    // sku -> number of running jobs
-        const chpushBg = { jobs: 0, done: 0, total: 0, sku: '', sending: 0 }; // sending = jobs not yet handed to the server
+        // done = finished (pushed + failed), ok = pushed, fail = failed; waiting = total - done
+        const chpushBg = { jobs: 0, done: 0, ok: 0, fail: 0, total: 0, sku: '', sending: 0 }; // sending = jobs not yet handed to the server
+        /** Count one finished push (success or failure) for the floating progress badge. */
+        function chpushBgCount(ok) {
+            chpushBg.done++;
+            if (ok) chpushBg.ok++; else chpushBg.fail++;
+            chpushBgUpdate();
+        }
         let chpushRenderedSku = '';
         const CHPUSH_ALL_HTML = '<i class="fas fa-upload me-1"></i> Push All';
 
@@ -10711,7 +10718,10 @@
                     boxShadow: '0 4px 14px rgba(0,0,0,.25)'
                 }).appendTo('body');
             }
-            $b.html('<i class="fas fa-spinner fa-spin me-2"></i>Pushing prices… ' + chpushBg.done + '/' + chpushBg.total
+            const waiting = Math.max(0, chpushBg.total - chpushBg.done);
+            $b.html('<i class="fas fa-spinner fa-spin me-2"></i>Pushing prices… <b>' + chpushBg.ok + '/' + chpushBg.total + ' pushed</b>'
+                + (chpushBg.fail ? ' · <span style="color:#ffd1d1;">' + chpushBg.fail + ' failed</span>' : '')
+                + (waiting ? ' · ' + waiting + ' waiting' : '')
                 + ' <small style="opacity:.8">(' + chpushEsc(chpushBg.sku) + ')</small>');
         }
 
@@ -10915,7 +10925,7 @@
                     chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
                     if (!chpushRunning[sku]) delete chpushReg(sku).boxes;
                     chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
-                    if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.total = 0; }
+                    if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.ok = 0; chpushBg.fail = 0; chpushBg.total = 0; }
                     chpushBgUpdate();
                     if (opts.colType) {
                         chpushReg(sku).cols[opts.colType] = errors.length
@@ -10950,8 +10960,7 @@
                     onAccepted: function() { chpushBg.sending = Math.max(0, chpushBg.sending - 1); },
                     onResult: function(i, result) {
                         const t = jobTargets[i];
-                        chpushBg.done++;
-                        chpushBgUpdate();
+                        chpushBgCount(!!result.ok);
                         if (result.ok) {
                             okResults.push(result);
                             lastMsg = result.message || '';
@@ -10975,8 +10984,7 @@
                     });
                     return ovl30PushInBackground(sibSku, sibTargets, {
                         onResult: function(i, result) {
-                            chpushBg.done++;
-                            chpushBgUpdate();
+                            chpushBgCount(!!result.ok);
                             sibPushTot++;
                             if (result.ok) sibPushOk++;
                             else sibErrors.push(sibSku + ' ' + sibTargets[i].channel + ' — ' + String(result.message || 'failed').slice(0, 100));
