@@ -334,9 +334,16 @@ class PricePushPendingService
                     break;
                 }
                 $done[] = $row->id;
+                if (! $this->claimRow((int) $row->id)) {
+                    continue; // an express worker (runExpress) is pushing this row right now
+                }
                 $tried++;
-                if ($this->runQueuedRow($row)) {
-                    $ok++;
+                try {
+                    if ($this->runQueuedRow($row)) {
+                        $ok++;
+                    }
+                } finally {
+                    $this->releaseRow((int) $row->id);
                 }
             }
         } finally {
@@ -346,6 +353,70 @@ class PricePushPendingService
         }
 
         return [$tried, $ok, true];
+    }
+
+    private const ROW_CLAIM_SECONDS = 600;
+
+    /** One worker per row: the FIFO worker and the express worker never push the same row twice. */
+    private function claimRow(int $id): bool
+    {
+        return Cache::add('price_push_row_claim:' . $id, 1, self::ROW_CLAIM_SECONDS);
+    }
+
+    private function releaseRow(int $id): void
+    {
+        Cache::forget('price_push_row_claim:' . $id);
+    }
+
+    /**
+     * EXPRESS push: the rows a user has just clicked are pushed at once by that click's own worker — they do not wait behind
+     * the shared FIFO queue (other SKUs / retries). Amazon goes first, then the other channels in the order they were sent.
+     * Rows are claimed one by one, so the FIFO worker (drainQueue) skips what is already being pushed here and the other
+     * way round. Rows already pushed by someone else in the meantime are skipped. $jobs = [ ['sku' => .., 'marketplace' => ..], … ].
+     * Returns [pushed, ok].
+     */
+    public function runExpress(array $jobs): array
+    {
+        if (! $this->available() || ! $jobs) {
+            return [0, 0];
+        }
+        $order = [];
+        foreach (array_values($jobs) as $i => $j) {
+            $sku = strtoupper(trim((string) ($j['sku'] ?? '')));
+            $mp = self::key((string) ($j['marketplace'] ?? ''));
+            if ($sku === '' || $mp === '') {
+                continue;
+            }
+            $order[$sku . '|' . $mp] = [$sku, $mp, $mp === 'amazon' ? 0 : 1, $i];
+        }
+        uasort($order, fn ($a, $b) => [$a[2], $a[3]] <=> [$b[2], $b[3]]);
+
+        $tried = 0;
+        $ok = 0;
+        foreach ($order as [$sku, $mp]) {
+            $row = PricePushPending::where('sku', $sku)->where('marketplace', $mp)->first();
+            if (! $row || $row->status !== 'pending' || strpos((string) $row->last_error, PricePushPending::QUEUED_PREFIX) !== 0) {
+                continue; // already pushed / handled by the FIFO worker
+            }
+            $id = (int) $row->id;
+            if (! $this->claimRow($id)) {
+                continue; // the FIFO worker has it
+            }
+            try {
+                $fresh = $row->fresh();
+                if (! $fresh || $fresh->status !== 'pending' || strpos((string) $fresh->last_error, PricePushPending::QUEUED_PREFIX) !== 0) {
+                    continue;
+                }
+                $tried++;
+                if ($this->runQueuedRow($fresh)) {
+                    $ok++;
+                }
+            } finally {
+                $this->releaseRow($id);
+            }
+        }
+
+        return [$tried, $ok];
     }
 
     /** Push one queued row exactly like the web request would (same user in the push history), record + cache the result. */

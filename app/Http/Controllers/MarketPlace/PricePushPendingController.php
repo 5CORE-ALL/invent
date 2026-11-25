@@ -95,12 +95,21 @@ class PricePushPendingController extends Controller
             return response()->json(['success' => false, 'message' => 'Nothing to push (price must be > 0)'], 422);
         }
 
-        // SEQUENTIAL QUEUE: the rows above ("Queued") are the queue. Exactly one worker at a time drains it, oldest first
-        // (first in, first out) — this request's worker, or whichever worker is already running, or the per-minute
-        // price-push:run-queued if that one died. Runs after the response was sent, so a refresh / closed tab changes nothing.
-        app()->terminating(function () use ($svc) {
+        // 1) EXPRESS: this click's own rows are pushed at once by this request's worker (Amazon first) — never waiting
+        //    behind other SKUs in the shared queue.
+        // 2) SEQUENTIAL QUEUE: the "Queued" rows of everybody else (and anything left over) are drained one at a time, oldest
+        //    first, by exactly one worker — this one, or the one already running, or the per-minute price-push:run-queued if
+        //    that one died. Rows are claimed one by one, so nothing is ever pushed twice.
+        // Runs after the response was sent, so a refresh / closed tab changes nothing.
+        $express = array_map(fn ($j) => ['sku' => $j['sku'], 'marketplace' => $j['marketplace']], $jobs);
+        app()->terminating(function () use ($svc, $express) {
             @ignore_user_abort(true);
             @set_time_limit(0);
+            try {
+                $svc->runExpress($express);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Price push express worker failed: ' . $e->getMessage());
+            }
             $svc->drainQueue();
         });
 
