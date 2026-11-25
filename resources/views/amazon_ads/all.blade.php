@@ -2164,7 +2164,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (lifetime data, spend under $30 ignored). Only lowers a budget. A cap of <strong>$0 pauses</strong> the ad.</p>
+                        <p class="small text-muted mb-0">Caps SBGT of a parent's KW / PT / HL ads when their ACOS% is yellow or red on <a href="{{ route('amazon.ads.missing') }}" target="_blank" rel="noopener">Missing Ads</a> (lifetime data, spend of $30 or less ignored). Only lowers a budget. A cap of <strong>$0 pauses</strong> the ad.</p>
                         <div class="form-check form-switch mb-0 flex-shrink-0">
                             <input class="form-check-input" type="checkbox" role="switch" id="amazonAdsBgtCapEnabled">
                             <label class="form-check-label small fw-semibold" for="amazonAdsBgtCapEnabled"><span id="amazonAdsBgtCapEnabledLbl">OFF</span></label>
@@ -2265,7 +2265,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">Runs on <strong>Save &amp; apply</strong> and daily at 18:25 IST. Old ads stay paused. Rules 2–4 always use lifetime data and ignore ads with spend under $30.</p>
+                    <p class="small text-muted mb-3">Runs on <strong>Save &amp; apply</strong> and daily at 18:25 IST. Old ads stay paused. Rules 2–4 always use lifetime data and ignore ads with spend of $30 or less. Rules 2–4 are ON by default.</p>
 
                     <div class="border rounded p-2 mb-2">
                         <div class="d-flex align-items-center justify-content-between gap-2">
@@ -2299,7 +2299,7 @@
                                 · Still active: <strong id="amazonAdsRedActive_{{ $acosKey }}">–</strong>
                                 · Paused by this rule: <strong id="amazonAdsPauseCount_{{ $acosKey }}">0</strong>
                             </div>
-                            <div class="small text-muted">Lifetime data, ignores spend under $30. Never turned back on automatically.</div>
+                            <div class="small text-muted">Lifetime data, only spend above $30. Never turned back on automatically.</div>
                         </div>
                     @endforeach
                     <p class="small text-danger mb-0 mt-3 d-none" id="amazonAdsPrRuleModalError" role="alert"></p>
@@ -10837,7 +10837,8 @@
             function amzAcosRulesFromRule(rule) {
                 var src = (rule && rule.acos_rules) ? rule.acos_rules : {};
                 var out = {};
-                AMZ_ACOS_RULE_KEYS.forEach(function (k) { out[k] = !!src[k]; });
+                // Missing flag (never saved) = ON by default; an explicit false stays OFF.
+                AMZ_ACOS_RULE_KEYS.forEach(function (k) { out[k] = (src[k] === undefined || src[k] === null) ? true : !!src[k]; });
                 return out;
             }
             function amzAcosRulesFromModal() {
