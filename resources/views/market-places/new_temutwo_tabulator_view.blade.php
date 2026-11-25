@@ -368,15 +368,6 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <span class="nto-server-push-note" id="nto-auto-note"
-                title="Auto-push is ON: the server pushes S Base Prc at 04:20 / 20:20 IST and this page applies promotions. Click Pause to stop automatic pushes; the push buttons still work.">
-                <i class="fas fa-bolt"></i> <span id="nto-auto-note-text">{{ !empty($newtemutwoAutoPaused) ? 'Auto-push paused' : 'Auto-push on' }}</span>
-            </span>
-            <button type="button" class="btn btn-sm {{ !empty($newtemutwoAutoPaused) ? 'btn-success' : 'btn-warning' }}" id="nto-auto-pause-btn"
-                title="Pause stops every automatic push (server schedule + page). Resume turns auto-push back on.">
-                <i class="fas {{ !empty($newtemutwoAutoPaused) ? 'fa-play' : 'fa-pause' }}"></i>
-                <span id="nto-auto-pause-label">{{ !empty($newtemutwoAutoPaused) ? 'Resume' : 'Pause' }}</span>
-            </button>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -2211,7 +2202,8 @@
                         (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
                     );
                 }
-                if (typeof ntoApplyPromotions === 'function') setTimeout(ntoApplyPromotions, 2500);
+                // Follow-up of a push a person started: apply the promotion for the SKUs just pushed.
+                if (typeof ntoApplyPromotions === 'function') setTimeout(function() { ntoApplyPromotions({ manual: true }); }, 2500);
             }
         });
     }
@@ -2306,31 +2298,16 @@
         });
     }
     // ---- Temu 2 Promotion API (PM column) -------------------------------------------------
-    // PM = Sum disc. Sum disc 2 → promotion 2%. Promotion is always ON: every SKU with a Sum disc is enrolled. Pause (top bar) stops the automatic pushes.
+    // PM = Sum disc. Sum disc 2 → promotion 2%. Promotion is always ON: every SKU with a Sum disc is enrolled. Nothing is applied on page load (manual-push only, same as Temu 1).
     const NTO_PROMO_PUSH_URL = '/new-temu2-promotion-push';
     const NTO_PROMO_SETTING_URL = '/new-temu2-promotion-setting';
     const NTO_PROMO_CHUNK = 10;
     const NTO_PROMO_FAIL_KEY = 'nt2PromoFailed';
     const NTO_PROMO_FAIL_TTL_MS = 6 * 60 * 60 * 1000;
-    let ntoAutoPaused = @json(!empty($newtemutwoAutoPaused));
+    // Temu 2 is manual-push only (same as Temu 1): no Auto-push switch, nothing runs on page load.
+    const ntoAutoPaused = true;
     let ntoPromoBusy = false;
 
-    function syncNtoAutoPauseUi() {
-        $('#nto-auto-note-text').text(ntoAutoPaused ? 'Auto-push paused' : 'Auto-push on');
-        $('#nto-auto-pause-btn')
-            .toggleClass('btn-success', ntoAutoPaused)
-            .toggleClass('btn-warning', !ntoAutoPaused)
-            .find('i').attr('class', 'fas ' + (ntoAutoPaused ? 'fa-play' : 'fa-pause'));
-        $('#nto-auto-pause-label').text(ntoAutoPaused ? 'Resume' : 'Pause');
-    }
-    function saveNtoAutoPaused(paused) {
-        return $.ajax({
-            url: NTO_PROMO_SETTING_URL,
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
-            data: { _token: ntoPushCsrf(), paused: paused ? 1 : 0 },
-        });
-    }
     /** PM = Sum disc of the row (child SKUs with stock only). */
     function ntoRowPm(d) {
         if (!d || d.is_parent_summary) return 0;
@@ -2819,27 +2796,8 @@
     }
     window.ntoApplyPromotions = ntoApplyPromotions;
     function initNtoPromotionUi() {
-        syncNtoAutoPauseUi();
-        $('#nto-auto-pause-btn').off('click.ntoPause').on('click.ntoPause', function() {
-            const next = !ntoAutoPaused;
-            const $btn = $(this).prop('disabled', true);
-            saveNtoAutoPaused(next)
-                .done(function() {
-                    ntoAutoPaused = next;
-                    syncNtoAutoPauseUi();
-                    showToast(next
-                        ? 'Auto-push paused — nothing is pushed automatically. The push buttons still work.'
-                        : 'Auto-push resumed.', 'success');
-                    if (!next) ntoApplyPromotions();
-                })
-                .fail(function(xhr) {
-                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not change auto-push', 'error');
-                })
-                .always(function() { $btn.prop('disabled', false); });
-        });
-        loadNtoPromoEligibility(false).always(function() {
-            ntoApplyPromotions();
-        });
+        // Eligibility only (PM column display). Promotions are applied by hand, never on page load.
+        loadNtoPromoEligibility(false);
     }
     function initNtoReloadPushUi() {
         $('#nto-reload-push-progress-cancel').off('click.ntoReload').on('click.ntoReload', function(e) {
@@ -4415,7 +4373,6 @@
             setTimeout(function() {
                 temuClearCapMemo();
                 if (typeof updateSummary === 'function') updateSummary();
-                ntoApplyPromotions();
             }, 800);
         });
 

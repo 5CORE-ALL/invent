@@ -46,7 +46,6 @@ class NewTemutwoController extends Controller
             'temuMargin' => TemuShopifySalesService::temu2MarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
             'newtemutwoPushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
-            'newtemutwoAutoPaused' => self::autoPushPaused(),
         ]);
     }
 
@@ -80,13 +79,15 @@ class NewTemutwoController extends Controller
         return [
             'enabled' => true,
             'activity_id' => $activity !== '' ? $activity : null,
-            'paused' => filter_var($vis['paused'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            // Temu 2 never pushes automatically (same as Temu 1): there is no Auto-push switch any more.
+            // Always paused = only a person clicking a push button (manual=1) reaches Temu.
+            'paused' => true,
         ];
     }
 
     public static function autoPushPaused(): bool
     {
-        return self::promotionSetting()['paused'];
+        return true;
     }
 
     public static function promotionEnabled(): bool
@@ -103,9 +104,7 @@ class NewTemutwoController extends Controller
     {
         $current = self::promotionSetting();
         $enabled = true; // Promotion is always ON.
-        $paused = $request->has('paused')
-            ? filter_var($request->input('paused'), FILTER_VALIDATE_BOOLEAN)
-            : $current['paused'];
+        $paused = true; // No Auto-push switch: Temu 2 is manual-push only.
         $activity = $request->has('activity_id')
             ? trim((string) $request->input('activity_id'))
             : (string) ($current['activity_id'] ?? '');
