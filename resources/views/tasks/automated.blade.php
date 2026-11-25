@@ -1279,6 +1279,11 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                {{-- Read-only: links already submitted on the task (L1, L2, SOP, Video, etc.) --}}
+                <div id="done-submitted-links-wrap" class="mb-3 d-none">
+                    <div class="fw-semibold mb-1"><i class="mdi mdi-link-variant me-1"></i>Submitted links</div>
+                    <div id="done-submitted-links" class="border rounded p-2 small" style="background:#f8f9fa;"></div>
+                </div>
                 <p class="mb-3"><strong>How much time did you actually spend on this task?</strong></p>
                 <div class="mb-3">
                     <label for="atc-input" class="form-label">Actual Time to Complete (ATC) in minutes:</label>
@@ -5225,6 +5230,51 @@
                 'cancelled': 'Cancelled'
             };
             
+            function doneLinkEsc(t) {
+                return String(t == null ? '' : t)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            // Show the links already stored on the task (read-only) in the Done modal.
+            function renderDoneSubmittedLinks(taskId) {
+                var $wrap = $('#done-submitted-links-wrap');
+                var $box = $('#done-submitted-links').empty();
+                var d = null;
+                try {
+                    var row = table.getRow(parseInt(taskId, 10));
+                    d = row ? row.getData() : null;
+                } catch (e) {
+                    d = null;
+                }
+                var slots = d ? [
+                    ['L1', d.link1 || d.l1],
+                    ['L2', d.link2 || d.l2],
+                    ['SOP', d.link3 || d.training_link],
+                    ['Video', d.link4 || d.video_link],
+                    ['Form', d.link5 || d.form_link],
+                    ['Report', d.link6 || d.form_report_link],
+                    ['Checklist', d.link7 || d.checklist_link],
+                    ['PL', d.link8 || d.pl],
+                    ['Process', d.link9 || d.process]
+                ] : [];
+                var html = '';
+                slots.forEach(function(s) {
+                    var v = s[1] == null ? '' : String(s[1]).trim();
+                    if (!v) return;
+                    var safe = doneLinkEsc(v);
+                    var shown = /^https?:\/\//i.test(v)
+                        ? '<a href="' + safe + '" target="_blank" rel="noopener" style="word-break:break-all;">' + safe + '</a>'
+                        : '<span style="word-break:break-all;">' + safe + '</span>';
+                    html += '<div class="d-flex gap-2 mb-1"><span class="text-muted fw-semibold" style="min-width:70px;">' + doneLinkEsc(s[0]) + ':</span><span>' + shown + '</span></div>';
+                });
+                $box.html(html || '<div class="text-muted fst-italic">No links submitted on this task.</div>');
+                $wrap.removeClass('d-none');
+            }
+
             $(document).on('change', '.status-select', function() {
                 var select = $(this);
                 newStatusValue = select.val();
@@ -5232,7 +5282,8 @@
                 previousStatus = select.data('current-status');
                 
                 if (newStatusValue === 'completed') {
-                    // Show Done Modal (ask for ATC)
+                    // Show Done Modal (ask for ATC) with the task's submitted links
+                    renderDoneSubmittedLinks(currentTaskId);
                     $('#doneModal').modal('show');
                     select.val(previousStatus);
                 } else {
