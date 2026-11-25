@@ -1332,6 +1332,9 @@
     {{-- Floating "Salary" icon (every page; opt out with 'hideSalaryFab' => true) --}}
     @include('layouts.shared.salary-fab')
 
+    {{-- Floating "Penalty" icon (every page; opt out with 'hidePenaltyFab' => true) --}}
+    @include('layouts.shared.penalty-fab')
+
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
 

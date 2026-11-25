@@ -8404,6 +8404,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Floating "Salary" icon: own current + future salary; only president@5core.com can set the future salary
     Route::get('/salary-fab', [\App\Http\Controllers\SalaryFabController::class, 'show'])->middleware('auth')->name('salaryFab.show');
     Route::post('/salary-fab/future', [\App\Http\Controllers\SalaryFabController::class, 'setFuture'])->middleware('auth')->name('salaryFab.setFuture');
+    // Floating "Penalty" icon: users see their own; only president@5core.com adds points, rules and slabs
+    Route::get('/penalty-fab', [\App\Http\Controllers\PenaltyFabController::class, 'show'])->middleware('auth')->name('penaltyFab.show');
+    Route::get('/penalty-fab/history', [\App\Http\Controllers\PenaltyFabController::class, 'history'])->middleware('auth')->name('penaltyFab.history');
+    Route::post('/penalty-fab/entries', [\App\Http\Controllers\PenaltyFabController::class, 'storeEntry'])->middleware('auth')->name('penaltyFab.entries.store');
+    Route::delete('/penalty-fab/entries/{id}', [\App\Http\Controllers\PenaltyFabController::class, 'destroyEntry'])->middleware('auth')->whereNumber('id')->name('penaltyFab.entries.destroy');
+    Route::post('/penalty-fab/rules', [\App\Http\Controllers\PenaltyFabController::class, 'saveRule'])->middleware('auth')->name('penaltyFab.rules.save');
+    Route::post('/penalty-fab/rules/run', [\App\Http\Controllers\PenaltyFabController::class, 'runRules'])->middleware('auth')->name('penaltyFab.rules.run');
+    Route::post('/penalty-fab/rules/{id}/toggle', [\App\Http\Controllers\PenaltyFabController::class, 'toggleRule'])->middleware('auth')->whereNumber('id')->name('penaltyFab.rules.toggle');
+    Route::delete('/penalty-fab/rules/{id}', [\App\Http\Controllers\PenaltyFabController::class, 'destroyRule'])->middleware('auth')->whereNumber('id')->name('penaltyFab.rules.destroy');
+    Route::post('/penalty-fab/slabs', [\App\Http\Controllers\PenaltyFabController::class, 'saveSlabs'])->middleware('auth')->name('penaltyFab.slabs.save');
+    Route::post('/penalty-fab/corrections', [\App\Http\Controllers\PenaltyFabController::class, 'addCorrection'])->middleware('auth')->name('penaltyFab.corrections.add');
+    Route::delete('/penalty-fab/corrections/{id}', [\App\Http\Controllers\PenaltyFabController::class, 'deleteCorrection'])->middleware('auth')->whereNumber('id')->name('penaltyFab.corrections.delete');
     Route::get('/tasks/overdue-nudge', [\App\Http\Controllers\TaskController::class, 'getOverdueNudge'])->name('tasks.overdueNudge.get');
     Route::get('/tasks/tat-nudge', [\App\Http\Controllers\TaskController::class, 'getTatNudge'])->name('tasks.tatNudge.get');
     Route::get('/tasks/user-incentives', [\App\Http\Controllers\TaskController::class, 'getUserIncentives'])->name('tasks.userIncentives.get');

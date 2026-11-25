@@ -2284,6 +2284,24 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Penalty icon: auto rules set by president@5core.com fire once a day inside their run-time window ...
+        $schedule->command('penalty:run-rules')
+            ->everyTenMinutes()
+            ->timezone(\App\Support\TaskBusinessTime::tz())
+            ->name('penalty-run-rules')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // ... and on the 1st of every month the previous month's penalty total is frozen and priced with the slabs.
+        $schedule->command('penalty:close-month')
+            ->monthlyOn(1, '00:30')
+            ->timezone(\App\Support\TaskBusinessTime::tz())
+            ->name('penalty-close-month')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $schedule->command('chat:daily-nudges')
             ->dailyAt('10:00')
             ->timezone(\App\Support\TaskBusinessTime::tz())
