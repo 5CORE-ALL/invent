@@ -345,11 +345,15 @@ class AmazonBidUtilizationService
     /**
      * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).
      *
-     * - Both below util_low: CPC1×m1, else CPC2×m2, else CPC3×m7, else Avg CPC + avg_cpc_add when Avg CPC is available, else both_low_fallback when all CPCs are zero.
+     * - Both below util_vlow (default 30): vlow_* rule box.
+     * - Both below util_low (default 66) but not both below util_vlow: both_low_* rule box (30 to 66).
+     *   Each box: CPC1×m1, else CPC2×m2, else CPC3×m7, else Avg CPC + avg add when Avg CPC is available, else the box fallback.
      * - Both above util_high: L1×both_high_mult_l1 (or null when L1 CPC missing, same as legacy).
      * - Otherwise: sbid null (display "--" in Amazon Ads All).
      *
-     * @return array{sbid: float|null, band: 'under'|'over'|'none'}
+     * `band` stays 'under' for both under boxes so the bid jobs keep working; `tier` says which box matched.
+     *
+     * @return array{sbid: float|null, band: 'under'|'over'|'none', tier: 'vlow'|'low'|null}
      */
     public static function sbidFromUb2Ub1Cpc(
         float $ub2,
@@ -361,13 +365,7 @@ class AmazonBidUtilizationService
         ?float $avgCpc = null
     ): array {
         $r = AmazonAdsSbidRule::resolvedRule();
-        $low = (float) $r['util_low'];
         $high = (float) $r['util_high'];
-        $m1 = (float) $r['both_low_mult_l1'];
-        $m2 = (float) $r['both_low_mult_l2'];
-        $m7 = (float) $r['both_low_mult_l7'];
-        $fallback = (float) $r['both_low_fallback'];
-        $avgAdd = (float) ($r['avg_cpc_add'] ?? 0.10);
         $highM1 = (float) $r['both_high_mult_l1'];
 
         $fb = ($costPerClickFallback !== null && $costPerClickFallback > 0) ? $costPerClickFallback : null;
@@ -380,32 +378,69 @@ class AmazonBidUtilizationService
             $l1 = $l2 = $l7 = $fb;
         }
 
-        if ($ub2 < $low && $ub1 < $low) {
-            // A very low L1 / L7 CPC barely moves with a ×1.10 multiplier, so below LOW_CPC_THRESHOLD add a flat amount instead.
-            if ($l1 > 0.0) {
-                return ['sbid' => round($l1 < self::LOW_CPC_THRESHOLD ? $l1 + self::LOW_CPC_FLAT_ADD : $l1 * $m1, 2), 'band' => 'under'];
-            }
-            if ($l2 > 0.0) {
-                return ['sbid' => round($l2 * $m2, 2), 'band' => 'under'];
-            }
-            if ($l7 > 0.0) {
-                return ['sbid' => round($l7 < self::LOW_CPC_THRESHOLD ? $l7 + self::LOW_CPC_FLAT_ADD : $l7 * $m7, 2), 'band' => 'under'];
-            }
-            if ($avgCpc !== null && $avgCpc > 0) {
-                return ['sbid' => round($avgCpc + $avgAdd, 2), 'band' => 'under'];
-            }
-
-            return ['sbid' => round($fallback, 2), 'band' => 'under'];
+        $tier = AmazonAdsSbidRule::underTier($ub2, $ub1, $r);
+        if ($tier === AmazonAdsSbidRule::TIER_VLOW) {
+            return [
+                'sbid' => self::underSbid(
+                    $l1, $l2, $l7, $avgCpc,
+                    (float) $r['vlow_mult_l1'], (float) $r['vlow_mult_l2'], (float) $r['vlow_mult_l7'],
+                    (float) ($r['vlow_avg_cpc_add'] ?? 0.10), (float) $r['vlow_fallback']
+                ),
+                'band' => 'under',
+                'tier' => $tier,
+            ];
+        }
+        if ($tier === AmazonAdsSbidRule::TIER_LOW) {
+            return [
+                'sbid' => self::underSbid(
+                    $l1, $l2, $l7, $avgCpc,
+                    (float) $r['both_low_mult_l1'], (float) $r['both_low_mult_l2'], (float) $r['both_low_mult_l7'],
+                    (float) ($r['avg_cpc_add'] ?? 0.10), (float) $r['both_low_fallback']
+                ),
+                'band' => 'under',
+                'tier' => $tier,
+            ];
         }
 
         if ($ub2 > $high && $ub1 > $high) {
             if ($l1 > 0.0) {
-                return ['sbid' => round($l1 * $highM1, 2), 'band' => 'over'];
+                return ['sbid' => round($l1 * $highM1, 2), 'band' => 'over', 'tier' => null];
             }
 
-            return ['sbid' => null, 'band' => 'none'];
+            return ['sbid' => null, 'band' => 'none', 'tier' => null];
         }
 
-        return ['sbid' => null, 'band' => 'none'];
+        return ['sbid' => null, 'band' => 'none', 'tier' => null];
+    }
+
+    /**
+     * One under-utilized rule box: L1 / L2 / L7 multipliers, then Avg CPC + add-on, then the fallback.
+     * A very low L1 / L7 CPC barely moves with a ×1.10 multiplier, so below LOW_CPC_THRESHOLD add a flat amount instead.
+     */
+    private static function underSbid(
+        float $l1,
+        float $l2,
+        float $l7,
+        ?float $avgCpc,
+        float $m1,
+        float $m2,
+        float $m7,
+        float $avgAdd,
+        float $fallback
+    ): float {
+        if ($l1 > 0.0) {
+            return round($l1 < self::LOW_CPC_THRESHOLD ? $l1 + self::LOW_CPC_FLAT_ADD : $l1 * $m1, 2);
+        }
+        if ($l2 > 0.0) {
+            return round($l2 * $m2, 2);
+        }
+        if ($l7 > 0.0) {
+            return round($l7 < self::LOW_CPC_THRESHOLD ? $l7 + self::LOW_CPC_FLAT_ADD : $l7 * $m7, 2);
+        }
+        if ($avgCpc !== null && $avgCpc > 0) {
+            return round($avgCpc + $avgAdd, 2);
+        }
+
+        return round($fallback, 2);
     }
 }

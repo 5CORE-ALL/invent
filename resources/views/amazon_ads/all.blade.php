@@ -1157,7 +1157,7 @@
         #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) tfoot td.amz-bgt-foot-label { text-align: left; padding-left: 10px; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
         #amazonAdsBgtRulesModal .amz-bgt-col td.amz-bgt-cnt-sum { background: #ccfbf1; font-size: 14px; }
         #amazonAdsSbidRuleModal .modal-dialog {
-            width: min(1120px, calc(100vw - 1.25rem));
+            width: min(1440px, calc(100vw - 1.25rem));
             max-width: calc(100vw - 1.25rem);
             margin: 0.625rem auto;
         }
@@ -1226,8 +1226,10 @@
             border-radius: 14px 14px 0 0;
         }
         #amazonAdsSbidRuleModal .amz-sbid-title { font-weight: 700; font-size: 14px; color: #0f172a; letter-spacing: -0.01em; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="vlow"] .amz-sbid-col-head,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-col-head,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-col-head { justify-content: center; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="vlow"] .amz-sbid-title,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-title,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-title {
             color: #fff;
@@ -1235,8 +1237,10 @@
             border-radius: 8px;
             text-align: center;
         }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="vlow"] .amz-sbid-title { background: #991b1b; }
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-title { background: #dc2626; }
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-title { background: #ec4899; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="vlow"] .amz-sbid-min-btn,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-min-btn,
         #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-min-btn {
             position: absolute;
@@ -2077,12 +2081,14 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsSbidRuleModalLabel">SBID rule</h5>
-                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers (an L1 or L7 CPC under ${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_THRESHOLD, 2) }} gets +${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_FLAT_ADD, 2) }} instead of the multiplier). If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + <span id="amazonAdsSbidAvgAddText">0.10</span>; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
+                        <div class="amz-sbid-sub">Both U7% and U1% below the first threshold use the &lt; Utilized box; both below Low % (but not both below the first threshold) use the second box. Each box uses its CPC multipliers (an L1 or L7 CPC under ${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_THRESHOLD, 2) }} gets +${{ number_format(\App\Services\Amazon\AmazonBidUtilizationService::LOW_CPC_FLAT_ADD, 2) }} instead of the multiplier). If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + the box add-on; otherwise the box fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="amz-sbid-thresholds">
+                        <label for="amazonAdsSbidRuleUtilVlow">Very low %</label>
+                        <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilVlow" name="util_vlow" required title="Both U7% and U1% below this use the first (&lt; Utilized) box. Must be below Low %.">
                         <label for="amazonAdsSbidRuleUtilLow">Low %</label>
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required title="Both U7% and U1% must be below this">
                         <label for="amazonAdsSbidRuleUtilHigh">High %</label>
@@ -2091,10 +2097,40 @@
                         <span class="amz-sbid-sum-all">Sum of counts: <span id="amazonAdsSbidSumAll">0</span></span>
                     </div>
                     <div class="amz-sbid-cols">
+                        <div class="amz-sbid-col" data-amz-sbid-panel="vlow">
+                            <div class="amz-sbid-col-head">
+                                <div class="amz-sbid-title" id="amzSbidTitleVlow" title="Both U7% and U1% are below the Very low % threshold">&#60; Utilized 30</div>
+                                <button type="button" class="amz-sbid-min-btn" title="Minimize < Utilized 30" aria-label="Minimize < Utilized 30">−</button>
+                            </div>
+                            <div class="amz-sbid-chart-canvas"><canvas id="amz-sbid-chart-vlow"></canvas></div>
+                            <div class="amz-sbid-legend" id="amz-sbid-leg-vlow"></div>
+                            <div class="amz-sbid-fields">
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleVlowMultL1">× L1 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleVlowMultL1" name="vlow_mult_l1" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleVlowMultL2">× L2 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleVlowMultL2" name="vlow_mult_l2" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleVlowMultL7">× L7 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleVlowMultL7" name="vlow_mult_l7" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleVlowAvgCpcAdd">Avg CPC +</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="amazonAdsSbidRuleVlowAvgCpcAdd" name="vlow_avg_cpc_add" required title="Added to Avg CPC when L1, L2, and L7 CPC are missing">
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleVlowFallback">Fallback</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleVlowFallback" name="vlow_fallback" required title="Used when L1, L2, and L7 CPC are missing and Avg CPC is missing">
+                                </div>
+                            </div>
+                        </div>
                         <div class="amz-sbid-col" data-amz-sbid-panel="below">
                             <div class="amz-sbid-col-head">
-                                <div class="amz-sbid-title" title="Both U7% and U1% are below 66">&#60; Utilized 66</div>
-                                <button type="button" class="amz-sbid-min-btn" title="Minimize < Utilized 66" aria-label="Minimize < Utilized 66">−</button>
+                                <div class="amz-sbid-title" id="amzSbidTitleBelow" title="Both U7% and U1% are below the Low % threshold, but not both below the Very low % threshold">30 to 66 Utilized</div>
+                                <button type="button" class="amz-sbid-min-btn" title="Minimize 30 to 66 Utilized" aria-label="Minimize 30 to 66 Utilized">−</button>
                             </div>
                             <div class="amz-sbid-chart-canvas"><canvas id="amz-sbid-chart-below"></canvas></div>
                             <div class="amz-sbid-legend" id="amz-sbid-leg-below"></div>
@@ -10358,6 +10394,12 @@
 
             // ---- SBID rule modal ----
             var SBID_FIELDS = [
+                ['amazonAdsSbidRuleUtilVlow', 'util_vlow'],
+                ['amazonAdsSbidRuleVlowMultL1', 'vlow_mult_l1'],
+                ['amazonAdsSbidRuleVlowMultL2', 'vlow_mult_l2'],
+                ['amazonAdsSbidRuleVlowMultL7', 'vlow_mult_l7'],
+                ['amazonAdsSbidRuleVlowAvgCpcAdd', 'vlow_avg_cpc_add'],
+                ['amazonAdsSbidRuleVlowFallback', 'vlow_fallback'],
                 ['amazonAdsSbidRuleUtilLow', 'util_low'],
                 ['amazonAdsSbidRuleUtilHigh', 'util_high'],
                 ['amazonAdsSbidRuleBothLowFallback', 'both_low_fallback'],
@@ -10373,7 +10415,30 @@
                     var el = document.getElementById(pair[0]);
                     if (el && rule[pair[1]] != null) el.value = String(rule[pair[1]]);
                 });
+                amzSbidSyncTitles();
                 amzSbidPaint();
+            }
+            function amzSbidNum(n) {
+                return (isFinite(n) ? String(parseFloat(n.toFixed(2))) : '?');
+            }
+            // Box titles follow the thresholds typed in the modal: "< Utilized 30" and "30 to 66 Utilized".
+            function amzSbidSyncTitles() {
+                var vlow = parseFloat((document.getElementById('amazonAdsSbidRuleUtilVlow') || {}).value);
+                var low = parseFloat((document.getElementById('amazonAdsSbidRuleUtilLow') || {}).value);
+                var a = document.getElementById('amzSbidTitleVlow');
+                var b = document.getElementById('amzSbidTitleBelow');
+                if (a) a.textContent = '< Utilized ' + amzSbidNum(vlow);
+                if (b) b.textContent = amzSbidNum(vlow) + ' to ' + amzSbidNum(low) + ' Utilized';
+                var panels = { vlow: a, below: b };
+                Object.keys(panels).forEach(function (k) {
+                    var el = document.querySelector('#amazonAdsSbidRuleModal [data-amz-sbid-panel="' + k + '"] .amz-sbid-min-btn');
+                    var t = panels[k];
+                    if (el && t) {
+                        var min = el.closest('[data-amz-sbid-panel]').classList.contains('is-min');
+                        el.title = (min ? 'Maximize ' : 'Minimize ') + t.textContent;
+                        el.setAttribute('aria-label', el.title);
+                    }
+                });
             }
             var amzSbidCharts = {};
             var amzSbidUniverse = { key: '', rows: null, promise: null, seq: 0, failed: false };
@@ -10451,8 +10516,10 @@
                 return full;
             }
             function amzSbidGroups() {
+                var vlow = parseFloat((document.getElementById('amazonAdsSbidRuleUtilVlow') || {}).value);
                 var low = parseFloat((document.getElementById('amazonAdsSbidRuleUtilLow') || {}).value);
                 var high = parseFloat((document.getElementById('amazonAdsSbidRuleUtilHigh') || {}).value);
+                var vlowG = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
                 var below = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
                 var above = { l1: 0, none: 0 };
                 var mid = 0;
@@ -10461,17 +10528,19 @@
                 sbidRows.forEach(function (row) {
                     var u7 = amzSbidUtil(row, 'U7%');
                     var u1 = amzSbidUtil(row, 'U1%');
-                    if (!isFinite(u7) || !isFinite(u1) || !isFinite(low) || !isFinite(high)) { mid++; return; }
+                    if (!isFinite(u7) || !isFinite(u1) || !isFinite(vlow) || !isFinite(low) || !isFinite(high)) { mid++; return; }
                     var l1 = amzSbidPos(row, 'costPerClick');
                     var l2 = amzSbidPos(row, 'CPC2');
                     var l7 = amzSbidPos(row, 'CPC3');
                     var avg = amzSbidPos(row, 'CPCAvg');
                     if (u7 < low && u1 < low) {
-                        if (l1 > 0) below.l1++;
-                        else if (l2 > 0) below.l2++;
-                        else if (l7 > 0) below.l7++;
-                        else if (avg > 0) below.avg++;
-                        else below.fb++;
+                        // Both below the very low threshold = first box; otherwise the second box.
+                        var box = (u7 < vlow && u1 < vlow) ? vlowG : below;
+                        if (l1 > 0) box.l1++;
+                        else if (l2 > 0) box.l2++;
+                        else if (l7 > 0) box.l7++;
+                        else if (avg > 0) box.avg++;
+                        else box.fb++;
                     } else if (u7 > high && u1 > high) {
                         if (l1 > 0) above.l1++;
                         else above.none++;
@@ -10479,7 +10548,7 @@
                         mid++;
                     }
                 });
-                return { below: below, above: above, mid: mid };
+                return { vlow: vlowG, below: below, above: above, mid: mid };
             }
             function amzSbidPaintColumn(key, rows) {
                 var legend = document.getElementById('amz-sbid-leg-' + key);
@@ -10489,7 +10558,7 @@
                     var head = '<div class="amz-sbid-leg-head"><span></span><span></span><span>Count</span><span>%</span></div>';
                     legend.innerHTML = head + rows.map(function (r) {
                         var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
-                        return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span>' + (r.hid ? amzHistDot('sbid:' + r.hid, r.label, r.color, 'SBID ' + (key === 'below' ? '< Utilized' : (key === 'above' ? '> Utilized' : 'Between')), r.hid === 'above_none' || r.hid === 'below_fb') : '') + '</div>';
+                        return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span>' + (r.hid ? amzHistDot('sbid:' + r.hid, r.label, r.color, 'SBID ' + (key === 'vlow' ? '< Utilized' : (key === 'below' ? 'Mid Utilized' : (key === 'above' ? '> Utilized' : 'Between'))), r.hid === 'above_none' || r.hid === 'below_fb' || r.hid === 'vlow_fb') : '') + '</div>';
                     }).join('') + '<div class="amz-sbid-leg-row amz-sbid-leg-total"><span></span><span>Sum</span><strong>' + total.toLocaleString('en-US') + '</strong><span class="amz-sbid-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>';
                 }
                 var sbidModal = document.getElementById('amazonAdsSbidRuleModal');
@@ -10527,8 +10596,14 @@
                 if (sub) sub.textContent = txt;
                 return txt;
             }
+            function amzSbidVlowAvgAddLabel() {
+                var el = document.getElementById('amazonAdsSbidRuleVlowAvgCpcAdd');
+                var n = parseFloat(el && el.value !== '' ? el.value : (window.amazonAdsSbidRule || {}).vlow_avg_cpc_add);
+                if (!isFinite(n)) n = 0.10;
+                return n.toFixed(2);
+            }
             function amzSbidPaintWaiting() {
-                ['below', 'mid', 'above'].forEach(function (key) {
+                ['vlow', 'below', 'mid', 'above'].forEach(function (key) {
                     var legend = document.getElementById('amz-sbid-leg-' + key);
                     if (legend) {
                         legend.innerHTML = '<div class="amz-sbid-leg-row"><span class="spinner-border spinner-border-sm text-primary" role="status"></span><span>Counting campaigns…</span></div>';
@@ -10539,8 +10614,16 @@
             function amzSbidPaint() {
                 var g = amzSbidGroups();
                 if (!g) { amzSbidPaintWaiting(); amzSetText('amazonAdsSbidSumAll', '…'); return; }
-                var sumAll = g.below.l1 + g.below.l2 + g.below.l7 + g.below.avg + g.below.fb + g.mid + g.above.l1 + g.above.none;
+                var sumAll = g.vlow.l1 + g.vlow.l2 + g.vlow.l7 + g.vlow.avg + g.vlow.fb
+                    + g.below.l1 + g.below.l2 + g.below.l7 + g.below.avg + g.below.fb + g.mid + g.above.l1 + g.above.none;
                 amzSetText('amazonAdsSbidSumAll', sumAll.toLocaleString('en-US'));
+                amzSbidPaintColumn('vlow', [
+                    { hid: 'vlow_l1', label: '× L1', n: g.vlow.l1, color: '#7c3aed' },
+                    { hid: 'vlow_l2', label: '× L2', n: g.vlow.l2, color: '#2563eb' },
+                    { hid: 'vlow_l7', label: '× L7', n: g.vlow.l7, color: '#16a34a' },
+                    { hid: 'vlow_avg', label: 'Avg + ' + amzSbidVlowAvgAddLabel(), n: g.vlow.avg, color: '#f59e0b' },
+                    { hid: 'vlow_fb', label: 'Fallback', n: g.vlow.fb, color: '#94a3b8' }
+                ]);
                 amzSbidPaintColumn('below', [
                     { hid: 'below_l1', label: '× L1', n: g.below.l1, color: '#7c3aed' },
                     { hid: 'below_l2', label: '× L2', n: g.below.l2, color: '#2563eb' },
@@ -10560,11 +10643,14 @@
                 var sbidSaved = window.amazonAdsSbidRule || {};
                 var sbidLowIn = parseFloat((document.getElementById('amazonAdsSbidRuleUtilLow') || {}).value);
                 var sbidHighIn = parseFloat((document.getElementById('amazonAdsSbidRuleUtilHigh') || {}).value);
-                var sbidClean = isFinite(sbidLowIn) && isFinite(sbidHighIn)
+                var sbidVlowIn = parseFloat((document.getElementById('amazonAdsSbidRuleUtilVlow') || {}).value);
+                var sbidClean = isFinite(sbidVlowIn) && isFinite(sbidLowIn) && isFinite(sbidHighIn)
+                    && Math.abs(sbidVlowIn - parseFloat(sbidSaved.util_vlow)) < 0.0001
                     && Math.abs(sbidLowIn - parseFloat(sbidSaved.util_low)) < 0.0001
                     && Math.abs(sbidHighIn - parseFloat(sbidSaved.util_high)) < 0.0001;
                 if (sbidFull && sbidClean) {
                     amzHistRecord('sbid', {
+                        vlow_l1: g.vlow.l1, vlow_l2: g.vlow.l2, vlow_l7: g.vlow.l7, vlow_avg: g.vlow.avg, vlow_fb: g.vlow.fb,
                         below_l1: g.below.l1, below_l2: g.below.l2, below_l7: g.below.l7, below_avg: g.below.avg, below_fb: g.below.fb,
                         mid: g.mid, above_l1: g.above.l1, above_none: g.above.none
                     });
@@ -10595,9 +10681,9 @@
                     });
                 });
             }
-            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh', 'amazonAdsSbidRuleAvgCpcAdd'].forEach(function (id) {
+            ['amazonAdsSbidRuleUtilVlow', 'amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh', 'amazonAdsSbidRuleAvgCpcAdd', 'amazonAdsSbidRuleVlowAvgCpcAdd'].forEach(function (id) {
                 var el = document.getElementById(id);
-                if (el) el.addEventListener('input', amzSbidPaint);
+                if (el) el.addEventListener('input', function () { amzSbidSyncTitles(); amzSbidPaint(); });
             });
             (function () {
                 var minKey = 'amzSbidPanelMin';
