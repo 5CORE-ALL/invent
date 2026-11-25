@@ -72,8 +72,8 @@ class SyncShipmentTrackingStatus extends Command
             $batchSize = max($batchSize, 40);
             $sleepMs = min($sleepMs, 80);
         }
-        // Only USPS is looked up, so the queue never spends time on GOFO / UPS / FedEx numbers.
-        $carrierFilter = strtoupper(trim((string) $this->option('carrier'))) ?: 'USPS';
+        // Only USPS and FedEx are looked up, so the queue never spends time on GOFO / UPS numbers.
+        $carrierFilter = strtoupper(trim((string) $this->option('carrier'))) ?: 'USPS,FEDEX';
         $onlyOpen = (bool) $this->option('only-open');
 
         $staleMin = $this->resolveStaleMinutes($onlyOpen, $carrierFilter, $catchUp);
@@ -837,6 +837,19 @@ class SyncShipmentTrackingStatus extends Command
 
     protected function applyCarrierFilter($query, string $carrierFilter): void
     {
+        if (str_contains($carrierFilter, ',')) {
+            $parts = array_values(array_filter(array_map('trim', explode(',', $carrierFilter))));
+            $query->where(function ($outer) use ($parts) {
+                foreach ($parts as $part) {
+                    $outer->orWhere(function ($inner) use ($part) {
+                        $this->applyCarrierFilter($inner, $part);
+                    });
+                }
+            });
+
+            return;
+        }
+
         if ($carrierFilter === 'UPS') {
             $query->where(function ($q) {
                 $q->whereRaw("UPPER(TRIM(COALESCE(carrier, ''))) LIKE ?", ['UPS%'])

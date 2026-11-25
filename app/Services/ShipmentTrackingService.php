@@ -134,7 +134,7 @@ class ShipmentTrackingService
             return [];
         }
 
-        $byProvider = ['usps' => [], 'other' => []];
+        $byProvider = ['usps' => [], 'fedex' => [], 'other' => []];
         foreach ($shipments as $s) {
             $number = trim((string) ($s['number'] ?? ''));
             if ($number === '') {
@@ -142,7 +142,8 @@ class ShipmentTrackingService
             }
             $carrier = trim((string) ($s['carrier'] ?? ''));
             $entry = ['number' => $number, 'carrier' => $carrier !== '' ? $carrier : null];
-            $byProvider[$this->resolveProvider($number, $carrier) === 'usps' ? 'usps' : 'other'][] = $entry;
+            $provider = $this->resolveProvider($number, $carrier);
+            $byProvider[in_array($provider, ['usps', 'fedex'], true) ? $provider : 'other'][] = $entry;
         }
 
         $out = [];
@@ -156,9 +157,24 @@ class ShipmentTrackingService
             }
         }
 
-        // Only USPS is looked up. Every other carrier is left blank, not stored as a status.
+        // FedEx (Wayfair shipments mostly go FedEx) is asked from the FedEx Track API.
+        if ($byProvider['fedex'] !== []) {
+            if ($this->hasFedex()) {
+                $fedex = $this->trackFedex($byProvider['fedex']);
+                foreach ($byProvider['fedex'] as $s) {
+                    $out[$s['number']] = $fedex[$s['number']]
+                        ?? $this->transientResult('fedex', 'FedEx API did not answer (check FEDEX_TRACKING_CLIENT_ID / SECRET)', 'fedex_unavailable');
+                }
+            } else {
+                foreach ($byProvider['fedex'] as $s) {
+                    $out[$s['number']] = $this->transientResult('fedex', 'FedEx API credentials are not configured', 'not_configured');
+                }
+            }
+        }
+
+        // Every other carrier is left blank, not stored as a status.
         foreach ($byProvider['other'] as $s) {
-            $out[$s['number']] = $this->transientResult('none', 'Not looked up: only USPS tracking is checked', 'usps_only');
+            $out[$s['number']] = $this->transientResult('none', 'Not looked up: only USPS and FedEx tracking is checked', 'usps_only');
         }
 
         return $out;
@@ -1009,6 +1025,79 @@ class ShipmentTrackingService
         Cache::put($cacheKey, $token, now()->addSeconds(max(60, $expiresIn - 60)));
 
         return $token;
+    }
+
+    /**
+     * Find a FedEx package by the PO / order number printed on the label (FedEx Track by Reference).
+     * FedEx needs the destination ZIP and a ship date window. Wayfair POs are stored as the label's
+     * PURCHASE_ORDER reference, so this finds shipments whose tracking number was never given to us.
+     *
+     * @return array{tracking: string, status: string, detail: ?string}|null
+     */
+    public function findFedexByReference(string $reference, string $postalCode, string $shipDateBegin, string $shipDateEnd, string $countryCode = 'US'): ?array
+    {
+        $reference = trim($reference);
+        $zip = substr(preg_replace('/[^0-9A-Za-z]/', '', $postalCode) ?? '', 0, 5);
+        if ($reference === '' || strlen($zip) < 5 || ! $this->hasFedex()) {
+            return null;
+        }
+        $token = $this->fedexAccessToken();
+        if ($token === null) {
+            return null;
+        }
+        $base = rtrim((string) config('services.fedex.tracking_api_base', 'https://apis-sandbox.fedex.com'), '/');
+
+        foreach (['PURCHASE_ORDER', 'FREE_FORM_REFERENCE'] as $type) {
+            try {
+                $resp = Http::withToken($token)
+                    ->acceptJson()
+                    ->asJson()
+                    ->timeout($this->timeout)
+                    ->withHeaders(['x-locale' => 'en_US'])
+                    ->post($base.'/track/v1/referencenumbers', [
+                        'includeDetailedScans' => false,
+                        'referencesInformation' => [
+                            'type' => $type,
+                            'value' => $reference,
+                            'carrierCode' => 'FDXG',
+                            'shipDateBegin' => $shipDateBegin,
+                            'shipDateEnd' => $shipDateEnd,
+                            'destinationPostalCode' => $zip,
+                            'destinationCountryCode' => strtoupper(substr($countryCode !== '' ? $countryCode : 'US', 0, 2)),
+                        ],
+                    ]);
+            } catch (\Throwable $e) {
+                Log::info('ShipmentTracking: FedEx reference lookup failed', ['reference' => $reference, 'error' => $e->getMessage()]);
+
+                return null;
+            }
+
+            if (! $resp->successful()) {
+                continue;
+            }
+
+            foreach ((array) data_get($resp->json(), 'output.completeTrackResults', []) as $block) {
+                foreach ((array) data_get($block, 'trackResults', []) as $result) {
+                    if (! is_array($result) || (string) data_get($result, 'error.message', '') !== '') {
+                        continue;
+                    }
+                    $tn = trim((string) data_get($result, 'trackingNumberInfo.trackingNumber', ''));
+                    if (preg_match('/^\d{10,22}$/', $tn) !== 1) {
+                        continue;
+                    }
+                    $code = (string) (data_get($result, 'latestStatusDetail.code') ?? data_get($result, 'latestStatusDetail.derivedCode') ?? '');
+                    $desc = (string) (data_get($result, 'latestStatusDetail.description') ?? data_get($result, 'latestStatusDetail.statusByLocale') ?? '');
+
+                    return [
+                        'tracking' => $tn,
+                        'status' => $this->normalizeFedexStatus($code, $desc),
+                        'detail' => $desc !== '' ? mb_substr($desc, 0, 480) : null,
+                    ];
+                }
+            }
+        }
+
+        return null;
     }
 
     protected function normalizeFedexStatus(string $code, string $description): string
