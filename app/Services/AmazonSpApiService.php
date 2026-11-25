@@ -348,73 +348,60 @@ class AmazonSpApiService
     }
 
     /**
-     * Configured tiers as [['units' => 3, 'pct' => 15], ...] (percent off the pushed price). Empty when disabled.
-     * Also feeds the "Qty Tiers" column on /amazon-tabulator-view.
+     * Simple Amazon Business discount (no quantity tiers): the B2B offer shows the website / List Price
+     * crossed out and the discounted Business price as the offer price.
      *
-     * @return list<array{units:int,pct:float}>
+     *   Business price = ROUND(List Price × (1 − Discount / 100), 2)
+     *
+     * Opt-in: services.amazon_sp.b2b_discount_enabled (AMAZON_B2B_DISCOUNT_ENABLED, default false).
+     * Discount %: services.amazon_sp.b2b_discount_pct (AMAZON_B2B_DISCOUNT_PCT, default 5).
+     * Returns null when the feature is off or the % is not between 0 and 100 (existing behaviour is kept).
      */
-    public static function b2bQuantityTierConfig(): array
+    public static function b2bDiscountPercent(): ?float
     {
-        if (! filter_var(config('services.amazon_sp.b2b_qty_tiers_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
-            return [];
+        if (! filter_var(config('services.amazon_sp.b2b_discount_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+        $pct = config('services.amazon_sp.b2b_discount_pct', 5);
+        if (! is_numeric($pct) || (float) $pct <= 0 || (float) $pct >= 100) {
+            return null;
         }
 
-        $out = [];
-        foreach (explode(',', (string) config('services.amazon_sp.b2b_qty_tiers', '')) as $part) {
-            $bits = explode(':', trim($part));
-            if (count($bits) !== 2 || ! is_numeric($bits[0]) || ! is_numeric($bits[1])) {
-                continue;
-            }
-            $units = (int) $bits[0];
-            $pct = (float) $bits[1];
-            if ($units < 2 || $pct <= 0 || $pct >= 100) {
-                continue;
-            }
-            $out[$units] = ['units' => $units, 'pct' => $pct];
-        }
-        ksort($out);
+        return (float) $pct;
+    }
 
-        return array_values($out);
+    /** Final Business price = ROUND(List Price × (1 − Discount / 100), 2). */
+    public static function businessPriceFromList(float $listPrice, float $discountPct): float
+    {
+        return round($listPrice * (1 - $discountPct / 100), 2);
     }
 
     /**
-     * Amazon Business "Buy more, save more" tiers for the B2B offer, from config
-     * (services.amazon_sp.b2b_qty_tiers, e.g. "3:15,25:24" = 3+ units 15% off, 25+ units 24% off).
-     * Returns null when disabled or empty so the push sends no tier plan.
+     * B2B purchasable_offer entry. With a discount % the List Price is our_price (shown crossed out) and the
+     * discounted Business price goes in discounted_price; without one it is the existing single B2B price.
+     * No quantity_discount_plan is ever sent.
      *
-     * The configured % is meant off the PUSHED price (S PRC / sale). Amazon applies a tier % to the B2B
-     * price, which is lower (5% below the sale), so when both prices are given the % is converted:
-     *   tier price = sale × (1 − p/100)  →  Amazon % = (1 − tier price / B2B price) × 100
-     * e.g. sale 18.63, B2B 17.70: 3 units at 15% = 15.84 (Amazon % 10.51).
-     *
-     * @return list<array{schedule: list<array<string, mixed>>}>|null
+     * @return array<string, mixed>
      */
-    public static function b2bQuantityDiscountPlan(float $salePrice = 0, float $businessPrice = 0): ?array
+    public static function buildB2bOffer(float $listPrice, float $legacyBusinessPrice, ?float $discountPct): array
     {
-        $levels = [];
-        foreach (self::b2bQuantityTierConfig() as $tier) {
-            $units = $tier['units'];
-            $pct = (float) $tier['pct'];
-            if ($salePrice > 0 && $businessPrice > 0) {
-                $tierPrice = round($salePrice * (1 - $pct / 100), 2);
-                $pct = round((1 - $tierPrice / $businessPrice) * 100, 2);
-                if ($pct <= 0 || $pct >= 100) {
-                    continue; // tier would not be lower than the B2B price
-                }
-            }
-            $levels[$units] = ['lower_bound' => $units, 'value' => $pct == floor($pct) ? (int) $pct : $pct];
-        }
-        if ($levels === []) {
-            return null;
-        }
-        ksort($levels);
+        $offer = [
+            'marketplaceId' => 'ATVPDKIKX0DER',
+            'marketplace_id' => 'ATVPDKIKX0DER',
+            'currency' => 'USD',
+            'audience' => 'B2B',
+        ];
+        if ($discountPct === null || $listPrice < 0.01) {
+            $offer['our_price'] = [['schedule' => [['value_with_tax' => $legacyBusinessPrice]]]];
 
-        return [[
-            'schedule' => [[
-                'discount_type' => 'percent',
-                'levels' => array_values($levels),
-            ]],
-        ]];
+            return $offer;
+        }
+
+        $business = self::businessPriceFromList($listPrice, $discountPct);
+        $offer['our_price'] = [['schedule' => [['value_with_tax' => round($listPrice, 2)]]]];
+        $offer['discounted_price'] = self::discountedPriceAttribute($listPrice, $business);
+
+        return $offer;
     }
 
     /**
@@ -874,18 +861,8 @@ class AmazonSpApiService
                 // an ended Sale so Amazon drops the leftover (empty list = 90226, delete path = InvalidInput).
                 $offerValue['discounted_price'] = self::discountedPriceAttribute($price, $salePrice);
                 // Business Price → separate B2B audience offer (Listings API has no "business_price" field)
-                $b2bOfferValue = [
-                    "marketplaceId" => "ATVPDKIKX0DER",
-                    "marketplace_id" => "ATVPDKIKX0DER",
-                    "currency" => "USD",
-                    "audience" => "B2B",
-                    "our_price" => $businessPriceSchedule,
-                ];
-                // "Buy more, save more" tiers (Amazon Business) go out with every push, so pushed SKUs get them.
-                $qtyPlan = self::b2bQuantityDiscountPlan((float) $salePrice, (float) $businessPrice);
-                if ($qtyPlan !== null) {
-                    $b2bOfferValue['quantity_discount_plan'] = $qtyPlan;
-                }
+                // Business offer: existing single B2B price, or (opt-in) List Price crossed out + simple % Business discount.
+                $b2bOfferValue = self::buildB2bOffer((float) $price, (float) $businessPrice, self::b2bDiscountPercent());
                 $offerValues = [$offerValue, $b2bOfferValue];
                 $includedB2b = true;
                 $body = [
