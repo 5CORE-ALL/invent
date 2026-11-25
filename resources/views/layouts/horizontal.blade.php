@@ -68,6 +68,9 @@
     {{-- Floating "KPI" icon (every page; opt out with 'hideKpiFab' => true) --}}
     @include('layouts.shared.kpi-fab')
 
+    {{-- Floating "Salary" icon (every page; opt out with 'hideSalaryFab' => true) --}}
+    @include('layouts.shared.salary-fab')
+
     @yield('script-after-vite')
 
     @include('components.ai-chat-widget')

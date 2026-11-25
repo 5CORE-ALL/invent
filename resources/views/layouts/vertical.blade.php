@@ -1329,6 +1329,9 @@
     {{-- Floating "KPI" icon (every page; opt out with 'hideKpiFab' => true) --}}
     @include('layouts.shared.kpi-fab')
 
+    {{-- Floating "Salary" icon (every page; opt out with 'hideSalaryFab' => true) --}}
+    @include('layouts.shared.salary-fab')
+
     {{-- Runs after Vite so jQuery matches head.js; DataTables and similar plugins attach here --}}
     @yield('script-after-vite')
 
