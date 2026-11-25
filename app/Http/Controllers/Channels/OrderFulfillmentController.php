@@ -507,6 +507,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             report($e);
         }
 
+        $rows = $this->attachOrderAmounts($rows);
+
         usort($rows, static function (array $a, array $b): int {
             $ak = (string) ($a['order_date'] ?? '');
             $bk = (string) ($b['order_date'] ?? '');
@@ -1349,15 +1351,16 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     protected function selectLightOrderColumns(Builder $query, string $slug): void
     {
         $table = $query->getModel()->getTable();
+        // The amount columns are plain numbers (no JSON) and feed the Order Amt column.
         $wanted = match ($slug) {
-            'amazon' => ['id', 'amazon_order_id', 'order_date', 'status'],
-            'temu', 'temu2', 'temu3' => ['id', 'parent_order_status_text', 'order_status_text', 'parent_order_time', 'parent_order_sn', 'order_sn', 'display_sku', 'ext_code', 'product_sku_id'],
-            'tiktok', 'tiktok2' => ['id', 'order_id', 'order_status', 'line_status', 'order_created_at', 'seller_sku', 'sku_id'],
-            'bestbuy', 'macy' => ['id', 'status', 'order_created_at', 'sku', 'order_id', 'channel_order_id'],
-            'purchasingpower' => ['id', 'status', 'date_created', 'offer_sku', 'product_sku', 'order_id', 'order_number'],
-            'wayfair' => ['id', 'status', 'po_date', 'sku', 'po_number'],
-            'doba' => ['id', 'order_status', 'order_time', 'sku', 'order_no', 'platform_order_no'],
-            default => ['id', 'status', 'order_date', 'sku', 'order_id', 'order_number'],
+            'amazon' => ['id', 'amazon_order_id', 'order_date', 'status', 'total_amount'],
+            'temu', 'temu2', 'temu3' => ['id', 'parent_order_status_text', 'order_status_text', 'parent_order_time', 'parent_order_sn', 'order_sn', 'display_sku', 'ext_code', 'product_sku_id', 'order_base_amount', 'order_total_amount'],
+            'tiktok', 'tiktok2' => ['id', 'order_id', 'order_status', 'line_status', 'order_created_at', 'seller_sku', 'sku_id', 'order_amount', 'sale_price', 'original_price', 'quantity'],
+            'bestbuy', 'macy' => ['id', 'status', 'order_created_at', 'sku', 'order_id', 'channel_order_id', 'unit_price', 'quantity'],
+            'purchasingpower' => ['id', 'status', 'date_created', 'offer_sku', 'product_sku', 'order_id', 'order_number', 'amount', 'unit_price', 'quantity'],
+            'wayfair' => ['id', 'status', 'po_date', 'sku', 'po_number', 'total_price', 'unit_price', 'quantity'],
+            'doba' => ['id', 'order_status', 'order_time', 'sku', 'order_no', 'platform_order_no', 'total_price', 'item_price', 'quantity'],
+            default => ['id', 'status', 'order_date', 'sku', 'order_id', 'order_number', 'amount'],
         };
 
         try {
@@ -1383,7 +1386,15 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         if ($slug === 'amazon') {
             $query->with(['items' => function ($items): void {
                 $itemTable = $items->getModel()->getTable();
-                $items->select([$itemTable.'.id', $itemTable.'.amazon_order_id', $itemTable.'.sku']);
+                $columns = [$itemTable.'.id', $itemTable.'.amazon_order_id', $itemTable.'.sku'];
+                try {
+                    if (Schema::hasColumn($itemTable, 'price')) {
+                        $columns[] = $itemTable.'.price';
+                    }
+                } catch (\Throwable) {
+                    // price is only the fallback for the order amount
+                }
+                $items->select($columns);
             }]);
         }
     }
@@ -1437,6 +1448,8 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
             'inv' => null,
             'source_id' => (int) ($order->id ?? 0),
         ];
+        // Helpers for the Order Amt column; attachOrderAmounts() turns them into order_amt.
+        [$base['line_amt'], $base['order_amt_exact']] = $this->lightOrderAmounts($slug, $order);
 
         if ($slug === 'amazon' && $order instanceof AmazonOrder) {
             $items = $order->relationLoaded('items') ? $order->items : collect();
@@ -1449,6 +1462,7 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
                 $row = $base;
                 $row['id'] = $slug.'-'.$order->id.'-'.(int) ($item->id ?? count($lines));
                 $row['sku'] = $sku;
+                $row['line_amt'] = $this->firstPositiveAmount($item->price ?? null);
                 $lines[] = $row;
             }
             if ($lines !== []) {
@@ -1464,6 +1478,84 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
         $base['sku'] = $this->inventoryLookupSku($sku);
 
         return [$base];
+    }
+
+    /**
+     * Money on one marketplace row, from the plain number columns only.
+     *
+     * line  = what this row (one SKU line) is worth.
+     * exact = the order total when the channel stores one on every line (Amazon, TikTok).
+     *
+     * @return array{0: ?float, 1: ?float} [line, exact]
+     */
+    protected function lightOrderAmounts(string $slug, object $order): array
+    {
+        $qty = max(1, (int) ($order->quantity ?? 1));
+        $times = static fn (mixed $unit): ?float => is_numeric($unit) ? round((float) $unit * $qty, 2) : null;
+
+        return match ($slug) {
+            'amazon' => [null, $this->firstPositiveAmount($order->total_amount ?? null)],
+            'tiktok', 'tiktok2' => [
+                $this->firstPositiveAmount($times($order->sale_price ?? null), $times($order->original_price ?? null)),
+                $this->firstPositiveAmount($order->order_amount ?? null),
+            ],
+            'temu', 'temu2', 'temu3' => [
+                $this->firstPositiveAmount($order->order_base_amount ?? null, $order->order_total_amount ?? null),
+                null,
+            ],
+            'bestbuy', 'macy' => [$this->firstPositiveAmount($times($order->unit_price ?? null)), null],
+            'purchasingpower' => [$this->firstPositiveAmount($order->amount ?? null, $times($order->unit_price ?? null)), null],
+            'wayfair' => [$this->firstPositiveAmount($order->total_price ?? null, $times($order->unit_price ?? null)), null],
+            'doba' => [$this->firstPositiveAmount($order->total_price ?? null, $times($order->item_price ?? null)), null],
+            default => [$this->firstPositiveAmount($order->amount ?? null), null],
+        };
+    }
+
+    /**
+     * Order Amt = the whole order's total. The order total stored by the channel when there is one,
+     * otherwise the sum of the amounts of every row (SKU line) of that order.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function attachOrderAmounts(array $rows): array
+    {
+        $sums = [];
+        $exact = [];
+        $keyOf = static function (array $row): string {
+            $order = trim((string) ($row['order_id'] ?? ''));
+
+            return $order === '' ? '' : strtolower((string) ($row['mm_slug'] ?? '')).'|'.$order;
+        };
+
+        foreach ($rows as $row) {
+            if (! empty($row['manual'])) {
+                continue;
+            }
+            $key = $keyOf($row);
+            if ($key === '') {
+                continue;
+            }
+            if (isset($row['order_amt_exact']) && (float) $row['order_amt_exact'] > 0) {
+                $exact[$key] = max($exact[$key] ?? 0.0, (float) $row['order_amt_exact']);
+            }
+            if (isset($row['line_amt']) && (float) $row['line_amt'] > 0) {
+                $sums[$key] = ($sums[$key] ?? 0.0) + (float) $row['line_amt'];
+            }
+        }
+
+        foreach ($rows as &$row) {
+            if (! empty($row['manual'])) {
+                $row['order_amt'] = isset($row['amount']) && is_numeric($row['amount']) ? round((float) $row['amount'], 2) : null;
+            } else {
+                $key = $keyOf($row);
+                $row['order_amt'] = $key === '' ? null : ($exact[$key] ?? (isset($sums[$key]) ? round($sums[$key], 2) : null));
+            }
+            unset($row['line_amt'], $row['order_amt_exact']);
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**
