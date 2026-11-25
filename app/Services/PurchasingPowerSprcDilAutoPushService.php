@@ -71,8 +71,22 @@ class PurchasingPowerSprcDilAutoPushService
     ): array {
         // Rules saved a moment ago (a queue worker keeps the old ones in memory) must be read again.
         StdPrcVsDilPricer::flush();
+        // Sprc Dil and Std prc vs dil are ON / OFF on their own (modal switches). Both OFF: no rule prices anything, S PRC stays as it is.
+        if (SpriceActiveRule::forChannel('purchasing_power') === 'none') {
+            $this->log($logger, 'Skipped: Sprc Dil and Std prc vs dil are both OFF');
+
+            return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => [
+                'candidates' => 0,
+                'applied' => 0,
+                'pushed' => 0,
+                'skipped_unchanged' => 0,
+                'skipped' => 0,
+                'push_failed' => 0,
+                'errors' => [],
+            ]];
+        }
         $pricer = StdPrcVsDilPricer::forChannel('purchasing_power');
-        // Only one rule fills S PRC: the switch decides.
+        // Sprc Dil ON fills S PRC from Sprc Dil, else Std prc vs dil ON fills it from Std prc vs dil.
         $dilContext = SpriceActiveRule::usesStdPrc('purchasing_power') ? null : $this->loadDilContext();
 
         $this->log($logger, $dilContext !== null

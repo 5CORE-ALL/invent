@@ -164,10 +164,10 @@ class PromotionsController extends Controller
         $lock->release();
 
         // eBay: PRMT% saved on every SKU + markdown-sale push.
-        // Amazon: PRMT% + S PRC saved (--skip-push); live Amazon prices still go out with the 4 AM / 8 PM job.
+        // Amazon: PRMT% + S PRC saved and changed prices pushed to Amazon immediately (no --skip-push).
         // Temu: PRMT% saved on every SKU only (Temu prices come from Std Prc vs Dil; nothing pushed to Temu).
         $artisanCmd = $channel === 'amazon'
-            ? 'amazon:dil-prmt-auto-push --skip-push'
+            ? 'amazon:dil-prmt-auto-push'
             : ($isTemu
                 ? 'temu:dil-prmt-apply '.escapeshellarg($channel)
                 : 'ebay:dil-prmt-auto-apply '.escapeshellarg($channel));
@@ -195,7 +195,7 @@ class PromotionsController extends Controller
                 'success' => true,
                 'running' => false,
                 'message' => $channel === 'amazon'
-                    ? 'Applying Dil→PRMT% and S PRC to Amazon in the background (not pushed to Amazon yet — the 4 AM / 8 PM job pushes).'
+                    ? 'Applying Dil→PRMT% and S PRC and pushing changed prices to Amazon now in the background.'
                     : ($isTemu
                         ? 'Saving Dil→PRMT% on every '.$channel.' SKU in the background (nothing is pushed to Temu).'
                         : 'Applying Dil→PRMT% to '.$channel.' in the background.'),

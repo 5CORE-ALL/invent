@@ -365,6 +365,8 @@
                 if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data)) {
                     return typeof window.ebayClearancePriceForRow === 'function' ? (Number(window.ebayClearancePriceForRow(data)) || 0) : 0;
                 }
+                // Both switches OFF: no rule prices anything, the saved S PRC stays as it is.
+                if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'none') return 0;
                 let out = 0;
                 if (ppDilOn()) {
                     if (window._ebayDilRulesLoaded !== true) return 0;
@@ -454,7 +456,8 @@
         // Switch Sprc Dil <-> Std prc vs dil: repaint at once from the ON rule. The server re-saves S PRC right after the switch is saved.
         window.spriceOnRuleSwitched = function() {
             ppRefreshSpriceCells();
-            if (typeof showToast === 'function') showToast('S PRC now follows ' + (ppDilOn() ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
+            const rule = typeof window.spriceActiveRule === 'function' ? window.spriceActiveRule() : 'std';
+            if (typeof showToast === 'function') showToast(rule === 'none' ? 'S PRC rules are OFF, S PRC is left as it is' : 'S PRC now follows ' + (rule === 'dil' ? 'Sprc Dil' : 'Std prc vs dil'), 'info');
         };
         // A Sprc Dil edit (slab, Diff) was saved: the cells repaint from it; the server saves the same price right after.
         window.ebayOnDilRulesSaved = function() { ppRefreshSpriceCells(); };

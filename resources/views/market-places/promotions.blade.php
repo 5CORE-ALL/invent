@@ -295,7 +295,7 @@
                         Changing the first row sets the following slabs to &minus;1 each (minimum 0).
                         <strong>Save</strong> stores the slabs for every marketplace.
                         <strong>Save &amp; Apply</strong> also applies PRMT% to every SKU of this channel
-                        (eBay: pushes the changed % as markdown sales; Amazon: updates S PRC, which the 4 AM / 8 PM job pushes;
+                        (eBay: pushes the changed % as markdown sales; Amazon: updates S PRC and pushes the changed prices to Amazon immediately;
                         Temu: saves PRMT% only — Temu prices come from Std Prc vs Dil, nothing is pushed).
                         If <strong>INV = 0</strong>, PRMT% is <strong>0</strong>.
                     </p>
@@ -329,7 +329,7 @@
                         <i class="fas fa-save me-1"></i>Save
                     </button>
                     <button type="button" class="btn btn-sm btn-primary" id="promo-prmt-save-apply"
-                        title="Save the slabs, then apply PRMT% to every SKU of this channel. eBay: listing Dil → slab, changed % pushed as markdown sales. Amazon: SKU Dil → slab → S PRC (pushed by the 4 AM / 8 PM job). Temu: SKU Dil → slab → saved PRMT% only, nothing pushed.">
+                        title="Save the slabs, then apply PRMT% to every SKU of this channel. eBay: listing Dil → slab, changed % pushed as markdown sales. Amazon: SKU Dil → slab → S PRC (changed prices pushed to Amazon immediately). Temu: SKU Dil → slab → saved PRMT% only, nothing pushed.">
                         <i class="fas fa-bolt me-1"></i>Save &amp; Apply
                     </button>
                 </div>

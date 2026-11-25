@@ -21,14 +21,14 @@
 @if($spriceRuleSwitchPart === 'dil_switch')
                     {{-- Marker the page scripts look for (the switches sit in separate modals, there is no single wrapper). --}}
                     <span id="sprice-rule-switch" data-channel="{{ $spriceRuleChannel }}" hidden></span>
-                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Sprc Dil rule ON / OFF. Independent: it does not change the Std prc vs dil switch. Cron uses the same choice.">
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single flex-shrink-0 text-nowrap" title="Sprc Dil rule ON / OFF. Independent: it does not change the Std prc vs dil switch. Cron uses the same choice.">
                         <input class="form-check-input" type="checkbox" id="sprice-rule-dil-sw">
                         <label class="form-check-label small fw-semibold" for="sprice-rule-dil-sw">Rule ON / OFF</label>
                     </div>
 @endif
 
 @if($spriceRuleSwitchPart === 'std_switch')
-                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single" title="Std prc vs dil rule ON / OFF. Independent: it does not change the Sprc Dil switch. Cron uses the same choice.">
+                    <div class="form-check form-switch mb-0 ms-auto me-3 sprice-rule-sw-single flex-shrink-0 text-nowrap" title="Std prc vs dil rule ON / OFF. Independent: it does not change the Sprc Dil switch. Cron uses the same choice.">
                         <input class="form-check-input" type="checkbox" id="sprice-rule-std-sw" checked>
                         <label class="form-check-label small fw-semibold" for="sprice-rule-std-sw">Rule ON / OFF</label>
                     </div>

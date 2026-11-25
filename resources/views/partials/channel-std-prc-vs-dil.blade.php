@@ -163,7 +163,7 @@
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
                         <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg', 'faire', 'alibaba'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. @if(\App\Support\StdPrcVsDilPricer::supportsSnroiCap((string) ($channelPromoChannel ?? ''))) A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.@endif</div>
                     </div>
-                    @if(in_array(($channelPromoChannel ?? ''), ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c'], true))
+                    @if(in_array(($channelPromoChannel ?? ''), ['ebay1', 'ebay2', 'ebay3', 'shopify_b2c', 'purchasing_power'], true))
                     @include('partials.sprice-rule-switch', ['spriceRuleSwitchPart' => 'std_switch', 'spriceRuleChannel' => $channelPromoChannel, 'spriceRuleIndependent' => true])
                     @endif
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
