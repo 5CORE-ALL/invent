@@ -391,6 +391,94 @@ class WayfairTrackingSyncService
      */
     protected function labelTrackingByPo(array $poNumbers, ?float $deadline): array
     {
+        $hits = $this->wayfairLabelTrackingByPo($poNumbers, $deadline);
+
+        // Labels bought outside Wayfair (Veeqo, FedEx site, portal) never appear in Wayfair's label feed.
+        // FedEx can still find them by the PO printed on the label.
+        $missing = [];
+        foreach ($poNumbers as $po) {
+            if (! isset($hits[(string) $po])) {
+                $missing[] = (string) $po;
+            }
+        }
+
+        return $hits + $this->fedexTrackingByPo($missing, $deadline);
+    }
+
+    /**
+     * FedEx Track by Reference for POs Wayfair has no label for: the PO is searched with the customer's ZIP
+     * and a ship-date window that starts at the PO date.
+     *
+     * @param  list<string>  $poNumbers
+     * @return array<string, array{tracking: string, carrier: string}>
+     */
+    protected function fedexTrackingByPo(array $poNumbers, ?float $deadline): array
+    {
+        $poNumbers = array_slice(array_values(array_unique($poNumbers)), 0, 40);
+        if ($poNumbers === [] || ! Schema::hasTable('wayfair_daily_data')) {
+            return [];
+        }
+
+        try {
+            $tracking = app(\App\Services\ShipmentTrackingService::class);
+            if (! $tracking->hasFedex()) {
+                return [];
+            }
+            $rows = DB::table('wayfair_daily_data')
+                ->whereIn('po_number', $poNumbers)
+                ->whereNotNull('customer_postal_code')
+                ->where('customer_postal_code', '!=', '')
+                ->whereNotNull('po_date')
+                ->orderByDesc('id')
+                ->get(['po_number', 'po_date', 'customer_postal_code', 'customer_country']);
+        } catch (\Throwable $e) {
+            Log::info('WayfairTrackingSyncService: FedEx lookup unavailable', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        $seen = [];
+        $out = [];
+        foreach ($rows as $row) {
+            $po = (string) $row->po_number;
+            if (isset($seen[strtoupper($po)])) {
+                continue;
+            }
+            $seen[strtoupper($po)] = true;
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $country = strtoupper(trim((string) $row->customer_country));
+            if ($country !== '' && ! in_array($country, ['US', 'USA', 'UNITED STATES'], true)) {
+                continue;
+            }
+
+            try {
+                $start = \Illuminate\Support\Carbon::parse((string) $row->po_date)->startOfDay();
+                $end = $start->copy()->addDays(25);
+                if ($end->gt(now())) {
+                    $end = now();
+                }
+                $hit = $tracking->findFedexByReference($po, (string) $row->customer_postal_code, $start->copy()->subDay()->toDateString(), $end->toDateString());
+            } catch (\Throwable $e) {
+                Log::info('WayfairTrackingSyncService: FedEx reference lookup failed', ['po' => $po, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+            if ($hit !== null) {
+                $out[$po] = ['tracking' => $hit['tracking'], 'carrier' => 'FedEx'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $poNumbers
+     * @return array<string, array{tracking: string, carrier: string}>
+     */
+    protected function wayfairLabelTrackingByPo(array $poNumbers, ?float $deadline): array
+    {
         if ($deadline !== null && microtime(true) >= $deadline) {
             return [];
         }
