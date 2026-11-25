@@ -1412,6 +1412,15 @@
             background-color: #3b9de8;
         }
 
+        .action-btn-links {
+            background-color: #20c997;
+            color: white;
+        }
+
+        .action-btn-links:hover {
+            background-color: #1aa179;
+        }
+
         .action-btn-delete-disabled {
             background-color: #e9ecef !important;
             color: #adb5bd !important;
@@ -2465,6 +2474,32 @@
                 <button type="button" class="btn btn-primary" id="fired-checklist-submit-btn" disabled>
                     <i class="mdi mdi-send me-1"></i>Submit
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Task Links Modal — read-only list of the links on a task (opened from the ACTION column link button) -->
+<div class="modal fade" id="taskLinksModal" tabindex="-1" aria-labelledby="taskLinksModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #20c997 0%, #0dcaf0 100%); color: white;">
+                <h5 class="modal-title" id="taskLinksModalLabel">
+                    <i class="mdi mdi-link-variant me-2"></i>Submitted links
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="small text-muted mb-1">Task</div>
+                <div id="task-links-title" class="fw-semibold mb-3" style="white-space: pre-wrap;"></div>
+                <div id="task-links-list" class="border rounded p-2 small" style="background:#f8f9fa;"></div>
+                <div id="task-links-ref-wrap" class="mt-3 d-none">
+                    <div class="fw-semibold mb-1"><i class="mdi mdi-link-variant me-1"></i>Reference link (submitted on Done)</div>
+                    <a id="task-links-ref" href="#" target="_blank" rel="noopener" style="word-break:break-all;"></a>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -4840,6 +4875,9 @@
                             buttons += `
                                 <button class="action-btn-icon action-btn-subtasks manage-subtasks" data-id="${id}" title="Manage subtasks">
                                     <i class="mdi mdi-subdirectory-arrow-right"></i>
+                                </button>
+                                <button class="action-btn-icon action-btn-links view-task-links" data-id="${id}" title="View submitted links">
+                                    <i class="mdi mdi-link-variant"></i>
                                 </button>
                             `;
 
@@ -7951,6 +7989,27 @@
                     }
                 });
             }
+
+            // ACTION column link button: show every link on the task in a read-only modal
+            $(document).on('click', '.view-task-links', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var taskId = String($(this).data('id'));
+                var row = table.getRow(taskId);
+                var d = row ? row.getData() : null;
+                var title = String((d && d.title) || ('Task #' + taskId));
+                $('#task-links-title').text(title);
+                var rowsHtml = submittedLinksRowsHtml(d);
+                $('#task-links-list').html(rowsHtml || '<div class="text-muted fst-italic">No links submitted on this task.</div>');
+                var ref = (d && d.reference_link != null) ? String(d.reference_link).trim() : '';
+                if (ref) {
+                    $('#task-links-ref').attr('href', ref).text(ref);
+                    $('#task-links-ref-wrap').removeClass('d-none');
+                } else {
+                    $('#task-links-ref-wrap').addClass('d-none');
+                }
+                $('#taskLinksModal').modal('show');
+            });
 
             $(document).on('click', '.manage-subtasks', function(e) {
                 e.preventDefault();
