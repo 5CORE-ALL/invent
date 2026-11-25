@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  * BGT CAP rules on /amazon-ads/all.
  *
  * Per ad type (KW, PT, HL) and ACOS colour (yellow, red — same colours as /amazon-ads/missing, lifetime
- * data, ad types with lifetime spend under $30 ignored)
+ * data, ad types with lifetime spend of $30 or less ignored)
  * the suggested budget (SBGT) of the parent's linked campaigns is capped at an editable $ amount
  * (default $1). A cap only lowers a budget; an SBGT of 0 (pause) stays 0. A cap of $0 sets SBGT to 0,
  * which the budget push / live sync treat as "pause the campaign".

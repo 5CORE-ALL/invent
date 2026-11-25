@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Log;
  * /amazon-ads/missing. "Red" is computed exactly like that page, always on LIFETIME data:
  *   - ACOS >= 100% (spend with no sales counts as 100%), or
  *   - the highest of the parent's KW / PT / HL ACOS values (needs 2+ different values).
- * An ad type with lifetime spend under $30 is ignored.
+ * Only ad types with lifetime spend above $30 are considered (spend of $30 or less is ignored).
+ * All three rules are ON by default.
  * Rule 1 (Dil%) lives in {@see AmazonAdsPauseRule}.
  */
 final class AmazonAdsAcosPauseRules
@@ -22,7 +23,7 @@ final class AmazonAdsAcosPauseRules
     /** Always lifetime data (the missing page's "Lifetime" period). */
     public const PERIOD = 'lt';
 
-    /** Ad types with lifetime spend below this ($) are ignored. */
+    /** Ad types with lifetime spend at or below this ($) are ignored (spend must be above it). */
     public const MIN_SPEND = 30;
 
     /** @var array<string, array{n: int, label: string, channel: string}> */
@@ -42,7 +43,8 @@ final class AmazonAdsAcosPauseRules
      */
     public static function defaults(): array
     {
-        return array_fill_keys(self::keys(), false);
+        // ON by default; a flag the user explicitly switched OFF stays OFF.
+        return array_fill_keys(self::keys(), true);
     }
 
     /**
@@ -55,7 +57,10 @@ final class AmazonAdsAcosPauseRules
             return $out;
         }
         foreach (self::keys() as $key) {
-            $v = $input[$key] ?? false;
+            if (! array_key_exists($key, $input)) {
+                continue; // not saved yet: keep the default (ON)
+            }
+            $v = $input[$key];
             if (is_array($v)) {
                 $v = $v['enabled'] ?? false;
             }
@@ -117,7 +122,7 @@ final class AmazonAdsAcosPauseRules
     }
 
     /**
-     * Count data per rule: campaigns that are red right now (lifetime, spend >= $30) and how many of
+     * Count data per rule: campaigns that are red right now (lifetime, spend > $30) and how many of
      * those are still running (not yet paused).
      *
      * @return array<string, array{red: int, active: int}>
@@ -187,7 +192,7 @@ final class AmazonAdsAcosPauseRules
             }
             foreach ($keys as $k) {
                 // Colours are compared like the page; an ad type under the spend floor is ignored.
-                if ($spend[$k] < self::MIN_SPEND) {
+                if ($spend[$k] <= self::MIN_SPEND) {
                     continue;
                 }
                 $tier = self::tier($acos, $k);
