@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PayrollEmployeeSalary;
 use App\Models\SalaryProjection;
+use App\Models\ScopeOfImprovement;
 use App\Models\User;
 use App\Models\UserSalary;
 use App\Services\PayrollService;
@@ -12,6 +13,7 @@ use App\Support\UserOverdueNudge;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Floating "Salary" icon.
@@ -128,8 +130,8 @@ class SalaryFabController extends Controller
         $stepMax = max($stepMin, (int) config('payroll.future_salary.step_max', 1000));
         $monthsMin = $monthsMax = null;
         if ($gap !== null && $gap > 0) {
-            $monthsMin = (int) ceil($gap / $stepMax);
-            $monthsMax = (int) ceil($gap / $stepMin);
+            // Estimate uses the top step (1000 / month) only.
+            $monthsMin = $monthsMax = (int) ceil($gap / $stepMax);
         }
 
         // Progress (0-100) from the salary when the target was set to the target itself.
@@ -169,7 +171,7 @@ class SalaryFabController extends Controller
     }
 
     /**
-     * @return array{dar_pct: int, dar_count: int, dar_target: int, dar_band: string, overdue: int}
+     * @return array{dar_pct: int, dar_count: int, dar_target: int, dar_band: string, overdue: int, si_count: int}
      */
     protected function performance(User $user): array
     {
@@ -179,7 +181,16 @@ class SalaryFabController extends Controller
             'dar_target' => DarL30Metrics::TARGET,
             'dar_band' => 'low',
             'overdue' => 0,
+            'si_count' => 0,
         ];
+
+        try {
+            // Same count as the top-bar SI (Scope of Improvement) button.
+            if (Schema::hasTable('scope_of_improvements')) {
+                $out['si_count'] = (int) ScopeOfImprovement::query()->where('user_id', (int) $user->id)->count();
+            }
+        } catch (\Throwable $e) {
+        }
 
         try {
             $dar = DarL30Metrics::forUserId((int) $user->id);
