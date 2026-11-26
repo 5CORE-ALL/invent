@@ -223,6 +223,11 @@
         /* SPRICE $ column in the table (modal's SPRICE $ input + ✓ + GPFT / GROI / NPFT / NROI) */
         .pi-box-wrap { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
         .pi-box-wrap .pi-box-input { width: 78px; min-width: 78px; height: 28px; font-size: 13px; font-weight: 600; padding: 2px 6px; }
+        /* No outline / border / focus ring around the SPRICE $ input in the table column */
+        .pi-box-wrap .pi-box-input,
+        .pi-box-wrap .pi-box-input:hover,
+        .pi-box-wrap .pi-box-input:focus,
+        .pi-box-wrap .pi-box-input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; background-color: #f1f5f9; }
         .pi-box-wrap .pi-box-go { height: 28px; width: 30px; padding: 0; line-height: 1; flex: 0 0 auto; }
         .pi-box-wrap .pi-box-chips { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding-left: 6px; border-left: 1px solid #cbd5e1; }
         .pi-box-wrap .pi-box-chip { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 5px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 11px; font-weight: 700; }
