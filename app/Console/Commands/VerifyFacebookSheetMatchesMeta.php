@@ -236,11 +236,16 @@ class VerifyFacebookSheetMatchesMeta extends Command
                 }
                 $ltChecked++;
                 $diff = [];
-                if (abs((float) $s->spend - $m['spend']) > 0.011) $diff[] = "lifetime spend: sheet {$s->spend} vs meta {$m['spend']}";
-                if (abs((float) $s->sales - $m['sales']) > 0.011) $diff[] = "lifetime sales: sheet {$s->sales} vs meta {$m['sales']}";
-                if ((int) $s->sold !== $m['sold'])               $diff[] = "lifetime sold: sheet {$s->sold} vs meta {$m['sold']}";
-                if ((int) $s->impr !== $m['impr'])               $diff[] = "lifetime impr: sheet {$s->impr} vs meta {$m['impr']}";
-                if ((int) $s->clk !== $m['clk'])                 $diff[] = "lifetime clk: sheet {$s->clk} vs meta {$m['clk']}";
+                // Meta's all-time totals include today's still-running spend, so an
+                // active campaign drifts a little between the lifetime sync and now.
+                // Only flag differences bigger than 0.5% (min $1 / 5 units).
+                $money = fn (float $a, float $b) => abs($a - $b) > max(1.0, 0.005 * max($a, $b));
+                $count = fn (int $a, int $b) => abs($a - $b) > max(5, (int) ceil(0.005 * max($a, $b)));
+                if ($money((float) $s->spend, $m['spend'])) $diff[] = "lifetime spend: sheet {$s->spend} vs meta {$m['spend']}";
+                if ($money((float) $s->sales, $m['sales'])) $diff[] = "lifetime sales: sheet {$s->sales} vs meta {$m['sales']}";
+                if ($count((int) $s->sold, $m['sold']))     $diff[] = "lifetime sold: sheet {$s->sold} vs meta {$m['sold']}";
+                if ($count((int) $s->impr, $m['impr']))     $diff[] = "lifetime impr: sheet {$s->impr} vs meta {$m['impr']}";
+                if ($count((int) $s->clk, $m['clk']))       $diff[] = "lifetime clk: sheet {$s->clk} vs meta {$m['clk']}";
                 if ($diff) {
                     $ltBad[(string) $s->campaign_id] = $diff;
                 }

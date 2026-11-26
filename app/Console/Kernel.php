@@ -2950,7 +2950,7 @@ class Kernel extends ConsoleKernel
         // Daily self-check: sheet vs live Meta API (name, status, spend, impr, clicks).
         // Any drift is written to the log as "facebook:verify-meta-match mismatches".
         $ist($schedule->command('facebook:verify-meta-match')
-            ->dailyAt('19:25')
+            ->dailyAt('19:55')   // after the 19:45 lifetime-stats sync
             ->timezone('Asia/Kolkata')
             ->name('facebook-verify-meta-match')
             ->withoutOverlapping()
