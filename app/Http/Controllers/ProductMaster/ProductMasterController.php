@@ -1148,6 +1148,7 @@ class ProductMasterController extends Controller
             }
 
             \App\Http\Controllers\PurchaseMaster\CategoryController::forgetNotVerifiedSidebarCountCache();
+            app(\App\Services\DimWtVerifiedHistoryService::class)->record();
 
             $linkedCount = count($linkResult['updated_skus'] ?? []);
             $message = 'Verified status updated successfully';
@@ -1230,6 +1231,7 @@ class ProductMasterController extends Controller
             }
 
             \App\Http\Controllers\PurchaseMaster\CategoryController::forgetNotVerifiedSidebarCountCache();
+            app(\App\Services\DimWtVerifiedHistoryService::class)->record();
 
             return response()->json([
                 'success' => true,

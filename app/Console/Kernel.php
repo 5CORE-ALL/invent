@@ -4106,6 +4106,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // /dim-wt-master verified history: end-of-day count of verified SKUs (California day).
+        // The same point is also refreshed whenever a Verified flag changes.
+        $schedule->command('dim-wt:snapshot-verified')
+            ->dailyAt('23:55')
+            ->timezone('America/Los_Angeles')
+            ->name('dim-wt-snapshot-verified')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Page attendance: periods (day / 7 days / 30 days) that ended without a check-in become a
         // "missed" history row plus a task for the person. Runs just after midnight India time.
         $schedule->command('page-attendance:check')

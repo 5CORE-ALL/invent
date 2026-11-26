@@ -1718,6 +1718,18 @@ class CategoryController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
+    /**
+     * Verified history graph (dot in the Verified column head): verified SKU count per day.
+     */
+    public function dimWtVerifiedHistory(Request $request)
+    {
+        $days = (int) $request->query('days', 30);
+
+        return response()->json(
+            ['success' => true] + app(\App\Services\DimWtVerifiedHistoryService::class)->series($days)
+        );
+    }
+
     public function getDimWtMasterData(Request $request)
     {
         // First load: persist Label Type = STD for every product that has none yet.

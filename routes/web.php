@@ -6071,6 +6071,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/qc-masters/delete-video', [QcMastersController::class, 'deleteVideo'])->name('qc.masters.delete.video');
     Route::get('/dim-wt-master-ctn', [CategoryController::class, 'dimWtMasterCtn'])->name('dim.wt.master.ctn');
     Route::get('/dim-wt-master-data-view', [CategoryController::class, 'getDimWtMasterData'])->name('dim.wt.master.data');
+    Route::get('/dim-wt-master/verified-history', [CategoryController::class, 'dimWtVerifiedHistory'])->name('dim.wt.master.verified.history');
     Route::get('/dim-wt-master/skus', [CategoryController::class, 'getSkusForDimWtDropdown'])->name('dim.wt.master.skus');
     Route::post('/dim-wt-master/store', [CategoryController::class, 'storeDimWtMaster'])->name('dim.wt.master.store');
     Route::post('/dim-wt-master/update', [CategoryController::class, 'updateDimWtMaster'])->name('dim.wt.master.update');

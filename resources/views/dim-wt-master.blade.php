@@ -52,6 +52,64 @@
             line-height: 1.25;
             text-transform: lowercase;
         }
+        /* Missing-row count on a column head (child SKUs only) */
+        .table-responsive thead th .th-missing {
+            display: inline-block;
+            min-width: 22px;
+            margin-top: 3px;
+            padding: 1px 7px;
+            border-radius: 99px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 10px !important;
+            font-weight: 800;
+            line-height: 1.5;
+            text-transform: none;
+            font-variant-numeric: tabular-nums;
+            box-shadow: 0 2px 6px -2px rgba(220, 38, 38, .7);
+        }
+        .table-responsive thead th .th-missing.is-zero {
+            background: #16a34a;
+            box-shadow: 0 2px 6px -2px rgba(22, 163, 74, .7);
+        }
+        /* Verified history dot (opens the verified-count graph) */
+        .table-responsive thead th .vh-dot {
+            display: block;
+            width: 14px;
+            height: 14px;
+            margin: 4px auto 0;
+            padding: 0;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            background: #22c55e;
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, .8);
+            animation: vh-pulse 1.9s infinite;
+            transition: transform .15s;
+        }
+        .table-responsive thead th .vh-dot:hover { transform: scale(1.3); }
+        @keyframes vh-pulse { 70% { box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+
+        #verifiedHistoryModal .modal-dialog { max-width: 860px; }
+        #verifiedHistoryModal .modal-content { border: 0; border-radius: 24px; overflow: hidden; color: #e6ecff; background: radial-gradient(900px 420px at 90% -10%, rgba(34, 197, 94, .22), transparent 60%), #0d1224; box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); }
+        #verifiedHistoryModal .vh-head { position: relative; padding: 20px 24px 18px; color: #fff; overflow: hidden; background: linear-gradient(135deg, #059669 0%, #06b6d4 55%, #6366f1 100%); }
+        #verifiedHistoryModal .vh-head::after { content: ''; position: absolute; right: -60px; top: -70px; width: 220px; height: 220px; border-radius: 50%; background: rgba(255,255,255,.15); }
+        #verifiedHistoryModal .vh-head .btn-close { position: absolute; right: 18px; top: 18px; z-index: 3; filter: invert(1) grayscale(1) brightness(2); opacity: .9; }
+        #verifiedHistoryModal .vh-head h5 { margin: 0 0 2px; font-weight: 800; font-size: 1.35rem; color: #fff; position: relative; z-index: 1; }
+        #verifiedHistoryModal .vh-sub { font-size: .78rem; opacity: .92; position: relative; z-index: 1; }
+        #verifiedHistoryModal .vh-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; position: relative; z-index: 1; }
+        #verifiedHistoryModal .vh-stat { background: rgba(255,255,255,.18); backdrop-filter: blur(8px); border-radius: 16px; padding: 8px 14px; min-width: 120px; }
+        #verifiedHistoryModal .vh-stat b { display: block; font-size: 1.3rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+        #verifiedHistoryModal .vh-stat span { font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; opacity: .9; }
+        #verifiedHistoryModal .vh-body { padding: 16px 22px 22px; }
+        #verifiedHistoryModal .vh-tools { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+        #verifiedHistoryModal .vh-btn { border: 1px solid rgba(255,255,255,.16); background: transparent; color: #c7d2fe; border-radius: 99px; padding: 5px 14px; font-size: .78rem; font-weight: 700; cursor: pointer; }
+        #verifiedHistoryModal .vh-btn:hover { background: rgba(255,255,255,.08); }
+        #verifiedHistoryModal .vh-btn.is-on { background: linear-gradient(135deg, #059669, #06b6d4); color: #fff; border-color: transparent; }
+        #verifiedHistoryModal .vh-chartbox { position: relative; height: 340px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 20px; padding: 12px 14px; }
+        #verifiedHistoryModal .vh-hint { font-size: .72rem; color: rgba(230,236,255,.55); margin-top: 10px; }
+        #verifiedHistoryModal .vh-empty { text-align: center; padding: 60px 10px; color: rgba(230,236,255,.7); }
+        .vh-delta-up { color: #a7f3d0; } .vh-delta-down { color: #fecaca; }
         /* Horizontal header label - no rotation (Parent, SKU) */
         .table-responsive thead th .th-horizontal-label {
             display: block;
@@ -1115,6 +1173,7 @@
                                     <th data-col-key="inv" data-col-label="INV"><span class="th-vertical-label">INV</span></th>
                                     <th data-col-key="label_qty" data-col-label="Label Qty" class="th-has-filter" title="Label Qty (same source as Shipping Master)">
                                         <div class="th-vertical-label">label<br>qty</div>
+                                        <span class="th-missing is-zero" data-missing="label_qty" title="Missing count">0</span>
                                         <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
@@ -1140,36 +1199,47 @@
                                     </th>
                                     <th data-col-key="wt_act" data-col-label="Itm wt GW" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW</span>
+                                        <span class="th-missing is-zero" data-missing="wt_act" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="l" data-col-label="Item L IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item L IN</span>
+                                        <span class="th-missing is-zero" data-missing="l" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="w" data-col-label="Item W IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item W IN</span>
+                                        <span class="th-missing is-zero" data-missing="w" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="h" data-col-label="Item H IN" class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN</span>
+                                        <span class="th-missing is-zero" data-missing="h" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="wt_decl" data-col-label="Itm wt GW Decl" class="item-dim-decl-header" title="Copies Itm wt GW when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</span>
+                                        <span class="th-missing is-zero" data-missing="wt_decl" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="l_decl" data-col-label="Item L IN Decl" class="item-dim-decl-header" title="Copies Item L IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item L IN Decl</span>
+                                        <span class="th-missing is-zero" data-missing="l_decl" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="w_decl" data-col-label="Item W IN Decl" class="item-dim-decl-header" title="Copies Item W IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item W IN Decl</span>
+                                        <span class="th-missing is-zero" data-missing="w_decl" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="h_decl" data-col-label="Item H IN Decl" class="item-dim-decl-header" title="Copies Item H IN when Decl is empty">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN Decl</span>
+                                        <span class="th-missing is-zero" data-missing="h_decl" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="girth" data-col-label="GIRTH" class="item-dim-header" title="Girth = 2 × (Width + Height)">
                                         <span class="th-vertical-label" style="font-size: 9px;">GIRTH</span>
+                                        <span class="th-missing is-zero" data-missing="girth" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="girth_plus_l" data-col-label="GIRTH + L" class="item-dim-header" title="GIRTH + Length">
                                         <span class="th-vertical-label" style="font-size: 9px;">GIRTH + L</span>
+                                        <span class="th-missing is-zero" data-missing="girth_plus_l" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="cbm" data-col-label="Itm CBM" class="item-dim-header" title="Item CBM (from Product Master Values.cbm)">
                                         <span class="th-vertical-label" style="font-size: 9px;">Itm CBM</span>
+                                        <span class="th-missing is-zero" data-missing="cbm" title="Missing count">0</span>
                                     </th>
                                     <th data-col-key="l_cm" data-col-label="Item L (CM)" class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
                                     <th data-col-key="w_cm" data-col-label="Item W (CM)" class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
@@ -1180,9 +1250,11 @@
                                     <th data-col-key="ctn_cbm" data-col-label="Carton CBM"><span class="th-vertical-label">Carton<br>CBM</span></th>
                                     <th data-col-key="ctn_qty" data-col-label="CTN QTY"><span class="th-vertical-label">CTN<br>QTY</span></th>
                                     <th data-col-key="ctn_cbm_each" data-col-label="Carton CBM each"><span class="th-vertical-label">Carton CBM<br>each</span></th>
-                                    <th data-col-key="instructions_item_pkg" data-col-label="item PKG" class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
-                                    <th data-col-key="item_pkg_cover" data-col-label="Itm pkg Cover" class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
-                                    <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th data-col-key="instructions_item_pkg" data-col-label="item PKG" class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span>
+                                        <span class="th-missing is-zero" data-missing="instructions_item_pkg" title="Missing count">0</span></th>
+                                    <th data-col-key="item_pkg_cover" data-col-label="Itm pkg Cover" class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span>
+                                        <span class="th-missing is-zero" data-missing="item_pkg_cover" title="Missing count">0</span></th>
+                                    <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span><button type="button" class="vh-dot" id="verifiedHistoryDot" title="Verified history — graph of how many SKUs are verified" aria-label="Verified history"></button></th>
                                     <th data-col-key="action" data-col-label="Action" class="col-action"><span class="th-vertical-label">Action</span></th>
                                     <th data-col-key="dim_wt_link" data-col-label="Link SKU" class="text-center col-dim-wt-link"><span class="th-vertical-label" title="Sibling SKUs linked by matching dim/wt">Link SKU</span></th>
                                 </tr>
@@ -1543,6 +1615,149 @@
 @endsection
 
 @section('script')
+    <!-- Verified history modal (dot in the Verified column head) -->
+    <div class="modal fade" id="verifiedHistoryModal" tabindex="-1" aria-labelledby="verifiedHistoryTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="vh-head">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 id="verifiedHistoryTitle">Verified history</h5>
+                    <div class="vh-sub" id="vhSub">Loading…</div>
+                    <div class="vh-stats">
+                        <div class="vh-stat"><b id="vhVerified">—</b><span>Verified now</span></div>
+                        <div class="vh-stat"><b id="vhNotVerified">—</b><span>Not verified</span></div>
+                        <div class="vh-stat"><b id="vhDayDelta">—</b><span>vs previous day</span></div>
+                        <div class="vh-stat"><b id="vhRangeDelta">—</b><span id="vhRangeLabel">in range</span></div>
+                    </div>
+                </div>
+                <div class="vh-body">
+                    <div class="vh-tools">
+                        <button type="button" class="vh-btn" data-vh-days="7">7d</button>
+                        <button type="button" class="vh-btn is-on" data-vh-days="30">30d</button>
+                        <button type="button" class="vh-btn" data-vh-days="90">90d</button>
+                        <button type="button" class="vh-btn" data-vh-days="365">1y</button>
+                    </div>
+                    <div class="vh-chartbox" id="vhChartBox"><canvas id="vhCanvas"></canvas></div>
+                    <div class="vh-empty" id="vhEmpty" style="display:none;"></div>
+                    <div class="vh-hint" id="vhHint"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+    (function () {
+        const URL_HISTORY = @json(route('dim.wt.master.verified.history'));
+        let days = 30;
+        let chart = null;
+        let last = null;
+        const el = function (id) { return document.getElementById(id); };
+        const fmt = function (n) { return Number(n).toLocaleString(); };
+        const signed = function (n) {
+            if (n === null || n === undefined) return '—';
+            return n === 0 ? '0' : '<span class="' + (n > 0 ? 'vh-delta-up' : 'vh-delta-down') + '">' + (n > 0 ? '▲ +' : '▼ −') + fmt(Math.abs(n)) + '</span>';
+        };
+
+        function paint(d) {
+            const s = d.series || [];
+            el('vhVerified').textContent = fmt(d.current.verified);
+            el('vhNotVerified').textContent = fmt(d.current.not_verified);
+            el('vhSub').textContent = 'Child SKUs verified on Dim & Wt Master · ' + fmt(d.current.total) + ' SKUs in total · one point per day (California)';
+            const n = s.length;
+            el('vhDayDelta').innerHTML = n >= 2 ? signed(s[n - 1].verified - s[n - 2].verified) : '—';
+            el('vhRangeDelta').innerHTML = n >= 2 ? signed(s[n - 1].verified - s[0].verified) : '—';
+            el('vhRangeLabel').textContent = 'last ' + (days === 365 ? '1 year' : days + ' days');
+            el('vhHint').textContent = d.first_date
+                ? 'History started ' + d.first_date + '. The latest point updates every time a Verified flag changes, and is saved at the end of each day.'
+                : '';
+
+            const box = el('vhChartBox');
+            const empty = el('vhEmpty');
+            if (!n) {
+                box.style.display = 'none';
+                empty.style.display = '';
+                empty.textContent = 'No history yet.';
+                return;
+            }
+            box.style.display = '';
+            empty.style.display = 'none';
+
+            if (chart) { chart.destroy(); chart = null; }
+            if (!window.Chart) { return; }
+            const ctx = el('vhCanvas').getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 0, 320);
+            grad.addColorStop(0, 'rgba(34,197,94,.45)');
+            grad.addColorStop(1, 'rgba(34,197,94,0)');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: s.map(function (p) { return p.date; }),
+                    datasets: [{
+                        label: 'Verified SKUs',
+                        data: s.map(function (p) { return p.verified; }),
+                        borderColor: '#4ade80', backgroundColor: grad, fill: true, tension: 0.3,
+                        borderWidth: 4, pointRadius: n > 45 ? 2 : 5, pointHoverRadius: 8,
+                        pointBackgroundColor: '#0d1224', pointBorderColor: '#4ade80', pointBorderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function (c) {
+                                    const p = s[c.dataIndex];
+                                    return ' ' + fmt(p.verified) + ' verified' + (p.not_verified != null ? ' · ' + fmt(p.not_verified) + ' not verified' : '');
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#aab4e8', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,.05)' } },
+                        y: { ticks: { color: '#aab4e8', precision: 0 }, grid: { color: 'rgba(255,255,255,.07)' }, title: { display: true, text: 'Verified SKUs', color: '#aab4e8' } }
+                    }
+                }
+            });
+        }
+
+        async function load() {
+            el('vhSub').textContent = 'Loading…';
+            try {
+                const res = await fetch(URL_HISTORY + '?days=' + days, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                const d = await res.json();
+                if (!res.ok || !d.success) throw new Error('Could not load the history.');
+                last = d;
+                paint(d);
+            } catch (e) {
+                el('vhSub').textContent = e.message;
+            }
+        }
+
+        function setDays(n) {
+            days = n;
+            document.querySelectorAll('[data-vh-days]').forEach(function (b) { b.classList.toggle('is-on', Number(b.getAttribute('data-vh-days')) === n); });
+            load();
+        }
+
+        document.addEventListener('click', function (e) {
+            const dot = e.target.closest('#verifiedHistoryDot');
+            if (dot) {
+                e.preventDefault();
+                e.stopPropagation(); // do not sort the column
+                const m = el('verifiedHistoryModal');
+                if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(m).show();
+                load();
+                return;
+            }
+            const r = e.target.closest('[data-vh-days]');
+            if (r) setDays(Number(r.getAttribute('data-vh-days')));
+        }, true);
+
+        el('verifiedHistoryModal').addEventListener('shown.bs.modal', function () { if (last) paint(last); });
+    })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
@@ -2803,6 +3018,7 @@
                 let hMissingCount = 0;
                 let notVerifiedCount = 0;
                 let verifiedCount = 0;
+                const headMissing = {};
                 tableData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
                     if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT'))
@@ -2824,6 +3040,25 @@
                         if (isMissing(shown.l)) lMissingCount++;
                         if (isMissing(shown.w)) wMissingCount++;
                         if (isMissing(shown.h)) hMissingCount++;
+
+                        // Missing count shown on each column head (child SKUs only, same values the grid shows)
+                        const bump = (key, missing) => { if (missing) headMissing[key] = (headMissing[key] || 0) + 1; };
+                        const dims = getOrganizedItemDims(shown);
+                        const labelQtyNum = getLabelQtyNumber(item);
+                        bump('label_qty', !Number.isFinite(labelQtyNum) || labelQtyNum === 0);
+                        bump('wt_act', isMissing(shown.wt_act));
+                        bump('l', isMissing(dims.length));
+                        bump('w', isMissing(dims.width));
+                        bump('h', isMissing(dims.height));
+                        bump('wt_decl', isMissing(itemDeclValue(shown, 'wt_decl', 'wt_act')));
+                        bump('l_decl', isMissing(itemDeclValue(shown, 'l_decl', 'l')));
+                        bump('w_decl', isMissing(itemDeclValue(shown, 'w_decl', 'w')));
+                        bump('h_decl', isMissing(itemDeclValue(shown, 'h_decl', 'h')));
+                        bump('girth', isMissing(dims.girth));
+                        bump('girth_plus_l', isMissing(dims.girthPlusL));
+                        bump('cbm', isMissing(getItemCbm(shown)));
+                        bump('instructions_item_pkg', String(shown.instructions_item_pkg ?? '').trim() === '');
+                        bump('item_pkg_cover', String(shown.item_pkg_cover ?? '').trim() === '');
                     });
 
                     // Verified (green) / not verified (red) — child SKUs only
@@ -2842,6 +3077,13 @@
                 setHeaderCount('lMissingCount', lMissingCount);
                 setHeaderCount('wMissingCount', wMissingCount);
                 setHeaderCount('hMissingCount', hMissingCount);
+
+                document.querySelectorAll('#dim-wt-master-datatable .th-missing[data-missing]').forEach(function (badge) {
+                    const n = headMissing[badge.getAttribute('data-missing')] || 0;
+                    badge.textContent = n;
+                    badge.classList.toggle('is-zero', n === 0);
+                    badge.title = n + ' SKU row' + (n === 1 ? '' : 's') + ' missing this value (parent rows ignored)';
+                });
 
                 const notVerifiedCountEl = document.getElementById('notVerifiedCount');
                 if (notVerifiedCountEl) notVerifiedCountEl.textContent = notVerifiedCount;
