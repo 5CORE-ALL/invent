@@ -220,6 +220,18 @@
             color: #475569;
             white-space: nowrap;
         }
+        /* SPRICE $ column in the table (modal's SPRICE $ input + ✓ + GPFT / GROI / NPFT / NROI) */
+        .pi-box-wrap { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
+        .pi-box-wrap .pi-box-input { width: 78px; min-width: 78px; height: 28px; font-size: 13px; font-weight: 600; padding: 2px 6px; }
+        .pi-box-wrap .pi-box-go { height: 28px; width: 30px; padding: 0; line-height: 1; flex: 0 0 auto; }
+        .pi-box-wrap .pi-box-chips { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding-left: 6px; border-left: 1px solid #cbd5e1; }
+        .pi-box-wrap .pi-box-chip { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 5px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 11px; font-weight: 700; }
+        .pi-box-wrap .pi-box-lbl { font-size: 9px; font-weight: 700; color: #64748b; }
+        /* The table ✓ prepares the SKU in the SKU modal without showing it */
+        #ovl30DetailsModal.pi-stealth { opacity: 0 !important; pointer-events: none !important; transition: none !important; }
+        #ovl30DetailsModal.pi-stealth .modal-dialog { transition: none !important; transform: none !important; }
+        body.pi-stealth-open .modal-backdrop { opacity: 0 !important; pointer-events: none !important; transition: none !important; }
+        body.pi-stealth-open { overflow: auto !important; padding-right: 0 !important; }
         #ovl30DetailsModal .ovl30-tool-group .spm-wrap { display: none; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #cbd5e1; flex-wrap: nowrap; white-space: nowrap; }
         #ovl30DetailsModal .ovl30-tool-group .spm-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 7px; background: #fff; border: 1px solid #ced4da; border-radius: 6px; font-size: 12px; font-weight: 700; }
         #ovl30DetailsModal .ovl30-tool-group .spm-lbl { font-size: 10px; font-weight: 700; color: #64748b; }
@@ -5963,113 +5975,20 @@
                     }
                 },
                 {
-                    title: "Amz<br>SPRICE",
-                    field: "amazon_sprice",
+                    // The modal's "SPRICE $" toolbar in the table: input + ✓ (Push All) + GPFT / GROI / NPFT / NROI badges
+                    title: "SPRICE $",
+                    field: "box_sprice",
                     visible: true,
-                    hozAlign: "right",
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "Not editable. SPRICE as in the modal's SPRICE $ box: Amazon's saved SPRICE, else the first channel with a saved SPRICE.",
-                    editable: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary === true) {
-                            const value = cell.getValue();
-                            if (value == null || value === '' || parseFloat(value) <= 0) return '-';
-                            return '<span style="font-weight: 600;">$' + parseFloat(value).toFixed(2) + '</span>';
-                        }
-                        const value = cell.getValue();
-                        if (value == null || value === '' || parseFloat(value) <= 0) return '-';
-                        const num = parseFloat(value);
-                        const from = rowData.amazon_sprice_from ? String(rowData.amazon_sprice_from).replace(/"/g, '&quot;') : '';
-                        return '<span style="font-weight: 600;"' + (from ? (' title="Amazon has no SPRICE — taken from ' + from + ' (same as the modal SPRICE $ box)"') : '') + '>$' + num.toFixed(2) + '</span>';
-                    }
-                },
-                {
-                    // Blue triangle when the Amazon price on the page differs from the Amz SPRICE
-                    title: '<span style="color:#0d6efd;font-size:13px;">&#9650;</span>',
-                    field: "price_mismatch",
-                    hozAlign: "center",
-                    headerHozAlign: "center",
-                    headerSort: true,
-                    width: 44,
-                    minWidth: 44,
-                    headerTooltip: "Blue triangle = Amz Price and Amz SPRICE do not match",
-                    sorter: function(a, b, aRow, bRow) {
-                        const f = function(r) { return piPriceSpriceMismatch(r.getData()) ? 1 : 0; };
-                        return f(aRow) - f(bRow);
-                    },
+                    hozAlign: "left",
+                    headerSort: false,
+                    minWidth: 430,
+                    width: 440,
+                    cssClass: "pi-box-sprice-col",
+                    headerTooltip: "Same as the SKU modal's SPRICE $ box: type a price and press ✓ (or Enter) to fill every channel by its column rule, save and push (Push All). GPFT / GROI / NPFT / NROI = Amazon percentages on that price.",
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary === true) return '';
-                        const m = piPriceSpriceMismatch(d);
-                        if (!m) return '';
-                        return '<span style="color:#0d6efd;font-size:13px;cursor:default;" title="Price $' + m.price.toFixed(2)
-                            + ' ≠ SPRICE $' + m.sprice.toFixed(2) + '">&#9650;</span>';
-                    }
-                },
-                {
-                    title: "Amz<br>SGPFT%",
-                    field: "amazon_sgpft",
-                    visible: true,
-                    hozAlign: "center",
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "Suggested GPFT% from Amz SPRICE (same as Sprice modal)",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        const st = (window.MetricPctColors && MetricPctColors.gpftStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
-                    }
-                },
-                {
-                    title: "Amz<br>SGROI%",
-                    field: "amazon_sroi",
-                    visible: true,
-                    hozAlign: "center",
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "SGROI% = (SPRICE × Margin − LP − Ship) ÷ LP × 100 (gross; same as Sprice modal)",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        const st = (window.MetricPctColors && MetricPctColors.groiStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
-                    }
-                },
-                {
-                    title: "Amz<br>SPFT%",
-                    field: "amazon_spft",
-                    visible: true,
-                    hozAlign: "center",
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "Suggested NPFT% from Amz SPRICE (same as Sprice modal)",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        const st = (window.MetricPctColors && MetricPctColors.npftStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
-                    }
-                },
-                {
-                    title: "Amz<br>SNROI%",
-                    field: "amazon_snroi",
-                    visible: true,
-                    hozAlign: "center",
-                    minWidth: 70,
-                    sorter: "number",
-                    headerTooltip: "SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100 (net; same as Sprice modal)",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value == null || value === '') return '-';
-                        const pct = parseFloat(value);
-                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
-                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
+                        if (d.is_parent_summary === true || !d.sku || String(d.sku).toUpperCase().indexOf('PARENT') === 0) return '';
+                        return piBoxSpriceCellEl(cell);
                     }
                 },
                 {
@@ -6390,35 +6309,128 @@
             ]
         });
 
-        /**
-         * Amz SPRICE → SGPFT / SGROI / SPFT / SNROI.
-         * ads = Amazon channel Ads% (AMM) — always applied to SPFT & SNROI (same as /amazon-tabulator-view).
-         */
-        /** {price, sprice} when both are set and differ by at least a cent, else null. */
-        function piPriceSpriceMismatch(d) {
-            const price = parseFloat(d && d.amazon_price);
-            const sprice = parseFloat(d && d.amazon_sprice);
-            if (!(price > 0) || !(sprice > 0)) return null;
-            return Math.round(price * 100) === Math.round(sprice * 100) ? null : { price: price, sprice: sprice };
+        // ==================== SPRICE $ column (the SKU modal's SPRICE $ toolbar, inside the table) ====================
+        // input + ✓ (Push All, same as the modal's ✓) + GPFT / GROI / NPFT / NROI badges.
+        const piBoxTyped = {}; // SKU (UPPER) -> text typed in the table's SPRICE $ input and not pushed yet
+        const piBoxPushBusySkus = {}; // SKU (UPPER) -> true while its ✓ is being prepared / waiting in the queue
+        function piBoxIsPushing(sku) {
+            try { return (chpushRunning[String(sku)] || 0) > 0 || !!piBoxPushBusySkus[piBoxKey(sku)]; } catch (e) { return !!piBoxPushBusySkus[piBoxKey(sku)]; }
         }
-        function computeAmzSpriceMetrics(sprice, lp, ship, ads, margin) {
-            sprice = parseFloat(sprice) || 0;
-            lp = parseFloat(lp) || 0;
-            ship = parseFloat(ship) || 0;
-            ads = parseFloat(ads) || 0;
-            margin = parseFloat(margin) || 0.80;
-            if (sprice <= 0) {
-                return { sgpft: null, sgroi: null, spft: null, snroi: null, ads: ads };
+        function piBoxKey(sku) { return String(sku || '').trim().toUpperCase(); }
+
+        /** The price a SKU's SPRICE $ box shows: its own saved box price, else (never fed) the saved Amazon / first-channel SPRICE — like the modal. */
+        function piBoxSpriceValue(d) {
+            const own = parseFloat(d && d.box_sprice);
+            if (own > 0) return own;
+            const seed = parseFloat(d && d.amazon_sprice);
+            return seed > 0 ? seed : 0;
+        }
+
+        /** GPFT / GROI / NPFT / NROI of Amazon at this price — same formulas as the modal's badges / Amazon analytics page. */
+        function piBoxSpriceMetrics(price, d) {
+            price = parseFloat(price) || 0;
+            const lp = parseFloat(d && d.amazon_lp) || 0;
+            const ship = parseFloat(d && d.amazon_ship) || 0;
+            const ads = (d && d.amazon_ads != null && d.amazon_ads !== '') ? (parseFloat(d.amazon_ads) || 0) : (parseFloat(d && d.amazon_ad) || 0);
+            const mAttr = parseFloat(d && d.amazon_margin);
+            const margin = isFinite(mAttr) && mAttr > 0 ? mAttr : 0.80;
+            if (!(price > 0) || !(lp > 0)) return null;
+            const gross080 = price * 0.80 - ship - lp;
+            const gpft = (gross080 / price) * 100;
+            return {
+                price: price, lp: lp, ship: ship, ads: ads, margin: margin,
+                gpft: gpft,
+                groi: (gross080 / lp) * 100,
+                npft: gpft - ads,
+                nroi: ((price * margin - ship - lp - price * (ads / 100)) / lp) * 100
+            };
+        }
+
+        function piBoxChipsHtml(price, d) {
+            const am = piBoxSpriceMetrics(price, d);
+            const defs = [['GPFT', am && am.gpft, getSgpftSpftColor], ['GROI', am && am.groi, getSgroiColor],
+                          ['NPFT', am && am.npft, getSgpftSpftColor], ['NROI', am && am.nroi, getSroiColor]];
+            const title = am
+                ? ('Amazon percentages on $' + am.price.toFixed(2) + ': LP $' + am.lp.toFixed(2) + ', ship $' + am.ship.toFixed(2)
+                    + ', Ads ' + am.ads.toFixed(2) + '%, margin ' + Math.round(am.margin * 100) + '%')
+                : 'Enter a price (needs LP) to see GPFT / GROI / NPFT / NROI';
+            return defs.map(function(v) {
+                const val = am
+                    ? '<span style="' + styleForCellColor(v[2](v[1])) + '">' + Math.round(v[1]) + '%</span>'
+                    : '<span class="text-muted">-</span>';
+                return '<span class="pi-box-chip" title="' + title + '"><span class="pi-box-lbl">' + v[0] + '</span>' + val + '</span>';
+            }).join('');
+        }
+
+        /** Cell content of the SPRICE $ column. */
+        function piBoxSpriceCellEl(cell) {
+            const row = cell.getRow();
+            const d = row.getData() || {};
+            const key = piBoxKey(d.sku);
+            const saved = piBoxSpriceValue(d);
+            const typed = Object.prototype.hasOwnProperty.call(piBoxTyped, key) ? piBoxTyped[key] : null;
+            const shown = typed != null ? typed : (saved > 0 ? saved.toFixed(2) : '');
+
+            const wrap = document.createElement('div');
+            wrap.className = 'pi-box-wrap';
+            wrap.innerHTML =
+                '<input type="number" class="form-control form-control-sm text-end pi-box-input" step="0.01" min="0.01" placeholder="0.00"'
+                + ' title="SPRICE $ — press ✓ or Enter to fill every channel, save and push (Push All)">'
+                + '<button type="button" class="btn btn-sm btn-outline-success pi-box-go"'
+                + ' title="Push All — fills every channel by its column rule, then saves and pushes them (same as the modal\'s SPRICE $ ✓)" aria-label="Push all channels with this SPRICE">'
+                + '<i class="fas fa-check"></i></button>'
+                + '<span class="pi-box-chips"></span>';
+            const input = wrap.querySelector('.pi-box-input');
+            const btn = wrap.querySelector('.pi-box-go');
+            const chips = wrap.querySelector('.pi-box-chips');
+            input.value = shown;
+            input.setAttribute('data-sku', d.sku);
+            chips.innerHTML = piBoxChipsHtml(parseFloat(shown) > 0 ? shown : saved, d);
+            if (piBoxIsPushing(d.sku)) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             }
-            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
-            // After applying Ads%: SPFT = SGPFT − Ads%
-            const spft = sgpft - ads;
-            const sgroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
-            // After applying Ads%: SNROI = (gross $ − SPRICE × Ads%) / LP × 100
-            const snroi = lp > 0
-                ? ((sprice * margin - lp - ship - sprice * (ads / 100)) / lp) * 100
-                : 0;
-            return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi, ads: ads };
+
+            ['click', 'mousedown', 'dblclick', 'keyup'].forEach(function(ev) {
+                wrap.addEventListener(ev, function(e) { e.stopPropagation(); });
+            });
+            input.addEventListener('input', function() {
+                piBoxTyped[key] = input.value;
+                const p = parseFloat(input.value);
+                chips.innerHTML = piBoxChipsHtml(p > 0 ? p : saved, row.getData() || d);
+            });
+            input.addEventListener('keydown', function(e) {
+                e.stopPropagation();
+                if (e.key === 'Enter') { e.preventDefault(); piBoxSpricePushClick(row, input, btn); }
+            });
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                piBoxSpricePushClick(row, input, btn);
+            });
+            return wrap;
+        }
+
+        /** A saved SPRICE $ box price (modal ✓ / typing there / /lmp-overall) → the table's column, without stealing focus from an input being typed in. */
+        function piApplyBoxSpriceToData(sku, price) {
+            const key = piBoxKey(sku);
+            if (!key) return;
+            const v = parseFloat(price) > 0 ? +parseFloat(price).toFixed(2) : null;
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(r) {
+                    if (r && r.is_parent_summary !== true && piBoxKey(r.sku) === key) r.box_sprice = v;
+                });
+            }
+            try {
+                if (typeof table === 'undefined' || !table) return;
+                table.getRows().forEach(function(row) {
+                    const d = row.getData() || {};
+                    if (d.is_parent_summary === true || piBoxKey(d.sku) !== key) return;
+                    const el = row.getElement && row.getElement();
+                    const inp = el && el.querySelector('.pi-box-input');
+                    if (inp && document.activeElement === inp) { d.box_sprice = v; return; } // typing: keep the box as is
+                    row.update({ box_sprice: v });
+                });
+            } catch (e) { /* the next table load shows it */ }
         }
 
         /** SP vs Amazon price: reduce / hold / increase → red / yellow / green (same as amazon-tabulator-view). */
@@ -6799,7 +6811,7 @@
             }
         });
 
-        // Amz SPRICE / SP edited in table
+        // SP / Temu S PRC edited in table
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
             const row = cell.getRow();
@@ -6913,47 +6925,6 @@
                 });
                 return;
             }
-
-            if (field !== 'amazon_sprice') return;
-            const sprice = parseFloat(cell.getValue()) || 0;
-            if (sprice <= 0) return;
-            const lp = parseFloat(rowData.amazon_lp) || 0;
-            const ship = parseFloat(rowData.amazon_ship) || 0;
-            const ads = (rowData.amazon_ads != null && rowData.amazon_ads !== '')
-                ? (parseFloat(rowData.amazon_ads) || 0)
-                : (parseFloat(rowData.amazon_ad) || 0);
-            const margin = parseFloat(rowData.amazon_margin) || 0.80;
-            const m = computeAmzSpriceMetrics(sprice, lp, ship, ads, margin);
-            const sgpft = Math.round((m.sgpft || 0) * 100) / 100;
-            const spft = Math.round((m.spft || 0) * 100) / 100;
-            const sroi = Math.round((m.sgroi || 0) * 100) / 100;
-            const snroi = Math.round((m.snroi || 0) * 100) / 100;
-            $.ajax({
-                url: '/cvr-master-save-suggested-data',
-                method: 'POST',
-                data: {
-                    sku: sku,
-                    marketplace: 'amazon',
-                    sprice: sprice,
-                    sgpft: sgpft,
-                    spft: spft,
-                    sroi: sroi,
-                    amazon_margin: margin,
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function() {
-                    row.update({
-                        amazon_sgpft: sgpft,
-                        amazon_spft: spft,
-                        amazon_sroi: sroi,
-                        amazon_snroi: snroi
-                    });
-                    showToast('Amz SPRICE saved', 'success');
-                },
-                error: function() {
-                    showToast('Failed to save Amz SPRICE', 'error');
-                }
-            });
         });
 
         // ==================== TABLE EVENT HANDLERS ====================
@@ -8785,6 +8756,7 @@
             if (!key || key === 'NOT LISTED') return;
             const p = parseFloat(x);
             sameSpriceBox[key] = { loaded: true, price: p > 0 ? +p.toFixed(2) : 0 }; // immediately, before the request returns
+            piApplyBoxSpriceToData(sku, p > 0 ? p : null); // the table's SPRICE $ column follows
             $.ajax({
                 url: '/price-increase-box-sprice', method: 'POST',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
@@ -8809,34 +8781,9 @@
             const v = own.price > 0 ? own.price : getSavedSameSprice(); // seed only when never fed
             $same.val(v > 0 ? v.toFixed(2) : '');
             refreshSpriceSummarySoon();
-            syncTableSpriceFromModal();
         }
-        /** The table's Amz SPRICE (+ SGPFT / SGROI / SPFT / SNROI) follow the modal's saved SPRICE right after a save / push. */
-        function syncTableSpriceFromModal() {
-            try {
-                if (typeof table === 'undefined' || !table) return;
-                const sku = String(getModalPrimarySku() || '').trim().toUpperCase();
-                const v = getSavedSameSprice();
-                if (!sku || !(v > 0)) return;
-                const row = table.getRows().find(function(r) {
-                    const d = r.getData() || {};
-                    return d.is_parent_summary !== true && String(d.sku || '').trim().toUpperCase() === sku;
-                });
-                if (!row) return;
-                const d = row.getData();
-                const ads = (d.amazon_ads != null && d.amazon_ads !== '') ? (parseFloat(d.amazon_ads) || 0) : (parseFloat(d.amazon_ad) || 0);
-                const m = computeAmzSpriceMetrics(v, d.amazon_lp, d.amazon_ship, ads, d.amazon_margin);
-                const r2 = function(x) { return x == null ? null : Math.round(x * 100) / 100; };
-                row.update({
-                    amazon_sprice: r2(v), amazon_sprice_from: null,
-                    amazon_sgpft: r2(m.sgpft), amazon_sroi: r2(m.sgroi), amazon_spft: r2(m.spft), amazon_snroi: r2(m.snroi)
-                });
-                try { row.reformat(); } catch (e2) {}
-            } catch (e) { /* the table refresh on the next load fixes it */ }
-        }
-
         // ---- Live sync with /lmp-overall (SPRICE $ there = SPRICE $ here; both save the same stores) ----
-        // A SPRICE saved here is announced to open /lmp-overall tabs; one saved there updates this table's Amz SPRICE at once.
+        // A SPRICE saved here is announced to open /lmp-overall tabs; one saved there updates this table's SPRICE $ column at once.
         const spriceSyncChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('invent-sprice-sync') : null;
         function announceSpriceSaved(sku, sprice) {
             try {
@@ -8845,33 +8792,11 @@
                 }
             } catch (e) { /* other tabs pick it up on their next refresh */ }
         }
-        function applyExternalAmazonSprice(sku, v) {
-            try {
-                if (typeof table === 'undefined' || !table) return;
-                const want = String(sku || '').trim().toUpperCase();
-                v = parseFloat(v);
-                if (!want || !(v > 0)) return;
-                const row = table.getRows().find(function(r) {
-                    const d = r.getData() || {};
-                    return d.is_parent_summary !== true && String(d.sku || '').trim().toUpperCase() === want;
-                });
-                if (!row) return;
-                const d = row.getData();
-                const ads = (d.amazon_ads != null && d.amazon_ads !== '') ? (parseFloat(d.amazon_ads) || 0) : (parseFloat(d.amazon_ad) || 0);
-                const m = computeAmzSpriceMetrics(v, d.amazon_lp, d.amazon_ship, ads, d.amazon_margin);
-                const r2 = function(x) { return x == null ? null : Math.round(x * 100) / 100; };
-                row.update({
-                    amazon_sprice: r2(v), amazon_sprice_from: null,
-                    amazon_sgpft: r2(m.sgpft), amazon_sroi: r2(m.sgroi), amazon_spft: r2(m.spft), amazon_snroi: r2(m.snroi)
-                });
-                try { row.reformat(); } catch (e2) {}
-            } catch (e) { /* the next table load fixes it */ }
-        }
         if (spriceSyncChannel) {
             spriceSyncChannel.onmessage = function(event) {
                 const msg = event && event.data;
                 if (!msg || msg.type !== 'sprice' || msg.from === 'price-increase') return;
-                applyExternalAmazonSprice(msg.sku, msg.sprice);
+                piApplyBoxSpriceToData(msg.sku, msg.sprice);
             };
         }
         const samePricePv = makeSpricePreview({
@@ -9128,6 +9053,120 @@
                 e.preventDefault();
                 applyModalSameSpriceFromBox();
             }
+        });
+
+        // ==================== SPRICE $ column ✓ (table) = the modal's SPRICE $ ✓ ====================
+        /**
+         * The table's ✓ runs the SAME Push All as the modal's SPRICE $ ✓. That code works on the SKU modal's data, so the SKU
+         * is loaded into the modal invisibly (no flash, no backdrop), the typed price is put in its SPRICE $ box, the ✓ is
+         * pressed, and the modal is closed again as soon as the background push job has started.
+         * Several ✓ clicks are queued and prepared one SKU at a time.
+         */
+        const piBoxPushQueue = [];
+        let piBoxPushRunning = false;
+
+        function piBoxSetBtnBusy(sku, busy) {
+            $('.pi-box-input').filter(function() { return piBoxKey($(this).attr('data-sku')) === piBoxKey(sku); }).each(function() {
+                const $btn = $(this).siblings('.pi-box-go');
+                $btn.prop('disabled', !!busy).html(busy ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-check"></i>');
+            });
+        }
+
+        function piBoxSpricePushClick(row, input, btn) {
+            const d = row.getData() || {};
+            const sku = String(d.sku || '');
+            const key = piBoxKey(sku);
+            const price = parseFloat(String(input.value == null ? '' : input.value).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (!isFinite(price) || !(price > 0)) {
+                showToast('Enter SPRICE $ greater than 0', 'error');
+                input.focus();
+                return;
+            }
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') { showToast('No SKU selected', 'error'); return; }
+            if (piBoxIsPushing(sku)) { showToast('A push for ' + sku + ' is still running', 'error'); return; }
+            if ($('#ovl30DetailsModal').hasClass('show') && !$('#ovl30DetailsModal').hasClass('pi-stealth')) {
+                showToast('Close the open SKU window first', 'error');
+                return;
+            }
+            const base = Math.max(0.01, +price.toFixed(2));
+            delete piBoxTyped[key];
+            piBoxPushBusySkus[key] = true;
+            piBoxSetBtnBusy(sku, true);
+            piBoxPushQueue.push({ sku: sku, key: key, price: base, data: d });
+            piBoxPushNext();
+        }
+
+        function piBoxPushNext() {
+            if (piBoxPushRunning) return;
+            const job = piBoxPushQueue.shift();
+            if (!job) return;
+            piBoxPushRunning = true;
+            piBoxPushStage(job, function() {
+                delete piBoxPushBusySkus[job.key];
+                piBoxPushRunning = false;
+                const still = (function() { try { return (chpushRunning[job.sku] || 0) > 0; } catch (e) { return false; } })();
+                if (!still) piBoxSetBtnBusy(job.sku, false);
+                piBoxPushNext();
+            });
+        }
+
+        function piBoxPushStage(job, done) {
+            const $m = $('#ovl30DetailsModal');
+            const d = job.data || {};
+            let finished = false;
+            function finish() { if (finished) return; finished = true; done(); }
+            function closeInvisibleModal() {
+                if (!$m.hasClass('show')) { $m.removeClass('pi-stealth'); $('body').removeClass('pi-stealth-open'); finish(); return; }
+                $m.one('hidden.bs.modal', finish);
+                bootstrap.Modal.getOrCreateInstance($m[0]).hide();
+                setTimeout(finish, 2500); // safety: never leave the queue stuck
+            }
+
+            // Load this SKU into the SKU modal, kept invisible
+            $m.addClass('pi-stealth');
+            $('body').addClass('pi-stealth-open');
+            loadMarketplaceBreakdown(
+                job.sku, d.image_path || '',
+                parseInt(d.inventory ?? d.inv, 10) || 0,
+                parseFloat(d.overall_l30) || 0,
+                parseFloat(d.dil_percent) || 0
+            );
+
+            let tries = 0;
+            (function waitLoaded() {
+                const ready = piBoxKey(getModalPrimarySku()) === job.key
+                    && $m.hasClass('show')
+                    && $('#ovl30DetailsTableBody tr[data-marketplace]').length > 0;
+                if (!ready) {
+                    if (++tries > 100) { // ~20 s
+                        showToast('Could not load ' + job.sku + ' — try again', 'error');
+                        closeInvisibleModal();
+                        return;
+                    }
+                    setTimeout(waitLoaded, 200);
+                    return;
+                }
+                // Same as typing the price in the modal's SPRICE $ box, then pressing its ✓
+                $('#modal-sprice-same-input').val(job.price.toFixed(2));
+                samePriceDirty = true; // never overwritten by the saved-price prefill that is still arriving
+                applyModalSameSpriceFromBox();
+
+                // The push job is tracked in the background: close the invisible modal once it has started
+                let waited = 0;
+                (function waitStarted() {
+                    let running = false;
+                    try { running = (chpushRunning[job.sku] || 0) > 0; } catch (e) { /* ignore */ }
+                    if (running || waited >= 5000) { setTimeout(closeInvisibleModal, 400); return; }
+                    waited += 200;
+                    setTimeout(waitStarted, 200);
+                })();
+            })();
+        }
+
+        // The invisible SKU modal is a normal modal again once it is closed
+        $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
+            $(this).removeClass('pi-stealth');
+            $('body').removeClass('pi-stealth-open');
         });
 
         // ==================== TARGET ROI% / GPFT% (same as /doba-tabulator) ====================
@@ -10932,7 +10971,7 @@
                 let lastMsg = '';
                 function finish() {
                     chpushRunning[sku] = Math.max(0, (chpushRunning[sku] || 1) - 1);
-                    if (!chpushRunning[sku]) delete chpushReg(sku).boxes;
+                    if (!chpushRunning[sku]) { delete chpushReg(sku).boxes; piBoxSetBtnBusy(sku, false); } // table SPRICE $ ✓ ready again
                     chpushBg.jobs = Math.max(0, chpushBg.jobs - 1);
                     if (!chpushBg.jobs) { chpushBg.done = 0; chpushBg.ok = 0; chpushBg.fail = 0; chpushBg.total = 0; }
                     chpushBgUpdate();
@@ -14283,6 +14322,8 @@
             // Children first, then parent row at the end (same order as product master)
             const displayData = [...childRows];
             if (parentRow) displayData.push(parentRow);
+            // Filters set by "Both" / "SKU Only" (inventory, history, SKU-only …) stay on the table otherwise and hide every row of the parent
+            table.clearFilter();
             suppressDataLoadedHandler = true;
             table.clearSort(); // Keep our order: parent row last, don't re-sort by DIL% etc.
             table.setData(displayData).then(() => {
@@ -14340,7 +14381,13 @@
             refreshPlayTooltips();
             if (fullDataset.length > 0) {
                 suppressDataLoadedHandler = true;
-                table.setData(fullDataset).then(applyFilters);
+                table.setData(fullDataset).then(function() {
+                    applyFilters();
+                    // Play cleared the sort: put the Dil % order (High / Low switch) back for SKU Only / Both
+                    if ($('#sku-parent-filter').val() !== 'parent') {
+                        table.setSort([{ column: "dil_percent", dir: dilSortDir() }]);
+                    }
+                });
             } else {
                 applyFilters();
             }
@@ -14912,8 +14959,8 @@
             // Always show Avg LMP (parent = average of child Amz LMPs)
             const avgLmpCol = table.getColumn('amazon_lmp_price');
             if (avgLmpCol) avgLmpCol.show();
-            // Always show Amz SPRICE + derived SGPFT / SGROI / SPFT / SNROI (same as Sprice modal)
-            ['amazon_sprice', 'amazon_sgpft', 'amazon_sroi', 'amazon_spft', 'amazon_snroi'].forEach(function(field) {
+            // Always show the SPRICE $ column (input + ✓ + GPFT / GROI / NPFT / NROI, same as the Sprice modal)
+            ['box_sprice'].forEach(function(field) {
                 const col = table.getColumn(field);
                 if (col) col.show();
             });

@@ -947,6 +947,18 @@ class CvrMasterController extends Controller
             // The Amz SPRICE column + its SGPFT / SGROI / SPFT / SNROI follow it, so the table matches the modal.
             $modalSpriceFallbackBySku = $this->loadModalSpriceFallbackBySku($skus);
 
+            // The modal's own "SPRICE $" box value (price_increase_box_sprices, one row per SKU) — shown in the table's SPRICE $ column
+            $boxSpriceBySku = [];
+            try {
+                if (Schema::hasTable('price_increase_box_sprices')) {
+                    foreach (DB::table('price_increase_box_sprices')->where('sprice', '>', 0)->get(['sku', 'sprice']) as $boxRow) {
+                        $boxSpriceBySku[strtoupper(trim((string) $boxRow->sku))] = round((float) $boxRow->sprice, 2);
+                    }
+                }
+            } catch (\Throwable $e) {
+                $boxSpriceBySku = [];
+            }
+
             // Channels whose last price push did NOT go through (pending retry / gave up), counted per SKU — shown in red in the Hist column
             $pushFailedBySku = [];
             try {
@@ -3172,6 +3184,7 @@ class CvrMasterController extends Controller
                     "ebay1_item_id" => $ebay1Metric ? ($ebay1Metric->item_id ?? null) : null,
                     "amazon_sprice" => $amazonSprice,
                     "amazon_sprice_from" => $amazonSpriceFrom,
+                    "box_sprice" => $boxSpriceBySku[strtoupper(trim((string) $sku))] ?? null,
                     "amazon_standard_price" => $amazonStandardPrice,
                     "amazon_sgpft" => $amazonSgpft,
                     "amazon_spft" => $amazonSpft,
