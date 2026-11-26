@@ -1,0 +1,29 @@
+name: TikTok GMV Max update test (temporary)
+
+on:
+  push:
+    branches: [tiktok-gmv-test]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TT_TOKEN: ${{ secrets.TIKTOK_ADS_ACCESS_TOKEN }}
+      TT_ADV: ${{ secrets.TIKTOK_ADS_ADVERTISER_ID }}
+    steps:
+      - name: No-op budget write (10 -> 10)
+        run: |
+          set +e
+          TT_TOKEN=$(printf '%s' "$TT_TOKEN" | tr -d '[:space:]')
+          TT_ADV=$(printf '%s' "$TT_ADV" | tr -d '[:space:]')
+          B=https://business-api.tiktok.com/open_api/v1.3
+          out=""
+          before=$(curl -sS -m 40 -G "$B/campaign/gmv_max/info/" -H "Access-Token: $TT_TOKEN" --data-urlencode "advertiser_id=$TT_ADV" --data-urlencode 'campaign_id=1882667097534897' | jq -c '.data.budget')
+          out="before_budget=$before"
+          body=$(jq -n --arg a "$TT_ADV" '{advertiser_id: $a, campaign_id: "1882667097534897", budget: 10}')
+          http=$(curl -sS -m 40 -o u.json -w '%{http_code}' -X POST "$B/campaign/gmv_max/update/" -H "Access-Token: $TT_TOKEN" -H 'Content-Type: application/json' --data "$body")
+          out="$out || update http=$http code=$(jq -r '.code // "?"' u.json 2>/dev/null) msg=$(jq -r '.message // ""' u.json 2>/dev/null | head -c 300) body=$(head -c 80 u.json | tr '\n"' '  ')"
+          after=$(curl -sS -m 40 -G "$B/campaign/gmv_max/info/" -H "Access-Token: $TT_TOKEN" --data-urlencode "advertiser_id=$TT_ADV" --data-urlencode 'campaign_id=1882667097534897' | jq -c '.data.budget')
+          out="$out || after_budget=$after"
+          echo "::notice title=update test::$out"
