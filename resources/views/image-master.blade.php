@@ -7,20 +7,17 @@
     @include('partials.marketplace-master-button-colors')
     <style>
         .card.im-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
-        .im-roll { position:relative; margin-bottom:14px; padding:14px 16px 8px; border-radius:18px; color:#f8fafc; background:#0b1020; overflow:hidden; box-shadow:0 10px 30px rgba(15,23,42,.18); }
-        .im-roll::before { content:''; position:absolute; inset:0; padding:1px; border-radius:18px; background:linear-gradient(120deg,#f472b6,#a78bfa,#22d3ee); -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
-        .im-roll-shine { position:absolute; top:0; bottom:0; width:28%; background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent); animation:imRollShine 7s linear infinite; pointer-events:none; }
-        @keyframes imRollShine { from { transform:translateX(-120%); } to { transform:translateX(420%); } }
+        .im-roll { position:relative; margin-bottom:14px; padding:14px 16px 8px; border:1px solid #e2e8f0; border-radius:12px; color:#1e293b; background:#fff; }
         .im-roll-head { position:relative; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
-        .im-roll-kicker { font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:#c4b5fd; font-weight:700; }
-        .im-roll-title { font-size:16px; font-weight:800; letter-spacing:-.02em; }
+        .im-roll-kicker { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#64748b; font-weight:700; }
+        .im-roll-title { font-size:15px; font-weight:700; color:#1e293b; }
         .im-roll-stats { display:flex; gap:14px; margin-left:auto; }
         .im-roll-stats div { display:flex; flex-direction:column; align-items:flex-end; line-height:1; }
-        .im-roll-stats span { font-size:22px; font-weight:800; background:linear-gradient(90deg,#f9a8d4,#c4b5fd,#67e8f9); -webkit-background-clip:text; background-clip:text; color:transparent; }
-        .im-roll-stats small { margin-top:3px; font-size:10px; color:#94a3b8; letter-spacing:.04em; text-transform:uppercase; }
+        .im-roll-stats span { font-size:22px; font-weight:700; color:#2c6ed5; }
+        .im-roll-stats small { margin-top:3px; font-size:10px; color:#64748b; letter-spacing:.04em; text-transform:uppercase; }
         .im-roll-ranges { display:flex; gap:6px; }
-        .im-roll-ranges button { border:0; background:rgba(255,255,255,.08); color:#cbd5e1; border-radius:999px; font-size:11px; font-weight:700; padding:4px 10px; cursor:pointer; }
-        .im-roll-ranges button.on { background:#fff; color:#0b1020; }
+        .im-roll-ranges button { border:1px solid #e2e8f0; background:#f8fafc; color:#475569; border-radius:6px; font-size:11px; font-weight:600; padding:4px 10px; cursor:pointer; }
+        .im-roll-ranges button.on { background:#2c6ed5; border-color:#2c6ed5; color:#fff; }
         .im-roll-canvas { position:relative; height:148px; margin-top:6px; }
         .table-responsive { position:relative; border:1px solid #e2e8f0; border-radius:10px; max-height:640px; overflow:auto; background:#fff; }
         #im-master-table thead th { position:sticky; top:0; vertical-align:middle!important; background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%)!important; color:#fff; z-index:10; padding:6px 8px; font-size:10px; font-weight:600; text-transform:uppercase; }
@@ -247,7 +244,6 @@
             <div class="card im-master-card">
                 <div class="card-body">
                     <div class="im-roll" id="imRoll">
-                        <div class="im-roll-shine"></div>
                         <div class="im-roll-head">
                             <div>
                                 <div class="im-roll-kicker">rolling history</div>
@@ -357,19 +353,19 @@
                         <span><strong>Parent:</strong> <span id="modalProductLabel"></span></span>
                         <button type="button" class="btn btn-light btn-sm" id="specsBtn" title="View the specifications of this SKU">Specs</button>
                         <button type="button" class="btn btn-light btn-sm" id="descBtn" title="View the description of this SKU">Desc</button>
-                    </div>
+                </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap ms-3 me-auto small text-white">
                         <label class="btn btn-light btn-sm mb-0" for="modalFileInput" style="cursor:pointer;" title="Upload images (max 20)" aria-label="Upload images">
                             <i class="fas fa-upload"></i>
-                        </label>
-                        <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
+                            </label>
+                            <input type="file" class="d-none" id="modalFileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
                         <span id="fileChosenLabel" style="opacity:.85;"></span>
-                        <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
-                            <i class="fas fa-plus me-1"></i>Add to list
-                        </button>
+                            <button type="button" class="btn btn-success btn-sm" id="uploadImagesBtn" style="display:none;">
+                                <i class="fas fa-plus me-1"></i>Add to list
+                            </button>
                         <div class="spinner-border spinner-border-sm text-light" id="uploadSpinner" role="status" style="display:none;"></div>
                         <span class="fw-semibold" id="uploadSuccessMsg" style="display:none;"></span>
-                    </div>
+                        </div>
                     <div class="d-flex align-items-center gap-1 me-2">
                         <button type="button" class="btn btn-warning btn-sm fw-semibold" id="auditBtn" title="Raise an audit task for this SKU in Task Manager"><i class="fas fa-clipboard-check me-1"></i>Audit</button>
                         <button type="button" class="btn btn-success btn-sm" id="savePmBtn" title="Save images" aria-label="Save images"><i class="fas fa-save"></i></button>
@@ -405,8 +401,8 @@
                     <div id="imSlots"></div>
                     <div class="alert alert-info small mt-3 mb-0">
                         Save images here first. Use the <strong>Main Image</strong> button in the toolbar to choose the main image per marketplace, and the MP button in the table row to push.
+                        </div>
                     </div>
-                </div>
             </div>
         </div>
     </div>
@@ -689,80 +685,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let imRollChart = null;
     let imRollDays = 30;
 
-    function imRollStroke(context) {
-        const chart = context.chart;
-        const area = chart.chartArea;
-        if (!area) return '#c4b5fd';
-        const g = chart.ctx.createLinearGradient(area.left, 0, area.right, 0);
-        g.addColorStop(0, '#f472b6');
-        g.addColorStop(0.55, '#a78bfa');
-        g.addColorStop(1, '#22d3ee');
-        return g;
-    }
-
-    const imRollReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    function imRollCountTo(el, to) {
-        if (!el) return;
-        const target = Number(to) || 0;
-        if (imRollReduceMotion) {
-            el.textContent = target.toLocaleString();
-            return;
-        }
-        const from = Number(String(el.textContent).replace(/[^0-9.-]/g, '')) || 0;
-        const start = performance.now();
-        const dur = 800;
-        function step(now) {
-            const p = Math.min(1, (now - start) / dur);
-            const eased = 1 - Math.pow(1 - p, 3);
-            el.textContent = Math.round(from + (target - from) * eased).toLocaleString();
-            if (p < 1) requestAnimationFrame(step);
-        }
-        requestAnimationFrame(step);
-    }
-
-    function imRollPointAlong(pts, t) {
-        if (!pts.length) return null;
-        if (pts.length === 1) return pts[0];
-        const lengths = [];
-        let total = 0;
-        for (let i = 1; i < pts.length; i++) {
-            const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-            lengths.push(len);
-            total += len;
-        }
-        if (total <= 0) return pts[0];
-        let dist = ((t % 1) + 1) % 1 * total;
-        for (let i = 1; i < pts.length; i++) {
-            const len = lengths[i - 1];
-            if (dist <= len || i === pts.length - 1) {
-                const p = len === 0 ? 0 : Math.min(1, dist / len);
-                return {
-                    x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * p,
-                    y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * p
-                };
-            }
-            dist -= len;
-        }
-        return pts[pts.length - 1];
-    }
-
     function drawImRoll(rows) {
         const labels = rows.map(r => r.label);
         const data = rows.map(r => Number(r.skus) || 0);
         const today = data.length ? data[data.length - 1] : 0;
         const avg = data.length ? Math.round(data.reduce((a, b) => a + b, 0) / data.length) : 0;
-        imRollCountTo(document.getElementById('imRollToday'), today);
-        imRollCountTo(document.getElementById('imRollAvg'), avg);
+        const todayEl = document.getElementById('imRollToday');
+        const avgEl = document.getElementById('imRollAvg');
+        if (todayEl) todayEl.textContent = today.toLocaleString();
+        if (avgEl) avgEl.textContent = avg.toLocaleString();
         const canvas = document.getElementById('imRollChart');
         if (!canvas || !window.Chart) return;
         if (imRollChart) imRollChart.destroy();
-        const drawMs = imRollReduceMotion ? 0 : 1600;
-        const stepMs = data.length > 1 ? drawMs / (data.length - 1) : drawMs;
-        const previousY = function (ctx) {
-            if (ctx.index === 0) return ctx.chart.scales.y.getPixelForValue(0);
-            return ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.index - 1].getProps(['y'], true).y;
-        };
         imRollChart = new Chart(canvas, {
             type: 'line',
             plugins: [{
@@ -772,8 +706,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const values = chart.data.datasets[0].data;
                     const ctx = chart.ctx;
                     ctx.save();
-                    ctx.font = '700 10px sans-serif';
-                    ctx.fillStyle = '#e2e8f0';
+                    ctx.font = '600 10px sans-serif';
+                    ctx.fillStyle = '#334155';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     let lastX = -999;
@@ -784,22 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         lastX = pt.x;
                         ctx.fillText(n.toLocaleString(), pt.x, pt.y - 6);
                     });
-                    if (!imRollReduceMotion && chart.$imReady && meta.data.length > 1) {
-                        const travel = (performance.now() % 3400) / 3400;
-                        for (let trail = 4; trail >= 0; trail--) {
-                            const pos = imRollPointAlong(meta.data, travel - trail * 0.018);
-                            if (!pos) continue;
-                            const radius = trail === 0 ? 11 : 7 - trail;
-                            const glow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius);
-                            glow.addColorStop(0, trail === 0 ? 'rgba(255,255,255,.95)' : 'rgba(34,211,238,.55)');
-                            glow.addColorStop(0.45, 'rgba(167,139,250,.45)');
-                            glow.addColorStop(1, 'rgba(34,211,238,0)');
-                            ctx.fillStyle = glow;
-                            ctx.beginPath();
-                            ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-                            ctx.fill();
-                        }
-                    }
                     ctx.restore();
                 }
             }],
@@ -807,70 +725,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 labels: labels,
                 datasets: [{
                     data: data,
-                    borderColor: imRollStroke,
-                    backgroundColor: function (context) {
-                        const chart = context.chart;
-                        const area = chart.chartArea;
-                        if (!area) return 'rgba(167,139,250,.2)';
-                        const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
-                        g.addColorStop(0, 'rgba(244,114,182,.45)');
-                        g.addColorStop(0.55, 'rgba(167,139,250,.22)');
-                        g.addColorStop(1, 'rgba(34,211,238,0)');
-                        return g;
-                    },
+                    borderColor: '#2c6ed5',
+                    backgroundColor: 'rgba(44,110,213,.10)',
                     fill: true,
                     tension: 0.15,
-                    borderWidth: 2.6,
+                    borderWidth: 2,
                     pointRadius: function (ctx) { return data[ctx.dataIndex] > 0 ? 3 : 0; },
                     pointBackgroundColor: '#fff',
-                    pointBorderColor: '#22d3ee',
-                    pointHoverRadius: 6,
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#f472b6',
-                    pointHoverBorderWidth: 2
+                    pointBorderColor: '#2c6ed5',
+                    pointHoverRadius: 5
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: imRollReduceMotion ? false : {
-                    x: {
-                        type: 'number',
-                        easing: 'linear',
-                        duration: stepMs,
-                        from: NaN,
-                        delay: function (ctx) {
-                            if (ctx.type !== 'data' || ctx.xStarted) return 0;
-                            ctx.xStarted = true;
-                            return ctx.index * stepMs;
-                        }
-                    },
-                    y: {
-                        type: 'number',
-                        easing: 'easeOutQuart',
-                        duration: stepMs,
-                        from: previousY,
-                        delay: function (ctx) {
-                            if (ctx.type !== 'data' || ctx.yStarted) return 0;
-                            ctx.yStarted = true;
-                            return ctx.index * stepMs;
-                        }
-                    },
-                    onComplete: function (anim) {
-                        const chart = anim && anim.chart ? anim.chart : this;
-                        if (chart) chart.$imReady = true;
-                    }
-                },
+                animation: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#0b1220',
-                        borderColor: 'rgba(167,139,250,.55)',
-                        borderWidth: 1,
-                        padding: 10,
-                        titleColor: '#e2e8f0',
-                        bodyColor: '#fff',
                         displayColors: false,
                         callbacks: {
                             title: function (items) { return rows[items[0].dataIndex].date; },
@@ -884,14 +757,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 scales: {
                     x: {
                         grid: { display: false },
-                        border: { display: false },
-                        ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10, weight: '600' } }
+                        ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } }
                     },
                     y: {
                         beginAtZero: true,
-                        border: { display: false },
-                        grid: { color: 'rgba(148,163,184,.14)' },
-                        ticks: { color: '#94a3b8', precision: 0, font: { size: 10 } }
+                        grid: { color: '#eef2f7' },
+                        ticks: { color: '#64748b', precision: 0, font: { size: 10 } }
                     }
                 }
             }
@@ -913,15 +784,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', function () { loadImRoll(Number(btn.dataset.days) || 30); });
     });
     loadImRoll(imRollDays);
-    if (!imRollReduceMotion) {
-        (function imRollLoop() {
-            requestAnimationFrame(imRollLoop);
-            if (document.hidden || !imRollChart || !imRollChart.$imReady) return;
-            const box = imRollChart.canvas.getBoundingClientRect();
-            if (box.bottom < 0 || box.top > window.innerHeight) return;
-            imRollChart.draw();
-        })();
-    }
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     const __mp = window.__ALL_MP__ || {};
@@ -2740,9 +2602,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button type="button" class="im-cp" data-i="${idx}" title="Copy this image"><i class="fas fa-copy"></i></button>
                             <button type="button" class="im-ps" data-i="${idx}" title="Paste copied image here (replaces this slot)"><i class="fas fa-paste"></i></button>
                             <button type="button" class="im-ai" data-i="${idx}" title="Edit this image with AI (Nano Banana)"><i class="fas fa-pen"></i></button>
-                            <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
-                        </div>
+                        <button type="button" class="im-card-del" data-i="${idx}" title="Delete image"><i class="fas fa-times"></i></button>
                     </div>
+                        </div>
                     <div class="im-card-footer im-flag-footer">
                         <input type="checkbox" class="form-check-input im-flag-cb" data-i="${idx}" ${isFlagged ? 'checked' : ''} title="Flag this image with an issue" aria-label="Flag ${esc(slotName)}">
                         <div class="im-card-name" title="${esc(name)}">${esc(slotName)}</div>
@@ -2999,8 +2861,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (card.dataset.sb !== undefined) imDrag = { from: 'sb', idx: +card.dataset.sb };
             else if (card.dataset.idx !== undefined) imDrag = { from: 'main', idx: +card.dataset.idx };
             else return;
-            card.classList.add('im-card-dragging');
-            e.dataTransfer.effectAllowed = 'move';
+                card.classList.add('im-card-dragging');
+                e.dataTransfer.effectAllowed = 'move';
             try { e.dataTransfer.setData('text/plain', String(imDrag.idx)); } catch (_) {}
         });
         root.addEventListener('dragend', () => {
@@ -3013,7 +2875,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tg = resolveTarget(e.target);
             if (!tg) return;
             if (tg.kind === 'sandbox' && imDrag.from === 'sb') return;
-            e.preventDefault();
+                e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             clearOver();
             tg.el.classList.add('im-drop-over');
@@ -3071,8 +2933,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 modalSandbox.push(modalUrls.splice(src.idx, 1)[0]);
             }
             clearOver();
-            renderSlots();
-        });
+                renderSlots();
+            });
     })();
 
     // Fetch a file from the server and save it with the name the server gives it.
